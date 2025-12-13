@@ -2,6 +2,7 @@
   "appName": "AutoERP",
   "by": "par",
   "select": "Sélectionner...",
+  "selectCountry": "Sélectionner un pays",
   "actions": {
     "save": "Enregistrer",
     "cancel": "Annuler",
@@ -89,6 +90,7 @@
     "purchases": "Achats",
     "suppliers": "Fournisseurs",
     "purchaseOrders": "Commandes fournisseurs",
+    "goodsReceipts": "Bons de reception",
     "inventory": "Inventaire",
     "products": "Produits",
     "stockLevels": "Niveaux de stock",
@@ -97,6 +99,9 @@
     "deliveryNotes": "Bons de livraison",
     "inventoryCounting": "Inventaire physique",
     "vehicles": "Véhicules",
+    "services": "Prestations",
+    "allServices": "Toutes les prestations",
+    "serviceCategories": "Catégories",
     "treasury": "Trésorerie",
     "payments": "Paiements",
     "instruments": "Instruments",
@@ -206,5 +211,402 @@
   "yes": "Oui",
   "no": "Non",
   "actionsLabel": "Actions",
-  "allStatuses": "Tous les statuts"
+  "allStatuses": "Tous les statuts",
+  "total": "Total",
+  "listView": "Vue en liste",
+  "gridView": "Vue en grille",
+  "more": "de plus",
+  "filters": {
+    "all": "Tous",
+    "active": "Actif",
+    "inactive": "Inactif"
+  },
+  "tabs": {
+    "overview": "Aperçu",
+    "documents": "Documents",
+    "payments": "Paiements",
+    "vehicles": "Véhicules"
+  },
+  "fiscal": {
+    "category": {
+      "label": "Catégorie fiscale",
+      "nonFiscal": "Non fiscal",
+      "fiscalReceipt": "Ticket de caisse",
+      "taxInvoice": "Facture",
+      "creditNote": "Avoir"
+    },
+    "status": {
+      "label": "Statut fiscal",
+      "draft": "Brouillon",
+      "sealed": "Scellé",
+      "voided": "Annulé"
+    },
+    "sealed": "Ce document est scellé fiscalement et ne peut pas être modifié",
+    "cannotDelete": "Les documents fiscaux ne peuvent pas être supprimés",
+    "immutable": "Immuable"
+  },
+  "openingBalances": {
+    "title": "Soldes d'ouverture",
+    "description": "Importez les soldes initiaux de votre ancien système",
+    "progressOverview": "Aperçu de la progression",
+    "batchesLocked": "{{locked}} sur {{total}} types de lots verrouillés",
+    "selectBatchType": "Sélectionnez un type de lot à importer",
+    "types": {
+      "accounting": {
+        "title": "Comptabilité générale",
+        "description": "Importez les soldes des comptes (actifs, passifs, capitaux propres)"
+      },
+      "inventory": {
+        "title": "Stock initial",
+        "description": "Importez les quantités et coûts des produits par emplacement"
+      },
+      "arOpenItems": {
+        "title": "Créances clients",
+        "description": "Importez les factures clients impayées"
+      },
+      "apOpenItems": {
+        "title": "Dettes fournisseurs",
+        "description": "Importez les factures fournisseurs impayées"
+      }
+    },
+    "status": {
+      "draft": "Brouillon",
+      "validated": "Validé",
+      "locked": "Verrouillé",
+      "notStarted": "Non commencé"
+    },
+    "wizard": {
+      "title": "Import des soldes d'ouverture",
+      "backToList": "Retour aux soldes d'ouverture",
+      "steps": {
+        "setup": "Configuration",
+        "upload": "Import",
+        "validate": "Validation",
+        "preview": "Aperçu",
+        "post": "Comptabilisation",
+        "lock": "Verrouillage",
+        "complete": "Terminé"
+      },
+      "setup": {
+        "title": "Configuration du lot",
+        "description": "Configurez les paramètres du lot de soldes d'ouverture",
+        "batchName": "Nom du lot",
+        "batchNamePlaceholder": "ex. Ouverture initiale - Janvier 2025",
+        "cutoverDate": "Date de bascule",
+        "cutoverDateHint": "La date à laquelle ces soldes sont exacts",
+        "sourceSystem": "Système source (optionnel)",
+        "sourceSystemPlaceholder": "ex. Sage, QuickBooks, Excel"
+      },
+      "upload": {
+        "title": "Importer les données",
+        "description": "Téléchargez votre fichier CSV avec les données de soldes d'ouverture",
+        "dropzone": "Déposez votre fichier CSV ici, ou cliquez pour parcourir",
+        "dropzoneHint": "Fichiers CSV jusqu'à 10 Mo supportés",
+        "expectedColumns": "Colonnes attendues",
+        "downloadTemplate": "Télécharger le modèle",
+        "fileSelected": "Fichier sélectionné",
+        "rowsFound": "{{count}} lignes trouvées",
+        "preview": "Aperçu (5 premières lignes)"
+      },
+      "validate": {
+        "title": "Valider les données",
+        "description": "Vérifiez les résultats de validation et corrigez les erreurs",
+        "validating": "Validation en cours...",
+        "summary": "Résumé de la validation",
+        "totalRows": "Total des lignes",
+        "validRows": "Valides",
+        "invalidRows": "Invalides",
+        "skippedRows": "Ignorées",
+        "showOnlyErrors": "Afficher uniquement les erreurs",
+        "rowDetails": "Détails des lignes",
+        "row": "Ligne",
+        "status": "Statut",
+        "errors": "Erreurs",
+        "valid": "Valide",
+        "invalid": "Invalide",
+        "skipped": "Ignorée",
+        "noErrors": "Aucune erreur de validation trouvée",
+        "hasErrors": "Veuillez corriger les erreurs avant de continuer"
+      },
+      "preview": {
+        "title": "Aperçu des modifications",
+        "description": "Vérifiez ce qui sera créé lors de la comptabilisation de ce lot",
+        "loading": "Chargement de l'aperçu...",
+        "accounting": {
+          "journalEntry": "Écriture comptable",
+          "account": "Compte",
+          "debit": "Débit",
+          "credit": "Crédit"
+        },
+        "inventory": {
+          "stockMovements": "Mouvements de stock",
+          "product": "Produit",
+          "location": "Emplacement",
+          "quantity": "Quantité",
+          "unitCost": "Coût unitaire",
+          "totalValue": "Valeur totale",
+          "glEntry": "Écriture comptable"
+        },
+        "arAp": {
+          "documents": "Documents",
+          "documentNumber": "N° doc. externe",
+          "partner": "Partenaire",
+          "date": "Date",
+          "dueDate": "Échéance",
+          "total": "Total",
+          "openAmount": "Montant ouvert"
+        }
+      },
+      "post": {
+        "title": "Comptabiliser le lot",
+        "description": "Créez les écritures dans votre système comptable",
+        "posting": "Comptabilisation en cours...",
+        "postButton": "Comptabiliser le lot",
+        "confirmPost": "Cela créera toutes les écritures comptables et mouvements de stock. Continuer ?"
+      },
+      "lock": {
+        "title": "Verrouiller le lot",
+        "description": "Finalisez et verrouillez ce lot de soldes d'ouverture",
+        "warningTitle": "Avertissement important",
+        "warning1": "Une fois verrouillé, ce lot ne peut plus être modifié ni supprimé",
+        "warning2": "Toutes les écritures deviendront permanentes et immuables",
+        "warning3": "Assurez-vous que toutes les données ont été vérifiées avant le verrouillage",
+        "confirmTitle": "Prêt à verrouiller",
+        "confirmDescription": "En verrouillant ce lot, vous confirmez que tous les soldes d'ouverture sont exacts et vérifiés.",
+        "locking": "Verrouillage en cours...",
+        "lockButton": "Verrouiller le lot"
+      },
+      "complete": {
+        "title": "Import terminé",
+        "description": "Le lot de soldes d'ouverture a été verrouillé avec succès",
+        "summary": "Résumé",
+        "batchId": "ID du lot",
+        "lockedAt": "Verrouillé le",
+        "lockedBy": "Verrouillé par",
+        "hash": "Empreinte",
+        "viewJournalEntries": "Voir les écritures comptables",
+        "startAnother": "Démarrer un autre import",
+        "backToOverview": "Retour à la vue d'ensemble"
+      }
+    },
+    "messages": {
+      "batchCreated": "Lot de soldes d'ouverture créé",
+      "importSuccess": "Fichier importé avec succès",
+      "validationSuccess": "Validation terminée",
+      "postSuccess": "Lot comptabilisé avec succès",
+      "lockSuccess": "Lot verrouillé avec succès",
+      "error": "Une erreur est survenue",
+      "deleteConfirm": "Êtes-vous sûr de vouloir supprimer ce lot ?",
+      "deleted": "Lot supprimé avec succès"
+    },
+    "columns": {
+      "accounting": {
+        "accountCode": "Code compte",
+        "debit": "Débit",
+        "credit": "Crédit"
+      },
+      "inventory": {
+        "productCode": "Code produit",
+        "locationCode": "Code emplacement",
+        "quantity": "Quantité",
+        "unitCost": "Coût unitaire"
+      },
+      "arOpenItems": {
+        "customerCode": "Code client",
+        "invoiceNumber": "N° facture",
+        "issueDate": "Date d'émission",
+        "dueDate": "Date d'échéance",
+        "currency": "Devise",
+        "total": "Total",
+        "openAmount": "Montant ouvert"
+      },
+      "apOpenItems": {
+        "supplierCode": "Code fournisseur",
+        "invoiceNumber": "N° facture",
+        "issueDate": "Date d'émission",
+        "dueDate": "Date d'échéance",
+        "currency": "Devise",
+        "total": "Total",
+        "openAmount": "Montant ouvert"
+      }
+    }
+  },
+  "services": {
+    "title": "Prestations",
+    "addService": "Ajouter une prestation",
+    "editService": "Modifier la prestation",
+    "createService": "Créer une prestation",
+    "manageCategories": "Gérer les catégories",
+    "searchPlaceholder": "Rechercher des prestations...",
+    "noServices": "Aucune prestation",
+    "noServicesDescription": "Commencez par créer une nouvelle prestation.",
+    "serviceCount": {
+      "singular": "prestation",
+      "plural": "prestations"
+    },
+    "pricingType": "Tarification",
+    "category": "Catégorie",
+    "details": "Détails de la prestation",
+    "pricing": "Tarification",
+    "metadata": "Métadonnées",
+    "pricingTypes": {
+      "flatRate": "Forfait",
+      "hourly": "Horaire",
+      "percentage": "Pourcentage"
+    },
+    "fields": {
+      "code": "Code",
+      "name": "Nom",
+      "description": "Description",
+      "category": "Catégorie",
+      "price": "Prix",
+      "basePrice": "Prix de base",
+      "hourlyRate": "Taux horaire",
+      "defaultDuration": "Durée par défaut",
+      "duration": "Durée",
+      "percentage": "Pourcentage",
+      "taxRate": "Taux de TVA (%)"
+    },
+    "categories": "Catégories de prestations",
+    "addCategory": "Ajouter une catégorie",
+    "editCategory": "Modifier la catégorie",
+    "createCategory": "Créer une catégorie",
+    "noCategories": "Aucune catégorie",
+    "noCategoriesDescription": "Créez des catégories pour organiser vos prestations.",
+    "parentCategory": "Catégorie parente",
+    "noParent": "Aucune (catégorie racine)",
+    "sortOrder": "Ordre de tri",
+    "categoryCount": {
+      "singular": "catégorie",
+      "plural": "catégories"
+    },
+    "basicInfo": "Informations générales",
+    "noCategory": "Sans catégorie",
+    "namePlaceholder": "Vidange d'huile",
+    "categoryNamePlaceholder": "Entretien",
+    "messages": {
+      "created": "Prestation créée avec succès",
+      "updated": "Prestation mise à jour avec succès",
+      "deleted": "Prestation supprimée avec succès",
+      "categoryCreated": "Catégorie créée avec succès",
+      "categoryUpdated": "Catégorie mise à jour avec succès",
+      "categoryDeleted": "Catégorie supprimée avec succès"
+    }
+  },
+  "users": {
+    "title": "Gestion des utilisateurs",
+    "count": "{{count}} utilisateur",
+    "count_plural": "{{count}} utilisateurs",
+    "addUser": "Ajouter un utilisateur",
+    "searchPlaceholder": "Rechercher des utilisateurs...",
+    "errorLoading": "Erreur de chargement des utilisateurs. Veuillez réessayer.",
+    "empty": {
+      "title": "Aucun utilisateur",
+      "noResults": "Aucun résultat trouvé",
+      "getStarted": "Commencez par ajouter un nouvel utilisateur.",
+      "tryDifferent": "Essayez un autre terme de recherche."
+    },
+    "table": {
+      "user": "Utilisateur",
+      "role": "Rôle",
+      "status": "Statut",
+      "lastLogin": "Dernière connexion",
+      "actions": "Actions"
+    },
+    "statusLabels": {
+      "active": "Actif",
+      "inactive": "Inactif",
+      "pending": "En attente",
+      "locked": "Verrouillé"
+    },
+    "filterTabs": {
+      "all": "Tous",
+      "active": "Actifs",
+      "inactive": "Inactifs",
+      "pending": "En attente"
+    },
+    "actions": {
+      "activate": "Activer",
+      "deactivate": "Désactiver",
+      "resetPassword": "Réinitialiser le mot de passe",
+      "delete": "Supprimer"
+    },
+    "confirmations": {
+      "deactivate": "Êtes-vous sûr de vouloir désactiver cet utilisateur ?",
+      "delete": "Êtes-vous sûr de vouloir supprimer cet utilisateur ? Cette action est irréversible."
+    },
+    "messages": {
+      "created": "Utilisateur créé avec succès. Un e-mail d'invitation a été envoyé.",
+      "activated": "Utilisateur activé avec succès.",
+      "deactivated": "Utilisateur désactivé avec succès.",
+      "passwordReset": "E-mail de réinitialisation du mot de passe envoyé avec succès.",
+      "deleted": "Utilisateur supprimé avec succès."
+    },
+    "modal": {
+      "title": "Ajouter un nouvel utilisateur",
+      "nameLabel": "Nom",
+      "namePlaceholder": "Jean Dupont",
+      "emailLabel": "E-mail",
+      "emailPlaceholder": "jean@exemple.com",
+      "phoneLabel": "Téléphone",
+      "phonePlaceholder": "+33 1 23 45 67 89",
+      "roleLabel": "Rôle",
+      "invitationNote": "Un e-mail d'invitation sera envoyé à l'utilisateur avec les instructions pour définir son mot de passe.",
+      "createUser": "Créer l'utilisateur"
+    },
+    "validation": {
+      "nameRequired": "Le nom est requis",
+      "emailRequired": "L'e-mail est requis",
+      "invalidEmail": "Format d'e-mail invalide",
+      "roleRequired": "Le rôle est requis"
+    },
+    "never": "Jamais"
+  },
+  "auditLogs": {
+    "title": "Journaux d'audit",
+    "description": "Suivre toutes les actions administratives",
+    "loading": "Chargement des journaux d'audit...",
+    "empty": "Aucun journal d'audit",
+    "table": {
+      "date": "Date",
+      "admin": "Administrateur",
+      "action": "Action",
+      "tenant": "Locataire",
+      "notes": "Notes"
+    }
+  },
+  "settings": {
+    "title": "Paramètres",
+    "description": "Gérez les paramètres et la configuration de votre application",
+    "sections": {
+      "users": {
+        "title": "Utilisateurs",
+        "description": "Gérer les comptes utilisateurs et les accès"
+      },
+      "roles": {
+        "title": "Rôles et permissions",
+        "description": "Configurer les rôles et leurs permissions"
+      },
+      "company": {
+        "title": "Entreprise",
+        "description": "Informations et image de marque de l'entreprise"
+      },
+      "import": {
+        "title": "Importation de données",
+        "description": "Importer des données depuis des fichiers CSV ou Excel"
+      },
+      "openingBalances": {
+        "title": "Soldes d'ouverture",
+        "description": "Importer les soldes initiaux du système précédent"
+      }
+    },
+    "appInfo": {
+      "title": "Informations sur l'application",
+      "version": "Version",
+      "environment": "Environnement",
+      "apiUrl": "URL de l'API",
+      "buildDate": "Date de compilation",
+      "notConfigured": "Non configuré"
+    }
+  }
 }

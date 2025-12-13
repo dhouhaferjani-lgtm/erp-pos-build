@@ -39,7 +39,7 @@ class MarginService
             ?? $company->default_target_margin ?? 30.0);
 
         $minimumMargin = (float) ($product->minimum_margin_override
-            ?? $company->default_minimum_margin ?? 10.0);
+            ?? $company->default_minimum_margin ?? 15.0);
 
         return [
             'target_margin' => $targetMargin,

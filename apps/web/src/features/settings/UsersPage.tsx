@@ -63,12 +63,7 @@ const statusColors: Record<string, string> = {
   locked: 'bg-red-100 text-red-800',
 }
 
-const statusLabels: Record<string, string> = {
-  active: 'Active',
-  inactive: 'Inactive',
-  pending_verification: 'Pending',
-  locked: 'Locked',
-}
+// Status labels are now handled via translations - see users.statusLabels
 
 const roleColors: Record<string, string> = {
   admin: 'bg-purple-100 text-purple-800',
@@ -125,7 +120,7 @@ export function UsersPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['users'] })
       setShowAddModal(false)
-      showNotification('success', 'User created successfully. An invitation email has been sent.')
+      showNotification('success', t('users.messages.created'))
     },
     onError: (error) => {
       showNotification('error', getErrorMessage(error))
@@ -140,7 +135,7 @@ export function UsersPage() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['users'] })
-      showNotification('success', 'User activated successfully.')
+      showNotification('success', t('users.messages.activated'))
     },
     onError: (error) => {
       showNotification('error', getErrorMessage(error))
@@ -158,7 +153,7 @@ export function UsersPage() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['users'] })
-      showNotification('success', 'User deactivated successfully.')
+      showNotification('success', t('users.messages.deactivated'))
     },
     onError: (error) => {
       showNotification('error', getErrorMessage(error))
@@ -175,7 +170,7 @@ export function UsersPage() {
       await api.post(`/users/${userId}/reset-password`)
     },
     onSuccess: () => {
-      showNotification('success', 'Password reset email sent successfully.')
+      showNotification('success', t('users.messages.passwordReset'))
     },
     onError: (error) => {
       showNotification('error', getErrorMessage(error))
@@ -193,7 +188,7 @@ export function UsersPage() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['users'] })
-      showNotification('success', 'User deleted successfully.')
+      showNotification('success', t('users.messages.deleted'))
     },
     onError: (error) => {
       showNotification('error', getErrorMessage(error))
@@ -209,10 +204,10 @@ export function UsersPage() {
   const roles = rolesData ?? []
 
   const filterTabs = [
-    { value: 'all' as StatusFilter, label: 'All', count: total },
-    { value: 'active' as StatusFilter, label: 'Active' },
-    { value: 'inactive' as StatusFilter, label: 'Inactive' },
-    { value: 'pending_verification' as StatusFilter, label: 'Pending' },
+    { value: 'all' as StatusFilter, label: t('users.filterTabs.all'), count: total },
+    { value: 'active' as StatusFilter, label: t('users.filterTabs.active') },
+    { value: 'inactive' as StatusFilter, label: t('users.filterTabs.inactive') },
+    { value: 'pending_verification' as StatusFilter, label: t('users.filterTabs.pending') },
   ]
 
   const showNotification = (type: 'success' | 'error', message: string) => {
@@ -221,8 +216,8 @@ export function UsersPage() {
   }
 
   const formatDate = (dateString: string | null) => {
-    if (!dateString) return 'Never'
-    return new Date(dateString).toLocaleDateString('en-US', {
+    if (!dateString) return t('users.never')
+    return new Date(dateString).toLocaleDateString(undefined, {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -235,7 +230,7 @@ export function UsersPage() {
         activateMutation.mutate(userId)
         break
       case 'deactivate':
-        if (confirm('Are you sure you want to deactivate this user?')) {
+        if (confirm(t('users.confirmations.deactivate'))) {
           deactivateMutation.mutate(userId)
         } else {
           setShowActionMenu(null)
@@ -245,7 +240,7 @@ export function UsersPage() {
         resetPasswordMutation.mutate(userId)
         break
       case 'delete':
-        if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+        if (confirm(t('users.confirmations.delete'))) {
           deleteMutation.mutate(userId)
         } else {
           setShowActionMenu(null)
@@ -287,10 +282,10 @@ export function UsersPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
               <Users className="h-6 w-6 text-blue-500" />
-              User Management
+              {t('users.title')}
             </h1>
             <p className="text-gray-500">
-              {total} {total === 1 ? 'user' : 'users'} total
+              {t(total === 1 ? 'users.count' : 'users.count_plural', { count: total })}
             </p>
           </div>
         </div>
@@ -299,7 +294,7 @@ export function UsersPage() {
           className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
         >
           <UserPlus className="h-4 w-4" />
-          Add User
+          {t('users.addUser')}
         </button>
       </div>
 
@@ -309,7 +304,7 @@ export function UsersPage() {
         <SearchInput
           value={searchQuery}
           onChange={(value) => { setSearchQuery(value) }}
-          placeholder="Search users..."
+          placeholder={t('users.searchPlaceholder')}
           className="w-full sm:w-72"
         />
       </div>
@@ -321,18 +316,18 @@ export function UsersPage() {
         </div>
       ) : error ? (
         <div className="rounded-lg bg-red-50 p-4 text-red-700">
-          Error loading users. Please try again.
+          {t('users.errorLoading')}
         </div>
       ) : users.length === 0 ? (
         <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
           <Users className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-sm font-semibold text-gray-900">
-            {searchQuery ? 'No results found' : 'No users'}
+            {searchQuery ? t('users.empty.noResults') : t('users.empty.title')}
           </h3>
           <p className="mt-1 text-sm text-gray-500">
             {searchQuery
-              ? 'Try a different search term.'
-              : 'Get started by adding a new user.'}
+              ? t('users.empty.tryDifferent')
+              : t('users.empty.getStarted')}
           </p>
           {!searchQuery && (
             <div className="mt-6">
@@ -341,7 +336,7 @@ export function UsersPage() {
                 className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
               >
                 <UserPlus className="h-4 w-4" />
-                Add User
+                {t('users.addUser')}
               </button>
             </div>
           )}
@@ -352,19 +347,19 @@ export function UsersPage() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  User
+                  {t('users.table.user')}
                 </th>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Role
+                  {t('users.table.role')}
                 </th>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Status
+                  {t('users.table.status')}
                 </th>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Last Login
+                  {t('users.table.lastLogin')}
                 </th>
                 <th className="relative px-6 py-3">
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">{t('users.table.actions')}</span>
                 </th>
               </tr>
             </thead>
@@ -413,7 +408,7 @@ export function UsersPage() {
                         statusColors[user.status] ?? 'bg-gray-100 text-gray-800'
                       }`}
                     >
-                      {statusLabels[user.status] ?? user.status}
+                      {t(`users.statusLabels.${user.status === 'pending_verification' ? 'pending' : user.status}`)}
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
@@ -443,7 +438,7 @@ export function UsersPage() {
                                 className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                               >
                                 <CheckCircle className="h-4 w-4 text-green-500" />
-                                Activate
+                                {t('users.actions.activate')}
                               </button>
                             )}
                             {user.status === 'active' && user.id !== currentUser?.id && (
@@ -452,7 +447,7 @@ export function UsersPage() {
                                 className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                               >
                                 <XCircle className="h-4 w-4 text-yellow-500" />
-                                Deactivate
+                                {t('users.actions.deactivate')}
                               </button>
                             )}
                             <button
@@ -460,7 +455,7 @@ export function UsersPage() {
                               className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                             >
                               <KeyRound className="h-4 w-4 text-blue-500" />
-                              Reset Password
+                              {t('users.actions.resetPassword')}
                             </button>
                             {user.id !== currentUser?.id && (
                               <button
@@ -468,7 +463,7 @@ export function UsersPage() {
                                 className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
                               >
                                 <Trash2 className="h-4 w-4" />
-                                Delete
+                                {t('users.actions.delete')}
                               </button>
                             )}
                           </div>
@@ -509,6 +504,7 @@ interface AddUserModalProps {
 }
 
 function AddUserModal({ roles, onClose, onSubmit, isLoading }: AddUserModalProps) {
+  const { t } = useTranslation()
   const [formData, setFormData] = useState<CreateUserData>({
     name: '',
     email: '',
@@ -521,15 +517,15 @@ function AddUserModal({ roles, onClose, onSubmit, isLoading }: AddUserModalProps
     const newErrors: Record<string, string> = {}
 
     if (!formData.name.trim()) {
-      newErrors['name'] = 'Name is required'
+      newErrors['name'] = t('users.validation.nameRequired')
     }
     if (!formData.email.trim()) {
-      newErrors['email'] = 'Email is required'
+      newErrors['email'] = t('users.validation.emailRequired')
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors['email'] = 'Invalid email format'
+      newErrors['email'] = t('users.validation.invalidEmail')
     }
     if (!formData.role) {
-      newErrors['role'] = 'Role is required'
+      newErrors['role'] = t('users.validation.roleRequired')
     }
 
     setErrors(newErrors)
@@ -551,11 +547,11 @@ function AddUserModal({ roles, onClose, onSubmit, isLoading }: AddUserModalProps
       <div className="flex min-h-full items-center justify-center p-4">
         <div className="fixed inset-0 bg-black bg-opacity-25" onClick={onClose} />
         <div className="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Add New User</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('users.modal.title')}</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                Name *
+                {t('users.modal.nameLabel')} *
               </label>
               <input
                 type="text"
@@ -567,14 +563,14 @@ function AddUserModal({ roles, onClose, onSubmit, isLoading }: AddUserModalProps
                     ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
                     : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
                 }`}
-                placeholder="John Doe"
+                placeholder={t('users.modal.namePlaceholder')}
               />
               {errors['name'] && <p className="mt-1 text-sm text-red-600">{errors['name']}</p>}
             </div>
 
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email *
+                {t('users.modal.emailLabel')} *
               </label>
               <input
                 type="email"
@@ -586,14 +582,14 @@ function AddUserModal({ roles, onClose, onSubmit, isLoading }: AddUserModalProps
                     ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
                     : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
                 }`}
-                placeholder="john@example.com"
+                placeholder={t('users.modal.emailPlaceholder')}
               />
               {errors['email'] && <p className="mt-1 text-sm text-red-600">{errors['email']}</p>}
             </div>
 
             <div>
               <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
-                Phone
+                {t('users.modal.phoneLabel')}
               </label>
               <input
                 type="tel"
@@ -601,13 +597,13 @@ function AddUserModal({ roles, onClose, onSubmit, isLoading }: AddUserModalProps
                 value={formData.phone}
                 onChange={(e) => { setFormData({ ...formData, phone: e.target.value }) }}
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder="+33 1 23 45 67 89"
+                placeholder={t('users.modal.phonePlaceholder')}
               />
             </div>
 
             <div>
               <label htmlFor="role" className="block text-sm font-medium text-gray-700">
-                Role *
+                {t('users.modal.roleLabel')} *
               </label>
               <select
                 id="role"
@@ -629,7 +625,7 @@ function AddUserModal({ roles, onClose, onSubmit, isLoading }: AddUserModalProps
             </div>
 
             <p className="text-sm text-gray-500">
-              An invitation email will be sent to the user with instructions to set their password.
+              {t('users.modal.invitationNote')}
             </p>
 
             <div className="flex justify-end gap-3 pt-4">
@@ -638,7 +634,7 @@ function AddUserModal({ roles, onClose, onSubmit, isLoading }: AddUserModalProps
                 onClick={onClose}
                 className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
-                Cancel
+                {t('actions.cancel')}
               </button>
               <button
                 type="submit"
@@ -648,12 +644,12 @@ function AddUserModal({ roles, onClose, onSubmit, isLoading }: AddUserModalProps
                 {isLoading ? (
                   <>
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    Creating...
+                    {t('status.creating')}
                   </>
                 ) : (
                   <>
                     <UserPlus className="h-4 w-4" />
-                    Create User
+                    {t('users.modal.createUser')}
                   </>
                 )}
               </button>

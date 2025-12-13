@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { FileText, Calendar, User } from 'lucide-react'
 import { getAdminAuditLogs } from '../api'
 
 export function AuditLogsPage() {
+  const { t } = useTranslation()
   const { data: logsData, isLoading } = useQuery({
     queryKey: ['admin', 'audit-logs'],
     queryFn: () => getAdminAuditLogs(),
@@ -32,7 +34,7 @@ export function AuditLogsPage() {
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="text-gray-400">Loading audit logs...</div>
+        <div className="text-gray-400">{t('auditLogs.loading')}</div>
       </div>
     )
   }
@@ -40,8 +42,8 @@ export function AuditLogsPage() {
   return (
     <div className="p-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white">Audit Logs</h1>
-        <p className="text-gray-400">Track all administrative actions</p>
+        <h1 className="text-2xl font-bold text-white">{t('auditLogs.title')}</h1>
+        <p className="text-gray-400">{t('auditLogs.description')}</p>
       </div>
 
       <div className="overflow-hidden rounded-lg bg-gray-800 shadow">
@@ -49,19 +51,19 @@ export function AuditLogsPage() {
           <thead className="bg-gray-900">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">
-                Date
+                {t('auditLogs.table.date')}
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">
-                Admin
+                {t('auditLogs.table.admin')}
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">
-                Action
+                {t('auditLogs.table.action')}
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">
-                Tenant
+                {t('auditLogs.table.tenant')}
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">
-                Notes
+                {t('auditLogs.table.notes')}
               </th>
             </tr>
           </thead>
@@ -70,7 +72,7 @@ export function AuditLogsPage() {
               <tr>
                 <td colSpan={5} className="px-6 py-12 text-center">
                   <FileText className="mx-auto h-12 w-12 text-gray-600" />
-                  <p className="mt-4 text-gray-400">No audit logs yet</p>
+                  <p className="mt-4 text-gray-400">{t('auditLogs.empty')}</p>
                 </td>
               </tr>
             ) : (
