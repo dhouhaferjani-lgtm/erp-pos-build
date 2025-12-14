@@ -5,24 +5,27 @@
 
 ---
 
-## Overall Status: 78% Ready
+## Overall Status: 85% Ready (was 78%)
 
-| Area | Score | Key Blockers |
-|------|-------|--------------|
+| Area | Score | Status |
+|------|-------|--------|
 | Backend Business Flow | 85% | COGS automation missing |
-| Frontend Features | 72% | i18n fixes, missing settings |
-| Data Quality | 75% | Currency hardcoding |
-| Translations | 70% | 50+ hardcoded strings |
+| Frontend Features | 82% | **Phase 1 i18n COMPLETE** |
+| Data Quality | 90% | **Currency hardcoding FIXED** |
+| Translations | 90% | **Phase 1 translations COMPLETE** |
 | Import Capabilities | 80% | Core features complete |
 | Treasury/Payments | 75% | Refund UI missing |
 | Audit/Compliance | 85% | Lifecycle events partial |
+
+**Last Updated**: 2025-12-14
+**Current Phase**: Phase 2 (New Features)
 
 ---
 
 ## Phase 1: Critical Fixes (Week 1)
 
 ### 1.1 Fix Currency Hardcoding [HIGH PRIORITY]
-**Status**: [ ] Not Started
+**Status**: [x] COMPLETED (2025-12-14)
 **Effort**: 4h
 
 8 frontend components default to TND instead of using company context:
@@ -53,19 +56,19 @@
 ---
 
 ### 1.2 Fix Margin Default Inconsistency [HIGH PRIORITY]
-**Status**: [ ] Not Started
+**Status**: [x] COMPLETED (2025-12-14)
 **Effort**: 30min
 
 **Issue**: MarginService.php uses 10.0 as minimum margin default, but CompanyFactory uses 15.0
 
-**File**: `apps/api/app/Modules/Inventory/Application/Services/MarginService.php`
+**File**: `apps/api/app/Modules/Product/Application/Services/MarginService.php`
 **Line**: 42
-**Fix**: Change `?? 10.0` to `?? 15.0`
+**Fix**: Changed `?? 10.0` to `?? 15.0`
 
 ---
 
 ### 1.3 Add Missing French Translations [HIGH PRIORITY]
-**Status**: [ ] Not Started
+**Status**: [x] COMPLETED (2025-12-14)
 **Effort**: 2h
 
 Add to `apps/web/src/locales/fr/common.json`:
@@ -94,47 +97,45 @@ Add to `apps/web/src/locales/fr/common.json`:
 ---
 
 ### 1.4 Translate Hardcoded Settings Page Strings [HIGH PRIORITY]
-**Status**: [ ] Not Started
+**Status**: [x] COMPLETED (2025-12-14)
 **Effort**: 4h
 
 **File**: `apps/web/src/features/settings/SettingsPage.tsx`
 
-Hardcoded strings to translate:
-- "Manage your application settings and configuration"
-- Section titles: "Users", "Roles & Permissions", "Company", "Data Import", "Opening Balances"
-- Section descriptions: "Manage user accounts...", "Configure roles...", etc.
-- "Application Info", "Version", "Environment", "API URL", "Build Date"
-
-**Fix**: Create translation keys in `settings` namespace and use `t()` function.
+Translated strings:
+- Settings title and description
+- Section titles: Users, Roles & Permissions, Company, Data Import, Opening Balances
+- Section descriptions with full French translations
+- Application Info section with all labels
 
 ---
 
 ### 1.5 Translate UsersPage Strings [HIGH PRIORITY]
-**Status**: [ ] Not Started
+**Status**: [x] COMPLETED (2025-12-14)
 **Effort**: 1h
 
 **File**: `apps/web/src/features/settings/UsersPage.tsx`
 
-Hardcoded strings:
-- "User Management"
-- "Add User"
-- "Add New User"
-- "An invitation email will be sent..."
+Translated:
+- All mutation success messages
+- Confirmation dialogs for deactivate/delete
+- AddUserModal title, labels, placeholders
+- Validation error messages
+- Action buttons
 
 ---
 
 ### 1.6 Translate AuditLogsPage Strings [MEDIUM PRIORITY]
-**Status**: [ ] Not Started
+**Status**: [x] COMPLETED (2025-12-14)
 **Effort**: 30min
 
-**File**: `apps/web/src/features/admin/AuditLogsPage.tsx`
+**File**: `apps/web/src/features/admin/pages/AuditLogsPage.tsx`
 
-Hardcoded strings:
-- "Loading audit logs..."
-- "Audit Logs"
-- "Track all administrative actions"
-- Table headers: "Date", "Admin", "Action", "Tenant", "Notes"
-- "No audit logs yet"
+Translated:
+- Loading state, title, description
+- Table headers: Date, Admin, Action, Tenant, Notes
+- Empty state message
+- Full French translations in common.json
 
 ---
 
@@ -389,15 +390,15 @@ Contents:
 
 ### Completion Checklist
 
-#### Phase 1 - Critical Fixes
-- [ ] 1.1 Fix currency hardcoding (8 components)
-- [ ] 1.2 Fix margin default inconsistency
-- [ ] 1.3 Add missing French translations
-- [ ] 1.4 Translate SettingsPage
-- [ ] 1.5 Translate UsersPage
-- [ ] 1.6 Translate AuditLogsPage
+#### Phase 1 - Critical Fixes (6/6 COMPLETE)
+- [x] 1.1 Fix currency hardcoding (8 components) - 2025-12-14
+- [x] 1.2 Fix margin default inconsistency - 2025-12-14
+- [x] 1.3 Add missing French translations - 2025-12-14
+- [x] 1.4 Translate SettingsPage - 2025-12-14
+- [x] 1.5 Translate UsersPage - 2025-12-14
+- [x] 1.6 Translate AuditLogsPage - 2025-12-14
 
-#### Phase 2 - New Features
+#### Phase 2 - New Features (0/6)
 - [ ] 2.1 Document attachments (backend)
 - [ ] 2.1 Document attachments (frontend)
 - [ ] 2.2 Related documents tab (backend)
@@ -405,7 +406,7 @@ Contents:
 - [ ] 2.3 Supplier invoice reference
 - [ ] 2.4 Payment refund UI
 
-#### Phase 3 - Frontend Enhancements
+#### Phase 3 - Frontend Enhancements (0/6)
 - [ ] 3.1 Role creation UI
 - [ ] 3.2 Bank reconciliation page
 - [ ] 3.3 Split payment UI
@@ -413,11 +414,11 @@ Contents:
 - [ ] 3.5 Translate DocumentForm
 - [ ] 3.6 Translate stock actions
 
-#### Phase 4 - Backend Improvements
+#### Phase 4 - Backend Improvements (0/2)
 - [ ] 4.1 COGS posting automation
 - [ ] 4.2 Document lifecycle events
 
-#### Phase 5 - Documentation
+#### Phase 5 - Documentation (0/1)
 - [ ] 5.1 Batch/expiry tracking spec
 
 ---
