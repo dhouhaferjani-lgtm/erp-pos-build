@@ -62,28 +62,27 @@ interface ExcessAllocation {
 
 type ExcessAllocationMethod = 'fifo' | 'due_date' | 'manual' | 'advance'
 
-interface MultiPaymentResponse {
-  data: {
-    payments: Array<{
-      id: string
-      payment_number: string
+// This is the shape returned by apiPost (already unwrapped from ApiResponse wrapper)
+interface MultiPaymentResponseData {
+  payments: Array<{
+    id: string
+    payment_number: string
+    amount: string
+  }>
+  document: {
+    id: string
+    document_number: string
+    balance_due: string
+    status: string
+  }
+  excess_handling: {
+    excess_amount: string
+    allocation_method: string
+    allocations: Array<{
+      document_id: string
+      document_number: string
       amount: string
     }>
-    document: {
-      id: string
-      document_number: string
-      balance_due: string
-      status: string
-    }
-    excess_handling: {
-      excess_amount: string
-      allocation_method: string
-      allocations: Array<{
-        document_id: string
-        document_number: string
-        amount: string
-      }>
-    }
   }
 }
 
@@ -119,7 +118,7 @@ export function RecordPaymentModal({
   const [manualAllocations, setManualAllocations] = useState<ExcessAllocation[]>([])
   const [validationError, setValidationError] = useState<string | null>(null)
   const [showSuccess, setShowSuccess] = useState(false)
-  const [successData, setSuccessData] = useState<MultiPaymentResponse['data'] | null>(null)
+  const [successData, setSuccessData] = useState<MultiPaymentResponseData | null>(null)
 
   // Reset form when modal opens
   useEffect(() => {
@@ -297,7 +296,8 @@ export function RecordPaymentModal({
         reference: line.reference || undefined,
       }))
 
-      return apiPost<MultiPaymentResponse>('/payments', {
+      // apiPost already unwraps the ApiResponse wrapper, so we get MultiPaymentResponseData directly
+      return apiPost<MultiPaymentResponseData>('/payments', {
         partner_id: prefill.partner_id,
         document_id: prefill.document_id,
         currency: 'TND',
@@ -313,9 +313,15 @@ export function RecordPaymentModal({
       void queryClient.invalidateQueries({ queryKey: ['invoices'] })
       void queryClient.invalidateQueries({ queryKey: ['documents'] })
       void queryClient.invalidateQueries({ queryKey: ['open-invoices'] })
+      void queryClient.invalidateQueries({ queryKey: ['document', prefill.document_id] })
 
-      setSuccessData(response.data)
+      // response is already the unwrapped data (MultiPaymentResponseData)
+      setSuccessData(response)
       setShowSuccess(true)
+    },
+    onError: (error) => {
+      console.error('Payment recording failed:', error)
+      // Error is shown via mutation.isError in the UI
     },
   })
 
