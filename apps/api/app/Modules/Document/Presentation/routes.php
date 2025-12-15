@@ -7,6 +7,8 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Presentation\Controllers\CreditNoteController;
 use App\Modules\Document\Presentation\Controllers\DocumentController;
 use App\Modules\Document\Presentation\Controllers\DocumentConversionController;
+use App\Modules\Communication\Presentation\Controllers\DocumentEmailController;
+use App\Modules\Document\Presentation\Controllers\DocumentPdfController;
 use App\Modules\Document\Presentation\Controllers\RefundController;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use Illuminate\Http\Request;
@@ -241,6 +243,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         return app(DocumentController::class)->receive($request, DocumentType::PurchaseOrder, $purchaseOrder);
     })->middleware('can:purchase-orders.receive')->name('purchase-orders.receive');
 
+    Route::get('/purchase-orders/{purchaseOrder}/receipt-status', function (Request $request, string $purchaseOrder) {
+        return app(DocumentController::class)->receiptStatus($request, DocumentType::PurchaseOrder, $purchaseOrder);
+    })->middleware('can:purchase-orders.view')->name('purchase-orders.receipt-status');
+
     // Delivery Notes
     Route::get('/delivery-notes', function (Request $request) {
         return app(DocumentController::class)->index($request, DocumentType::DeliveryNote);
@@ -260,6 +266,11 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/delivery-notes/{deliveryNote}/confirm', function (Request $request, string $deliveryNote) {
         return app(DocumentController::class)->confirm($request, DocumentType::DeliveryNote, $deliveryNote);
     })->middleware('can:deliveries.confirm')->name('delivery-notes.confirm');
+
+    // Delivery Note Consolidation (Tunisia model) - Create invoice from multiple delivery notes
+    Route::post('/delivery-notes/consolidate-to-invoice', [DocumentConversionController::class, 'createInvoiceFromDeliveryNotes'])
+        ->middleware('can:invoices.create')
+        ->name('delivery-notes.consolidate-to-invoice');
 
     // Document Additional Costs
     Route::get('/documents/{document}/additional-costs', [DocumentAdditionalCostController::class, 'index'])
@@ -281,4 +292,27 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/documents/{document}/landed-cost-breakdown', [DocumentAdditionalCostController::class, 'landedCostBreakdown'])
         ->middleware('can:documents.view')
         ->name('documents.landed-cost-breakdown');
+
+    // Related Documents (document chain)
+    Route::get('/documents/{document}/related', [DocumentController::class, 'related'])
+        ->middleware('can:documents.view')
+        ->name('documents.related');
+
+    // PDF Generation
+    Route::get('/documents/{document}/pdf', [DocumentPdfController::class, 'download'])
+        ->middleware('can:documents.view')
+        ->name('documents.pdf.download');
+
+    Route::get('/documents/{document}/pdf/preview', [DocumentPdfController::class, 'preview'])
+        ->middleware('can:documents.view')
+        ->name('documents.pdf.preview');
+
+    // Email
+    Route::post('/documents/{document}/email', [DocumentEmailController::class, 'send'])
+        ->middleware('can:documents.view')
+        ->name('documents.email.send');
+
+    Route::post('/documents/{document}/email/queue', [DocumentEmailController::class, 'queue'])
+        ->middleware('can:documents.view')
+        ->name('documents.email.queue');
 });

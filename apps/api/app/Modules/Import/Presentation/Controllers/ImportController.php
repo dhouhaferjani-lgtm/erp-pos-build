@@ -11,6 +11,7 @@ use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Services\ImportService;
+use App\Modules\Import\Services\SpreadsheetParserService;
 use App\Modules\Import\Services\ValidationEngine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,6 +24,7 @@ class ImportController extends Controller
         private readonly ImportService $importService,
         private readonly ValidationEngine $validationEngine,
         private readonly CompanyContext $companyContext,
+        private readonly SpreadsheetParserService $spreadsheetParser,
     ) {}
 
     /**
@@ -55,7 +57,7 @@ class ImportController extends Controller
     public function store(Request $request): JsonResponse
     {
         $request->validate([
-            'file' => ['required', 'file', 'mimes:csv,txt', 'max:10240'],
+            'file' => ['required', 'file', 'mimes:csv,txt,xlsx,xls', 'max:10240'],
             'type' => ['required', 'string', new Enum(ImportType::class)],
         ]);
 
@@ -75,11 +77,8 @@ class ImportController extends Controller
             return response()->json(['error' => 'Failed to store file'], 500);
         }
 
-        // Read file content
-        $content = Storage::disk('local')->get($path);
-        if ($content === null) {
-            return response()->json(['error' => 'Failed to read file'], 500);
-        }
+        // Get the full file path
+        $fullPath = Storage::disk('local')->path($path);
 
         // Create import job with temporary total_rows
         $job = $this->importService->createJob(
@@ -91,43 +90,60 @@ class ImportController extends Controller
             totalRows: 0
         );
 
-        // Parse CSV and create rows
-        $parseResult = $this->importService->parseCsvFile($job, $content);
+        try {
+            // Parse spreadsheet file (CSV, XLSX, XLS)
+            $parseResult = $this->spreadsheetParser->parse($fullPath);
 
-        // Validate headers
-        $headerValidation = $this->validationEngine->validateHeaders(
-            $parseResult['headers'],
-            $type->getRequiredColumns(),
-            $type->getOptionalColumns()
-        );
+            // Add rows to the import job
+            foreach ($parseResult['rows'] as $rowNumber => $data) {
+                $this->importService->addRow($job, $rowNumber, $data);
+            }
 
-        if (! $headerValidation['is_valid']) {
+            // Validate headers
+            $headerValidation = $this->validationEngine->validateHeaders(
+                $parseResult['headers'],
+                $type->getRequiredColumns(),
+                $type->getOptionalColumns()
+            );
+
+            if (! $headerValidation['is_valid']) {
+                $job->update([
+                    'status' => ImportStatus::Failed,
+                    'error_message' => 'Missing required columns: '.implode(', ', $headerValidation['missing']),
+                ]);
+
+                return response()->json([
+                    'data' => $this->formatJob($job),
+                    'errors' => [
+                        'missing_columns' => $headerValidation['missing'],
+                        'unknown_columns' => $headerValidation['unknown'],
+                    ],
+                ], 422);
+            }
+
+            // Update total rows
+            $job->update(['total_rows' => count($parseResult['rows'])]);
+
+            // Validate rows
+            $this->importService->validateJob($job);
+
+            /** @var ImportJob $freshJob */
+            $freshJob = $job->fresh();
+
+            return response()->json([
+                'data' => $this->formatJob($freshJob),
+            ], 201);
+        } catch (\Exception $e) {
             $job->update([
                 'status' => ImportStatus::Failed,
-                'error_message' => 'Missing required columns: '.implode(', ', $headerValidation['missing']),
+                'error_message' => 'Failed to parse file: '.$e->getMessage(),
             ]);
 
             return response()->json([
                 'data' => $this->formatJob($job),
-                'errors' => [
-                    'missing_columns' => $headerValidation['missing'],
-                    'unknown_columns' => $headerValidation['unknown'],
-                ],
+                'error' => 'Failed to parse file: '.$e->getMessage(),
             ], 422);
         }
-
-        // Update total rows
-        $job->update(['total_rows' => $parseResult['row_count']]);
-
-        // Validate rows
-        $this->importService->validateJob($job);
-
-        /** @var ImportJob $freshJob */
-        $freshJob = $job->fresh();
-
-        return response()->json([
-            'data' => $this->formatJob($freshJob),
-        ], 201);
     }
 
     /**

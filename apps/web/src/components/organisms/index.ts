@@ -15,3 +15,7 @@ export * from './AddQuickProductModal'
 export * from './AddVehicleModal'
 export * from './AddRepositoryModal'
 export * from './RecordPaymentModal'
+// DEPRECATED: SplitPaymentModal functionality has been merged into RecordPaymentModal
+// which now supports multiple payment lines with excess allocation options.
+// Keep export for backwards compatibility but avoid using in new code.
+export * from './SplitPaymentModal'

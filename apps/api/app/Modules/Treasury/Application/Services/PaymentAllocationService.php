@@ -142,21 +142,61 @@ class PaymentAllocationService
             // Create GL journal entry for the payment if repository has account_id
             $journalEntryId = null;
             if ($payment->repository && $payment->repository->account_id && bccomp($totalAllocated, '0', 4) > 0) {
-                $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
-                    companyId: $payment->company_id,
-                    partnerId: $payment->partner_id,
-                    paymentId: $payment->id,
-                    amount: bcsub($totalAllocated, '0', 2), // Format to 2 decimal places
-                    paymentMethodAccountId: $payment->repository->account_id,
-                    date: $payment->payment_date,
-                    description: "Customer payment - {$payment->reference}"
-                );
+                // Check if any allocations are to sales orders (prepayments)
+                $allocatedToOrders = '0.00';
+                $allocatedToInvoices = '0.00';
 
-                $journalEntryId = $journalEntry->id;
+                foreach ($preview['allocations'] as $allocation) {
+                    /** @var Document $doc */
+                    $doc = Document::find($allocation['document_id']);
+                    if ($doc && $doc->type === DocumentType::SalesOrder) {
+                        $allocatedToOrders = bcadd($allocatedToOrders, $allocation['amount'], 2);
+                    } else {
+                        $allocatedToInvoices = bcadd($allocatedToInvoices, $allocation['amount'], 2);
+                    }
+                }
 
-                // Link journal entry to payment
-                $payment->journal_entry_id = $journalEntryId;
-                $payment->save();
+                // Create regular payment entry for invoice allocations
+                if (bccomp($allocatedToInvoices, '0', 2) > 0) {
+                    $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
+                        companyId: $payment->company_id,
+                        partnerId: $payment->partner_id,
+                        paymentId: $payment->id,
+                        amount: $allocatedToInvoices,
+                        paymentMethodAccountId: $payment->repository->account_id,
+                        date: $payment->payment_date,
+                        description: "Customer payment - {$payment->reference}"
+                    );
+
+                    $journalEntryId = $journalEntry->id;
+
+                    // Link journal entry to payment
+                    $payment->journal_entry_id = $journalEntryId;
+                    $payment->save();
+                }
+
+                // Create advance entry for sales order allocations (prepayments)
+                /** @var User|null $user */
+                $user = Auth::user();
+                if (bccomp($allocatedToOrders, '0', 2) > 0 && $user instanceof User) {
+                    $advanceEntry = $this->glService->createCustomerAdvanceJournalEntry(
+                        companyId: $payment->company_id,
+                        partnerId: $payment->partner_id,
+                        advanceId: $payment->id,
+                        amount: $allocatedToOrders,
+                        paymentMethodAccountId: $payment->repository->account_id,
+                        date: $payment->payment_date,
+                        user: $user,
+                        description: "Prepayment on order - {$payment->reference}"
+                    );
+
+                    // If no invoice allocation, use this as main journal entry
+                    if ($journalEntryId === null) {
+                        $journalEntryId = $advanceEntry->id;
+                        $payment->journal_entry_id = $journalEntryId;
+                        $payment->save();
+                    }
+                }
             }
 
             // Handle excess amount as customer advance
@@ -204,7 +244,7 @@ class PaymentAllocationService
     }
 
     /**
-     * Get open invoices for a partner
+     * Get open documents for a partner (invoices and sales orders)
      *
      * @return Collection<int, Document>
      */
@@ -212,8 +252,18 @@ class PaymentAllocationService
     {
         $query = Document::where('company_id', $companyId)
             ->where('partner_id', $partnerId)
-            ->where('type', DocumentType::Invoice)
-            ->where('status', 'posted')
+            // Allow both posted invoices AND confirmed sales orders
+            ->where(function ($q) {
+                $q->where(function ($inner) {
+                    // Posted invoices
+                    $inner->where('type', DocumentType::Invoice)
+                        ->where('status', 'posted');
+                })->orWhere(function ($inner) {
+                    // Confirmed sales orders (for prepayments)
+                    $inner->where('type', DocumentType::SalesOrder)
+                        ->where('status', 'confirmed');
+                });
+            })
             ->whereRaw('total > COALESCE((SELECT SUM(amount) FROM payment_allocations WHERE document_id = documents.id), 0)');
 
         // Apply sorting based on allocation method

@@ -1,25 +1,17 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useForm } from 'react-hook-form'
+import { useForm, Controller } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Plus } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPost, apiPatch } from '../../lib/api'
 import { DocumentLineEditor, type DocumentLine } from '../../components/documents/DocumentLineEditor'
 import { PurchaseOrderAdditionalCosts } from './components/PurchaseOrderAdditionalCosts'
 import { AddPartnerModal } from '../../components/organisms'
+import { PartnerSearchSelect } from '../../components/ui/PartnerSearchSelect'
+import { useCompany } from '../../hooks/useCompany'
 import type { DocumentType } from './DocumentListPage'
-
-interface Partner {
-  id: string
-  name: string
-  type: 'customer' | 'supplier' | 'both'
-}
-
-interface PartnersResponse {
-  data: Partner[]
-}
 
 // Determine whether to filter by customer or supplier based on document type
 function getPartnerTypeForDocument(docType: DocumentType | undefined): 'customer' | 'supplier' | undefined {
@@ -51,6 +43,10 @@ interface Document {
   document_number: string
   type: 'quote' | 'order' | 'invoice' | 'credit_note' | 'delivery_note' | 'sales_order' | 'purchase_order'
   status: string
+  fiscal_category: 'NON_FISCAL' | 'FISCAL_RECEIPT' | 'TAX_INVOICE' | 'CREDIT_NOTE'
+  fiscal_status: 'DRAFT' | 'SEALED' | 'VOIDED'
+  is_sealed: boolean
+  is_fiscal: boolean
   partner_id: string
   partner_name: string
   total_amount: number
@@ -59,6 +55,8 @@ interface Document {
   issue_date: string
   due_date: string | null
   notes: string | null
+  external_document_number: string | null
+  external_document_date: string | null
   lines?: DocumentApiLine[]
 }
 
@@ -68,6 +66,8 @@ interface DocumentFormData {
   issue_date: string
   due_date: string
   notes: string
+  external_document_number: string
+  external_document_date: string
 }
 
 const documentTypeToPath: Record<DocumentType, string> = {
@@ -118,14 +118,23 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
   const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { currentCompany } = useCompany()
   const isEditing = id.length > 0
 
   // Track if initial lines have been loaded
   const [hasInitializedLines, setHasInitializedLines] = useState(false)
+  // Track if URL partner has been applied
+  const [hasAppliedUrlPartner, setHasAppliedUrlPartner] = useState(false)
   // Lines state (managed separately from form)
   const [lines, setLines] = useState<DocumentLine[]>([])
   // Partner modal state
   const [showPartnerModal, setShowPartnerModal] = useState(false)
+
+  // Parse URL query parameters for pre-population
+  const searchParams = new URLSearchParams(location.search)
+  const urlCustomerId = searchParams.get('customer')
+  const urlSupplierId = searchParams.get('supplier')
+  const urlPartnerId = urlCustomerId ?? urlSupplierId
 
   // Determine document type from props or URL
   const effectiveType = documentType ?? getDocumentTypeFromPath(location.pathname)
@@ -138,6 +147,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
     handleSubmit,
     reset,
     setValue,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<DocumentFormData>({
     defaultValues: {
@@ -146,27 +156,13 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
       issue_date: new Date().toISOString().split('T')[0],
       due_date: '',
       notes: '',
+      external_document_number: '',
+      external_document_date: '',
     },
   })
 
   // Determine partner type to filter based on document type
   const partnerTypeFilter = getPartnerTypeForDocument(effectiveType)
-
-  // Fetch partners for dropdown - filtered by document type
-  const { data: partnersData } = useQuery({
-    queryKey: ['partners', partnerTypeFilter],
-    queryFn: async () => {
-      const params = new URLSearchParams()
-      if (partnerTypeFilter) {
-        params.append('type', partnerTypeFilter)
-      }
-      const query = params.toString()
-      const response = await api.get<PartnersResponse>(`/partners${query ? `?${query}` : ''}`)
-      return response.data
-    },
-  })
-
-  const partners = partnersData?.data ?? []
 
   // Fetch document data when editing
   const { data: document, isLoading } = useQuery({
@@ -187,9 +183,23 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
         issue_date: document.issue_date,
         due_date: document.due_date ?? '',
         notes: document.notes ?? '',
+        external_document_number: document.external_document_number ?? '',
+        external_document_date: document.external_document_date ?? '',
       })
     }
   }, [document, reset])
+
+  // Pre-populate partner from URL query parameter (when creating new document)
+  useEffect(() => {
+    // Only apply URL partner for new documents, not when editing
+    if (isEditing || hasAppliedUrlPartner || !urlPartnerId) {
+      return
+    }
+
+    // Set the partner ID from URL
+    setValue('partner_id', urlPartnerId)
+    setHasAppliedUrlPartner(true)
+  }, [isEditing, hasAppliedUrlPartner, urlPartnerId, setValue])
 
   // Initialize lines from document (only once when document first loads)
   if (document?.lines && !hasInitializedLines) {
@@ -203,10 +213,14 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
       toast.success(t('status.success'))
       void queryClient.invalidateQueries({ queryKey: ['documents'] })
       void queryClient.invalidateQueries({ queryKey: [effectiveType] })
-      // Navigate to the newly created document's detail page
       const documentId = response?.id
       if (documentId) {
-        void navigate(`${basePath}/${documentId}`)
+        // For purchase orders, redirect to edit mode so user can add additional costs
+        if (effectiveType === 'purchase_order') {
+          void navigate(`${basePath}/${documentId}/edit`)
+        } else {
+          void navigate(`${basePath}/${documentId}`)
+        }
       }
     },
     onError: (error: Error & { response?: { data?: { message?: string; error?: { message?: string } } } }) => {
@@ -247,6 +261,9 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
         unit_price: line.unit_price,
         tax_rate: line.tax_rate,
       })),
+      // Include external document fields for purchase orders
+      external_document_number: data.external_document_number || null,
+      external_document_date: data.external_document_date || null,
     }
     if (isEditing) {
       updateMutation.mutate(submitData as DocumentFormData)
@@ -290,21 +307,21 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
                   htmlFor="type"
                   className="block text-sm font-medium text-gray-700"
                 >
-                  Type *
+                  {t('sales:documents.type')} *
                 </label>
                 <select
                   id="type"
-                  {...register('type', { required: 'Type is required' })}
+                  {...register('type', { required: t('sales:documents.typeRequired') })}
                   className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   disabled={isEditing}
                 >
-                  <option value="">Select type</option>
-                  <option value="quote">Quote</option>
-                  <option value="sales_order">Sales Order</option>
-                  <option value="invoice">Invoice</option>
-                  <option value="purchase_order">Purchase Order</option>
-                  <option value="credit_note">Credit Note</option>
-                  <option value="delivery_note">Delivery Note</option>
+                  <option value="">{t('sales:documents.selectType')}</option>
+                  <option value="quote">{t('sales:documents.types.quote')}</option>
+                  <option value="sales_order">{t('sales:documents.types.sales_order')}</option>
+                  <option value="invoice">{t('sales:documents.types.invoice')}</option>
+                  <option value="purchase_order">{t('sales:documents.types.purchase_order')}</option>
+                  <option value="credit_note">{t('sales:documents.types.credit_note')}</option>
+                  <option value="delivery_note">{t('sales:documents.types.delivery_note')}</option>
                 </select>
                 {errors.type && (
                   <p className="mt-1 text-sm text-red-600">{errors.type.message}</p>
@@ -318,29 +335,25 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
                 htmlFor="partner_id"
                 className="block text-sm font-medium text-gray-700"
               >
-                {partnerTypeFilter === 'customer' ? 'Customer' : partnerTypeFilter === 'supplier' ? 'Supplier' : 'Partner'} *
+                {partnerTypeFilter === 'customer' ? t('partners.customer', 'Customer') : partnerTypeFilter === 'supplier' ? t('partners.supplier', 'Supplier') : t('partners.partner', 'Partner')} *
               </label>
-              <div className="mt-1 flex gap-2">
-                <select
-                  id="partner_id"
-                  {...register('partner_id', { required: `${partnerTypeFilter === 'customer' ? 'Customer' : partnerTypeFilter === 'supplier' ? 'Supplier' : 'Partner'} is required` })}
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  <option value="">Select {partnerTypeFilter === 'customer' ? 'customer' : partnerTypeFilter === 'supplier' ? 'supplier' : 'partner'}</option>
-                  {partners.map((partner) => (
-                    <option key={partner.id} value={partner.id}>
-                      {partner.name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => { setShowPartnerModal(true) }}
-                  className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                  title={`Add new ${partnerTypeFilter === 'customer' ? 'customer' : partnerTypeFilter === 'supplier' ? 'supplier' : 'partner'}`}
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
+              <div className="mt-1">
+                <Controller
+                  name="partner_id"
+                  control={control}
+                  rules={{
+                    required: t('validation.required', 'This field is required'),
+                  }}
+                  render={({ field }) => (
+                    <PartnerSearchSelect
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      partnerType={partnerTypeFilter}
+                      error={errors.partner_id?.message}
+                      onAddNew={() => { setShowPartnerModal(true) }}
+                    />
+                  )}
+                />
               </div>
               {errors.partner_id && (
                 <p className="mt-1 text-sm text-red-600">
@@ -386,6 +399,42 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
               />
             </div>
 
+            {/* Supplier Invoice Reference (Purchase Orders only) */}
+            {effectiveType === 'purchase_order' && (
+              <>
+                <div>
+                  <label
+                    htmlFor="external_document_number"
+                    className="block text-sm font-medium text-gray-700"
+                  >
+                    {t('purchases.supplierInvoiceNumber', 'Supplier Invoice #')}
+                  </label>
+                  <input
+                    type="text"
+                    id="external_document_number"
+                    {...register('external_document_number')}
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder={t('purchases.supplierInvoiceNumberPlaceholder', 'e.g., INV-2025-001')}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="external_document_date"
+                    className="block text-sm font-medium text-gray-700"
+                  >
+                    {t('purchases.supplierInvoiceDate', 'Supplier Invoice Date')}
+                  </label>
+                  <input
+                    type="date"
+                    id="external_document_date"
+                    {...register('external_document_date')}
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              </>
+            )}
+
             {/* Notes */}
             <div className="sm:col-span-2">
               <label
@@ -413,7 +462,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
           <PurchaseOrderAdditionalCosts
             documentId={id}
             disabled={document?.status !== 'draft'}
-            currency="TND"
+            currency={currentCompany?.currency ?? 'TND'}
           />
         )}
 

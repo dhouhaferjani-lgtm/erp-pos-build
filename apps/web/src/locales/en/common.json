@@ -28,7 +28,14 @@
     "newQuote": "New Quote",
     "newInvoice": "New Invoice",
     "addVehicle": "Add Vehicle",
-    "select": "Select..."
+    "select": "Select...",
+    "downloadPdf": "Download PDF",
+    "previewPdf": "Preview PDF",
+    "printPdf": "Print",
+    "downloading": "Downloading...",
+    "generating": "Generating...",
+    "sendEmail": "Send Email",
+    "sending": "Sending..."
   },
   "validation": {
     "required": "This field is required",
@@ -261,6 +268,43 @@
   "no": "No",
   "actionsLabel": "Actions",
   "allStatuses": "All Statuses",
+  "reports": {
+    "description": "Overview of your business performance",
+    "metrics": {
+      "totalInvoiced": "Total Invoiced",
+      "totalCollected": "Total Collected",
+      "outstanding": "Outstanding",
+      "quotesPending": "Quotes Pending",
+      "toCollect": "To collect"
+    },
+    "subtitles": {
+      "invoices": "{{count}} invoices",
+      "payments": "{{count}} payments",
+      "quotes": "{{count}} quotes"
+    },
+    "sections": {
+      "documentSummary": "Document Summary",
+      "partners": "Partners",
+      "inventory": "Inventory",
+      "lowStockAlert": "Low Stock Alert"
+    },
+    "labels": {
+      "quotes": "Quotes",
+      "salesOrders": "Sales Orders",
+      "invoices": "Invoices",
+      "totalDocuments": "Total Documents",
+      "customers": "Customers",
+      "suppliers": "Suppliers",
+      "totalProducts": "Total Products",
+      "lowStock": "Low Stock"
+    },
+    "table": {
+      "product": "Product",
+      "currentStock": "Current Stock",
+      "reorderPoint": "Reorder Point"
+    },
+    "moreProducts": "And {{count}} more products..."
+  },
   "fiscal": {
     "category": {
       "label": "Fiscal Category",
@@ -612,6 +656,11 @@
       "notes": "Notes"
     }
   },
+  "purchases": {
+    "supplierInvoiceNumber": "Supplier Invoice #",
+    "supplierInvoiceNumberPlaceholder": "e.g., INV-2025-001",
+    "supplierInvoiceDate": "Supplier Invoice Date"
+  },
   "settings": {
     "title": "Settings",
     "description": "Manage your application settings and configuration",
@@ -644,6 +693,153 @@
       "apiUrl": "API URL",
       "buildDate": "Build Date",
       "notConfigured": "Not configured"
+    }
+  },
+  "roles": {
+    "title": "Roles & Permissions",
+    "subtitle": "{{count}} roles | {{permCount}} permissions",
+    "addRole": "Add Role",
+    "editRole": "Edit Role",
+    "createRole": "Create Role",
+    "deleteRole": "Delete Role",
+    "roleName": "Role Name",
+    "roleNamePlaceholder": "e.g., Sales Manager",
+    "permissions": "Permissions",
+    "permissionMatrix": "Permission Matrix",
+    "permissionMatrixDescription": "View which permissions are assigned to each role",
+    "selectPermissions": "Select permissions for this role",
+    "usersAssigned": "{{count}} user(s) assigned",
+    "noUsers": "No users assigned",
+    "systemRole": "System Role",
+    "systemRoleHint": "System roles cannot be renamed or deleted",
+    "clickToEdit": "Click to edit",
+    "empty": {
+      "title": "No roles",
+      "description": "Get started by creating your first role."
+    },
+    "confirmations": {
+      "delete": {
+        "title": "Delete Role",
+        "message": "Are you sure you want to delete the role \"{{name}}\"? This action cannot be undone.",
+        "confirm": "Delete Role"
+      }
+    },
+    "messages": {
+      "created": "Role created successfully",
+      "updated": "Role updated successfully",
+      "deleted": "Role deleted successfully",
+      "cannotDeleteSystem": "System roles cannot be deleted",
+      "cannotDeleteWithUsers": "Cannot delete role with assigned users. Reassign users first."
+    },
+    "validation": {
+      "nameRequired": "Role name is required",
+      "nameExists": "A role with this name already exists"
+    },
+    "info": {
+      "title": "Managing Roles",
+      "description": "Create custom roles to define what users can do in the application. System roles (admin, owner) cannot be modified."
+    }
+  },
+  "email": {
+    "title": "Send Document by Email",
+    "recipientEmail": "Recipient Email",
+    "recipientEmailPlaceholder": "email@example.com",
+    "recipientEmailHint": "Leave empty to use partner's email",
+    "subject": "Subject",
+    "subjectPlaceholder": "Custom email subject (optional)",
+    "message": "Message",
+    "messagePlaceholder": "Add a custom message (optional)",
+    "ccEmails": "CC",
+    "ccEmailsPlaceholder": "Additional recipients (comma separated)",
+    "send": "Send Email",
+    "sending": "Sending...",
+    "success": "Email sent successfully",
+    "error": "Failed to send email",
+    "noRecipient": "No recipient email address found"
+  },
+  "reconciliation": {
+    "title": "Bank Reconciliation",
+    "subtitle": "Reconcile bank statements with recorded payments",
+    "startNew": "Start Reconciliation",
+    "continue": "Continue Reconciliation",
+    "viewDetails": "View Details",
+    "statementDate": "Statement Date",
+    "statementBalance": "Statement Balance",
+    "openingBalance": "Opening Balance",
+    "closingBalance": "Closing Balance",
+    "difference": "Difference",
+    "repository": "Bank Account / Cash Register",
+    "selectRepository": "Select repository to reconcile",
+    "status": {
+      "draft": "In Progress",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    },
+    "items": {
+      "title": "Transactions",
+      "matched": "Matched",
+      "unmatched": "Unmatched",
+      "matchAll": "Match All",
+      "unmatchAll": "Unmatch All",
+      "match": "Match",
+      "unmatch": "Unmatch",
+      "bankReference": "Bank Reference",
+      "bankReferencePlaceholder": "Enter bank reference (optional)",
+      "paymentDate": "Payment Date",
+      "paymentReference": "Reference",
+      "paymentAmount": "Amount",
+      "partner": "Partner"
+    },
+    "summary": {
+      "title": "Reconciliation Summary",
+      "matchedCount": "Matched Transactions",
+      "unmatchedCount": "Unmatched Transactions",
+      "matchedTotal": "Matched Total",
+      "unmatchedTotal": "Unmatched Total",
+      "canComplete": "Ready to complete",
+      "cannotComplete": "Difference must be zero to complete"
+    },
+    "actions": {
+      "complete": "Complete Reconciliation",
+      "cancel": "Cancel Reconciliation",
+      "save": "Save Progress"
+    },
+    "confirmations": {
+      "complete": {
+        "title": "Complete Reconciliation",
+        "message": "Are you sure you want to complete this reconciliation? Matched payments will be marked as reconciled.",
+        "confirm": "Complete"
+      },
+      "cancel": {
+        "title": "Cancel Reconciliation",
+        "message": "Are you sure you want to cancel this reconciliation? All matching will be lost.",
+        "confirm": "Cancel Reconciliation"
+      }
+    },
+    "messages": {
+      "started": "Reconciliation started",
+      "completed": "Reconciliation completed successfully",
+      "cancelled": "Reconciliation cancelled",
+      "itemMatched": "Transaction matched",
+      "itemUnmatched": "Transaction unmatched",
+      "differenceWarning": "There is a difference of {{amount}}. Resolve before completing."
+    },
+    "empty": {
+      "title": "No Reconciliations",
+      "description": "Start a new reconciliation session to match your bank statements with recorded payments."
+    },
+    "filters": {
+      "all": "All",
+      "inProgress": "In Progress",
+      "completed": "Completed"
+    },
+    "table": {
+      "date": "Date",
+      "repository": "Repository",
+      "statementBalance": "Statement",
+      "difference": "Difference",
+      "status": "Status",
+      "createdBy": "Created By"
     }
   }
 }

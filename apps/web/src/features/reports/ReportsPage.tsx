@@ -17,6 +17,10 @@ interface Document {
   id: string
   type: string
   status: string
+  fiscal_category: string
+  fiscal_status: string
+  is_sealed: boolean
+  is_fiscal: boolean
   total_amount: string
   created_at: string
 }
@@ -137,8 +141,8 @@ export function ReportsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">{t('navigation.reports', 'Reports')}</h1>
-        <p className="text-gray-500">Overview of your business performance</p>
+        <h1 className="text-2xl font-bold text-gray-900">{t('navigation.reports')}</h1>
+        <p className="text-gray-500">{t('reports.description')}</p>
       </div>
 
       {isLoading ? (
@@ -150,32 +154,32 @@ export function ReportsPage() {
           {/* Revenue Summary */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <MetricCard
-              title="Total Invoiced"
+              title={t('reports.metrics.totalInvoiced')}
               value={formatCurrency(totalInvoiced)}
               icon={<DollarSign className="h-5 w-5" />}
               color="blue"
-              subtitle={`${String(invoices.length)} invoices`}
+              subtitle={t('reports.subtitles.invoices', { count: invoices.length })}
             />
             <MetricCard
-              title="Total Collected"
+              title={t('reports.metrics.totalCollected')}
               value={formatCurrency(totalCollected)}
               icon={<CreditCard className="h-5 w-5" />}
               color="green"
-              subtitle={`${String(completedPayments.length)} payments`}
+              subtitle={t('reports.subtitles.payments', { count: completedPayments.length })}
             />
             <MetricCard
-              title="Outstanding"
+              title={t('reports.metrics.outstanding')}
               value={formatCurrency(Math.max(0, totalInvoiced - totalCollected))}
               icon={totalInvoiced > totalCollected ? <TrendingDown className="h-5 w-5" /> : <TrendingUp className="h-5 w-5" />}
               color={totalInvoiced > totalCollected ? 'yellow' : 'green'}
-              subtitle="To collect"
+              subtitle={t('reports.metrics.toCollect')}
             />
             <MetricCard
-              title="Quotes Pending"
+              title={t('reports.metrics.quotesPending')}
               value={formatCurrency(totalQuoted)}
               icon={<FileText className="h-5 w-5" />}
               color="purple"
-              subtitle={`${String(quotes.length)} quotes`}
+              subtitle={t('reports.subtitles.quotes', { count: quotes.length })}
             />
           </div>
 
@@ -183,13 +187,13 @@ export function ReportsPage() {
           <div className="rounded-lg border border-gray-200 bg-white p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <BarChart3 className="h-5 w-5 text-gray-400" />
-              Document Summary
+              {t('reports.sections.documentSummary')}
             </h2>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <SummaryItem label="Quotes" value={quotes.length} color="purple" />
-              <SummaryItem label="Sales Orders" value={salesOrders.length} color="blue" />
-              <SummaryItem label="Invoices" value={invoices.length} color="green" />
-              <SummaryItem label="Total Documents" value={documents.length} color="gray" />
+              <SummaryItem label={t('reports.labels.quotes')} value={quotes.length} color="purple" />
+              <SummaryItem label={t('reports.labels.salesOrders')} value={salesOrders.length} color="blue" />
+              <SummaryItem label={t('reports.labels.invoices')} value={invoices.length} color="green" />
+              <SummaryItem label={t('reports.labels.totalDocuments')} value={documents.length} color="gray" />
             </div>
           </div>
 
@@ -199,11 +203,11 @@ export function ReportsPage() {
             <div className="rounded-lg border border-gray-200 bg-white p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <Users className="h-5 w-5 text-gray-400" />
-                Partners
+                {t('reports.sections.partners')}
               </h2>
               <div className="grid gap-4 sm:grid-cols-2">
-                <SummaryItem label="Customers" value={customers.length} color="blue" />
-                <SummaryItem label="Suppliers" value={suppliers.length} color="orange" />
+                <SummaryItem label={t('reports.labels.customers')} value={customers.length} color="blue" />
+                <SummaryItem label={t('reports.labels.suppliers')} value={suppliers.length} color="orange" />
               </div>
             </div>
 
@@ -211,12 +215,12 @@ export function ReportsPage() {
             <div className="rounded-lg border border-gray-200 bg-white p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <Package className="h-5 w-5 text-gray-400" />
-                Inventory
+                {t('reports.sections.inventory')}
               </h2>
               <div className="grid gap-4 sm:grid-cols-2">
-                <SummaryItem label="Total Products" value={products.length} color="green" />
+                <SummaryItem label={t('reports.labels.totalProducts')} value={products.length} color="green" />
                 <SummaryItem
-                  label="Low Stock"
+                  label={t('reports.labels.lowStock')}
                   value={lowStockProducts.length}
                   color={lowStockProducts.length > 0 ? 'red' : 'green'}
                 />
@@ -229,20 +233,20 @@ export function ReportsPage() {
             <div className="rounded-lg border border-orange-200 bg-orange-50 p-6">
               <h2 className="text-lg font-semibold text-orange-900 mb-4 flex items-center gap-2">
                 <AlertCircle className="h-5 w-5 text-orange-600" />
-                Low Stock Alert
+                {t('reports.sections.lowStockAlert')}
               </h2>
               <div className="overflow-x-auto">
                 <table className="min-w-full">
                   <thead>
                     <tr>
                       <th className="text-start text-xs font-medium uppercase tracking-wider text-orange-700 pb-2">
-                        Product
+                        {t('reports.table.product')}
                       </th>
                       <th className="text-end text-xs font-medium uppercase tracking-wider text-orange-700 pb-2">
-                        Current Stock
+                        {t('reports.table.currentStock')}
                       </th>
                       <th className="text-end text-xs font-medium uppercase tracking-wider text-orange-700 pb-2">
-                        Reorder Point
+                        {t('reports.table.reorderPoint')}
                       </th>
                     </tr>
                   </thead>
@@ -262,7 +266,7 @@ export function ReportsPage() {
                 </table>
                 {lowStockProducts.length > 5 && (
                   <p className="mt-2 text-sm text-orange-600">
-                    And {lowStockProducts.length - 5} more products...
+                    {t('reports.moreProducts', { count: lowStockProducts.length - 5 })}
                   </p>
                 )}
               </div>

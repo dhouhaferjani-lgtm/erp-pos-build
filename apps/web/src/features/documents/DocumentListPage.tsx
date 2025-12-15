@@ -12,6 +12,10 @@ interface Document {
   document_number: string
   type: 'quote' | 'order' | 'invoice' | 'credit_note' | 'delivery_note' | 'sales_order' | 'purchase_order'
   status: 'draft' | 'confirmed' | 'posted' | 'cancelled' | 'received'
+  fiscal_category: 'NON_FISCAL' | 'FISCAL_RECEIPT' | 'TAX_INVOICE' | 'CREDIT_NOTE'
+  fiscal_status: 'DRAFT' | 'SEALED' | 'VOIDED'
+  is_sealed: boolean
+  is_fiscal: boolean
   partner_id: string
   partner_name: string | null
   subtotal: string | null

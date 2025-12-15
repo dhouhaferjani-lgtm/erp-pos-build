@@ -28,6 +28,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $reference
  * @property string|null $notes
  * @property string|null $user_id
+ * @property bool $is_historical
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property-read Tenant $tenant
@@ -54,6 +55,7 @@ class StockMovement extends Model
         'reference',
         'notes',
         'user_id',
+        'is_historical',
     ];
 
     /**
@@ -66,6 +68,7 @@ class StockMovement extends Model
             'quantity' => 'decimal:2',
             'quantity_before' => 'decimal:2',
             'quantity_after' => 'decimal:2',
+            'is_historical' => 'boolean',
         ];
     }
 

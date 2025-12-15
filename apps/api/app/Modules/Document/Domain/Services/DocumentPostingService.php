@@ -8,6 +8,8 @@ use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FiscalCategory;
+use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Events\InvoiceCancelled;
 use App\Modules\Document\Domain\Events\InvoicePosted;
 use Illuminate\Support\Facades\DB;
@@ -80,10 +82,15 @@ final class DocumentPostingService
         $requiresFiscalChain = $this->requiresFiscalChain($document->type);
 
         return DB::transaction(function () use ($document, $requiresFiscalChain): Document {
-            $document->update(['status' => DocumentStatus::Cancelled]);
+            // Update status and fiscal_status if it's a fiscal document
+            $updateData = ['status' => DocumentStatus::Cancelled];
 
             if ($requiresFiscalChain) {
+                $updateData['fiscal_status'] = FiscalStatus::Voided;
+                $document->update($updateData);
                 $this->dispatchCancellationEvent($document);
+            } else {
+                $document->update($updateData);
             }
 
             /** @var Document */
@@ -105,7 +112,11 @@ final class DocumentPostingService
             ->lockForUpdate()
             ->first();
 
+        // For genesis document, use company's unique seed instead of empty string
+        // This adds per-tenant entropy, making chain forgery harder than ZATCA's fixed "0"
         $previousHash = $previousDoc?->fiscal_hash;
+        $genesisSeed = $previousHash === null ? $this->getCompanyGenesisSeed($document) : null;
+
         $chainSequence = ($previousDoc?->chain_sequence ?? 0) + 1;
         $postedAt = now();
 
@@ -117,11 +128,20 @@ final class DocumentPostingService
             'currency' => $document->currency,
         ]);
 
-        $fiscalHash = $this->hashService->calculateHash($input, $previousHash);
+        $fiscalHash = $this->hashService->calculateHash($input, $previousHash, $genesisSeed);
 
-        // Update document with fiscal chain data
+        // Determine fiscal category based on document type
+        $fiscalCategory = match ($document->type) {
+            DocumentType::Invoice => FiscalCategory::TaxInvoice,
+            DocumentType::CreditNote => FiscalCategory::CreditNote,
+            default => FiscalCategory::NonFiscal,
+        };
+
+        // Update document with fiscal chain data and seal it
         $document->update([
             'status' => DocumentStatus::Posted,
+            'fiscal_category' => $fiscalCategory,
+            'fiscal_status' => FiscalStatus::Sealed,
             'fiscal_hash' => $fiscalHash,
             'previous_hash' => $previousHash,
             'chain_sequence' => $chainSequence,
@@ -183,5 +203,33 @@ final class DocumentPostingService
     public static function getFiscalDocumentTypes(): array
     {
         return self::FISCAL_DOCUMENT_TYPES;
+    }
+
+    /**
+     * Get the company's unique genesis seed for hash chain initialization.
+     *
+     * Each company has a cryptographically random 256-bit seed that is used
+     * as the "previous hash" for the first document in each hash chain.
+     * This is more secure than ZATCA's fixed SHA256("0") approach.
+     *
+     * @throws \RuntimeException If company has no genesis seed
+     */
+    private function getCompanyGenesisSeed(Document $document): string
+    {
+        $company = $document->company;
+
+        if ($company === null) {
+            throw new \RuntimeException(
+                'Document must have an associated company for fiscal chain'
+            );
+        }
+
+        if ($company->fiscal_chain_seed === null) {
+            throw new \RuntimeException(
+                'Company is missing fiscal_chain_seed. Run migration to generate seeds.'
+            );
+        }
+
+        return $company->fiscal_chain_seed;
     }
 }

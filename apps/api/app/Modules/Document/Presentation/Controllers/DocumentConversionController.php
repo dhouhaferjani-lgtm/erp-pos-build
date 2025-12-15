@@ -148,4 +148,70 @@ class DocumentConversionController extends Controller
             ], 422);
         }
     }
+
+    /**
+     * Create an invoice from one or more delivery notes (Tunisia consolidation model).
+     *
+     * Consolidates multiple confirmed delivery notes into a single invoice.
+     * All DNs must belong to the same partner, company, and currency.
+     */
+    public function createInvoiceFromDeliveryNotes(Request $request): JsonResponse
+    {
+        $request->validate([
+            'delivery_note_ids' => 'required|array|min:1',
+            'delivery_note_ids.*' => 'uuid|exists:documents,id',
+        ]);
+
+        /** @var array<string> $deliveryNoteIds */
+        $deliveryNoteIds = $request->input('delivery_note_ids');
+
+        // Load delivery notes with lines
+        $deliveryNotes = Document::whereIn('id', $deliveryNoteIds)
+            ->with('lines')
+            ->get()
+            ->all();
+
+        if (count($deliveryNotes) !== count($deliveryNoteIds)) {
+            return response()->json([
+                'error' => [
+                    'code' => 'DELIVERY_NOTES_NOT_FOUND',
+                    'message' => 'One or more delivery notes were not found',
+                ],
+            ], 404);
+        }
+
+        try {
+            $invoice = $this->conversionService->createInvoiceFromDeliveryNotes($deliveryNotes);
+
+            return response()->json([
+                'data' => $invoice->load(['lines', 'partner', 'vehicle']),
+                'message' => 'Invoice created from delivery notes successfully',
+                'meta' => [
+                    'consolidated_delivery_notes' => count($deliveryNotes),
+                    'source_delivery_note_ids' => $deliveryNoteIds,
+                ],
+            ], 201);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'INVALID_DELIVERY_NOTES',
+                    'message' => $e->getMessage(),
+                ],
+            ], 400);
+        } catch (\DomainException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'CONSOLIDATION_VALIDATION_FAILED',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'DELIVERY_NOTE_ALREADY_INVOICED',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        }
+    }
 }

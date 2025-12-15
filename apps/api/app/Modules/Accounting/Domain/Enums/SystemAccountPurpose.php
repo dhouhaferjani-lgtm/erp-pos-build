@@ -19,6 +19,7 @@ enum SystemAccountPurpose: string
     case CustomerReceivable = 'customer_receivable';
     case SupplierAdvance = 'supplier_advance';
     case Inventory = 'inventory';
+    case UninvoicedRevenue = 'uninvoiced_revenue';  // 418 - Clients, produits non encore facturés
 
     // Liability Accounts
     case SupplierPayable = 'supplier_payable';
@@ -63,6 +64,7 @@ enum SystemAccountPurpose: string
             self::CustomerReceivable => 'Customer Receivable (AR)',
             self::SupplierAdvance => 'Advance to Supplier',
             self::Inventory => 'Inventory',
+            self::UninvoicedRevenue => 'Uninvoiced Revenue (Accrued)',
             self::SupplierPayable => 'Supplier Payable (AP)',
             self::CustomerAdvance => 'Customer Advance/Prepayment',
             self::VatCollected => 'VAT Collected (Output)',
@@ -100,6 +102,7 @@ enum SystemAccountPurpose: string
             self::ServiceRevenue,
             self::Bank,
             self::Cash,
+            self::OpeningBalanceEquity,
         ];
     }
 
@@ -110,7 +113,8 @@ enum SystemAccountPurpose: string
     {
         return match ($this) {
             self::Bank, self::Cash, self::CustomerReceivable,
-            self::SupplierAdvance, self::Inventory, self::VatDeductible => AccountType::Asset,
+            self::SupplierAdvance, self::Inventory, self::VatDeductible,
+            self::UninvoicedRevenue => AccountType::Asset,
 
             self::SupplierPayable, self::CustomerAdvance, self::VatCollected => AccountType::Liability,
 

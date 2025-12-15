@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Accounting\Presentation\Controllers\AccountController;
 use App\Modules\Accounting\Presentation\Controllers\AccountPurposeController;
 use App\Modules\Accounting\Presentation\Controllers\JournalEntryController;
+use App\Modules\Accounting\Presentation\Controllers\OpeningBalanceBatchController;
 use App\Modules\Accounting\Presentation\Controllers\PartnerBalanceController;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use Illuminate\Support\Facades\Route;
@@ -99,4 +100,53 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/companies/{companyId}/subledger/reconcile/{purpose}', [PartnerBalanceController::class, 'reconcile'])
         ->middleware('can:accounts.manage')
         ->name('subledger.reconcile');
+
+    // Opening Balance Batches
+    Route::get('/opening-batches/types', [OpeningBalanceBatchController::class, 'types'])
+        ->middleware('can:accounts.manage')
+        ->name('opening-batches.types');
+
+    Route::get('/companies/{companyId}/opening-batches', [OpeningBalanceBatchController::class, 'index'])
+        ->middleware('can:accounts.manage')
+        ->name('opening-batches.index');
+
+    Route::get('/companies/{companyId}/opening-batches/status', [OpeningBalanceBatchController::class, 'status'])
+        ->middleware('can:accounts.manage')
+        ->name('opening-batches.status');
+
+    Route::post('/companies/{companyId}/opening-batches', [OpeningBalanceBatchController::class, 'store'])
+        ->middleware('can:accounts.manage')
+        ->name('opening-batches.store');
+
+    Route::get('/companies/{companyId}/opening-batches/{batchId}', [OpeningBalanceBatchController::class, 'show'])
+        ->middleware('can:accounts.manage')
+        ->name('opening-batches.show');
+
+    Route::delete('/companies/{companyId}/opening-batches/{batchId}', [OpeningBalanceBatchController::class, 'destroy'])
+        ->middleware('can:accounts.manage')
+        ->name('opening-batches.destroy');
+
+    Route::get('/companies/{companyId}/opening-batches/{batchId}/rows', [OpeningBalanceBatchController::class, 'rows'])
+        ->middleware('can:accounts.manage')
+        ->name('opening-batches.rows');
+
+    Route::post('/companies/{companyId}/opening-batches/{batchId}/lock', [OpeningBalanceBatchController::class, 'lock'])
+        ->middleware('can:accounts.manage')
+        ->name('opening-batches.lock');
+
+    Route::post('/companies/{companyId}/opening-batches/{batchId}/import', [OpeningBalanceBatchController::class, 'import'])
+        ->middleware('can:accounts.manage')
+        ->name('opening-batches.import');
+
+    Route::post('/companies/{companyId}/opening-batches/{batchId}/validate', [OpeningBalanceBatchController::class, 'validateBatch'])
+        ->middleware('can:accounts.manage')
+        ->name('opening-batches.validate');
+
+    Route::get('/companies/{companyId}/opening-batches/{batchId}/preview', [OpeningBalanceBatchController::class, 'preview'])
+        ->middleware('can:accounts.manage')
+        ->name('opening-batches.preview');
+
+    Route::post('/companies/{companyId}/opening-batches/{batchId}/post', [OpeningBalanceBatchController::class, 'post'])
+        ->middleware('can:accounts.manage')
+        ->name('opening-batches.post');
 });

@@ -5,20 +5,34 @@
 
 ---
 
-## Overall Status: 85% Ready (was 78%)
+## Overall Status: Phase 1 Complete - Pre-Fork Tasks Remaining
 
 | Area | Score | Status |
 |------|-------|--------|
-| Backend Business Flow | 85% | COGS automation missing |
-| Frontend Features | 82% | **Phase 1 i18n COMPLETE** |
-| Data Quality | 90% | **Currency hardcoding FIXED** |
-| Translations | 90% | **Phase 1 translations COMPLETE** |
-| Import Capabilities | 80% | Core features complete |
-| Treasury/Payments | 75% | Refund UI missing |
-| Audit/Compliance | 85% | Lifecycle events partial |
+| Backend Business Flow | 100% | COGS automation COMPLETE |
+| Frontend Features | 100% | ALL COMPLETE |
+| Data Quality | 100% | Currency hardcoding FIXED |
+| Translations | 100% | All pages translated |
+| Import Capabilities | 40% | CSV only - Excel/Bank imports required |
+| Export Capabilities | 0% | PDF/CSV/Excel export NOT STARTED |
+| PDF Generation | 0% | Document templates NOT STARTED |
+| Email Functionality | 0% | Document emailing NOT STARTED |
+| Treasury/Payments | 100% | Refund UI COMPLETE |
+| Audit/Compliance | 100% | Lifecycle events COMPLETE |
+| Settings Verification | 80% | Needs frontend audit |
 
 **Last Updated**: 2025-12-14
-**Current Phase**: Phase 2 (New Features)
+**Status**: Phase 1 (audit tasks) complete. See [PRE-FORK-IMPLEMENTATION.md](./PRE-FORK-IMPLEMENTATION.md) for remaining tasks.
+
+**IMPORTANT**: The following features must be completed BEFORE forking:
+- PDF generation for documents (invoices, quotes, delivery notes)
+- Document email functionality
+- Excel import support (.xlsx)
+- Bank statement import
+- Export functionality (PDF, CSV, Excel)
+- Settings verification
+
+See **[PRE-FORK-IMPLEMENTATION.md](./PRE-FORK-IMPLEMENTATION.md)** for detailed implementation plan (~80h effort).
 
 ---
 
@@ -142,226 +156,245 @@ Translated:
 ## Phase 2: New Features (Week 2)
 
 ### 2.1 Document Attachments
-**Status**: [ ] Not Started
+**Status**: [x] COMPLETED (2025-12-14)
 **Effort**: 8h
 
 Allow file uploads on PO, Goods Receipt, SO, Invoice.
 
 #### Backend Tasks:
-- [ ] Create migration `create_document_attachments_table.php`
-- [ ] Create `DocumentAttachment` model in `Media` module
-- [ ] Create `AttachmentService` with upload/download/delete
-- [ ] Create `AttachmentController` with routes
-- [ ] Add validation: 10MB max, PDF/images/docs only
+- [x] Create migration `create_document_attachments_table.php`
+- [x] Create `DocumentAttachment` model in `Media` module
+- [x] Create `AttachmentService` with upload/download/delete
+- [x] Create `AttachmentController` with routes
+- [x] Add validation: 10MB max, PDF/images/docs only
 
-**New Files**:
+**Created Files**:
 ```
-apps/api/database/migrations/2025_12_13_*_create_document_attachments_table.php
+apps/api/database/migrations/2025_12_13_200000_create_document_attachments_table.php
 apps/api/app/Modules/Media/Domain/DocumentAttachment.php
 apps/api/app/Modules/Media/Application/Services/AttachmentService.php
 apps/api/app/Modules/Media/Presentation/Controllers/AttachmentController.php
 apps/api/app/Modules/Media/Presentation/Requests/UploadAttachmentRequest.php
+apps/api/app/Modules/Media/Providers/MediaServiceProvider.php
 ```
 
 #### Frontend Tasks:
-- [ ] Create `AttachmentUpload.tsx` drag & drop component
-- [ ] Create `AttachmentList.tsx` display component
-- [ ] Create `useAttachments.ts` hook
-- [ ] Integrate into `DocumentDetailPage.tsx`
+- [x] Create `DocumentAttachments.tsx` component (combined drag & drop + list)
+- [x] Create `useAttachments.ts` hook
+- [x] Add translations (en/fr)
+- [x] Integrate into `DocumentDetailPage.tsx`
 
-**New Files**:
+**Created Files**:
 ```
 apps/web/src/features/documents/components/DocumentAttachments.tsx
-apps/web/src/features/documents/components/AttachmentUpload.tsx
-apps/web/src/features/documents/components/AttachmentList.tsx
 apps/web/src/features/documents/hooks/useAttachments.ts
-apps/web/src/features/documents/api/attachments.ts
+apps/web/src/locales/en/documents.json
+apps/web/src/locales/fr/documents.json
 ```
 
 ---
 
 ### 2.2 Related Documents Tab
-**Status**: [ ] Not Started
+**Status**: [x] COMPLETED (2025-12-14)
 **Effort**: 4h
 
 Show document lifecycle chain (Quote -> Order -> DN -> Invoice -> Credit Note).
 
 #### Backend Tasks:
-- [ ] Add `childDocuments()` relationship to Document model
-- [ ] Create `getDocumentChain()` method for full traversal
-- [ ] Add `/documents/{id}/related` endpoint
+- [x] Add `childDocuments()` relationship to Document model
+- [x] Create `getDocumentChain()` method for full traversal
+- [x] Add `/documents/{id}/related` endpoint
 
-**Files to modify**:
+**Files modified**:
 ```
 apps/api/app/Modules/Document/Domain/Document.php
 apps/api/app/Modules/Document/Presentation/Controllers/DocumentController.php
+apps/api/app/Modules/Document/Presentation/routes.php
 ```
 
 #### Frontend Tasks:
-- [ ] Create `RelatedDocumentsTab.tsx` component
-- [ ] Add new tab to `DocumentDetailPage.tsx`
-- [ ] Show source document (ancestor) and child documents (descendants)
+- [x] Create `RelatedDocumentsTab.tsx` component
+- [x] Create `useRelatedDocuments.ts` hook
+- [x] Add translations (en/fr)
+- [x] Integrate into `DocumentDetailPage.tsx`
 
-**New Files**:
+**Created Files**:
 ```
 apps/web/src/features/documents/components/RelatedDocumentsTab.tsx
-apps/web/src/features/documents/components/DocumentChainItem.tsx
+apps/web/src/features/documents/hooks/useRelatedDocuments.ts
 ```
 
 ---
 
 ### 2.3 Supplier Invoice Reference Field
-**Status**: [ ] Not Started
+**Status**: [x] COMPLETED (2025-12-14)
 **Effort**: 2h
 
 Allow entering supplier invoice number on Purchase Orders.
 
 #### Backend Tasks:
-- [ ] Add migration for `external_reference` and `external_reference_date` columns
-- [ ] Update `DocumentData` DTO
+- [x] Add migration for `external_document_date` column (external_document_number already existed)
+- [x] Update Document model with fillable and cast for external_document_date
+- [x] Update `DocumentData` DTO with external_document_number and external_document_date
 
-**Files**:
+**Created/Modified Files**:
 ```
-apps/api/database/migrations/2025_12_13_*_add_external_reference_to_documents.php
+apps/api/database/migrations/2025_12_14_100000_add_external_document_date_to_documents.php
+apps/api/app/Modules/Document/Domain/Document.php
 apps/api/app/Modules/Document/Application/DTOs/DocumentData.php
 ```
 
 #### Frontend Tasks:
-- [ ] Add fields to `DocumentForm.tsx` for PO type
-- [ ] Add translations
+- [x] Add fields to `DocumentForm.tsx` for PO type (conditionally shown)
+- [x] Add translations (en/fr common.json - purchases namespace)
 
 ---
 
 ### 2.4 Payment Refund UI
-**Status**: [ ] Not Started
-**Effort**: 8h
+**Status**: [x] COMPLETED (2025-12-14)
+**Effort**: Already implemented
 
-Backend exists (`PaymentRefundService`), need frontend.
+Frontend fully implemented in `PaymentDetailPage.tsx`:
+- Full refund modal with reason field
+- Partial refund modal with amount and reason
+- Reverse payment modal
+- Refund history display
+- Can-refund API check
+- All translations in treasury.json (en/fr)
 
-#### Tasks:
-- [ ] Create `RefundPaymentModal.tsx` component
-- [ ] Add refund button to `PaymentDetailPage.tsx`
-- [ ] Show refund history on payment detail
-- [ ] Add translations
+**Files**: `apps/web/src/features/treasury/PaymentDetailPage.tsx`
 
 ---
 
 ## Phase 3: Frontend Enhancements (Week 3)
 
 ### 3.1 Role Creation UI
-**Status**: [ ] Not Started
-**Effort**: 8h
+**Status**: [x] COMPLETED (2025-12-14)
+**Effort**: Already implemented
 
-Currently read-only. Need full CRUD.
+Full CRUD implemented in `RolesPage.tsx`:
+- `createMutation` - Create new roles
+- `updateMutation` - Edit existing roles
+- `deleteMutation` - Delete roles (with user count check)
+- Permission matrix editor
+- Full modal UI
 
 **File**: `apps/web/src/features/settings/RolesPage.tsx`
-
-Tasks:
-- [ ] Create role creation modal
-- [ ] Permission matrix editor
-- [ ] Edit existing role
-- [ ] Delete role (with confirmation)
 
 ---
 
 ### 3.2 Bank Reconciliation Page
-**Status**: [ ] Not Started
-**Effort**: 12h
+**Status**: [x] COMPLETED (2025-12-14)
+**Effort**: Already implemented
 
-**New File**: `apps/web/src/features/treasury/BankReconciliationPage.tsx`
+**File**: `apps/web/src/features/treasury/BankReconciliationPage.tsx`
 
-Tasks:
-- [ ] List unreconciled transactions
-- [ ] Match with bank statement entries
-- [ ] Mark as reconciled
-- [ ] Update repository balance
+Features:
+- List unreconciled transactions
+- Match with bank statement entries
+- Mark as reconciled
+- Update repository balance
 
 ---
 
 ### 3.3 Split Payment UI
-**Status**: [ ] Not Started
-**Effort**: 6h
+**Status**: [x] COMPLETED (2025-12-14)
+**Effort**: Already implemented
 
-Backend exists (`MultiPaymentService`), need frontend.
+Split payment UI exists:
+- `apps/web/src/features/treasury/SplitPaymentForm.tsx`
+- `apps/web/src/components/organisms/SplitPaymentModal/SplitPaymentModal.tsx`
 
-Tasks:
-- [ ] Create split payment modal
-- [ ] Allow multiple payment methods per transaction
-- [ ] Show split breakdown
+Features:
+- Multiple payment methods per transaction
+- Split breakdown display
+- Integration with DocumentDetailPage
 
 ---
 
 ### 3.4 Translate ReportsPage Labels
-**Status**: [ ] Not Started
+**Status**: [x] COMPLETED (2025-12-14)
 **Effort**: 45min
 
 **File**: `apps/web/src/features/reports/ReportsPage.tsx`
 
-Hardcoded labels passed as props:
+Translated labels:
 - "Quotes", "Sales Orders", "Invoices", "Total Documents"
 - "Customers", "Suppliers", "Total Products", "Low Stock"
 - "Total Invoiced", "Total Collected", "Outstanding", "Quotes Pending"
 
+Added translation keys to `common.json` (en/fr) under `reports` namespace.
+
 ---
 
 ### 3.5 Translate Document Form Labels
-**Status**: [ ] Not Started
+**Status**: [x] COMPLETED (2025-12-14)
 **Effort**: 30min
 
 **File**: `apps/web/src/features/documents/DocumentForm.tsx`
 
-Select options to translate:
+Translated select options:
 - "Select type", "Quote", "Sales Order", "Invoice", etc.
+
+Uses `t('sales:documents.types.quote')` etc. from sales.json namespace.
 
 ---
 
 ### 3.6 Translate Stock Action Titles
-**Status**: [ ] Not Started
+**Status**: [x] COMPLETED (2025-12-14)
 **Effort**: 15min
 
 **File**: `apps/web/src/features/inventory/StockLevelsPage.tsx`
 
-Action titles:
-- "Receive stock", "Issue stock", "Adjust stock", "Transfer stock"
+Translated action button titles:
+- "Receive stock" -> `t('inventory:stock.receive')`
+- "Issue stock" -> `t('inventory:stock.issue')`
+- "Adjust stock" -> `t('inventory:stock.adjust')`
+- "Transfer stock" -> `t('inventory:stock.transfer')`
+
+Added "issue" translation key to `fr/inventory.json`.
 
 ---
 
 ## Phase 4: Backend Improvements
 
 ### 4.1 COGS Posting Automation
-**Status**: [ ] Not Started
-**Effort**: 4h
+**Status**: [x] COMPLETED (2025-12-14)
+**Effort**: Already implemented
 
-**Issue**: COGS not automatically posted when invoice confirmed.
+COGS automatically posted when invoice is confirmed.
 
-**Tasks**:
-- [ ] Create event listener for `InvoicePosted` event
-- [ ] Calculate COGS from WAC x quantity
-- [ ] Create GL entry: Dr. COGS (601), Cr. Inventory (37)
+**Implementation**:
+- `PostCOGSOnInvoice` listener responds to `InvoicePosted` event
+- Calculates COGS from WAC x quantity for physical products
+- Creates GL entry: Dr. COGS (601), Cr. Inventory (37)
 
 **Files**:
 ```
 apps/api/app/Modules/Inventory/Listeners/PostCOGSOnInvoice.php
 apps/api/app/Modules/Accounting/Domain/Services/GeneralLedgerService.php
+apps/api/app/Modules/Inventory/Providers/InventoryServiceProvider.php
 ```
 
 ---
 
 ### 4.2 Document Lifecycle Events
-**Status**: [ ] Not Started
-**Effort**: 4h
+**Status**: [x] COMPLETED (2025-12-14)
+**Effort**: Already implemented
 
-**Issue**: Quote->Order conversion not audited.
+Document conversions are fully audited.
 
-**Tasks**:
-- [ ] Create `DocumentConverted` event
-- [ ] Fire on all conversion operations
-- [ ] Include source_type, target_type, user_id
-- [ ] Persist to `audit_events` table
+**Implementation**:
+- `DocumentConverted` event exists with full audit trail
+- Tracks: source_type, target_type, user_id, timestamps
+- Fired on all conversion operations
+- Used by DocumentConversionService
 
-**New Files**:
+**Files**:
 ```
 apps/api/app/Modules/Document/Domain/Events/DocumentConverted.php
+apps/api/app/Modules/Document/Domain/Services/DocumentConversionService.php
+apps/api/app/Modules/Compliance/Listeners/DomainEventSubscriber.php
 ```
 
 ---
@@ -369,20 +402,20 @@ apps/api/app/Modules/Document/Domain/Events/DocumentConverted.php
 ## Phase 5: Documentation (Post-Fork Spec)
 
 ### 5.1 Batch/Expiry Tracking Specification
-**Status**: [ ] Not Started
-**Effort**: 2h
+**Status**: [x] COMPLETED (2025-12-14)
+**Effort**: Already created
 
-Create detailed spec for post-fork implementation.
+Comprehensive spec exists at `docs/features/batch-expiry-tracking.md` (16KB)
 
-**New File**: `docs/features/BATCH-EXPIRY-TRACKING.md`
-
-Contents:
-- FEFO (First Expired First Out) algorithm
+**Contents**:
+- FEFO (First Expired First Out) algorithm with code
 - Database schema: `stock_batches`, `batch_allocations`
 - API endpoints specification
-- UI mockup descriptions
-- Pharmacy/auto parts requirements
-- Estimated effort: 3-4 weeks
+- Frontend component designs (BatchSelector, ExpiringBatchesWidget, etc.)
+- Integration points (goods receipt, sales, adjustments, transfers)
+- Configuration options
+- Testing scenarios
+- Estimated implementation: 3-4 weeks
 
 ---
 
@@ -398,28 +431,26 @@ Contents:
 - [x] 1.5 Translate UsersPage - 2025-12-14
 - [x] 1.6 Translate AuditLogsPage - 2025-12-14
 
-#### Phase 2 - New Features (0/6)
-- [ ] 2.1 Document attachments (backend)
-- [ ] 2.1 Document attachments (frontend)
-- [ ] 2.2 Related documents tab (backend)
-- [ ] 2.2 Related documents tab (frontend)
-- [ ] 2.3 Supplier invoice reference
-- [ ] 2.4 Payment refund UI
+#### Phase 2 - New Features (4/4 COMPLETE)
+- [x] 2.1 Document attachments - 2025-12-14
+- [x] 2.2 Related documents tab - 2025-12-14
+- [x] 2.3 Supplier invoice reference - 2025-12-14
+- [x] 2.4 Payment refund UI - 2025-12-14
 
-#### Phase 3 - Frontend Enhancements (0/6)
-- [ ] 3.1 Role creation UI
-- [ ] 3.2 Bank reconciliation page
-- [ ] 3.3 Split payment UI
-- [ ] 3.4 Translate ReportsPage
-- [ ] 3.5 Translate DocumentForm
-- [ ] 3.6 Translate stock actions
+#### Phase 3 - Frontend Enhancements (6/6 COMPLETE)
+- [x] 3.1 Role creation UI - 2025-12-14
+- [x] 3.2 Bank reconciliation page - 2025-12-14
+- [x] 3.3 Split payment UI - 2025-12-14
+- [x] 3.4 Translate ReportsPage - 2025-12-14
+- [x] 3.5 Translate DocumentForm - 2025-12-14
+- [x] 3.6 Translate stock actions - 2025-12-14
 
-#### Phase 4 - Backend Improvements (0/2)
-- [ ] 4.1 COGS posting automation
-- [ ] 4.2 Document lifecycle events
+#### Phase 4 - Backend Improvements (2/2 COMPLETE)
+- [x] 4.1 COGS posting automation - 2025-12-14
+- [x] 4.2 Document lifecycle events - 2025-12-14
 
-#### Phase 5 - Documentation (0/1)
-- [ ] 5.1 Batch/expiry tracking spec
+#### Phase 5 - Documentation (1/1 COMPLETE)
+- [x] 5.1 Batch/expiry tracking spec - 2025-12-14
 
 ---
 
@@ -465,4 +496,4 @@ After completing each task:
 ---
 
 **Generated**: 2025-12-13
-**Last Updated**: 2025-12-13
+**Last Updated**: 2025-12-14 (100% Complete)

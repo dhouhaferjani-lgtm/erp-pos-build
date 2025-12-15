@@ -1,4 +1,23 @@
 {
+  "goodsReceipt": {
+    "title": "Bons de reception",
+    "description": "Réceptionner les marchandises des commandes fournisseurs confirmées",
+    "tabs": {
+      "pending": "En attente de réception",
+      "received": "Réceptionnés"
+    },
+    "status": {
+      "pending": "En attente",
+      "partial": "Partiel",
+      "received": "Réceptionné"
+    },
+    "emptyPending": "Aucune réception en attente",
+    "emptyPendingHint": "Les commandes fournisseurs confirmées apparaîtront ici pour réception",
+    "emptyReceived": "Aucune commande réceptionnée",
+    "receiveAll": "Tout réceptionner",
+    "progress": "{{received}} sur {{total}} articles reçus",
+    "successMessage": "Marchandises réceptionnées avec succès"
+  },
   "products": {
     "title": "Produits",
     "new": "Ajouter un produit",
@@ -55,13 +74,71 @@
   },
   "stock": {
     "title": "Niveaux de stock",
+    "subtitle": "{{count}} produit en stock",
+    "subtitle_plural": "{{count}} produits en stock",
     "location": "Emplacement",
     "quantity": "Quantité",
     "reserved": "Réservé",
     "available": "Disponible",
+    "product": "Produit",
     "adjust": "Ajuster le stock",
     "transfer": "Transférer le stock",
-    "receive": "Réceptionner le stock"
+    "receive": "Réceptionner le stock",
+    "issue": "Sortir le stock",
+    "viewMovements": "Voir les mouvements",
+    "filters": {
+      "lowStock": "Stock faible",
+      "outOfStock": "Rupture de stock"
+    },
+    "status": {
+      "inStock": "En stock",
+      "lowStock": "Stock faible",
+      "outOfStock": "Rupture de stock"
+    },
+    "buttons": {
+      "in": "Entrée",
+      "out": "Sortie"
+    },
+    "summary": {
+      "totalProducts": "Total des produits",
+      "lowStock": "Stock faible",
+      "outOfStock": "Rupture de stock"
+    },
+    "modal": {
+      "adjustTitle": "Ajuster le stock",
+      "receiveTitle": "Réceptionner le stock",
+      "issueTitle": "Sortir le stock",
+      "transferTitle": "Transférer le stock",
+      "product": "Produit",
+      "location": "Emplacement",
+      "fromLocation": "Emplacement source",
+      "toLocation": "Emplacement destination",
+      "selectDestination": "Sélectionner la destination...",
+      "currentQuantity": "Quantité actuelle",
+      "newQuantity": "Nouvelle quantité",
+      "enterNewQuantity": "Entrer la nouvelle quantité",
+      "enterQuantity": "Entrer la quantité",
+      "reason": "Motif",
+      "notes": "Notes (optionnel)",
+      "reference": "Référence",
+      "enterReference": "Entrer la référence du transfert...",
+      "addNotes": "Ajouter des notes supplémentaires...",
+      "change": "Variation",
+      "saving": "Enregistrement...",
+      "save": "Enregistrer"
+    },
+    "reasons": {
+      "inventoryCount": "Inventaire",
+      "damage": "Dommage/Perte",
+      "correction": "Correction",
+      "other": "Autre",
+      "stockTransfer": "Transfert de stock"
+    },
+    "empty": {
+      "title": "Aucune donnée de stock",
+      "description": "Les niveaux de stock apparaîtront ici une fois les produits ajoutés.",
+      "noMatchFilter": "Aucun produit ne correspond au filtre sélectionné."
+    }
   },
   "movements": {
     "title": "Mouvements de stock",

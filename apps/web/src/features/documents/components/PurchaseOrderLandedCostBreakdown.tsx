@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { useCompany } from '../../../hooks/useCompany'
 import {
   LandedCostBreakdown,
   type LineAllocation,
@@ -16,9 +17,11 @@ interface PurchaseOrderLandedCostBreakdownProps {
  */
 export function PurchaseOrderLandedCostBreakdown({
   documentId,
-  currency = 'TND',
+  currency,
 }: PurchaseOrderLandedCostBreakdownProps) {
   const { t } = useTranslation(['inventory'])
+  const { currentCompany } = useCompany()
+  const effectiveCurrency = currency ?? currentCompany?.currency ?? 'USD'
   const { data, isLoading, isError } = useLandedCostBreakdown(documentId)
 
   if (isLoading) {
@@ -61,7 +64,7 @@ export function PurchaseOrderLandedCostBreakdown({
       <h2 className="mb-4 text-lg font-semibold text-gray-900">
         {t('inventory:landedCost.title')}
       </h2>
-      <LandedCostBreakdown lines={lines} currency={currency} showProportion />
+      <LandedCostBreakdown lines={lines} currency={effectiveCurrency} showProportion />
     </div>
   )
 }

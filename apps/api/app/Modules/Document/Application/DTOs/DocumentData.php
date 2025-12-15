@@ -11,6 +11,9 @@ final class DocumentData extends Data
 {
     /**
      * @param  list<DocumentLineData>  $lines
+     * @param  list<array{id: string, payment_id: string, amount: string, payment_date: string, payment_reference: string|null, payment_method: string|null}>  $payments
+     * @param  list<string>  $delivery_note_ids
+     * @param  list<string>  $invoice_ids
      */
     public function __construct(
         public string $id,
@@ -40,10 +43,20 @@ final class DocumentData extends Data
         public ?string $notes,
         public ?string $internal_notes,
         public ?string $reference,
+        public ?string $external_document_number,
+        public ?string $external_document_date,
         public ?string $source_document_id,
+        public ?string $source_document_number,
+        public ?string $source_document_type,
         public ?string $converted_to_order_id,
         public ?string $converted_at,
+        public bool $fully_delivered,
+        public bool $fully_invoiced,
+        public bool $goods_received,
+        public array $delivery_note_ids,
+        public array $invoice_ids,
         public array $lines,
+        public array $payments,
         public string $created_at,
         public string $updated_at,
     ) {}
@@ -57,6 +70,22 @@ final class DocumentData extends Data
             }
         }
 
+        // Build payments array from allocations
+        $payments = [];
+        if ($document->relationLoaded('allocations')) {
+            foreach ($document->allocations as $allocation) {
+                $payment = $allocation->payment;
+                $payments[] = [
+                    'id' => $allocation->id,
+                    'payment_id' => $allocation->payment_id,
+                    'amount' => number_format((float) $allocation->amount, 2, '.', ''),
+                    'payment_date' => $payment?->payment_date?->toDateString() ?? '',
+                    'payment_reference' => $payment?->reference,
+                    'payment_method' => $payment?->paymentMethod?->name ?? null,
+                ];
+            }
+        }
+
         // Load partner if not already loaded
         $partner = $document->relationLoaded('partner') ? $document->partner : $document->partner()->first();
 
@@ -64,6 +93,27 @@ final class DocumentData extends Data
         $payload = $document->payload ?? [];
         $convertedToOrderId = isset($payload['converted_to_order_id']) ? (string) $payload['converted_to_order_id'] : null;
         $convertedAt = isset($payload['converted_at']) ? (string) $payload['converted_at'] : null;
+
+        // Extract delivery and invoice status from payload
+        $fullyDelivered = (bool) ($payload['fully_delivered'] ?? false);
+        $fullyInvoiced = (bool) ($payload['fully_invoiced'] ?? false);
+        $goodsReceived = (bool) ($payload['goods_received'] ?? false);
+
+        /** @var list<string> $deliveryNoteIds */
+        $deliveryNoteIds = isset($payload['delivery_note_ids']) && is_array($payload['delivery_note_ids'])
+            ? array_map('strval', $payload['delivery_note_ids'])
+            : [];
+
+        /** @var list<string> $invoiceIds */
+        $invoiceIds = isset($payload['invoice_ids']) && is_array($payload['invoice_ids'])
+            ? array_map('strval', $payload['invoice_ids'])
+            : [];
+
+        // Get source document info for navigation back
+        $sourceDocument = null;
+        if ($document->source_document_id !== null) {
+            $sourceDocument = Document::find($document->source_document_id);
+        }
 
         // Calculate balance and amount paid
         $total = $document->total !== null ? (float) $document->total : 0.0;
@@ -98,10 +148,20 @@ final class DocumentData extends Data
             notes: $document->notes,
             internal_notes: $document->internal_notes,
             reference: $document->reference,
+            external_document_number: $document->external_document_number,
+            external_document_date: $document->external_document_date?->toDateString(),
             source_document_id: $document->source_document_id,
+            source_document_number: $sourceDocument?->document_number,
+            source_document_type: $sourceDocument?->type->value,
             converted_to_order_id: $convertedToOrderId,
             converted_at: $convertedAt,
+            fully_delivered: $fullyDelivered,
+            fully_invoiced: $fullyInvoiced,
+            goods_received: $goodsReceived,
+            delivery_note_ids: $deliveryNoteIds,
+            invoice_ids: $invoiceIds,
             lines: $lines,
+            payments: $payments,
             created_at: $document->created_at?->toIso8601String() ?? '',
             updated_at: $document->updated_at?->toIso8601String() ?? '',
         );

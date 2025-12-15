@@ -51,6 +51,11 @@ export const PERMISSIONS = {
   // Pricing
   'pricing.view': ['admin', 'sales', 'manager'],
   'pricing.manage': ['admin', 'manager'],
+
+  // Services
+  'services.view': ['admin', 'sales', 'manager'],
+  'services.create': ['admin', 'sales', 'manager'],
+  'services.edit': ['admin', 'sales', 'manager'],
 } as const
 
 export type Permission = keyof typeof PERMISSIONS
@@ -63,6 +68,7 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   inventory: ['inventory.view'],
   treasury: ['treasury.view'],
   vehicles: ['vehicles.view'],
+  services: ['services.view'],
   reports: ['reports.view'],
   finance: ['accounts.view', 'journal.view'],
   pricing: ['pricing.view'],

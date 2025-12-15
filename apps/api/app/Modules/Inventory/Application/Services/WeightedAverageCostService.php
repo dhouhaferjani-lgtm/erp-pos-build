@@ -8,14 +8,22 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Product;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * WeightedAverageCostService - Manages weighted average cost calculations for inventory
+ *
+ * IMPORTANT: All methods use database transactions with pessimistic locking
+ * to prevent race conditions that could corrupt stock quantities and cost prices.
  */
 class WeightedAverageCostService
 {
     /**
      * Record a purchase and update weighted average cost
+     *
+     * Uses pessimistic locking to prevent race conditions when multiple
+     * purchase receipts happen concurrently for the same product.
      */
     public function recordPurchase(
         Product $product,
@@ -24,57 +32,75 @@ class WeightedAverageCostService
         float $landedUnitCost,
         ?string $reference = null
     ): StockMovement {
-        $stockLevel = StockLevel::firstOrCreate(
-            [
+        return DB::transaction(function () use ($product, $location, $quantity, $landedUnitCost, $reference): StockMovement {
+            // Lock stock level first to prevent concurrent modifications
+            $stockLevel = StockLevel::where('product_id', $product->id)
+                ->where('location_id', $location->id)
+                ->where('tenant_id', $product->tenant_id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($stockLevel === null) {
+                $stockLevel = StockLevel::create([
+                    'id' => Str::uuid()->toString(),
+                    'product_id' => $product->id,
+                    'location_id' => $location->id,
+                    'tenant_id' => $product->tenant_id,
+                    'company_id' => $location->company_id,
+                    'quantity' => '0',
+                    'reserved' => '0',
+                ]);
+            }
+
+            // Lock product for cost update
+            $product = Product::lockForUpdate()->findOrFail($product->id);
+
+            $currentQty = (float) $stockLevel->quantity;
+            $currentCostPrice = (float) ($product->cost_price ?? 0);
+            $currentValue = $currentQty * $currentCostPrice;
+
+            $newQty = $currentQty + $quantity;
+            $newValue = $currentValue + ($quantity * $landedUnitCost);
+
+            $newAvgCost = $newQty > 0 ? round($newValue / $newQty, 2) : 0;
+
+            // Record movement
+            $movement = StockMovement::create([
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $product->tenant_id,
                 'product_id' => $product->id,
                 'location_id' => $location->id,
-                'tenant_id' => $product->tenant_id,
-            ],
-            ['quantity' => 0]
-        );
+                'company_id' => $location->company_id,
+                'movement_type' => 'purchase',
+                'quantity' => $quantity,
+                'quantity_before' => $currentQty,
+                'quantity_after' => $newQty,
+                'unit_cost' => (string) $landedUnitCost,
+                'total_cost' => (string) ($quantity * $landedUnitCost),
+                'avg_cost_before' => (string) $currentCostPrice,
+                'avg_cost_after' => (string) $newAvgCost,
+                'reference' => $reference,
+            ]);
 
-        $currentQty = (float) $stockLevel->quantity;
-        $currentCostPrice = (float) ($product->cost_price ?? 0);
-        $currentValue = $currentQty * $currentCostPrice;
+            // Update stock level
+            $stockLevel->quantity = (string) $newQty;
+            $stockLevel->save();
 
-        $newQty = $currentQty + $quantity;
-        $newValue = $currentValue + ($quantity * $landedUnitCost);
+            // Update product cost
+            $product->cost_price = (string) $newAvgCost;
+            $product->last_purchase_cost = (string) $landedUnitCost;
+            $product->cost_updated_at = now();
+            $product->save();
 
-        $newAvgCost = $newQty > 0 ? round($newValue / $newQty, 2) : 0;
-
-        // Record movement
-        $movement = StockMovement::create([
-            'id' => \Illuminate\Support\Str::uuid()->toString(),
-            'tenant_id' => $product->tenant_id,
-            'product_id' => $product->id,
-            'location_id' => $location->id,
-            'company_id' => $location->company_id,
-            'movement_type' => 'purchase',
-            'quantity' => $quantity,
-            'quantity_before' => $currentQty,
-            'quantity_after' => $newQty,
-            'unit_cost' => (string) $landedUnitCost,
-            'total_cost' => (string) ($quantity * $landedUnitCost),
-            'avg_cost_before' => (string) $currentCostPrice,
-            'avg_cost_after' => (string) $newAvgCost,
-            'reference' => $reference,
-        ]);
-
-        // Update stock level
-        $stockLevel->quantity = (string) $newQty;
-        $stockLevel->save();
-
-        // Update product cost
-        $product->cost_price = (string) $newAvgCost;
-        $product->last_purchase_cost = (string) $landedUnitCost;
-        $product->cost_updated_at = now();
-        $product->save();
-
-        return $movement;
+            return $movement;
+        });
     }
 
     /**
      * Record a sale (cost comes out at current average)
+     *
+     * Uses pessimistic locking to prevent race conditions when multiple
+     * sales happen concurrently for the same product.
      */
     public function recordSale(
         Product $product,
@@ -82,40 +108,57 @@ class WeightedAverageCostService
         float $quantity,
         ?string $reference = null
     ): StockMovement {
-        $stockLevel = StockLevel::where('product_id', $product->id)
-            ->where('location_id', $location->id)
-            ->where('tenant_id', $product->tenant_id)
-            ->firstOrFail();
+        return DB::transaction(function () use ($product, $location, $quantity, $reference): StockMovement {
+            // Lock stock level to prevent concurrent modifications
+            $stockLevel = StockLevel::where('product_id', $product->id)
+                ->where('location_id', $location->id)
+                ->where('tenant_id', $product->tenant_id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        $costPrice = (float) ($product->cost_price ?? 0);
-        $currentQty = (float) $stockLevel->quantity;
+            // Lock product to get consistent cost price
+            $product = Product::lockForUpdate()->findOrFail($product->id);
 
-        $movement = StockMovement::create([
-            'id' => \Illuminate\Support\Str::uuid()->toString(),
-            'tenant_id' => $product->tenant_id,
-            'product_id' => $product->id,
-            'location_id' => $location->id,
-            'company_id' => $location->company_id,
-            'movement_type' => 'sale',
-            'quantity' => -$quantity,
-            'quantity_before' => $currentQty,
-            'quantity_after' => $currentQty - $quantity,
-            'unit_cost' => (string) $costPrice,
-            'total_cost' => (string) ($quantity * $costPrice),
-            'avg_cost_before' => (string) $costPrice,
-            'avg_cost_after' => (string) $costPrice, // WAC doesn't change on sale
-            'reference' => $reference,
-        ]);
+            $costPrice = (float) ($product->cost_price ?? 0);
+            $currentQty = (float) $stockLevel->quantity;
+            $newQty = $currentQty - $quantity;
 
-        // Update stock level (cost stays same)
-        $stockLevel->quantity = (string) ($currentQty - $quantity);
-        $stockLevel->save();
+            // Validate sufficient stock
+            if ($newQty < 0) {
+                throw new \DomainException(
+                    "Insufficient stock for product {$product->id}. Available: {$currentQty}, Requested: {$quantity}"
+                );
+            }
 
-        return $movement;
+            $movement = StockMovement::create([
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $product->tenant_id,
+                'product_id' => $product->id,
+                'location_id' => $location->id,
+                'company_id' => $location->company_id,
+                'movement_type' => 'sale',
+                'quantity' => -$quantity,
+                'quantity_before' => $currentQty,
+                'quantity_after' => $newQty,
+                'unit_cost' => (string) $costPrice,
+                'total_cost' => (string) ($quantity * $costPrice),
+                'avg_cost_before' => (string) $costPrice,
+                'avg_cost_after' => (string) $costPrice, // WAC doesn't change on sale
+                'reference' => $reference,
+            ]);
+
+            // Update stock level (cost stays same)
+            $stockLevel->quantity = (string) $newQty;
+            $stockLevel->save();
+
+            return $movement;
+        });
     }
 
     /**
      * Record a return (stock comes back at original cost)
+     *
+     * Uses pessimistic locking to prevent race conditions.
      */
     public function recordReturn(
         Product $product,
@@ -124,53 +167,67 @@ class WeightedAverageCostService
         float $originalCost,
         ?string $reference = null
     ): StockMovement {
-        // Similar to purchase but with type 'return'
-        $stockLevel = StockLevel::firstOrCreate(
-            [
+        return DB::transaction(function () use ($product, $location, $quantity, $originalCost, $reference): StockMovement {
+            // Lock stock level first
+            $stockLevel = StockLevel::where('product_id', $product->id)
+                ->where('location_id', $location->id)
+                ->where('tenant_id', $product->tenant_id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($stockLevel === null) {
+                $stockLevel = StockLevel::create([
+                    'id' => Str::uuid()->toString(),
+                    'product_id' => $product->id,
+                    'location_id' => $location->id,
+                    'tenant_id' => $product->tenant_id,
+                    'company_id' => $location->company_id,
+                    'quantity' => '0',
+                    'reserved' => '0',
+                ]);
+            }
+
+            // Lock product for cost update
+            $product = Product::lockForUpdate()->findOrFail($product->id);
+
+            $currentQty = (float) $stockLevel->quantity;
+            $currentCostPrice = (float) ($product->cost_price ?? 0);
+            $currentValue = $currentQty * $currentCostPrice;
+
+            $newQty = $currentQty + $quantity;
+            $newValue = $currentValue + ($quantity * $originalCost);
+
+            $newAvgCost = $newQty > 0 ? round($newValue / $newQty, 2) : 0;
+
+            // Record movement
+            $movement = StockMovement::create([
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $product->tenant_id,
                 'product_id' => $product->id,
                 'location_id' => $location->id,
-                'tenant_id' => $product->tenant_id,
-            ],
-            ['quantity' => 0]
-        );
+                'company_id' => $location->company_id,
+                'movement_type' => 'return',
+                'quantity' => $quantity,
+                'quantity_before' => $currentQty,
+                'quantity_after' => $newQty,
+                'unit_cost' => (string) $originalCost,
+                'total_cost' => (string) ($quantity * $originalCost),
+                'avg_cost_before' => (string) $currentCostPrice,
+                'avg_cost_after' => (string) $newAvgCost,
+                'reference' => $reference,
+            ]);
 
-        $currentQty = (float) $stockLevel->quantity;
-        $currentCostPrice = (float) ($product->cost_price ?? 0);
-        $currentValue = $currentQty * $currentCostPrice;
+            // Update stock level
+            $stockLevel->quantity = (string) $newQty;
+            $stockLevel->save();
 
-        $newQty = $currentQty + $quantity;
-        $newValue = $currentValue + ($quantity * $originalCost);
+            // Update product cost
+            $product->cost_price = (string) $newAvgCost;
+            $product->cost_updated_at = now();
+            $product->save();
 
-        $newAvgCost = $newQty > 0 ? round($newValue / $newQty, 2) : 0;
-
-        // Record movement
-        $movement = StockMovement::create([
-            'id' => \Illuminate\Support\Str::uuid()->toString(),
-            'tenant_id' => $product->tenant_id,
-            'product_id' => $product->id,
-            'location_id' => $location->id,
-            'company_id' => $location->company_id,
-            'movement_type' => 'return',
-            'quantity' => $quantity,
-            'quantity_before' => $currentQty,
-            'quantity_after' => $newQty,
-            'unit_cost' => (string) $originalCost,
-            'total_cost' => (string) ($quantity * $originalCost),
-            'avg_cost_before' => (string) $currentCostPrice,
-            'avg_cost_after' => (string) $newAvgCost,
-            'reference' => $reference,
-        ]);
-
-        // Update stock level
-        $stockLevel->quantity = (string) $newQty;
-        $stockLevel->save();
-
-        // Update product cost
-        $product->cost_price = (string) $newAvgCost;
-        $product->cost_updated_at = now();
-        $product->save();
-
-        return $movement;
+            return $movement;
+        });
     }
 
     /**

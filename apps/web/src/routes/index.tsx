@@ -26,6 +26,10 @@ const CustomerForm = lazy(() => import('../features/partners/PartnerForm').then(
 const DocumentListPage = lazy(() => import('../features/documents/DocumentListPage').then((m) => ({ default: m.DocumentListPage })))
 const DocumentDetailPage = lazy(() => import('../features/documents/DocumentDetailPage').then((m) => ({ default: m.DocumentDetailPage })))
 const DocumentForm = lazy(() => import('../features/documents/DocumentForm').then((m) => ({ default: m.DocumentForm })))
+const DeliveryNoteConsolidationPage = lazy(() => import('../features/documents/DeliveryNoteConsolidationPage').then((m) => ({ default: m.DeliveryNoteConsolidationPage })))
+
+// Purchases module
+const GoodsReceiptListPage = lazy(() => import('../features/purchases/GoodsReceiptListPage').then((m) => ({ default: m.GoodsReceiptListPage })))
 
 // Treasury module
 const PaymentListPage = lazy(() => import('../features/treasury/PaymentListPage').then((m) => ({ default: m.PaymentListPage })))
@@ -35,6 +39,7 @@ const InstrumentListPage = lazy(() => import('../features/treasury/InstrumentLis
 const InstrumentDetailPage = lazy(() => import('../features/treasury/InstrumentDetailPage').then((m) => ({ default: m.InstrumentDetailPage })))
 const RepositoryListPage = lazy(() => import('../features/treasury/RepositoryListPage').then((m) => ({ default: m.RepositoryListPage })))
 const RepositoryDetailPage = lazy(() => import('../features/treasury/RepositoryDetailPage').then((m) => ({ default: m.RepositoryDetailPage })))
+const BankReconciliationPage = lazy(() => import('../features/treasury/BankReconciliationPage').then((m) => ({ default: m.BankReconciliationPage })))
 
 // Reports module
 const ReportsPage = lazy(() => import('../features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })))
@@ -90,6 +95,16 @@ const PriceListForm = lazy(() => import('../features/pricing/PriceListForm').the
 const ImportDashboardPage = lazy(() => import('../features/import/pages/ImportDashboardPage').then((m) => ({ default: m.ImportDashboardPage })))
 const ImportWizardPage = lazy(() => import('../features/import/pages/ImportWizardPage').then((m) => ({ default: m.ImportWizardPage })))
 const ImportHistoryPage = lazy(() => import('../features/import/pages/ImportHistoryPage').then((m) => ({ default: m.ImportHistoryPage })))
+
+// Services module
+const ServiceListPage = lazy(() => import('../features/services/ServiceListPage').then((m) => ({ default: m.ServiceListPage })))
+const ServiceDetailPage = lazy(() => import('../features/services/ServiceDetailPage').then((m) => ({ default: m.ServiceDetailPage })))
+const ServiceForm = lazy(() => import('../features/services/ServiceForm').then((m) => ({ default: m.ServiceForm })))
+const ServiceCategoryListPage = lazy(() => import('../features/services/ServiceCategoryListPage').then((m) => ({ default: m.ServiceCategoryListPage })))
+
+// Opening Balances module
+const OpeningBalancesPage = lazy(() => import('../features/opening-balances/pages/OpeningBalancesPage').then((m) => ({ default: m.OpeningBalancesPage })))
+const OpeningBalanceWizardPage = lazy(() => import('../features/opening-balances/pages/OpeningBalanceWizardPage').then((m) => ({ default: m.OpeningBalanceWizardPage })))
 
 function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   return (
@@ -484,6 +499,18 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
+
+          {/* Goods Receipts */}
+          <Route
+            path="receipts"
+            element={
+              <RequirePermission moduleKey="purchases">
+                <SuspenseWrapper>
+                  <GoodsReceiptListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
         </Route>
 
         {/* Inventory Module */}
@@ -570,6 +597,16 @@ export function AppRoutes() {
               <RequirePermission permission="inventory.create">
                 <SuspenseWrapper>
                   <DocumentForm documentType="delivery_note" />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="delivery-notes/consolidate"
+            element={
+              <RequirePermission permission="sales.create">
+                <SuspenseWrapper>
+                  <DeliveryNoteConsolidationPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -690,6 +727,60 @@ export function AppRoutes() {
           }
         />
 
+        {/* Services Module */}
+        <Route path="services">
+          <Route
+            index
+            element={
+              <RequirePermission moduleKey="services">
+                <SuspenseWrapper>
+                  <ServiceListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="new"
+            element={
+              <RequirePermission permission="services.create">
+                <SuspenseWrapper>
+                  <ServiceForm />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="categories"
+            element={
+              <RequirePermission moduleKey="services">
+                <SuspenseWrapper>
+                  <ServiceCategoryListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path=":id"
+            element={
+              <RequirePermission moduleKey="services">
+                <SuspenseWrapper>
+                  <ServiceDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path=":id/edit"
+            element={
+              <RequirePermission permission="services.edit">
+                <SuspenseWrapper>
+                  <ServiceForm />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+        </Route>
+
         {/* Treasury Module */}
         <Route path="treasury">
           <Route index element={<Navigate to="/treasury/payments" replace />} />
@@ -762,6 +853,17 @@ export function AppRoutes() {
               <RequirePermission moduleKey="treasury">
                 <SuspenseWrapper>
                   <RepositoryDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+
+          <Route
+            path="reconciliation"
+            element={
+              <RequirePermission permission="repositories.manage">
+                <SuspenseWrapper>
+                  <BankReconciliationPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -1019,6 +1121,28 @@ export function AppRoutes() {
               <RequirePermission moduleKey="settings">
                 <SuspenseWrapper>
                   <ImportWizardPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+
+          {/* Opening Balances */}
+          <Route
+            path="opening-balances"
+            element={
+              <RequirePermission moduleKey="settings">
+                <SuspenseWrapper>
+                  <OpeningBalancesPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="opening-balances/:type"
+            element={
+              <RequirePermission moduleKey="settings">
+                <SuspenseWrapper>
+                  <OpeningBalanceWizardPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

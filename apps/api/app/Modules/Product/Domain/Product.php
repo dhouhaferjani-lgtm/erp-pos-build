@@ -34,6 +34,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $minimum_margin_override
  * @property string|null $last_purchase_cost
  * @property \Illuminate\Support\Carbon|null $cost_updated_at
+ * @property bool $is_physical False for services, true for parts/consumables
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property string $company_id
@@ -53,6 +54,7 @@ class Product extends Model
         'name',
         'sku',
         'type',
+        'is_physical',
         'description',
         'sale_price',
         'purchase_price',
@@ -74,6 +76,7 @@ class Product extends Model
      */
     protected $attributes = [
         'is_active' => true,
+        'is_physical' => true,
     ];
 
     /**
@@ -84,6 +87,7 @@ class Product extends Model
         return [
             'type' => ProductType::class,
             'is_active' => 'boolean',
+            'is_physical' => 'boolean',
             'oem_numbers' => 'array',
             'cross_references' => 'array',
             'cost_updated_at' => 'datetime',
@@ -127,6 +131,15 @@ class Product extends Model
     public function isConsumable(): bool
     {
         return $this->type === ProductType::Consumable;
+    }
+
+    /**
+     * Check if this product requires physical delivery.
+     * Services are non-physical and don't require delivery notes.
+     */
+    public function isPhysical(): bool
+    {
+        return $this->is_physical;
     }
 
     /**

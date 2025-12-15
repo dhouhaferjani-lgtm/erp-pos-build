@@ -3,13 +3,16 @@ import { Link, useParams, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Edit, Calendar, Building2, FileText, Check, X, ArrowRight, Printer, Send, CreditCard, MinusCircle, Package, AlertTriangle, Truck } from 'lucide-react'
+import { ArrowLeft, Edit, Calendar, Building2, FileText, Check, X, ArrowRight, Printer, Send, CreditCard, MinusCircle, Package, AlertTriangle, Truck, Link2, Paperclip, Download, Eye } from 'lucide-react'
 import { api, apiPost } from '../../lib/api'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { RecordPaymentModal, Modal } from '../../components/organisms'
 import { PurchaseOrderLandedCostBreakdown } from './components/PurchaseOrderLandedCostBreakdown'
 import { CreateCreditNoteForm, CreditNoteList, CreditNoteDetail } from './components'
-import { useCreditNotes, useCreditNote } from './hooks'
+import { RelatedDocumentsTab } from './components/RelatedDocumentsTab'
+import { DocumentAttachments } from './components/DocumentAttachments'
+import { useCreditNotes, useCreditNote, useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail } from './hooks'
+import { useCompany } from '../../hooks/useCompany'
 import type { DocumentType } from './DocumentListPage'
 import type { CreditNote, DocumentStatus } from '../../types/creditNote'
 
@@ -26,11 +29,24 @@ interface DocumentLine {
   line_total: number
 }
 
+interface PaymentRecord {
+  id: string
+  payment_id: string
+  amount: string
+  payment_date: string
+  payment_reference: string | null
+  payment_method: string | null
+}
+
 interface Document {
   id: string
   document_number: string
   type: 'quote' | 'order' | 'invoice' | 'credit_note' | 'delivery_note' | 'sales_order' | 'purchase_order'
   status: 'draft' | 'confirmed' | 'posted' | 'cancelled'
+  fiscal_category: 'NON_FISCAL' | 'FISCAL_RECEIPT' | 'TAX_INVOICE' | 'CREDIT_NOTE'
+  fiscal_status: 'DRAFT' | 'SEALED' | 'VOIDED'
+  is_sealed: boolean
+  is_fiscal: boolean
   partner_id: string
   partner_name: string | null
   partner_email: string | null
@@ -43,10 +59,17 @@ interface Document {
   valid_until: string | null
   notes: string | null
   converted_to_order_id: string | null
-  converted_to_delivery_id: string | null
   converted_at: string | null
+  source_document_id: string | null
+  source_document_number: string | null
+  source_document_type: string | null
+  fully_delivered: boolean
+  fully_invoiced: boolean
   goods_received: boolean
+  delivery_note_ids: string[]
+  invoice_ids: string[]
   lines: DocumentLine[]
+  payments?: PaymentRecord[]
   created_at: string
   updated_at: string
 }
@@ -117,6 +140,7 @@ export function DocumentDetailPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { currentCompany } = useCompany()
 
   // State for confirmation dialog
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
@@ -125,6 +149,14 @@ export function DocumentDetailPage() {
   // State for credit note modals
   const [showCreditNoteForm, setShowCreditNoteForm] = useState(false)
   const [selectedCreditNoteId, setSelectedCreditNoteId] = useState<string | null>(null)
+  // State for email modal
+  const [showEmailModal, setShowEmailModal] = useState(false)
+  const [emailForm, setEmailForm] = useState({
+    recipientEmail: '',
+    subject: '',
+    message: '',
+    ccEmails: '',
+  })
 
   // Helper functions for translated labels
   const getTypeLabel = (type: string) => t(`documents.types.${type}`, type)
@@ -153,6 +185,14 @@ export function DocumentDetailPage() {
 
   // Fetch selected credit note details
   const { data: selectedCreditNote } = useCreditNote(selectedCreditNoteId ?? undefined)
+
+  // PDF mutations
+  const downloadPdfMutation = useDownloadPdf()
+  const previewPdfMutation = usePreviewPdf()
+  const printPdfMutation = usePrintPdf()
+
+  // Email mutation
+  const sendEmailMutation = useSendDocumentEmail()
 
   // Determine effective type and paths
   const effectiveType = contextType ?? (document?.type as DocumentType | undefined)
@@ -313,18 +353,37 @@ export function DocumentDetailPage() {
 
   // Determine available actions based on status and type
   const isAlreadyConverted = document.converted_to_order_id != null
-  const isAlreadyConvertedToDelivery = document.converted_to_delivery_id != null
   const canEdit = document.status === 'draft' && !isAlreadyConverted
   const canConfirm = document.status === 'draft' && !isAlreadyConverted
   const canCancel = (document.status === 'draft' || document.status === 'confirmed') && !isAlreadyConverted
   const canPost = document.status === 'confirmed' && (document.type === 'invoice' || document.type === 'credit_note')
   // Only allow conversion from confirmed status (not draft)
-  const canConvert = document.status === 'confirmed' && conversionTarget != null && !isAlreadyConverted
-  const canConvertToDelivery = document.type === 'sales_order' && document.status === 'confirmed' && !isAlreadyConvertedToDelivery
+  // Also check that sales orders are not already fully invoiced
+  const canConvert = document.status === 'confirmed' &&
+    conversionTarget != null &&
+    !isAlreadyConverted &&
+    !(document.type === 'sales_order' && document.fully_invoiced)
+  // Use fully_delivered flag to determine if delivery note can be created
+  const canConvertToDelivery = document.type === 'sales_order' && document.status === 'confirmed' && !document.fully_delivered
   const canReceiveGoods = document.type === 'purchase_order' && document.status === 'confirmed' && !document.goods_received
   const canRecordPayment =
     (document.type === 'invoice' && document.status === 'posted') ||
     (document.type === 'sales_order' && document.status === 'confirmed')
+
+  // Check if this document has a source document to link back to
+  const hasSourceDocument = document.source_document_id != null && document.source_document_number != null
+
+  // Path for source document navigation
+  const getSourceDocumentPath = () => {
+    if (!document.source_document_type) return null
+    const paths: Record<string, string> = {
+      sales_order: '/sales/orders',
+      quote: '/sales/quotes',
+      invoice: '/sales/invoices',
+      purchase_order: '/purchases/orders',
+    }
+    return paths[document.source_document_type] ?? null
+  }
 
   return (
     <div className="space-y-6">
@@ -362,14 +421,29 @@ export function DocumentDetailPage() {
                   {t('documents.convertedToOrder')}
                 </Link>
               )}
-              {isAlreadyConvertedToDelivery && document.converted_to_delivery_id != null && (
+              {/* Show link back to source order for delivery notes and invoices */}
+              {hasSourceDocument && getSourceDocumentPath() && (
                 <Link
-                  to={`/inventory/delivery-notes/${document.converted_to_delivery_id}`}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-800 hover:bg-indigo-200 transition-colors"
+                  to={`${getSourceDocumentPath()}/${document.source_document_id}`}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800 hover:bg-gray-200 transition-colors"
                 >
-                  <Truck className="h-3 w-3" />
-                  {t('documents.types.delivery_note')}
+                  <ArrowLeft className="h-3 w-3" />
+                  {document.source_document_number}
                 </Link>
+              )}
+              {/* Show "Fully Delivered" badge for sales orders */}
+              {document.type === 'sales_order' && document.fully_delivered && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-800">
+                  <Truck className="h-3 w-3" />
+                  {t('orders.fullyDelivered', 'Fully Delivered')}
+                </span>
+              )}
+              {/* Show "Fully Invoiced" badge for sales orders */}
+              {document.type === 'sales_order' && document.fully_invoiced && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+                  <Check className="h-3 w-3" />
+                  {t('orders.fullyInvoiced', 'Fully Invoiced')}
+                </span>
               )}
               {document.goods_received && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
@@ -397,20 +471,76 @@ export function DocumentDetailPage() {
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
-          {/* Print button - always available */}
+          {/* Download PDF button */}
           <button
             type="button"
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-            title={t('documents.print')}
+            disabled={downloadPdfMutation.isPending}
+            onClick={() => {
+              downloadPdfMutation.mutate(id, {
+                onSuccess: () => {
+                  toast.success(t('common:actions.downloadPdf'))
+                },
+                onError: () => {
+                  toast.error(t('common:error.generic'))
+                },
+              })
+            }}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            title={t('common:actions.downloadPdf')}
+          >
+            <Download className="h-4 w-4" />
+          </button>
+
+          {/* Preview PDF button */}
+          <button
+            type="button"
+            disabled={previewPdfMutation.isPending}
+            onClick={() => {
+              previewPdfMutation.mutate(id, {
+                onError: () => {
+                  toast.error(t('common:error.generic'))
+                },
+              })
+            }}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            title={t('common:actions.previewPdf')}
+          >
+            <Eye className="h-4 w-4" />
+          </button>
+
+          {/* Print button */}
+          <button
+            type="button"
+            disabled={printPdfMutation.isPending}
+            onClick={() => {
+              printPdfMutation.mutate(id, {
+                onError: () => {
+                  toast.error(t('common:error.generic'))
+                },
+              })
+            }}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            title={t('common:actions.printPdf')}
           >
             <Printer className="h-4 w-4" />
           </button>
 
-          {/* Send button - always available */}
+          {/* Send Email button - always available */}
           <button
             type="button"
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-            title={t('documents.send')}
+            disabled={sendEmailMutation.isPending}
+            onClick={() => {
+              // Pre-fill with partner email if available
+              setEmailForm({
+                recipientEmail: document.partner_email ?? '',
+                subject: '',
+                message: '',
+                ccEmails: '',
+              })
+              setShowEmailModal(true)
+            }}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            title={t('common:actions.sendEmail')}
           >
             <Send className="h-4 w-4" />
           </button>
@@ -632,12 +762,15 @@ export function DocumentDetailPage() {
                 </dd>
               </div>
             </div>
-            {/* Balance Due section for invoices */}
-            {document.type === 'invoice' && document.status === 'posted' && (
+            {/* Balance Due section for invoices and confirmed sales orders */}
+            {((document.type === 'invoice' && document.status === 'posted') ||
+              (document.type === 'sales_order' && document.status === 'confirmed')) && (
               <>
                 <div className="border-t border-gray-200 pt-3">
                   <div className="flex justify-between items-center">
-                    <dt className="text-base font-semibold text-gray-900">{t('documents.balanceDue')}</dt>
+                    <dt className="text-base font-semibold text-gray-900">
+                      {document.type === 'sales_order' ? t('documents.amountDue') : t('documents.balanceDue')}
+                    </dt>
                     <dd className="text-base font-semibold">
                       {(() => {
                         const balanceDue = parseFloat(document.balance_due ?? document.total ?? '0')
@@ -675,7 +808,7 @@ export function DocumentDetailPage() {
                         )
                       }
 
-                      if (document.due_date && new Date(document.due_date) < new Date()) {
+                      if (document.type === 'invoice' && document.due_date && new Date(document.due_date) < new Date()) {
                         const daysOverdue = Math.floor((new Date().getTime() - new Date(document.due_date).getTime()) / (1000 * 60 * 60 * 24))
                         return (
                           <span className="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-100 text-red-800">
@@ -687,7 +820,7 @@ export function DocumentDetailPage() {
                       if (balanceDue < total) {
                         return (
                           <span className="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800">
-                            {t('documents.statuses.partial')}
+                            {document.type === 'sales_order' ? t('documents.statuses.prepaid') : t('documents.statuses.partial')}
                           </span>
                         )
                       }
@@ -777,8 +910,49 @@ export function DocumentDetailPage() {
       {document.type === 'purchase_order' && (document.status === 'confirmed' || document.status === 'posted') && (
         <PurchaseOrderLandedCostBreakdown
           documentId={document.id}
-          currency="TND"
+          currency={currentCompany?.currency ?? 'USD'}
         />
+      )}
+
+      {/* Payment History Section */}
+      {document.payments && document.payments.length > 0 && (
+        <div className="rounded-lg border border-gray-200 bg-white">
+          <div className="border-b border-gray-200 px-6 py-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              <CreditCard className="me-2 inline h-5 w-5" />
+              {t('documents.paymentHistory')}
+            </h2>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {document.payments.map((payment) => (
+              <div key={payment.id} className="flex items-center justify-between px-6 py-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
+                    <CreditCard className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">
+                      {payment.payment_method ?? t('documents.payment')}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      {new Date(payment.payment_date).toLocaleDateString()}
+                      {payment.payment_reference && (
+                        <span className="ms-2 text-gray-400">
+                          {t('documents.ref')}: {payment.payment_reference}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-end">
+                  <p className="font-semibold text-green-600">
+                    {formatCurrency(payment.amount)}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Notes */}
@@ -801,6 +975,30 @@ export function DocumentDetailPage() {
           />
         </div>
       )}
+
+      {/* Related Documents Section */}
+      <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">
+          <Link2 className="me-2 inline h-5 w-5" />
+          {t('sales:relatedDocuments.title', 'Related Documents')}
+        </h2>
+        <RelatedDocumentsTab
+          documentId={document.id}
+          {...(currentCompany?.currency ? { currency: currentCompany.currency } : {})}
+        />
+      </div>
+
+      {/* Attachments Section */}
+      <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">
+          <Paperclip className="me-2 inline h-5 w-5" />
+          {t('documents:attachments.title', 'Attachments')}
+        </h2>
+        <DocumentAttachments
+          documentId={document.id}
+          readOnly={document.status === 'cancelled'}
+        />
+      </div>
 
       {/* Confirmation Dialogs */}
       <ConfirmDialog
@@ -928,7 +1126,7 @@ export function DocumentDetailPage() {
               },
               total: document.total ?? '0',
               balance_due: document.balance_due ?? document.total ?? '0',
-              currency: 'TND',
+              currency: (document as { currency?: string }).currency ?? currentCompany?.currency ?? 'USD',
               status: document.status as DocumentStatus,
             }}
             onSuccess={() => {
@@ -956,6 +1154,127 @@ export function DocumentDetailPage() {
           />
         </Modal>
       )}
+
+      {/* Send Email Modal */}
+      <Modal
+        isOpen={showEmailModal}
+        onClose={() => { setShowEmailModal(false) }}
+        title={t('common:email.title')}
+        size="md"
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            const ccEmailsArray = emailForm.ccEmails
+              .split(',')
+              .map((email) => email.trim())
+              .filter((email) => email.length > 0)
+
+            sendEmailMutation.mutate(
+              {
+                documentId: id,
+                recipientEmail: emailForm.recipientEmail || undefined,
+                subject: emailForm.subject || undefined,
+                message: emailForm.message || undefined,
+                ccEmails: ccEmailsArray.length > 0 ? ccEmailsArray : undefined,
+              },
+              {
+                onSuccess: () => {
+                  toast.success(t('common:email.success'))
+                  setShowEmailModal(false)
+                  setEmailForm({
+                    recipientEmail: '',
+                    subject: '',
+                    message: '',
+                    ccEmails: '',
+                  })
+                },
+                onError: () => {
+                  toast.error(t('common:email.error'))
+                },
+              }
+            )
+          }}
+          className="space-y-4"
+        >
+          <div>
+            <label htmlFor="recipientEmail" className="block text-sm font-medium text-gray-700">
+              {t('common:email.recipientEmail')}
+            </label>
+            <input
+              type="email"
+              id="recipientEmail"
+              value={emailForm.recipientEmail}
+              onChange={(e) => { setEmailForm({ ...emailForm, recipientEmail: e.target.value }) }}
+              placeholder={t('common:email.recipientEmailPlaceholder')}
+              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              {t('common:email.recipientEmailHint')}
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="subject" className="block text-sm font-medium text-gray-700">
+              {t('common:email.subject')}
+            </label>
+            <input
+              type="text"
+              id="subject"
+              value={emailForm.subject}
+              onChange={(e) => { setEmailForm({ ...emailForm, subject: e.target.value }) }}
+              placeholder={t('common:email.subjectPlaceholder')}
+              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="message" className="block text-sm font-medium text-gray-700">
+              {t('common:email.message')}
+            </label>
+            <textarea
+              id="message"
+              rows={4}
+              value={emailForm.message}
+              onChange={(e) => { setEmailForm({ ...emailForm, message: e.target.value }) }}
+              placeholder={t('common:email.messagePlaceholder')}
+              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="ccEmails" className="block text-sm font-medium text-gray-700">
+              {t('common:email.ccEmails')}
+            </label>
+            <input
+              type="text"
+              id="ccEmails"
+              value={emailForm.ccEmails}
+              onChange={(e) => { setEmailForm({ ...emailForm, ccEmails: e.target.value }) }}
+              placeholder={t('common:email.ccEmailsPlaceholder')}
+              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4">
+            <button
+              type="button"
+              onClick={() => { setShowEmailModal(false) }}
+              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              {t('common:cancel')}
+            </button>
+            <button
+              type="submit"
+              disabled={sendEmailMutation.isPending}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              <Send className="h-4 w-4" />
+              {sendEmailMutation.isPending ? t('common:email.sending') : t('common:email.send')}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }

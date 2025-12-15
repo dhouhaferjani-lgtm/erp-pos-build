@@ -40,6 +40,10 @@ Route::prefix('api/v1')->middleware(['auth:sanctum', SetPermissionsTeam::class])
 Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function () {
     // Role management (requires roles.view or roles.manage permission)
     Route::get('roles', [RoleController::class, 'index'])->name('roles.index');
+    Route::post('roles', [RoleController::class, 'store'])->name('roles.store');
+    Route::get('roles/{id}', [RoleController::class, 'show'])->name('roles.show');
+    Route::patch('roles/{id}', [RoleController::class, 'update'])->name('roles.update');
+    Route::delete('roles/{id}', [RoleController::class, 'destroy'])->name('roles.destroy');
     Route::get('permissions', [RoleController::class, 'permissions'])->name('permissions.index');
 
     // User management (requires users.* permissions)

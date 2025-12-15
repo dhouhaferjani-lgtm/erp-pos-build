@@ -7,6 +7,7 @@ namespace App\Modules\Document\Domain;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Enums\CreditNoteReason;
+use App\Modules\Document\Domain\Enums\DeliveryStatus;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
@@ -49,6 +50,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $notes
  * @property string|null $internal_notes
  * @property string|null $reference
+ * @property bool $is_historical
+ * @property string|null $external_document_number
+ * @property \Illuminate\Support\Carbon|null $external_document_date
  * @property string|null $source_document_id
  * @property array<string, mixed>|null $payload
  * @property \Illuminate\Support\Carbon|null $created_at
@@ -64,6 +68,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property-read Collection<int, DocumentAdditionalCost> $additionalCosts
  * @property-read Collection<int, PaymentAllocation> $allocations
  * @property-read Collection<int, Document> $creditNotes
+ * @property-read Collection<int, Document> $childDocuments
  *
  * @method static Builder<static> forTenant(string $tenantId)
  * @method static Builder<static> ofType(DocumentType $type)
@@ -109,6 +114,9 @@ class Document extends Model
         'notes',
         'internal_notes',
         'reference',
+        'is_historical',
+        'external_document_number',
+        'external_document_date',
         'source_document_id',
         'credit_note_reason',
         'payload',
@@ -128,11 +136,13 @@ class Document extends Model
             'document_date' => 'date',
             'due_date' => 'date',
             'valid_until' => 'date',
+            'external_document_date' => 'date',
             'subtotal' => 'decimal:2',
             'discount_amount' => 'decimal:2',
             'tax_amount' => 'decimal:2',
             'total' => 'decimal:2',
             'balance_due' => 'decimal:2',
+            'is_historical' => 'boolean',
             'payload' => 'array',
         ];
     }
@@ -219,6 +229,66 @@ class Document extends Model
     }
 
     /**
+     * Get all child documents derived from this document
+     *
+     * @return HasMany<Document, $this>
+     */
+    public function childDocuments(): HasMany
+    {
+        return $this->hasMany(Document::class, 'source_document_id');
+    }
+
+    /**
+     * Get the full document chain (ancestors and descendants)
+     *
+     * Returns an array with:
+     * - 'ancestors': Documents that led to this one (Quote → Order → Invoice)
+     * - 'current': This document
+     * - 'descendants': Documents derived from this one (DN, Credit Notes)
+     *
+     * @return array{ancestors: Collection<int, Document>, current: Document, descendants: Collection<int, Document>}
+     */
+    public function getDocumentChain(): array
+    {
+        // Get all ancestors by traversing up
+        $ancestors = new Collection();
+        $parent = $this->sourceDocument;
+        while ($parent !== null) {
+            $ancestors->prepend($parent);
+            $parent = $parent->sourceDocument;
+        }
+
+        // Get all descendants recursively
+        $descendants = $this->getAllDescendants();
+
+        return [
+            'ancestors' => $ancestors,
+            'current' => $this,
+            'descendants' => $descendants,
+        ];
+    }
+
+    /**
+     * Recursively get all descendant documents
+     *
+     * @return Collection<int, Document>
+     */
+    protected function getAllDescendants(): Collection
+    {
+        $descendants = new Collection();
+
+        foreach ($this->childDocuments as $child) {
+            $descendants->push($child);
+            $childDescendants = $child->getAllDescendants();
+            foreach ($childDescendants as $descendant) {
+                $descendants->push($descendant);
+            }
+        }
+
+        return $descendants;
+    }
+
+    /**
      * Check if document is in draft status
      */
     public function isDraft(): bool
@@ -296,6 +366,14 @@ class Document extends Model
     public function isDeletable(): bool
     {
         return $this->status->isDeletable();
+    }
+
+    /**
+     * Check if document is historical (imported from another system)
+     */
+    public function isHistorical(): bool
+    {
+        return $this->is_historical ?? false;
     }
 
     /**
@@ -377,5 +455,52 @@ class Document extends Model
             'tax_amount' => $taxAmount,
             'total' => $total,
         ]);
+    }
+
+    /**
+     * Get the delivery status for a sales order.
+     *
+     * Calculates whether the order is:
+     * - NotDelivered: No line has any quantity delivered
+     * - PartiallyDelivered: Some lines have partial or full deliveries
+     * - FullyDelivered: All lines are fully delivered
+     *
+     * @throws \InvalidArgumentException If called on a non-sales-order document
+     */
+    public function getDeliveryStatus(): DeliveryStatus
+    {
+        if ($this->type !== DocumentType::SalesOrder) {
+            throw new \InvalidArgumentException('Delivery status is only applicable to sales orders');
+        }
+
+        $lines = $this->lines;
+
+        if ($lines->isEmpty()) {
+            return DeliveryStatus::NotDelivered;
+        }
+
+        $totalLines = $lines->count();
+        $fullyDeliveredLines = 0;
+        $hasAnyDelivery = false;
+
+        foreach ($lines as $line) {
+            if ($line->hasDeliveries()) {
+                $hasAnyDelivery = true;
+            }
+
+            if ($line->isFullyDelivered()) {
+                $fullyDeliveredLines++;
+            }
+        }
+
+        if ($fullyDeliveredLines === $totalLines) {
+            return DeliveryStatus::FullyDelivered;
+        }
+
+        if ($hasAnyDelivery) {
+            return DeliveryStatus::PartiallyDelivered;
+        }
+
+        return DeliveryStatus::NotDelivered;
     }
 }

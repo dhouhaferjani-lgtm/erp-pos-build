@@ -16,6 +16,7 @@ use App\Modules\Document\Domain\Services\DocumentPostingService;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\Services\GoodsReceiptService;
 use App\Modules\Inventory\Application\Services\LandedCostService;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Product\Domain\Product;
@@ -32,6 +33,7 @@ class DocumentController extends Controller
         private readonly LandedCostService $landedCostService,
         private readonly WeightedAverageCostService $wacService,
         private readonly DocumentPostingService $postingService,
+        private readonly GoodsReceiptService $goodsReceiptService,
     ) {}
 
     /**
@@ -177,7 +179,7 @@ class DocumentController extends Controller
 
         $documentModel = Document::forCompany($companyId)
             ->ofType($type)
-            ->with('lines')
+            ->with(['lines', 'allocations.payment.paymentMethod'])
             ->find($document);
 
         if ($documentModel === null) {
@@ -457,17 +459,24 @@ class DocumentController extends Controller
 
     /**
      * Confirm a document (Draft → Confirmed)
+     *
+     * Uses pessimistic locking inside the transaction to prevent race conditions
+     * when two requests try to confirm the same document simultaneously.
      */
     public function confirm(Request $request, DocumentType $type, string $document): JsonResponse
     {
         /** @var User $user */
         $user = $request->user();
 
-        $documentModel = Document::forCompany($this->companyContext->requireCompanyId())
-            ->ofType($type)
-            ->find($document);
+        $companyId = $this->companyContext->requireCompanyId();
 
-        if ($documentModel === null) {
+        // Initial existence check (without lock - for fast 404 response)
+        $exists = Document::forCompany($companyId)
+            ->ofType($type)
+            ->where('id', $document)
+            ->exists();
+
+        if (! $exists) {
             return response()->json([
                 'error' => [
                     'code' => 'NOT_FOUND',
@@ -476,23 +485,44 @@ class DocumentController extends Controller
             ], 404);
         }
 
-        if (! $documentModel->isDraft()) {
+        try {
+            $documentModel = DB::transaction(function () use ($companyId, $type, $document): Document {
+                // Re-fetch with pessimistic lock inside transaction to prevent race conditions
+                $lockedDocument = Document::forCompany($companyId)
+                    ->ofType($type)
+                    ->lockForUpdate()
+                    ->find($document);
+
+                if ($lockedDocument === null) {
+                    throw new \DomainException('Document not found');
+                }
+
+                // Check status inside the lock - this is the idempotency check
+                if (! $lockedDocument->isDraft()) {
+                    // Already confirmed - return silently (idempotent)
+                    if ($lockedDocument->status === DocumentStatus::Confirmed) {
+                        return $lockedDocument;
+                    }
+                    throw new \DomainException('Only draft documents can be confirmed');
+                }
+
+                $lockedDocument->update(['status' => DocumentStatus::Confirmed]);
+
+                // Integration Hook: For Purchase Orders, allocate landed costs after confirmation
+                if ($type === DocumentType::PurchaseOrder) {
+                    $this->landedCostService->allocateCosts($lockedDocument);
+                }
+
+                return $lockedDocument;
+            });
+        } catch (\DomainException $e) {
             return response()->json([
                 'error' => [
                     'code' => 'INVALID_STATUS_TRANSITION',
-                    'message' => 'Only draft documents can be confirmed',
+                    'message' => $e->getMessage(),
                 ],
             ], 422);
         }
-
-        DB::transaction(function () use ($documentModel, $type): void {
-            $documentModel->update(['status' => DocumentStatus::Confirmed]);
-
-            // Integration Hook: For Purchase Orders, allocate landed costs after confirmation
-            if ($type === DocumentType::PurchaseOrder) {
-                $this->landedCostService->allocateCosts($documentModel);
-            }
-        });
 
         /** @var Document $freshDocument */
         $freshDocument = $documentModel->fresh(['lines']);
@@ -801,15 +831,25 @@ class DocumentController extends Controller
     }
 
     /**
-     * Receive a purchase order (mark goods as received)
+     * Receive goods for a purchase order.
+     *
+     * Supports partial receipts via the `quantities` request body:
+     * - If `quantities` is provided: receive specified quantities per line
+     * - If `quantities` is empty/missing: receive all remaining quantities
+     *
+     * Request body (optional):
+     * {
+     *   "quantities": {
+     *     "line_uuid_1": "10.00",
+     *     "line_uuid_2": "5.00"
+     *   }
+     * }
      */
     public function receive(Request $request, DocumentType $type, string $document): JsonResponse
     {
-        /** @var User $user */
-        $user = $request->user();
-
         $documentModel = Document::forCompany($this->companyContext->requireCompanyId())
             ->ofType($type)
+            ->with('lines')
             ->find($document);
 
         if ($documentModel === null) {
@@ -821,45 +861,86 @@ class DocumentController extends Controller
             ], 404);
         }
 
-        if (! $documentModel->isConfirmed()) {
+        if ($type !== DocumentType::PurchaseOrder) {
             return response()->json([
                 'error' => [
-                    'code' => 'DOCUMENT_NOT_CONFIRMED',
-                    'message' => 'Only confirmed purchase orders can be received',
+                    'code' => 'INVALID_DOCUMENT_TYPE',
+                    'message' => 'Only purchase orders can receive goods',
                 ],
             ], 422);
         }
 
-        DB::transaction(function () use ($documentModel): void {
-            $documentModel->update(['status' => DocumentStatus::Received]);
+        try {
+            /** @var array<string, string>|null $quantities */
+            $quantities = $request->input('quantities');
 
-            // Integration Hook: Update product costs based on landed costs
-            // This updates the product's cost_price with the weighted average
-            $documentModel->load(['lines']);
-
-            foreach ($documentModel->lines as $line) {
-                if ($line->product_id !== null && $line->landed_unit_cost !== null) {
-                    /** @var Product|null $product */
-                    $product = Product::find($line->product_id);
-
-                    if ($product !== null) {
-                        // Simple cost update: use landed unit cost as the new cost
-                        // TODO: Implement proper WAC calculation once Location/Stock models exist
-                        $product->update([
-                            'cost_price' => $line->landed_unit_cost,
-                            'last_purchase_cost' => $line->unit_price,
-                            'cost_updated_at' => now(),
-                        ]);
-                    }
-                }
+            if (is_array($quantities) && count($quantities) > 0) {
+                // Partial receipt with specified quantities
+                $updatedDocument = $this->goodsReceiptService->receiveGoods($documentModel, $quantities);
+            } else {
+                // Receive all remaining quantities
+                $updatedDocument = $this->goodsReceiptService->receiveAll($documentModel);
             }
-        });
 
-        /** @var Document $freshDocument */
-        $freshDocument = $documentModel->fresh(['lines']);
+            // Get receipt status for response
+            $receiptStatus = $this->goodsReceiptService->getReceiptStatus($updatedDocument);
+
+            return response()->json([
+                'data' => DocumentData::fromModel($updatedDocument),
+                'meta' => [
+                    'timestamp' => now()->toIso8601String(),
+                    'receipt_status' => $receiptStatus,
+                ],
+            ]);
+        } catch (\DomainException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'GOODS_RECEIPT_FAILED',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'CONFIGURATION_ERROR',
+                    'message' => $e->getMessage(),
+                ],
+            ], 500);
+        }
+    }
+
+    /**
+     * Get receipt status for a purchase order.
+     */
+    public function receiptStatus(Request $request, DocumentType $type, string $document): JsonResponse
+    {
+        $documentModel = Document::forCompany($this->companyContext->requireCompanyId())
+            ->ofType($type)
+            ->with('lines')
+            ->find($document);
+
+        if ($documentModel === null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'NOT_FOUND',
+                    'message' => 'Document not found',
+                ],
+            ], 404);
+        }
+
+        if ($type !== DocumentType::PurchaseOrder) {
+            return response()->json([
+                'error' => [
+                    'code' => 'INVALID_DOCUMENT_TYPE',
+                    'message' => 'Only purchase orders have receipt status',
+                ],
+            ], 422);
+        }
+
+        $status = $this->goodsReceiptService->getReceiptStatus($documentModel);
 
         return response()->json([
-            'data' => DocumentData::fromModel($freshDocument),
+            'data' => $status,
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
             ],
@@ -946,5 +1027,68 @@ class DocumentController extends Controller
                 ],
             ], 201);
         });
+    }
+
+    /**
+     * Get related documents (ancestors and descendants) for a document
+     *
+     * Returns the full document chain showing:
+     * - ancestors: Documents that led to this one (e.g., Quote → Order → Invoice)
+     * - current: The requested document
+     * - descendants: Documents derived from this one (e.g., Delivery Notes, Credit Notes)
+     */
+    public function related(Request $request, string $document): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+
+        $documentModel = Document::forCompany($companyId)
+            ->with(['sourceDocument', 'childDocuments'])
+            ->find($document);
+
+        if ($documentModel === null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'NOT_FOUND',
+                    'message' => 'Document not found',
+                ],
+            ], 404);
+        }
+
+        $chain = $documentModel->getDocumentChain();
+
+        return response()->json([
+            'data' => [
+                'ancestors' => $chain['ancestors']->map(fn (Document $doc): array => [
+                    'id' => $doc->id,
+                    'type' => $doc->type->value,
+                    'document_number' => $doc->document_number,
+                    'document_date' => $doc->document_date->format('Y-m-d'),
+                    'status' => $doc->status->value,
+                    'total' => $doc->total,
+                    'currency' => $doc->currency,
+                ])->values()->toArray(),
+                'current' => [
+                    'id' => $documentModel->id,
+                    'type' => $documentModel->type->value,
+                    'document_number' => $documentModel->document_number,
+                    'document_date' => $documentModel->document_date->format('Y-m-d'),
+                    'status' => $documentModel->status->value,
+                    'total' => $documentModel->total,
+                    'currency' => $documentModel->currency,
+                ],
+                'descendants' => $chain['descendants']->map(fn (Document $doc): array => [
+                    'id' => $doc->id,
+                    'type' => $doc->type->value,
+                    'document_number' => $doc->document_number,
+                    'document_date' => $doc->document_date->format('Y-m-d'),
+                    'status' => $doc->status->value,
+                    'total' => $doc->total,
+                    'currency' => $doc->currency,
+                ])->values()->toArray(),
+            ],
+            'meta' => [
+                'timestamp' => now()->toIso8601String(),
+            ],
+        ]);
     }
 }

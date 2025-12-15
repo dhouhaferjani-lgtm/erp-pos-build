@@ -77,6 +77,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string $default_target_margin Default target margin percentage
  * @property string $default_minimum_margin Default minimum margin percentage
  * @property bool $allow_below_cost_sales Whether below-cost sales are allowed
+ * @property string|null $fiscal_chain_seed Unique 256-bit seed for fiscal hash chain genesis
  * @property Carbon $created_at
  * @property Carbon $updated_at
  * @property Carbon|null $deleted_at
@@ -90,6 +91,19 @@ class Company extends Model
     use HasFactory;
     use HasUuids;
     use SoftDeletes;
+
+    /**
+     * Bootstrap the model.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (Company $company): void {
+            // Auto-generate fiscal chain seed if not provided
+            if ($company->fiscal_chain_seed === null) {
+                $company->fiscal_chain_seed = bin2hex(random_bytes(32));
+            }
+        });
+    }
 
     /**
      * Create a new factory instance for the model.
@@ -166,6 +180,7 @@ class Company extends Model
         'payment_tolerance_enabled',
         'payment_tolerance_percentage',
         'max_payment_tolerance_amount',
+        'fiscal_chain_seed',
     ];
 
     /**

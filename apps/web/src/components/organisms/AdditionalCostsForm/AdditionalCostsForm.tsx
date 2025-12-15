@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2 } from 'lucide-react'
+import { useCompany } from '../../../hooks/useCompany'
 
 export type AdditionalCostType = 'shipping' | 'customs' | 'insurance' | 'handling' | 'other'
 
@@ -28,9 +29,11 @@ export function AdditionalCostsForm({
   costs,
   onChange,
   disabled = false,
-  currency = 'TND',
+  currency,
 }: AdditionalCostsFormProps) {
   const { t } = useTranslation(['inventory'])
+  const { currentCompany } = useCompany()
+  const effectiveCurrency = currency ?? currentCompany?.currency ?? 'USD'
   const [newCost, setNewCost] = useState<Omit<AdditionalCost, 'id'>>({
     type: 'shipping',
     description: '',
@@ -68,7 +71,7 @@ export function AdditionalCostsForm({
   const formatCurrency = (value: number): string => {
     return new Intl.NumberFormat('fr-TN', {
       style: 'currency',
-      currency,
+      currency: effectiveCurrency,
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(value)
@@ -128,7 +131,7 @@ export function AdditionalCostsForm({
                   min="0"
                   className="w-24 rounded-md border border-gray-300 px-2 py-1.5 text-end text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
                 />
-                <span className="text-xs text-gray-500 dark:text-gray-400">{currency}</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">{effectiveCurrency}</span>
               </div>
 
               <button

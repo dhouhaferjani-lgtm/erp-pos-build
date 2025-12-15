@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Tenant;
+use App\Models\SuperAdmin;
+use App\Modules\Tenant\Domain\Tenant;
 use App\Services\AdminAuditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -95,11 +96,15 @@ class SuperAdminController extends Controller
             'status' => 'trial',
         ]);
 
+        // Type assertion - middleware guarantees this is a SuperAdmin
+        /** @var SuperAdmin $admin */
+        $admin = $request->user();
+
         $this->auditService->logTenantAction(
-            admin: $request->user(),
+            admin: $admin,
             tenant: $tenant,
             action: 'extend_trial',
-            oldValues: ['trial_ends_at' => $oldTrialEnd?->toDateTimeString()],
+            oldValues: ['trial_ends_at' => $oldTrialEnd !== null ? (string) $oldTrialEnd : null],
             newValues: ['trial_ends_at' => $newTrialEnd->toDateTimeString()],
             notes: "Extended trial by {$request->input('days')} days"
         );
@@ -129,8 +134,12 @@ class SuperAdminController extends Controller
             'plan_id' => $request->input('plan_id'),
         ]);
 
+        // Type assertion - middleware guarantees this is a SuperAdmin
+        /** @var SuperAdmin $admin */
+        $admin = $request->user();
+
         $this->auditService->logTenantAction(
-            admin: $request->user(),
+            admin: $admin,
             tenant: $tenant,
             action: 'change_plan',
             oldValues: ['plan_id' => $oldPlanId],
@@ -138,8 +147,10 @@ class SuperAdminController extends Controller
             notes: 'Plan changed by admin'
         );
 
+        $freshSubscription = $subscription->fresh();
+
         return response()->json([
-            'data' => $subscription->fresh()->load('plan'),
+            'data' => $freshSubscription?->load('plan'),
             'message' => 'Plan changed successfully',
         ]);
     }
@@ -155,8 +166,12 @@ class SuperAdminController extends Controller
 
         $tenant->update(['status' => 'suspended']);
 
+        // Type assertion - middleware guarantees this is a SuperAdmin
+        /** @var SuperAdmin $admin */
+        $admin = $request->user();
+
         $this->auditService->logTenantAction(
-            admin: $request->user(),
+            admin: $admin,
             tenant: $tenant,
             action: 'suspend_tenant',
             oldValues: ['status' => $oldStatus],
@@ -177,8 +192,12 @@ class SuperAdminController extends Controller
 
         $tenant->update(['status' => 'active']);
 
+        // Type assertion - middleware guarantees this is a SuperAdmin
+        /** @var SuperAdmin $admin */
+        $admin = $request->user();
+
         $this->auditService->logTenantAction(
-            admin: $request->user(),
+            admin: $admin,
             tenant: $tenant,
             action: 'activate_tenant',
             oldValues: ['status' => $oldStatus],

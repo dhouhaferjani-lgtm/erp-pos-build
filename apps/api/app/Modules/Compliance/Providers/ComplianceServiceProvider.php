@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Modules\Compliance\Providers;
 
 use App\Modules\Compliance\Commands\VerifyFiscalChainsCommand;
+use App\Modules\Compliance\Listeners\DomainEventSubscriber;
 use App\Modules\Compliance\Services\AnomalyDetectionService;
 use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Compliance\Services\FiscalHashService;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
@@ -37,6 +39,15 @@ class ComplianceServiceProvider extends ServiceProvider
         }
 
         $this->registerRoutes();
+        $this->registerEventSubscribers();
+    }
+
+    /**
+     * Register domain event subscribers for audit logging.
+     */
+    private function registerEventSubscribers(): void
+    {
+        Event::subscribe(DomainEventSubscriber::class);
     }
 
     private function registerRoutes(): void

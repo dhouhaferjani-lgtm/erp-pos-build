@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property JournalEntryStatus $status
  * @property string|null $source_type
  * @property string|null $source_id
+ * @property bool $is_historical
  * @property string|null $hash
  * @property string|null $previous_hash
  * @property string|null $posted_at
@@ -50,6 +51,7 @@ class JournalEntry extends Model
         'status',
         'source_type',
         'source_id',
+        'is_historical',
         'hash',
         'previous_hash',
         'posted_at',
@@ -67,6 +69,7 @@ class JournalEntry extends Model
         return [
             'entry_date' => 'date',
             'status' => JournalEntryStatus::class,
+            'is_historical' => 'boolean',
             'posted_at' => 'datetime',
             'reversed_at' => 'datetime',
         ];

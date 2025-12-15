@@ -182,7 +182,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'repositories.view',
             'treasury.view',
             'journal.view',
-            'accounts.view',
+            'accounts.view', 'accounts.manage',
             'reports.financial', 'reports.operational',
             'work-orders.view', 'work-orders.create', 'work-orders.update', 'work-orders.complete',
             'users.view',

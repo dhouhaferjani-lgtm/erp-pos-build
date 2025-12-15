@@ -1,0 +1,16 @@
+{
+  "attachments": {
+    "title": "Attachments",
+    "dropzone": "Drag and drop files here, or click to browse",
+    "allowedTypes": "Allowed: {{types}} (max {{maxSize}}MB)",
+    "uploading": "Uploading...",
+    "noAttachments": "No attachments yet",
+    "errors": {
+      "fileTooLarge": "File exceeds maximum size of {{maxSize}}MB",
+      "invalidType": "Invalid file type. Allowed: {{types}}",
+      "downloadFailed": "Failed to download file",
+      "uploadFailed": "Failed to upload file",
+      "deleteFailed": "Failed to delete file"
+    }
+  }
+}

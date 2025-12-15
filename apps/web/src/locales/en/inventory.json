@@ -1,4 +1,23 @@
 {
+  "goodsReceipt": {
+    "title": "Goods Receipts",
+    "description": "Receive goods from confirmed purchase orders",
+    "tabs": {
+      "pending": "Pending Receipt",
+      "received": "Received"
+    },
+    "status": {
+      "pending": "Pending",
+      "partial": "Partial",
+      "received": "Received"
+    },
+    "emptyPending": "No pending receipts",
+    "emptyPendingHint": "Confirmed purchase orders will appear here for receiving",
+    "emptyReceived": "No received orders yet",
+    "receiveAll": "Receive All",
+    "progress": "{{received}} of {{total}} items received",
+    "successMessage": "Goods received successfully"
+  },
   "products": {
     "title": "Products",
     "new": "Add Product",
@@ -55,13 +74,71 @@
   },
   "stock": {
     "title": "Stock Levels",
+    "subtitle": "{{count}} product in stock",
+    "subtitle_plural": "{{count}} products in stock",
     "location": "Location",
     "quantity": "Quantity",
     "reserved": "Reserved",
     "available": "Available",
+    "product": "Product",
     "adjust": "Adjust Stock",
     "transfer": "Transfer Stock",
-    "receive": "Receive Stock"
+    "receive": "Receive Stock",
+    "issue": "Issue Stock",
+    "viewMovements": "View Movements",
+    "filters": {
+      "lowStock": "Low Stock",
+      "outOfStock": "Out of Stock"
+    },
+    "status": {
+      "inStock": "In Stock",
+      "lowStock": "Low Stock",
+      "outOfStock": "Out of Stock"
+    },
+    "buttons": {
+      "in": "In",
+      "out": "Out"
+    },
+    "summary": {
+      "totalProducts": "Total Products",
+      "lowStock": "Low Stock",
+      "outOfStock": "Out of Stock"
+    },
+    "modal": {
+      "adjustTitle": "Adjust Stock",
+      "receiveTitle": "Receive Stock",
+      "issueTitle": "Issue Stock",
+      "transferTitle": "Transfer Stock",
+      "product": "Product",
+      "location": "Location",
+      "fromLocation": "From Location",
+      "toLocation": "To Location",
+      "selectDestination": "Select destination...",
+      "currentQuantity": "Current Quantity",
+      "newQuantity": "New Quantity",
+      "enterNewQuantity": "Enter new quantity",
+      "enterQuantity": "Enter quantity",
+      "reason": "Reason",
+      "notes": "Notes (optional)",
+      "reference": "Reference",
+      "enterReference": "Enter transfer reference...",
+      "addNotes": "Add any additional notes...",
+      "change": "Change",
+      "saving": "Saving...",
+      "save": "Save"
+    },
+    "reasons": {
+      "inventoryCount": "Inventory Count",
+      "damage": "Damage/Loss",
+      "correction": "Correction",
+      "other": "Other",
+      "stockTransfer": "Stock Transfer"
+    },
+    "empty": {
+      "title": "No stock data",
+      "description": "Stock levels will appear here once products are added.",
+      "noMatchFilter": "No products match the selected filter."
+    }
   },
   "movements": {
     "title": "Stock Movements",

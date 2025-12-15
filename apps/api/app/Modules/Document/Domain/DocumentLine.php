@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Document\Domain;
 
 use App\Modules\Product\Domain\Product;
+use App\Modules\Service\Domain\Service;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,9 +14,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $id
  * @property string $document_id
  * @property string|null $product_id
+ * @property string|null $service_id
  * @property int $line_number
  * @property string $description
  * @property numeric-string $quantity
+ * @property numeric-string $quantity_delivered
  * @property numeric-string $unit_price
  * @property numeric-string|null $discount_percent
  * @property numeric-string|null $discount_amount
@@ -24,10 +27,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property numeric-string $allocated_costs
  * @property numeric-string|null $landed_unit_cost
  * @property string|null $notes
+ * @property string|null $source_line_id
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property-read Document $document
  * @property-read Product|null $product
+ * @property-read Service|null $service
+ * @property-read DocumentLine|null $sourceLine
  */
 class DocumentLine extends Model
 {
@@ -44,9 +50,11 @@ class DocumentLine extends Model
     protected $fillable = [
         'document_id',
         'product_id',
+        'service_id',
         'line_number',
         'description',
         'quantity',
+        'quantity_delivered',
         'unit_price',
         'discount_percent',
         'discount_amount',
@@ -55,6 +63,7 @@ class DocumentLine extends Model
         'allocated_costs',
         'landed_unit_cost',
         'notes',
+        'source_line_id',
     ];
 
     /**
@@ -64,6 +73,15 @@ class DocumentLine extends Model
     {
         return [
             'line_number' => 'integer',
+            'quantity' => 'decimal:4',
+            'quantity_delivered' => 'decimal:4',
+            'unit_price' => 'decimal:2',
+            'discount_percent' => 'decimal:2',
+            'discount_amount' => 'decimal:2',
+            'tax_rate' => 'decimal:2',
+            'line_total' => 'decimal:2',
+            'allocated_costs' => 'decimal:2',
+            'landed_unit_cost' => 'decimal:2',
         ];
     }
 
@@ -84,6 +102,24 @@ class DocumentLine extends Model
     }
 
     /**
+     * @return BelongsTo<Service, $this>
+     */
+    public function service(): BelongsTo
+    {
+        return $this->belongsTo(Service::class);
+    }
+
+    /**
+     * Get the source line this delivery line was created from.
+     *
+     * @return BelongsTo<DocumentLine, $this>
+     */
+    public function sourceLine(): BelongsTo
+    {
+        return $this->belongsTo(DocumentLine::class, 'source_line_id');
+    }
+
+    /**
      * Calculate the line total
      */
     public function calculateTotal(): string
@@ -99,5 +135,38 @@ class DocumentLine extends Model
         }
 
         return $subtotal;
+    }
+
+    /**
+     * Get the remaining quantity that has not yet been delivered.
+     *
+     * Only applicable to sales order lines.
+     */
+    public function getQuantityRemaining(): string
+    {
+        $delivered = $this->quantity_delivered ?? '0.00';
+
+        return bcsub($this->quantity, $delivered, 4);
+    }
+
+    /**
+     * Check if this line has been fully delivered.
+     */
+    public function isFullyDelivered(): bool
+    {
+        /** @var numeric-string $remaining */
+        $remaining = $this->getQuantityRemaining();
+
+        return bccomp($remaining, '0.00', 4) <= 0;
+    }
+
+    /**
+     * Check if this line has any deliveries.
+     */
+    public function hasDeliveries(): bool
+    {
+        $delivered = (string) ($this->quantity_delivered ?? '0.0000');
+
+        return bccomp($delivered, '0.0000', 4) > 0;
     }
 }

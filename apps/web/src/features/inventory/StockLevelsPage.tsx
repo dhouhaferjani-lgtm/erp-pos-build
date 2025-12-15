@@ -51,15 +51,8 @@ interface StockMovement {
 type StockFilter = 'all' | 'low' | 'out'
 type AdjustmentType = 'adjust' | 'receive' | 'issue' | 'transfer'
 
-const adjustmentReasons = [
-  { value: 'inventory_count', label: 'Inventory Count' },
-  { value: 'damage', label: 'Damage/Loss' },
-  { value: 'correction', label: 'Correction' },
-  { value: 'other', label: 'Other' },
-]
-
 export function StockLevelsPage() {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['common', 'inventory'])
   const queryClient = useQueryClient()
   const { currentLocationId } = useLocation()
   const [searchQuery, setSearchQuery] = useState('')
@@ -154,20 +147,20 @@ export function StockLevelsPage() {
     const outOfStockCount = stockLevels.filter((s) => s.available <= 0).length
 
     return [
-      { value: 'all' as StockFilter, label: t('filters.all'), count: total },
-      { value: 'low' as StockFilter, label: 'Low Stock', count: lowStockCount },
-      { value: 'out' as StockFilter, label: 'Out of Stock', count: outOfStockCount },
+      { value: 'all' as StockFilter, label: t('common:filters.all'), count: total },
+      { value: 'low' as StockFilter, label: t('inventory:stock.filters.lowStock'), count: lowStockCount },
+      { value: 'out' as StockFilter, label: t('inventory:stock.filters.outOfStock'), count: outOfStockCount },
     ]
   }, [t, total, stockLevels])
 
   const getStockStatus = (stock: StockLevel): { label: string; color: string } => {
     if (stock.available <= 0) {
-      return { label: 'Out of Stock', color: 'bg-red-100 text-red-800' }
+      return { label: t('inventory:stock.status.outOfStock'), color: 'bg-red-100 text-red-800' }
     }
     if (stock.min_quantity != null && stock.available <= stock.min_quantity) {
-      return { label: 'Low Stock', color: 'bg-yellow-100 text-yellow-800' }
+      return { label: t('inventory:stock.status.lowStock'), color: 'bg-yellow-100 text-yellow-800' }
     }
-    return { label: 'In Stock', color: 'bg-green-100 text-green-800' }
+    return { label: t('inventory:stock.status.inStock'), color: 'bg-green-100 text-green-800' }
   }
 
   const openAdjustModal = (stock: StockLevel, type: AdjustmentType) => {
@@ -189,7 +182,13 @@ export function StockLevelsPage() {
   const handleSubmit = () => {
     if (!selectedStock) return
 
-    const reasonLabel = adjustmentReasons.find(r => r.value === adjustmentReason)?.label ?? adjustmentReason
+    const reasonLabels: Record<string, string> = {
+      inventory_count: t('inventory:stock.reasons.inventoryCount'),
+      damage: t('inventory:stock.reasons.damage'),
+      correction: t('inventory:stock.reasons.correction'),
+      other: t('inventory:stock.reasons.other'),
+    }
+    const reasonLabel = reasonLabels[adjustmentReason] ?? adjustmentReason
     const reference = adjustmentNotes ? `${reasonLabel}: ${adjustmentNotes}` : reasonLabel
 
     if (adjustmentType === 'adjust') {
@@ -217,7 +216,7 @@ export function StockLevelsPage() {
         from_location_id: selectedStock.location_id,
         to_location_id: transferLocationId,
         quantity: adjustmentQuantity,
-        reference: adjustmentNotes || 'Stock Transfer',
+        reference: adjustmentNotes || t('inventory:stock.reasons.stockTransfer'),
       })
     } else {
       const issueData: { product_id: string; location_id: string; quantity: string; reference: string; notes?: string } = {
@@ -247,9 +246,9 @@ export function StockLevelsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('navigation.stockLevels', 'Stock Levels')}</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{t('inventory:stock.title')}</h1>
           <p className="text-gray-500">
-            {total} product{total !== 1 ? 's' : ''} in stock
+            {t('inventory:stock.subtitle', { count: total })}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -259,7 +258,7 @@ export function StockLevelsPage() {
             className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
           >
             <RefreshCw className="h-4 w-4" />
-            View Movements
+            {t('inventory:stock.viewMovements')}
           </Link>
         </div>
       </div>
@@ -288,14 +287,14 @@ export function StockLevelsPage() {
         <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
           <Package className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-sm font-semibold text-gray-900">
-            {searchQuery || stockFilter !== 'all' ? t('status.noResults') : 'No stock data'}
+            {searchQuery || stockFilter !== 'all' ? t('common:status.noResults') : t('inventory:stock.empty.title')}
           </h3>
           <p className="mt-1 text-sm text-gray-500">
             {searchQuery
-              ? t('status.tryDifferentSearch', 'Try a different search term.')
+              ? t('common:status.tryDifferentSearch')
               : stockFilter !== 'all'
-                ? 'No products match the selected filter.'
-                : 'Stock levels will appear here once products are added.'}
+                ? t('inventory:stock.empty.noMatchFilter')
+                : t('inventory:stock.empty.description')}
           </p>
         </div>
       ) : (
@@ -304,25 +303,25 @@ export function StockLevelsPage() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Product
+                  {t('inventory:stock.product')}
                 </th>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Location
+                  {t('inventory:stock.location')}
                 </th>
                 <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Quantity
+                  {t('inventory:stock.quantity')}
                 </th>
                 <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Reserved
+                  {t('inventory:stock.reserved')}
                 </th>
                 <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Available
+                  {t('inventory:stock.available')}
                 </th>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('fields.status', 'Status')}
+                  {t('common:fields.status')}
                 </th>
                 <th className="relative px-6 py-3">
-                  <span className="sr-only">{t('actions.actions')}</span>
+                  <span className="sr-only">{t('common:actions.actions')}</span>
                 </th>
               </tr>
             </thead>
@@ -376,34 +375,34 @@ export function StockLevelsPage() {
                         <button
                           onClick={() => { openAdjustModal(stock, 'receive') }}
                           className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50"
-                          title="Receive stock"
+                          title={t('inventory:stock.receive')}
                         >
                           <Plus className="h-3.5 w-3.5" />
-                          In
+                          {t('inventory:stock.buttons.in')}
                         </button>
                         <button
                           onClick={() => { openAdjustModal(stock, 'issue') }}
                           className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
-                          title="Issue stock"
+                          title={t('inventory:stock.issue')}
                         >
                           <Minus className="h-3.5 w-3.5" />
-                          Out
+                          {t('inventory:stock.buttons.out')}
                         </button>
                         <button
                           onClick={() => { openAdjustModal(stock, 'adjust') }}
                           className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50"
-                          title="Adjust stock"
+                          title={t('inventory:stock.adjust')}
                         >
                           <RefreshCw className="h-3.5 w-3.5" />
-                          Adjust
+                          {t('inventory:stock.adjust')}
                         </button>
                         <button
                           onClick={() => { openAdjustModal(stock, 'transfer') }}
                           className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-purple-700 hover:bg-purple-50"
-                          title="Transfer stock"
+                          title={t('inventory:stock.transfer')}
                         >
                           <ArrowRightLeft className="h-3.5 w-3.5" />
-                          Transfer
+                          {t('inventory:stock.transfer')}
                         </button>
                       </div>
                     </td>
@@ -419,17 +418,17 @@ export function StockLevelsPage() {
       {stockLevels.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="rounded-lg border border-gray-200 bg-white p-4">
-            <div className="text-sm font-medium text-gray-500">Total Products</div>
+            <div className="text-sm font-medium text-gray-500">{t('inventory:stock.summary.totalProducts')}</div>
             <div className="mt-1 text-2xl font-bold text-gray-900">{total}</div>
           </div>
           <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
-            <div className="text-sm font-medium text-yellow-700">Low Stock</div>
+            <div className="text-sm font-medium text-yellow-700">{t('inventory:stock.summary.lowStock')}</div>
             <div className="mt-1 text-2xl font-bold text-yellow-900">
               {stockLevels.filter((s) => s.min_quantity != null && s.available <= s.min_quantity && s.available > 0).length}
             </div>
           </div>
           <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-            <div className="text-sm font-medium text-red-700">Out of Stock</div>
+            <div className="text-sm font-medium text-red-700">{t('inventory:stock.summary.outOfStock')}</div>
             <div className="mt-1 text-2xl font-bold text-red-900">
               {stockLevels.filter((s) => s.available <= 0).length}
             </div>
@@ -443,10 +442,10 @@ export function StockLevelsPage() {
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-gray-900">
-                {adjustmentType === 'adjust' && 'Adjust Stock'}
-                {adjustmentType === 'receive' && 'Receive Stock'}
-                {adjustmentType === 'issue' && 'Issue Stock'}
-                {adjustmentType === 'transfer' && 'Transfer Stock'}
+                {adjustmentType === 'adjust' && t('inventory:stock.modal.adjustTitle')}
+                {adjustmentType === 'receive' && t('inventory:stock.modal.receiveTitle')}
+                {adjustmentType === 'issue' && t('inventory:stock.modal.issueTitle')}
+                {adjustmentType === 'transfer' && t('inventory:stock.modal.transferTitle')}
               </h2>
               <button
                 onClick={closeModal}
@@ -458,13 +457,13 @@ export function StockLevelsPage() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Product</label>
+                <label className="block text-sm font-medium text-gray-700">{t('inventory:stock.modal.product')}</label>
                 <p className="mt-1 text-sm text-gray-900">{selectedStock.product_name}</p>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  {adjustmentType === 'transfer' ? 'From Location' : 'Location'}
+                  {adjustmentType === 'transfer' ? t('inventory:stock.modal.fromLocation') : t('inventory:stock.modal.location')}
                 </label>
                 <p className="mt-1 text-sm text-gray-900">{selectedStock.location_name}</p>
               </div>
@@ -472,7 +471,7 @@ export function StockLevelsPage() {
               {adjustmentType === 'transfer' && (
                 <div>
                   <label htmlFor="transfer-location" className="block text-sm font-medium text-gray-700">
-                    To Location
+                    {t('inventory:stock.modal.toLocation')}
                   </label>
                   <select
                     id="transfer-location"
@@ -480,7 +479,7 @@ export function StockLevelsPage() {
                     onChange={(e) => { setTransferLocationId(e.target.value) }}
                     className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
-                    <option value="">Select destination...</option>
+                    <option value="">{t('inventory:stock.modal.selectDestination')}</option>
                     {transferLocations.map((loc) => (
                       <option key={loc.id} value={loc.id}>
                         {loc.name} ({loc.code})
@@ -491,13 +490,13 @@ export function StockLevelsPage() {
               )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">Current Quantity</label>
+                <label className="block text-sm font-medium text-gray-700">{t('inventory:stock.modal.currentQuantity')}</label>
                 <p className="mt-1 text-sm text-gray-900">{selectedStock.quantity}</p>
               </div>
 
               <div>
                 <label htmlFor="quantity" className="block text-sm font-medium text-gray-700">
-                  {adjustmentType === 'adjust' ? 'New Quantity' : 'Quantity'}
+                  {adjustmentType === 'adjust' ? t('inventory:stock.modal.newQuantity') : t('inventory:stock.quantity')}
                 </label>
                 <input
                   type="number"
@@ -507,11 +506,11 @@ export function StockLevelsPage() {
                   min="0"
                   step="0.01"
                   className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  placeholder={adjustmentType === 'adjust' ? 'Enter new quantity' : 'Enter quantity'}
+                  placeholder={adjustmentType === 'adjust' ? t('inventory:stock.modal.enterNewQuantity') : t('inventory:stock.modal.enterQuantity')}
                 />
                 {adjustmentType === 'adjust' && adjustmentQuantity && (
                   <p className="mt-1 text-sm text-gray-500">
-                    Change: {Number(adjustmentQuantity) - selectedStock.quantity >= 0 ? '+' : ''}
+                    {t('inventory:stock.modal.change')}: {Number(adjustmentQuantity) - selectedStock.quantity >= 0 ? '+' : ''}
                     {(Number(adjustmentQuantity) - selectedStock.quantity).toFixed(2)}
                   </p>
                 )}
@@ -520,7 +519,7 @@ export function StockLevelsPage() {
               {adjustmentType !== 'transfer' && (
                 <div>
                   <label htmlFor="reason" className="block text-sm font-medium text-gray-700">
-                    Reason
+                    {t('inventory:stock.modal.reason')}
                   </label>
                   <select
                     id="reason"
@@ -528,18 +527,17 @@ export function StockLevelsPage() {
                     onChange={(e) => { setAdjustmentReason(e.target.value) }}
                     className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
-                    {adjustmentReasons.map((reason) => (
-                      <option key={reason.value} value={reason.value}>
-                        {reason.label}
-                      </option>
-                    ))}
+                    <option value="inventory_count">{t('inventory:stock.reasons.inventoryCount')}</option>
+                    <option value="damage">{t('inventory:stock.reasons.damage')}</option>
+                    <option value="correction">{t('inventory:stock.reasons.correction')}</option>
+                    <option value="other">{t('inventory:stock.reasons.other')}</option>
                   </select>
                 </div>
               )}
 
               <div>
                 <label htmlFor="notes" className="block text-sm font-medium text-gray-700">
-                  {adjustmentType === 'transfer' ? 'Reference' : 'Notes (optional)'}
+                  {adjustmentType === 'transfer' ? t('inventory:stock.modal.reference') : t('inventory:stock.modal.notes')}
                 </label>
                 <textarea
                   id="notes"
@@ -547,13 +545,13 @@ export function StockLevelsPage() {
                   onChange={(e) => { setAdjustmentNotes(e.target.value) }}
                   rows={2}
                   className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  placeholder={adjustmentType === 'transfer' ? 'Enter transfer reference...' : 'Add any additional notes...'}
+                  placeholder={adjustmentType === 'transfer' ? t('inventory:stock.modal.enterReference') : t('inventory:stock.modal.addNotes')}
                 />
               </div>
 
               {mutationError != null && (
                 <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-                  {mutationError instanceof Error ? mutationError.message : 'An error occurred. Please try again.'}
+                  {mutationError instanceof Error ? mutationError.message : t('common:errors.generic')}
                 </div>
               )}
 
@@ -563,7 +561,7 @@ export function StockLevelsPage() {
                   onClick={closeModal}
                   className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
-                  Cancel
+                  {t('common:actions.cancel')}
                 </button>
                 <button
                   type="button"
@@ -571,7 +569,7 @@ export function StockLevelsPage() {
                   disabled={isSubmitting || !adjustmentQuantity || (adjustmentType === 'transfer' && !transferLocationId)}
                   className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {isSubmitting ? 'Saving...' : adjustmentType === 'transfer' ? 'Transfer' : 'Save'}
+                  {isSubmitting ? t('inventory:stock.modal.saving') : adjustmentType === 'transfer' ? t('inventory:stock.transfer') : t('inventory:stock.modal.save')}
                 </button>
               </div>
             </div>

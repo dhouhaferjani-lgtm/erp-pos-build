@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useCompany } from '../../../hooks/useCompany'
 import { MarginIndicator, type MarginLevel } from '../MarginIndicator'
 
 export interface PriceInputWithMarginProps {
@@ -44,7 +45,7 @@ export function PriceInputWithMargin({
   costPrice,
   targetMargin,
   minimumMargin,
-  currency = 'TND',
+  currency,
   disabled = false,
   label,
   showMarginInput = true,
@@ -52,6 +53,8 @@ export function PriceInputWithMargin({
   canEditAtLoss = false,
 }: PriceInputWithMarginProps) {
   const { t } = useTranslation(['inventory'])
+  const { currentCompany } = useCompany()
+  const effectiveCurrency = currency ?? currentCompany?.currency ?? 'USD'
 
   const margin = calculateMargin(value, costPrice)
   const level = getMarginLevel(margin, targetMargin, minimumMargin)
@@ -115,7 +118,7 @@ export function PriceInputWithMargin({
   const formatCurrency = (val: number): string => {
     return new Intl.NumberFormat('fr-TN', {
       style: 'currency',
-      currency,
+      currency: effectiveCurrency,
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(val)
@@ -149,7 +152,7 @@ export function PriceInputWithMargin({
               } dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100`}
             />
             <span className="absolute end-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">
-              {currency}
+              {effectiveCurrency}
             </span>
           </div>
         </div>

@@ -11,14 +11,23 @@ enum MovementType: string
     case TransferIn = 'transfer_in';
     case TransferOut = 'transfer_out';
     case Adjustment = 'adjustment';
+    case Opening = 'opening';
 
     public function isInbound(): bool
     {
-        return in_array($this, [self::Receipt, self::TransferIn, self::Adjustment], true);
+        return in_array($this, [self::Receipt, self::TransferIn, self::Adjustment, self::Opening], true);
     }
 
     public function isOutbound(): bool
     {
         return in_array($this, [self::Issue, self::TransferOut], true);
+    }
+
+    /**
+     * Check if this movement type is for opening balance
+     */
+    public function isOpening(): bool
+    {
+        return $this === self::Opening;
     }
 }

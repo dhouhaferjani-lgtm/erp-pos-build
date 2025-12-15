@@ -22,6 +22,7 @@ return new class extends Migration
 
         // Add CHECK constraint for fiscal documents mandatory fields
         // Only enforced when fiscal_category is NOT 'NON_FISCAL'
+        // Note: previous_hash CAN be NULL for the genesis document (first in chain)
         DB::statement("
             ALTER TABLE documents
             ADD CONSTRAINT chk_fiscal_mandatory_core
@@ -33,7 +34,7 @@ return new class extends Migration
                     AND total IS NOT NULL
                     AND currency IS NOT NULL
                     AND fiscal_hash IS NOT NULL
-                    AND previous_hash IS NOT NULL
+                    AND chain_sequence IS NOT NULL
                 )
             )
         ");

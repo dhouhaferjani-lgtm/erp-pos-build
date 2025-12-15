@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { useCompany } from '../../../hooks/useCompany'
 
 export interface LineAllocation {
   lineId: string
@@ -20,15 +21,17 @@ export interface LandedCostBreakdownProps {
 
 export function LandedCostBreakdown({
   lines,
-  currency = 'TND',
+  currency,
   showProportion = true,
 }: LandedCostBreakdownProps) {
   const { t } = useTranslation(['inventory'])
+  const { currentCompany } = useCompany()
+  const effectiveCurrency = currency ?? currentCompany?.currency ?? 'USD'
 
   const formatCurrency = (value: number): string => {
     return new Intl.NumberFormat('fr-TN', {
       style: 'currency',
-      currency,
+      currency: effectiveCurrency,
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(value)

@@ -629,6 +629,160 @@ final class GeneralLedgerService
     }
 
     /**
+     * Create journal entry to clear customer advance against accounts receivable.
+     *
+     * When a sales order with prepayments is converted to an invoice,
+     * this clears the advance liability and reduces the receivable.
+     *
+     * Debit: Customer Advances (4191) - clear the liability
+     * Credit: Accounts Receivable (411) - reduce the receivable (with partner for subledger)
+     */
+    public function clearCustomerAdvanceToReceivable(
+        string $companyId,
+        string $partnerId,
+        string $invoiceId,
+        string $amount,
+        \DateTimeInterface $date,
+        ?string $description = null
+    ): JournalEntry {
+        $advanceAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerAdvance);
+        $receivableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerReceivable);
+
+        $entry = DB::transaction(function () use (
+            $companyId, $partnerId, $invoiceId, $amount,
+            $date, $description, $advanceAccount, $receivableAccount
+        ): JournalEntry {
+            $entryNumber = $this->generateEntryNumber($companyId);
+
+            // Get tenant_id from company
+            $company = \App\Modules\Company\Domain\Company::findOrFail($companyId);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $company->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => $date,
+                'description' => $description ?? 'Apply prepayment to invoice',
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'prepayment_application',
+                'source_id' => $invoiceId,
+            ]);
+
+            // Debit: Customer Advances (clear the liability)
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $advanceAccount->id,
+                'partner_id' => $partnerId,
+                'debit' => $amount,
+                'credit' => '0.00',
+                'description' => 'Clear customer advance',
+                'line_order' => 0,
+            ]);
+
+            // Credit: Accounts Receivable (reduce the receivable)
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $receivableAccount->id,
+                'partner_id' => $partnerId,
+                'debit' => '0.00',
+                'credit' => $amount,
+                'description' => 'Prepayment applied to invoice',
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+
+        // Refresh partner cached balance after GL write
+        $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
+
+        return $entry;
+    }
+
+    /**
+     * Create journal entry for Cost of Goods Sold (COGS).
+     *
+     * When an invoice containing physical products is posted, this records
+     * the cost of inventory sold:
+     * Debit: Cost of Goods Sold (expense - 601 in Tunisia)
+     * Credit: Inventory (asset - 37 in Tunisia)
+     *
+     * @param array<int, array{product_id: string, quantity: string, unit_cost: string}> $lineItems
+     */
+    public function createCOGSEntry(
+        string $companyId,
+        string $invoiceId,
+        string $documentNumber,
+        array $lineItems,
+        \DateTimeInterface $date,
+        ?string $description = null
+    ): ?JournalEntry {
+        // Calculate total COGS
+        $totalCOGS = '0.00';
+        foreach ($lineItems as $item) {
+            /** @var numeric-string $quantity */
+            $quantity = $item['quantity'];
+            /** @var numeric-string $unitCost */
+            $unitCost = $item['unit_cost'];
+            $lineCost = bcmul($quantity, $unitCost, 2);
+            $totalCOGS = bcadd($totalCOGS, $lineCost, 2);
+        }
+
+        // Don't create entry if no COGS
+        if (bccomp($totalCOGS, '0.00', 2) <= 0) {
+            return null;
+        }
+
+        $cogsAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CostOfGoodsSold);
+        $inventoryAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::Inventory);
+
+        return DB::transaction(function () use (
+            $companyId, $invoiceId, $documentNumber, $totalCOGS,
+            $date, $description, $cogsAccount, $inventoryAccount
+        ): JournalEntry {
+            $entryNumber = $this->generateEntryNumber($companyId);
+
+            // Get tenant_id from company
+            $company = \App\Modules\Company\Domain\Company::findOrFail($companyId);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $company->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => $date,
+                'description' => $description ?? "COGS for Invoice {$documentNumber}",
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'cogs',
+                'source_id' => $invoiceId,
+            ]);
+
+            // Debit: Cost of Goods Sold (expense increases)
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $cogsAccount->id,
+                'partner_id' => null,
+                'debit' => $totalCOGS,
+                'credit' => '0.00',
+                'description' => 'Cost of goods sold',
+                'line_order' => 0,
+            ]);
+
+            // Credit: Inventory (asset decreases)
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $inventoryAccount->id,
+                'partner_id' => null,
+                'debit' => '0.00',
+                'credit' => $totalCOGS,
+                'description' => 'Inventory reduction',
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+    }
+
+    /**
      * Post a journal entry (make it permanent with hash).
      */
     public function postEntry(JournalEntry $entry, User $user): void

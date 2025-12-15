@@ -7,6 +7,7 @@ namespace App\Http\Middleware;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use Closure;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -31,14 +32,26 @@ final class CompanyContextMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        /** @var User|null $user */
-        $user = $request->user();
+        // Skip company context for admin routes entirely
+        // Admin routes operate on the central database and don't need company context
+        if ($this->isAdminRoute($request)) {
+            return $next($request);
+        }
 
-        if ($user === null) {
+        /** @var Authenticatable|null $authenticatedUser */
+        $authenticatedUser = $request->user();
+
+        if ($authenticatedUser === null) {
             // Not authenticated, let auth middleware handle it
             return $next($request);
         }
 
+        // Skip company context for non-User types (e.g., SuperAdmin)
+        if (! $authenticatedUser instanceof User) {
+            return $next($request);
+        }
+
+        $user = $authenticatedUser;
         $companyId = $this->resolveCompanyId($request, $user);
 
         if ($companyId === null) {
@@ -70,6 +83,17 @@ final class CompanyContextMiddleware
         $response->headers->set('X-Company-Id', $companyId);
 
         return $response;
+    }
+
+    /**
+     * Check if the request is for an admin route.
+     */
+    private function isAdminRoute(Request $request): bool
+    {
+        $path = $request->path();
+
+        // Admin routes start with api/v1/admin or v1/admin
+        return str_starts_with($path, 'api/v1/admin') || str_starts_with($path, 'v1/admin');
     }
 
     /**

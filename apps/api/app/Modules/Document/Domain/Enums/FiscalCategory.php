@@ -10,6 +10,7 @@ enum FiscalCategory: string
     case FiscalReceipt = 'FISCAL_RECEIPT';
     case TaxInvoice = 'TAX_INVOICE';
     case CreditNote = 'CREDIT_NOTE';
+    case DeliveryNote = 'DELIVERY_NOTE';
 
     /**
      * Check if this category requires fiscal compliance
@@ -25,7 +26,7 @@ enum FiscalCategory: string
     public function requiresHashChain(): bool
     {
         return match ($this) {
-            self::TaxInvoice, self::CreditNote, self::FiscalReceipt => true,
+            self::TaxInvoice, self::CreditNote, self::FiscalReceipt, self::DeliveryNote => true,
             self::NonFiscal => false,
         };
     }
@@ -38,6 +39,7 @@ enum FiscalCategory: string
         return match ($type) {
             DocumentType::Invoice => self::TaxInvoice,
             DocumentType::CreditNote => self::CreditNote,
+            DocumentType::DeliveryNote => self::DeliveryNote,
             default => self::NonFiscal,
         };
     }
@@ -52,6 +54,7 @@ enum FiscalCategory: string
             self::FiscalReceipt => 'Fiscal Receipt',
             self::TaxInvoice => 'Tax Invoice',
             self::CreditNote => 'Credit Note',
+            self::DeliveryNote => 'Delivery Note',
         };
     }
 }

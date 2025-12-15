@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Providers;
 
+use App\Modules\Document\Domain\Events\InvoicePosted;
+use App\Modules\Inventory\Listeners\PostCOGSOnInvoice;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 class InventoryServiceProvider extends ServiceProvider
@@ -16,5 +19,15 @@ class InventoryServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadRoutesFrom(__DIR__.'/../Presentation/routes.php');
+        $this->registerEventListeners();
+    }
+
+    /**
+     * Register event listeners for inventory-related events.
+     */
+    private function registerEventListeners(): void
+    {
+        // Post COGS when an invoice is posted
+        Event::listen(InvoicePosted::class, PostCOGSOnInvoice::class);
     }
 }

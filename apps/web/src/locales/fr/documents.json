@@ -1,0 +1,16 @@
+{
+  "attachments": {
+    "title": "Pièces jointes",
+    "dropzone": "Glissez-déposez des fichiers ici, ou cliquez pour parcourir",
+    "allowedTypes": "Autorisés : {{types}} (max {{maxSize}}Mo)",
+    "uploading": "Téléchargement en cours...",
+    "noAttachments": "Aucune pièce jointe",
+    "errors": {
+      "fileTooLarge": "Le fichier dépasse la taille maximale de {{maxSize}}Mo",
+      "invalidType": "Type de fichier invalide. Autorisés : {{types}}",
+      "downloadFailed": "Échec du téléchargement",
+      "uploadFailed": "Échec de l'envoi du fichier",
+      "deleteFailed": "Échec de la suppression du fichier"
+    }
+  }
+}

@@ -15,4 +15,7 @@ return [
     App\Modules\Compliance\Providers\ComplianceServiceProvider::class,
     App\Modules\Import\Providers\ImportServiceProvider::class,
     App\Modules\Dashboard\Providers\DashboardServiceProvider::class,
+    App\Modules\Media\MediaServiceProvider::class,
+    App\Modules\Pricing\Providers\PricingServiceProvider::class,
+    App\Modules\Service\Providers\ServiceModuleServiceProvider::class,
 ];

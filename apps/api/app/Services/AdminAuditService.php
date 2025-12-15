@@ -6,7 +6,7 @@ namespace App\Services;
 
 use App\Models\AdminAuditLog;
 use App\Models\SuperAdmin;
-use App\Models\Tenant;
+use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Support\Str;
 
 class AdminAuditService

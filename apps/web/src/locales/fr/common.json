@@ -25,7 +25,14 @@
     "viewAll": "Voir tout",
     "expand": "Développer",
     "collapse": "Réduire",
-    "select": "Sélectionner..."
+    "select": "Sélectionner...",
+    "downloadPdf": "Télécharger PDF",
+    "previewPdf": "Aperçu PDF",
+    "printPdf": "Imprimer",
+    "downloading": "Téléchargement...",
+    "generating": "Génération...",
+    "sendEmail": "Envoyer par e-mail",
+    "sending": "Envoi..."
   },
   "validation": {
     "required": "Ce champ est requis",
@@ -226,6 +233,43 @@
     "documents": "Documents",
     "payments": "Paiements",
     "vehicles": "Véhicules"
+  },
+  "reports": {
+    "description": "Aperçu de la performance de votre entreprise",
+    "metrics": {
+      "totalInvoiced": "Total Facturé",
+      "totalCollected": "Total Encaissé",
+      "outstanding": "En Attente",
+      "quotesPending": "Devis en Cours",
+      "toCollect": "À encaisser"
+    },
+    "subtitles": {
+      "invoices": "{{count}} factures",
+      "payments": "{{count}} paiements",
+      "quotes": "{{count}} devis"
+    },
+    "sections": {
+      "documentSummary": "Résumé des Documents",
+      "partners": "Partenaires",
+      "inventory": "Inventaire",
+      "lowStockAlert": "Alerte Stock Faible"
+    },
+    "labels": {
+      "quotes": "Devis",
+      "salesOrders": "Bons de Commande",
+      "invoices": "Factures",
+      "totalDocuments": "Total Documents",
+      "customers": "Clients",
+      "suppliers": "Fournisseurs",
+      "totalProducts": "Total Produits",
+      "lowStock": "Stock Faible"
+    },
+    "table": {
+      "product": "Produit",
+      "currentStock": "Stock Actuel",
+      "reorderPoint": "Seuil de Réapprovisionnement"
+    },
+    "moreProducts": "Et {{count}} autres produits..."
   },
   "fiscal": {
     "category": {
@@ -575,6 +619,11 @@
       "notes": "Notes"
     }
   },
+  "purchases": {
+    "supplierInvoiceNumber": "N° facture fournisseur",
+    "supplierInvoiceNumberPlaceholder": "ex. FAC-2025-001",
+    "supplierInvoiceDate": "Date facture fournisseur"
+  },
   "settings": {
     "title": "Paramètres",
     "description": "Gérez les paramètres et la configuration de votre application",
@@ -607,6 +656,153 @@
       "apiUrl": "URL de l'API",
       "buildDate": "Date de compilation",
       "notConfigured": "Non configuré"
+    }
+  },
+  "roles": {
+    "title": "Rôles et permissions",
+    "subtitle": "{{count}} rôles | {{permCount}} permissions",
+    "addRole": "Ajouter un rôle",
+    "editRole": "Modifier le rôle",
+    "createRole": "Créer un rôle",
+    "deleteRole": "Supprimer le rôle",
+    "roleName": "Nom du rôle",
+    "roleNamePlaceholder": "ex. Responsable commercial",
+    "permissions": "Permissions",
+    "permissionMatrix": "Matrice des permissions",
+    "permissionMatrixDescription": "Voir quelles permissions sont attribuées à chaque rôle",
+    "selectPermissions": "Sélectionnez les permissions pour ce rôle",
+    "usersAssigned": "{{count}} utilisateur(s) assigné(s)",
+    "noUsers": "Aucun utilisateur assigné",
+    "systemRole": "Rôle système",
+    "systemRoleHint": "Les rôles système ne peuvent pas être renommés ou supprimés",
+    "clickToEdit": "Cliquer pour modifier",
+    "empty": {
+      "title": "Aucun rôle",
+      "description": "Commencez par créer votre premier rôle."
+    },
+    "confirmations": {
+      "delete": {
+        "title": "Supprimer le rôle",
+        "message": "Êtes-vous sûr de vouloir supprimer le rôle \"{{name}}\" ? Cette action est irréversible.",
+        "confirm": "Supprimer le rôle"
+      }
+    },
+    "messages": {
+      "created": "Rôle créé avec succès",
+      "updated": "Rôle mis à jour avec succès",
+      "deleted": "Rôle supprimé avec succès",
+      "cannotDeleteSystem": "Les rôles système ne peuvent pas être supprimés",
+      "cannotDeleteWithUsers": "Impossible de supprimer un rôle avec des utilisateurs assignés. Réassignez d'abord les utilisateurs."
+    },
+    "validation": {
+      "nameRequired": "Le nom du rôle est requis",
+      "nameExists": "Un rôle avec ce nom existe déjà"
+    },
+    "info": {
+      "title": "Gestion des rôles",
+      "description": "Créez des rôles personnalisés pour définir ce que les utilisateurs peuvent faire dans l'application. Les rôles système (admin, propriétaire) ne peuvent pas être modifiés."
+    }
+  },
+  "email": {
+    "title": "Envoyer le document par e-mail",
+    "recipientEmail": "E-mail du destinataire",
+    "recipientEmailPlaceholder": "email@exemple.com",
+    "recipientEmailHint": "Laissez vide pour utiliser l'e-mail du partenaire",
+    "subject": "Objet",
+    "subjectPlaceholder": "Objet personnalisé (optionnel)",
+    "message": "Message",
+    "messagePlaceholder": "Ajouter un message personnalisé (optionnel)",
+    "ccEmails": "CC",
+    "ccEmailsPlaceholder": "Destinataires supplémentaires (séparés par des virgules)",
+    "send": "Envoyer l'e-mail",
+    "sending": "Envoi...",
+    "success": "E-mail envoyé avec succès",
+    "error": "Échec de l'envoi de l'e-mail",
+    "noRecipient": "Aucune adresse e-mail de destinataire trouvée"
+  },
+  "reconciliation": {
+    "title": "Rapprochement Bancaire",
+    "subtitle": "Rapprocher les relevés bancaires avec les paiements enregistrés",
+    "startNew": "Démarrer un rapprochement",
+    "continue": "Continuer le rapprochement",
+    "viewDetails": "Voir les détails",
+    "statementDate": "Date du relevé",
+    "statementBalance": "Solde du relevé",
+    "openingBalance": "Solde d'ouverture",
+    "closingBalance": "Solde de clôture",
+    "difference": "Différence",
+    "repository": "Compte bancaire / Caisse",
+    "selectRepository": "Sélectionner le compte à rapprocher",
+    "status": {
+      "draft": "En cours",
+      "completed": "Terminé",
+      "cancelled": "Annulé"
+    },
+    "items": {
+      "title": "Transactions",
+      "matched": "Rapprochées",
+      "unmatched": "Non rapprochées",
+      "matchAll": "Tout rapprocher",
+      "unmatchAll": "Tout annuler",
+      "match": "Rapprocher",
+      "unmatch": "Annuler",
+      "bankReference": "Référence bancaire",
+      "bankReferencePlaceholder": "Entrez la référence bancaire (optionnel)",
+      "paymentDate": "Date de paiement",
+      "paymentReference": "Référence",
+      "paymentAmount": "Montant",
+      "partner": "Partenaire"
+    },
+    "summary": {
+      "title": "Résumé du rapprochement",
+      "matchedCount": "Transactions rapprochées",
+      "unmatchedCount": "Transactions non rapprochées",
+      "matchedTotal": "Total rapproché",
+      "unmatchedTotal": "Total non rapproché",
+      "canComplete": "Prêt à terminer",
+      "cannotComplete": "La différence doit être nulle pour terminer"
+    },
+    "actions": {
+      "complete": "Terminer le rapprochement",
+      "cancel": "Annuler le rapprochement",
+      "save": "Sauvegarder"
+    },
+    "confirmations": {
+      "complete": {
+        "title": "Terminer le rapprochement",
+        "message": "Êtes-vous sûr de vouloir terminer ce rapprochement ? Les paiements rapprochés seront marqués comme réconciliés.",
+        "confirm": "Terminer"
+      },
+      "cancel": {
+        "title": "Annuler le rapprochement",
+        "message": "Êtes-vous sûr de vouloir annuler ce rapprochement ? Tous les rapprochements seront perdus.",
+        "confirm": "Annuler le rapprochement"
+      }
+    },
+    "messages": {
+      "started": "Rapprochement démarré",
+      "completed": "Rapprochement terminé avec succès",
+      "cancelled": "Rapprochement annulé",
+      "itemMatched": "Transaction rapprochée",
+      "itemUnmatched": "Rapprochement annulé",
+      "differenceWarning": "Il y a une différence de {{amount}}. Résolvez avant de terminer."
+    },
+    "empty": {
+      "title": "Aucun rapprochement",
+      "description": "Démarrez une nouvelle session de rapprochement pour faire correspondre vos relevés bancaires avec les paiements enregistrés."
+    },
+    "filters": {
+      "all": "Tous",
+      "inProgress": "En cours",
+      "completed": "Terminés"
+    },
+    "table": {
+      "date": "Date",
+      "repository": "Compte",
+      "statementBalance": "Relevé",
+      "difference": "Différence",
+      "status": "Statut",
+      "createdBy": "Créé par"
     }
   }
 }

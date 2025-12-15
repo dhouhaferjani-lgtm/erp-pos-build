@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\CompanyContextMiddleware;
+use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\SetLocale;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
@@ -16,6 +17,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Register middleware aliases
+        $middleware->alias([
+            'super_admin' => EnsureSuperAdmin::class,
+        ]);
+
         // Apply SetLocale and CompanyContext middleware to all API requests
         $middleware->appendToGroup('api', [
             SetLocale::class,

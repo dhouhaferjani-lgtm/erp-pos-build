@@ -32,6 +32,8 @@ import {
   Tag,
   MinusCircle,
   ClipboardCheck,
+  Wrench,
+  FolderTree,
 } from 'lucide-react'
 import { usePermissions } from '../../../hooks/usePermissions'
 
@@ -75,6 +77,7 @@ const navigation: NavModule[] = [
     children: [
       { key: 'suppliers', href: '/purchases/suppliers', icon: Users },
       { key: 'purchaseOrders', href: '/purchases/orders', icon: ClipboardList },
+      { key: 'goodsReceipts', href: '/purchases/receipts', icon: Package },
     ],
   },
   {
@@ -92,6 +95,15 @@ const navigation: NavModule[] = [
     key: 'vehicles',
     href: '/vehicles',
     icon: Car,
+  },
+  {
+    key: 'services',
+    icon: Wrench,
+    module: 'services',
+    children: [
+      { key: 'allServices', href: '/services', icon: Wrench },
+      { key: 'serviceCategories', href: '/services/categories', icon: FolderTree },
+    ],
   },
   {
     key: 'treasury',

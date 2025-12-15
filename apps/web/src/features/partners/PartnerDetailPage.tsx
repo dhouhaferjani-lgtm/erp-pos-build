@@ -53,6 +53,10 @@ interface Document {
   document_number: string
   type: 'quote' | 'sales_order' | 'invoice' | 'credit_note' | 'purchase_order'
   status: 'draft' | 'confirmed' | 'posted' | 'cancelled'
+  fiscal_category: 'NON_FISCAL' | 'FISCAL_RECEIPT' | 'TAX_INVOICE' | 'CREDIT_NOTE'
+  fiscal_status: 'DRAFT' | 'SEALED' | 'VOIDED'
+  is_sealed: boolean
+  is_fiscal: boolean
   total: string | null
   document_date: string
 }

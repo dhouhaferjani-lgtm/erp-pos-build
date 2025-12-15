@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { AdditionalCostsForm, type AdditionalCost } from '../../../components/organisms/AdditionalCostsForm'
+import { useCompany } from '../../../hooks/useCompany'
 import {
   useAdditionalCosts,
   useCreateAdditionalCost,
@@ -20,8 +21,10 @@ interface PurchaseOrderAdditionalCostsProps {
 export function PurchaseOrderAdditionalCosts({
   documentId,
   disabled = false,
-  currency = 'TND',
+  currency,
 }: PurchaseOrderAdditionalCostsProps) {
+  const { currentCompany } = useCompany()
+  const effectiveCurrency = currency ?? currentCompany?.currency ?? 'USD'
   const { data, isLoading } = useAdditionalCosts(documentId)
   const createMutation = useCreateAdditionalCost(documentId)
   const updateMutation = useUpdateAdditionalCost(documentId)
@@ -108,7 +111,7 @@ export function PurchaseOrderAdditionalCosts({
         costs={costs}
         onChange={handleChange}
         disabled={disabled || isMutating}
-        currency={currency}
+        currency={effectiveCurrency}
       />
     </div>
   )

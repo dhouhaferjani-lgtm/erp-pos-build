@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { useCompany } from '../../../hooks/useCompany'
 import { PriceInputWithMargin } from '../../molecules/PriceInputWithMargin'
 
 export interface ProductPricingCardProps {
@@ -25,17 +26,19 @@ export function ProductPricingCard({
   onSalePriceChange,
   targetMargin,
   minimumMargin,
-  currency = 'TND',
+  currency,
   disabled = false,
   canEditBelowMinimum = true,
   canEditAtLoss = false,
 }: ProductPricingCardProps) {
   const { t } = useTranslation(['inventory'])
+  const { currentCompany } = useCompany()
+  const effectiveCurrency = currency ?? currentCompany?.currency ?? 'USD'
 
   const formatCurrency = (value: number): string => {
     return new Intl.NumberFormat('fr-TN', {
       style: 'currency',
-      currency,
+      currency: effectiveCurrency,
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(value)
@@ -106,7 +109,7 @@ export function ProductPricingCard({
         costPrice={weightedAverageCost}
         targetMargin={targetMargin}
         minimumMargin={minimumMargin}
-        currency={currency}
+        currency={effectiveCurrency}
         disabled={disabled}
         label={t('inventory:pricing.salePrice')}
         showMarginInput={true}

@@ -52,6 +52,8 @@
     "new": "New Document",
     "number": "Number",
     "type": "Type",
+    "selectType": "Select type",
+    "typeRequired": "Type is required",
     "status": "Status",
     "partner": "Partner",
     "partnerInfo": "Partner Information",
@@ -64,7 +66,11 @@
     "tax": "Tax",
     "totals": "Totals",
     "balanceDue": "Balance Due",
+    "amountDue": "Amount Due",
     "paymentStatus": "Payment Status",
+    "paymentHistory": "Payment History",
+    "payment": "Payment",
+    "ref": "Ref",
     "notes": "Notes",
     "lineItems": "Line Items",
     "email": "Email",
@@ -97,6 +103,7 @@
       "cancelled": "Cancelled",
       "partiallyPaid": "Partially Paid",
       "partial": "Partial",
+      "prepaid": "Prepaid",
       "unpaid": "Unpaid",
       "overdue": "Overdue"
     },
@@ -137,7 +144,10 @@
     "title": "Orders",
     "new": "New Order",
     "convertToInvoice": "Convert to Invoice",
-    "convertToDelivery": "Convert to Delivery Note"
+    "convertToDelivery": "Convert to Delivery Note",
+    "fullyDelivered": "Fully Delivered",
+    "fullyInvoiced": "Fully Invoiced",
+    "alreadyDelivered": "Delivery note already exists for this order"
   },
   "purchaseOrders": {
     "title": "Purchase Orders",
@@ -166,6 +176,34 @@
     "new": "New Invoice",
     "post": "Post Invoice",
     "createCreditNote": "Create Credit Note"
+  },
+  "deliveryNotes": {
+    "title": "Delivery Notes",
+    "singular": "delivery note",
+    "plural": "delivery notes",
+    "consolidation": {
+      "title": "Consolidate Delivery Notes",
+      "description": "Select confirmed delivery notes to combine into a single invoice. All selected notes must belong to the same partner and use the same currency.",
+      "noDeliveryNotes": "No delivery notes available",
+      "noDeliveryNotesDescription": "There are no confirmed delivery notes waiting to be invoiced.",
+      "selected": "selected",
+      "invoiceTotal": "Invoice Total",
+      "createInvoice": "Create Invoice",
+      "errors": {
+        "differentPartners": "All selected delivery notes must belong to the same partner",
+        "differentCurrencies": "All selected delivery notes must use the same currency",
+        "invalidSelection": "Please select at least one delivery note"
+      }
+    }
+  },
+  "relatedDocuments": {
+    "title": "Related Documents",
+    "description": "View the document chain showing how this document relates to others",
+    "sourceDocuments": "Source Documents",
+    "derivedDocuments": "Derived Documents",
+    "currentDocument": "Current Document",
+    "current": "Current",
+    "noRelated": "This document has no related documents"
   },
   "creditNotes": {
     "title": "Credit Notes",

@@ -17,13 +17,22 @@ final class PaymentRecorded extends DomainEvent
     public function __construct(
         public readonly string $paymentId,
         public readonly string $tenantId,
+        public readonly string $companyId,
         public readonly string $partnerId,
         public readonly string $amount,
         public readonly string $currency,
-        public readonly string $paymentMethodId,
+        public readonly ?string $paymentMethodId,
         public readonly string $recordedAt,
     ) {
         parent::__construct($paymentId);
+    }
+
+    /**
+     * Get the event name for audit logging.
+     */
+    public function getEventName(): string
+    {
+        return 'payment.recorded';
     }
 
     /**

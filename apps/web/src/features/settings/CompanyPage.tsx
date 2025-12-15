@@ -16,6 +16,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { api, getErrorMessage } from '../../lib/api'
+import { countries } from '../../lib/countries'
 
 interface CompanySettings {
   name: string
@@ -353,14 +354,19 @@ export function CompanyPage() {
                 <label htmlFor="country" className="block text-sm font-medium text-gray-700">
                   Country
                 </label>
-                <input
-                  type="text"
+                <select
                   id="country"
                   value={formData.address?.country ?? ''}
                   onChange={(e) => { handleAddressChange('country', e.target.value) }}
-                  placeholder="France"
                   className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
+                >
+                  <option value="">{t('common:selectCountry')}</option>
+                  {countries.map((country) => (
+                    <option key={country.code} value={country.code}>
+                      {country.name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
