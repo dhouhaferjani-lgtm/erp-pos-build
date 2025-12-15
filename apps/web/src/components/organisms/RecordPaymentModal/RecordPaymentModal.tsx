@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Loader2, Plus, Lock, CheckCircle, Trash2, Check } from 'lucide-react'
+import { Loader2, Plus, CheckCircle, Trash2, Check } from 'lucide-react'
 import { Modal, ModalHeader, ModalContent, ModalFooter } from '../Modal'
 import { FormField } from '../../atoms/FormField'
 import { Input } from '../../atoms/Input'
@@ -238,8 +238,16 @@ export function RecordPaymentModal({
   }
 
   const updatePaymentLine = (id: string, field: keyof PaymentLineData, value: string | boolean) => {
-    setPaymentLines(paymentLines.map(line =>
+    setPaymentLines(prev => prev.map(line =>
       line.id === id ? { ...line, [field]: value } : line
+    ))
+    setValidationError(null)
+  }
+
+  // Update multiple fields at once (avoids race conditions)
+  const updatePaymentLineMultiple = (id: string, updates: Partial<PaymentLineData>) => {
+    setPaymentLines(prev => prev.map(line =>
+      line.id === id ? { ...line, ...updates } : line
     ))
     setValidationError(null)
   }
@@ -532,9 +540,11 @@ export function RecordPaymentModal({
                             id={`method-${line.id}`}
                             value={line.payment_method_id}
                             onChange={e => {
-                              updatePaymentLine(line.id, 'payment_method_id', e.target.value)
-                              // Reset repository when method changes
-                              updatePaymentLine(line.id, 'repository_id', '')
+                              // Use atomic update to prevent state race condition
+                              updatePaymentLineMultiple(line.id, {
+                                payment_method_id: e.target.value,
+                                repository_id: '' // Reset repository when method changes
+                              })
                             }}
                           >
                             <option value="">{t('common:actions.select')}</option>
