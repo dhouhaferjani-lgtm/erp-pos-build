@@ -1,6 +1,14 @@
 {
   "title": "Vehicles",
+  "singular": "vehicle",
+  "plural": "vehicles",
+  "registered": "registered",
   "new": "Add Vehicle",
+  "searchPlaceholder": "Search by license plate, VIN, brand, or model...",
+  "table": {
+    "vehicle": "Vehicle",
+    "fuel": "Fuel"
+  },
   "edit": "Edit Vehicle",
   "licensePlate": "License Plate",
   "brand": "Brand",

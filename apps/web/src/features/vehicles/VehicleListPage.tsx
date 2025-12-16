@@ -35,7 +35,7 @@ interface VehiclesResponse {
 }
 
 export function VehicleListPage() {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['common', 'vehicles'])
   const [searchQuery, setSearchQuery] = useState('')
 
   const { data, isLoading, error } = useQuery({
@@ -57,9 +57,9 @@ export function VehicleListPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('navigation.vehicles', 'Vehicles')}</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{t('vehicles:title')}</h1>
           <p className="text-gray-500">
-            {total} vehicle{total !== 1 ? 's' : ''} registered
+            {total} {total === 1 ? t('vehicles:singular') : t('vehicles:plural')} {t('vehicles:registered')}
           </p>
         </div>
         <Link
@@ -67,7 +67,7 @@ export function VehicleListPage() {
           className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
         >
           <Plus className="h-4 w-4" />
-          {t('actions.add', 'Add')} Vehicle
+          {t('vehicles:new')}
         </Link>
       </div>
 
@@ -76,7 +76,7 @@ export function VehicleListPage() {
         <SearchInput
           value={searchQuery}
           onChange={setSearchQuery}
-          placeholder="Search by license plate, VIN, brand, or model..."
+          placeholder={t('vehicles:searchPlaceholder')}
           className="w-full sm:w-96"
         />
       </div>
@@ -94,12 +94,12 @@ export function VehicleListPage() {
         <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
           <Car className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-sm font-semibold text-gray-900">
-            {searchQuery ? t('status.noResults') : 'No vehicles'}
+            {searchQuery ? t('common:status.noResults') : t('vehicles:empty.title')}
           </h3>
           <p className="mt-1 text-sm text-gray-500">
             {searchQuery
-              ? t('status.tryDifferentSearch', 'Try a different search term.')
-              : 'Get started by adding a new vehicle.'}
+              ? t('common:status.tryDifferentSearch')
+              : t('vehicles:empty.description')}
           </p>
           {!searchQuery && (
             <div className="mt-6">
@@ -108,7 +108,7 @@ export function VehicleListPage() {
                 className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
               >
                 <Plus className="h-4 w-4" />
-                Add Vehicle
+                {t('vehicles:new')}
               </Link>
             </div>
           )}
@@ -119,22 +119,22 @@ export function VehicleListPage() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Vehicle
+                  {t('vehicles:table.vehicle')}
                 </th>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  License Plate
+                  {t('vehicles:licensePlate')}
                 </th>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  VIN
+                  {t('vehicles:vin')}
                 </th>
                 <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Year
+                  {t('vehicles:year')}
                 </th>
                 <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Mileage
+                  {t('vehicles:mileage')}
                 </th>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Fuel
+                  {t('vehicles:table.fuel')}
                 </th>
               </tr>
             </thead>

@@ -219,9 +219,11 @@
   "no": "Non",
   "actionsLabel": "Actions",
   "allStatuses": "Tous les statuts",
-  "total": "Total",
-  "listView": "Vue en liste",
-  "gridView": "Vue en grille",
+  "total": "total",
+  "views": {
+    "list": "Vue liste",
+    "grid": "Vue grille"
+  },
   "more": "de plus",
   "filters": {
     "all": "Tous",

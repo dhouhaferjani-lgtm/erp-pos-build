@@ -3,6 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, GripVertical, Search, X } from 'lucide-react'
 import { api } from '../../../lib/api'
+import { formatCurrency } from '../../../lib/format'
+import { useCompanyStore } from '../../../stores/companyStore'
 import { AddQuickProductModal } from '../../../components/organisms'
 
 interface Product {
@@ -37,11 +39,16 @@ interface DocumentLineEditorProps {
 export function DocumentLineEditor({ lines, onChange, readonly = false }: DocumentLineEditorProps) {
   const { t } = useTranslation(['sales', 'common'])
   const queryClient = useQueryClient()
+  const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
   const [searchQuery, setSearchQuery] = useState('')
   const [showProductSearch, setShowProductSearch] = useState(false)
   const [showProductModal, setShowProductModal] = useState(false)
   const [editingLineId, setEditingLineId] = useState<string | null>(null)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+
+  // Get company currency with fallback
+  const companyCurrency = currentCompany?.currency ?? 'EUR'
+  const companyLocale = currentCompany?.locale?.replace('_', '-') ?? 'en-US'
 
   // Fetch products for search
   const { data: productsData, isLoading: isLoadingProducts } = useQuery({
@@ -180,14 +187,16 @@ export function DocumentLineEditor({ lines, onChange, readonly = false }: Docume
     setDraggedIndex(null)
   }
 
-  // Format currency
-  const formatCurrency = (amount: string | number) => {
+  // Format currency using company settings
+  const formatAmount = (amount: string | number) => {
     const num = typeof amount === 'string' ? parseFloat(amount) : amount
-    if (isNaN(num)) return '$0.00'
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(num)
+    if (isNaN(num)) {
+      return formatCurrency(0, { currency: companyCurrency, locale: companyLocale })
+    }
+    return formatCurrency(num, {
+      currency: companyCurrency,
+      locale: companyLocale,
+    })
   }
 
   return (
@@ -306,7 +315,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false }: Docume
                   </td>
                   <td className="px-4 py-3 text-end">
                     {readonly ? (
-                      <span className="text-sm text-gray-900">{formatCurrency(line.unit_price)}</span>
+                      <span className="text-sm text-gray-900">{formatAmount(line.unit_price)}</span>
                     ) : (
                       <input
                         type="number"
@@ -337,7 +346,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false }: Docume
                     )}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-end text-sm font-medium text-gray-900">
-                    {formatCurrency(line.line_total)}
+                    {formatAmount(line.line_total)}
                   </td>
                   {!readonly && (
                     <td className="px-3 py-3 text-center">
@@ -365,15 +374,15 @@ export function DocumentLineEditor({ lines, onChange, readonly = false }: Docume
             <dl className="w-64 space-y-2">
               <div className="flex justify-between text-sm">
                 <dt className="text-gray-500">{t('sales:lineItems.subtotal')}</dt>
-                <dd className="font-medium text-gray-900">{formatCurrency(totals.subtotal)}</dd>
+                <dd className="font-medium text-gray-900">{formatAmount(totals.subtotal)}</dd>
               </div>
               <div className="flex justify-between text-sm">
                 <dt className="text-gray-500">{t('sales:lineItems.tax')}</dt>
-                <dd className="font-medium text-gray-900">{formatCurrency(totals.tax)}</dd>
+                <dd className="font-medium text-gray-900">{formatAmount(totals.tax)}</dd>
               </div>
               <div className="flex justify-between border-t border-gray-200 pt-2 text-base">
                 <dt className="font-semibold text-gray-900">{t('sales:lineItems.total')}</dt>
-                <dd className="font-semibold text-gray-900">{formatCurrency(totals.total)}</dd>
+                <dd className="font-semibold text-gray-900">{formatAmount(totals.total)}</dd>
               </div>
             </dl>
           </div>
@@ -452,7 +461,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false }: Docume
                               <div className="text-xs text-gray-500">{product.sku}</div>
                             </div>
                             <div className="text-sm font-medium text-gray-900">
-                              {formatCurrency(product.price)}
+                              {formatAmount(product.price)}
                             </div>
                           </button>
                         </li>

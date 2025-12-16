@@ -569,10 +569,10 @@
       "categoryDeleted": "Category deleted successfully"
     }
   },
-  "common": {
-    "total": "total",
-    "listView": "List view",
-    "gridView": "Grid view"
+  "total": "total",
+  "views": {
+    "list": "List view",
+    "grid": "Grid view"
   },
   "users": {
     "title": "User Management",

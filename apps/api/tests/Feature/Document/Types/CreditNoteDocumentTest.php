@@ -88,20 +88,31 @@ class CreditNoteDocumentTest extends TestCase
 
     public function test_credit_note_can_be_created(): void
     {
-        $response = $this->actingAs($this->user)->postJson('/api/v1/credit-notes', [
+        // Create a posted invoice first (required for credit note creation)
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'partner_id' => $this->partner->id,
-            'document_date' => '2025-01-20',
-            'lines' => [
-                [
-                    'description' => 'Refund for damaged goods',
-                    'quantity' => '1.00',
-                    'unit_price' => '100.00',
-                ],
-            ],
+            'type' => DocumentType::Invoice,
+            'status' => DocumentStatus::Posted,
+            'document_number' => 'INV-2025-0001',
+            'document_date' => '2025-01-15',
+            'currency' => 'EUR',
+            'subtotal' => '100.00',
+            'tax_amount' => '0.00',
+            'total' => '100.00',
+            'balance_due' => '100.00',
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/credit-notes', [
+            'source_invoice_id' => $invoice->id,
+            'amount' => '100.00',
+            'reason' => 'damaged_goods',
+            'notes' => 'Refund for damaged goods',
         ]);
 
         $response->assertStatus(201);
-        $this->assertEquals('credit_note', $response->json('data.type'));
+        $this->assertEquals($invoice->id, $response->json('data.source_invoice_id'));
     }
 
     public function test_credit_note_can_reference_original_invoice(): void
@@ -112,26 +123,24 @@ class CreditNoteDocumentTest extends TestCase
             'partner_id' => $this->partner->id,
             'type' => DocumentType::Invoice,
             'status' => DocumentStatus::Posted,
-            'document_number' => 'INV-2025-0001',
+            'document_number' => 'INV-2025-0002',
             'document_date' => '2025-01-15',
             'currency' => 'EUR',
+            'subtotal' => '100.00',
+            'tax_amount' => '0.00',
+            'total' => '100.00',
+            'balance_due' => '100.00',
         ]);
 
         $response = $this->actingAs($this->user)->postJson('/api/v1/credit-notes', [
-            'partner_id' => $this->partner->id,
-            'document_date' => '2025-01-20',
-            'source_document_id' => $invoice->id,
-            'lines' => [
-                [
-                    'description' => 'Refund for INV-2025-0001',
-                    'quantity' => '1.00',
-                    'unit_price' => '50.00',
-                ],
-            ],
+            'source_invoice_id' => $invoice->id,
+            'amount' => '50.00',
+            'reason' => 'price_adjustment',
+            'notes' => 'Partial refund for INV-2025-0002',
         ]);
 
         $response->assertStatus(201);
-        $this->assertEquals($invoice->id, $response->json('data.source_document_id'));
+        $this->assertEquals($invoice->id, $response->json('data.source_invoice_id'));
     }
 
     public function test_credit_note_can_be_confirmed(): void

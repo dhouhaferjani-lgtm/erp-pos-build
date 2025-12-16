@@ -4,6 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Edit, Trash2, Package, DollarSign, Barcode, Tag, Clock } from 'lucide-react'
 import { api, apiDelete } from '../../lib/api'
+import { useCompanyStore } from '../../stores/companyStore'
+import { formatCurrency } from '../../lib/format'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 
 type ProductType = 'part' | 'service' | 'consumable'
@@ -38,6 +40,11 @@ const typeColors: Record<ProductType, string> = {
 
 export function ProductDetailPage() {
   const { t } = useTranslation(['inventory', 'common'])
+  const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+
+  // Get company currency with fallback
+  const companyCurrency = currentCompany?.currency ?? 'EUR'
+  const companyLocale = currentCompany?.locale?.replace('_', '-') ?? 'en-US'
 
   // Helper to get translated type labels
   const getTypeLabel = (type: ProductType) => t(`products.types.${type}`)
@@ -76,12 +83,13 @@ export function ProductDetailPage() {
     setShowDeleteDialog(false)
   }
 
-  const formatCurrency = (amount: string | null) => {
+  // Format currency using company settings
+  const formatAmount = (amount: string | null) => {
     if (!amount) return '-'
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(parseFloat(amount))
+    return formatCurrency(parseFloat(amount), {
+      currency: companyCurrency,
+      locale: companyLocale,
+    })
   }
 
   const formatDate = (dateString: string) => {
@@ -206,13 +214,13 @@ export function ProductDetailPage() {
               <div className="rounded-lg bg-green-50 p-4">
                 <label className="text-sm font-medium text-green-700">{t('products.salePrice')}</label>
                 <p className="mt-1 text-xl font-bold text-green-900">
-                  {formatCurrency(product.sale_price)}
+                  {formatAmount(product.sale_price)}
                 </p>
               </div>
               <div className="rounded-lg bg-blue-50 p-4">
                 <label className="text-sm font-medium text-blue-700">{t('products.purchasePrice')}</label>
                 <p className="mt-1 text-xl font-bold text-blue-900">
-                  {formatCurrency(product.purchase_price)}
+                  {formatAmount(product.purchase_price)}
                 </p>
               </div>
               <div className="rounded-lg bg-gray-50 p-4">
@@ -226,7 +234,7 @@ export function ProductDetailPage() {
               <div className="mt-4 rounded-lg bg-yellow-50 p-4">
                 <label className="text-sm font-medium text-yellow-700">{t('products.margin')}</label>
                 <p className="mt-1 text-lg font-semibold text-yellow-900">
-                  {formatCurrency(
+                  {formatAmount(
                     String(parseFloat(product.sale_price) - parseFloat(product.purchase_price))
                   )}{' '}
                   ({(

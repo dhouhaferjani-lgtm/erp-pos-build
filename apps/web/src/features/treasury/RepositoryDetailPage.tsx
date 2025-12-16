@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Vault, Building2, CreditCard, Wallet, Calendar, ExternalLink } from 'lucide-react'
 import { api } from '../../lib/api'
+import { useCompanyStore } from '../../stores/companyStore'
+import { formatCurrency } from '../../lib/format'
 
 interface Repository {
   id: string
@@ -93,6 +95,11 @@ const statusLabels: Record<string, string> = {
 export function RepositoryDetailPage() {
   const { t } = useTranslation()
   const { id } = useParams<{ id: string }>()
+  const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+
+  // Get company currency with fallback
+  const companyCurrency = currentCompany?.currency ?? 'EUR'
+  const companyLocale = currentCompany?.locale?.replace('_', '-') ?? 'en-US'
 
   const { data: repositoryData, isLoading: isLoadingRepository, error: repositoryError } = useQuery({
     queryKey: ['payment-repository', id],
@@ -115,12 +122,13 @@ export function RepositoryDetailPage() {
   const repository = repositoryData?.data
   const transactions = Array.isArray(transactionsData?.data) ? transactionsData.data : []
 
-  const formatCurrency = (amount: string | number) => {
+  // Format currency using company settings
+  const formatAmount = (amount: string | number) => {
     const num = typeof amount === 'string' ? parseFloat(amount) : amount
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(num)
+    return formatCurrency(num, {
+      currency: companyCurrency,
+      locale: companyLocale,
+    })
   }
 
   if (isLoadingRepository) {
@@ -175,7 +183,7 @@ export function RepositoryDetailPage() {
         <div className="text-end">
           <p className="text-sm text-gray-500">{t('treasury.balance', 'Current Balance')}</p>
           <p className={`text-3xl font-bold ${parseFloat(repository.balance) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-            {formatCurrency(repository.balance)}
+            {formatAmount(repository.balance)}
           </p>
         </div>
       </div>
@@ -242,7 +250,7 @@ export function RepositoryDetailPage() {
             <div className="flex justify-between">
               <dt className="text-gray-500">{t('treasury.totalReceived', 'Total Received')}</dt>
               <dd className="text-green-600 font-semibold">
-                {formatCurrency(
+                {formatAmount(
                   transactions
                     .filter((t) => t.status === 'completed')
                     .reduce((sum, t) => sum + parseFloat(t.amount), 0)
@@ -364,7 +372,7 @@ export function RepositoryDetailPage() {
                       )}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-end text-sm font-medium text-green-600">
-                      +{formatCurrency(transaction.amount)}
+                      +{formatAmount(transaction.amount)}
                     </td>
                   </tr>
                 ))}

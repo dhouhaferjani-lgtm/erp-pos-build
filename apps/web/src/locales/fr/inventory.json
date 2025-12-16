@@ -20,7 +20,10 @@
   },
   "products": {
     "title": "Produits",
+    "singular": "produit",
+    "plural": "produits",
     "new": "Ajouter un produit",
+    "searchPlaceholder": "Rechercher des produits...",
     "addQuick": "Ajouter un produit (rapide)",
     "edit": "Modifier le produit",
     "name": "Nom",

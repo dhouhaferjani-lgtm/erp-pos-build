@@ -1,7 +1,10 @@
 {
   "payments": {
     "title": "Paiements",
+    "singular": "paiement",
+    "plural": "paiements",
     "new": "Enregistrer un paiement",
+    "record": "Enregistrer un paiement",
     "newForInvoice": "Enregistrer un paiement pour {{invoiceNumber}}",
     "number": "Numéro",
     "partner": "Partenaire",
@@ -89,6 +92,8 @@
   },
   "instruments": {
     "title": "Effets de paiement",
+    "singular": "effet",
+    "plural": "effets",
     "new": "Nouvel effet",
     "number": "Numéro",
     "type": "Type",
@@ -123,8 +128,10 @@
     "bounceReasonPlaceholder": "ex: Provision insuffisante",
     "types": {
       "check": "Chèque",
+      "promissory_note": "Billet à ordre",
       "promissoryNote": "Billet à ordre",
-      "billOfExchange": "Lettre de change"
+      "billOfExchange": "Lettre de change",
+      "voucher": "Bon"
     },
     "statuses": {
       "received": "Reçu",
@@ -190,9 +197,32 @@
   },
   "repositories": {
     "title": "Dépôts",
+    "singular": "dépôt",
+    "plural": "dépôts",
+    "add": "Ajouter un dépôt",
     "cash": "Caisse",
     "bank": "Compte bancaire",
-    "safe": "Coffre"
+    "safe": "Coffre",
+    "types": {
+      "cash_register": "Caisse",
+      "safe": "Coffre",
+      "bank_account": "Compte bancaire",
+      "virtual": "Virtuel"
+    },
+    "table": {
+      "repository": "Dépôt",
+      "type": "Type",
+      "bankInfo": "Informations bancaires",
+      "status": "Statut",
+      "balance": "Solde"
+    },
+    "account": "compte",
+    "accounts": "comptes",
+    "empty": {
+      "title": "Aucun dépôt",
+      "description": "Commencez par ajouter une caisse, un coffre ou un compte bancaire.",
+      "descriptionNoPermission": "Contactez votre administrateur pour ajouter des dépôts."
+    }
   },
   "smartPayment": {
     "title": "Allocation intelligente de paiement",

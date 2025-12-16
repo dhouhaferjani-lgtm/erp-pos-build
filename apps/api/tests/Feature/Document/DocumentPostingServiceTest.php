@@ -164,6 +164,9 @@ class DocumentPostingServiceTest extends TestCase
         $invoice2 = $this->createConfirmedDocument(DocumentType::Invoice, 'INV-002');
         $postedInvoice2 = $this->postingService->post($invoice2);
 
+        // Get the company's genesis seed for hash verification
+        $genesisSeed = $this->company->fiscal_chain_seed;
+
         // Manually verify the chain
         $input1 = $this->hashService->serializeForHashing([
             'document_number' => $postedInvoice1->document_number,
@@ -172,7 +175,8 @@ class DocumentPostingServiceTest extends TestCase
             'currency' => $postedInvoice1->currency,
         ]);
 
-        $expectedHash1 = $this->hashService->calculateHash($input1, null);
+        // First document uses genesis seed (no previous hash)
+        $expectedHash1 = $this->hashService->calculateHash($input1, null, $genesisSeed);
         $this->assertEquals($expectedHash1, $postedInvoice1->fiscal_hash);
 
         $input2 = $this->hashService->serializeForHashing([
@@ -182,6 +186,7 @@ class DocumentPostingServiceTest extends TestCase
             'currency' => $postedInvoice2->currency,
         ]);
 
+        // Subsequent documents use the previous document's hash
         $expectedHash2 = $this->hashService->calculateHash($input2, $postedInvoice1->fiscal_hash);
         $this->assertEquals($expectedHash2, $postedInvoice2->fiscal_hash);
     }

@@ -67,7 +67,7 @@ export function PriceListListPage() {
             {t('pricing:priceLists.title', 'Price Lists')}
           </h1>
           <p className="text-gray-500">
-            {filteredPriceLists.length} {filteredPriceLists.length === 1 ? 'price list' : 'price lists'}
+            {filteredPriceLists.length} {filteredPriceLists.length === 1 ? t('pricing:priceLists.singular') : t('pricing:priceLists.plural')}
           </p>
         </div>
         <Link
@@ -170,7 +170,7 @@ export function PriceListListPage() {
                       </Link>
                       {priceList.is_default && (
                         <span className="ms-2 inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
-                          Default
+                          {t('pricing:priceLists.fields.default')}
                         </span>
                       )}
                       {priceList.description && (
@@ -200,7 +200,11 @@ export function PriceListListPage() {
                   <td className="whitespace-nowrap px-6 py-4">
                     <div className="flex items-center gap-1 text-sm text-gray-500">
                       <Package className="h-4 w-4" />
-                      <span>{priceList.items_count ?? 0} items</span>
+                      <span>
+                        {(priceList.items_count ?? 0) === 1
+                          ? t('pricing:priceLists.itemCountOne', { count: 1 })
+                          : t('pricing:priceLists.itemCount', { count: priceList.items_count ?? 0 })}
+                      </span>
                     </div>
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">

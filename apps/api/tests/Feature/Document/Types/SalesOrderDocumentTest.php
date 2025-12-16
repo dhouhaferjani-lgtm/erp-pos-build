@@ -190,7 +190,7 @@ class SalesOrderDocumentTest extends TestCase
         $response->assertStatus(201);
         $this->assertCount(1, $response->json('data.lines'));
         $this->assertEquals('Product A', $response->json('data.lines.0.description'));
-        $this->assertEquals('3.00', $response->json('data.lines.0.quantity'));
+        $this->assertEquals('3.0000', $response->json('data.lines.0.quantity'));
     }
 
     public function test_order_can_have_reference(): void

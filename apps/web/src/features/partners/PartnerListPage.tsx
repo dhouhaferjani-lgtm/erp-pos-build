@@ -34,12 +34,6 @@ const typeColors = {
   both: 'bg-green-100 text-green-800',
 }
 
-const typeLabels = {
-  customer: 'Customer',
-  supplier: 'Supplier',
-  both: 'Both',
-}
-
 export type PartnerType = 'customer' | 'supplier'
 type StatusFilter = 'all' | 'active' | 'inactive'
 
@@ -48,7 +42,7 @@ interface PartnerListPageProps {
 }
 
 export function PartnerListPage({ partnerType }: PartnerListPageProps) {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['common', 'sales'])
   const location = useLocation()
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
@@ -67,9 +61,19 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
     ? t('navigation.customers')
     : isSupplierView
       ? t('navigation.suppliers')
-      : 'Partners'
+      : t('sales:partners.title')
 
-  const entityName = isCustomerView ? 'customer' : isSupplierView ? 'supplier' : 'partner'
+  // Get singular entity name for display
+  const entitySingular = isCustomerView
+    ? t('sales:partners.types.customer')
+    : isSupplierView
+      ? t('sales:partners.types.supplier')
+      : t('sales:partners.title')
+
+  // Get type label function
+  const getTypeLabel = (type: 'customer' | 'supplier' | 'both') => {
+    return t(`sales:partners.types.${type}`, type)
+  }
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['partners', partnerType, searchQuery, statusFilter],
@@ -103,7 +107,7 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{pageTitle}</h1>
           <p className="text-gray-500">
-            {total} {total === 1 ? entityName : `${entityName}s`} total
+            {total} {entitySingular.toLowerCase()} {t('common.total')}
           </p>
         </div>
         <Link
@@ -111,7 +115,7 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
           className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
         >
           <Plus className="h-4 w-4" />
-          {t('actions.add')} {pageTitle.slice(0, -1)}
+          {t('actions.add')} {entitySingular}
         </Link>
       </div>
 
@@ -121,7 +125,7 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
         <SearchInput
           value={searchQuery}
           onChange={setSearchQuery}
-          placeholder={`${t('actions.search')} ${entityName}s...`}
+          placeholder={`${t('actions.search')} ${pageTitle.toLowerCase()}...`}
           className="w-full sm:w-72"
         />
       </div>
@@ -139,12 +143,12 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
         <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
           <Users className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-sm font-semibold text-gray-900">
-            {searchQuery ? t('status.noResults') : `No ${entityName}s`}
+            {searchQuery ? t('status.noResults') : t('sales:partners.empty.title')}
           </h3>
           <p className="mt-1 text-sm text-gray-500">
             {searchQuery
-              ? t('status.tryDifferentSearch', 'Try a different search term.')
-              : `Get started by creating a new ${entityName}.`}
+              ? t('status.tryDifferentSearch')
+              : t('sales:partners.empty.description')}
           </p>
           {!searchQuery && (
             <div className="mt-6">
@@ -153,7 +157,7 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
                 className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
               >
                 <Plus className="h-4 w-4" />
-                {t('actions.add')} {pageTitle.slice(0, -1)}
+                {t('actions.add')} {entitySingular}
               </Link>
             </div>
           )}
@@ -181,7 +185,7 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
                   {t('fields.status')}
                 </th>
                 <th className="relative px-6 py-3">
-                  <span className="sr-only">{t('actions.actions')}</span>
+                  <span className="sr-only">{t('table.actionsColumn')}</span>
                 </th>
               </tr>
             </thead>
@@ -201,7 +205,7 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
                       <span
                         className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${typeColors[partner.type]}`}
                       >
-                        {typeLabels[partner.type]}
+                        {getTypeLabel(partner.type)}
                       </span>
                     </td>
                   )}

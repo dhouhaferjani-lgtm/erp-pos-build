@@ -12,6 +12,8 @@ import {
   AlertCircle
 } from 'lucide-react'
 import { api } from '../../lib/api'
+import { useCompanyStore } from '../../stores/companyStore'
+import { formatCurrency } from '../../lib/format'
 
 interface Document {
   id: string
@@ -21,7 +23,8 @@ interface Document {
   fiscal_status: string
   is_sealed: boolean
   is_fiscal: boolean
-  total_amount: string
+  total: string | null
+  currency: string
   created_at: string
 }
 
@@ -67,6 +70,11 @@ interface PaymentsResponse {
 
 export function ReportsPage() {
   const { t } = useTranslation()
+  const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+
+  // Get company currency with fallback
+  const companyCurrency = currentCompany?.currency ?? 'EUR'
+  const companyLocale = currentCompany?.locale?.replace('_', '-') ?? 'en-US'
 
   // Fetch documents
   const { data: documentsData, isLoading: loadingDocs } = useQuery({
@@ -116,8 +124,8 @@ export function ReportsPage() {
   const quotes = documents.filter(d => d.type === 'quote')
   const salesOrders = documents.filter(d => d.type === 'sales_order')
 
-  const totalInvoiced = invoices.reduce((sum, inv) => sum + parseFloat(inv.total_amount), 0)
-  const totalQuoted = quotes.reduce((sum, q) => sum + parseFloat(q.total_amount), 0)
+  const totalInvoiced = invoices.reduce((sum, inv) => sum + parseFloat(inv.total ?? '0'), 0)
+  const totalQuoted = quotes.reduce((sum, q) => sum + parseFloat(q.total ?? '0'), 0)
 
   const completedPayments = payments.filter(p => p.status === 'completed')
   const totalCollected = completedPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0)
@@ -130,11 +138,12 @@ export function ReportsPage() {
     return p.quantity_on_hand <= p.reorder_point
   })
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount)
+  // Format currency using company settings
+  const formatAmount = (amount: number) => {
+    return formatCurrency(amount, {
+      currency: companyCurrency,
+      locale: companyLocale,
+    })
   }
 
   return (
@@ -155,28 +164,28 @@ export function ReportsPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <MetricCard
               title={t('reports.metrics.totalInvoiced')}
-              value={formatCurrency(totalInvoiced)}
+              value={formatAmount(totalInvoiced)}
               icon={<DollarSign className="h-5 w-5" />}
               color="blue"
               subtitle={t('reports.subtitles.invoices', { count: invoices.length })}
             />
             <MetricCard
               title={t('reports.metrics.totalCollected')}
-              value={formatCurrency(totalCollected)}
+              value={formatAmount(totalCollected)}
               icon={<CreditCard className="h-5 w-5" />}
               color="green"
               subtitle={t('reports.subtitles.payments', { count: completedPayments.length })}
             />
             <MetricCard
               title={t('reports.metrics.outstanding')}
-              value={formatCurrency(Math.max(0, totalInvoiced - totalCollected))}
+              value={formatAmount(Math.max(0, totalInvoiced - totalCollected))}
               icon={totalInvoiced > totalCollected ? <TrendingDown className="h-5 w-5" /> : <TrendingUp className="h-5 w-5" />}
               color={totalInvoiced > totalCollected ? 'yellow' : 'green'}
               subtitle={t('reports.metrics.toCollect')}
             />
             <MetricCard
               title={t('reports.metrics.quotesPending')}
-              value={formatCurrency(totalQuoted)}
+              value={formatAmount(totalQuoted)}
               icon={<FileText className="h-5 w-5" />}
               color="purple"
               subtitle={t('reports.subtitles.quotes', { count: quotes.length })}

@@ -163,7 +163,7 @@ class QuoteDocumentTest extends TestCase
         $this->assertEquals('confirmed', $response->json('data.status'));
     }
 
-    public function test_already_confirmed_quote_cannot_be_confirmed_again(): void
+    public function test_already_confirmed_quote_is_idempotent(): void
     {
         $quote = Document::create([
             'tenant_id' => $this->tenant->id,
@@ -176,10 +176,11 @@ class QuoteDocumentTest extends TestCase
             'currency' => 'EUR',
         ]);
 
+        // Confirming an already-confirmed document is idempotent - returns 200
         $response = $this->actingAs($this->user)->postJson("/api/v1/quotes/{$quote->id}/confirm");
 
-        $response->assertStatus(422);
-        $this->assertEquals('INVALID_STATUS_TRANSITION', $response->json('error.code'));
+        $response->assertStatus(200);
+        $this->assertEquals('confirmed', $response->json('data.status'));
     }
 
     public function test_quote_preserves_lines_when_converted(): void

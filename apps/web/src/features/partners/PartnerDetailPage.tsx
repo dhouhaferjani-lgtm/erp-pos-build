@@ -19,6 +19,8 @@ import {
   Plus,
 } from 'lucide-react'
 import { api } from '../../lib/api'
+import { useCompanyStore } from '../../stores/companyStore'
+import { formatCurrency } from '../../lib/format'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/Tabs'
 import { AddVehicleModal } from '../../components/organisms'
 
@@ -122,6 +124,11 @@ export function PartnerDetailPage() {
   const { id = '' } = useParams<{ id: string }>()
   const location = useLocation()
   const [showVehicleModal, setShowVehicleModal] = useState(false)
+  const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+
+  // Get company currency with fallback
+  const companyCurrency = currentCompany?.currency ?? 'EUR'
+  const companyLocale = currentCompany?.locale?.replace('_', '-') ?? 'en-US'
 
   // Determine context from URL
   const isCustomerContext = location.pathname.includes('/sales/customers')
@@ -190,11 +197,12 @@ export function PartnerDetailPage() {
   const payments = paymentsData ?? []
   const vehicles = vehiclesData ?? []
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount)
+  // Format currency using company settings
+  const formatAmount = (amount: number) => {
+    return formatCurrency(amount, {
+      currency: companyCurrency,
+      locale: companyLocale,
+    })
   }
 
   if (isLoading) {
@@ -328,7 +336,7 @@ export function PartnerDetailPage() {
                   <div className="flex justify-between">
                     <dt className="text-sm text-gray-500">{t('fields.totalReceivable')}</dt>
                     <dd className="text-sm font-medium text-gray-900">
-                      {formatCurrency(partner.total_receivable ?? 0)}
+                      {formatAmount(partner.total_receivable ?? 0)}
                     </dd>
                   </div>
                 )}
@@ -338,7 +346,7 @@ export function PartnerDetailPage() {
                   <div className="flex justify-between">
                     <dt className="text-sm text-gray-500">{t('fields.totalPayable')}</dt>
                     <dd className="text-sm font-medium text-gray-900">
-                      {formatCurrency(partner.total_payable ?? 0)}
+                      {formatAmount(partner.total_payable ?? 0)}
                     </dd>
                   </div>
                 )}
@@ -353,7 +361,7 @@ export function PartnerDetailPage() {
                           {t('partner.unallocatedBalance')}
                         </dt>
                         <dd className="text-sm font-medium text-green-600">
-                          {formatCurrency(parseFloat(accountBalance.unallocated_balance))}
+                          {formatAmount(parseFloat(accountBalance.unallocated_balance))}
                         </dd>
                       </div>
                       <p className="mt-1 text-xs text-gray-400">
@@ -561,7 +569,7 @@ export function PartnerDetailPage() {
                             </span>
                           </td>
                           <td className="whitespace-nowrap px-6 py-4 text-end text-sm font-medium text-gray-900">
-                            {formatCurrency(parseFloat(doc.total ?? '0'))}
+                            {formatAmount(parseFloat(doc.total ?? '0'))}
                           </td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
                             {new Date(doc.document_date).toLocaleDateString()}
@@ -638,11 +646,11 @@ export function PartnerDetailPage() {
                       </td>
                       <td className="whitespace-nowrap px-6 py-4 text-end">
                         <div className="text-sm font-medium text-gray-900">
-                          {formatCurrency(parseFloat(payment.amount))}
+                          {formatAmount(parseFloat(payment.amount))}
                         </div>
                         {parseFloat(payment.unallocated_amount) > 0 && (
                           <div className="text-xs text-blue-600">
-                            {t('treasury:payments.creditBalance')}: {formatCurrency(parseFloat(payment.unallocated_amount))}
+                            {t('treasury:payments.creditBalance')}: {formatAmount(parseFloat(payment.unallocated_amount))}
                           </div>
                         )}
                       </td>

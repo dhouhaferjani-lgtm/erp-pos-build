@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ArrowLeft, Edit, Calendar, Building2, FileText, Check, X, ArrowRight, Printer, Send, CreditCard, MinusCircle, Package, AlertTriangle, Truck, Link2, Paperclip, Download, Eye } from 'lucide-react'
 import { api, apiPost } from '../../lib/api'
+import { formatCurrency } from '../../lib/format'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { RecordPaymentModal, Modal } from '../../components/organisms'
 import { PurchaseOrderLandedCostBreakdown } from './components/PurchaseOrderLandedCostBreakdown'
@@ -280,13 +281,20 @@ export function DocumentDetailPage() {
     convertToDeliveryMutation.isPending ||
     receiveGoodsMutation.isPending
 
-  const formatCurrency = (amount: string | number) => {
+  // Get company currency with fallback
+  const companyCurrency = currentCompany?.currency ?? 'EUR'
+  const companyLocale = currentCompany?.locale?.replace('_', '-') ?? 'en-US'
+
+  // Format currency using company settings
+  const formatAmount = (amount: string | number) => {
     const num = typeof amount === 'string' ? parseFloat(amount) : amount
-    if (isNaN(num)) return '$0.00'
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(num)
+    if (isNaN(num)) {
+      return formatCurrency(0, { currency: companyCurrency, locale: companyLocale })
+    }
+    return formatCurrency(num, {
+      currency: companyCurrency,
+      locale: companyLocale,
+    })
   }
 
   // Calculate quote expiry status - must be before early returns (React hooks rule)
@@ -745,20 +753,20 @@ export function DocumentDetailPage() {
             <div className="flex justify-between">
               <dt className="text-sm text-gray-500">{t('documents.subtotal')}</dt>
               <dd className="text-sm font-medium text-gray-900">
-                {formatCurrency(document.subtotal ?? 0)}
+                {formatAmount(document.subtotal ?? 0)}
               </dd>
             </div>
             <div className="flex justify-between">
               <dt className="text-sm text-gray-500">{t('documents.tax')}</dt>
               <dd className="text-sm font-medium text-gray-900">
-                {formatCurrency(document.tax_amount ?? 0)}
+                {formatAmount(document.tax_amount ?? 0)}
               </dd>
             </div>
             <div className="border-t border-gray-200 pt-3">
               <div className="flex justify-between">
                 <dt className="text-base font-semibold text-gray-900">{t('documents.total')}</dt>
                 <dd className="text-base font-semibold text-gray-900">
-                  {formatCurrency(document.total ?? 0)}
+                  {formatAmount(document.total ?? 0)}
                 </dd>
               </div>
             </div>
@@ -785,7 +793,7 @@ export function DocumentDetailPage() {
                             balanceDue < total ? 'text-yellow-600' :
                             'text-gray-900'
                           }>
-                            {formatCurrency(balanceDue)}
+                            {formatAmount(balanceDue)}
                           </span>
                         )
                       })()}
@@ -892,13 +900,13 @@ export function DocumentDetailPage() {
                   {line.quantity}
                 </td>
                 <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
-                  {formatCurrency(line.unit_price)}
+                  {formatAmount(line.unit_price)}
                 </td>
                 <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-500">
                   {line.tax_rate}%
                 </td>
                 <td className="whitespace-nowrap px-6 py-4 text-end text-sm font-medium text-gray-900">
-                  {formatCurrency(line.line_total)}
+                  {formatAmount(line.line_total)}
                 </td>
               </tr>
             ))}
@@ -946,7 +954,7 @@ export function DocumentDetailPage() {
                 </div>
                 <div className="text-end">
                   <p className="font-semibold text-green-600">
-                    {formatCurrency(payment.amount)}
+                    {formatAmount(payment.amount)}
                   </p>
                 </div>
               </div>

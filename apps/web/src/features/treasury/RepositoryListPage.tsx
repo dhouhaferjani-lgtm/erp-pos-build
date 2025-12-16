@@ -4,6 +4,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, Vault, Building2, CreditCard, Wallet } from 'lucide-react'
 import { api } from '../../lib/api'
+import { useCompanyStore } from '../../stores/companyStore'
+import { formatCurrency } from '../../lib/format'
 import { usePermissions } from '../../hooks/usePermissions'
 import { AddRepositoryModal } from '../../components/organisms'
 
@@ -31,12 +33,7 @@ const typeIcons: Record<Repository['type'], React.ComponentType<{ className?: st
   virtual: Wallet,
 }
 
-const typeLabels: Record<Repository['type'], string> = {
-  cash_register: 'Cash Register',
-  safe: 'Safe',
-  bank_account: 'Bank Account',
-  virtual: 'Virtual',
-}
+// Type labels are now loaded from translations
 
 const typeColors: Record<Repository['type'], string> = {
   cash_register: 'bg-green-100 text-green-800',
@@ -46,11 +43,21 @@ const typeColors: Record<Repository['type'], string> = {
 }
 
 export function RepositoryListPage() {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['common', 'treasury'])
   const queryClient = useQueryClient()
   const [showAddModal, setShowAddModal] = useState(false)
   const { hasPermission } = usePermissions()
   const canManageRepositories = hasPermission('repositories.manage')
+  const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+
+  // Get translated type label
+  const getTypeLabel = (type: Repository['type']) => {
+    return t(`treasury:repositories.types.${type}`, type)
+  }
+
+  // Get company currency with fallback
+  const companyCurrency = currentCompany?.currency ?? 'EUR'
+  const companyLocale = currentCompany?.locale?.replace('_', '-') ?? 'en-US'
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['payment-repositories'],
@@ -62,12 +69,13 @@ export function RepositoryListPage() {
 
   const repositories = data?.data ?? []
 
-  const formatCurrency = (amount: string | number) => {
+  // Format currency using company settings
+  const formatAmount = (amount: string | number) => {
     const num = typeof amount === 'string' ? parseFloat(amount) : amount
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(num)
+    return formatCurrency(num, {
+      currency: companyCurrency,
+      locale: companyLocale,
+    })
   }
 
   // Group by type
@@ -97,7 +105,7 @@ export function RepositoryListPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{t('navigation.repositories', 'Repositories')}</h1>
           <p className="text-gray-500">
-            {repositories.length} {repositories.length === 1 ? 'repository' : 'repositories'} | Total: {formatCurrency(totalBalance)}
+            {repositories.length} {repositories.length === 1 ? t('treasury:repositories.singular') : t('treasury:repositories.plural')} | {t('common:fields.total')}: {formatAmount(totalBalance)}
           </p>
         </div>
         {canManageRepositories && (
@@ -106,7 +114,7 @@ export function RepositoryListPage() {
             className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
           >
             <Plus className="h-4 w-4" />
-            Add Repository
+            {t('treasury:repositories.add')}
           </button>
         )}
       </div>
@@ -123,11 +131,11 @@ export function RepositoryListPage() {
       ) : repositories.length === 0 ? (
         <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
           <Vault className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-semibold text-gray-900">No repositories</h3>
+          <h3 className="mt-2 text-sm font-semibold text-gray-900">{t('treasury:repositories.empty.title')}</h3>
           <p className="mt-1 text-sm text-gray-500">
             {canManageRepositories
-              ? 'Get started by adding a cash register, safe, or bank account.'
-              : 'Contact your administrator to add repositories.'}
+              ? t('treasury:repositories.empty.description')
+              : t('treasury:repositories.empty.descriptionNoPermission')}
           </p>
           {canManageRepositories && (
             <div className="mt-6">
@@ -136,7 +144,7 @@ export function RepositoryListPage() {
                 className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
               >
                 <Plus className="h-4 w-4" />
-                Add Repository
+                {t('treasury:repositories.add')}
               </button>
             </div>
           )}
@@ -156,14 +164,14 @@ export function RepositoryListPage() {
                       <Icon className="h-5 w-5" />
                     </div>
                     <div>
-                      <p className="text-sm text-gray-500">{typeLabels[type]}</p>
+                      <p className="text-sm text-gray-500">{getTypeLabel(type)}</p>
                       <p className="text-lg font-semibold text-gray-900">
-                        {formatCurrency(typeBalance)}
+                        {formatAmount(typeBalance)}
                       </p>
                     </div>
                   </div>
                   <p className="mt-2 text-xs text-gray-500">
-                    {repos.length} {repos.length === 1 ? 'account' : 'accounts'}
+                    {repos.length} {repos.length === 1 ? t('treasury:repositories.account') : t('treasury:repositories.accounts')}
                   </p>
                 </div>
               )
@@ -176,19 +184,19 @@ export function RepositoryListPage() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Repository
+                    {t('treasury:repositories.table.repository')}
                   </th>
                   <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Type
+                    {t('treasury:repositories.table.type')}
                   </th>
                   <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Bank Info
+                    {t('treasury:repositories.table.bankInfo')}
                   </th>
                   <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Status
+                    {t('treasury:repositories.table.status')}
                   </th>
                   <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Balance
+                    {t('treasury:repositories.table.balance')}
                   </th>
                 </tr>
               </thead>
@@ -215,7 +223,7 @@ export function RepositoryListPage() {
                       </td>
                       <td className="whitespace-nowrap px-6 py-4">
                         <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${typeColors[repo.type]}`}>
-                          {typeLabels[repo.type]}
+                          {getTypeLabel(repo.type)}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500">
@@ -238,14 +246,14 @@ export function RepositoryListPage() {
                               : 'bg-gray-100 text-gray-800'
                           }`}
                         >
-                          {repo.is_active ? 'Active' : 'Inactive'}
+                          {repo.is_active ? t('status.active') : t('status.inactive')}
                         </span>
                       </td>
                       <td className="whitespace-nowrap px-6 py-4 text-end">
                         <span className={`text-sm font-semibold ${
                           parseFloat(repo.balance) >= 0 ? 'text-green-600' : 'text-red-600'
                         }`}>
-                          {formatCurrency(repo.balance)}
+                          {formatAmount(repo.balance)}
                         </span>
                       </td>
                     </tr>

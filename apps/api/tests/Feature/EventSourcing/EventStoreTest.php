@@ -35,10 +35,14 @@ class EventStoreTest extends TestCase
         $event = new InvoicePosted(
             invoiceId: 'inv-123',
             tenantId: 'tenant-456',
+            companyId: 'company-789',
             documentNumber: 'INV-2025-0001',
+            documentType: 'invoice',
             partnerId: 'partner-789',
             total: '1500.00',
             currency: 'TND',
+            fiscalHash: hash('sha256', 'test-hash-seed'),
+            chainSequence: 1,
             postedAt: now()->toIso8601String()
         );
 
@@ -54,6 +58,7 @@ class EventStoreTest extends TestCase
         $event = new PaymentRecorded(
             paymentId: 'pmt-123',
             tenantId: 'tenant-456',
+            companyId: 'company-789',
             partnerId: 'partner-789',
             amount: '500.00',
             currency: 'TND',
@@ -73,20 +78,28 @@ class EventStoreTest extends TestCase
         $event1 = new InvoicePosted(
             invoiceId: 'inv-001',
             tenantId: 'tenant-456',
+            companyId: 'company-789',
             documentNumber: 'INV-2025-0001',
+            documentType: 'invoice',
             partnerId: 'partner-789',
             total: '1000.00',
             currency: 'TND',
+            fiscalHash: hash('sha256', 'test-hash-seed-1'),
+            chainSequence: 1,
             postedAt: now()->toIso8601String()
         );
 
         $event2 = new InvoicePosted(
             invoiceId: 'inv-002',
             tenantId: 'tenant-456',
+            companyId: 'company-789',
             documentNumber: 'INV-2025-0002',
+            documentType: 'invoice',
             partnerId: 'partner-789',
             total: '2000.00',
             currency: 'TND',
+            fiscalHash: hash('sha256', 'test-hash-seed-2'),
+            chainSequence: 2,
             postedAt: now()->toIso8601String()
         );
 
@@ -103,10 +116,14 @@ class EventStoreTest extends TestCase
         $event = new InvoicePosted(
             invoiceId: 'inv-123',
             tenantId: 'tenant-456',
+            companyId: 'company-789',
             documentNumber: 'INV-2025-0001',
+            documentType: 'invoice',
             partnerId: 'partner-789',
             total: '1500.00',
             currency: 'TND',
+            fiscalHash: hash('sha256', 'test-hash-seed'),
+            chainSequence: 1,
             postedAt: now()->toIso8601String()
         );
 

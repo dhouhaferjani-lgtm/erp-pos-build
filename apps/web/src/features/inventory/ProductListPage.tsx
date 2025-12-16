@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, Package, Grid, List, DollarSign } from 'lucide-react'
 import { api } from '../../lib/api'
+import { useCompanyStore } from '../../stores/companyStore'
+import { formatCurrency } from '../../lib/format'
 import { SearchInput } from '../../components/ui/SearchInput'
 import { FilterTabs } from '../../components/ui/FilterTabs'
 
@@ -43,18 +45,20 @@ const typeColors: Record<ProductType, string> = {
   consumable: 'bg-orange-100 text-orange-800',
 }
 
-const typeLabels: Record<ProductType, string> = {
-  part: 'Part',
-  service: 'Service',
-  consumable: 'Consumable',
-}
+// Type labels are loaded from translations
 
 type StatusFilter = 'all' | 'active' | 'inactive'
 type TypeFilter = 'all' | ProductType
 type ViewMode = 'list' | 'grid'
 
 export function ProductListPage() {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['common', 'inventory'])
+
+  // Get translated type label
+  const getTypeLabel = (type: ProductType) => {
+    return t(`inventory:products.types.${type}`, type)
+  }
+  const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
@@ -84,12 +88,17 @@ export function ProductListPage() {
     ]
   }, [t, total])
 
-  const formatCurrency = (amount: string | null) => {
+  // Get company currency with fallback
+  const companyCurrency = currentCompany?.currency ?? 'EUR'
+  const companyLocale = currentCompany?.locale?.replace('_', '-') ?? 'en-US'
+
+  // Format currency using company settings
+  const formatAmount = (amount: string | null) => {
     if (!amount) return '-'
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(parseFloat(amount))
+    return formatCurrency(parseFloat(amount), {
+      currency: companyCurrency,
+      locale: companyLocale,
+    })
   }
 
   return (
@@ -97,9 +106,9 @@ export function ProductListPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('navigation.products', 'Products')}</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{t('inventory:products.title')}</h1>
           <p className="text-gray-500">
-            {total} {total === 1 ? 'product' : 'products'} total
+            {total} {total === 1 ? t('inventory:products.singular') : t('inventory:products.plural')} {t('common:total')}
           </p>
         </div>
         <Link
@@ -107,7 +116,7 @@ export function ProductListPage() {
           className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
         >
           <Plus className="h-4 w-4" />
-          {t('actions.add')} Product
+          {t('inventory:products.new')}
         </Link>
       </div>
 
@@ -119,21 +128,21 @@ export function ProductListPage() {
             <SearchInput
               value={searchQuery}
               onChange={setSearchQuery}
-              placeholder={`${t('actions.search')} products...`}
+              placeholder={t('inventory:products.searchPlaceholder')}
               className="w-full sm:w-72"
             />
             <div className="flex items-center gap-1 rounded-lg border border-gray-200 p-1">
               <button
                 onClick={() => { setViewMode('list') }}
                 className={`rounded p-1.5 ${viewMode === 'list' ? 'bg-gray-100 text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
-                title="List view"
+                title={t('common:views.list')}
               >
                 <List className="h-4 w-4" />
               </button>
               <button
                 onClick={() => { setViewMode('grid') }}
                 className={`rounded p-1.5 ${viewMode === 'grid' ? 'bg-gray-100 text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
-                title="Grid view"
+                title={t('common:views.grid')}
               >
                 <Grid className="h-4 w-4" />
               </button>
@@ -143,7 +152,7 @@ export function ProductListPage() {
 
         {/* Type filter */}
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-500">Type:</span>
+          <span className="text-sm text-gray-500">{t('inventory:products.type')}:</span>
           <div className="flex items-center gap-1">
             {(['all', 'part', 'service', 'consumable'] as TypeFilter[]).map((type) => (
               <button
@@ -155,7 +164,7 @@ export function ProductListPage() {
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
-                {type === 'all' ? 'All' : typeLabels[type]}
+                {type === 'all' ? t('filters.all') : getTypeLabel(type)}
               </button>
             ))}
           </div>
@@ -175,12 +184,12 @@ export function ProductListPage() {
         <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
           <Package className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-sm font-semibold text-gray-900">
-            {searchQuery ? t('status.noResults') : 'No products'}
+            {searchQuery ? t('status.noResults') : t('inventory:products.empty.title')}
           </h3>
           <p className="mt-1 text-sm text-gray-500">
             {searchQuery
-              ? t('status.tryDifferentSearch', 'Try a different search term.')
-              : 'Get started by creating a new product.'}
+              ? t('status.tryDifferentSearch')
+              : t('inventory:products.empty.description')}
           </p>
           {!searchQuery && (
             <div className="mt-6">
@@ -189,7 +198,7 @@ export function ProductListPage() {
                 className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
               >
                 <Plus className="h-4 w-4" />
-                {t('actions.add')} Product
+                {t('inventory:products.new')}
               </Link>
             </div>
           )}
@@ -203,13 +212,13 @@ export function ProductListPage() {
                   {t('fields.name', 'Name')}
                 </th>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  SKU
+                  {t('inventory:products.sku')}
                 </th>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
                   {t('fields.type', 'Type')}
                 </th>
                 <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Sale Price
+                  {t('inventory:products.salePrice')}
                 </th>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
                   {t('fields.status', 'Status')}
@@ -242,11 +251,11 @@ export function ProductListPage() {
                     <span
                       className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${typeColors[product.type]}`}
                     >
-                      {typeLabels[product.type]}
+                      {getTypeLabel(product.type)}
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-end text-sm font-medium text-gray-900">
-                    {formatCurrency(product.sale_price)}
+                    {formatAmount(product.sale_price)}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
                     <span
@@ -288,7 +297,7 @@ export function ProductListPage() {
                 <span
                   className={`ml-2 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${typeColors[product.type]}`}
                 >
-                  {typeLabels[product.type]}
+                  {getTypeLabel(product.type)}
                 </span>
               </div>
               {product.description && (
@@ -297,7 +306,7 @@ export function ProductListPage() {
               <div className="mt-4 flex items-center justify-between">
                 <div className="flex items-center gap-1 text-sm font-medium text-gray-900">
                   <DollarSign className="h-4 w-4 text-gray-400" />
-                  {formatCurrency(product.sale_price)}
+                  {formatAmount(product.sale_price)}
                 </div>
                 <span
                   className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${

@@ -41,11 +41,12 @@ class ProductController extends Controller
         }
 
         // Search by name or SKU (case-insensitive)
+        // Use LOWER() for database-agnostic case-insensitive search (works on both PostgreSQL and SQLite)
         if ($request->has('search')) {
-            $search = $request->input('search');
+            $search = mb_strtolower($request->input('search'));
             $query->where(function ($q) use ($search) {
-                $q->where('name', 'ILIKE', "%{$search}%")
-                    ->orWhere('sku', 'ILIKE', "%{$search}%");
+                $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])
+                    ->orWhereRaw('LOWER(sku) LIKE ?', ["%{$search}%"]);
             });
         }
 

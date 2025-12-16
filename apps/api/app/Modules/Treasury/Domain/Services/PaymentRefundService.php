@@ -13,23 +13,31 @@ use Illuminate\Support\Str;
 class PaymentRefundService
 {
     /**
-     * Refund a completed payment
+     * Refund a completed payment.
+     *
+     * This method is idempotent: calling it on an already-refunded payment
+     * will return the existing refund without error.
      */
     public function refundPayment(
         Payment $payment,
         string $reason,
         ?string $userId = null
     ): Payment {
+        // Idempotent: if already reversed (refunded), find and return the existing refund
+        if ($payment->status === PaymentStatus::Reversed) {
+            return $this->findExistingFullRefund($payment);
+        }
+
         if ($payment->status !== PaymentStatus::Completed) {
             throw new \RuntimeException('Only completed payments can be refunded');
         }
 
-        // Check if already refunded
-        if ($payment->status === PaymentStatus::Reversed) {
-            throw new \RuntimeException('Payment has already been refunded');
-        }
-
         return DB::transaction(function () use ($payment, $reason, $userId): Payment {
+            // Double-check inside transaction (another request may have refunded it)
+            $payment->refresh();
+            if ($payment->status === PaymentStatus::Reversed) {
+                return $this->findExistingFullRefund($payment);
+            }
             // Create refund payment (negative amount)
             $refund = Payment::create([
                 'id' => Str::uuid()->toString(),
@@ -143,7 +151,9 @@ class PaymentRefundService
 
         $totalRefunded = '0.00';
         foreach ($refunds as $refund) {
-            $totalRefunded = bcadd($totalRefunded, abs((float) $refund->amount), 2);
+            // Remove leading minus sign to get absolute value (stays as string for bcmath)
+            $absAmount = ltrim((string) $refund->amount, '-');
+            $totalRefunded = bcadd($totalRefunded, $absAmount, 2);
         }
 
         return [
@@ -157,15 +167,19 @@ class PaymentRefundService
     }
 
     /**
-     * Reverse a payment (for errors/corrections)
+     * Reverse a payment (for errors/corrections).
+     *
+     * This method is idempotent: calling it on an already-reversed payment
+     * will return without error.
      */
     public function reversePayment(
         Payment $payment,
         string $reason,
         ?string $userId = null
     ): void {
+        // Idempotent: if already reversed, just return
         if ($payment->status === PaymentStatus::Reversed) {
-            throw new \RuntimeException('Payment has already been reversed');
+            return;
         }
 
         if (! in_array($payment->status, [PaymentStatus::Completed, PaymentStatus::Failed], true)) {
@@ -173,6 +187,11 @@ class PaymentRefundService
         }
 
         DB::transaction(function () use ($payment, $reason): void {
+            // Double-check inside transaction (another request may have reversed it)
+            $payment->refresh();
+            if ($payment->status === PaymentStatus::Reversed) {
+                return;
+            }
             // Delete allocations
             PaymentAllocation::where('payment_id', $payment->id)->delete();
 
@@ -182,5 +201,30 @@ class PaymentRefundService
                 'notes' => ($payment->notes ?? '')."\n\nReversed: {$reason}",
             ]);
         });
+    }
+
+    /**
+     * Find the existing full refund for a reversed payment.
+     *
+     * @throws \RuntimeException If refund cannot be found
+     */
+    private function findExistingFullRefund(Payment $payment): Payment
+    {
+        // Find refund by looking for a negative payment that references this payment
+        /** @var Payment|null $refund */
+        $refund = Payment::where('tenant_id', $payment->tenant_id)
+            ->where('partner_id', $payment->partner_id)
+            ->where('amount', bcmul($payment->amount, '-1', 2))
+            ->where('reference', 'like', '%'.$payment->reference.'%')
+            ->where('status', PaymentStatus::Completed)
+            ->first();
+
+        if ($refund === null) {
+            throw new \RuntimeException(
+                'Payment is reversed but no refund record found. Data integrity issue.'
+            );
+        }
+
+        return $refund;
     }
 }

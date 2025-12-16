@@ -42,10 +42,19 @@ final class DocumentPostingService
     /**
      * Post a document, adding it to the fiscal hash chain if required.
      *
-     * @throws \DomainException If document cannot be posted
+     * This method is idempotent: calling it on an already-posted document
+     * will return the document without error.
+     *
+     * @throws \DomainException If document cannot be posted (wrong status)
      */
     public function post(Document $document): Document
     {
+        // Idempotent: if already posted, return success
+        if ($document->isPosted()) {
+            /** @var Document */
+            return $document->fresh(['lines']);
+        }
+
         if (! $document->isConfirmed()) {
             throw new \DomainException(
                 'Only confirmed documents can be posted. Current status: '.$document->status->value
@@ -55,6 +64,13 @@ final class DocumentPostingService
         $requiresFiscalChain = $this->requiresFiscalChain($document->type);
 
         return DB::transaction(function () use ($document, $requiresFiscalChain): Document {
+            // Double-check inside transaction (another request may have posted it)
+            $document->refresh();
+            if ($document->isPosted()) {
+                /** @var Document */
+                return $document->fresh(['lines']);
+            }
+
             if ($requiresFiscalChain) {
                 $this->postWithFiscalChain($document);
             } else {
@@ -69,10 +85,19 @@ final class DocumentPostingService
     /**
      * Cancel a posted document, recording the cancellation in the fiscal chain.
      *
-     * @throws \DomainException If document cannot be cancelled
+     * This method is idempotent: calling it on an already-cancelled document
+     * will return the document without error.
+     *
+     * @throws \DomainException If document cannot be cancelled (wrong status)
      */
     public function cancel(Document $document): Document
     {
+        // Idempotent: if already cancelled, return success
+        if ($document->status === DocumentStatus::Cancelled) {
+            /** @var Document */
+            return $document->fresh(['lines']);
+        }
+
         if (! $document->isPosted()) {
             throw new \DomainException(
                 'Only posted documents can be cancelled. Current status: '.$document->status->value
@@ -82,6 +107,13 @@ final class DocumentPostingService
         $requiresFiscalChain = $this->requiresFiscalChain($document->type);
 
         return DB::transaction(function () use ($document, $requiresFiscalChain): Document {
+            // Double-check inside transaction (another request may have cancelled it)
+            $document->refresh();
+            if ($document->status === DocumentStatus::Cancelled) {
+                /** @var Document */
+                return $document->fresh(['lines']);
+            }
+
             // Update status and fiscal_status if it's a fiscal document
             $updateData = ['status' => DocumentStatus::Cancelled];
 

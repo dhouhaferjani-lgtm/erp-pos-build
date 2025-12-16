@@ -1,7 +1,10 @@
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { Plus, CreditCard, Calendar } from 'lucide-react'
 import { api } from '../../lib/api'
+import { useCompanyStore } from '../../stores/companyStore'
+import { formatCurrency } from '../../lib/format'
 
 interface Payment {
   id: string
@@ -29,13 +32,21 @@ const statusColors: Record<Payment['status'], string> = {
   cancelled: 'bg-red-100 text-red-800',
 }
 
-const statusLabels: Record<Payment['status'], string> = {
-  pending: 'Pending',
-  completed: 'Completed',
-  cancelled: 'Cancelled',
-}
+// Status labels are loaded from translations
 
 export function PaymentListPage() {
+  const { t } = useTranslation(['common', 'treasury'])
+  const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+
+  // Get translated status label
+  const getStatusLabel = (status: Payment['status']) => {
+    return t(`treasury:payments.statuses.${status}`, status)
+  }
+
+  // Get company currency with fallback
+  const companyCurrency = currentCompany?.currency ?? 'EUR'
+  const companyLocale = currentCompany?.locale?.replace('_', '-') ?? 'en-US'
+
   const { data, isLoading, error } = useQuery({
     queryKey: ['payments'],
     queryFn: async () => {
@@ -47,11 +58,12 @@ export function PaymentListPage() {
   const payments = data?.data ?? []
   const total = data?.meta?.total ?? payments.length
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount)
+  // Format currency using company settings
+  const formatAmount = (amount: number) => {
+    return formatCurrency(amount, {
+      currency: companyCurrency,
+      locale: companyLocale,
+    })
   }
 
   return (
@@ -59,9 +71,9 @@ export function PaymentListPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Payments</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{t('treasury:payments.title')}</h1>
           <p className="text-gray-500">
-            {total} {total === 1 ? 'payment' : 'payments'} total
+            {total} {total === 1 ? t('treasury:payments.singular', 'payment') : t('treasury:payments.plural', 'payments')} {t('common.total')}
           </p>
         </div>
         <Link
@@ -69,25 +81,25 @@ export function PaymentListPage() {
           className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
         >
           <Plus className="h-4 w-4" />
-          Record Payment
+          {t('treasury:payments.record')}
         </Link>
       </div>
 
       {/* Content */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <div className="text-gray-500">Loading...</div>
+          <div className="text-gray-500">{t('status.loading')}</div>
         </div>
       ) : error ? (
         <div className="rounded-lg bg-red-50 p-4 text-red-700">
-          Error loading payments. Please try again.
+          {t('errors.loadingFailed', 'Error loading data. Please try again.')}
         </div>
       ) : payments.length === 0 ? (
         <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
           <CreditCard className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-semibold text-gray-900">No payments</h3>
+          <h3 className="mt-2 text-sm font-semibold text-gray-900">{t('treasury:payments.empty.title')}</h3>
           <p className="mt-1 text-sm text-gray-500">
-            Get started by recording a new payment.
+            {t('treasury:payments.empty.description')}
           </p>
           <div className="mt-6">
             <Link
@@ -95,7 +107,7 @@ export function PaymentListPage() {
               className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
             >
               <Plus className="h-4 w-4" />
-              Record Payment
+              {t('treasury:payments.record')}
             </Link>
           </div>
         </div>
@@ -105,25 +117,25 @@ export function PaymentListPage() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Number
+                  {t('treasury:payments.number')}
                 </th>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Partner
+                  {t('treasury:payments.partner')}
                 </th>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Method
+                  {t('treasury:payments.method')}
                 </th>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Date
+                  {t('treasury:payments.date')}
                 </th>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Status
+                  {t('treasury:payments.status')}
                 </th>
                 <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Amount
+                  {t('treasury:payments.amount')}
                 </th>
                 <th className="relative px-6 py-3">
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">{t('actions.actions')}</span>
                 </th>
               </tr>
             </thead>
@@ -148,10 +160,10 @@ export function PaymentListPage() {
                         }
                         className="text-blue-600 hover:text-blue-800 hover:underline"
                       >
-                        {payment.partner_name ?? 'No partner'}
+                        {payment.partner_name ?? t('treasury:payments.messages.noPartnerLinked')}
                       </Link>
                     ) : (
-                      <span className="text-gray-500">{payment.partner_name ?? 'No partner'}</span>
+                      <span className="text-gray-500">{payment.partner_name ?? t('treasury:payments.messages.noPartnerLinked')}</span>
                     )}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
@@ -167,18 +179,18 @@ export function PaymentListPage() {
                     <span
                       className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[payment.status]}`}
                     >
-                      {statusLabels[payment.status]}
+                      {getStatusLabel(payment.status)}
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-end text-sm font-medium text-gray-900">
-                    {formatCurrency(payment.amount)}
+                    {formatAmount(payment.amount)}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-end text-sm">
                     <Link
                       to={`/treasury/payments/${payment.id}`}
                       className="text-blue-600 hover:text-blue-900"
                     >
-                      View
+                      {t('actions.view')}
                     </Link>
                   </td>
                 </tr>

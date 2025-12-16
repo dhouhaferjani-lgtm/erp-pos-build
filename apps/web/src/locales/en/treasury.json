@@ -1,10 +1,12 @@
 {
   "payments": {
     "title": "Payments",
+    "singular": "payment",
+    "plural": "payments",
     "new": "Record Payment",
     "newForInvoice": "Record Payment for {{invoiceNumber}}",
-    "recordPayment": "Record Payment",
     "record": "Record Payment",
+    "recordPayment": "Record Payment",
     "paymentRecorded": "Payment Recorded Successfully",
     "recordedSuccess": "Payment recorded successfully",
     "number": "Number",
@@ -112,6 +114,8 @@
   },
   "instruments": {
     "title": "Payment Instruments",
+    "singular": "instrument",
+    "plural": "instruments",
     "new": "New Instrument",
     "number": "Number",
     "type": "Type",
@@ -146,8 +150,10 @@
     "bounceReasonPlaceholder": "e.g., Insufficient funds",
     "types": {
       "check": "Check",
+      "promissory_note": "Promissory Note",
       "promissoryNote": "Promissory Note",
-      "billOfExchange": "Bill of Exchange"
+      "billOfExchange": "Bill of Exchange",
+      "voucher": "Voucher"
     },
     "statuses": {
       "received": "Received",
@@ -213,9 +219,32 @@
   },
   "repositories": {
     "title": "Repositories",
+    "singular": "repository",
+    "plural": "repositories",
+    "add": "Add Repository",
     "cash": "Cash Register",
     "bank": "Bank Account",
-    "safe": "Safe"
+    "safe": "Safe",
+    "types": {
+      "cash_register": "Cash Register",
+      "safe": "Safe",
+      "bank_account": "Bank Account",
+      "virtual": "Virtual"
+    },
+    "table": {
+      "repository": "Repository",
+      "type": "Type",
+      "bankInfo": "Bank Info",
+      "status": "Status",
+      "balance": "Balance"
+    },
+    "account": "account",
+    "accounts": "accounts",
+    "empty": {
+      "title": "No repositories",
+      "description": "Get started by adding a cash register, safe, or bank account.",
+      "descriptionNoPermission": "Contact your administrator to add repositories."
+    }
   },
   "smartPayment": {
     "title": "Smart Payment Allocation",

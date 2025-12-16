@@ -1,6 +1,10 @@
 {
   "priceLists": {
     "title": "Listes de prix",
+    "singular": "liste de prix",
+    "plural": "listes de prix",
+    "itemCount": "{{count}} articles",
+    "itemCountOne": "{{count}} article",
     "create": "Créer une liste de prix",
     "createNew": "Créer une liste de prix",
     "edit": "Modifier la liste de prix",

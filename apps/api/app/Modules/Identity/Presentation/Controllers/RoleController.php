@@ -8,12 +8,24 @@ use App\Modules\Identity\Domain\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
 class RoleController extends Controller
 {
+    /**
+     * Count users assigned to a role via direct database query.
+     * This avoids reliance on Spatie's morphedByMany relationship which requires proper guard config.
+     */
+    private function countUsersForRole(Role $role): int
+    {
+        return DB::table('model_has_roles')
+            ->where('role_id', $role->id)
+            ->count();
+    }
+
     /**
      * List all roles.
      */
@@ -26,7 +38,7 @@ class RoleController extends Controller
             'name' => $role->name,
             'guard_name' => $role->guard_name,
             'permissions' => $role->permissions->pluck('name'),
-            'users_count' => $role->users()->count(),
+            'users_count' => $this->countUsersForRole($role),
             'created_at' => $role->created_at?->toIso8601String(),
             'updated_at' => $role->updated_at?->toIso8601String(),
         ]);
@@ -53,7 +65,7 @@ class RoleController extends Controller
                 'name' => $role->name,
                 'guard_name' => $role->guard_name,
                 'permissions' => $role->permissions->pluck('name'),
-                'users_count' => $role->users()->count(),
+                'users_count' => $this->countUsersForRole($role),
                 'created_at' => $role->created_at?->toIso8601String(),
                 'updated_at' => $role->updated_at?->toIso8601String(),
             ],
@@ -144,7 +156,7 @@ class RoleController extends Controller
                 'name' => $role->name,
                 'guard_name' => $role->guard_name,
                 'permissions' => $role->permissions->pluck('name'),
-                'users_count' => $role->users()->count(),
+                'users_count' => $this->countUsersForRole($role),
                 'created_at' => $role->created_at?->toIso8601String(),
                 'updated_at' => $role->updated_at?->toIso8601String(),
             ],
@@ -174,7 +186,7 @@ class RoleController extends Controller
         }
 
         // Check if role has users
-        $usersCount = $role->users()->count();
+        $usersCount = $this->countUsersForRole($role);
         if ($usersCount > 0) {
             return response()->json([
                 'error' => [

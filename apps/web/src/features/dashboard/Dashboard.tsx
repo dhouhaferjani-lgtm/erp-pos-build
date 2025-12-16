@@ -12,6 +12,8 @@ import {
   ArrowRight,
 } from 'lucide-react'
 import { api } from '../../lib/api'
+import { useCompanyStore } from '../../stores/companyStore'
+import { formatCurrency } from '../../lib/format'
 
 interface DashboardStats {
   revenue: {
@@ -63,6 +65,11 @@ interface PaymentsResponse {
 
 export function Dashboard() {
   const { t } = useTranslation()
+  const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+
+  // Get company currency with fallback
+  const companyCurrency = currentCompany?.currency ?? 'EUR'
+  const companyLocale = currentCompany?.locale?.replace('_', '-') ?? 'en-US'
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['dashboard', 'stats'],
@@ -92,12 +99,13 @@ export function Dashboard() {
   const recentDocuments = documentsData?.data ?? []
   const recentPayments = paymentsData?.data ?? []
 
-  const formatCurrency = (amount: number | string | null | undefined) => {
+  // Format currency using company settings
+  const formatAmount = (amount: number | string | null | undefined) => {
     const num = typeof amount === 'string' ? parseFloat(amount) : (amount ?? 0)
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(isNaN(num) ? 0 : num)
+    return formatCurrency(isNaN(num) ? 0 : num, {
+      currency: companyCurrency,
+      locale: companyLocale,
+    })
   }
 
   if (isLoading) {
@@ -160,7 +168,7 @@ export function Dashboard() {
           <div className="mt-4">
             <p className="text-sm text-gray-500">{t('dashboard.revenue')}</p>
             <p className="text-2xl font-semibold text-gray-900">
-              {formatCurrency(stats?.revenue.current ?? 0)}
+              {formatAmount(stats?.revenue.current ?? 0)}
             </p>
           </div>
         </div>
@@ -218,10 +226,10 @@ export function Dashboard() {
           <div className="mt-4">
             <p className="text-sm text-gray-500">{t('dashboard.paymentsReceived')}</p>
             <p className="text-2xl font-semibold text-gray-900">
-              {formatCurrency(stats?.payments.received ?? 0)}
+              {formatAmount(stats?.payments.received ?? 0)}
             </p>
             <p className="text-sm text-gray-500">
-              {t('dashboard.pendingAmount', { amount: formatCurrency(stats?.payments.pending ?? 0) })}
+              {t('dashboard.pendingAmount', { amount: formatAmount(stats?.payments.pending ?? 0) })}
             </p>
           </div>
         </div>
@@ -259,7 +267,7 @@ export function Dashboard() {
                   </div>
                   <div className="text-end">
                     <p className="font-medium text-gray-900">
-                      {formatCurrency(doc.total_amount)}
+                      {formatAmount(doc.total_amount)}
                     </p>
                     <p className="text-sm text-gray-500 capitalize">{doc.status}</p>
                   </div>
@@ -299,7 +307,7 @@ export function Dashboard() {
                   </div>
                   <div className="text-end">
                     <p className="font-medium text-gray-900">
-                      {formatCurrency(payment.amount)}
+                      {formatAmount(payment.amount)}
                     </p>
                     <p className="text-sm text-gray-500">{payment.payment_method_name}</p>
                   </div>

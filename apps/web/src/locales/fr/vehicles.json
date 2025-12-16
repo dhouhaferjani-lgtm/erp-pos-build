@@ -1,6 +1,14 @@
 {
   "title": "Vehicules",
+  "singular": "vehicule",
+  "plural": "vehicules",
+  "registered": "enregistre(s)",
   "new": "Ajouter un vehicule",
+  "searchPlaceholder": "Rechercher par plaque, VIN, marque ou modele...",
+  "table": {
+    "vehicle": "Vehicule",
+    "fuel": "Carburant"
+  },
   "edit": "Modifier le vehicule",
   "licensePlate": "Plaque d'immatriculation",
   "brand": "Marque",

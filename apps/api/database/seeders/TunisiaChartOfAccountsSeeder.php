@@ -93,6 +93,8 @@ class TunisiaChartOfAccountsSeeder extends Seeder
             ['code' => '11', 'name' => 'Réserves', 'type' => 'equity', 'parent_code' => '1'],
             ['code' => '12', 'name' => 'Report à nouveau', 'type' => 'equity', 'parent_code' => '1',
                 'system_purpose' => SystemAccountPurpose::RetainedEarnings->value, 'is_system' => true],
+            ['code' => '119', 'name' => 'Solde d\'ouverture', 'type' => 'equity', 'parent_code' => '1',
+                'system_purpose' => SystemAccountPurpose::OpeningBalanceEquity->value, 'is_system' => true],
             ['code' => '13', 'name' => 'Résultat de l\'exercice', 'type' => 'equity', 'parent_code' => '1'],
             ['code' => '14', 'name' => 'Subventions d\'investissement', 'type' => 'equity', 'parent_code' => '1'],
             ['code' => '15', 'name' => 'Provisions réglementées', 'type' => 'equity', 'parent_code' => '1'],

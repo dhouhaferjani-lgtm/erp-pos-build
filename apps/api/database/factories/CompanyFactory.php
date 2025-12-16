@@ -71,6 +71,7 @@ class CompanyFactory extends Factory
             'default_target_margin' => '30.00',
             'default_minimum_margin' => '15.00',
             'allow_below_cost_sales' => false,
+            'fiscal_chain_seed' => bin2hex(random_bytes(32)), // 256-bit random seed for fiscal chain
         ];
     }
 

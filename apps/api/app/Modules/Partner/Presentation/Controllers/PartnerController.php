@@ -49,12 +49,13 @@ class PartnerController extends Controller
         }
 
         // Search by name, email, or VAT number (case-insensitive)
+        // Use LOWER() for database-agnostic case-insensitive search (works on both PostgreSQL and SQLite)
         if ($request->has('search')) {
-            $search = $request->input('search');
+            $search = mb_strtolower($request->input('search'));
             $query->where(function ($q) use ($search) {
-                $q->where('name', 'ILIKE', "%{$search}%")
-                    ->orWhere('email', 'ILIKE', "%{$search}%")
-                    ->orWhere('vat_number', 'ILIKE', "%{$search}%");
+                $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])
+                    ->orWhereRaw('LOWER(email) LIKE ?', ["%{$search}%"])
+                    ->orWhereRaw('LOWER(vat_number) LIKE ?', ["%{$search}%"]);
             });
         }
 

@@ -1,6 +1,10 @@
 {
   "priceLists": {
     "title": "Price Lists",
+    "singular": "price list",
+    "plural": "price lists",
+    "itemCount": "{{count}} items",
+    "itemCountOne": "{{count}} item",
     "create": "Create Price List",
     "createNew": "Create Price List",
     "edit": "Edit Price List",

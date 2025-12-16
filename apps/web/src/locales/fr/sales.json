@@ -25,6 +25,7 @@
     "title": "Partenaires",
     "new": "Ajouter un partenaire",
     "edit": "Modifier le partenaire",
+    "unknown": "Partenaire inconnu",
     "name": "Nom",
     "type": "Type",
     "contact": "Contact",
