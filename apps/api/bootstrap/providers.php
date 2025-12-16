@@ -18,4 +18,5 @@ return [
     App\Modules\Media\MediaServiceProvider::class,
     App\Modules\Pricing\Providers\PricingServiceProvider::class,
     App\Modules\Service\Providers\ServiceModuleServiceProvider::class,
+    App\Modules\Billing\Providers\BillingServiceProvider::class,
 ];

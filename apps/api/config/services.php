@@ -35,4 +35,49 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Payment Providers
+    |--------------------------------------------------------------------------
+    */
+
+    'stripe' => [
+        'key' => env('STRIPE_KEY'),
+        'secret' => env('STRIPE_SECRET'),
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
+    ],
+
+    'paypal' => [
+        'client_id' => env('PAYPAL_CLIENT_ID'),
+        'secret' => env('PAYPAL_SECRET'),
+        'sandbox' => env('PAYPAL_SANDBOX', true),
+    ],
+
+    'klarna' => [
+        'username' => env('KLARNA_USERNAME'),
+        'password' => env('KLARNA_PASSWORD'),
+        'sandbox' => env('KLARNA_SANDBOX', true),
+    ],
+
+    'sepa' => [
+        'creditor_id' => env('SEPA_CREDITOR_ID'),
+    ],
+
+    'flouci' => [
+        'app_token' => env('FLOUCI_APP_TOKEN'),
+        'app_secret' => env('FLOUCI_APP_SECRET'),
+        'sandbox' => env('FLOUCI_SANDBOX', true),
+    ],
+
+    'clicktopay' => [
+        'merchant_id' => env('CLICKTOPAY_MERCHANT_ID'),
+        'secret' => env('CLICKTOPAY_SECRET'),
+        'sandbox' => env('CLICKTOPAY_SANDBOX', true),
+    ],
+
+    'konnect' => [
+        'api_key' => env('KONNECT_API_KEY'),
+        'sandbox' => env('KONNECT_SANDBOX', true),
+    ],
+
 ];

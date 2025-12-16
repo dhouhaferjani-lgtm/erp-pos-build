@@ -1,0 +1,116 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\Billing\Domain;
+
+use App\Modules\Admin\Domain\SuperAdmin;
+use App\Modules\Billing\Domain\Enums\PaymentStatus;
+use App\Modules\Billing\Domain\ValueObjects\Money;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+/**
+ * Refund record for a payment.
+ *
+ * @property string $id
+ * @property string $payment_id
+ * @property string|null $provider_refund_id
+ * @property PaymentStatus $status
+ * @property string $amount
+ * @property string $currency
+ * @property string|null $reason
+ * @property string|null $notes
+ * @property string|null $initiated_by
+ * @property string|null $error_code
+ * @property string|null $error_message
+ * @property \Carbon\Carbon|null $refunded_at
+ * @property array $metadata
+ * @property \Carbon\Carbon $created_at
+ * @property \Carbon\Carbon $updated_at
+ */
+final class Refund extends Model
+{
+    use HasUuids;
+
+    protected $table = 'billing_refunds';
+
+    protected $fillable = [
+        'payment_id',
+        'provider_refund_id',
+        'status',
+        'amount',
+        'currency',
+        'reason',
+        'notes',
+        'initiated_by',
+        'error_code',
+        'error_message',
+        'refunded_at',
+        'metadata',
+    ];
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'status' => PaymentStatus::class,
+            'amount' => 'decimal:2',
+            'refunded_at' => 'datetime',
+            'metadata' => 'array',
+        ];
+    }
+
+    /**
+     * @return BelongsTo<Payment, Refund>
+     */
+    public function payment(): BelongsTo
+    {
+        return $this->belongsTo(Payment::class);
+    }
+
+    /**
+     * @return BelongsTo<SuperAdmin, Refund>
+     */
+    public function initiator(): BelongsTo
+    {
+        return $this->belongsTo(SuperAdmin::class, 'initiated_by');
+    }
+
+    /**
+     * Get amount as Money value object.
+     */
+    public function getAmountMoney(): Money
+    {
+        return new Money((float) $this->amount, $this->currency);
+    }
+
+    /**
+     * Mark refund as succeeded.
+     */
+    public function markAsSucceeded(): void
+    {
+        $this->update([
+            'status' => PaymentStatus::Succeeded,
+            'refunded_at' => now(),
+        ]);
+
+        // Update parent payment's refunded amount
+        $this->payment->recordRefund((float) $this->amount);
+    }
+
+    /**
+     * Mark refund as failed.
+     */
+    public function markAsFailed(string $errorMessage, ?string $errorCode = null): void
+    {
+        $this->update([
+            'status' => PaymentStatus::Failed,
+            'error_message' => $errorMessage,
+            'error_code' => $errorCode,
+        ]);
+    }
+}
