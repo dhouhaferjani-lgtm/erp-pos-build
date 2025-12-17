@@ -4,7 +4,9 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { getCreditNotes, getCreditNote, createCreditNote } from '../api/creditNotes'
+import { getErrorMessage } from '@/lib/api'
 import type { CreateCreditNoteRequest } from '@/types/creditNote'
 
 /**
@@ -87,6 +89,10 @@ export function useCreateCreditNote() {
 
       // Invalidate documents list
       void queryClient.invalidateQueries({ queryKey: ['documents'] })
+      toast.success('Credit note created')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }

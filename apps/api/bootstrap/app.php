@@ -6,10 +6,12 @@ use App\Http\Middleware\SetLocale;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Sentry\Laravel\Integration;
 use Sentry\State\Scope;
 
@@ -87,6 +89,45 @@ return Application::configure(basePath: dirname(__DIR__))
                         'message' => __('auth.unauthenticated'),
                     ],
                 ], 401);
+            }
+        });
+
+        // Return JSON 404 for model not found
+        $exceptions->render(function (ModelNotFoundException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                $modelName = class_basename($e->getModel());
+
+                return response()->json([
+                    'error' => [
+                        'code' => 'NOT_FOUND',
+                        'message' => __('messages.resource_not_found', ['resource' => $modelName]),
+                    ],
+                ], 404);
+            }
+        });
+
+        // Return JSON 422 for validation errors with structured format
+        $exceptions->render(function (ValidationException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'VALIDATION_ERROR',
+                        'message' => $e->getMessage(),
+                        'errors' => $e->errors(),
+                    ],
+                ], 422);
+            }
+        });
+
+        // Return JSON 422 for domain/business logic errors
+        $exceptions->render(function (DomainException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'BUSINESS_ERROR',
+                        'message' => $e->getMessage(),
+                    ],
+                ], 422);
             }
         });
     })->create();

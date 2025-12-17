@@ -68,7 +68,7 @@ final class StripePaymentProvider implements PaymentProviderInterface
     /**
      * Create a Stripe PaymentIntent.
      *
-     * @param array<string, mixed> $metadata
+     * @param  array<string, mixed>  $metadata
      */
     public function createPayment(
         Money $amount,
@@ -258,7 +258,7 @@ final class StripePaymentProvider implements PaymentProviderInterface
     }
 
     /**
-     * @param array<string, string> $headers
+     * @param  array<string, string>  $headers
      */
     public function verifyWebhook(string $payload, array $headers): bool
     {
@@ -309,7 +309,7 @@ final class StripePaymentProvider implements PaymentProviderInterface
     /**
      * Map Stripe webhook event to payment status.
      *
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     private function mapWebhookStatus(string $eventType, array $data): ?PaymentStatus
     {
@@ -327,7 +327,7 @@ final class StripePaymentProvider implements PaymentProviderInterface
     /**
      * Create a Stripe Customer for a tenant.
      *
-     * @param array<string, mixed> $metadata
+     * @param  array<string, mixed>  $metadata
      */
     public function createCustomer(
         string $email,

@@ -14,6 +14,11 @@ const AdminLoginPage = lazy(() => import('../features/admin/pages/AdminLoginPage
 const AdminDashboardPage = lazy(() => import('../features/admin/pages/AdminDashboardPage').then((m) => ({ default: m.AdminDashboardPage })))
 const TenantsPage = lazy(() => import('../features/admin/pages/TenantsPage').then((m) => ({ default: m.TenantsPage })))
 const AuditLogsPage = lazy(() => import('../features/admin/pages/AuditLogsPage').then((m) => ({ default: m.AuditLogsPage })))
+const BillingDashboardPage = lazy(() => import('../features/admin/pages/BillingDashboardPage').then((m) => ({ default: m.BillingDashboardPage })))
+const AdminSubscriptionsPage = lazy(() => import('../features/admin/pages/SubscriptionsPage').then((m) => ({ default: m.SubscriptionsPage })))
+const AdminInvoicesPage = lazy(() => import('../features/admin/pages/InvoicesPage').then((m) => ({ default: m.InvoicesPage })))
+const AdminPaymentsPage = lazy(() => import('../features/admin/pages/PaymentsPage').then((m) => ({ default: m.PaymentsPage })))
+const AdminMonitoringPage = lazy(() => import('../features/admin/pages/MonitoringPage').then((m) => ({ default: m.MonitoringPage })))
 const AdminLayout = lazy(() => import('../features/admin/components/AdminLayout').then((m) => ({ default: m.AdminLayout })))
 const RequireAdminAuth = lazy(() => import('../features/admin/components/RequireAdminAuth').then((m) => ({ default: m.RequireAdminAuth })))
 
@@ -168,6 +173,46 @@ export function AppRoutes() {
           element={
             <SuspenseWrapper>
               <AuditLogsPage />
+            </SuspenseWrapper>
+          }
+        />
+        <Route
+          path="billing"
+          element={
+            <SuspenseWrapper>
+              <BillingDashboardPage />
+            </SuspenseWrapper>
+          }
+        />
+        <Route
+          path="billing/subscriptions"
+          element={
+            <SuspenseWrapper>
+              <AdminSubscriptionsPage />
+            </SuspenseWrapper>
+          }
+        />
+        <Route
+          path="billing/invoices"
+          element={
+            <SuspenseWrapper>
+              <AdminInvoicesPage />
+            </SuspenseWrapper>
+          }
+        />
+        <Route
+          path="billing/payments"
+          element={
+            <SuspenseWrapper>
+              <AdminPaymentsPage />
+            </SuspenseWrapper>
+          }
+        />
+        <Route
+          path="monitoring"
+          element={
+            <SuspenseWrapper>
+              <AdminMonitoringPage />
             </SuspenseWrapper>
           }
         />

@@ -7,7 +7,6 @@ namespace App\Modules\Billing\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Billing\Application\Services\InvoiceService;
 use App\Modules\Billing\Application\Services\PaymentProviderManager;
-use App\Modules\Billing\Domain\Enums\PaymentProviderCode;
 use App\Modules\Billing\Domain\Enums\PaymentStatus;
 use App\Modules\Billing\Domain\Invoice;
 use App\Modules\Billing\Domain\Payment;
@@ -237,7 +236,7 @@ final class AdminBillingController extends Controller
                 'tenant_id' => $validated['tenant_id'],
                 'invoice_id' => $validated['invoice_id'] ?? null,
                 'provider' => $validated['provider'],
-                'provider_payment_id' => 'manual_' . uniqid('', true),
+                'provider_payment_id' => 'manual_'.uniqid('', true),
                 'status' => PaymentStatus::Succeeded,
                 'amount' => $validated['amount'],
                 'fee' => 0,
@@ -280,7 +279,7 @@ final class AdminBillingController extends Controller
         }
 
         $validated = $request->validate([
-            'amount' => 'nullable|numeric|min:0.01|max:' . $payment->getRefundableAmount(),
+            'amount' => 'nullable|numeric|min:0.01|max:'.$payment->getRefundableAmount(),
             'reason' => 'nullable|string|max:255',
         ]);
 

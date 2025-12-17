@@ -4,11 +4,13 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import {
   getToleranceSettings,
   previewPaymentAllocation,
   applyPaymentAllocation,
 } from '../api/smartPayment'
+import { getErrorMessage } from '@/lib/api'
 import type {
   PaymentAllocationPreviewRequest,
   ApplyAllocationRequest,
@@ -55,6 +57,9 @@ export function usePaymentAllocationPreview() {
     mutationFn: (request: PaymentAllocationPreviewRequest) =>
       previewPaymentAllocation(request),
     // No cache invalidation needed - this is a preview operation
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
+    },
   })
 }
 
@@ -102,6 +107,10 @@ export function useApplyAllocation() {
 
       // Invalidate partner balance queries
       void queryClient.invalidateQueries({ queryKey: ['partner-balance'] })
+      toast.success('Payment allocated successfully')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }

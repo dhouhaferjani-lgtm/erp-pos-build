@@ -111,6 +111,12 @@
     "empty": {
       "title": "No documents yet",
       "description": "Get started by creating your first document."
+    },
+    "messages": {
+      "confirmed": "Document confirmed",
+      "cancelled": "Document cancelled",
+      "posted": "Document posted",
+      "goodsReceived": "Goods received"
     }
   },
   "lineItems": {

@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
-import { api } from '../../../lib/api'
+import { toast } from 'sonner'
+import { api, getErrorMessage } from '../../../lib/api'
 
 interface SendEmailParams {
   documentId: string
@@ -28,6 +29,12 @@ export function useSendDocumentEmail() {
       })
       return response.data
     },
+    onSuccess: () => {
+      toast.success('Email sent successfully')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
+    },
   })
 }
 
@@ -44,6 +51,12 @@ export function useQueueDocumentEmail() {
         cc_emails: data.ccEmails,
       })
       return response.data
+    },
+    onSuccess: () => {
+      toast.success('Email queued successfully')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }

@@ -17,6 +17,7 @@ return [
     'success' => 'Opération effectuée avec succès.',
     'error' => 'Une erreur est survenue.',
     'not_found' => 'Ressource introuvable.',
+    'resource_not_found' => ':resource introuvable.',
     'forbidden' => 'Vous n\'avez pas la permission d\'effectuer cette action.',
     'server_error' => 'Erreur interne du serveur. Veuillez réessayer plus tard.',
 

@@ -17,6 +17,7 @@ return [
     'success' => 'Operation completed successfully.',
     'error' => 'An error occurred.',
     'not_found' => 'Resource not found.',
+    'resource_not_found' => ':resource not found.',
     'forbidden' => 'You do not have permission to perform this action.',
     'server_error' => 'Internal server error. Please try again later.',
 

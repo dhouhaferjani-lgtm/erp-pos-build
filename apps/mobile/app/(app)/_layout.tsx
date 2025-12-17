@@ -2,9 +2,13 @@ import { Redirect, Tabs } from 'expo-router';
 import { useAuth } from '@/providers/AuthProvider';
 import { ActivityIndicator, View } from 'react-native';
 import { Home, ClipboardList, User } from 'lucide-react-native';
+import { useBackgroundSync } from '@/features/counting/hooks/useBackgroundSync';
 
 export default function AppLayout() {
   const { isAuthenticated, isLoading } = useAuth();
+
+  // Initialize background sync for offline counts
+  useBackgroundSync();
 
   if (isLoading) {
     return (

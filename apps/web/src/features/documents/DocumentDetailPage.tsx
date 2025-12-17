@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ArrowLeft, Edit, Calendar, Building2, FileText, Check, X, ArrowRight, Printer, Send, CreditCard, MinusCircle, Package, AlertTriangle, Truck, Link2, Paperclip, Download, Eye } from 'lucide-react'
-import { api, apiPost } from '../../lib/api'
+import { api, apiPost, getErrorMessage } from '../../lib/api'
 import { formatCurrency } from '../../lib/format'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { RecordPaymentModal, Modal } from '../../components/organisms'
@@ -206,6 +206,10 @@ export function DocumentDetailPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['document', contextType, id] })
       void queryClient.invalidateQueries({ queryKey: ['documents'] })
+      toast.success(t('documents.messages.confirmed'))
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 
@@ -214,6 +218,10 @@ export function DocumentDetailPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['document', contextType, id] })
       void queryClient.invalidateQueries({ queryKey: ['documents'] })
+      toast.success(t('documents.messages.cancelled'))
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 
@@ -222,6 +230,10 @@ export function DocumentDetailPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['document', contextType, id] })
       void queryClient.invalidateQueries({ queryKey: ['documents'] })
+      toast.success(t('documents.messages.posted'))
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 
@@ -270,6 +282,10 @@ export function DocumentDetailPage() {
       void queryClient.invalidateQueries({ queryKey: ['documents'] })
       void queryClient.invalidateQueries({ queryKey: ['document', contextType, id] })
       void queryClient.invalidateQueries({ queryKey: ['stock-levels'] })
+      toast.success(t('documents.messages.goodsReceived'))
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 

@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\SuperAdmin;
+use App\Modules\Billing\Application\Services\PlanEnforcementService;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Services\AdminAuditService;
 use Illuminate\Http\JsonResponse;
@@ -15,7 +16,8 @@ use Illuminate\Support\Facades\DB;
 class SuperAdminController extends Controller
 {
     public function __construct(
-        private readonly AdminAuditService $auditService
+        private readonly AdminAuditService $auditService,
+        private readonly PlanEnforcementService $planEnforcementService
     ) {}
 
     public function dashboard(): JsonResponse
@@ -67,11 +69,27 @@ class SuperAdminController extends Controller
             'locations_count' => DB::table('locations')->where('tenant_id', $id)->count(),
         ];
 
+        // Get plan limits and usage from PlanEnforcementService
+        $planSummary = $this->planEnforcementService->getPlanSummary($tenant);
+
         return response()->json([
             'data' => [
                 'tenant' => $tenant,
                 'stats' => $stats,
+                'plan_summary' => $planSummary,
             ],
+        ]);
+    }
+
+    /**
+     * Get plan usage and limits for a specific tenant.
+     */
+    public function getTenantPlanUsage(string $id): JsonResponse
+    {
+        $tenant = Tenant::findOrFail($id);
+
+        return response()->json([
+            'data' => $this->planEnforcementService->getPlanSummary($tenant),
         ]);
     }
 

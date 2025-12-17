@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useProfitLoss } from '../hooks/useProfitLoss'
+import { QueryError } from '@/components/QueryError'
 import type { ProfitLossLine } from '../types'
 
 export function ProfitLossPage() {
@@ -15,7 +16,7 @@ export function ProfitLossPage() {
   const [dateFrom, setDateFrom] = useState<string>(firstDayOfMonth)
   const [dateTo, setDateTo] = useState<string>(today)
 
-  const { data, isLoading } = useProfitLoss({
+  const { data, isLoading, error, refetch } = useProfitLoss({
     date_from: dateFrom,
     date_to: dateTo,
   })
@@ -68,6 +69,12 @@ export function ProfitLossPage() {
       {/* Report */}
       {isLoading ? (
         <div>Loading...</div>
+      ) : error ? (
+        <QueryError
+          error={error}
+          onRetry={refetch}
+          title="Failed to load profit & loss"
+        />
       ) : (
         <div className="space-y-8">
           {/* Revenue Section */}

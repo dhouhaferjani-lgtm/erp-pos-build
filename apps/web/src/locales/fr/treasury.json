@@ -67,7 +67,12 @@
       "cancelPayment": "Annuler le paiement",
       "confirmCancelPayment": "Êtes-vous sûr de vouloir annuler ce paiement de {{amount}} ? Cette action est irréversible.",
       "notFound": "Paiement non trouvé ou erreur de chargement.",
-      "noPartnerLinked": "Aucun partenaire lié"
+      "noPartnerLinked": "Aucun partenaire lié",
+      "created": "Paiement créé",
+      "deleted": "Paiement supprimé",
+      "refunded": "Paiement remboursé",
+      "partialRefunded": "Remboursement partiel effectué",
+      "reversed": "Paiement annulé"
     },
     "empty": {
       "title": "Aucun paiement",

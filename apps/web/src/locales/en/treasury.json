@@ -89,7 +89,12 @@
       "cancelPayment": "Cancel Payment",
       "confirmCancelPayment": "Are you sure you want to cancel this payment of {{amount}}? This action cannot be undone.",
       "notFound": "Payment not found or error loading data.",
-      "noPartnerLinked": "No partner linked"
+      "noPartnerLinked": "No partner linked",
+      "created": "Payment created",
+      "deleted": "Payment deleted",
+      "refunded": "Payment refunded",
+      "partialRefunded": "Partial refund processed",
+      "reversed": "Payment reversed"
     },
     "empty": {
       "title": "No payments yet",

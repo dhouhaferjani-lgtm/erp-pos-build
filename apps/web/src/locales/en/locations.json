@@ -1,0 +1,8 @@
+{
+  "searchPlaceholder": "Search locations by name or code...",
+  "noLocationsFound": "No locations found",
+  "noAvailableLocations": "No locations available",
+  "selectedLocations": "{{count}} location selected",
+  "selectedLocations_plural": "{{count}} locations selected",
+  "selectLocations": "Select Locations"
+}

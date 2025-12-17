@@ -5,16 +5,19 @@ import {
   useSuspendTenant,
   useActivateTenant,
 } from '../hooks/useTenants'
+import { TenantDetailModal } from '../components/TenantDetailModal'
+import { QueryError } from '@/components/QueryError'
 
 export function TenantsPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
+  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null)
 
   const params: { search?: string; status?: string } = {}
   if (search) params.search = search
   if (statusFilter) params.status = statusFilter
 
-  const { data: tenantsData, isLoading } = useTenants(params)
+  const { data: tenantsData, isLoading, error, refetch } = useTenants(params)
   const extendTrialMutation = useExtendTrial()
   const suspendMutation = useSuspendTenant()
   const activateMutation = useActivateTenant()
@@ -51,8 +54,20 @@ export function TenantsPage() {
     )
   }
 
+  if (error) {
+    return (
+      <div className="p-8">
+        <QueryError
+          error={error}
+          onRetry={refetch}
+          title="Failed to load tenants"
+        />
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="p-8">
       <div className="mx-auto max-w-7xl">
         <h1 className="mb-8 text-3xl font-bold text-gray-900">
           Tenant Management
@@ -129,6 +144,12 @@ export function TenantsPage() {
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
                     <div className="flex gap-2">
+                      <button
+                        onClick={() => setSelectedTenantId(tenant.id)}
+                        className="text-indigo-600 hover:text-indigo-900"
+                      >
+                        View
+                      </button>
                       {tenant.subscription?.status === 'trial' && (
                         <button
                           onClick={() => handleExtendTrial(tenant.id)}
@@ -167,6 +188,11 @@ export function TenantsPage() {
           )}
         </div>
       </div>
+
+      <TenantDetailModal
+        tenantId={selectedTenantId}
+        onClose={() => setSelectedTenantId(null)}
+      />
     </div>
   )
 }

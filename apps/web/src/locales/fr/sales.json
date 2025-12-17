@@ -111,6 +111,12 @@
     "empty": {
       "title": "Aucun document",
       "description": "Commencez par créer votre premier document."
+    },
+    "messages": {
+      "confirmed": "Document confirmé",
+      "cancelled": "Document annulé",
+      "posted": "Document comptabilisé",
+      "goodsReceived": "Marchandises réceptionnées"
     }
   },
   "lineItems": {

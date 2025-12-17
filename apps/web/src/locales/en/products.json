@@ -1,0 +1,9 @@
+{
+  "searchPlaceholder": "Search products by name, SKU, or barcode...",
+  "noProductsFound": "No products found",
+  "noAvailableProducts": "No products available",
+  "selectedProducts": "{{count}} product selected",
+  "selectedProducts_plural": "{{count}} products selected",
+  "barcodeScannerHint": "Barcode scanning available in mobile app",
+  "selectProducts": "Select Products"
+}

@@ -1,10 +1,12 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Shield, LayoutDashboard, Users, FileText, LogOut } from 'lucide-react'
+import { Shield, LayoutDashboard, Users, FileText, LogOut, CreditCard, Activity } from 'lucide-react'
 import { useAdminAuthStore } from '../stores/adminAuthStore'
 
 const navigation = [
   { name: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
   { name: 'Tenants', href: '/admin/tenants', icon: Users },
+  { name: 'Billing', href: '/admin/billing', icon: CreditCard },
+  { name: 'Monitoring', href: '/admin/monitoring', icon: Activity },
   { name: 'Audit Logs', href: '/admin/audit-logs', icon: FileText },
 ]
 
@@ -85,7 +87,7 @@ export function AdminLayout() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto bg-gray-50">
         <Outlet />
       </main>
     </div>

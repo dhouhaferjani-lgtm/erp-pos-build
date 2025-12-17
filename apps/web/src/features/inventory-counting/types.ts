@@ -79,6 +79,12 @@ export interface InventoryCounting {
   allow_unexpected_items: boolean
   instructions: string | null
 
+  // Mobile-initiated fields
+  created_on_mobile: boolean
+  title: string | null
+  last_modified_at: string | null
+  last_modified_by: CountingUser | null
+
   count_1_user: CountingUser | null
   count_2_user: CountingUser | null
   count_3_user: CountingUser | null
@@ -204,19 +210,19 @@ export interface DiscrepancyReport {
 export interface CreateCountingFormData {
   scope_type: CountingScopeType
   scope_filters: {
-    product_ids?: number[]
-    category_ids?: number[]
-    warehouse_ids?: number[]
-    location_ids?: number[]
-    location_id?: number
+    product_ids?: string[]
+    category_ids?: string[]
+    warehouse_ids?: string[]
+    location_ids?: string[]
+    location_id?: string
   }
   execution_mode: CountingExecutionMode
   requires_count_2: boolean
   requires_count_3: boolean
   allow_unexpected_items: boolean
-  count_1_user_id: number
-  count_2_user_id?: number
-  count_3_user_id?: number
+  count_1_user_id: string
+  count_2_user_id?: string
+  count_3_user_id?: string
   scheduled_start?: string
   scheduled_end?: string
   instructions?: string
@@ -250,6 +256,7 @@ export interface CountingFilters {
   search?: string
   date_from?: string
   date_to?: string
+  created_on_mobile?: boolean | 'all'
   page?: number
   per_page?: number
   sort_by?: string

@@ -2,10 +2,11 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { FileText, Calendar, User } from 'lucide-react'
 import { getAdminAuditLogs } from '../api'
+import { QueryError } from '@/components/QueryError'
 
 export function AuditLogsPage() {
   const { t } = useTranslation()
-  const { data: logsData, isLoading } = useQuery({
+  const { data: logsData, isLoading, error, refetch } = useQuery({
     queryKey: ['admin', 'audit-logs'],
     queryFn: () => getAdminAuditLogs(),
   })
@@ -34,82 +35,98 @@ export function AuditLogsPage() {
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="text-gray-400">{t('auditLogs.loading')}</div>
+        <div className="text-gray-500">{t('auditLogs.loading')}</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="p-8">
+        <QueryError
+          error={error}
+          onRetry={refetch}
+          title="Failed to load audit logs"
+        />
       </div>
     )
   }
 
   return (
     <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white">{t('auditLogs.title')}</h1>
-        <p className="text-gray-400">{t('auditLogs.description')}</p>
-      </div>
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-gray-900">
+            {t('auditLogs.title')}
+          </h1>
+          <p className="text-gray-500">{t('auditLogs.description')}</p>
+        </div>
 
-      <div className="overflow-hidden rounded-lg bg-gray-800 shadow">
-        <table className="min-w-full divide-y divide-gray-700">
-          <thead className="bg-gray-900">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">
-                {t('auditLogs.table.date')}
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">
-                {t('auditLogs.table.admin')}
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">
-                {t('auditLogs.table.action')}
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">
-                {t('auditLogs.table.tenant')}
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">
-                {t('auditLogs.table.notes')}
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-700 bg-gray-800">
-            {logs.length === 0 ? (
+        <div className="overflow-hidden rounded-lg bg-white shadow">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
               <tr>
-                <td colSpan={5} className="px-6 py-12 text-center">
-                  <FileText className="mx-auto h-12 w-12 text-gray-600" />
-                  <p className="mt-4 text-gray-400">{t('auditLogs.empty')}</p>
-                </td>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  {t('auditLogs.table.date')}
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  {t('auditLogs.table.admin')}
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  {t('auditLogs.table.action')}
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  {t('auditLogs.table.tenant')}
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  {t('auditLogs.table.notes')}
+                </th>
               </tr>
-            ) : (
-              logs.map((log) => (
-                <tr key={log.id}>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-300">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-gray-500" />
-                      {formatDate(log.created_at)}
-                    </div>
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-300">
-                    <div className="flex items-center gap-2">
-                      <User className="h-4 w-4 text-gray-500" />
-                      {log.admin_name}
-                    </div>
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4">
-                    <span
-                      className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${getActionColor(log.action)}`}
-                    >
-                      {log.action.replace(/_/g, ' ')}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-300">
-                    {log.tenant_name ?? '-'}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-400">
-                    {typeof log.details === 'object' && log.details !== null
-                      ? JSON.stringify(log.details)
-                      : '-'}
+            </thead>
+            <tbody className="divide-y divide-gray-200 bg-white">
+              {logs.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center">
+                    <FileText className="mx-auto h-12 w-12 text-gray-400" />
+                    <p className="mt-4 text-gray-500">{t('auditLogs.empty')}</p>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                logs.map((log) => (
+                  <tr key={log.id} className="hover:bg-gray-50">
+                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4 text-gray-400" />
+                        {formatDate(log.created_at)}
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                      <div className="flex items-center gap-2">
+                        <User className="h-4 w-4 text-gray-400" />
+                        {log.admin_name}
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4">
+                      <span
+                        className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${getActionColor(log.action)}`}
+                      >
+                        {log.action.replace(/_/g, ' ')}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                      {log.tenant_name ?? '-'}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      {typeof log.details === 'object' && log.details !== null
+                        ? JSON.stringify(log.details)
+                        : '-'}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )

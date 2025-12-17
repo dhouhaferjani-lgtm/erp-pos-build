@@ -75,7 +75,7 @@ final class PaymentProviderManager
     /**
      * Create a provider instance.
      *
-     * @param class-string<PaymentProviderInterface> $class
+     * @param  class-string<PaymentProviderInterface>  $class
      */
     private function createProvider(string $code, string $class): PaymentProviderInterface
     {
@@ -86,7 +86,7 @@ final class PaymentProviderManager
             );
         }
 
-        return new $class();
+        return new $class;
     }
 
     /**
@@ -220,7 +220,7 @@ final class PaymentProviderManager
     /**
      * Register a custom payment provider.
      *
-     * @param class-string<PaymentProviderInterface> $class
+     * @param  class-string<PaymentProviderInterface>  $class
      */
     public function extend(string $code, string $class): void
     {

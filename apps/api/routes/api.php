@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\CountryController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Modules\Admin\Presentation\Controllers\MonitoringController;
 use App\Modules\Billing\Presentation\Controllers\AdminBillingController;
+use App\Modules\Billing\Presentation\Controllers\StripeWebhookController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -19,6 +20,10 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function (): void {
     // Public health check (for load balancers - no auth required)
     Route::get('/health', [MonitoringController::class, 'ping']);
+
+    // Stripe webhook (no auth - uses Stripe signature verification)
+    Route::post('/webhooks/stripe', [StripeWebhookController::class, 'handle'])
+        ->withoutMiddleware(['csrf']);
 
     // Public routes
     Route::get('/countries', [CountryController::class, 'index']);
@@ -50,6 +55,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/dashboard', [SuperAdminController::class, 'dashboard']);
             Route::get('/tenants', [SuperAdminController::class, 'tenants']);
             Route::get('/tenants/{id}', [SuperAdminController::class, 'showTenant']);
+            Route::get('/tenants/{id}/plan-usage', [SuperAdminController::class, 'getTenantPlanUsage']);
             Route::post('/tenants/{id}/extend-trial', [SuperAdminController::class, 'extendTrial']);
             Route::post('/tenants/{id}/change-plan', [SuperAdminController::class, 'changePlan']);
             Route::post('/tenants/{id}/suspend', [SuperAdminController::class, 'suspendTenant']);
@@ -57,8 +63,21 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/audit-logs', [SuperAdminController::class, 'auditLogs']);
 
             // Monitoring endpoints
-            Route::get('/monitoring/health', [MonitoringController::class, 'health']);
-            Route::post('/monitoring/test-sentry', [MonitoringController::class, 'testSentry']);
+            Route::prefix('monitoring')->group(function (): void {
+                Route::get('/health', [MonitoringController::class, 'health']);
+                Route::get('/system', [MonitoringController::class, 'systemHealth']);
+                Route::get('/performance', [MonitoringController::class, 'performance']);
+                Route::get('/critical', [MonitoringController::class, 'critical']);
+                Route::get('/queues', [MonitoringController::class, 'queues']);
+                Route::get('/dashboard', [MonitoringController::class, 'dashboard']);
+                Route::post('/test-sentry', [MonitoringController::class, 'testSentry']);
+
+                // Queue management
+                Route::post('/failed-jobs/{id}/retry', [MonitoringController::class, 'retryFailedJob']);
+                Route::delete('/failed-jobs/{id}', [MonitoringController::class, 'deleteFailedJob']);
+                Route::post('/failed-jobs/retry-all', [MonitoringController::class, 'retryAllFailedJobs']);
+                Route::post('/failed-jobs/flush', [MonitoringController::class, 'flushFailedJobs']);
+            });
 
             // Billing management
             Route::prefix('billing')->group(function (): void {

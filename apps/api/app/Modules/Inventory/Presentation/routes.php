@@ -88,6 +88,44 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/inventory/countings/my-tasks', [InventoryCountingController::class, 'myTasks'])
         ->name('inventory-countings.my-tasks');
 
+    // Mobile-initiated Draft Management
+    Route::get('/inventory/countings/my-drafts', [InventoryCountingController::class, 'myDrafts'])
+        ->middleware('can:inventory.view')
+        ->name('inventory-countings.my-drafts');
+
+    Route::post('/inventory/countings/drafts', [InventoryCountingController::class, 'createDraft'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-countings.create-draft');
+
+    // Batch endpoints for offline sync
+    Route::post('/inventory/countings/drafts/batch', [InventoryCountingController::class, 'batchCreateDrafts'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-countings.batch-create-drafts');
+
+    Route::patch('/inventory/countings/drafts/batch', [InventoryCountingController::class, 'batchUpdateDrafts'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-countings.batch-update-drafts');
+
+    Route::post('/inventory/countings/{counting}/add-products/batch', [InventoryCountingController::class, 'batchAddProducts'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-countings.batch-add-products');
+
+    Route::patch('/inventory/countings/{counting}/draft', [InventoryCountingController::class, 'updateDraft'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-countings.update-draft');
+
+    Route::post('/inventory/countings/{counting}/add-product', [InventoryCountingController::class, 'addProduct'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-countings.add-product');
+
+    Route::delete('/inventory/countings/{counting}/products/{product}', [InventoryCountingController::class, 'removeProduct'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-countings.remove-product');
+
+    Route::post('/inventory/countings/{counting}/activate-draft', [InventoryCountingController::class, 'activateDraft'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-countings.activate-draft');
+
     // List & CRUD
     Route::get('/inventory/countings', [InventoryCountingController::class, 'index'])
         ->middleware('can:inventory.view')

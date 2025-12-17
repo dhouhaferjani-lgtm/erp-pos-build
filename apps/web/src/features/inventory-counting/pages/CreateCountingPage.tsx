@@ -9,8 +9,11 @@ import type {
   CreateCountingFormData,
 } from '../types'
 import { cn } from '@/lib/utils'
+import { UserSelector } from '@/features/users/components/UserSelector'
+import { ProductSelector } from '@/features/products/components/ProductSelector'
+import { LocationSelectorMulti } from '@/features/locations/components/LocationSelectorMulti'
 
-const STEPS = ['scope', 'configuration', 'assignment', 'review'] as const
+const STEPS = ['scope', 'selection', 'configuration', 'assignment', 'review'] as const
 type Step = (typeof STEPS)[number]
 
 const SCOPE_TYPES: CountingScopeType[] = [
@@ -39,10 +42,29 @@ export function CreateCountingPage() {
 
   const stepIndex = STEPS.indexOf(currentStep)
 
+  // Determine if selection step should be shown based on scope type
+  const needsSelectionStep = () => {
+    const scopeType = formData.scope_type
+    return scopeType === 'product' ||
+           scopeType === 'product_location' ||
+           scopeType === 'location' ||
+           scopeType === 'category'
+  }
+
   const canProceed = () => {
     switch (currentStep) {
       case 'scope':
         return !!formData.scope_type
+      case 'selection':
+        // Validate selection based on scope type
+        if (formData.scope_type === 'product' || formData.scope_type === 'product_location') {
+          return (formData.scope_filters?.product_ids?.length ?? 0) > 0
+        }
+        if (formData.scope_type === 'location') {
+          return (formData.scope_filters?.location_ids?.length ?? 0) > 0
+        }
+        // Category selection not implemented yet, allow proceeding
+        return true
       case 'configuration':
         return true
       case 'assignment':
@@ -55,14 +77,28 @@ export function CreateCountingPage() {
   }
 
   const nextStep = () => {
-    const nextIndex = stepIndex + 1
+    const currentIndex = stepIndex
+    let nextIndex = currentIndex + 1
+
+    // Skip selection step if not needed
+    if (currentStep === 'scope' && !needsSelectionStep()) {
+      nextIndex = STEPS.indexOf('configuration')
+    }
+
     if (nextIndex < STEPS.length) {
       setCurrentStep(STEPS[nextIndex])
     }
   }
 
   const prevStep = () => {
-    const prevIndex = stepIndex - 1
+    const currentIndex = stepIndex
+    let prevIndex = currentIndex - 1
+
+    // Skip selection step if not needed when going back
+    if (currentStep === 'configuration' && !needsSelectionStep()) {
+      prevIndex = STEPS.indexOf('scope')
+    }
+
     if (prevIndex >= 0) {
       setCurrentStep(STEPS[prevIndex])
     }
@@ -141,6 +177,14 @@ export function CreateCountingPage() {
           <ScopeStep
             scopeType={formData.scope_type || 'full_inventory'}
             onChange={(scope_type) => { setFormData({ ...formData, scope_type }); }}
+          />
+        )}
+
+        {currentStep === 'selection' && needsSelectionStep() && (
+          <ProductSelectionStep
+            scopeType={formData.scope_type || 'full_inventory'}
+            data={formData}
+            onChange={(updates) => { setFormData({ ...formData, ...updates }); }}
           />
         )}
 
@@ -236,6 +280,102 @@ function ScopeStep({ scopeType, onChange }: ScopeStepProps) {
           </button>
         ))}
       </div>
+    </div>
+  )
+}
+
+interface ProductSelectionStepProps {
+  scopeType: CountingScopeType
+  data: Partial<CreateCountingFormData>
+  onChange: (updates: Partial<CreateCountingFormData>) => void
+}
+
+function ProductSelectionStep({ scopeType, data, onChange }: ProductSelectionStepProps) {
+  const { t } = useTranslation(['inventory', 'products', 'locations'])
+
+  const handleProductsChange = (productIds: string[]) => {
+    onChange({
+      scope_filters: {
+        ...data.scope_filters,
+        product_ids: productIds,
+      },
+    })
+  }
+
+  const handleLocationsChange = (locationIds: string[]) => {
+    onChange({
+      scope_filters: {
+        ...data.scope_filters,
+        location_ids: locationIds,
+      },
+    })
+  }
+
+  // Determine title and description based on scope type
+  const getTitle = () => {
+    switch (scopeType) {
+      case 'product':
+        return t('products:selectProducts')
+      case 'product_location':
+        return t('products:selectProducts')
+      case 'location':
+        return t('locations:selectLocations')
+      case 'category':
+        return t('counting.create.selectionTitleCategory')
+      default:
+        return t('counting.create.selection')
+    }
+  }
+
+  const getDescription = () => {
+    switch (scopeType) {
+      case 'product':
+        return t('counting.create.selectionDescriptionProduct')
+      case 'product_location':
+        return t('counting.create.selectionDescriptionProductLocation')
+      case 'location':
+        return t('counting.create.selectionDescriptionLocation')
+      case 'category':
+        return t('counting.create.selectionDescriptionCategory')
+      default:
+        return ''
+    }
+  }
+
+  return (
+    <div>
+      <h2 className="text-lg font-semibold mb-4">{getTitle()}</h2>
+      <p className="text-gray-500 mb-6">{getDescription()}</p>
+
+      {/* Product Selection */}
+      {(scopeType === 'product' || scopeType === 'product_location') && (
+        <ProductSelector
+          value={data.scope_filters?.product_ids ?? []}
+          onChange={handleProductsChange}
+          helperText={t('counting.create.productSelectionHelper')}
+        />
+      )}
+
+      {/* Location Selection */}
+      {scopeType === 'location' && (
+        <LocationSelectorMulti
+          value={data.scope_filters?.location_ids ?? []}
+          onChange={handleLocationsChange}
+          helperText={t('counting.create.locationSelectionHelper')}
+        />
+      )}
+
+      {/* Category Selection - Placeholder for future implementation */}
+      {scopeType === 'category' && (
+        <div className="border border-yellow-200 bg-yellow-50 rounded-lg p-6 text-center">
+          <div className="text-yellow-800 font-medium mb-2">
+            {t('counting.create.categorySelectionComingSoon')}
+          </div>
+          <div className="text-sm text-yellow-700">
+            {t('counting.create.categorySelectionComingSoonHint')}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -372,8 +512,6 @@ interface AssignmentStepProps {
 function AssignmentStep({ data, onChange }: AssignmentStepProps) {
   const { t } = useTranslation('inventory')
 
-  // In a real implementation, this would fetch users from the API
-  // For now, we'll use placeholder inputs
   return (
     <div>
       <h2 className="text-lg font-semibold mb-4">
@@ -383,74 +521,59 @@ function AssignmentStep({ data, onChange }: AssignmentStepProps) {
         {t('counting.create.assignmentDescription')}
       </p>
 
-      <div className="space-y-4">
+      <div className="space-y-6">
         {/* Counter 1 */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            {t('counting.create.counter1')}
-            <span className="text-red-500 ms-1">*</span>
-          </label>
-          <input
-            type="number"
-            value={data.count_1_user_id || ''}
-            onChange={(e) => {
-              const value = parseInt(e.target.value, 10)
-              if (value) {
-                onChange({ count_1_user_id: value })
-              }
-            }}
-            placeholder={t('counting.create.selectUserPlaceholder')}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          />
-          <p className="text-sm text-gray-500 mt-1">
-            {t('counting.create.counter1Help')}
-          </p>
-        </div>
+        <UserSelector
+          value={data.count_1_user_id ?? null}
+          onChange={(userId) => {
+            if (userId) {
+              onChange({ count_1_user_id: userId })
+            }
+          }}
+          label={t('counting.create.counter1')}
+          required
+          helperText={t('counting.create.counter1Help')}
+          excludeUserIds={[data.count_2_user_id, data.count_3_user_id].filter(
+            (id): id is string => Boolean(id)
+          )}
+        />
 
         {/* Counter 2 */}
         {data.requires_count_2 && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {t('counting.create.counter2')}
-            </label>
-            <input
-              type="number"
-              value={data.count_2_user_id || ''}
-              onChange={(e) => {
-                const value = parseInt(e.target.value, 10)
-                if (value) {
-                  onChange({ count_2_user_id: value })
-                }
-              }}
-              placeholder={t('counting.create.selectUserPlaceholder')}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
+          <UserSelector
+            value={data.count_2_user_id ?? null}
+            onChange={(userId) => {
+              if (userId) {
+                onChange({ count_2_user_id: userId })
+              }
+            }}
+            label={t('counting.create.counter2')}
+            required={data.requires_count_2}
+            excludeUserIds={[data.count_1_user_id, data.count_3_user_id].filter(
+              (id): id is string => Boolean(id)
+            )}
+          />
         )}
 
         {/* Counter 3 */}
         {data.requires_count_3 && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {t('counting.create.counter3')}
-            </label>
-            <input
-              type="number"
-              value={data.count_3_user_id || ''}
-              onChange={(e) => {
-                const value = parseInt(e.target.value, 10)
-                if (value) {
-                  onChange({ count_3_user_id: value })
-                }
-              }}
-              placeholder={t('counting.create.selectUserPlaceholder')}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
+          <UserSelector
+            value={data.count_3_user_id ?? null}
+            onChange={(userId) => {
+              if (userId) {
+                onChange({ count_3_user_id: userId })
+              }
+            }}
+            label={t('counting.create.counter3')}
+            required={data.requires_count_3}
+            excludeUserIds={[data.count_1_user_id, data.count_2_user_id].filter(
+              (id): id is string => Boolean(id)
+            )}
+          />
         )}
 
         {/* Schedule */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4 pt-4 border-t">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               {t('counting.create.scheduledStart')}

@@ -75,7 +75,7 @@ final class ManualPaymentProvider implements PaymentProviderInterface
      * For manual payments, this creates a pending payment that
      * will be marked as succeeded when admin verifies receipt.
      *
-     * @param array<string, mixed> $metadata
+     * @param  array<string, mixed>  $metadata
      */
     public function createPayment(
         Money $amount,
@@ -83,7 +83,7 @@ final class ManualPaymentProvider implements PaymentProviderInterface
         array $metadata = [],
     ): PaymentResult {
         // Generate a unique payment ID for tracking
-        $paymentId = 'manual_' . uniqid('', true);
+        $paymentId = 'manual_'.uniqid('', true);
 
         // Manual payments start as pending until admin confirms
         return PaymentResult::pending(
@@ -115,7 +115,7 @@ final class ManualPaymentProvider implements PaymentProviderInterface
     public function refund(string $paymentId, ?Money $amount = null): PaymentResult
     {
         // Manual refunds are just recorded, not processed
-        $refundId = 'refund_' . uniqid('', true);
+        $refundId = 'refund_'.uniqid('', true);
 
         return PaymentResult::success(
             paymentId: $refundId,
@@ -138,7 +138,7 @@ final class ManualPaymentProvider implements PaymentProviderInterface
     /**
      * Manual payments don't have webhooks.
      *
-     * @param array<string, string> $headers
+     * @param  array<string, string>  $headers
      */
     public function verifyWebhook(string $payload, array $headers): bool
     {

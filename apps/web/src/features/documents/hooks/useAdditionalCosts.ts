@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, apiPost, apiPatch, apiDelete } from '../../../lib/api'
+import { toast } from 'sonner'
+import { api, apiPost, apiPatch, apiDelete, getErrorMessage } from '../../../lib/api'
 
 export type AdditionalCostType = 'shipping' | 'customs' | 'insurance' | 'handling' | 'other'
 
@@ -66,6 +67,10 @@ export function useCreateAdditionalCost(documentId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['additional-costs', documentId] })
       void queryClient.invalidateQueries({ queryKey: ['document', 'purchase_order', documentId] })
+      toast.success('Additional cost created')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }
@@ -87,6 +92,10 @@ export function useUpdateAdditionalCost(documentId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['additional-costs', documentId] })
       void queryClient.invalidateQueries({ queryKey: ['document', 'purchase_order', documentId] })
+      toast.success('Additional cost updated')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }
@@ -104,6 +113,10 @@ export function useDeleteAdditionalCost(documentId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['additional-costs', documentId] })
       void queryClient.invalidateQueries({ queryKey: ['document', 'purchase_order', documentId] })
+      toast.success('Additional cost deleted')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }

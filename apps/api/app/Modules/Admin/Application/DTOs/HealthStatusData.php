@@ -9,7 +9,7 @@ use Spatie\LaravelData\Data;
 final class HealthStatusData extends Data
 {
     /**
-     * @param array<string, array<string, mixed>> $checks
+     * @param  array<string, array<string, mixed>>  $checks
      */
     public function __construct(
         public readonly bool $healthy,

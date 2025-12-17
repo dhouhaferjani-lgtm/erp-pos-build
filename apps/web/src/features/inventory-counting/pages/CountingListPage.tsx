@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { format } from 'date-fns'
-import { Plus, Search, ChevronLeft, ChevronRight, Eye } from 'lucide-react'
+import { Plus, Search, ChevronLeft, ChevronRight, Eye, Smartphone } from 'lucide-react'
 import { CountingStatusBadge } from '../components/CountingStatusBadge'
 import { useCountingList } from '../api/queries'
+import { QueryError } from '@/components/QueryError'
 import type { CountingFilters, CountingStatus } from '../types'
 
 const STATUS_OPTIONS: Array<CountingStatus | 'all'> = [
@@ -29,11 +30,17 @@ export function CountingListPage() {
   const [filters, setFilters] = useState<CountingFilters>({
     status: (searchParams.get('status') as CountingStatus | null) ?? 'all',
     search: searchParams.get('search') || '',
+    created_on_mobile:
+      searchParams.get('mobile') === 'true'
+        ? true
+        : searchParams.get('mobile') === 'false'
+        ? false
+        : 'all',
     page: parseInt(searchParams.get('page') || '1', 10),
     per_page: 10,
   })
 
-  const { data, isLoading } = useCountingList(filters)
+  const { data, isLoading, error, refetch } = useCountingList(filters)
 
   const updateFilters = (newFilters: Partial<CountingFilters>) => {
     const updated = { ...filters, ...newFilters, page: 1 }
@@ -46,6 +53,9 @@ export function CountingListPage() {
     }
     if (updated.search) {
       params.set('search', updated.search)
+    }
+    if (updated.created_on_mobile !== 'all') {
+      params.set('mobile', String(updated.created_on_mobile))
     }
     setSearchParams(params)
   }
@@ -101,6 +111,22 @@ export function CountingListPage() {
             </option>
           ))}
         </select>
+
+        {/* Mobile Filter */}
+        <select
+          value={filters.created_on_mobile === true ? 'true' : filters.created_on_mobile === false ? 'false' : 'all'}
+          onChange={(e) =>
+            { updateFilters({
+              created_on_mobile:
+                e.target.value === 'true' ? true : e.target.value === 'false' ? false : 'all',
+            }); }
+          }
+          className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        >
+          <option value="all">All Sources</option>
+          <option value="true">Mobile Only</option>
+          <option value="false">Web Only</option>
+        </select>
       </div>
 
       {/* Table */}
@@ -108,6 +134,12 @@ export function CountingListPage() {
         <div className="p-8 text-center text-gray-500">
           {t('common.loading')}...
         </div>
+      ) : error ? (
+        <QueryError
+          error={error}
+          onRetry={refetch}
+          title={t('counting.list.errorLoading')}
+        />
       ) : !data || data.data.length === 0 ? (
         <div className="rounded-lg border bg-white py-12 text-center">
           <p className="text-gray-500 mb-4">{t('counting.list.empty')}</p>
@@ -154,9 +186,17 @@ export function CountingListPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-gray-900">
-                        {t(`counting.scopeTypes.${counting.scope_type}`)}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-900">
+                          {counting.title || t(`counting.scopeTypes.${counting.scope_type}`)}
+                        </span>
+                        {counting.created_on_mobile && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            <Smartphone className="w-3 h-3" />
+                            Mobile
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <CountingStatusBadge status={counting.status} />

@@ -181,7 +181,7 @@ final class Plan extends Model
     /**
      * Scope to active plans only.
      *
-     * @param \Illuminate\Database\Eloquent\Builder<Plan> $query
+     * @param  \Illuminate\Database\Eloquent\Builder<Plan>  $query
      * @return \Illuminate\Database\Eloquent\Builder<Plan>
      */
     public function scopeActive($query)
@@ -192,7 +192,7 @@ final class Plan extends Model
     /**
      * Scope to public plans only.
      *
-     * @param \Illuminate\Database\Eloquent\Builder<Plan> $query
+     * @param  \Illuminate\Database\Eloquent\Builder<Plan>  $query
      * @return \Illuminate\Database\Eloquent\Builder<Plan>
      */
     public function scopePublic($query)

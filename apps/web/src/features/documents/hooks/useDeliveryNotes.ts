@@ -4,6 +4,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import {
   getDeliveryNotes,
   getInvoiceableDeliveryNotes,
@@ -11,6 +12,7 @@ import {
   consolidateDeliveryNotesToInvoice,
   type DeliveryNote,
 } from '../api/deliveryNotes'
+import { getErrorMessage } from '@/lib/api'
 
 /**
  * Query hook: Get delivery notes list.
@@ -110,6 +112,10 @@ export function useConsolidateDeliveryNotes() {
 
       // Invalidate invoices list
       void queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      toast.success('Invoice created from delivery notes')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }

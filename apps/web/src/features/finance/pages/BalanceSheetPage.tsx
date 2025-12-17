@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useBalanceSheet } from '../hooks/useBalanceSheet'
+import { QueryError } from '@/components/QueryError'
 import type { BalanceSheetLine } from '../types'
 
 export function BalanceSheetPage() {
@@ -7,7 +8,7 @@ export function BalanceSheetPage() {
     new Date().toISOString().split('T')[0]
   )
 
-  const { data, isLoading } = useBalanceSheet({
+  const { data, isLoading, error, refetch } = useBalanceSheet({
     as_of_date: asOfDate,
   })
 
@@ -45,6 +46,12 @@ export function BalanceSheetPage() {
       {/* Report */}
       {isLoading ? (
         <div>Loading...</div>
+      ) : error ? (
+        <QueryError
+          error={error}
+          onRetry={refetch}
+          title="Failed to load balance sheet"
+        />
       ) : (
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
           {/* Left Column: Assets */}

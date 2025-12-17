@@ -6,7 +6,6 @@ namespace App\Modules\Billing\Providers;
 
 use App\Modules\Billing\Application\Services\InvoiceService;
 use App\Modules\Billing\Application\Services\PaymentProviderManager;
-use App\Modules\Billing\Domain\Contracts\PaymentProviderInterface;
 use Illuminate\Support\ServiceProvider;
 
 final class BillingServiceProvider extends ServiceProvider
@@ -15,17 +14,17 @@ final class BillingServiceProvider extends ServiceProvider
     {
         // Register PaymentProviderManager as singleton
         $this->app->singleton(PaymentProviderManager::class, function () {
-            return new PaymentProviderManager();
+            return new PaymentProviderManager;
         });
 
         // Register InvoiceService
         $this->app->singleton(InvoiceService::class, function () {
-            return new InvoiceService();
+            return new InvoiceService;
         });
 
         // Merge config
         $this->mergeConfigFrom(
-            __DIR__ . '/../../../../config/billing.php',
+            __DIR__.'/../../../../config/billing.php',
             'billing'
         );
     }
@@ -34,18 +33,18 @@ final class BillingServiceProvider extends ServiceProvider
     {
         // Publish config
         $this->publishes([
-            __DIR__ . '/../../../../config/billing.php' => config_path('billing.php'),
+            __DIR__.'/../../../../config/billing.php' => config_path('billing.php'),
         ], 'billing-config');
 
         // Load views
         $this->loadViewsFrom(
-            __DIR__ . '/../../../../resources/views/billing',
+            __DIR__.'/../../../../resources/views/billing',
             'billing'
         );
 
         // Publish views
         $this->publishes([
-            __DIR__ . '/../../../../resources/views/billing' => resource_path('views/vendor/billing'),
+            __DIR__.'/../../../../resources/views/billing' => resource_path('views/vendor/billing'),
         ], 'billing-views');
     }
 }

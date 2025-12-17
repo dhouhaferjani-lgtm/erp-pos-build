@@ -4,10 +4,11 @@ import { useAccounts } from '../hooks/useAccounts'
 import { AccountTreeView } from '../components/AccountTreeView'
 import { AddAccountModal } from '../components/AddAccountModal'
 import { EditAccountModal } from '../components/EditAccountModal'
+import { QueryError } from '@/components/QueryError'
 import type { Account } from '../types'
 
 export function ChartOfAccountsPage() {
-  const { data: accounts, isLoading} = useAccounts()
+  const { data: accounts, isLoading, error, refetch } = useAccounts()
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
 
@@ -16,6 +17,16 @@ export function ChartOfAccountsPage() {
       <div className="flex items-center justify-center min-h-[400px]">
         <p className="text-gray-500">Loading...</p>
       </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <QueryError
+        error={error}
+        onRetry={refetch}
+        title="Failed to load chart of accounts"
+      />
     )
   }
 

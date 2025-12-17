@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
-import { api } from '../../../lib/api'
+import { toast } from 'sonner'
+import { api, getErrorMessage } from '../../../lib/api'
 
 /**
  * Get the PDF download URL for a document
@@ -48,6 +49,9 @@ export function useDownloadPdf() {
 
       return { success: true, filename }
     },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
+    },
   })
 }
 
@@ -72,6 +76,9 @@ export function usePreviewPdf() {
       }, 1000)
 
       return { success: true }
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }
@@ -106,6 +113,9 @@ export function usePrintPdf() {
       }
 
       return { success: true }
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }

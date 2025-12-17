@@ -4,11 +4,12 @@ import { useLedger } from '../hooks/useLedger'
 import { useAccounts } from '../hooks/useAccounts'
 import { LedgerFilters } from '../components/LedgerFilters'
 import { LedgerTable } from '../components/LedgerTable'
+import { QueryError } from '@/components/QueryError'
 import type { LedgerFilters as LedgerFiltersType } from '../types'
 
 export function GeneralLedgerPage() {
   const [filters, setFilters] = useState<LedgerFiltersType>({})
-  const { data: ledgerLines, isLoading } = useLedger(filters)
+  const { data: ledgerLines, isLoading, error, refetch } = useLedger(filters)
   const { data: accounts } = useAccounts()
 
   const handleExport = () => {
@@ -21,6 +22,16 @@ export function GeneralLedgerPage() {
       <div className="flex items-center justify-center min-h-[400px]">
         <p className="text-gray-500">Loading...</p>
       </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <QueryError
+        error={error}
+        onRetry={refetch}
+        title="Failed to load ledger"
+      />
     )
   }
 

@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { getAccounts, getAccount, createAccount, updateAccount } from '../api'
+import { getErrorMessage } from '@/lib/api'
 import type { AccountFilters, UpdateAccountData } from '../types'
 
 export function useAccounts(filters?: AccountFilters) {
@@ -24,6 +26,10 @@ export function useCreateAccount() {
     mutationFn: createAccount,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      toast.success('Account created successfully')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }
@@ -36,6 +42,10 @@ export function useUpdateAccount() {
       updateAccount(id, data),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      toast.success('Account updated successfully')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }

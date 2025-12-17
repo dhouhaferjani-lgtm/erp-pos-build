@@ -1,0 +1,8 @@
+{
+  "searchPlaceholder": "Rechercher des emplacements par nom ou code...",
+  "noLocationsFound": "Aucun emplacement trouvé",
+  "noAvailableLocations": "Aucun emplacement disponible",
+  "selectedLocations": "{{count}} emplacement sélectionné",
+  "selectedLocations_plural": "{{count}} emplacements sélectionnés",
+  "selectLocations": "Sélectionner des emplacements"
+}

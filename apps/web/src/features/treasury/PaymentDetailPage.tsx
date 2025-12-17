@@ -12,7 +12,8 @@ import {
   RotateCcw,
   History,
 } from 'lucide-react'
-import { api, apiDelete } from '../../lib/api'
+import { toast } from 'sonner'
+import { api, apiDelete, getErrorMessage } from '../../lib/api'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 
 interface PaymentAllocation {
@@ -140,7 +141,11 @@ export function PaymentDetailPage() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['payments'] })
+      toast.success(t('payments.messages.deleted'))
       void navigate('/treasury/payments')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 
@@ -153,8 +158,12 @@ export function PaymentDetailPage() {
       void queryClient.invalidateQueries({ queryKey: ['payment', id] })
       void queryClient.invalidateQueries({ queryKey: ['payment', id, 'refund-history'] })
       void queryClient.invalidateQueries({ queryKey: ['payment', id, 'can-refund'] })
+      toast.success(t('payments.messages.refunded'))
       setShowRefundModal(false)
       setRefundReason('')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 
@@ -167,9 +176,13 @@ export function PaymentDetailPage() {
       void queryClient.invalidateQueries({ queryKey: ['payment', id] })
       void queryClient.invalidateQueries({ queryKey: ['payment', id, 'refund-history'] })
       void queryClient.invalidateQueries({ queryKey: ['payment', id, 'can-refund'] })
+      toast.success(t('payments.messages.partialRefunded'))
       setShowPartialRefundModal(false)
       setPartialRefundAmount('')
       setPartialRefundReason('')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 
@@ -181,8 +194,12 @@ export function PaymentDetailPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['payment', id] })
       void queryClient.invalidateQueries({ queryKey: ['payments'] })
+      toast.success(t('payments.messages.reversed'))
       setShowReverseModal(false)
       setReverseReason('')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 

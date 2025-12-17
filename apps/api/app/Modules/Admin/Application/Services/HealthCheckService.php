@@ -45,7 +45,7 @@ final class HealthCheckService
             $duration = (microtime(true) - $start) * 1000;
 
             // Get connection pool info
-            $connections = DB::select("SELECT count(*) as count FROM pg_stat_activity WHERE datname = current_database()");
+            $connections = DB::select('SELECT count(*) as count FROM pg_stat_activity WHERE datname = current_database()');
             $connectionCount = $connections[0]->count ?? 0;
 
             return [

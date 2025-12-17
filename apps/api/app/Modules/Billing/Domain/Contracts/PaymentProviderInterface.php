@@ -46,7 +46,7 @@ interface PaymentProviderInterface
     /**
      * Create a payment intent/session.
      *
-     * @param array<string, mixed> $metadata
+     * @param  array<string, mixed>  $metadata
      */
     public function createPayment(
         Money $amount,
@@ -77,7 +77,7 @@ interface PaymentProviderInterface
     /**
      * Verify webhook signature (for providers that support webhooks).
      *
-     * @param array<string, string> $headers
+     * @param  array<string, string>  $headers
      */
     public function verifyWebhook(string $payload, array $headers): bool;
 

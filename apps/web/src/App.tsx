@@ -6,6 +6,7 @@ import { CompanyProvider } from './features/company/CompanyProvider'
 import { LocationProvider } from './features/location/LocationProvider'
 import { AppRoutes } from './routes'
 import { languages } from './lib/i18n'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 function App() {
   const { i18n } = useTranslation()
@@ -18,14 +19,16 @@ function App() {
   }, [i18n.language])
 
   return (
-    <AuthProvider>
-      <CompanyProvider>
-        <LocationProvider>
-          <AppRoutes />
-          <Toaster position="top-right" richColors />
-        </LocationProvider>
-      </CompanyProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <CompanyProvider>
+          <LocationProvider>
+            <AppRoutes />
+            <Toaster position="top-right" richColors />
+          </LocationProvider>
+        </CompanyProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   )
 }
 

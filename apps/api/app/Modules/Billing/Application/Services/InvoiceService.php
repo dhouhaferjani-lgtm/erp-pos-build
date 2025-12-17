@@ -86,7 +86,7 @@ final class InvoiceService
     /**
      * Create a manual invoice (not linked to subscription).
      *
-     * @param array<array{description: string, amount: float, quantity?: float}> $items
+     * @param  array<array{description: string, amount: float, quantity?: float}>  $items
      */
     public function createManualInvoice(
         Tenant $tenant,

@@ -4,7 +4,8 @@ import { useForm } from 'react-hook-form'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Plus } from 'lucide-react'
-import { api, apiPost } from '../../lib/api'
+import { toast } from 'sonner'
+import { api, apiPost, getErrorMessage } from '../../lib/api'
 import { AddPartnerModal, AddRepositoryModal } from '../../components/organisms'
 import { PaymentAllocationForm } from './components'
 import type { OpenInvoice } from '../../types/treasury'
@@ -224,6 +225,7 @@ export function PaymentForm() {
       void queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] })
       void queryClient.invalidateQueries({ queryKey: ['invoices'] })
       void queryClient.invalidateQueries({ queryKey: ['open-invoices'] })
+      toast.success(t('treasury:payments.messages.created'))
 
       // Store payment ID for potential manual allocation adjustment
       setCreatedPaymentId(payment.id)
@@ -233,6 +235,9 @@ export function PaymentForm() {
         handleNavigateAway()
       }
       // Otherwise, user can optionally apply smart allocation below
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 

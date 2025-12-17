@@ -1,0 +1,9 @@
+{
+  "searchPlaceholder": "Rechercher des produits par nom, référence ou code-barres...",
+  "noProductsFound": "Aucun produit trouvé",
+  "noAvailableProducts": "Aucun produit disponible",
+  "selectedProducts": "{{count}} produit sélectionné",
+  "selectedProducts_plural": "{{count}} produits sélectionnés",
+  "barcodeScannerHint": "Scanner de code-barres disponible sur l'application mobile",
+  "selectProducts": "Sélectionner des produits"
+}

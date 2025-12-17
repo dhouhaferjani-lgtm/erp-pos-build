@@ -1,7 +1,8 @@
 import { useAdminDashboard } from '../hooks/useAdminDashboard'
+import { QueryError } from '@/components/QueryError'
 
 export function AdminDashboardPage() {
-  const { data: stats, isLoading } = useAdminDashboard()
+  const { data: stats, isLoading, error, refetch } = useAdminDashboard()
 
   if (isLoading) {
     return (
@@ -11,8 +12,20 @@ export function AdminDashboardPage() {
     )
   }
 
+  if (error) {
+    return (
+      <div className="p-8">
+        <QueryError
+          error={error}
+          onRetry={refetch}
+          title="Failed to load dashboard"
+        />
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="p-8">
       <div className="mx-auto max-w-7xl">
         <h1 className="mb-8 text-3xl font-bold text-gray-900">
           Super Admin Dashboard

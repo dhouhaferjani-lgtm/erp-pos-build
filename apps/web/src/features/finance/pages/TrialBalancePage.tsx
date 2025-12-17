@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTrialBalance } from '../hooks/useTrialBalance'
+import { QueryError } from '@/components/QueryError'
 import type { TrialBalanceLine } from '../types'
 
 export function TrialBalancePage() {
@@ -7,7 +8,7 @@ export function TrialBalancePage() {
     new Date().toISOString().split('T')[0]
   )
 
-  const { data: lines = [], isLoading } = useTrialBalance({
+  const { data: lines = [], isLoading, error, refetch } = useTrialBalance({
     as_of_date: asOfDate,
   })
 
@@ -53,6 +54,12 @@ export function TrialBalancePage() {
       {/* Table */}
       {isLoading ? (
         <div>Loading...</div>
+      ) : error ? (
+        <QueryError
+          error={error}
+          onRetry={refetch}
+          title="Failed to load trial balance"
+        />
       ) : (
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">

@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import {
   getTenants,
   getTenant,
@@ -7,6 +8,7 @@ import {
   suspendTenant,
   activateTenant,
 } from '../api'
+import { getErrorMessage } from '@/lib/api'
 
 export function useTenants(params?: { search?: string; status?: string }) {
   return useQuery({
@@ -32,6 +34,10 @@ export function useExtendTrial() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'tenants'] })
       queryClient.invalidateQueries({ queryKey: ['admin', 'tenant'] })
+      toast.success('Trial extended successfully')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }
@@ -45,6 +51,10 @@ export function useChangePlan() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'tenants'] })
       queryClient.invalidateQueries({ queryKey: ['admin', 'tenant'] })
+      toast.success('Plan changed successfully')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }
@@ -63,6 +73,10 @@ export function useSuspendTenant() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'tenants'] })
       queryClient.invalidateQueries({ queryKey: ['admin', 'tenant'] })
+      toast.success('Tenant suspended successfully')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }
@@ -75,6 +89,10 @@ export function useActivateTenant() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'tenants'] })
       queryClient.invalidateQueries({ queryKey: ['admin', 'tenant'] })
+      toast.success('Tenant activated successfully')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }

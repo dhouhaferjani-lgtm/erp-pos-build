@@ -4,6 +4,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import {
   listReconciliations,
   getReconciliation,
@@ -15,6 +16,7 @@ import {
   cancelReconciliation,
   listRepositories,
 } from '../api/reconciliation'
+import { getErrorMessage } from '@/lib/api'
 import type {
   StartReconciliationRequest,
   MatchItemRequest,
@@ -79,6 +81,10 @@ export function useStartReconciliation() {
     mutationFn: (request: StartReconciliationRequest) => startReconciliation(request),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['reconciliations'] })
+      toast.success('Reconciliation started')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }
@@ -106,6 +112,10 @@ export function useMatchItem() {
       void queryClient.invalidateQueries({
         queryKey: ['reconciliation-summary', variables.reconciliationId],
       })
+      toast.success('Item matched')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }
@@ -131,6 +141,10 @@ export function useUnmatchItem() {
       void queryClient.invalidateQueries({
         queryKey: ['reconciliation-summary', variables.reconciliationId],
       })
+      toast.success('Item unmatched')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }
@@ -150,6 +164,10 @@ export function useCompleteReconciliation() {
       void queryClient.invalidateQueries({ queryKey: ['reconciliation-summary', id] })
       void queryClient.invalidateQueries({ queryKey: ['payment-repositories'] })
       void queryClient.invalidateQueries({ queryKey: ['payments'] })
+      toast.success('Reconciliation completed')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }
@@ -166,6 +184,10 @@ export function useCancelReconciliation() {
       void queryClient.invalidateQueries({ queryKey: ['reconciliations'] })
       void queryClient.invalidateQueries({ queryKey: ['reconciliation', id] })
       void queryClient.invalidateQueries({ queryKey: ['reconciliation-summary', id] })
+      toast.success('Reconciliation cancelled')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAgedReceivables } from '../hooks/useAgedReceivables'
+import { QueryError } from '@/components/QueryError'
 import type { AgedReceivablesLine } from '../types'
 
 export function AgedReceivablesPage() {
@@ -7,7 +8,7 @@ export function AgedReceivablesPage() {
     new Date().toISOString().split('T')[0]
   )
 
-  const { data: lines = [], isLoading } = useAgedReceivables({
+  const { data: lines = [], isLoading, error, refetch } = useAgedReceivables({
     as_of_date: asOfDate,
   })
 
@@ -64,6 +65,12 @@ export function AgedReceivablesPage() {
       {/* Report */}
       {isLoading ? (
         <div>Loading...</div>
+      ) : error ? (
+        <QueryError
+          error={error}
+          onRetry={refetch}
+          title="Failed to load aged receivables"
+        />
       ) : (
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">

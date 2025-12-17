@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, apiDelete } from '../../../lib/api'
+import { toast } from 'sonner'
+import { api, apiDelete, getErrorMessage } from '../../../lib/api'
 
 export interface DocumentAttachment {
   id: string
@@ -95,6 +96,10 @@ export function useUploadAttachment(documentId: string) {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['attachments', documentId] })
+      toast.success('Attachment uploaded successfully')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }
@@ -111,6 +116,10 @@ export function useDeleteAttachment(documentId: string) {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['attachments', documentId] })
+      toast.success('Attachment deleted')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }
