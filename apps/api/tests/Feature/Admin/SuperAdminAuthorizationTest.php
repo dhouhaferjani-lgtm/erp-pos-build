@@ -70,9 +70,7 @@ class SuperAdminAuthorizationTest extends TestCase
 
     public function test_super_admin_can_access_admin_dashboard(): void
     {
-        $token = $this->superAdmin->createToken('test-token')->plainTextToken;
-
-        $response = $this->withHeader('Authorization', "Bearer {$token}")
+        $response = $this->actingAs($this->superAdmin, 'sanctum')
             ->getJson('/api/v1/admin/dashboard');
 
         $response->assertOk()
@@ -90,9 +88,7 @@ class SuperAdminAuthorizationTest extends TestCase
 
     public function test_tenant_user_cannot_access_admin_dashboard(): void
     {
-        $token = $this->tenantUser->createToken('test-token')->plainTextToken;
-
-        $response = $this->withHeader('Authorization', "Bearer {$token}")
+        $response = $this->actingAs($this->tenantUser, 'sanctum')
             ->getJson('/api/v1/admin/dashboard');
 
         $response->assertForbidden()
@@ -114,9 +110,8 @@ class SuperAdminAuthorizationTest extends TestCase
     public function test_deactivated_super_admin_cannot_access_admin_dashboard(): void
     {
         $this->superAdmin->update(['is_active' => false]);
-        $token = $this->superAdmin->createToken('test-token')->plainTextToken;
 
-        $response = $this->withHeader('Authorization', "Bearer {$token}")
+        $response = $this->actingAs($this->superAdmin, 'sanctum')
             ->getJson('/api/v1/admin/dashboard');
 
         $response->assertForbidden()
@@ -134,9 +129,7 @@ class SuperAdminAuthorizationTest extends TestCase
 
     public function test_super_admin_can_list_tenants(): void
     {
-        $token = $this->superAdmin->createToken('test-token')->plainTextToken;
-
-        $response = $this->withHeader('Authorization', "Bearer {$token}")
+        $response = $this->actingAs($this->superAdmin, 'sanctum')
             ->getJson('/api/v1/admin/tenants');
 
         $response->assertOk()
@@ -145,9 +138,7 @@ class SuperAdminAuthorizationTest extends TestCase
 
     public function test_tenant_user_cannot_list_tenants(): void
     {
-        $token = $this->tenantUser->createToken('test-token')->plainTextToken;
-
-        $response = $this->withHeader('Authorization', "Bearer {$token}")
+        $response = $this->actingAs($this->tenantUser, 'sanctum')
             ->getJson('/api/v1/admin/tenants');
 
         $response->assertForbidden()
@@ -161,9 +152,7 @@ class SuperAdminAuthorizationTest extends TestCase
 
     public function test_super_admin_can_view_tenant_details(): void
     {
-        $token = $this->superAdmin->createToken('test-token')->plainTextToken;
-
-        $response = $this->withHeader('Authorization', "Bearer {$token}")
+        $response = $this->actingAs($this->superAdmin, 'sanctum')
             ->getJson("/api/v1/admin/tenants/{$this->tenant->id}");
 
         $response->assertOk()
@@ -177,9 +166,7 @@ class SuperAdminAuthorizationTest extends TestCase
 
     public function test_tenant_user_cannot_view_tenant_details(): void
     {
-        $token = $this->tenantUser->createToken('test-token')->plainTextToken;
-
-        $response = $this->withHeader('Authorization', "Bearer {$token}")
+        $response = $this->actingAs($this->tenantUser, 'sanctum')
             ->getJson("/api/v1/admin/tenants/{$this->tenant->id}");
 
         $response->assertForbidden();
@@ -191,9 +178,7 @@ class SuperAdminAuthorizationTest extends TestCase
 
     public function test_tenant_user_cannot_suspend_tenant(): void
     {
-        $token = $this->tenantUser->createToken('test-token')->plainTextToken;
-
-        $response = $this->withHeader('Authorization', "Bearer {$token}")
+        $response = $this->actingAs($this->tenantUser, 'sanctum')
             ->postJson("/api/v1/admin/tenants/{$this->tenant->id}/suspend", [
                 'reason' => 'Test suspension',
             ]);
@@ -210,9 +195,7 @@ class SuperAdminAuthorizationTest extends TestCase
         // First suspend the tenant
         $this->tenant->update(['status' => TenantStatus::Suspended]);
 
-        $token = $this->tenantUser->createToken('test-token')->plainTextToken;
-
-        $response = $this->withHeader('Authorization', "Bearer {$token}")
+        $response = $this->actingAs($this->tenantUser, 'sanctum')
             ->postJson("/api/v1/admin/tenants/{$this->tenant->id}/activate");
 
         $response->assertForbidden();
@@ -228,9 +211,7 @@ class SuperAdminAuthorizationTest extends TestCase
 
     public function test_tenant_user_cannot_access_admin_me_endpoint(): void
     {
-        $token = $this->tenantUser->createToken('test-token')->plainTextToken;
-
-        $response = $this->withHeader('Authorization', "Bearer {$token}")
+        $response = $this->actingAs($this->tenantUser, 'sanctum')
             ->getJson('/api/v1/admin/auth/me');
 
         $response->assertForbidden();
@@ -238,9 +219,7 @@ class SuperAdminAuthorizationTest extends TestCase
 
     public function test_super_admin_can_access_admin_me_endpoint(): void
     {
-        $token = $this->superAdmin->createToken('test-token')->plainTextToken;
-
-        $response = $this->withHeader('Authorization', "Bearer {$token}")
+        $response = $this->actingAs($this->superAdmin, 'sanctum')
             ->getJson('/api/v1/admin/auth/me');
 
         $response->assertOk()
@@ -249,9 +228,7 @@ class SuperAdminAuthorizationTest extends TestCase
 
     public function test_tenant_user_cannot_logout_from_admin(): void
     {
-        $token = $this->tenantUser->createToken('test-token')->plainTextToken;
-
-        $response = $this->withHeader('Authorization', "Bearer {$token}")
+        $response = $this->actingAs($this->tenantUser, 'sanctum')
             ->postJson('/api/v1/admin/auth/logout');
 
         $response->assertForbidden();
@@ -263,9 +240,7 @@ class SuperAdminAuthorizationTest extends TestCase
 
     public function test_tenant_user_cannot_view_admin_audit_logs(): void
     {
-        $token = $this->tenantUser->createToken('test-token')->plainTextToken;
-
-        $response = $this->withHeader('Authorization', "Bearer {$token}")
+        $response = $this->actingAs($this->tenantUser, 'sanctum')
             ->getJson('/api/v1/admin/audit-logs');
 
         $response->assertForbidden();
@@ -273,9 +248,7 @@ class SuperAdminAuthorizationTest extends TestCase
 
     public function test_super_admin_can_view_audit_logs(): void
     {
-        $token = $this->superAdmin->createToken('test-token')->plainTextToken;
-
-        $response = $this->withHeader('Authorization', "Bearer {$token}")
+        $response = $this->actingAs($this->superAdmin, 'sanctum')
             ->getJson('/api/v1/admin/audit-logs');
 
         $response->assertOk()
