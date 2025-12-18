@@ -18,9 +18,11 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class UpdatePartnerTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -128,8 +130,7 @@ class UpdatePartnerTest extends TestCase
                 'email' => 'invalid-email',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['email']);
+        $this->assertApiValidationErrors($response, ['email']);
     }
 
     public function test_vat_number_uniqueness_on_update(): void
@@ -151,8 +152,7 @@ class UpdatePartnerTest extends TestCase
                 'vat_number' => 'FR98765432101',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['vat_number']);
+        $this->assertApiValidationErrors($response, ['vat_number']);
     }
 
     public function test_can_update_own_vat_number_to_same_value(): void

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Pricing\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Http\Middleware\CompanyContext;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Pricing\Domain\PartnerPriceList;
 use App\Modules\Pricing\Domain\PriceList;
 use App\Modules\Pricing\Domain\PriceListItem;

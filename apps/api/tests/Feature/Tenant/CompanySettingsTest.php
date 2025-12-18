@@ -21,9 +21,11 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class CompanySettingsTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -290,8 +292,7 @@ class CompanySettingsTest extends TestCase
                 'name' => '',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['name']);
+        $this->assertApiValidationErrors($response, ['name']);
     }
 
     public function test_update_validates_name_max_length(): void
@@ -301,8 +302,7 @@ class CompanySettingsTest extends TestCase
                 'name' => str_repeat('a', 256),
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['name']);
+        $this->assertApiValidationErrors($response, ['name']);
     }
 
     public function test_update_validates_email_format(): void
@@ -312,8 +312,7 @@ class CompanySettingsTest extends TestCase
                 'email' => 'invalid-email',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['email']);
+        $this->assertApiValidationErrors($response, ['email']);
     }
 
     public function test_update_validates_website_url(): void
@@ -323,8 +322,7 @@ class CompanySettingsTest extends TestCase
                 'website' => 'not-a-url',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['website']);
+        $this->assertApiValidationErrors($response, ['website']);
     }
 
     public function test_update_validates_primary_color_hex(): void
@@ -334,8 +332,7 @@ class CompanySettingsTest extends TestCase
                 'primary_color' => 'red',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['primary_color']);
+        $this->assertApiValidationErrors($response, ['primary_color']);
     }
 
     public function test_update_accepts_valid_hex_colors(): void
@@ -356,8 +353,7 @@ class CompanySettingsTest extends TestCase
                 'timezone' => 'Invalid/Timezone',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['timezone']);
+        $this->assertApiValidationErrors($response, ['timezone']);
     }
 
     public function test_update_validates_locale_max_length(): void
@@ -367,8 +363,7 @@ class CompanySettingsTest extends TestCase
                 'locale' => 'invalid_locale_too_long',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['locale']);
+        $this->assertApiValidationErrors($response, ['locale']);
     }
 
     public function test_update_validates_country_code(): void
@@ -378,8 +373,7 @@ class CompanySettingsTest extends TestCase
                 'country_code' => 'INVALID',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['country_code']);
+        $this->assertApiValidationErrors($response, ['country_code']);
     }
 
     public function test_update_validates_currency_code(): void
@@ -389,8 +383,7 @@ class CompanySettingsTest extends TestCase
                 'currency_code' => 'INVALID',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['currency_code']);
+        $this->assertApiValidationErrors($response, ['currency_code']);
     }
 
     public function test_update_creates_audit_log(): void
@@ -488,8 +481,7 @@ class CompanySettingsTest extends TestCase
         $response = $this->actingAs($this->adminUser, 'sanctum')
             ->postJson('/api/v1/settings/company/logo', []);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['logo']);
+        $this->assertApiValidationErrors($response, ['logo']);
     }
 
     public function test_logo_upload_validates_max_size(): void
@@ -504,8 +496,7 @@ class CompanySettingsTest extends TestCase
                 'logo' => $file,
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['logo']);
+        $this->assertApiValidationErrors($response, ['logo']);
     }
 
     public function test_logo_upload_accepts_png(): void
@@ -561,8 +552,7 @@ class CompanySettingsTest extends TestCase
                 'logo' => $file,
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['logo']);
+        $this->assertApiValidationErrors($response, ['logo']);
     }
 
     public function test_logo_upload_deletes_old_logo(): void

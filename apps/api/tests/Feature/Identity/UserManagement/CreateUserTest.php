@@ -19,9 +19,11 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class CreateUserTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -96,8 +98,7 @@ class CreateUserTest extends TestCase
                 'role' => 'operator',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['name']);
+        $this->assertApiValidationErrors($response, ['name']);
     }
 
     public function test_email_is_required(): void
@@ -108,8 +109,7 @@ class CreateUserTest extends TestCase
                 'role' => 'operator',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['email']);
+        $this->assertApiValidationErrors($response, ['email']);
     }
 
     public function test_email_must_be_valid(): void
@@ -121,8 +121,7 @@ class CreateUserTest extends TestCase
                 'role' => 'operator',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['email']);
+        $this->assertApiValidationErrors($response, ['email']);
     }
 
     public function test_email_must_be_unique_within_tenant(): void
@@ -142,8 +141,7 @@ class CreateUserTest extends TestCase
                 'role' => 'operator',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['email']);
+        $this->assertApiValidationErrors($response, ['email']);
     }
 
     public function test_same_email_allowed_in_different_tenants(): void
@@ -184,8 +182,7 @@ class CreateUserTest extends TestCase
                 'email' => 'newuser@example.com',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['role']);
+        $this->assertApiValidationErrors($response, ['role']);
     }
 
     public function test_role_must_exist(): void
@@ -197,8 +194,7 @@ class CreateUserTest extends TestCase
                 'role' => 'nonexistent-role',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['role']);
+        $this->assertApiValidationErrors($response, ['role']);
     }
 
     public function test_phone_format_validation(): void
@@ -211,8 +207,7 @@ class CreateUserTest extends TestCase
                 'phone' => 'invalid-phone',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['phone']);
+        $this->assertApiValidationErrors($response, ['phone']);
     }
 
     public function test_successful_creation_returns_201(): void

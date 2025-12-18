@@ -27,9 +27,11 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class CreditNoteIntegrationTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -323,8 +325,7 @@ class CreditNoteIntegrationTest extends TestCase
                 'reason' => 'return',
             ]);
 
-        $response->assertStatus(422)
-            ->assertJsonValidationErrors(['amount']);
+        $this->assertApiValidationErrors($response, ['amount']);
     }
 
     /** @test */

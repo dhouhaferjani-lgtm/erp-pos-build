@@ -18,9 +18,11 @@ use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class CheckMarginTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -105,7 +107,7 @@ class CheckMarginTest extends TestCase
 
     public function test_can_check_margin_for_good_price(): void
     {
-        $response = $this->actingAs($this->user)
+        $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/pricing/check-margin', [
                 'product_id' => $this->product->id,
                 'sell_price' => 140.00,
@@ -129,7 +131,7 @@ class CheckMarginTest extends TestCase
 
     public function test_margin_level_yellow_for_below_target(): void
     {
-        $response = $this->actingAs($this->user)
+        $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/pricing/check-margin', [
                 'product_id' => $this->product->id,
                 'sell_price' => 120.00, // 20% margin (below 30% target)
@@ -142,7 +144,7 @@ class CheckMarginTest extends TestCase
 
     public function test_margin_level_orange_for_below_minimum(): void
     {
-        $response = $this->actingAs($this->user)
+        $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/pricing/check-margin', [
                 'product_id' => $this->product->id,
                 'sell_price' => 110.00, // 10% margin (below 15% minimum)
@@ -155,7 +157,7 @@ class CheckMarginTest extends TestCase
 
     public function test_margin_level_red_for_below_cost(): void
     {
-        $response = $this->actingAs($this->user)
+        $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/pricing/check-margin', [
                 'product_id' => $this->product->id,
                 'sell_price' => 90.00, // Below cost
@@ -168,7 +170,7 @@ class CheckMarginTest extends TestCase
 
     public function test_suggests_price_based_on_target_margin(): void
     {
-        $response = $this->actingAs($this->user)
+        $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/pricing/check-margin', [
                 'product_id' => $this->product->id,
                 'sell_price' => 120.00,
@@ -186,7 +188,7 @@ class CheckMarginTest extends TestCase
         // Enable below cost sales for this company
         $this->company->update(['allow_below_cost_sales' => true]);
 
-        $response = $this->actingAs($this->user)
+        $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/pricing/check-margin', [
                 'product_id' => $this->product->id,
                 'sell_price' => 90.00, // Below cost
@@ -202,7 +204,7 @@ class CheckMarginTest extends TestCase
 
     public function test_validates_product_id_exists(): void
     {
-        $response = $this->actingAs($this->user)
+        $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/pricing/check-margin', [
                 'product_id' => 'non-existent-uuid',
                 'sell_price' => 100.00,
@@ -213,19 +215,18 @@ class CheckMarginTest extends TestCase
 
     public function test_validates_sell_price_is_positive(): void
     {
-        $response = $this->actingAs($this->user)
+        $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/pricing/check-margin', [
                 'product_id' => $this->product->id,
                 'sell_price' => -50.00,
             ]);
 
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['sell_price']);
+        $this->assertApiValidationErrors($response, ['sell_price']);
     }
 
     public function test_returns_effective_margins(): void
     {
-        $response = $this->actingAs($this->user)
+        $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/pricing/check-margin', [
                 'product_id' => $this->product->id,
                 'sell_price' => 130.00,
@@ -251,7 +252,7 @@ class CheckMarginTest extends TestCase
             'minimum_margin_override' => '20.00',
         ]);
 
-        $response = $this->actingAs($this->user)
+        $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/pricing/check-margin', [
                 'product_id' => $this->product->id,
                 'sell_price' => 150.00,

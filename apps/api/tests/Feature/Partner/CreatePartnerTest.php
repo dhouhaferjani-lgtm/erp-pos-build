@@ -16,9 +16,11 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class CreatePartnerTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -78,8 +80,7 @@ class CreatePartnerTest extends TestCase
                 'type' => 'customer',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['name']);
+        $this->assertApiValidationErrors($response, ['name']);
     }
 
     public function test_type_is_required(): void
@@ -89,8 +90,7 @@ class CreatePartnerTest extends TestCase
                 'name' => 'Test Partner',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['type']);
+        $this->assertApiValidationErrors($response, ['type']);
     }
 
     public function test_type_must_be_valid(): void
@@ -101,8 +101,7 @@ class CreatePartnerTest extends TestCase
                 'type' => 'invalid',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['type']);
+        $this->assertApiValidationErrors($response, ['type']);
     }
 
     public function test_email_format_validation(): void
@@ -114,8 +113,7 @@ class CreatePartnerTest extends TestCase
                 'email' => 'invalid-email',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['email']);
+        $this->assertApiValidationErrors($response, ['email']);
     }
 
     public function test_vat_number_format_for_france(): void
@@ -128,8 +126,7 @@ class CreatePartnerTest extends TestCase
                 'vat_number' => 'INVALID123',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['vat_number']);
+        $this->assertApiValidationErrors($response, ['vat_number']);
     }
 
     public function test_vat_number_format_for_tunisia(): void
@@ -142,8 +139,7 @@ class CreatePartnerTest extends TestCase
                 'vat_number' => 'INVALID',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['vat_number']);
+        $this->assertApiValidationErrors($response, ['vat_number']);
     }
 
     public function test_duplicate_vat_number_detection(): void
@@ -167,8 +163,7 @@ class CreatePartnerTest extends TestCase
                 'vat_number' => 'FR12345678901',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['vat_number']);
+        $this->assertApiValidationErrors($response, ['vat_number']);
     }
 
     public function test_successful_creation_returns_201(): void

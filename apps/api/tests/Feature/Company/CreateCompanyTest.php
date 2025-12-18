@@ -17,9 +17,11 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class CreateCompanyTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -163,8 +165,7 @@ class CreateCompanyTest extends TestCase
                 'timezone' => 'Europe/Paris',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['name']);
+        $this->assertApiValidationErrors($response, ['name']);
     }
 
     public function test_company_creation_requires_country_code(): void
@@ -177,8 +178,7 @@ class CreateCompanyTest extends TestCase
                 'timezone' => 'Europe/Paris',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['country_code']);
+        $this->assertApiValidationErrors($response, ['country_code']);
     }
 
     public function test_company_creation_validates_country_code_format(): void
@@ -192,8 +192,7 @@ class CreateCompanyTest extends TestCase
                 'timezone' => 'Europe/Paris',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['country_code']);
+        $this->assertApiValidationErrors($response, ['country_code']);
     }
 
     public function test_company_creation_requires_currency(): void
@@ -206,8 +205,7 @@ class CreateCompanyTest extends TestCase
                 'timezone' => 'Europe/Paris',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['currency']);
+        $this->assertApiValidationErrors($response, ['currency']);
     }
 
     public function test_company_creation_validates_currency_format(): void
@@ -221,8 +219,7 @@ class CreateCompanyTest extends TestCase
                 'timezone' => 'Europe/Paris',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['currency']);
+        $this->assertApiValidationErrors($response, ['currency']);
     }
 
     public function test_company_creation_with_optional_fields(): void

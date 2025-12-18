@@ -19,9 +19,11 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class UpdateVehicleTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -137,8 +139,7 @@ class UpdateVehicleTest extends TestCase
                 'license_plate' => 'XYZ-789',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['license_plate']);
+        $this->assertApiValidationErrors($response, ['license_plate']);
     }
 
     public function test_can_update_own_license_plate_to_same_value(): void

@@ -19,9 +19,11 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class CreateDocumentTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -110,8 +112,7 @@ class CreateDocumentTest extends TestCase
                 ],
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['partner_id']);
+        $this->assertApiValidationErrors($response, ['partner_id']);
     }
 
     public function test_document_date_is_required(): void
@@ -128,8 +129,7 @@ class CreateDocumentTest extends TestCase
                 ],
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['document_date']);
+        $this->assertApiValidationErrors($response, ['document_date']);
     }
 
     public function test_lines_are_required(): void
@@ -140,8 +140,7 @@ class CreateDocumentTest extends TestCase
                 'document_date' => now()->toDateString(),
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['lines']);
+        $this->assertApiValidationErrors($response, ['lines']);
     }
 
     public function test_line_description_is_required(): void
@@ -158,8 +157,7 @@ class CreateDocumentTest extends TestCase
                 ],
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['lines.0.description']);
+        $this->assertApiValidationErrors($response, ['lines.0.description']);
     }
 
     public function test_line_quantity_must_be_positive(): void
@@ -177,8 +175,7 @@ class CreateDocumentTest extends TestCase
                 ],
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['lines.0.quantity']);
+        $this->assertApiValidationErrors($response, ['lines.0.quantity']);
     }
 
     public function test_can_create_quote(): void
@@ -329,8 +326,7 @@ class CreateDocumentTest extends TestCase
                 ],
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['partner_id']);
+        $this->assertApiValidationErrors($response, ['partner_id']);
     }
 
     public function test_unauthenticated_user_cannot_create_document(): void

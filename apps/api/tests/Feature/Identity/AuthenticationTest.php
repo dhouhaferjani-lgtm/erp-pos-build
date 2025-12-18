@@ -11,9 +11,11 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class AuthenticationTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -85,8 +87,7 @@ class AuthenticationTest extends TestCase
             'password' => 'wrongpassword',
         ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['email']);
+        $this->assertApiValidationErrors($response, ['email']);
     }
 
     public function test_inactive_user_cannot_login(): void
@@ -104,8 +105,7 @@ class AuthenticationTest extends TestCase
             'password' => 'password123',
         ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['email']);
+        $this->assertApiValidationErrors($response, ['email']);
     }
 
     public function test_authenticated_user_can_get_their_profile(): void
@@ -169,8 +169,7 @@ class AuthenticationTest extends TestCase
     {
         $response = $this->postJson('/api/v1/auth/login', []);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['email', 'password']);
+        $this->assertApiValidationErrors($response, ['email', 'password']);
     }
 
     public function test_login_validates_email_format(): void
@@ -180,8 +179,7 @@ class AuthenticationTest extends TestCase
             'password' => 'password123',
         ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['email']);
+        $this->assertApiValidationErrors($response, ['email']);
     }
 
     public function test_login_with_device_info_creates_device_record(): void
@@ -275,8 +273,7 @@ class AuthenticationTest extends TestCase
     {
         $response = $this->postJson('/api/v1/auth/register', []);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['name', 'email', 'password', 'company_name', 'country_code']);
+        $this->assertApiValidationErrors($response, ['name', 'email', 'password', 'company_name', 'country_code']);
     }
 
     public function test_register_requires_unique_email(): void
@@ -299,8 +296,7 @@ class AuthenticationTest extends TestCase
             'country_code' => 'FR',
         ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['email']);
+        $this->assertApiValidationErrors($response, ['email']);
     }
 
     public function test_register_requires_password_confirmation(): void
@@ -314,8 +310,7 @@ class AuthenticationTest extends TestCase
             'country_code' => 'FR',
         ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['password']);
+        $this->assertApiValidationErrors($response, ['password']);
     }
 
     public function test_register_sets_default_currency_for_country(): void

@@ -18,9 +18,11 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class PaymentMethodTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -214,8 +216,7 @@ class PaymentMethodTest extends TestCase
             'is_physical' => true,
         ]);
 
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['code']);
+        $this->assertApiValidationErrors($response, ['code']);
     }
 
     public function test_can_update_payment_method(): void

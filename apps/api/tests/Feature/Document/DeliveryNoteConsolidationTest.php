@@ -22,6 +22,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 /**
  * Tests for the Delivery Note Consolidation feature (Tunisia model).
@@ -32,6 +33,7 @@ use Tests\TestCase;
  */
 class DeliveryNoteConsolidationTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private User $user;
@@ -314,8 +316,7 @@ class DeliveryNoteConsolidationTest extends TestCase
             'delivery_note_ids' => [],
         ]);
 
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['delivery_note_ids']);
+        $this->assertApiValidationErrors($response, ['delivery_note_ids']);
     }
 
     public function test_validation_requires_valid_document_ids(): void
@@ -324,8 +325,7 @@ class DeliveryNoteConsolidationTest extends TestCase
             'delivery_note_ids' => ['not-a-uuid'],
         ]);
 
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['delivery_note_ids.0']);
+        $this->assertApiValidationErrors($response, ['delivery_note_ids.0']);
     }
 
     public function test_invoice_reference_contains_all_dn_numbers(): void

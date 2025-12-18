@@ -21,9 +21,11 @@ use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class DocumentAdditionalCostTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -233,8 +235,7 @@ class DocumentAdditionalCostTest extends TestCase
                 'amount' => 100.00,
             ]);
 
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['cost_type']);
+        $this->assertApiValidationErrors($response, ['cost_type']);
     }
 
     public function test_validates_amount_is_positive(): void
@@ -245,7 +246,6 @@ class DocumentAdditionalCostTest extends TestCase
                 'amount' => -50.00,
             ]);
 
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['amount']);
+        $this->assertApiValidationErrors($response, ['amount']);
     }
 }

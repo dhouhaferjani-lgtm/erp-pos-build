@@ -14,12 +14,14 @@ use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 /**
  * API tests for ServiceCategory endpoints.
  */
 class ServiceCategoryApiTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -219,8 +221,7 @@ class ServiceCategoryApiTest extends TestCase
         $response = $this->actingAs($this->user)
             ->postJson('/api/v1/service-categories', []);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['name']);
+        $this->assertApiValidationErrors($response, ['name']);
     }
 
     #[Test]
@@ -237,8 +238,7 @@ class ServiceCategoryApiTest extends TestCase
                 'name' => 'Maintenance',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['name']);
+        $this->assertApiValidationErrors($response, ['name']);
     }
 
     // ============================================

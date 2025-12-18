@@ -18,9 +18,11 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class CreateAccountTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -95,8 +97,7 @@ class CreateAccountTest extends TestCase
             'type' => 'asset',
         ]);
 
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['code']);
+        $this->assertApiValidationErrors($response, ['code']);
     }
 
     public function test_account_requires_name(): void
@@ -106,8 +107,7 @@ class CreateAccountTest extends TestCase
             'type' => 'asset',
         ]);
 
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['name']);
+        $this->assertApiValidationErrors($response, ['name']);
     }
 
     public function test_account_requires_valid_type(): void
@@ -118,8 +118,7 @@ class CreateAccountTest extends TestCase
             'type' => 'invalid_type',
         ]);
 
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['type']);
+        $this->assertApiValidationErrors($response, ['type']);
     }
 
     public function test_account_code_must_be_unique_per_tenant(): void
@@ -138,8 +137,7 @@ class CreateAccountTest extends TestCase
             'type' => 'asset',
         ]);
 
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['code']);
+        $this->assertApiValidationErrors($response, ['code']);
     }
 
     public function test_account_can_have_parent(): void

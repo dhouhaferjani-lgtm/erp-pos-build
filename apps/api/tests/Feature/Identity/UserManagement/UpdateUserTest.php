@@ -18,9 +18,11 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class UpdateUserTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -143,8 +145,7 @@ class UpdateUserTest extends TestCase
                 'email' => 'existing@example.com',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['email']);
+        $this->assertApiValidationErrors($response, ['email']);
     }
 
     public function test_can_update_user_phone(): void
@@ -165,8 +166,7 @@ class UpdateUserTest extends TestCase
                 'phone' => 'invalid-phone',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['phone']);
+        $this->assertApiValidationErrors($response, ['phone']);
     }
 
     public function test_can_update_user_locale(): void
@@ -220,8 +220,7 @@ class UpdateUserTest extends TestCase
                 'role' => 'nonexistent-role',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['role']);
+        $this->assertApiValidationErrors($response, ['role']);
     }
 
     public function test_cannot_update_user_from_different_tenant(): void

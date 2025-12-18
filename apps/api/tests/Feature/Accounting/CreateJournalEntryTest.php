@@ -18,9 +18,11 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class CreateJournalEntryTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -202,8 +204,7 @@ class CreateJournalEntryTest extends TestCase
             ],
         ]);
 
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['lines.0.account_id']);
+        $this->assertApiValidationErrors($response, ['lines.0.account_id']);
     }
 
     public function test_unauthorized_user_cannot_create_journal_entry(): void

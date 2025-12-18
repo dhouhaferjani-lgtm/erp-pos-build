@@ -18,9 +18,11 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class LocationTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -182,8 +184,7 @@ class LocationTest extends TestCase
                 'type' => 'warehouse',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['name']);
+        $this->assertApiValidationErrors($response, ['name']);
     }
 
     public function test_cannot_create_location_without_type(): void
@@ -194,8 +195,7 @@ class LocationTest extends TestCase
                 'name' => 'New Location',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['type']);
+        $this->assertApiValidationErrors($response, ['type']);
     }
 
     public function test_can_create_location_with_custom_code(): void

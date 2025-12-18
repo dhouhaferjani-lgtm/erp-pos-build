@@ -16,9 +16,11 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class CreateProductTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -79,8 +81,7 @@ class CreateProductTest extends TestCase
                 'type' => 'part',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['name']);
+        $this->assertApiValidationErrors($response, ['name']);
     }
 
     public function test_sku_is_required(): void
@@ -91,8 +92,7 @@ class CreateProductTest extends TestCase
                 'type' => 'part',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['sku']);
+        $this->assertApiValidationErrors($response, ['sku']);
     }
 
     public function test_sku_must_be_unique_within_tenant(): void
@@ -112,8 +112,7 @@ class CreateProductTest extends TestCase
                 'type' => 'part',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['sku']);
+        $this->assertApiValidationErrors($response, ['sku']);
     }
 
     public function test_type_is_required(): void
@@ -124,8 +123,7 @@ class CreateProductTest extends TestCase
                 'sku' => 'SKU-001',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['type']);
+        $this->assertApiValidationErrors($response, ['type']);
     }
 
     public function test_type_must_be_valid(): void
@@ -137,8 +135,7 @@ class CreateProductTest extends TestCase
                 'type' => 'invalid',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['type']);
+        $this->assertApiValidationErrors($response, ['type']);
     }
 
     public function test_sale_price_must_be_numeric(): void
@@ -151,8 +148,7 @@ class CreateProductTest extends TestCase
                 'sale_price' => 'not-a-number',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['sale_price']);
+        $this->assertApiValidationErrors($response, ['sale_price']);
     }
 
     public function test_purchase_price_must_be_numeric(): void
@@ -165,8 +161,7 @@ class CreateProductTest extends TestCase
                 'purchase_price' => 'not-a-number',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['purchase_price']);
+        $this->assertApiValidationErrors($response, ['purchase_price']);
     }
 
     public function test_successful_creation_returns_201(): void

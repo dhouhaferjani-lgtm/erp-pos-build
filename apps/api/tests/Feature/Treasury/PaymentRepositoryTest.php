@@ -18,9 +18,11 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class PaymentRepositoryTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -179,8 +181,7 @@ class PaymentRepositoryTest extends TestCase
             'type' => 'cash_register',
         ]);
 
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['code']);
+        $this->assertApiValidationErrors($response, ['code']);
     }
 
     public function test_can_update_repository(): void

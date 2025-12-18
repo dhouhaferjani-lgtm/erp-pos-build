@@ -18,9 +18,11 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class UpdateProductTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -137,8 +139,7 @@ class UpdateProductTest extends TestCase
                 'sku' => 'OTH-001',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['sku']);
+        $this->assertApiValidationErrors($response, ['sku']);
     }
 
     public function test_can_update_own_sku_to_same_value(): void

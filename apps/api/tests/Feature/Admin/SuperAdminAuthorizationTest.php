@@ -13,6 +13,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 /**
  * Security tests for super admin authorization.
@@ -22,6 +23,7 @@ use Tests\TestCase;
  */
 class SuperAdminAuthorizationTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private SuperAdmin $superAdmin;
@@ -336,8 +338,7 @@ class SuperAdminAuthorizationTest extends TestCase
         ]);
 
         // Should fail because tenant users are not in super_admins table
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['email']);
+        $this->assertApiValidationErrors($response, ['email']);
     }
 
     public function test_inactive_super_admin_cannot_login(): void
@@ -349,7 +350,6 @@ class SuperAdminAuthorizationTest extends TestCase
             'password' => 'password',
         ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['email']);
+        $this->assertApiValidationErrors($response, ['email']);
     }
 }

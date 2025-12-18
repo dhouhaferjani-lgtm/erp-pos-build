@@ -31,9 +31,11 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class ReconciliationTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -305,8 +307,7 @@ class ReconciliationTest extends TestCase
                 'quantity' => 97,
             ]);
 
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['notes']);
+        $this->assertApiValidationErrors($response, ['notes']);
     }
 
     public function test_manual_override_with_notes_succeeds(): void

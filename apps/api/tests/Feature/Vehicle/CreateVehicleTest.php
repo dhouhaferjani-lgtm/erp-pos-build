@@ -18,9 +18,11 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class CreateVehicleTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -91,8 +93,7 @@ class CreateVehicleTest extends TestCase
                 'model' => 'Corolla',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['license_plate']);
+        $this->assertApiValidationErrors($response, ['license_plate']);
     }
 
     public function test_brand_is_required(): void
@@ -104,8 +105,7 @@ class CreateVehicleTest extends TestCase
                 'model' => 'Corolla',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['brand']);
+        $this->assertApiValidationErrors($response, ['brand']);
     }
 
     public function test_license_plate_must_be_unique_within_tenant(): void
@@ -127,8 +127,7 @@ class CreateVehicleTest extends TestCase
                 'model' => 'Civic',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['license_plate']);
+        $this->assertApiValidationErrors($response, ['license_plate']);
     }
 
     public function test_vin_format_validation(): void
@@ -142,8 +141,7 @@ class CreateVehicleTest extends TestCase
                 'vin' => 'INVALID',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['vin']);
+        $this->assertApiValidationErrors($response, ['vin']);
     }
 
     public function test_vin_must_be_unique_within_tenant(): void
@@ -169,8 +167,7 @@ class CreateVehicleTest extends TestCase
                 'vin' => $vin,
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['vin']);
+        $this->assertApiValidationErrors($response, ['vin']);
     }
 
     public function test_year_must_be_valid(): void
@@ -184,8 +181,7 @@ class CreateVehicleTest extends TestCase
                 'year' => 1800,
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['year']);
+        $this->assertApiValidationErrors($response, ['year']);
     }
 
     public function test_mileage_must_be_non_negative(): void
@@ -199,8 +195,7 @@ class CreateVehicleTest extends TestCase
                 'mileage' => -100,
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['mileage']);
+        $this->assertApiValidationErrors($response, ['mileage']);
     }
 
     public function test_partner_must_exist(): void
@@ -215,8 +210,7 @@ class CreateVehicleTest extends TestCase
                 'model' => 'Corolla',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['partner_id']);
+        $this->assertApiValidationErrors($response, ['partner_id']);
     }
 
     public function test_successful_creation_returns_201(): void

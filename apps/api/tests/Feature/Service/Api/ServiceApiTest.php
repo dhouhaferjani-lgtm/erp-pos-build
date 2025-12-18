@@ -15,12 +15,14 @@ use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 /**
  * API tests for Service endpoints.
  */
 class ServiceApiTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -234,8 +236,7 @@ class ServiceApiTest extends TestCase
         $response = $this->actingAs($this->user)
             ->postJson('/api/v1/services', []);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['code', 'name', 'pricing_type', 'base_price']);
+        $this->assertApiValidationErrors($response, ['code', 'name', 'pricing_type', 'base_price']);
     }
 
     #[Test]
@@ -255,8 +256,7 @@ class ServiceApiTest extends TestCase
                 'base_price' => '50.00',
             ]);
 
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['code']);
+        $this->assertApiValidationErrors($response, ['code']);
     }
 
     // ============================================
