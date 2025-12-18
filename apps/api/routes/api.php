@@ -36,7 +36,7 @@ Route::prefix('v1')->group(function (): void {
             ->middleware('throttle:admin-login');
 
         // Logout and profile require super admin authentication
-        Route::middleware(['auth:sanctum', 'super_admin'])->group(function (): void {
+        Route::middleware(['auth:sanctum-admin', 'super_admin'])->group(function (): void {
             Route::post('/logout', [SuperAdminAuthController::class, 'logout']);
             Route::get('/me', [SuperAdminAuthController::class, 'me']);
         });
@@ -49,7 +49,7 @@ Route::prefix('v1')->group(function (): void {
 
     // Super admin routes - require authenticated super admin with rate limiting
     Route::prefix('admin')
-        ->middleware(['auth:sanctum', 'super_admin', 'throttle:admin-sensitive'])
+        ->middleware(['auth:sanctum-admin', 'super_admin', 'throttle:admin-sensitive'])
         ->group(function (): void {
             // Dashboard and tenant management
             Route::get('/dashboard', [SuperAdminController::class, 'dashboard']);

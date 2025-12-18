@@ -70,7 +70,7 @@ class SuperAdminAuthorizationTest extends TestCase
 
     public function test_super_admin_can_access_admin_dashboard(): void
     {
-        $response = $this->actingAs($this->superAdmin, 'sanctum')
+        $response = $this->actingAs($this->superAdmin, 'sanctum-admin')
             ->getJson('/api/v1/admin/dashboard');
 
         $response->assertOk()
@@ -88,16 +88,12 @@ class SuperAdminAuthorizationTest extends TestCase
 
     public function test_tenant_user_cannot_access_admin_dashboard(): void
     {
+        // Tenant users are not authenticated against the sanctum-admin guard,
+        // so they receive 401 (unauthenticated) rather than 403 (forbidden)
         $response = $this->actingAs($this->tenantUser, 'sanctum')
             ->getJson('/api/v1/admin/dashboard');
 
-        $response->assertForbidden()
-            ->assertJson([
-                'error' => [
-                    'code' => 'FORBIDDEN',
-                    'message' => 'Access denied. Super admin privileges required.',
-                ],
-            ]);
+        $response->assertUnauthorized();
     }
 
     public function test_unauthenticated_user_cannot_access_admin_dashboard(): void
@@ -111,7 +107,7 @@ class SuperAdminAuthorizationTest extends TestCase
     {
         $this->superAdmin->update(['is_active' => false]);
 
-        $response = $this->actingAs($this->superAdmin, 'sanctum')
+        $response = $this->actingAs($this->superAdmin, 'sanctum-admin')
             ->getJson('/api/v1/admin/dashboard');
 
         $response->assertForbidden()
@@ -129,7 +125,7 @@ class SuperAdminAuthorizationTest extends TestCase
 
     public function test_super_admin_can_list_tenants(): void
     {
-        $response = $this->actingAs($this->superAdmin, 'sanctum')
+        $response = $this->actingAs($this->superAdmin, 'sanctum-admin')
             ->getJson('/api/v1/admin/tenants');
 
         $response->assertOk()
@@ -138,21 +134,16 @@ class SuperAdminAuthorizationTest extends TestCase
 
     public function test_tenant_user_cannot_list_tenants(): void
     {
+        // Tenant users are not authenticated against the sanctum-admin guard
         $response = $this->actingAs($this->tenantUser, 'sanctum')
             ->getJson('/api/v1/admin/tenants');
 
-        $response->assertForbidden()
-            ->assertJson([
-                'error' => [
-                    'code' => 'FORBIDDEN',
-                    'message' => 'Access denied. Super admin privileges required.',
-                ],
-            ]);
+        $response->assertUnauthorized();
     }
 
     public function test_super_admin_can_view_tenant_details(): void
     {
-        $response = $this->actingAs($this->superAdmin, 'sanctum')
+        $response = $this->actingAs($this->superAdmin, 'sanctum-admin')
             ->getJson("/api/v1/admin/tenants/{$this->tenant->id}");
 
         $response->assertOk()
@@ -166,10 +157,11 @@ class SuperAdminAuthorizationTest extends TestCase
 
     public function test_tenant_user_cannot_view_tenant_details(): void
     {
+        // Tenant users are not authenticated against the sanctum-admin guard
         $response = $this->actingAs($this->tenantUser, 'sanctum')
             ->getJson("/api/v1/admin/tenants/{$this->tenant->id}");
 
-        $response->assertForbidden();
+        $response->assertUnauthorized();
     }
 
     // ========================================
@@ -178,12 +170,13 @@ class SuperAdminAuthorizationTest extends TestCase
 
     public function test_tenant_user_cannot_suspend_tenant(): void
     {
+        // Tenant users are not authenticated against the sanctum-admin guard
         $response = $this->actingAs($this->tenantUser, 'sanctum')
             ->postJson("/api/v1/admin/tenants/{$this->tenant->id}/suspend", [
                 'reason' => 'Test suspension',
             ]);
 
-        $response->assertForbidden();
+        $response->assertUnauthorized();
 
         // Verify tenant was NOT suspended
         $this->tenant->refresh();
@@ -195,10 +188,11 @@ class SuperAdminAuthorizationTest extends TestCase
         // First suspend the tenant
         $this->tenant->update(['status' => TenantStatus::Suspended]);
 
+        // Tenant users are not authenticated against the sanctum-admin guard
         $response = $this->actingAs($this->tenantUser, 'sanctum')
             ->postJson("/api/v1/admin/tenants/{$this->tenant->id}/activate");
 
-        $response->assertForbidden();
+        $response->assertUnauthorized();
 
         // Verify tenant was NOT activated
         $this->tenant->refresh();
@@ -211,15 +205,16 @@ class SuperAdminAuthorizationTest extends TestCase
 
     public function test_tenant_user_cannot_access_admin_me_endpoint(): void
     {
+        // Tenant users are not authenticated against the sanctum-admin guard
         $response = $this->actingAs($this->tenantUser, 'sanctum')
             ->getJson('/api/v1/admin/auth/me');
 
-        $response->assertForbidden();
+        $response->assertUnauthorized();
     }
 
     public function test_super_admin_can_access_admin_me_endpoint(): void
     {
-        $response = $this->actingAs($this->superAdmin, 'sanctum')
+        $response = $this->actingAs($this->superAdmin, 'sanctum-admin')
             ->getJson('/api/v1/admin/auth/me');
 
         $response->assertOk()
@@ -228,10 +223,11 @@ class SuperAdminAuthorizationTest extends TestCase
 
     public function test_tenant_user_cannot_logout_from_admin(): void
     {
+        // Tenant users are not authenticated against the sanctum-admin guard
         $response = $this->actingAs($this->tenantUser, 'sanctum')
             ->postJson('/api/v1/admin/auth/logout');
 
-        $response->assertForbidden();
+        $response->assertUnauthorized();
     }
 
     // ========================================
@@ -240,15 +236,16 @@ class SuperAdminAuthorizationTest extends TestCase
 
     public function test_tenant_user_cannot_view_admin_audit_logs(): void
     {
+        // Tenant users are not authenticated against the sanctum-admin guard
         $response = $this->actingAs($this->tenantUser, 'sanctum')
             ->getJson('/api/v1/admin/audit-logs');
 
-        $response->assertForbidden();
+        $response->assertUnauthorized();
     }
 
     public function test_super_admin_can_view_audit_logs(): void
     {
-        $response = $this->actingAs($this->superAdmin, 'sanctum')
+        $response = $this->actingAs($this->superAdmin, 'sanctum-admin')
             ->getJson('/api/v1/admin/audit-logs');
 
         $response->assertOk()
