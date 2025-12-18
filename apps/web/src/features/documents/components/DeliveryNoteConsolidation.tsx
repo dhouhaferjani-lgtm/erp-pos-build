@@ -254,7 +254,7 @@ export function DeliveryNoteConsolidation({
                         el.indeterminate = someSelected && !allSelected
                       }
                     }}
-                    onChange={() => selectAllForPartner(partnerDns)}
+                    onChange={() => { selectAllForPartner(partnerDns); }}
                     className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="font-medium text-gray-900">{partnerName}</span>
@@ -287,14 +287,14 @@ export function DeliveryNoteConsolidation({
                       className={`${
                         selectedIds.has(dn.id) ? 'bg-blue-50' : 'hover:bg-gray-50'
                       } cursor-pointer`}
-                      onClick={() => toggleSelection(dn.id)}
+                      onClick={() => { toggleSelection(dn.id); }}
                     >
                       <td className="px-4 py-3">
                         <input
                           type="checkbox"
                           checked={selectedIds.has(dn.id)}
-                          onChange={() => toggleSelection(dn.id)}
-                          onClick={(e) => e.stopPropagation()}
+                          onChange={() => { toggleSelection(dn.id); }}
+                          onClick={(e) => { e.stopPropagation(); }}
                           className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                         />
                       </td>

@@ -132,7 +132,7 @@ export function InvoicesPage() {
               {invoicesData?.total ?? 0} total invoices
             </span>
             <button
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => { setShowCreateModal(true); }}
               className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
             >
               Create Invoice
@@ -144,7 +144,7 @@ export function InvoicesPage() {
         <div className="mb-6 flex gap-4">
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => { setStatusFilter(e.target.value); }}
             className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             <option value="">All Statuses</option>
@@ -229,7 +229,7 @@ export function InvoicesPage() {
                   <td className="whitespace-nowrap px-6 py-4">
                     <div className="flex gap-2">
                       <button
-                        onClick={() => setSelectedInvoice(invoice)}
+                        onClick={() => { setSelectedInvoice(invoice); }}
                         className="text-sm text-blue-600 hover:text-blue-800"
                       >
                         View
@@ -421,7 +421,7 @@ export function InvoicesPage() {
                   </a>
                 )}
                 <button
-                  onClick={() => setSelectedInvoice(null)}
+                  onClick={() => { setSelectedInvoice(null); }}
                   className="rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
                 >
                   Close
@@ -448,7 +448,7 @@ export function InvoicesPage() {
                     type="text"
                     value={createForm.tenant_id}
                     onChange={(e) =>
-                      setCreateForm({ ...createForm, tenant_id: e.target.value })
+                      { setCreateForm({ ...createForm, tenant_id: e.target.value }); }
                     }
                     placeholder="Enter tenant UUID"
                     className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -465,7 +465,7 @@ export function InvoicesPage() {
                         type="text"
                         value={item.description}
                         onChange={(e) =>
-                          handleItemChange(index, 'description', e.target.value)
+                          { handleItemChange(index, 'description', e.target.value); }
                         }
                         placeholder="Description"
                         className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
@@ -474,7 +474,7 @@ export function InvoicesPage() {
                         type="number"
                         value={item.quantity}
                         onChange={(e) =>
-                          handleItemChange(index, 'quantity', e.target.value)
+                          { handleItemChange(index, 'quantity', e.target.value); }
                         }
                         placeholder="Qty"
                         className="w-20 rounded-md border border-gray-300 px-3 py-2 text-sm"
@@ -484,7 +484,7 @@ export function InvoicesPage() {
                         step="0.01"
                         value={item.amount}
                         onChange={(e) =>
-                          handleItemChange(index, 'amount', e.target.value)
+                          { handleItemChange(index, 'amount', e.target.value); }
                         }
                         placeholder="Amount"
                         className="w-28 rounded-md border border-gray-300 px-3 py-2 text-sm"
@@ -492,7 +492,7 @@ export function InvoicesPage() {
                       {createForm.items.length > 1 && (
                         <button
                           type="button"
-                          onClick={() => handleRemoveItem(index)}
+                          onClick={() => { handleRemoveItem(index); }}
                           className="text-red-600 hover:text-red-800"
                         >
                           &times;
@@ -517,7 +517,7 @@ export function InvoicesPage() {
                     type="date"
                     value={createForm.due_date}
                     onChange={(e) =>
-                      setCreateForm({ ...createForm, due_date: e.target.value })
+                      { setCreateForm({ ...createForm, due_date: e.target.value }); }
                     }
                     className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
@@ -530,7 +530,7 @@ export function InvoicesPage() {
                   <textarea
                     value={createForm.notes}
                     onChange={(e) =>
-                      setCreateForm({ ...createForm, notes: e.target.value })
+                      { setCreateForm({ ...createForm, notes: e.target.value }); }
                     }
                     rows={3}
                     className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -540,7 +540,7 @@ export function InvoicesPage() {
 
               <div className="mt-6 flex justify-end gap-3">
                 <button
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={() => { setShowCreateModal(false); }}
                   className="rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
                 >
                   Cancel

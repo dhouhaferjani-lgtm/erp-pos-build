@@ -483,7 +483,7 @@ export function RecordPaymentModal({
                     id="payment-date"
                     type="date"
                     value={paymentDate}
-                    onChange={e => setPaymentDate(e.target.value)}
+                    onChange={e => { setPaymentDate(e.target.value); }}
                   />
                 </FormField>
               </div>
@@ -511,7 +511,7 @@ export function RecordPaymentModal({
                             type="button"
                             size="sm"
                             variant="primary"
-                            onClick={() => confirmPaymentLine(line.id)}
+                            onClick={() => { confirmPaymentLine(line.id); }}
                           >
                             <Check className="h-4 w-4 me-1" />
                             {t('common:actions.confirm')}
@@ -525,7 +525,7 @@ export function RecordPaymentModal({
                         {!line.confirmed && paymentLines.length > 1 && (
                           <button
                             type="button"
-                            onClick={() => removePaymentLine(line.id)}
+                            onClick={() => { removePaymentLine(line.id); }}
                             className="text-red-600 hover:text-red-800 p-1"
                             aria-label={t('common:actions.remove')}
                           >
@@ -577,7 +577,7 @@ export function RecordPaymentModal({
                               step="0.01"
                               min="0.01"
                               value={line.amount}
-                              onChange={e => updatePaymentLine(line.id, 'amount', e.target.value)}
+                              onChange={e => { updatePaymentLine(line.id, 'amount', e.target.value); }}
                               className="ps-8"
                               placeholder="0.00"
                             />
@@ -591,7 +591,7 @@ export function RecordPaymentModal({
                           <Select
                             id={`repository-${line.id}`}
                             value={line.repository_id}
-                            onChange={e => updatePaymentLine(line.id, 'repository_id', e.target.value)}
+                            onChange={e => { updatePaymentLine(line.id, 'repository_id', e.target.value); }}
                           >
                             <option value="">{t('common:actions.select')}</option>
                             {getFilteredRepositories(line.payment_method_id).map(repo => (
@@ -609,7 +609,7 @@ export function RecordPaymentModal({
                           <Input
                             id={`reference-${line.id}`}
                             value={line.reference}
-                            onChange={e => updatePaymentLine(line.id, 'reference', e.target.value)}
+                            onChange={e => { updatePaymentLine(line.id, 'reference', e.target.value); }}
                             placeholder={t('treasury:payments.referencePlaceholder')}
                           />
                         </FormField>
@@ -647,7 +647,7 @@ export function RecordPaymentModal({
                           name="excessMethod"
                           value="advance"
                           checked={excessAllocationMethod === 'advance'}
-                          onChange={() => setExcessAllocationMethod('advance')}
+                          onChange={() => { setExcessAllocationMethod('advance'); }}
                           className="text-blue-600"
                         />
                         <span className="text-sm text-gray-700">
@@ -663,7 +663,7 @@ export function RecordPaymentModal({
                               name="excessMethod"
                               value="fifo"
                               checked={excessAllocationMethod === 'fifo'}
-                              onChange={() => setExcessAllocationMethod('fifo')}
+                              onChange={() => { setExcessAllocationMethod('fifo'); }}
                               className="text-blue-600"
                             />
                             <span className="text-sm text-gray-700">
@@ -677,7 +677,7 @@ export function RecordPaymentModal({
                               name="excessMethod"
                               value="due_date"
                               checked={excessAllocationMethod === 'due_date'}
-                              onChange={() => setExcessAllocationMethod('due_date')}
+                              onChange={() => { setExcessAllocationMethod('due_date'); }}
                               className="text-blue-600"
                             />
                             <span className="text-sm text-gray-700">
@@ -691,7 +691,7 @@ export function RecordPaymentModal({
                               name="excessMethod"
                               value="manual"
                               checked={excessAllocationMethod === 'manual'}
-                              onChange={() => setExcessAllocationMethod('manual')}
+                              onChange={() => { setExcessAllocationMethod('manual'); }}
                               className="text-blue-600"
                             />
                             <span className="text-sm text-gray-700">
@@ -742,7 +742,7 @@ export function RecordPaymentModal({
                                       min="0"
                                       max={Math.min(parseFloat(invoice.balance_due), excessAmount)}
                                       value={allocation?.amount ?? ''}
-                                      onChange={e => updateManualAllocation(invoice.id, e.target.value)}
+                                      onChange={e => { updateManualAllocation(invoice.id, e.target.value); }}
                                       className="w-24 text-end"
                                       placeholder="0.00"
                                     />
@@ -764,7 +764,7 @@ export function RecordPaymentModal({
                   id="payment-notes"
                   rows={2}
                   value={notes}
-                  onChange={e => setNotes(e.target.value)}
+                  onChange={e => { setNotes(e.target.value); }}
                   placeholder={t('treasury:payments.notesPlaceholder')}
                 />
               </FormField>
@@ -813,7 +813,7 @@ export function RecordPaymentModal({
       {/* Add Repository Modal */}
       <AddRepositoryModal
         isOpen={showRepositoryModal}
-        onClose={() => setShowRepositoryModal(false)}
+        onClose={() => { setShowRepositoryModal(false); }}
         onSuccess={() => {
           void queryClient.invalidateQueries({ queryKey: ['payment-repositories'] })
         }}

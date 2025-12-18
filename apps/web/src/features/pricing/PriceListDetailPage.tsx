@@ -207,7 +207,7 @@ export function PriceListDetailPage() {
             <span className="text-sm text-gray-500">({priceList.items.length})</span>
           </div>
           <button
-            onClick={() => setShowAddItemModal(true)}
+            onClick={() => { setShowAddItemModal(true); }}
             className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
           >
             <Plus className="h-4 w-4" />
@@ -269,7 +269,7 @@ export function PriceListDetailPage() {
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-end">
                       <button
-                        onClick={() => handleRemoveItem(item)}
+                        onClick={() => { handleRemoveItem(item); }}
                         disabled={removeItemMutation.isPending}
                         className="text-red-600 hover:text-red-800 disabled:opacity-50"
                         title={t('common:actions.delete')}
@@ -296,7 +296,7 @@ export function PriceListDetailPage() {
             <span className="text-sm text-gray-500">({priceList.partners.length})</span>
           </div>
           <button
-            onClick={() => setShowAssignPartnerModal(true)}
+            onClick={() => { setShowAssignPartnerModal(true); }}
             className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
           >
             <Plus className="h-4 w-4" />
@@ -327,7 +327,7 @@ export function PriceListDetailPage() {
                   )}
                 </div>
                 <button
-                  onClick={() => handleRemovePartner(partner)}
+                  onClick={() => { handleRemovePartner(partner); }}
                   disabled={removePartnerMutation.isPending}
                   className="text-red-600 hover:text-red-800 disabled:opacity-50"
                   title={t('common:actions.delete')}
@@ -349,7 +349,7 @@ export function PriceListDetailPage() {
             </h3>
             <p className="text-gray-500 mb-4">Item addition modal - coming soon</p>
             <button
-              onClick={() => setShowAddItemModal(false)}
+              onClick={() => { setShowAddItemModal(false); }}
               className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
             >
               {t('common:actions.close')}
@@ -366,7 +366,7 @@ export function PriceListDetailPage() {
             </h3>
             <p className="text-gray-500 mb-4">Partner assignment modal - coming soon</p>
             <button
-              onClick={() => setShowAssignPartnerModal(false)}
+              onClick={() => { setShowAssignPartnerModal(false); }}
               className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
             >
               {t('common:actions.close')}

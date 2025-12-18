@@ -95,7 +95,7 @@ export function SubscriptionsPage() {
         <div className="mb-6 flex gap-4">
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => { setStatusFilter(e.target.value); }}
             className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             <option value="">All Statuses</option>
@@ -110,7 +110,7 @@ export function SubscriptionsPage() {
 
           <select
             value={planFilter}
-            onChange={(e) => setPlanFilter(e.target.value)}
+            onChange={(e) => { setPlanFilter(e.target.value); }}
             className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             <option value="">All Plans</option>
@@ -191,7 +191,7 @@ export function SubscriptionsPage() {
                       {subscription.status === 'active' && (
                         <button
                           onClick={() =>
-                            handleStatusChange(subscription, 'paused')
+                            { handleStatusChange(subscription, 'paused'); }
                           }
                           className="text-sm text-yellow-600 hover:text-yellow-800"
                         >
@@ -201,7 +201,7 @@ export function SubscriptionsPage() {
                       {subscription.status === 'paused' && (
                         <button
                           onClick={() =>
-                            handleStatusChange(subscription, 'active')
+                            { handleStatusChange(subscription, 'active'); }
                           }
                           className="text-sm text-green-600 hover:text-green-800"
                         >
@@ -213,7 +213,7 @@ export function SubscriptionsPage() {
                       ) && (
                         <button
                           onClick={() =>
-                            handleStatusChange(subscription, 'cancelled')
+                            { handleStatusChange(subscription, 'cancelled'); }
                           }
                           className="text-sm text-red-600 hover:text-red-800"
                         >

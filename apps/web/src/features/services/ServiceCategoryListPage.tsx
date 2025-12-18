@@ -170,14 +170,14 @@ export function ServiceCategoryListPage() {
             </span>
             <div className="flex items-center gap-1">
               <button
-                onClick={() => openEditModal(category)}
+                onClick={() => { openEditModal(category); }}
                 className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
                 title={t('actions.edit')}
               >
                 <Edit className="h-4 w-4" />
               </button>
               <button
-                onClick={() => handleDelete(category)}
+                onClick={() => { handleDelete(category); }}
                 disabled={deleteMutation.isPending}
                 className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
                 title={t('actions.delete')}

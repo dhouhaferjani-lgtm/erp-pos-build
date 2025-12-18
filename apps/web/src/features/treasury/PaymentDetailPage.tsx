@@ -320,7 +320,7 @@ export function PaymentDetailPage() {
           {payment.status === 'completed' && (
             <>
               <button
-                onClick={() => setShowRefundModal(true)}
+                onClick={() => { setShowRefundModal(true); }}
                 disabled={!canRefund || remainingAmount <= 0}
                 className="inline-flex items-center gap-2 rounded-lg border border-orange-300 bg-white px-4 py-2 text-sm font-medium text-orange-700 hover:bg-orange-50 disabled:opacity-50"
               >
@@ -328,14 +328,14 @@ export function PaymentDetailPage() {
                 {t('payments.refund.refund')}
               </button>
               <button
-                onClick={() => setShowPartialRefundModal(true)}
+                onClick={() => { setShowPartialRefundModal(true); }}
                 disabled={!canRefund || remainingAmount <= 0}
                 className="inline-flex items-center gap-2 rounded-lg border border-yellow-300 bg-white px-4 py-2 text-sm font-medium text-yellow-700 hover:bg-yellow-50 disabled:opacity-50"
               >
                 {t('payments.refund.partialRefund')}
               </button>
               <button
-                onClick={() => setShowReverseModal(true)}
+                onClick={() => { setShowReverseModal(true); }}
                 className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
               >
                 {t('payments.refund.reverse')}
@@ -582,7 +582,7 @@ export function PaymentDetailPage() {
               <textarea
                 id="refund-reason"
                 value={refundReason}
-                onChange={(e) => setRefundReason(e.target.value)}
+                onChange={(e) => { setRefundReason(e.target.value); }}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 rows={3}
                 placeholder={t('payments.refund.reasonPlaceholder')}
@@ -628,7 +628,7 @@ export function PaymentDetailPage() {
                 type="number"
                 id="partial-refund-amount"
                 value={partialRefundAmount}
-                onChange={(e) => setPartialRefundAmount(e.target.value)}
+                onChange={(e) => { setPartialRefundAmount(e.target.value); }}
                 max={remainingAmount}
                 min={0.01}
                 step="0.01"
@@ -643,7 +643,7 @@ export function PaymentDetailPage() {
               <textarea
                 id="partial-refund-reason"
                 value={partialRefundReason}
-                onChange={(e) => setPartialRefundReason(e.target.value)}
+                onChange={(e) => { setPartialRefundReason(e.target.value); }}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 rows={3}
                 placeholder={t('payments.refund.reasonPlaceholder')}
@@ -694,7 +694,7 @@ export function PaymentDetailPage() {
               <textarea
                 id="reverse-reason"
                 value={reverseReason}
-                onChange={(e) => setReverseReason(e.target.value)}
+                onChange={(e) => { setReverseReason(e.target.value); }}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 rows={3}
                 placeholder={t('payments.refund.reasonPlaceholder')}

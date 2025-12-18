@@ -221,7 +221,7 @@ export function MonitoringPage() {
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as typeof activeTab)}
+              onClick={() => { setActiveTab(tab.id as typeof activeTab); }}
               className={`flex items-center gap-2 py-3 px-1 border-b-2 text-sm font-medium ${
                 activeTab === tab.id
                   ? 'border-blue-500 text-blue-600'
@@ -482,7 +482,7 @@ export function MonitoringPage() {
                 {queues.failed_jobs.length > 0 && (
                   <>
                     <button
-                      onClick={() => retryAll.mutate()}
+                      onClick={() => { retryAll.mutate(); }}
                       disabled={retryAll.isPending}
                       className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                     >
@@ -557,7 +557,7 @@ export function MonitoringPage() {
                       <FailedJobRow
                         key={job.id}
                         job={job}
-                        onRetry={() => retryJob.mutate(job.id)}
+                        onRetry={() => { retryJob.mutate(job.id); }}
                         onDelete={() => {/* delete logic */}}
                         isRetrying={retryJob.isPending}
                       />

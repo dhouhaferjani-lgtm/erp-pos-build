@@ -141,7 +141,7 @@ export function PaymentAllocationForm({
               name="allocation-method"
               value={AllocationMethod.FIFO}
               checked={allocationMethod === AllocationMethod.FIFO}
-              onChange={() => handleMethodChange(AllocationMethod.FIFO)}
+              onChange={() => { handleMethodChange(AllocationMethod.FIFO); }}
               className="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
             />
             <div className="flex-1">
@@ -161,7 +161,7 @@ export function PaymentAllocationForm({
               name="allocation-method"
               value={AllocationMethod.DUE_DATE}
               checked={allocationMethod === AllocationMethod.DUE_DATE}
-              onChange={() => handleMethodChange(AllocationMethod.DUE_DATE)}
+              onChange={() => { handleMethodChange(AllocationMethod.DUE_DATE); }}
               className="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
             />
             <div className="flex-1">
@@ -181,7 +181,7 @@ export function PaymentAllocationForm({
               name="allocation-method"
               value={AllocationMethod.MANUAL}
               checked={allocationMethod === AllocationMethod.MANUAL}
-              onChange={() => handleMethodChange(AllocationMethod.MANUAL)}
+              onChange={() => { handleMethodChange(AllocationMethod.MANUAL); }}
               className="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
             />
             <div className="flex-1">

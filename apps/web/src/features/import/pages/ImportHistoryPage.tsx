@@ -85,7 +85,7 @@ export function ImportHistoryPage() {
             <button
               key={status}
               type="button"
-              onClick={() => setStatusFilter(status)}
+              onClick={() => { setStatusFilter(status); }}
               className={cn(
                 'rounded-full px-3 py-1 text-sm font-medium transition-colors',
                 statusFilter === status

@@ -50,7 +50,7 @@ export function PriceInputWithMargin({
       setDebouncedValue(numValue)
     }, 500)
 
-    return () => clearTimeout(timer)
+    return () => { clearTimeout(timer); }
   }, [localValue])
 
   // Fetch margin check

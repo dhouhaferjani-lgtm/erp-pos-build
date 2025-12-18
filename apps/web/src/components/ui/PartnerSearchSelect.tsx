@@ -83,7 +83,7 @@ export function PartnerSearchSelect({
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    return () => { document.removeEventListener('mousedown', handleClickOutside); }
   }, [])
 
   // Focus input when dropdown opens
@@ -154,14 +154,14 @@ export function PartnerSearchSelect({
                 ref={inputRef}
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => { setSearchQuery(e.target.value); }}
                 placeholder={t('partners.searchPlaceholder', 'Search by name, email, or phone...')}
                 className="w-full rounded-lg border border-gray-300 py-2 pe-10 ps-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
               {searchQuery && (
                 <button
                   type="button"
-                  onClick={() => setSearchQuery('')}
+                  onClick={() => { setSearchQuery(''); }}
                   className="absolute inset-y-0 end-0 flex items-center pe-3 text-gray-400 hover:text-gray-600"
                 >
                   <X className="h-4 w-4" />
@@ -191,7 +191,7 @@ export function PartnerSearchSelect({
                   <li key={partner.id}>
                     <button
                       type="button"
-                      onClick={() => handleSelect(partner)}
+                      onClick={() => { handleSelect(partner); }}
                       className={`flex w-full items-center gap-3 px-4 py-3 text-start hover:bg-gray-50 ${
                         partner.id === value ? 'bg-blue-50' : ''
                       }`}

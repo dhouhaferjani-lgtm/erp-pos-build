@@ -18,7 +18,7 @@ export const productKeys = {
  */
 export function useProducts(
   params?: GetProductsParams
-): UseQueryResult<PaginatedProductsResponse, Error> {
+): UseQueryResult<PaginatedProductsResponse> {
   return useQuery({
     queryKey: productKeys.list(params),
     queryFn: () => getProducts(params),
@@ -29,7 +29,7 @@ export function useProducts(
 /**
  * Hook to fetch a single product by ID
  */
-export function useProduct(id: string): UseQueryResult<Product, Error> {
+export function useProduct(id: string): UseQueryResult<Product> {
   return useQuery({
     queryKey: productKeys.detail(id),
     queryFn: () => getProduct(id),

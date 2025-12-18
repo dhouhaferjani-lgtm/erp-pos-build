@@ -235,7 +235,7 @@ export function InstrumentDetailPage() {
         <div className="flex items-center gap-2">
           {canDeposit && (
             <button
-              onClick={() => setShowDepositModal(true)}
+              onClick={() => { setShowDepositModal(true); }}
               className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
             >
               <Landmark className="h-4 w-4" />
@@ -244,7 +244,7 @@ export function InstrumentDetailPage() {
           )}
           {canTransfer && (
             <button
-              onClick={() => setShowTransferModal(true)}
+              onClick={() => { setShowTransferModal(true); }}
               className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               <ArrowRightLeft className="h-4 w-4" />
@@ -253,7 +253,7 @@ export function InstrumentDetailPage() {
           )}
           {canClear && (
             <button
-              onClick={() => clearMutation.mutate()}
+              onClick={() => { clearMutation.mutate(); }}
               disabled={clearMutation.isPending}
               className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
             >
@@ -263,7 +263,7 @@ export function InstrumentDetailPage() {
           )}
           {canBounce && (
             <button
-              onClick={() => setShowBounceModal(true)}
+              onClick={() => { setShowBounceModal(true); }}
               className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
             >
               <XCircle className="h-4 w-4" />
@@ -477,7 +477,7 @@ export function InstrumentDetailPage() {
               <select
                 id="repository"
                 value={selectedRepositoryId}
-                onChange={(e) => setSelectedRepositoryId(e.target.value)}
+                onChange={(e) => { setSelectedRepositoryId(e.target.value); }}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
                 <option value="">
@@ -492,13 +492,13 @@ export function InstrumentDetailPage() {
             </div>
             <div className="flex justify-end gap-3">
               <button
-                onClick={() => setShowDepositModal(false)}
+                onClick={() => { setShowDepositModal(false); }}
                 className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
                 {t('common:actions.cancel')}
               </button>
               <button
-                onClick={() => depositMutation.mutate(selectedRepositoryId)}
+                onClick={() => { depositMutation.mutate(selectedRepositoryId); }}
                 disabled={!selectedRepositoryId || depositMutation.isPending}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
               >
@@ -525,7 +525,7 @@ export function InstrumentDetailPage() {
               <select
                 id="transfer-repository"
                 value={selectedRepositoryId}
-                onChange={(e) => setSelectedRepositoryId(e.target.value)}
+                onChange={(e) => { setSelectedRepositoryId(e.target.value); }}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
                 <option value="">
@@ -542,13 +542,13 @@ export function InstrumentDetailPage() {
             </div>
             <div className="flex justify-end gap-3">
               <button
-                onClick={() => setShowTransferModal(false)}
+                onClick={() => { setShowTransferModal(false); }}
                 className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
                 {t('common:actions.cancel')}
               </button>
               <button
-                onClick={() => transferMutation.mutate(selectedRepositoryId)}
+                onClick={() => { transferMutation.mutate(selectedRepositoryId); }}
                 disabled={!selectedRepositoryId || transferMutation.isPending}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
               >
@@ -575,7 +575,7 @@ export function InstrumentDetailPage() {
               <textarea
                 id="bounce-reason"
                 value={bounceReason}
-                onChange={(e) => setBounceReason(e.target.value)}
+                onChange={(e) => { setBounceReason(e.target.value); }}
                 rows={3}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 placeholder={t('treasury:instruments.bounceReasonPlaceholder', 'e.g., Insufficient funds')}
@@ -592,7 +592,7 @@ export function InstrumentDetailPage() {
                 {t('common:actions.cancel')}
               </button>
               <button
-                onClick={() => bounceMutation.mutate(bounceReason)}
+                onClick={() => { bounceMutation.mutate(bounceReason); }}
                 disabled={bounceMutation.isPending}
                 className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
               >

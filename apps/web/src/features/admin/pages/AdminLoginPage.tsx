@@ -71,7 +71,7 @@ export function AdminLoginPage() {
                 autoComplete="email"
                 required
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => { setEmail(e.target.value); }}
                 className="mt-1 block w-full rounded-lg border border-gray-600 bg-gray-800 px-4 py-3 text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 placeholder="superadmin@mecanospex.com"
               />
@@ -88,7 +88,7 @@ export function AdminLoginPage() {
                 autoComplete="current-password"
                 required
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => { setPassword(e.target.value); }}
                 className="mt-1 block w-full rounded-lg border border-gray-600 bg-gray-800 px-4 py-3 text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 placeholder="Enter your password"
               />

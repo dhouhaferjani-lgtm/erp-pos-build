@@ -135,7 +135,7 @@ export function JournalEntryListPage() {
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setPage(page - 1)}
+                  onClick={() => { setPage(page - 1); }}
                   disabled={page === 1}
                   className="inline-flex items-center px-3 py-2 text-sm font-medium border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
                 >
@@ -143,7 +143,7 @@ export function JournalEntryListPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPage(page + 1)}
+                  onClick={() => { setPage(page + 1); }}
                   disabled={page === meta.last_page}
                   className="inline-flex items-center px-3 py-2 text-sm font-medium border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
                 >

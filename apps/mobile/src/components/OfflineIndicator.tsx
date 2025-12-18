@@ -1,31 +1,39 @@
+import { useMemo } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
 import { useNetInfo } from '@react-native-community/netinfo';
 import { useCountingStore } from '@/features/counting/store/countingStore';
-import { useDraftSync } from '@/features/counting/services/draftSyncService';
 import { useDraftCountingStore } from '@/features/counting/store/draftCountingStore';
 import { WifiOff, CloudUpload } from 'lucide-react-native';
 
 export function OfflineIndicator() {
   const netInfo = useNetInfo();
-  const pendingCounts = useCountingStore((s) =>
-    s.pendingCounts.filter((c) => !c.synced)
-  );
-  const { isSyncing: isDraftSyncing, progress: draftProgress } = useDraftSync();
-  const drafts = useDraftCountingStore((s) => s.drafts);
 
-  // Count pending draft operations
-  const pendingDrafts = drafts.filter(d => d.status === 'draft' || d.status === 'syncing');
+  // Use stable selectors - don't create new arrays on every render
+  const allPendingCounts = useCountingStore((s) => s.pendingCounts);
+  const allDrafts = useDraftCountingStore((s) => s.drafts);
+
+  // Memoize filtered results to prevent infinite loops
+  const pendingCounts = useMemo(
+    () => allPendingCounts.filter((c) => !c.synced),
+    [allPendingCounts]
+  );
+
+  const pendingDrafts = useMemo(
+    () => allDrafts.filter(d => d.status === 'draft' || d.status === 'syncing'),
+    [allDrafts]
+  );
+
   const hasPendingDrafts = pendingDrafts.length > 0;
+  const totalPending = pendingCounts.length + pendingDrafts.length;
 
   // Online and no pending operations - show nothing
-  if (netInfo.isConnected && pendingCounts.length === 0 && !hasPendingDrafts && !isDraftSyncing) {
+  if (netInfo.isConnected && totalPending === 0) {
     return null;
   }
 
   // Offline
   if (!netInfo.isConnected) {
-    const totalPending = pendingCounts.length + pendingDrafts.length;
     return (
       <View style={[styles.banner, styles.offlineBanner]}>
         <WifiOff size={20} color="#b45309" />
@@ -37,51 +45,14 @@ export function OfflineIndicator() {
     );
   }
 
-  // Online with active draft sync
-  if (isDraftSyncing && draftProgress.stage !== 'idle') {
-    let message = draftProgress.message || 'Syncing drafts...';
-
-    // Show detailed progress for different stages
-    if (draftProgress.stage === 'drafts') {
-      message = `Syncing ${draftProgress.current}/${draftProgress.total} drafts...`;
-    } else if (draftProgress.stage === 'products') {
-      message = `Syncing ${draftProgress.current}/${draftProgress.total} products...`;
-    } else if (draftProgress.stage === 'updates') {
-      message = `Syncing ${draftProgress.current}/${draftProgress.total} updates...`;
-    } else if (draftProgress.stage === 'complete') {
-      message = 'Draft sync complete';
-    }
-
-    return (
-      <View style={[styles.banner, styles.syncingBanner]}>
-        <CloudUpload size={20} color="#2563eb" />
-        <ActivityIndicator size="small" color="#2563eb" />
-        <Text style={styles.syncingText}>{message}</Text>
-      </View>
-    );
-  }
-
-  // Online with pending counts
-  if (pendingCounts.length > 0) {
+  // Online with pending operations
+  if (totalPending > 0) {
     return (
       <View style={[styles.banner, styles.syncingBanner]}>
         <CloudUpload size={20} color="#2563eb" />
         <ActivityIndicator size="small" color="#2563eb" />
         <Text style={styles.syncingText}>
-          Syncing {pendingCounts.length} pending count
-          {pendingCounts.length > 1 ? 's' : ''}...
-        </Text>
-      </View>
-    );
-  }
-
-  // Online with pending drafts (not actively syncing)
-  if (hasPendingDrafts) {
-    return (
-      <View style={[styles.banner, styles.syncingBanner]}>
-        <CloudUpload size={20} color="#2563eb" />
-        <Text style={styles.syncingText}>
-          {pendingDrafts.length} draft{pendingDrafts.length > 1 ? 's' : ''} pending sync
+          Syncing {totalPending} operation{totalPending > 1 ? 's' : ''}...
         </Text>
       </View>
     );

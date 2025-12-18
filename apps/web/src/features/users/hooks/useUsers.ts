@@ -18,7 +18,7 @@ export const userKeys = {
  */
 export function useUsers(
   params?: GetUsersParams
-): UseQueryResult<PaginatedUsersResponse, Error> {
+): UseQueryResult<PaginatedUsersResponse> {
   return useQuery({
     queryKey: userKeys.list(params),
     queryFn: () => getUsers(params),
@@ -29,7 +29,7 @@ export function useUsers(
 /**
  * Hook to fetch a single user by ID
  */
-export function useUser(id: string): UseQueryResult<User, Error> {
+export function useUser(id: string): UseQueryResult<User> {
   return useQuery({
     queryKey: userKeys.detail(id),
     queryFn: () => getUser(id),

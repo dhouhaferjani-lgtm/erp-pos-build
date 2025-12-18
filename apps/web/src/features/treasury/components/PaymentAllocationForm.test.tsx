@@ -93,7 +93,7 @@ vi.mock('./OpenInvoicesList', () => ({
     <div data-testid="open-invoices-list">
       <span>Allocation Method: {allocationMethod}</span>
       <span>Selected: {selectedAllocations.length}</span>
-      <button onClick={() => onAllocationChange([{ document_id: '1', amount: '100.00' }])}>
+      <button onClick={() => { onAllocationChange([{ document_id: '1', amount: '100.00' }]); }}>
         Select Invoice
       </button>
     </div>

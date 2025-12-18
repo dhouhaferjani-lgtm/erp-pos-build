@@ -128,7 +128,7 @@ function StartReconciliationModal({
             </label>
             <select
               value={repositoryId}
-              onChange={(e) => setRepositoryId(e.target.value)}
+              onChange={(e) => { setRepositoryId(e.target.value); }}
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               required
               disabled={loadingRepositories}
@@ -149,7 +149,7 @@ function StartReconciliationModal({
             <input
               type="date"
               value={statementDate}
-              onChange={(e) => setStatementDate(e.target.value)}
+              onChange={(e) => { setStatementDate(e.target.value); }}
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               required
             />
@@ -163,7 +163,7 @@ function StartReconciliationModal({
               type="number"
               step="0.01"
               value={statementBalance}
-              onChange={(e) => setStatementBalance(e.target.value)}
+              onChange={(e) => { setStatementBalance(e.target.value); }}
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               placeholder="0.00"
               required
@@ -176,7 +176,7 @@ function StartReconciliationModal({
             </label>
             <textarea
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={(e) => { setNotes(e.target.value); }}
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               rows={2}
             />
@@ -315,7 +315,7 @@ function ReconciliationDetail({
             {t('reconciliation.statementDate')}: {formatDate(reconciliation.statement_date)}
           </p>
         </div>
-        <StatusBadge status={reconciliation.status as ReconciliationStatus} />
+        <StatusBadge status={reconciliation.status} />
       </div>
 
       {/* Summary cards */}
@@ -421,7 +421,7 @@ function ReconciliationDetail({
                     {item.is_matched ? (
                       <Button
                         variant="secondary"
-                        onClick={() => handleUnmatch(item.payment_id)}
+                        onClick={() => { handleUnmatch(item.payment_id); }}
                         disabled={unmatchMutation.isPending}
                       >
                         <X className="h-4 w-4" />
@@ -432,12 +432,12 @@ function ReconciliationDetail({
                         <input
                           type="text"
                           value={bankReference}
-                          onChange={(e) => setBankReference(e.target.value)}
+                          onChange={(e) => { setBankReference(e.target.value); }}
                           placeholder={t('reconciliation.items.bankReferencePlaceholder')}
                           className="w-40 rounded border border-gray-300 px-2 py-1 text-sm"
                         />
                         <Button
-                          onClick={() => handleMatch(item.payment_id)}
+                          onClick={() => { handleMatch(item.payment_id); }}
                           disabled={matchMutation.isPending}
                         >
                           <Check className="h-4 w-4" />
@@ -455,7 +455,7 @@ function ReconciliationDetail({
                     ) : (
                       <Button
                         variant="secondary"
-                        onClick={() => setMatchingPaymentId(item.payment_id)}
+                        onClick={() => { setMatchingPaymentId(item.payment_id); }}
                       >
                         <Check className="h-4 w-4" />
                         {t('reconciliation.items.match')}
@@ -472,11 +472,11 @@ function ReconciliationDetail({
       {/* Actions */}
       {isEditable && (
         <div className="flex justify-end gap-3">
-          <Button variant="danger" onClick={() => setShowCancelConfirm(true)}>
+          <Button variant="danger" onClick={() => { setShowCancelConfirm(true); }}>
             {t('reconciliation.actions.cancel')}
           </Button>
           <Button
-            onClick={() => setShowCompleteConfirm(true)}
+            onClick={() => { setShowCompleteConfirm(true); }}
             disabled={!summary?.can_complete}
           >
             {t('reconciliation.actions.complete')}
@@ -495,7 +495,7 @@ function ReconciliationDetail({
               {t('reconciliation.confirmations.complete.message')}
             </p>
             <div className="flex justify-end gap-3">
-              <Button variant="secondary" onClick={() => setShowCompleteConfirm(false)}>
+              <Button variant="secondary" onClick={() => { setShowCompleteConfirm(false); }}>
                 {t('common.cancel')}
               </Button>
               <Button onClick={handleComplete} disabled={completeMutation.isPending}>
@@ -517,7 +517,7 @@ function ReconciliationDetail({
               {t('reconciliation.confirmations.cancel.message')}
             </p>
             <div className="flex justify-end gap-3">
-              <Button variant="secondary" onClick={() => setShowCancelConfirm(false)}>
+              <Button variant="secondary" onClick={() => { setShowCancelConfirm(false); }}>
                 {t('common.cancel')}
               </Button>
               <Button variant="danger" onClick={handleCancel} disabled={cancelMutation.isPending}>
@@ -570,7 +570,7 @@ export function BankReconciliationPage() {
         <div className="mx-auto max-w-5xl">
           <ReconciliationDetail
             reconciliationId={selectedId}
-            onClose={() => setSearchParams({})}
+            onClose={() => { setSearchParams({}); }}
           />
         </div>
       </div>
@@ -594,7 +594,7 @@ export function BankReconciliationPage() {
             <h1 className="text-2xl font-bold">{t('reconciliation.title')}</h1>
             <p className="text-gray-500">{t('reconciliation.subtitle')}</p>
           </div>
-          <Button onClick={() => setShowStartModal(true)}>
+          <Button onClick={() => { setShowStartModal(true); }}>
             <Plus className="h-4 w-4" />
             {t('reconciliation.startNew')}
           </Button>
@@ -603,7 +603,7 @@ export function BankReconciliationPage() {
         {/* Filters */}
         <div className="mb-4 flex gap-2">
           <button
-            onClick={() => setStatusFilter('')}
+            onClick={() => { setStatusFilter(''); }}
             className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
               statusFilter === ''
                 ? 'bg-blue-100 text-blue-700'
@@ -613,7 +613,7 @@ export function BankReconciliationPage() {
             {t('reconciliation.filters.all')}
           </button>
           <button
-            onClick={() => setStatusFilter('draft')}
+            onClick={() => { setStatusFilter('draft'); }}
             className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
               statusFilter === 'draft'
                 ? 'bg-amber-100 text-amber-700'
@@ -623,7 +623,7 @@ export function BankReconciliationPage() {
             {t('reconciliation.filters.inProgress')}
           </button>
           <button
-            onClick={() => setStatusFilter('completed')}
+            onClick={() => { setStatusFilter('completed'); }}
             className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
               statusFilter === 'completed'
                 ? 'bg-emerald-100 text-emerald-700'
@@ -652,7 +652,7 @@ export function BankReconciliationPage() {
             <p className="mt-2 text-gray-500">
               {t('reconciliation.empty.description')}
             </p>
-            <Button onClick={() => setShowStartModal(true)} className="mt-6">
+            <Button onClick={() => { setShowStartModal(true); }} className="mt-6">
               <Plus className="h-4 w-4" />
               {t('reconciliation.startNew')}
             </Button>
@@ -707,12 +707,12 @@ export function BankReconciliationPage() {
                         {formatCurrency(rec.difference)}
                       </td>
                       <td className="whitespace-nowrap px-6 py-4">
-                        <StatusBadge status={rec.status as ReconciliationStatus} />
+                        <StatusBadge status={rec.status} />
                       </td>
                       <td className="whitespace-nowrap px-6 py-4 text-end">
                         <Button
                           variant="ghost"
-                          onClick={() => setSearchParams({ id: rec.id })}
+                          onClick={() => { setSearchParams({ id: rec.id }); }}
                         >
                           <Eye className="h-4 w-4" />
                           {rec.status === 'draft'
@@ -731,7 +731,7 @@ export function BankReconciliationPage() {
         {/* Start modal */}
         <StartReconciliationModal
           isOpen={showStartModal}
-          onClose={() => setShowStartModal(false)}
+          onClose={() => { setShowStartModal(false); }}
           onSubmit={handleStartReconciliation}
           isLoading={startMutation.isPending}
         />

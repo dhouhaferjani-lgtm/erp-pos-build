@@ -26,6 +26,49 @@
     "searchPlaceholder": "Rechercher des produits...",
     "addQuick": "Ajouter un produit (rapide)",
     "edit": "Modifier le produit",
+    "tabs": {
+      "details": "Détails",
+      "movements": "Mouvements de stock",
+      "financialOperations": "Opérations financières"
+    },
+    "movementsTab": {
+      "title": "Mouvements de stock",
+      "subtitle": "{{count}} mouvement dans tous les emplacements",
+      "subtitle_plural": "{{count}} mouvements dans tous les emplacements",
+      "filterByLocation": "Filtrer par emplacement",
+      "allLocations": "Tous les emplacements",
+      "columns": {
+        "date": "Date",
+        "type": "Type",
+        "location": "Emplacement",
+        "quantity": "Quantité",
+        "before": "Avant",
+        "after": "Après",
+        "reference": "Référence"
+      },
+      "empty": {
+        "title": "Aucun mouvement",
+        "description": "Aucun mouvement de stock n'a été enregistré pour ce produit."
+      }
+    },
+    "financialTab": {
+      "title": "Opérations financières",
+      "subtitle": "{{count}} document contenant ce produit",
+      "subtitle_plural": "{{count}} documents contenant ce produit",
+      "columns": {
+        "documentNumber": "Document",
+        "type": "Type",
+        "date": "Date",
+        "partner": "Partenaire",
+        "status": "Statut",
+        "quantity": "Qté",
+        "lineTotal": "Total ligne"
+      },
+      "empty": {
+        "title": "Aucun document",
+        "description": "Aucun document de vente ou d'achat ne contient ce produit."
+      }
+    },
     "name": "Nom",
     "namePlaceholder": "Saisir le nom du produit",
     "sku": "Référence",

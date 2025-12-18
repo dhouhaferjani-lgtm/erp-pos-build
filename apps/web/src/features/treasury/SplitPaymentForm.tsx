@@ -203,7 +203,7 @@ export function SplitPaymentForm({
               {paymentLines.length > 1 && (
                 <button
                   type="button"
-                  onClick={() => removePaymentLine(line.id)}
+                  onClick={() => { removePaymentLine(line.id); }}
                   className="text-red-600 hover:text-red-800"
                   aria-label={t('common:actions.remove')}
                 >
@@ -224,7 +224,7 @@ export function SplitPaymentForm({
                   id={`method-${line.id}`}
                   value={line.payment_method_id}
                   onChange={(e) =>
-                    updatePaymentLine(line.id, 'payment_method_id', e.target.value)
+                    { updatePaymentLine(line.id, 'payment_method_id', e.target.value); }
                   }
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   aria-label={t('treasury:payments.method')}
@@ -250,7 +250,7 @@ export function SplitPaymentForm({
                   id={`amount-${line.id}`}
                   value={line.amount}
                   onChange={(e) =>
-                    updatePaymentLine(line.id, 'amount', e.target.value)
+                    { updatePaymentLine(line.id, 'amount', e.target.value); }
                   }
                   min="0.01"
                   step="0.01"
@@ -271,7 +271,7 @@ export function SplitPaymentForm({
                   id={`repository-${line.id}`}
                   value={line.repository_id}
                   onChange={(e) =>
-                    updatePaymentLine(line.id, 'repository_id', e.target.value)
+                    { updatePaymentLine(line.id, 'repository_id', e.target.value); }
                   }
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
@@ -296,7 +296,7 @@ export function SplitPaymentForm({
                   id={`reference-${line.id}`}
                   value={line.reference}
                   onChange={(e) =>
-                    updatePaymentLine(line.id, 'reference', e.target.value)
+                    { updatePaymentLine(line.id, 'reference', e.target.value); }
                   }
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   placeholder={t('treasury:payments.reference')}

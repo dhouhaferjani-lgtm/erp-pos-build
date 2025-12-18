@@ -121,7 +121,7 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
               </div>
               {!readonly && (
                 <button
-                  onClick={() => handleDelete(cost.id!)}
+                  onClick={() => { handleDelete(cost.id!); }}
                   className="text-red-600 hover:text-red-700"
                   disabled={deleteMutation.isPending}
                 >
@@ -143,7 +143,7 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
               </label>
               <select
                 value={newCost.cost_type}
-                onChange={(e) => setNewCost({ ...newCost, cost_type: e.target.value as AdditionalCost['cost_type'] })}
+                onChange={(e) => { setNewCost({ ...newCost, cost_type: e.target.value as AdditionalCost['cost_type'] }); }}
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
                 {Object.entries(COST_TYPE_LABELS).map(([value, label]) => (
@@ -162,7 +162,7 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
                 step="0.01"
                 min="0"
                 value={newCost.amount || ''}
-                onChange={(e) => setNewCost({ ...newCost, amount: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => { setNewCost({ ...newCost, amount: parseFloat(e.target.value) || 0 }); }}
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 placeholder="0.00"
               />
@@ -175,7 +175,7 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
             <input
               type="text"
               value={newCost.description || ''}
-              onChange={(e) => setNewCost({ ...newCost, description: e.target.value })}
+              onChange={(e) => { setNewCost({ ...newCost, description: e.target.value }); }}
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               placeholder="e.g., International freight"
             />

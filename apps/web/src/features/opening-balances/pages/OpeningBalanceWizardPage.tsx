@@ -273,7 +273,7 @@ export function OpeningBalanceWizardPage() {
                   type="text"
                   id="batchName"
                   value={batchName}
-                  onChange={(e) => setBatchName(e.target.value)}
+                  onChange={(e) => { setBatchName(e.target.value); }}
                   placeholder={t('openingBalances.wizard.setup.namePlaceholder')}
                   className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
@@ -287,7 +287,7 @@ export function OpeningBalanceWizardPage() {
                   type="date"
                   id="cutoverDate"
                   value={cutoverDate}
-                  onChange={(e) => setCutoverDate(e.target.value)}
+                  onChange={(e) => { setCutoverDate(e.target.value); }}
                   className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
                 <p className="mt-1 text-xs text-gray-500">
@@ -340,7 +340,7 @@ export function OpeningBalanceWizardPage() {
             <div className="flex items-center justify-between border-t border-gray-200 pt-4">
               <button
                 type="button"
-                onClick={() => setCurrentStep('setup')}
+                onClick={() => { setCurrentStep('setup'); }}
                 disabled={importRows.isPending}
                 className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
               >
@@ -384,7 +384,7 @@ export function OpeningBalanceWizardPage() {
             <div className="flex items-center justify-between border-t border-gray-200 pt-4">
               <button
                 type="button"
-                onClick={() => setCurrentStep('upload')}
+                onClick={() => { setCurrentStep('upload'); }}
                 className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
               >
                 <ArrowLeft className="h-4 w-4" />
@@ -435,7 +435,7 @@ export function OpeningBalanceWizardPage() {
             <div className="flex items-center justify-between border-t border-gray-200 pt-4">
               <button
                 type="button"
-                onClick={() => setCurrentStep('validate')}
+                onClick={() => { setCurrentStep('validate'); }}
                 className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
               >
                 <ArrowLeft className="h-4 w-4" />
@@ -510,7 +510,7 @@ export function OpeningBalanceWizardPage() {
             <div className="flex items-center justify-between border-t border-gray-200 pt-4">
               <button
                 type="button"
-                onClick={() => setCurrentStep('preview')}
+                onClick={() => { setCurrentStep('preview'); }}
                 disabled={postBatch.isPending}
                 className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
               >
@@ -543,7 +543,7 @@ export function OpeningBalanceWizardPage() {
         return (
           <LockConfirmation
             onLock={handleLock}
-            onBack={() => setCurrentStep('post')}
+            onBack={() => { setCurrentStep('post'); }}
             isLocking={lockBatch.isPending}
           />
         )

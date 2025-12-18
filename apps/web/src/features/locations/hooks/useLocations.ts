@@ -16,7 +16,7 @@ export const locationKeys = {
 /**
  * Hook to fetch list of locations
  */
-export function useLocations(): UseQueryResult<LocationsResponse, Error> {
+export function useLocations(): UseQueryResult<LocationsResponse> {
   return useQuery({
     queryKey: locationKeys.list(),
     queryFn: () => getLocations(),
@@ -27,7 +27,7 @@ export function useLocations(): UseQueryResult<LocationsResponse, Error> {
 /**
  * Hook to fetch a single location by ID
  */
-export function useLocation(id: string): UseQueryResult<Location, Error> {
+export function useLocation(id: string): UseQueryResult<Location> {
   return useQuery({
     queryKey: locationKeys.detail(id),
     queryFn: () => getLocation(id),

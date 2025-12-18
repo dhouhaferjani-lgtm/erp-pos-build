@@ -124,7 +124,7 @@ export function CreditNoteList({
             <select
               id="reason-filter"
               value={filterReason}
-              onChange={(e) => setFilterReason(e.target.value as CreditNoteReason | 'all')}
+              onChange={(e) => { setFilterReason(e.target.value as CreditNoteReason | 'all'); }}
               className="rounded-md border border-gray-300 px-2 py-1 text-sm"
               aria-label="Filter by reason"
             >
@@ -154,7 +154,7 @@ export function CreditNoteList({
             <select
               id="sort-select"
               value={sortField}
-              onChange={(e) => setSortField(e.target.value as SortField)}
+              onChange={(e) => { setSortField(e.target.value as SortField); }}
               className="rounded-md border border-gray-300 px-2 py-1 text-sm"
               aria-label="Sort by"
             >
@@ -195,7 +195,7 @@ export function CreditNoteList({
             {sortedCreditNotes.map((creditNote) => (
               <tr
                 key={creditNote.id}
-                onClick={() => handleRowClick(creditNote)}
+                onClick={() => { handleRowClick(creditNote); }}
                 className="cursor-pointer transition-colors hover:bg-gray-50"
               >
                 <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">

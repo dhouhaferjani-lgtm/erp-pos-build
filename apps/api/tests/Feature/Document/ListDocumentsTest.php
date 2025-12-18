@@ -7,8 +7,11 @@ namespace Tests\Feature\Document;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Product\Domain\Enums\ProductType;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
@@ -473,5 +476,201 @@ class ListDocumentsTest extends TestCase
 
         $response->assertOk()
             ->assertJsonCount(1, 'data');
+    }
+
+    public function test_can_filter_documents_by_product_id(): void
+    {
+        // Create a product
+        $product = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Test Product',
+            'sku' => 'TEST-001',
+            'type' => ProductType::Part,
+            'sale_price' => '100.00',
+            'purchase_price' => '50.00',
+        ]);
+
+        // Create another product
+        $otherProduct = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Other Product',
+            'sku' => 'OTHER-001',
+            'type' => ProductType::Part,
+            'sale_price' => '200.00',
+            'purchase_price' => '100.00',
+        ]);
+
+        // Create an invoice with our target product
+        $invoiceWithProduct = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::Invoice,
+            'status' => DocumentStatus::Posted,
+            'document_number' => 'INV-2025-0001',
+            'document_date' => now(),
+            'currency' => 'EUR',
+            'subtotal' => '100.00',
+            'tax_amount' => '20.00',
+            'total' => '120.00',
+        ]);
+
+        DocumentLine::create([
+            'document_id' => $invoiceWithProduct->id,
+            'product_id' => $product->id,
+            'line_number' => 1,
+            'description' => 'Test Product',
+            'quantity' => '2.00',
+            'unit_price' => '50.00',
+            'line_total' => '100.00',
+        ]);
+
+        // Create a purchase order with our target product
+        $poWithProduct = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::PurchaseOrder,
+            'status' => DocumentStatus::Confirmed,
+            'document_number' => 'PO-2025-0001',
+            'document_date' => now(),
+            'currency' => 'EUR',
+            'subtotal' => '50.00',
+            'tax_amount' => '10.00',
+            'total' => '60.00',
+        ]);
+
+        DocumentLine::create([
+            'document_id' => $poWithProduct->id,
+            'product_id' => $product->id,
+            'line_number' => 1,
+            'description' => 'Test Product',
+            'quantity' => '1.00',
+            'unit_price' => '50.00',
+            'line_total' => '50.00',
+        ]);
+
+        // Create a quote WITHOUT our target product (has other product)
+        $quoteWithoutProduct = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::Quote,
+            'status' => DocumentStatus::Draft,
+            'document_number' => 'QT-2025-0001',
+            'document_date' => now(),
+            'currency' => 'EUR',
+            'subtotal' => '200.00',
+            'tax_amount' => '40.00',
+            'total' => '240.00',
+        ]);
+
+        DocumentLine::create([
+            'document_id' => $quoteWithoutProduct->id,
+            'product_id' => $otherProduct->id,
+            'line_number' => 1,
+            'description' => 'Other Product',
+            'quantity' => '1.00',
+            'unit_price' => '200.00',
+            'line_total' => '200.00',
+        ]);
+
+        // Create a document with no lines at all
+        Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::Quote,
+            'status' => DocumentStatus::Draft,
+            'document_number' => 'QT-2025-0002',
+            'document_date' => now(),
+            'currency' => 'EUR',
+        ]);
+
+        // Filter by product_id - should only return documents containing our product
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/documents?product_id={$product->id}");
+
+        $response->assertOk()
+            ->assertJsonCount(2, 'data');
+
+        // Verify the returned documents are the ones with our product
+        $returnedIds = collect($response->json('data'))->pluck('id')->toArray();
+        $this->assertContains($invoiceWithProduct->id, $returnedIds);
+        $this->assertContains($poWithProduct->id, $returnedIds);
+        $this->assertNotContains($quoteWithoutProduct->id, $returnedIds);
+    }
+
+    public function test_product_filter_can_be_combined_with_type_filter(): void
+    {
+        // Create a product
+        $product = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Test Product',
+            'sku' => 'TEST-002',
+            'type' => ProductType::Part,
+            'sale_price' => '100.00',
+        ]);
+
+        // Create an invoice with product
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::Invoice,
+            'status' => DocumentStatus::Posted,
+            'document_number' => 'INV-2025-0002',
+            'document_date' => now(),
+            'currency' => 'EUR',
+            'subtotal' => '100.00',
+            'tax_amount' => '20.00',
+            'total' => '120.00',
+        ]);
+
+        DocumentLine::create([
+            'document_id' => $invoice->id,
+            'product_id' => $product->id,
+            'line_number' => 1,
+            'description' => 'Test Product',
+            'quantity' => '1.00',
+            'unit_price' => '100.00',
+            'line_total' => '100.00',
+        ]);
+
+        // Create a PO with same product
+        $po = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::PurchaseOrder,
+            'status' => DocumentStatus::Confirmed,
+            'document_number' => 'PO-2025-0002',
+            'document_date' => now(),
+            'currency' => 'EUR',
+            'subtotal' => '50.00',
+            'tax_amount' => '10.00',
+            'total' => '60.00',
+        ]);
+
+        DocumentLine::create([
+            'document_id' => $po->id,
+            'product_id' => $product->id,
+            'line_number' => 1,
+            'description' => 'Test Product',
+            'quantity' => '1.00',
+            'unit_price' => '50.00',
+            'line_total' => '50.00',
+        ]);
+
+        // Filter by product_id AND type=invoice
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/documents?product_id={$product->id}&type=invoice");
+
+        $response->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.type', 'invoice');
     }
 }

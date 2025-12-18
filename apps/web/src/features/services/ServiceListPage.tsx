@@ -179,7 +179,7 @@ export function ServiceListPage() {
               <span className="text-sm text-gray-500">{t('services.category', 'Category')}:</span>
               <select
                 value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
+                onChange={(e) => { setCategoryFilter(e.target.value); }}
                 className="rounded-lg border border-gray-300 bg-white px-3 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
                 <option value="all">{t('filters.all', 'All')}</option>

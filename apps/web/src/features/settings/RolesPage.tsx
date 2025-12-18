@@ -378,7 +378,7 @@ export function RolesPage() {
                   <input
                     type="text"
                     value={roleName}
-                    onChange={(e) => setRoleName(e.target.value)}
+                    onChange={(e) => { setRoleName(e.target.value); }}
                     placeholder={t('roles.roleNamePlaceholder')}
                     disabled={!!(editingRole && isSystemRole(editingRole.name))}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
@@ -405,7 +405,7 @@ export function RolesPage() {
                         <div key={module} className="space-y-2">
                           <button
                             type="button"
-                            onClick={() => toggleModulePermissions(permissions)}
+                            onClick={() => { toggleModulePermissions(permissions); }}
                             className="flex items-center gap-2 text-sm font-medium text-gray-900 capitalize hover:text-purple-600"
                           >
                             <div
@@ -435,7 +435,7 @@ export function RolesPage() {
                                 <input
                                   type="checkbox"
                                   checked={selectedPermissions.includes(permission)}
-                                  onChange={() => togglePermission(permission)}
+                                  onChange={() => { togglePermission(permission); }}
                                   className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                                 />
                                 {permission.replace(`${module}.`, '')}
@@ -490,12 +490,12 @@ export function RolesPage() {
               </div>
             )}
             <div className="mt-6 flex justify-end gap-3">
-              <Button variant="secondary" onClick={() => setDeleteRole(null)}>
+              <Button variant="secondary" onClick={() => { setDeleteRole(null); }}>
                 {t('actions.cancel')}
               </Button>
               <Button
                 variant="danger"
-                onClick={() => deleteMutation.mutate(deleteRole.id)}
+                onClick={() => { deleteMutation.mutate(deleteRole.id); }}
                 disabled={deleteMutation.isPending || deleteRole.users_count > 0}
               >
                 {deleteMutation.isPending ? t('status.processing') : t('roles.confirmations.delete.confirm')}

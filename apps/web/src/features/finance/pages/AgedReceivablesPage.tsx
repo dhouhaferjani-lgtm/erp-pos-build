@@ -57,7 +57,7 @@ export function AgedReceivablesPage() {
           id="as-of-date"
           type="date"
           value={asOfDate}
-          onChange={(e) => setAsOfDate(e.target.value)}
+          onChange={(e) => { setAsOfDate(e.target.value); }}
           className="rounded border border-gray-300 px-3 py-2"
         />
       </div>

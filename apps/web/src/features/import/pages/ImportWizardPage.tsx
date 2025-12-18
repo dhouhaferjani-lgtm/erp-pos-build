@@ -289,7 +289,7 @@ export function ImportWizardPage() {
             <div className="flex items-center justify-between border-t border-gray-200 pt-4">
               <button
                 type="button"
-                onClick={() => setCurrentStep('upload')}
+                onClick={() => { setCurrentStep('upload'); }}
                 className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
               >
                 <ArrowLeft className="h-4 w-4" />
@@ -337,7 +337,7 @@ export function ImportWizardPage() {
             <div className="flex items-center justify-between border-t border-gray-200 pt-4">
               <button
                 type="button"
-                onClick={() => setCurrentStep('mapping')}
+                onClick={() => { setCurrentStep('mapping'); }}
                 className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
               >
                 <ArrowLeft className="h-4 w-4" />
@@ -444,7 +444,7 @@ export function ImportWizardPage() {
             <div className="flex items-center justify-between border-t border-gray-200 pt-4">
               <button
                 type="button"
-                onClick={() => setCurrentStep('validation')}
+                onClick={() => { setCurrentStep('validation'); }}
                 disabled={executeImport.isPending || jobData?.status === 'importing'}
                 className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -474,7 +474,7 @@ export function ImportWizardPage() {
               ) : jobData.status === 'completed' ? (
                 <button
                   type="button"
-                  onClick={() => setCurrentStep('complete')}
+                  onClick={() => { setCurrentStep('complete'); }}
                   className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                 >
                   {t('wizard.execute.viewResults')}

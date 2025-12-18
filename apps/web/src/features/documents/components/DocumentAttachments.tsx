@@ -213,7 +213,7 @@ export function DocumentAttachments({ documentId, readOnly = false }: DocumentAt
           <AlertCircle className="h-4 w-4 flex-shrink-0" />
           <span className="text-sm">{uploadError}</span>
           <button
-            onClick={() => setUploadError(null)}
+            onClick={() => { setUploadError(null); }}
             className="ms-auto p-1 hover:bg-red-100 rounded"
           >
             <X className="h-4 w-4" />
@@ -244,7 +244,7 @@ export function DocumentAttachments({ documentId, readOnly = false }: DocumentAt
                   {attachment.uploaded_by.name}
                 </span>
                 <button
-                  onClick={() => handleDownload(attachment)}
+                  onClick={() => { handleDownload(attachment); }}
                   className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
                   title={t('common:download')}
                 >

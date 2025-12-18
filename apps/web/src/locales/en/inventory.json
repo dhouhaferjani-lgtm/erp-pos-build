@@ -26,6 +26,49 @@
     "searchPlaceholder": "Search products...",
     "addQuick": "Add Product (Quick)",
     "edit": "Edit Product",
+    "tabs": {
+      "details": "Details",
+      "movements": "Inventory Movements",
+      "financialOperations": "Financial Operations"
+    },
+    "movementsTab": {
+      "title": "Inventory Movements",
+      "subtitle": "{{count}} movement across all locations",
+      "subtitle_plural": "{{count}} movements across all locations",
+      "filterByLocation": "Filter by location",
+      "allLocations": "All Locations",
+      "columns": {
+        "date": "Date",
+        "type": "Type",
+        "location": "Location",
+        "quantity": "Quantity",
+        "before": "Before",
+        "after": "After",
+        "reference": "Reference"
+      },
+      "empty": {
+        "title": "No movements",
+        "description": "No inventory movements have been recorded for this product yet."
+      }
+    },
+    "financialTab": {
+      "title": "Financial Operations",
+      "subtitle": "{{count}} document containing this product",
+      "subtitle_plural": "{{count}} documents containing this product",
+      "columns": {
+        "documentNumber": "Document",
+        "type": "Type",
+        "date": "Date",
+        "partner": "Partner",
+        "status": "Status",
+        "quantity": "Qty",
+        "lineTotal": "Line Total"
+      },
+      "empty": {
+        "title": "No documents",
+        "description": "No sales or purchase documents contain this product yet."
+      }
+    },
     "name": "Name",
     "namePlaceholder": "Enter product name",
     "sku": "SKU",

@@ -176,74 +176,81 @@ class DatabaseSeeder extends Seeder
 
     private function createPartners(Tenant $tenant, Company $company): void
     {
-        // Create 10 customers using factory
+        // Create 50 customers using factory
         Partner::factory()
-            ->count(10)
+            ->count(50)
             ->customer()
             ->create([
                 'tenant_id' => $tenant->id,
                 'company_id' => $company->id,
             ]);
 
-        // Create 10 suppliers using factory
+        // Create 30 suppliers using factory
         Partner::factory()
-            ->count(10)
+            ->count(30)
             ->supplier()
             ->create([
                 'tenant_id' => $tenant->id,
                 'company_id' => $company->id,
             ]);
 
-        // Create 2 partners that are both customer and supplier
+        // Create 10 partners that are both customer and supplier
         Partner::factory()
-            ->count(2)
+            ->count(10)
             ->both()
             ->create([
                 'tenant_id' => $tenant->id,
                 'company_id' => $company->id,
             ]);
 
-        // Create 1 inactive partner
+        // Create 5 inactive partners
         Partner::factory()
+            ->count(5)
             ->inactive()
             ->create([
                 'tenant_id' => $tenant->id,
                 'company_id' => $company->id,
             ]);
 
-        $this->command->info('Created 23 partners (10 customers, 10 suppliers, 2 both, 1 inactive)');
+        $this->command->info('Created 95 partners (50 customers, 30 suppliers, 10 both, 5 inactive)');
     }
 
     private function createProducts(Company $company): void
     {
-        // Create 80 physical products (goods)
-        \App\Modules\Product\Domain\Product::factory()
-            ->count(80)
-            ->goods()
-            ->create([
-                'tenant_id' => $company->tenant_id,
-                'company_id' => $company->id,
-            ]);
+        $this->command->info('Creating 1000 products (this may take a moment)...');
 
-        // Create 15 services
+        // Create 800 physical products (goods) in batches
+        $goodsCount = 800;
+        $batchSize = 100;
+        for ($i = 0; $i < $goodsCount; $i += $batchSize) {
+            \App\Modules\Product\Domain\Product::factory()
+                ->count(min($batchSize, $goodsCount - $i))
+                ->goods()
+                ->create([
+                    'tenant_id' => $company->tenant_id,
+                    'company_id' => $company->id,
+                ]);
+        }
+
+        // Create 150 services
         \App\Modules\Product\Domain\Product::factory()
-            ->count(15)
+            ->count(150)
             ->service()
             ->create([
                 'tenant_id' => $company->tenant_id,
                 'company_id' => $company->id,
             ]);
 
-        // Create 5 inactive products
+        // Create 50 inactive products
         \App\Modules\Product\Domain\Product::factory()
-            ->count(5)
+            ->count(50)
             ->inactive()
             ->create([
                 'tenant_id' => $company->tenant_id,
                 'company_id' => $company->id,
             ]);
 
-        $this->command->info('Created 100 products (80 goods, 15 services, 5 inactive)');
+        $this->command->info('Created 1000 products (800 goods, 150 services, 50 inactive)');
     }
 
     private function createVehicles(Company $company): void

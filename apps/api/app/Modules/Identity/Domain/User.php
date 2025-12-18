@@ -160,6 +160,6 @@ class User extends Authenticatable
      */
     public function getDefaultGuardName(): string
     {
-        return 'web';
+        return 'sanctum';
     }
 }

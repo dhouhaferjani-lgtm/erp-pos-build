@@ -75,6 +75,15 @@ class DocumentController extends Controller
             $query->where('document_number', 'like', "%{$search}%");
         }
 
+        // Filter by product (returns documents with lines containing this product)
+        $productId = $request->query('product_id');
+        if (is_string($productId) && $productId !== '') {
+            $query->whereHas('lines', function ($q) use ($productId): void {
+                /** @phpstan-ignore argument.type */
+                $q->where('product_id', $productId);
+            });
+        }
+
         // Handle limit parameter
         $limit = $request->query('limit');
         if (is_string($limit) && is_numeric($limit)) {

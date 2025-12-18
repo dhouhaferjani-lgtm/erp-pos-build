@@ -160,7 +160,7 @@ export function JournalEntryForm() {
               type="date"
               id="entry-date"
               value={entryDate}
-              onChange={(e) => setEntryDate(e.target.value)}
+              onChange={(e) => { setEntryDate(e.target.value); }}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               aria-label={t('finance:journalEntry.entryDate')}
             />
@@ -177,7 +177,7 @@ export function JournalEntryForm() {
               type="text"
               id="description"
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => { setDescription(e.target.value); }}
               placeholder={t('finance:journalEntry.form.descriptionPlaceholder')}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               aria-label={t('finance:journalEntry.description')}
@@ -217,7 +217,7 @@ export function JournalEntryForm() {
                       <select
                         value={line.account_id}
                         onChange={(e) =>
-                          updateLine(line.id, 'account_id', e.target.value)
+                          { updateLine(line.id, 'account_id', e.target.value); }
                         }
                         className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                         aria-label={t('finance:journalEntry.account')}
@@ -235,7 +235,7 @@ export function JournalEntryForm() {
                         type="number"
                         value={line.debit}
                         onChange={(e) =>
-                          updateLine(line.id, 'debit', e.target.value)
+                          { updateLine(line.id, 'debit', e.target.value); }
                         }
                         placeholder={t('finance:journalEntry.debit')}
                         min="0"
@@ -248,7 +248,7 @@ export function JournalEntryForm() {
                         type="number"
                         value={line.credit}
                         onChange={(e) =>
-                          updateLine(line.id, 'credit', e.target.value)
+                          { updateLine(line.id, 'credit', e.target.value); }
                         }
                         placeholder={t('finance:journalEntry.credit')}
                         min="0"
@@ -261,7 +261,7 @@ export function JournalEntryForm() {
                         type="text"
                         value={line.description}
                         onChange={(e) =>
-                          updateLine(line.id, 'description', e.target.value)
+                          { updateLine(line.id, 'description', e.target.value); }
                         }
                         placeholder={t('finance:journalEntry.lineDescription')}
                         className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -271,7 +271,7 @@ export function JournalEntryForm() {
                       {lines.length > 2 && (
                         <button
                           type="button"
-                          onClick={() => removeLine(line.id)}
+                          onClick={() => { removeLine(line.id); }}
                           className="text-red-600 hover:text-red-800"
                           aria-label={t('common:actions.remove')}
                         >

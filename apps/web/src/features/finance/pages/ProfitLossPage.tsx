@@ -48,7 +48,7 @@ export function ProfitLossPage() {
             id="date-from"
             type="date"
             value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
+            onChange={(e) => { setDateFrom(e.target.value); }}
             className="rounded border border-gray-300 px-3 py-2"
           />
         </div>
@@ -60,7 +60,7 @@ export function ProfitLossPage() {
             id="date-to"
             type="date"
             value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
+            onChange={(e) => { setDateTo(e.target.value); }}
             className="rounded border border-gray-300 px-3 py-2"
           />
         </div>

@@ -78,12 +78,12 @@ export function TenantsPage() {
             type="text"
             placeholder="Search tenants..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); }}
             className="flex-1 rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none"
           />
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => { setStatusFilter(e.target.value); }}
             className="rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none"
           >
             <option value="">All Statuses</option>
@@ -145,14 +145,14 @@ export function TenantsPage() {
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
                     <div className="flex gap-2">
                       <button
-                        onClick={() => setSelectedTenantId(tenant.id)}
+                        onClick={() => { setSelectedTenantId(tenant.id); }}
                         className="text-indigo-600 hover:text-indigo-900"
                       >
                         View
                       </button>
                       {tenant.subscription?.status === 'trial' && (
                         <button
-                          onClick={() => handleExtendTrial(tenant.id)}
+                          onClick={() => { handleExtendTrial(tenant.id); }}
                           className="text-blue-600 hover:text-blue-900"
                         >
                           Extend Trial
@@ -160,7 +160,7 @@ export function TenantsPage() {
                       )}
                       {tenant.status === 'active' && (
                         <button
-                          onClick={() => handleSuspend(tenant.id)}
+                          onClick={() => { handleSuspend(tenant.id); }}
                           className="text-red-600 hover:text-red-900"
                         >
                           Suspend
@@ -168,7 +168,7 @@ export function TenantsPage() {
                       )}
                       {tenant.status === 'suspended' && (
                         <button
-                          onClick={() => handleActivate(tenant.id)}
+                          onClick={() => { handleActivate(tenant.id); }}
                           className="text-green-600 hover:text-green-900"
                         >
                           Activate
@@ -191,7 +191,7 @@ export function TenantsPage() {
 
       <TenantDetailModal
         tenantId={selectedTenantId}
-        onClose={() => setSelectedTenantId(null)}
+        onClose={() => { setSelectedTenantId(null); }}
       />
     </div>
   )

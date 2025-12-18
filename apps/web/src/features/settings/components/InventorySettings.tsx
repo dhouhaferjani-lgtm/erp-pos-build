@@ -106,7 +106,7 @@ export function InventorySettings() {
               name="costing_method"
               value="FIFO"
               checked={settings.inventory_costing_method === 'FIFO'}
-              onChange={(e) => setSettings({ ...settings, inventory_costing_method: e.target.value as 'FIFO' | 'WAC' | 'LIFO' })}
+              onChange={(e) => { setSettings({ ...settings, inventory_costing_method: e.target.value as 'FIFO' | 'WAC' | 'LIFO' }); }}
               className="mt-0.5"
             />
             <div className="flex-1">
@@ -123,7 +123,7 @@ export function InventorySettings() {
               name="costing_method"
               value="WAC"
               checked={settings.inventory_costing_method === 'WAC'}
-              onChange={(e) => setSettings({ ...settings, inventory_costing_method: e.target.value as 'FIFO' | 'WAC' | 'LIFO' })}
+              onChange={(e) => { setSettings({ ...settings, inventory_costing_method: e.target.value as 'FIFO' | 'WAC' | 'LIFO' }); }}
               className="mt-0.5"
             />
             <div className="flex-1">
@@ -145,7 +145,7 @@ export function InventorySettings() {
               name="costing_method"
               value="LIFO"
               checked={settings.inventory_costing_method === 'LIFO'}
-              onChange={(e) => setSettings({ ...settings, inventory_costing_method: e.target.value as 'FIFO' | 'WAC' | 'LIFO' })}
+              onChange={(e) => { setSettings({ ...settings, inventory_costing_method: e.target.value as 'FIFO' | 'WAC' | 'LIFO' }); }}
               className="mt-0.5"
             />
             <div className="flex-1">
@@ -176,7 +176,7 @@ export function InventorySettings() {
               min="0"
               max="100"
               value={settings.default_target_margin}
-              onChange={(e) => setSettings({ ...settings, default_target_margin: e.target.value })}
+              onChange={(e) => { setSettings({ ...settings, default_target_margin: e.target.value }); }}
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
             <p className="mt-1 text-xs text-gray-500">
@@ -194,7 +194,7 @@ export function InventorySettings() {
               min="0"
               max="100"
               value={settings.default_minimum_margin}
-              onChange={(e) => setSettings({ ...settings, default_minimum_margin: e.target.value })}
+              onChange={(e) => { setSettings({ ...settings, default_minimum_margin: e.target.value }); }}
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
             <p className="mt-1 text-xs text-gray-500">
@@ -227,7 +227,7 @@ export function InventorySettings() {
             <input
               type="checkbox"
               checked={settings.allow_below_cost_sales}
-              onChange={(e) => setSettings({ ...settings, allow_below_cost_sales: e.target.checked })}
+              onChange={(e) => { setSettings({ ...settings, allow_below_cost_sales: e.target.checked }); }}
               className="mt-0.5"
             />
             <div className="flex-1">

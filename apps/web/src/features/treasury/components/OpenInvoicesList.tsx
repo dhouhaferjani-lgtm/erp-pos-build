@@ -185,7 +185,7 @@ export function OpenInvoicesList({
             </label>
             <select
               value={sortField}
-              onChange={(e) => handleSort(e.target.value as SortField)}
+              onChange={(e) => { handleSort(e.target.value as SortField); }}
               className="rounded-md border border-gray-300 px-2 py-1 text-sm"
             >
               <option value="date">
@@ -261,7 +261,7 @@ export function OpenInvoicesList({
                       <input
                         type="checkbox"
                         checked={selected}
-                        onChange={(e) => handleSelectInvoice(invoice, e.target.checked)}
+                        onChange={(e) => { handleSelectInvoice(invoice, e.target.checked); }}
                         className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                     </td>
@@ -280,7 +280,7 @@ export function OpenInvoicesList({
                         min="0"
                         max={invoiceBalance}
                         value={allocationAmount}
-                        onChange={(e) => handleAmountChange(invoice.id, e.target.value)}
+                        onChange={(e) => { handleAmountChange(invoice.id, e.target.value); }}
                         disabled={!selected}
                         className="w-32 rounded-md border border-gray-300 px-2 py-1 text-sm disabled:bg-gray-100"
                       />

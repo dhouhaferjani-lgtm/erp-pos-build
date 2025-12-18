@@ -185,7 +185,7 @@ export function ValidationResults({ rows, validationResult }: ValidationResultsP
             <input
               type="checkbox"
               checked={showOnlyErrors}
-              onChange={(e) => setShowOnlyErrors(e.target.checked)}
+              onChange={(e) => { setShowOnlyErrors(e.target.checked); }}
               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
             {t('openingBalances.validation.showOnlyErrors')}

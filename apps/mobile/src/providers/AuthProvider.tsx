@@ -49,11 +49,29 @@ export function AuthProvider({ children }: PropsWithChildren) {
   };
 
   const login = async (email: string, password: string) => {
-    const response = await api.post('/auth/login', { email, password });
-    const { token, user: userData } = response.data.data;
+    try {
+      const response = await api.post('/auth/login', { email, password });
+      const { token, user: userData } = response.data.data;
 
-    await SecureStore.setItemAsync('auth_token', token);
-    setUser(userData);
+      await SecureStore.setItemAsync('auth_token', token);
+      setUser(userData);
+    } catch (error: any) {
+      // Extract error message from API response
+      const message =
+        error?.response?.data?.message ||
+        error?.response?.data?.errors?.email?.[0] ||
+        error?.message ||
+        'Failed to login. Please check your network connection.';
+
+      console.error('[Auth] Login error:', {
+        status: error?.response?.status,
+        data: error?.response?.data,
+        message: error?.message,
+        url: error?.config?.baseURL,
+      });
+
+      throw new Error(message);
+    }
   };
 
   const logout = async () => {

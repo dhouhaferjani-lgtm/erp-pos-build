@@ -162,7 +162,7 @@ export function PaymentsPage() {
               {paymentsData?.total ?? 0} total payments
             </span>
             <button
-              onClick={() => setShowRecordModal(true)}
+              onClick={() => { setShowRecordModal(true); }}
               className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
             >
               Record Payment
@@ -174,7 +174,7 @@ export function PaymentsPage() {
         <div className="mb-6 flex gap-4">
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => { setStatusFilter(e.target.value); }}
             className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             <option value="">All Statuses</option>
@@ -188,7 +188,7 @@ export function PaymentsPage() {
 
           <select
             value={providerFilter}
-            onChange={(e) => setProviderFilter(e.target.value)}
+            onChange={(e) => { setProviderFilter(e.target.value); }}
             className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             <option value="">All Providers</option>
@@ -294,7 +294,7 @@ export function PaymentsPage() {
                   <td className="whitespace-nowrap px-6 py-4">
                     <div className="flex gap-2">
                       <button
-                        onClick={() => setSelectedPayment(payment)}
+                        onClick={() => { setSelectedPayment(payment); }}
                         className="text-sm text-blue-600 hover:text-blue-800"
                       >
                         View
@@ -454,14 +454,14 @@ export function PaymentsPage() {
                   parseFloat(selectedPayment.refunded_amount) <
                     parseFloat(selectedPayment.amount) && (
                     <button
-                      onClick={() => setShowRefundModal(true)}
+                      onClick={() => { setShowRefundModal(true); }}
                       className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
                     >
                       Refund
                     </button>
                   )}
                 <button
-                  onClick={() => setSelectedPayment(null)}
+                  onClick={() => { setSelectedPayment(null); }}
                   className="rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
                 >
                   Close
@@ -488,7 +488,7 @@ export function PaymentsPage() {
                     type="text"
                     value={recordForm.tenant_id}
                     onChange={(e) =>
-                      setRecordForm({ ...recordForm, tenant_id: e.target.value })
+                      { setRecordForm({ ...recordForm, tenant_id: e.target.value }); }
                     }
                     placeholder="Enter tenant UUID"
                     className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -503,7 +503,7 @@ export function PaymentsPage() {
                     type="text"
                     value={recordForm.invoice_id}
                     onChange={(e) =>
-                      setRecordForm({ ...recordForm, invoice_id: e.target.value })
+                      { setRecordForm({ ...recordForm, invoice_id: e.target.value }); }
                     }
                     placeholder="Enter invoice UUID to allocate payment"
                     className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -519,7 +519,7 @@ export function PaymentsPage() {
                     step="0.01"
                     value={recordForm.amount}
                     onChange={(e) =>
-                      setRecordForm({ ...recordForm, amount: e.target.value })
+                      { setRecordForm({ ...recordForm, amount: e.target.value }); }
                     }
                     placeholder="0.00"
                     className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -533,14 +533,14 @@ export function PaymentsPage() {
                   <select
                     value={recordForm.provider}
                     onChange={(e) =>
-                      setRecordForm({
+                      { setRecordForm({
                         ...recordForm,
                         provider: e.target.value as
                           | 'manual'
                           | 'bank_transfer'
                           | 'cash'
                           | 'check',
-                      })
+                      }); }
                     }
                     className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
@@ -559,10 +559,10 @@ export function PaymentsPage() {
                     type="text"
                     value={recordForm.reference_number}
                     onChange={(e) =>
-                      setRecordForm({
+                      { setRecordForm({
                         ...recordForm,
                         reference_number: e.target.value,
-                      })
+                      }); }
                     }
                     placeholder="Check number, transfer reference, etc."
                     className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -577,10 +577,10 @@ export function PaymentsPage() {
                     type="date"
                     value={recordForm.payment_date}
                     onChange={(e) =>
-                      setRecordForm({
+                      { setRecordForm({
                         ...recordForm,
                         payment_date: e.target.value,
-                      })
+                      }); }
                     }
                     className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
@@ -593,7 +593,7 @@ export function PaymentsPage() {
                   <textarea
                     value={recordForm.notes}
                     onChange={(e) =>
-                      setRecordForm({ ...recordForm, notes: e.target.value })
+                      { setRecordForm({ ...recordForm, notes: e.target.value }); }
                     }
                     rows={3}
                     className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -603,7 +603,7 @@ export function PaymentsPage() {
 
               <div className="mt-6 flex justify-end gap-3">
                 <button
-                  onClick={() => setShowRecordModal(false)}
+                  onClick={() => { setShowRecordModal(false); }}
                   className="rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
                 >
                   Cancel
@@ -660,7 +660,7 @@ export function PaymentsPage() {
                     step="0.01"
                     value={refundForm.amount}
                     onChange={(e) =>
-                      setRefundForm({ ...refundForm, amount: e.target.value })
+                      { setRefundForm({ ...refundForm, amount: e.target.value }); }
                     }
                     placeholder={`Max: ${parseFloat(selectedPayment.amount) - parseFloat(selectedPayment.refunded_amount)}`}
                     className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -674,7 +674,7 @@ export function PaymentsPage() {
                   <textarea
                     value={refundForm.reason}
                     onChange={(e) =>
-                      setRefundForm({ ...refundForm, reason: e.target.value })
+                      { setRefundForm({ ...refundForm, reason: e.target.value }); }
                     }
                     rows={3}
                     placeholder="Reason for refund..."

@@ -128,22 +128,22 @@ class PermissionSeeder extends Seeder
             'pricing.manage_pricing_rules',
         ];
 
-        // Create all permissions for 'web' guard (Spatie default)
+        // Create all permissions for 'sanctum' guard (API authentication)
         foreach ($permissions as $permission) {
             Permission::firstOrCreate([
                 'name' => $permission,
-                'guard_name' => 'web',
+                'guard_name' => 'sanctum',
             ]);
         }
 
         // Create default roles
 
         // 1. Administrator (Full Access)
-        $admin = Role::firstOrCreate(['name' => 'Administrator', 'guard_name' => 'web']);
-        $admin->syncPermissions(Permission::where('guard_name', 'web')->get());
+        $admin = Role::firstOrCreate(['name' => 'Administrator', 'guard_name' => 'sanctum']);
+        $admin->syncPermissions(Permission::where('guard_name', 'sanctum')->get());
 
         // 2. Sales Manager
-        $salesManager = Role::firstOrCreate(['name' => 'Sales Manager', 'guard_name' => 'web']);
+        $salesManager = Role::firstOrCreate(['name' => 'Sales Manager', 'guard_name' => 'sanctum']);
         $salesManager->syncPermissions([
             'products.view',
             'partners.view', 'partners.create', 'partners.update',
@@ -160,7 +160,7 @@ class PermissionSeeder extends Seeder
         ]);
 
         // 3. Accountant
-        $accountant = Role::firstOrCreate(['name' => 'Accountant', 'guard_name' => 'web']);
+        $accountant = Role::firstOrCreate(['name' => 'Accountant', 'guard_name' => 'sanctum']);
         $accountant->syncPermissions([
             'partners.view',
             'documents.view',
@@ -176,7 +176,7 @@ class PermissionSeeder extends Seeder
         ]);
 
         // 4. Sales Rep
-        $salesRep = Role::firstOrCreate(['name' => 'Sales Rep', 'guard_name' => 'web']);
+        $salesRep = Role::firstOrCreate(['name' => 'Sales Rep', 'guard_name' => 'sanctum']);
         $salesRep->syncPermissions([
             'products.view',
             'partners.view', 'partners.create',
@@ -189,7 +189,7 @@ class PermissionSeeder extends Seeder
         ]);
 
         // 5. Warehouse Manager
-        $warehouseManager = Role::firstOrCreate(['name' => 'Warehouse Manager', 'guard_name' => 'web']);
+        $warehouseManager = Role::firstOrCreate(['name' => 'Warehouse Manager', 'guard_name' => 'sanctum']);
         $warehouseManager->syncPermissions([
             'products.view',
             'purchase-orders.view', 'purchase-orders.receive',
@@ -198,7 +198,7 @@ class PermissionSeeder extends Seeder
         ]);
 
         // 6. Receptionist
-        $receptionist = Role::firstOrCreate(['name' => 'Receptionist', 'guard_name' => 'web']);
+        $receptionist = Role::firstOrCreate(['name' => 'Receptionist', 'guard_name' => 'sanctum']);
         $receptionist->syncPermissions([
             'partners.view', 'partners.create',
             'vehicles.view', 'vehicles.create',
