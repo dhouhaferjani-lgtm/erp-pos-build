@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Application\Services;
 
 use App\Modules\Company\Domain\Location;
+use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Product;
@@ -71,7 +72,7 @@ class WeightedAverageCostService
                 'product_id' => $product->id,
                 'location_id' => $location->id,
                 'company_id' => $location->company_id,
-                'movement_type' => 'purchase',
+                'movement_type' => MovementType::Receipt,
                 'quantity' => $quantity,
                 'quantity_before' => $currentQty,
                 'quantity_after' => $newQty,
@@ -136,7 +137,7 @@ class WeightedAverageCostService
                 'product_id' => $product->id,
                 'location_id' => $location->id,
                 'company_id' => $location->company_id,
-                'movement_type' => 'sale',
+                'movement_type' => MovementType::Issue,
                 'quantity' => -$quantity,
                 'quantity_before' => $currentQty,
                 'quantity_after' => $newQty,
@@ -206,7 +207,7 @@ class WeightedAverageCostService
                 'product_id' => $product->id,
                 'location_id' => $location->id,
                 'company_id' => $location->company_id,
-                'movement_type' => 'return',
+                'movement_type' => MovementType::Receipt,
                 'quantity' => $quantity,
                 'quantity_before' => $currentQty,
                 'quantity_after' => $newQty,

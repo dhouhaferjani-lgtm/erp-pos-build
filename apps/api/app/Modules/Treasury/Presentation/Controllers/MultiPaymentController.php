@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\Services\MultiPaymentService;
@@ -14,7 +15,8 @@ use Illuminate\Http\Request;
 class MultiPaymentController extends Controller
 {
     public function __construct(
-        private readonly MultiPaymentService $multiPaymentService
+        private readonly MultiPaymentService $multiPaymentService,
+        private readonly CompanyContext $companyContext
     ) {}
 
     /**
@@ -74,7 +76,7 @@ class MultiPaymentController extends Controller
             $user = $request->user();
             $deposit = $this->multiPaymentService->recordDeposit(
                 $user->tenant_id,
-                $user->company_id ?? $request->input('company_id'),
+                $this->companyContext->requireCompanyId(),
                 $request->input('partner_id'),
                 $request->input('payment_method_id'),
                 (string) $request->input('amount'),
@@ -174,7 +176,7 @@ class MultiPaymentController extends Controller
             $user = $request->user();
             $result = $this->multiPaymentService->recordPaymentOnAccount(
                 $user->tenant_id,
-                $user->company_id ?? $request->input('company_id'),
+                $this->companyContext->requireCompanyId(),
                 $request->input('partner_id'),
                 (string) $request->input('amount'),
                 $request->input('currency'),

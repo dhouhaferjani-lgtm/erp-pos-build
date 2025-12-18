@@ -25,6 +25,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property numeric-string $quantity
  * @property numeric-string $quantity_before
  * @property numeric-string $quantity_after
+ * @property numeric-string|null $unit_cost
+ * @property numeric-string|null $total_cost
+ * @property numeric-string|null $avg_cost_before
+ * @property numeric-string|null $avg_cost_after
  * @property string|null $reference
  * @property string|null $notes
  * @property string|null $user_id
@@ -52,6 +56,10 @@ class StockMovement extends Model
         'quantity',
         'quantity_before',
         'quantity_after',
+        'unit_cost',
+        'total_cost',
+        'avg_cost_before',
+        'avg_cost_after',
         'reference',
         'notes',
         'user_id',
@@ -68,6 +76,10 @@ class StockMovement extends Model
             'quantity' => 'decimal:2',
             'quantity_before' => 'decimal:2',
             'quantity_after' => 'decimal:2',
+            'unit_cost' => 'decimal:2',
+            'total_cost' => 'decimal:2',
+            'avg_cost_before' => 'decimal:2',
+            'avg_cost_after' => 'decimal:2',
             'is_historical' => 'boolean',
         ];
     }

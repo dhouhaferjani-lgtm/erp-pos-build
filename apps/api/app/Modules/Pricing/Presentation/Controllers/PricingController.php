@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Pricing\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\CompanyContext;
 use App\Modules\Pricing\Domain\PartnerPriceList;
 use App\Modules\Pricing\Domain\PriceList;
 use App\Modules\Pricing\Domain\PriceListItem;
@@ -19,7 +20,8 @@ class PricingController extends Controller
 {
     public function __construct(
         private readonly PricingService $pricingService,
-        private readonly MarginService $marginService
+        private readonly MarginService $marginService,
+        private readonly CompanyContext $companyContext
     ) {}
 
     /**
@@ -74,7 +76,7 @@ class PricingController extends Controller
         $priceList = PriceList::create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $user->tenant_id,
-            'company_id' => $user->company_id ?? $request->input('company_id'),
+            'company_id' => $this->companyContext->requireCompanyId(),
             'code' => $request->input('code'),
             'name' => $request->input('name'),
             'description' => $request->input('description'),

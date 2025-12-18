@@ -155,10 +155,11 @@ class User extends Authenticatable
     }
 
     /**
-     * Get the guard name for spatie/permission.
+     * Get the default guard name for spatie/permission.
+     * This must match the guard used when creating roles/permissions.
      */
-    public function guardName(): string
+    public function getDefaultGuardName(): string
     {
-        return 'sanctum';
+        return 'web';
     }
 }

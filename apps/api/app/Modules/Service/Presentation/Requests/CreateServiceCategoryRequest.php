@@ -19,8 +19,7 @@ class CreateServiceCategoryRequest extends FormRequest
      */
     public function rules(): array
     {
-        $user = $this->user();
-        $companyId = $user->company_id ?? app(\App\Modules\Company\Services\CompanyContext::class)->getCompanyId();
+        $companyId = app(\App\Modules\Company\Services\CompanyContext::class)->getCompanyId();
 
         return [
             'name' => [
