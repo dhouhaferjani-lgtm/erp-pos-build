@@ -148,9 +148,9 @@ final class BalanceSheetData extends Data
         );
 
         return new self(
-            assets: BalanceSheetLineData::collection($assets),
-            liabilities: BalanceSheetLineData::collection($liabilities),
-            equity: BalanceSheetLineData::collection($equity),
+            assets: new DataCollection(BalanceSheetLineData::class, $assets),
+            liabilities: new DataCollection(BalanceSheetLineData::class, $liabilities),
+            equity: new DataCollection(BalanceSheetLineData::class, $equity),
             total_assets: $data['total_assets'],
             total_liabilities: $data['total_liabilities'],
             total_equity: $data['total_equity'],

@@ -86,7 +86,7 @@ final class TrialBalanceData extends Data
         );
 
         return new self(
-            lines: TrialBalanceLineData::collection($lines),
+            lines: new DataCollection(TrialBalanceLineData::class, $lines),
             total_debit: $data['total_debit'],
             total_credit: $data['total_credit'],
             is_balanced: $data['is_balanced'],

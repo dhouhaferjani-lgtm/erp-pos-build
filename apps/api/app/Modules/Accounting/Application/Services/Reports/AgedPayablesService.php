@@ -100,8 +100,8 @@ final readonly class AgedPayablesService
             ->where('company_id', $companyId)
             ->where('type', DocumentType::PurchaseInvoice)
             ->where('status', DocumentStatus::Posted)
-            ->where('issue_date', '<=', $asOfDate)
-            ->whereColumn('total_amount', '>', DB::raw('COALESCE(paid_amount, 0)'))
+            ->where('document_date', '<=', $asOfDate)
+            ->where('balance_due', '>', 0)
             ->with(['partner:id,name,type'])
             ->get();
     }
@@ -139,14 +139,10 @@ final readonly class AgedPayablesService
                 ];
 
                 foreach ($vendorInvoices as $invoice) {
-                    $balance = bcsub(
-                        $invoice->total_amount,
-                        $invoice->paid_amount ?? '0.0000',
-                        self::DECIMAL_SCALE
-                    );
+                    $balance = $invoice->balance_due ?? '0.0000';
 
-                    // Calculate days overdue from due_date or issue_date
-                    $referenceDate = $invoice->due_date ?? $invoice->issue_date;
+                    // Calculate days overdue from due_date or document_date
+                    $referenceDate = $invoice->due_date ?? $invoice->document_date;
                     $daysOverdue = $asOfDate->diffInDays(Carbon::parse($referenceDate), false);
 
                     // Assign to appropriate bucket

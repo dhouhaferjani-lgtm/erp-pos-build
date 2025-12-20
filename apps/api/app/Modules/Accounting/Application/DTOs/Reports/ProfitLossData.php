@@ -123,8 +123,8 @@ final class ProfitLossData extends Data
         );
 
         return new self(
-            revenue: ProfitLossLineData::collection($revenue),
-            expenses: ProfitLossLineData::collection($expenses),
+            revenue: new DataCollection(ProfitLossLineData::class, $revenue),
+            expenses: new DataCollection(ProfitLossLineData::class, $expenses),
             total_revenue: $data['total_revenue'],
             total_expenses: $data['total_expenses'],
             net_income: $data['net_income'],
