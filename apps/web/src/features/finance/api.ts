@@ -93,7 +93,19 @@ export async function postJournalEntry(id: string): Promise<JournalEntry> {
   return apiPost<JournalEntry>(`/journal-entries/${id}/post`, undefined)
 }
 
-export async function getLedger(filters?: LedgerFilters): Promise<LedgerLine[]> {
+export interface LedgerData {
+  lines: LedgerLine[]
+  opening_balance: string
+  closing_balance: string
+  total_debits: string
+  total_credits: string
+  date_from: string | null
+  date_to: string
+  account_filter: string | null
+  partner_filter: string | null
+}
+
+export async function getLedger(filters?: LedgerFilters): Promise<LedgerData> {
   const params = new URLSearchParams()
 
   if (filters?.account_id) {
@@ -119,7 +131,7 @@ export async function getLedger(filters?: LedgerFilters): Promise<LedgerLine[]> 
   const queryString = params.toString()
   const url = queryString ? `/ledger?${queryString}` : '/ledger'
 
-  return apiGet<LedgerLine[]>(url)
+  return apiGet<LedgerData>(url)
 }
 
 export async function getTrialBalance(

@@ -9,7 +9,7 @@ import type { LedgerFilters as LedgerFiltersType } from '../types'
 
 export function GeneralLedgerPage() {
   const [filters, setFilters] = useState<LedgerFiltersType>({})
-  const { data: ledgerLines, isLoading, error, refetch } = useLedger(filters)
+  const { data: ledgerData, isLoading, error, refetch } = useLedger(filters)
   const { data: accounts } = useAccounts()
 
   const handleExport = () => {
@@ -60,7 +60,7 @@ export function GeneralLedgerPage() {
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200">
-        <LedgerTable lines={ledgerLines || []} />
+        <LedgerTable lines={ledgerData?.lines || []} />
       </div>
     </div>
   )
