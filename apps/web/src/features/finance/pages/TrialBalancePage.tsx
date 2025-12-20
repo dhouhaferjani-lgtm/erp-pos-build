@@ -1,9 +1,11 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useTrialBalance } from '../hooks/useTrialBalance'
 import { QueryError } from '@/components/QueryError'
 import type { TrialBalanceLine } from '../types'
 
 export function TrialBalancePage() {
+  const { t } = useTranslation(['finance'])
   const [asOfDate, setAsOfDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   )
@@ -26,16 +28,16 @@ export function TrialBalancePage() {
   return (
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Trial Balance</h1>
+        <h1 className="text-2xl font-bold">{t('finance:reports.trialBalanceReport.title')}</h1>
         <button className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
-          Export
+          {t('finance:reports.common.export')}
         </button>
       </div>
 
       {/* Filters */}
       <div className="mb-6">
         <label htmlFor="as-of-date" className="mb-2 block text-sm font-medium">
-          As of Date
+          {t('finance:reports.common.asOfDate')}
         </label>
         <input
           id="as-of-date"
@@ -48,12 +50,12 @@ export function TrialBalancePage() {
 
       {/* Table */}
       {isLoading ? (
-        <div>Loading...</div>
+        <div>{t('finance:reports.common.loading')}</div>
       ) : error ? (
         <QueryError
           error={error}
           onRetry={refetch}
-          title="Failed to load trial balance"
+          title={t('finance:reports.trialBalanceReport.loadError')}
         />
       ) : (
         <div className="overflow-x-auto">
@@ -61,19 +63,19 @@ export function TrialBalancePage() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Account Code
+                  {t('finance:reports.common.accountCode')}
                 </th>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Account Name
+                  {t('finance:reports.common.accountName')}
                 </th>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Type
+                  {t('finance:reports.common.type')}
                 </th>
                 <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Debit
+                  {t('finance:ledger.columns.debit')}
                 </th>
                 <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Credit
+                  {t('finance:ledger.columns.credit')}
                 </th>
               </tr>
             </thead>
@@ -100,7 +102,7 @@ export function TrialBalancePage() {
               {/* Totals Row */}
               <tr className="bg-gray-100 font-bold">
                 <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900" colSpan={3}>
-                  Total
+                  {t('finance:reports.common.total')}
                 </td>
                 <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
                   {formatCurrency(totalDebit)}

@@ -51,13 +51,86 @@
     "addAccount": "Ajouter un compte"
   },
   "ledger": {
-    "title": "Grand livre"
+    "title": "Grand livre",
+    "description": "Consulter toutes les ecritures comptables et soldes de comptes",
+    "empty": "Aucune ecriture trouvee. Ajustez vos filtres ou creez des ecritures comptables.",
+    "loadError": "Echec du chargement du grand livre",
+    "filters": {
+      "account": "Compte",
+      "allAccounts": "Tous les comptes",
+      "fromDate": "Date de debut",
+      "toDate": "Date de fin"
+    },
+    "columns": {
+      "date": "Date",
+      "entryNumber": "N° ecriture",
+      "account": "Compte",
+      "description": "Description",
+      "debit": "Debit",
+      "credit": "Credit",
+      "balance": "Solde"
+    }
   },
   "reports": {
     "trialBalance": "Balance generale",
     "profitLoss": "Compte de resultat",
     "balanceSheet": "Bilan",
     "agedReceivables": "Balance agee clients",
-    "agedPayables": "Balance agee fournisseurs"
+    "agedPayables": "Balance agee fournisseurs",
+    "common": {
+      "export": "Exporter",
+      "loading": "Chargement...",
+      "asOfDate": "Au",
+      "from": "Du",
+      "to": "Au",
+      "total": "Total",
+      "accountCode": "Code compte",
+      "accountName": "Nom du compte",
+      "amount": "Montant",
+      "type": "Type"
+    },
+    "trialBalanceReport": {
+      "title": "Balance generale",
+      "loadError": "Echec du chargement de la balance"
+    },
+    "profitLossReport": {
+      "title": "Compte de resultat",
+      "loadError": "Echec du chargement du compte de resultat",
+      "revenue": "Produits",
+      "expenses": "Charges",
+      "totalRevenue": "Total produits",
+      "totalExpenses": "Total charges",
+      "netIncome": "Resultat net"
+    },
+    "balanceSheetReport": {
+      "title": "Bilan",
+      "loadError": "Echec du chargement du bilan",
+      "assets": "Actif",
+      "liabilities": "Passif",
+      "equity": "Capitaux propres",
+      "totalAssets": "Total actif",
+      "totalLiabilities": "Total passif",
+      "totalEquity": "Total capitaux propres"
+    },
+    "agedReceivablesReport": {
+      "title": "Balance agee clients",
+      "loadError": "Echec du chargement de la balance agee clients",
+      "customer": "Client",
+      "current": "Courant",
+      "days30": "1-30 jours",
+      "days60": "31-60 jours",
+      "days90": "61-90 jours",
+      "over90": "Plus de 90 jours"
+    },
+    "agedPayablesReport": {
+      "title": "Balance agee fournisseurs",
+      "loadError": "Echec du chargement de la balance agee fournisseurs",
+      "vendor": "Fournisseur",
+      "current": "Courant",
+      "days30": "1-30 jours",
+      "days60": "31-60 jours",
+      "days90": "61-90 jours",
+      "over90": "Plus de 90 jours"
+    }
   }
 }

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { LedgerLine } from '../types'
 
 interface LedgerTableProps {
@@ -5,10 +6,12 @@ interface LedgerTableProps {
 }
 
 export function LedgerTable({ lines }: LedgerTableProps) {
+  const { t } = useTranslation(['finance'])
+
   if (lines.length === 0) {
     return (
       <div className="px-6 py-12 text-center text-sm text-gray-500">
-        No ledger entries found. Adjust your filters or create journal entries.
+        {t('finance:ledger.empty')}
       </div>
     )
   }
@@ -19,25 +22,25 @@ export function LedgerTable({ lines }: LedgerTableProps) {
         <thead className="bg-gray-50">
           <tr>
             <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Date
+              {t('finance:ledger.columns.date')}
             </th>
             <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Entry #
+              {t('finance:ledger.columns.entryNumber')}
             </th>
             <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Account
+              {t('finance:ledger.columns.account')}
             </th>
             <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Description
+              {t('finance:ledger.columns.description')}
             </th>
             <th className="px-6 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Debit
+              {t('finance:ledger.columns.debit')}
             </th>
             <th className="px-6 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Credit
+              {t('finance:ledger.columns.credit')}
             </th>
             <th className="px-6 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Balance
+              {t('finance:ledger.columns.balance')}
             </th>
           </tr>
         </thead>

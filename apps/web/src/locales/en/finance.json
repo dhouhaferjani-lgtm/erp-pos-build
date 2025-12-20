@@ -51,13 +51,86 @@
     "addAccount": "Add Account"
   },
   "ledger": {
-    "title": "General Ledger"
+    "title": "General Ledger",
+    "description": "View all journal entries and account balances",
+    "empty": "No ledger entries found. Adjust your filters or create journal entries.",
+    "loadError": "Failed to load ledger",
+    "filters": {
+      "account": "Account",
+      "allAccounts": "All Accounts",
+      "fromDate": "From Date",
+      "toDate": "To Date"
+    },
+    "columns": {
+      "date": "Date",
+      "entryNumber": "Entry #",
+      "account": "Account",
+      "description": "Description",
+      "debit": "Debit",
+      "credit": "Credit",
+      "balance": "Balance"
+    }
   },
   "reports": {
     "trialBalance": "Trial Balance",
     "profitLoss": "Profit & Loss",
     "balanceSheet": "Balance Sheet",
     "agedReceivables": "Aged Receivables",
-    "agedPayables": "Aged Payables"
+    "agedPayables": "Aged Payables",
+    "common": {
+      "export": "Export",
+      "loading": "Loading...",
+      "asOfDate": "As of Date",
+      "from": "From",
+      "to": "To",
+      "total": "Total",
+      "accountCode": "Account Code",
+      "accountName": "Account Name",
+      "amount": "Amount",
+      "type": "Type"
+    },
+    "trialBalanceReport": {
+      "title": "Trial Balance",
+      "loadError": "Failed to load trial balance"
+    },
+    "profitLossReport": {
+      "title": "Profit & Loss Statement",
+      "loadError": "Failed to load profit & loss",
+      "revenue": "Revenue",
+      "expenses": "Expenses",
+      "totalRevenue": "Total Revenue",
+      "totalExpenses": "Total Expenses",
+      "netIncome": "Net Income"
+    },
+    "balanceSheetReport": {
+      "title": "Balance Sheet",
+      "loadError": "Failed to load balance sheet",
+      "assets": "Assets",
+      "liabilities": "Liabilities",
+      "equity": "Equity",
+      "totalAssets": "Total Assets",
+      "totalLiabilities": "Total Liabilities",
+      "totalEquity": "Total Equity"
+    },
+    "agedReceivablesReport": {
+      "title": "Aged Receivables Report",
+      "loadError": "Failed to load aged receivables",
+      "customer": "Customer",
+      "current": "Current",
+      "days30": "1-30 Days",
+      "days60": "31-60 Days",
+      "days90": "61-90 Days",
+      "over90": "Over 90 Days"
+    },
+    "agedPayablesReport": {
+      "title": "Aged Payables Report",
+      "loadError": "Failed to load aged payables",
+      "vendor": "Vendor",
+      "current": "Current",
+      "days30": "1-30 Days",
+      "days60": "31-60 Days",
+      "days90": "61-90 Days",
+      "over90": "Over 90 Days"
+    }
   }
 }
