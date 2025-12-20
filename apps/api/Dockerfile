@@ -99,6 +99,10 @@ COPY docker/nginx/default.conf /etc/nginx/http.d/default.conf
 # Copy Supervisor configuration
 COPY docker/supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+# Copy entrypoint script
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
 # Copy composer binary from composer image
 COPY --from=composer:2.7 /usr/bin/composer /usr/bin/composer
 
@@ -122,10 +126,8 @@ RUN mkdir -p \
     && chown -R www:www storage bootstrap/cache \
     && chmod -R 775 storage bootstrap/cache
 
-# Optimize Laravel for production
-RUN php artisan config:cache && \
-    php artisan route:cache && \
-    php artisan view:cache
+# Note: Laravel cache commands (config:cache, route:cache, view:cache)
+# are run at container startup via entrypoint.sh when environment variables are available
 
 # Create log directory for nginx
 RUN mkdir -p /var/log/nginx && \
@@ -138,5 +140,5 @@ EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost/api/health || exit 1
 
-# Start supervisord
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# Start via entrypoint (handles Laravel caches and then starts supervisord)
+CMD ["/usr/local/bin/entrypoint.sh"]
