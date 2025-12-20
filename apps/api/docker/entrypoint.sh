@@ -55,6 +55,20 @@ if [ ! -f /var/www/html/public/index.php ]; then
 fi
 echo "  public/index.php: [exists]"
 
+# Verify file permissions for www user
+echo ""
+echo "Verifying file permissions..."
+echo "  Owner of public/index.php: $(ls -la /var/www/html/public/index.php | awk '{print $3":"$4}')"
+echo "  Public dir permissions: $(ls -ld /var/www/html/public | awk '{print $1}')"
+
+# Test PHP-FPM socket directory
+if [ -d /var/run ]; then
+    echo "  /var/run: [exists]"
+else
+    echo "  /var/run: [creating]"
+    mkdir -p /var/run
+fi
+
 # Change to app directory
 cd /var/www/html
 
