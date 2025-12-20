@@ -115,6 +115,8 @@ class PermissionSeeder extends Seeder
             'journal.view',
             'journal.create',
             'journal.post',
+            'ledger.view',
+            'reports.view',
 
             // Pricing
             'pricing.view',
@@ -156,6 +158,7 @@ class PermissionSeeder extends Seeder
             'deliveries.view', 'deliveries.create', 'deliveries.confirm',
             'payments.view',
             'inventory.view',
+            'reports.view',
             'pricing.view',
         ]);
 
@@ -172,6 +175,8 @@ class PermissionSeeder extends Seeder
             'payments.view', 'payments.create', 'payments.refund', 'payments.reverse',
             'accounts.view', 'accounts.manage',
             'journal.view', 'journal.create', 'journal.post',
+            'ledger.view',
+            'reports.view',
             'pricing.view',
         ]);
 
