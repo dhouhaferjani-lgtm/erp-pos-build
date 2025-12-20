@@ -6,7 +6,13 @@
 # -----------------------------------------------------------------------------
 # Stage 1: Composer dependencies
 # -----------------------------------------------------------------------------
-FROM composer:2.7 AS composer-deps
+FROM php:8.4-cli-alpine AS composer-deps
+
+# Install dependencies needed for composer
+RUN apk add --no-cache unzip git
+
+# Install composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
 
@@ -18,13 +24,12 @@ RUN composer install \
     --no-dev \
     --no-scripts \
     --no-autoloader \
-    --prefer-dist \
-    --ignore-platform-reqs
+    --prefer-dist
 
 # -----------------------------------------------------------------------------
 # Stage 2: Build the production image
 # -----------------------------------------------------------------------------
-FROM php:8.3-fpm-alpine AS production
+FROM php:8.4-fpm-alpine AS production
 
 # Install system dependencies and PHP extensions
 RUN apk add --no-cache \
