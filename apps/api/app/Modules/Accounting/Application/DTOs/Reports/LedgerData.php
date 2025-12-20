@@ -127,7 +127,7 @@ final class LedgerData extends Data
             closing_balance: $data['closing_balance'],
             total_debits: $data['total_debits'],
             total_credits: $data['total_credits'],
-            lines: $lines,
+            lines: new DataCollection(LedgerLineData::class, $lines),
             date_from: $data['date_from'],
             date_to: $data['date_to'],
             account_filter: $data['account_filter'] ?? null,
