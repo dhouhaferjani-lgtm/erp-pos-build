@@ -35,7 +35,7 @@ export function OfflineIndicator() {
   // Offline
   if (!netInfo.isConnected) {
     return (
-      <View style={[styles.banner, styles.offlineBanner]}>
+      <View style={[styles.banner, styles.offlineBanner]} testID="offline-banner">
         <WifiOff size={20} color="#b45309" />
         <Text style={styles.offlineText}>
           You're offline. {totalPending > 0 && `${totalPending} operation${totalPending > 1 ? 's' : ''} will sync when connected.`}

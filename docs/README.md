@@ -1,99 +1,232 @@
 # AutoERP Documentation
 
-> Single source of truth for AutoERP architecture, modules, and features.
+> Comprehensive documentation for AI agents and developers working on the AutoERP system.
 
 ---
 
-## Documentation Structure
+## Quick Navigation
+
+| Section | Description |
+|---------|-------------|
+| [Architecture Overview](./architecture/overview.md) | System design, tech stack, and principles |
+| [Backend Documentation](./architecture/backend.md) | Laravel modules, services, and patterns |
+| [Frontend Documentation](./architecture/frontend.md) | React features, components, and state |
+| [Database Schema](./architecture/database.md) | Tables, relationships, and indexes |
+| [Module Reference](./modules/README.md) | Detailed module documentation |
+| [API Reference](./api/README.md) | REST API endpoints and contracts |
+| [AI Agent Guide](./guides/ai-agent-guide.md) | Guidelines for AI agents |
+
+---
+
+## System Overview
+
+**AutoERP** is a compliance-ready, multi-tenant ERP system for automotive service businesses with planned expansion to retail and other verticals.
+
+### Key Capabilities
+
+- **Document Management**: Unified system for quotes, orders, invoices, credit notes, delivery notes
+- **Inventory Management**: Stock levels, movements, physical counting with multi-counter support
+- **Treasury**: Universal payment methods, instruments, repositories, bank reconciliation
+- **Accounting**: Chart of accounts, journal entries, GL posting, financial reports
+- **Multi-Tenancy**: Schema-based isolation with company and location hierarchy
+- **Fiscal Compliance**: Hash chains, event sourcing, country-specific compliance (NF525, ZATCA ready)
+- **SaaS Billing**: Subscription management, Stripe integration, manual payments
+
+### Technology Stack
+
+| Layer | Technology | Version |
+|-------|------------|---------|
+| **Backend** | Laravel | 12.x |
+| **Database** | PostgreSQL | 16+ |
+| **Frontend** | React + TypeScript | 19.x |
+| **State Management** | TanStack Query + Zustand | 5.x / 5.x |
+| **Styling** | Tailwind CSS | 4.x |
+| **Build Tool** | Vite | 7.x |
+| **Queue** | Redis + Horizon | Latest |
+| **Event Sourcing** | Spatie | 7.x |
+| **Multi-Tenancy** | Stancl | 3.x |
+
+---
+
+## Repository Structure
 
 ```
-docs/
-├── architecture/       # System design and tech decisions
-├── modules/            # Backend module documentation
-├── features/           # Cross-module feature documentation
-├── frontend/           # React/TypeScript web patterns
-├── mobile/             # React Native mobile app
-├── operations/         # Operational procedures
-└── _archive/           # Historical implementation logs
+mecanospex/
+├── apps/
+│   ├── api/                    # Laravel backend
+│   │   ├── app/
+│   │   │   ├── Modules/        # Domain modules (22 total)
+│   │   │   ├── Shared/         # Shared infrastructure
+│   │   │   └── Http/           # Controllers, middleware
+│   │   ├── database/
+│   │   │   ├── migrations/     # Database schema (90 files)
+│   │   │   └── seeders/        # Data seeders
+│   │   └── routes/             # API routes
+│   │
+│   ├── web/                    # React frontend
+│   │   ├── src/
+│   │   │   ├── features/       # Feature modules (22 total)
+│   │   │   ├── components/     # Shared components
+│   │   │   ├── hooks/          # Global hooks
+│   │   │   ├── stores/         # Zustand stores
+│   │   │   ├── lib/            # Utilities
+│   │   │   ├── locales/        # i18n translations
+│   │   │   └── routes/         # Routing config
+│   │   └── e2e/                # Playwright tests
+│   │
+│   └── mobile/                 # React Native (in development)
+│
+├── packages/
+│   └── shared/                 # Shared TypeScript types
+│
+└── docs/                       # Documentation (you are here)
+    ├── architecture/           # System architecture docs
+    ├── api/                    # API reference
+    ├── modules/                # Module documentation
+    ├── guides/                 # Development guides
+    └── _archive/               # Legacy documentation
 ```
 
 ---
 
-## Quick Start
+## Architecture Principles
 
-### For New Developers
+### 1. Hexagonal Architecture (Ports & Adapters)
 
-1. [Architecture Overview](./architecture/overview.md) - Understand the system
-2. [Tech Stack](./architecture/tech-stack.md) - Technologies used
-3. [Module Map](./modules/README.md) - Backend structure
-4. [Frontend Guide](./frontend/README.md) - React patterns
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    PRESENTATION LAYER                        │
+│              Controllers, Requests, Resources                │
+├─────────────────────────────────────────────────────────────┤
+│                    APPLICATION LAYER                         │
+│              Services, DTOs, Commands, Queries               │
+├─────────────────────────────────────────────────────────────┤
+│                      DOMAIN LAYER                            │
+│          Entities, Value Objects, Domain Services            │
+├─────────────────────────────────────────────────────────────┤
+│                   INFRASTRUCTURE LAYER                       │
+│         Eloquent Repositories, External APIs, Storage        │
+└─────────────────────────────────────────────────────────────┘
+```
 
-### For Feature Work
+### 2. Module Structure
 
-1. Check [Features](./features/README.md) for existing implementations
-2. Read the relevant [Module](./modules/README.md) documentation
-3. Review [Data Model](./architecture/data-model.md) for schema
+Each backend module follows this pattern:
+```
+Module/
+├── Domain/
+│   ├── Entities/           # Core business objects
+│   ├── ValueObjects/       # Immutable value types
+│   ├── Events/             # Domain events
+│   ├── Services/           # Domain logic
+│   └── Enums/              # Type-safe enums
+├── Application/
+│   ├── DTOs/               # Data transfer objects
+│   └── Services/           # Application logic
+├── Infrastructure/
+│   └── Providers/          # Service providers
+└── Presentation/
+    ├── Controllers/        # HTTP handlers
+    ├── Requests/           # Validation
+    └── routes.php          # Module routes
+```
+
+### 3. Key Design Decisions
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Database | PostgreSQL | Schema isolation, JSONB, compliance |
+| Multi-tenancy | Schema-based | Data isolation, backup/restore |
+| Documents | Unified table | Simplified conversions, shared logic |
+| Events | Event sourcing | Audit trail, compliance, replay |
+| State | TanStack Query | Server state caching, deduplication |
+| Types | TypeScript strict | Type safety, IDE support |
+
+---
+
+## Critical Rules for Development
+
+### 1. No Placeholder Code
+Never leave TODO comments. Write complete implementations or explicitly fail the task.
+
+### 2. Strict Typing
+- **PHP**: No `mixed` type. Use DTOs for JSONB columns.
+- **TypeScript**: No `any` type. Use `unknown` + type guards.
+
+### 3. Module Boundaries
+Cross-module communication ONLY via:
+- Interfaces in `Shared/Contracts/`
+- Events (for async communication)
+- Module's public Service class
+
+### 4. Types Flow from Backend
+Never manually edit generated TypeScript types. Run:
+```bash
+php artisan typescript:transform
+```
+
+### 5. Events are Immutable
+Once an Event class exists: never rename, change payload, or delete it.
+
+### 6. No Hardcoded Strings in Frontend
+All user-facing text must use translation keys:
+```tsx
+const { t } = useTranslation();
+<Button>{t('common.save')}</Button>
+```
+
+---
+
+## Getting Started
+
+### Prerequisites
+- PHP 8.2+
+- PostgreSQL 16+
+- Node.js 20+
+- pnpm 9+
+- Redis
+
+### Quick Start
+```bash
+# Clone and install
+git clone <repo>
+cd mecanospex
+pnpm install
+
+# Backend setup
+cd apps/api
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate
+php artisan db:seed
+
+# Frontend setup
+cd ../web
+pnpm install
+
+# Start development servers
+pnpm dev  # From root - starts all services
+```
 
 ---
 
 ## Documentation Index
 
 ### Architecture
-| Document | Description |
-|----------|-------------|
-| [Overview](./architecture/overview.md) | High-level architecture |
-| [Tech Stack](./architecture/tech-stack.md) | Technologies and versions |
-| [Data Model](./architecture/data-model.md) | Database schema |
-| [Compliance](./architecture/compliance.md) | Fiscal hash chains |
+- [System Overview](./architecture/overview.md) - Technology stack, principles, module inventory
+- [Backend Architecture](./architecture/backend.md) - Laravel modules, services, patterns, transaction boundaries
+- [Frontend Architecture](./architecture/frontend.md) - React features, state management, components
+- [Database Schema](./architecture/database.md) - 85+ tables, relationships, enums, indexes
 
-### Modules
-| Module | Description |
-|--------|-------------|
-| [Overview](./modules/README.md) | Module map and dependencies |
-| [Document](./modules/document.md) | Trade documents |
-| [Treasury](./modules/treasury.md) | Payments and instruments |
-| [Accounting](./modules/accounting.md) | GL and journal entries |
-| [Partner](./modules/partner.md) | Customers and suppliers |
-| [Inventory](./modules/inventory.md) | Stock management |
-| [Identity](./modules/identity.md) | Users and permissions |
+### Modules & API
+- [Module Reference](./modules/README.md) - Detailed documentation for all 22 backend modules
+- [API Reference](./api/README.md) - Complete REST API documentation with endpoints, requests, responses
 
-### Features
-| Feature | Status | Description |
-|---------|--------|-------------|
-| [Smart Payment](./features/smart-payment.md) | Complete | Payment allocation |
-| [Landed Cost](./features/landed-cost.md) | Complete | Cost tracking |
-| [Credit Notes](./features/credit-notes.md) | Complete | Invoice corrections |
-| [Inventory Counting](./features/inventory-counting.md) | In Progress | Blind counting |
-
-### Frontend (Web)
-| Document | Description |
-|----------|-------------|
-| [Guide](./frontend/README.md) | Quick reference |
-| [Architecture](./frontend/architecture.md) | Patterns and structure |
-| [Design System](./frontend/design-system.md) | Styling guide |
-
-### Mobile (React Native)
-| Document | Description |
-|----------|-------------|
-| [Mobile App](./mobile/README.md) | React Native app for field operations |
-
-### Operations
-| Document | Description |
-|----------|-------------|
-| [Imports](./operations/imports.md) | Data import procedures |
+### Guides
+- [AI Agent Guide](./guides/ai-agent-guide.md) - Guidelines for AI agents working on the codebase
 
 ---
 
-## Related Files
-
-| File | Purpose |
-|------|---------|
-| `/CLAUDE.md` | AI agent instructions (master) |
-| `/AGENTS.md` | AI agent instructions (alternate) |
-| `/README.md` | Project readme |
-
----
-
-## Archive
-
-Historical implementation logs, session summaries, and prompts are in `_archive/`. These are kept for reference but are not maintained.
+*Documentation Version: 1.0*
+*Last Updated: December 2025*
