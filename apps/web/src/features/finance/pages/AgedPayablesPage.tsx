@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAgedPayables } from '../hooks/useAgedPayables'
 import type { AgedPayablesLine } from '../types'
 
 export function AgedPayablesPage() {
+  const { t } = useTranslation(['finance'])
   const [asOfDate, setAsOfDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   )
@@ -33,16 +35,16 @@ export function AgedPayablesPage() {
   return (
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Aged Payables Report</h1>
+        <h1 className="text-2xl font-bold">{t('finance:reports.agedPayablesReport.title')}</h1>
         <button className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
-          Export
+          {t('finance:reports.common.export')}
         </button>
       </div>
 
       {/* Filters */}
       <div className="mb-6">
         <label htmlFor="as-of-date" className="mb-2 block text-sm font-medium">
-          As of Date
+          {t('finance:reports.common.asOfDate')}
         </label>
         <input
           id="as-of-date"
@@ -55,32 +57,32 @@ export function AgedPayablesPage() {
 
       {/* Report */}
       {isLoading ? (
-        <div>Loading...</div>
+        <div>{t('finance:reports.common.loading')}</div>
       ) : (
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Vendor
+                  {t('finance:reports.agedPayablesReport.vendor')}
                 </th>
                 <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Current
+                  {t('finance:reports.agedPayablesReport.current')}
                 </th>
                 <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  1-30 Days
+                  {t('finance:reports.agedPayablesReport.days30')}
                 </th>
                 <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  31-60 Days
+                  {t('finance:reports.agedPayablesReport.days60')}
                 </th>
                 <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  61-90 Days
+                  {t('finance:reports.agedPayablesReport.days90')}
                 </th>
                 <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Over 90 Days
+                  {t('finance:reports.agedPayablesReport.over90')}
                 </th>
                 <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Total
+                  {t('finance:reports.common.total')}
                 </th>
               </tr>
             </thead>
@@ -112,7 +114,7 @@ export function AgedPayablesPage() {
               ))}
               {/* Totals Row */}
               <tr className="bg-gray-100 font-bold">
-                <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">Total</td>
+                <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">{t('finance:reports.common.total')}</td>
                 <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
                   {formatCurrency(totals.current)}
                 </td>
