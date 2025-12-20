@@ -169,4 +169,12 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/reports/balance-sheet', [ReportsController::class, 'balanceSheet'])
         ->middleware('can:reports.view')
         ->name('reports.balance-sheet');
+
+    Route::get('/reports/aged-receivables', [ReportsController::class, 'agedReceivables'])
+        ->middleware('can:reports.view')
+        ->name('reports.aged-receivables');
+
+    Route::get('/reports/aged-payables', [ReportsController::class, 'agedPayables'])
+        ->middleware('can:reports.view')
+        ->name('reports.aged-payables');
 });

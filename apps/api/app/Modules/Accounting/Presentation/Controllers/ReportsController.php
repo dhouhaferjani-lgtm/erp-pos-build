@@ -5,13 +5,19 @@ declare(strict_types=1);
 namespace App\Modules\Accounting\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Accounting\Application\DTOs\Reports\AgedPayablesData;
+use App\Modules\Accounting\Application\DTOs\Reports\AgedReceivablesData;
 use App\Modules\Accounting\Application\DTOs\Reports\BalanceSheetData;
 use App\Modules\Accounting\Application\DTOs\Reports\ProfitLossData;
 use App\Modules\Accounting\Application\DTOs\Reports\TrialBalanceData;
 use App\Modules\Accounting\Application\Services\FiscalPeriodResolverService;
+use App\Modules\Accounting\Application\Services\Reports\AgedPayablesService;
+use App\Modules\Accounting\Application\Services\Reports\AgedReceivablesService;
 use App\Modules\Accounting\Application\Services\Reports\BalanceSheetService;
 use App\Modules\Accounting\Application\Services\Reports\ProfitLossService;
 use App\Modules\Accounting\Application\Services\Reports\TrialBalanceService;
+use App\Modules\Accounting\Presentation\Requests\GetAgedPayablesRequest;
+use App\Modules\Accounting\Presentation\Requests\GetAgedReceivablesRequest;
 use App\Modules\Accounting\Presentation\Requests\GetBalanceSheetRequest;
 use App\Modules\Accounting\Presentation\Requests\GetProfitLossRequest;
 use App\Modules\Accounting\Presentation\Requests\GetTrialBalanceRequest;
@@ -64,6 +70,8 @@ class ReportsController extends Controller
         private readonly TrialBalanceService $trialBalanceService,
         private readonly ProfitLossService $profitLossService,
         private readonly BalanceSheetService $balanceSheetService,
+        private readonly AgedReceivablesService $agedReceivablesService,
+        private readonly AgedPayablesService $agedPayablesService,
     ) {}
 
     /**
@@ -523,5 +531,103 @@ class ReportsController extends Controller
 
         // Priority 3: Default to today
         return Carbon::now()->endOfDay();
+    }
+
+    /**
+     * Generate an Aged Receivables report.
+     *
+     * Shows outstanding customer invoices grouped by aging buckets:
+     * - Current (0-30 days)
+     * - 31-60 days
+     * - 61-90 days
+     * - 91-120 days
+     * - Over 120 days
+     *
+     * Query Parameters:
+     * - as_of_date: Snapshot date (YYYY-MM-DD format, defaults to today)
+     *
+     * @param GetAgedReceivablesRequest $request Validated request
+     * @return JsonResponse
+     */
+    public function agedReceivables(GetAgedReceivablesRequest $request): JsonResponse
+    {
+        try {
+            $companyId = $this->companyContext->requireCompanyId();
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'COMPANY_CONTEXT_REQUIRED',
+                    'message' => $e->getMessage(),
+                ],
+            ], 401);
+        }
+
+        try {
+            $asOfDate = $request->input('as_of_date')
+                ? Carbon::parse($request->input('as_of_date'))
+                : Carbon::today();
+
+            $reportData = $this->agedReceivablesService->generate($companyId, $asOfDate);
+
+            return response()->json([
+                'data' => $reportData->toArray(),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'REPORT_GENERATION_ERROR',
+                    'message' => 'Failed to generate aged receivables report: '.$e->getMessage(),
+                ],
+            ], 500);
+        }
+    }
+
+    /**
+     * Generate an Aged Payables report.
+     *
+     * Shows outstanding supplier invoices grouped by aging buckets:
+     * - Current (0-30 days)
+     * - 31-60 days
+     * - 61-90 days
+     * - 91-120 days
+     * - Over 120 days
+     *
+     * Query Parameters:
+     * - as_of_date: Snapshot date (YYYY-MM-DD format, defaults to today)
+     *
+     * @param GetAgedPayablesRequest $request Validated request
+     * @return JsonResponse
+     */
+    public function agedPayables(GetAgedPayablesRequest $request): JsonResponse
+    {
+        try {
+            $companyId = $this->companyContext->requireCompanyId();
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'COMPANY_CONTEXT_REQUIRED',
+                    'message' => $e->getMessage(),
+                ],
+            ], 401);
+        }
+
+        try {
+            $asOfDate = $request->input('as_of_date')
+                ? Carbon::parse($request->input('as_of_date'))
+                : Carbon::today();
+
+            $reportData = $this->agedPayablesService->generate($companyId, $asOfDate);
+
+            return response()->json([
+                'data' => $reportData->toArray(),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'REPORT_GENERATION_ERROR',
+                    'message' => 'Failed to generate aged payables report: '.$e->getMessage(),
+                ],
+            ], 500);
+        }
     }
 }
