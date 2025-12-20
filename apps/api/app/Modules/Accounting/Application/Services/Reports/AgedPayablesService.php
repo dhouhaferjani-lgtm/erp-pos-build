@@ -64,7 +64,7 @@ final readonly class AgedPayablesService
                 'over_90' => $balance['over_90'],
                 'total' => $balance['total'],
             ]);
-        })->values()->toArray();
+        })->values()->all();
 
         // Calculate totals
         $totals = $this->calculateTotals($lines);
@@ -143,7 +143,7 @@ final readonly class AgedPayablesService
 
                     // Calculate days overdue from due_date or document_date
                     $referenceDate = $invoice->due_date ?? $invoice->document_date;
-                    $daysOverdue = $asOfDate->diffInDays(Carbon::parse($referenceDate), false);
+                    $daysOverdue = (int) $asOfDate->diffInDays(Carbon::parse($referenceDate), false);
 
                     // Assign to appropriate bucket
                     $bucket = $this->determineBucket($daysOverdue);
