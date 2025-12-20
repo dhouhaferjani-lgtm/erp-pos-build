@@ -98,7 +98,7 @@ final readonly class AgedPayablesService
     {
         return Document::query()
             ->where('company_id', $companyId)
-            ->where('type', DocumentType::PurchaseInvoice)
+            ->where('type', DocumentType::PurchaseOrder)
             ->where('status', DocumentStatus::Posted)
             ->where('document_date', '<=', $asOfDate)
             ->where('balance_due', '>', 0)
