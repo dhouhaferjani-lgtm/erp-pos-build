@@ -136,6 +136,28 @@ final class LedgerData extends Data
     }
 
     /**
+     * Convert to array with proper DataCollection serialization.
+     *
+     * Override to ensure lines DataCollection serializes as JSON array.
+     *
+     * @return array
+     */
+    public function toArray(): array
+    {
+        return [
+            'opening_balance' => $this->opening_balance,
+            'closing_balance' => $this->closing_balance,
+            'total_debits' => $this->total_debits,
+            'total_credits' => $this->total_credits,
+            'lines' => $this->lines->toArray(),
+            'date_from' => $this->date_from,
+            'date_to' => $this->date_to,
+            'account_filter' => $this->account_filter,
+            'partner_filter' => $this->partner_filter,
+        ];
+    }
+
+    /**
      * Get the count of transactions in the ledger.
      *
      * @return int
