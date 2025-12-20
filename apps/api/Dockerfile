@@ -20,11 +20,14 @@ WORKDIR /app
 COPY composer.json composer.lock ./
 
 # Install dependencies without dev packages
+# Using --ignore-platform-reqs because this stage is just for downloading
+# The production stage has all required extensions (pcntl, gd, etc.)
 RUN composer install \
     --no-dev \
     --no-scripts \
     --no-autoloader \
-    --prefer-dist
+    --prefer-dist \
+    --ignore-platform-reqs
 
 # -----------------------------------------------------------------------------
 # Stage 2: Build the production image
