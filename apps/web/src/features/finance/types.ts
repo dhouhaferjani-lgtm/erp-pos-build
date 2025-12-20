@@ -157,6 +157,17 @@ export interface AgedReceivablesLine {
   total: string
 }
 
+export interface AgedReceivablesData {
+  lines: AgedReceivablesLine[]
+  total_current: string
+  total_days_30: string
+  total_days_60: string
+  total_days_90: string
+  total_over_90: string
+  grand_total: string
+  as_of_date: string
+}
+
 export interface AgedReceivablesFilters {
   as_of_date?: string | undefined
 }
@@ -170,6 +181,17 @@ export interface AgedPayablesLine {
   days_90: string
   over_90: string
   total: string
+}
+
+export interface AgedPayablesData {
+  lines: AgedPayablesLine[]
+  total_current: string
+  total_days_30: string
+  total_days_60: string
+  total_days_90: string
+  total_over_90: string
+  grand_total: string
+  as_of_date: string
 }
 
 export interface AgedPayablesFilters {

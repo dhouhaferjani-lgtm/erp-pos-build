@@ -8,9 +8,11 @@ export function AgedReceivablesPage() {
     new Date().toISOString().split('T')[0]
   )
 
-  const { data: lines = [], isLoading, error, refetch } = useAgedReceivables({
+  const { data: receivablesData, isLoading, error, refetch } = useAgedReceivables({
     as_of_date: asOfDate,
   })
+
+  const lines = receivablesData?.lines || []
 
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === 'string' ? parseFloat(amount) : amount
@@ -20,24 +22,14 @@ export function AgedReceivablesPage() {
     }).format(num)
   }
 
-  const totals = lines.reduce(
-    (acc, line) => ({
-      current: acc.current + parseFloat(line.current || '0'),
-      days_30: acc.days_30 + parseFloat(line.days_30 || '0'),
-      days_60: acc.days_60 + parseFloat(line.days_60 || '0'),
-      days_90: acc.days_90 + parseFloat(line.days_90 || '0'),
-      over_90: acc.over_90 + parseFloat(line.over_90 || '0'),
-      total: acc.total + parseFloat(line.total || '0'),
-    }),
-    {
-      current: 0,
-      days_30: 0,
-      days_60: 0,
-      days_90: 0,
-      over_90: 0,
-      total: 0,
-    }
-  )
+  const totals = {
+    current: parseFloat(receivablesData?.total_current || '0'),
+    days_30: parseFloat(receivablesData?.total_days_30 || '0'),
+    days_60: parseFloat(receivablesData?.total_days_60 || '0'),
+    days_90: parseFloat(receivablesData?.total_days_90 || '0'),
+    over_90: parseFloat(receivablesData?.total_over_90 || '0'),
+    total: parseFloat(receivablesData?.grand_total || '0'),
+  }
 
   return (
     <div className="p-6">
