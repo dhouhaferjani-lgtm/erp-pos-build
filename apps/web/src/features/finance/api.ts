@@ -136,7 +136,7 @@ export async function getLedger(filters?: LedgerFilters): Promise<LedgerData> {
 
 export async function getTrialBalance(
   filters?: TrialBalanceFilters
-): Promise<TrialBalanceLine[]> {
+): Promise<TrialBalanceData> {
   const params = new URLSearchParams()
 
   if (filters?.as_of_date) {
@@ -146,7 +146,7 @@ export async function getTrialBalance(
   const queryString = params.toString()
   const url = queryString ? `/reports/trial-balance?${queryString}` : '/reports/trial-balance'
 
-  return apiGet<TrialBalanceLine[]>(url)
+  return apiGet<TrialBalanceData>(url)
 }
 
 export async function getProfitLoss(

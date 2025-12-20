@@ -8,18 +8,13 @@ export function TrialBalancePage() {
     new Date().toISOString().split('T')[0]
   )
 
-  const { data: lines = [], isLoading, error, refetch } = useTrialBalance({
+  const { data: trialBalanceData, isLoading, error, refetch } = useTrialBalance({
     as_of_date: asOfDate,
   })
 
-  const totalDebit = lines.reduce(
-    (sum, line) => sum + parseFloat(line.debit || '0'),
-    0
-  )
-  const totalCredit = lines.reduce(
-    (sum, line) => sum + parseFloat(line.credit || '0'),
-    0
-  )
+  const lines = trialBalanceData?.lines || []
+  const totalDebit = parseFloat(trialBalanceData?.total_debit || '0')
+  const totalCredit = parseFloat(trialBalanceData?.total_credit || '0')
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {

@@ -92,6 +92,16 @@ export interface TrialBalanceLine {
   account_type: AccountType
   debit: string
   credit: string
+  level: number
+  is_parent: boolean
+}
+
+export interface TrialBalanceData {
+  lines: TrialBalanceLine[]
+  total_debit: string
+  total_credit: string
+  is_balanced: boolean
+  as_of_date: string
 }
 
 export interface TrialBalanceFilters {

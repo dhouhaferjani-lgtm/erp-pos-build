@@ -302,29 +302,29 @@ class BalanceSheetService
      * @param Collection $balances Collection from queryAccountBalances
      * @return Collection<Account> Account models with balance attached
      */
-    private function loadAccountsWithBalances(Collection $balances): Collection
+    private function loadAccountsWithBalances(Collection $balances): \Illuminate\Database\Eloquent\Collection
     {
         $accountIds = $balances->pluck('account_id')->toArray();
 
         if (empty($accountIds)) {
-            return collect([]);
+            return new \Illuminate\Database\Eloquent\Collection([]);
         }
 
         // Load Account models
         $accounts = Account::whereIn('id', $accountIds)->get()->keyBy('id');
 
-        // Attach balances to Account models
-        return $balances->map(function ($balanceData) use ($accounts) {
+        // Attach balances to Account models and collect into Eloquent Collection
+        $accountsWithBalances = [];
+        foreach ($balances as $balanceData) {
             $account = $accounts->get($balanceData->account_id);
-            if ($account === null) {
-                return null;
+            if ($account !== null) {
+                // Attach calculated balance as a dynamic attribute
+                $account->setAttribute('calculated_balance', (string) $balanceData->balance);
+                $accountsWithBalances[] = $account;
             }
+        }
 
-            // Attach calculated balance as a dynamic attribute
-            $account->setAttribute('calculated_balance', (string) $balanceData->balance);
-
-            return $account;
-        })->filter(); // Remove nulls
+        return new \Illuminate\Database\Eloquent\Collection($accountsWithBalances);
     }
 
     /**
