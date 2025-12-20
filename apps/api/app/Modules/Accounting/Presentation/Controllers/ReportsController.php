@@ -145,7 +145,7 @@ class ReportsController extends Controller
 
             // Step 3: Get optional parameters
             $includeZeroBalances = $request->boolean('include_zero_balances', false);
-            $includeHierarchy = $request->boolean('include_hierarchy', true);
+            $includeHierarchy = $request->boolean('include_hierarchy', false); // TODO: Fix hierarchy balance calculation
 
             // Step 4: Generate report via service
             $reportData = $this->trialBalanceService->generate(
@@ -304,7 +304,7 @@ class ReportsController extends Controller
 
             // Step 3: Get optional parameters
             $includeZeroBalances = $request->boolean('include_zero_balances', false);
-            $includeHierarchy = $request->boolean('include_hierarchy', true);
+            $includeHierarchy = $request->boolean('include_hierarchy', false); // TODO: Fix hierarchy balance calculation
 
             // Step 4: Generate report via service
             $reportData = $this->profitLossService->generate(
@@ -457,7 +457,7 @@ class ReportsController extends Controller
 
             // Step 3: Get optional parameters
             $includeZeroBalances = $request->boolean('include_zero_balances', false);
-            $includeHierarchy = $request->boolean('include_hierarchy', true);
+            $includeHierarchy = $request->boolean('include_hierarchy', false); // TODO: Fix hierarchy balance calculation
 
             // Step 4: Generate report via service
             $reportData = $this->balanceSheetService->generate(
