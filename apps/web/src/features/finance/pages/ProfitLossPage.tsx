@@ -1,9 +1,11 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useProfitLoss } from '../hooks/useProfitLoss'
 import { QueryError } from '@/components/QueryError'
 import type { ProfitLossLine } from '../types'
 
 export function ProfitLossPage() {
+  const { t } = useTranslation(['finance'])
   const today = new Date().toISOString().split('T')[0]
   const firstDayOfMonth = new Date(
     new Date().getFullYear(),
@@ -32,9 +34,9 @@ export function ProfitLossPage() {
   return (
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Profit & Loss Statement</h1>
+        <h1 className="text-2xl font-bold">{t('finance:reports.profitLossReport.title')}</h1>
         <button className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
-          Export
+          {t('finance:reports.common.export')}
         </button>
       </div>
 
@@ -42,7 +44,7 @@ export function ProfitLossPage() {
       <div className="mb-6 flex gap-4">
         <div>
           <label htmlFor="date-from" className="mb-2 block text-sm font-medium">
-            From
+            {t('finance:reports.common.from')}
           </label>
           <input
             id="date-from"
@@ -54,7 +56,7 @@ export function ProfitLossPage() {
         </div>
         <div>
           <label htmlFor="date-to" className="mb-2 block text-sm font-medium">
-            To
+            {t('finance:reports.common.to')}
           </label>
           <input
             id="date-to"
@@ -68,29 +70,29 @@ export function ProfitLossPage() {
 
       {/* Report */}
       {isLoading ? (
-        <div>Loading...</div>
+        <div>{t('finance:reports.common.loading')}</div>
       ) : error ? (
         <QueryError
           error={error}
           onRetry={refetch}
-          title="Failed to load profit & loss"
+          title={t('finance:reports.profitLossReport.loadError')}
         />
       ) : (
         <div className="space-y-8">
           {/* Revenue Section */}
           <div>
-            <h2 className="mb-4 text-xl font-bold">Revenue</h2>
+            <h2 className="mb-4 text-xl font-bold">{t('finance:reports.profitLossReport.revenue')}</h2>
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Account Code
+                    {t('finance:reports.common.accountCode')}
                   </th>
                   <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Account Name
+                    {t('finance:reports.common.accountName')}
                   </th>
                   <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Amount
+                    {t('finance:reports.common.amount')}
                   </th>
                 </tr>
               </thead>
@@ -110,7 +112,7 @@ export function ProfitLossPage() {
                 ))}
                 <tr className="bg-gray-100 font-bold">
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900" colSpan={2}>
-                    Total Revenue
+                    {t('finance:reports.profitLossReport.totalRevenue')}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
                     {formatCurrency(data?.total_revenue || '0')}
@@ -122,18 +124,18 @@ export function ProfitLossPage() {
 
           {/* Expenses Section */}
           <div>
-            <h2 className="mb-4 text-xl font-bold">Expenses</h2>
+            <h2 className="mb-4 text-xl font-bold">{t('finance:reports.profitLossReport.expenses')}</h2>
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Account Code
+                    {t('finance:reports.common.accountCode')}
                   </th>
                   <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Account Name
+                    {t('finance:reports.common.accountName')}
                   </th>
                   <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Amount
+                    {t('finance:reports.common.amount')}
                   </th>
                 </tr>
               </thead>
@@ -153,7 +155,7 @@ export function ProfitLossPage() {
                 ))}
                 <tr className="bg-gray-100 font-bold">
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900" colSpan={2}>
-                    Total Expenses
+                    {t('finance:reports.profitLossReport.totalExpenses')}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
                     {formatCurrency(data?.total_expenses || '0')}
@@ -166,7 +168,7 @@ export function ProfitLossPage() {
           {/* Net Income */}
           <div className="border-t-2 border-gray-900 pt-4">
             <div className="flex justify-between text-xl font-bold">
-              <span>Net Income</span>
+              <span>{t('finance:reports.profitLossReport.netIncome')}</span>
               <span
                 className={
                   parseFloat(data?.net_income || '0') >= 0
