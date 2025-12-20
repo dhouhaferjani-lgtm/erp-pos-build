@@ -91,6 +91,9 @@ COPY docker/nginx/default.conf /etc/nginx/http.d/default.conf
 # Copy Supervisor configuration
 COPY docker/supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+# Copy composer binary from composer image
+COPY --from=composer:2.7 /usr/bin/composer /usr/bin/composer
+
 # Copy Composer dependencies from build stage
 COPY --from=composer-deps /app/vendor ./vendor
 
