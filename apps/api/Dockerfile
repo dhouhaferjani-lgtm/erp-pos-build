@@ -60,6 +60,8 @@ RUN apk add --no-cache \
     git \
     # Curl for healthchecks
     curl \
+    # Netcat for connectivity checks
+    netcat-openbsd \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) \
         pdo_pgsql \
