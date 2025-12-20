@@ -5,8 +5,10 @@ declare(strict_types=1);
 use App\Modules\Accounting\Presentation\Controllers\AccountController;
 use App\Modules\Accounting\Presentation\Controllers\AccountPurposeController;
 use App\Modules\Accounting\Presentation\Controllers\JournalEntryController;
+use App\Modules\Accounting\Presentation\Controllers\LedgerController;
 use App\Modules\Accounting\Presentation\Controllers\OpeningBalanceBatchController;
 use App\Modules\Accounting\Presentation\Controllers\PartnerBalanceController;
+use App\Modules\Accounting\Presentation\Controllers\ReportsController;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use Illuminate\Support\Facades\Route;
 
@@ -149,4 +151,22 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/companies/{companyId}/opening-batches/{batchId}/post', [OpeningBalanceBatchController::class, 'post'])
         ->middleware('can:accounts.manage')
         ->name('opening-batches.post');
+
+    // General Ledger
+    Route::get('/ledger', [LedgerController::class, 'index'])
+        ->middleware('can:ledger.view')
+        ->name('ledger.index');
+
+    // Financial Reports
+    Route::get('/reports/trial-balance', [ReportsController::class, 'trialBalance'])
+        ->middleware('can:reports.view')
+        ->name('reports.trial-balance');
+
+    Route::get('/reports/profit-loss', [ReportsController::class, 'profitLoss'])
+        ->middleware('can:reports.view')
+        ->name('reports.profit-loss');
+
+    Route::get('/reports/balance-sheet', [ReportsController::class, 'balanceSheet'])
+        ->middleware('can:reports.view')
+        ->name('reports.balance-sheet');
 });
