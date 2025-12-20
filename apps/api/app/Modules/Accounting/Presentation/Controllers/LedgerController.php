@@ -212,7 +212,7 @@ class LedgerController extends Controller
 
             // Step 7: Return JSON response with pagination metadata
             return response()->json([
-                'data' => $dto,
+                'data' => $dto->toArray(),
                 'meta' => [
                     'current_page' => $page,
                     'per_page' => $perPage,
