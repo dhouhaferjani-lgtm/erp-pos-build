@@ -29,8 +29,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # Copy the web app package.json
 COPY apps/web/package.json ./apps/web/
 
-# Copy any shared packages if they exist
-COPY packages/ ./packages/ 2>/dev/null || true
+# Copy shared packages (uses .dockerignore to handle missing dirs)
 
 # Install dependencies (workspace-aware)
 RUN pnpm install --frozen-lockfile
