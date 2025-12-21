@@ -1,7 +1,17 @@
 # =============================================================================
 # AutoERP Web Frontend - Production Dockerfile
-# Multi-stage build optimized for Dokploy deployment
+# Multi-stage build for pnpm monorepo - build from repo ROOT
 # =============================================================================
+#
+# IMPORTANT: This Dockerfile must be built from the repository ROOT directory
+# with the context set to the root, not from apps/web.
+#
+# In Dokploy:
+#   - Source Path: . (root)
+#   - Dockerfile Path: apps/web/Dockerfile
+#
+# Or use: docker build -f apps/web/Dockerfile .
+#
 
 # -----------------------------------------------------------------------------
 # Stage 1: Build the React application
@@ -13,17 +23,23 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json pnpm-lock.yaml ./
+# Copy workspace configuration and lock file from root
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
-# Install dependencies
+# Copy the web app package.json
+COPY apps/web/package.json ./apps/web/
+
+# Copy any shared packages if they exist
+COPY packages/ ./packages/ 2>/dev/null || true
+
+# Install dependencies (workspace-aware)
 RUN pnpm install --frozen-lockfile
 
-# Copy source code
-COPY . .
+# Copy web app source code
+COPY apps/web/ ./apps/web/
 
 # Build the application
-# Note: API URL is configured at runtime via nginx proxy, not at build time
+WORKDIR /app/apps/web
 RUN pnpm build
 
 # -----------------------------------------------------------------------------
@@ -35,14 +51,14 @@ FROM nginx:alpine AS production
 RUN rm -f /etc/nginx/conf.d/default.conf
 
 # Copy custom nginx base configuration
-COPY docker/nginx.conf /etc/nginx/nginx.conf
+COPY apps/web/docker/nginx.conf /etc/nginx/nginx.conf
 
 # Copy entrypoint script (generates runtime nginx config with API_URL)
-COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY apps/web/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Copy built assets from builder stage
-COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
 
 # Expose port 80
 EXPOSE 80
