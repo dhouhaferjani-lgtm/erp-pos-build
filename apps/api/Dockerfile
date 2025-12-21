@@ -138,10 +138,11 @@ RUN mkdir -p /var/log/nginx && \
 # Expose port 80
 EXPOSE 80
 
-# Health check - use simple /health endpoint (nginx-only, no PHP)
-# This ensures container stays healthy while PHP issues are debugged
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost/health || exit 1
+# Health check - temporarily disabled for debugging
+# Uncomment when deployment is working:
+# HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+#     CMD curl -f http://localhost/health || exit 1
+HEALTHCHECK NONE
 
 # Start via entrypoint (handles Laravel caches and then starts supervisord)
 CMD ["/usr/local/bin/entrypoint.sh"]
