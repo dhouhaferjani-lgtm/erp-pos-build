@@ -1,0 +1,37 @@
+# Dependencies
+node_modules
+
+# Build output (we generate this in Docker)
+dist
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Test files
+tests
+*.spec.ts
+*.test.ts
+coverage
+playwright-report
+
+# Documentation
+*.md
+
+# Misc
+.DS_Store
+Thumbs.db
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
