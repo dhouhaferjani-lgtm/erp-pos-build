@@ -11,10 +11,12 @@ use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Application\DTOs\AuthUserData;
 use App\Modules\Identity\Application\DTOs\LoginResponseData;
+use App\Modules\Identity\Application\Services\EmailVerificationService;
 use App\Modules\Identity\Domain\Device;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Identity\Presentation\Requests\LoginRequest;
 use App\Modules\Identity\Presentation\Requests\RegisterRequest;
+use App\Modules\Identity\Presentation\Requests\VerifyEmailRequest;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -28,6 +30,10 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
+    public function __construct(
+        private readonly EmailVerificationService $emailVerificationService,
+    ) {}
+
     /**
      * Authenticate user and return token.
      */
@@ -161,6 +167,9 @@ class AuthController extends Controller
             ];
         });
 
+        // Send verification email asynchronously (after transaction)
+        $this->emailVerificationService->sendVerificationEmail($result['user']);
+
         $response = new LoginResponseData(
             user: AuthUserData::fromUser($result['user']),
             token: $result['token'],
@@ -235,6 +244,82 @@ class AuthController extends Controller
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
             ],
         ]);
+    }
+
+    /**
+     * Verify user's email address.
+     */
+    public function verifyEmail(VerifyEmailRequest $request): JsonResponse
+    {
+        $validated = $request->validated();
+
+        $result = $this->emailVerificationService->verifyEmail($validated['token']);
+
+        if (! $result['success']) {
+            return response()->json([
+                'error' => [
+                    'code' => 'VERIFICATION_FAILED',
+                    'message' => __('auth.'.$this->getTranslationKey($result['message'])),
+                ],
+                'meta' => [
+                    'timestamp' => now()->toIso8601String(),
+                    'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
+                ],
+            ], 400);
+        }
+
+        return response()->json([
+            'data' => ['message' => __('auth.verify_email_success')],
+            'meta' => [
+                'timestamp' => now()->toIso8601String(),
+                'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
+            ],
+        ]);
+    }
+
+    /**
+     * Resend verification email to the authenticated user.
+     */
+    public function resendVerification(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $result = $this->emailVerificationService->resendVerificationEmail($user);
+
+        if (! $result['success']) {
+            return response()->json([
+                'error' => [
+                    'code' => 'RESEND_FAILED',
+                    'message' => __('auth.'.$this->getTranslationKey($result['message'])),
+                ],
+                'meta' => [
+                    'timestamp' => now()->toIso8601String(),
+                    'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
+                ],
+            ], 400);
+        }
+
+        return response()->json([
+            'data' => ['message' => __('auth.verify_email_sent')],
+            'meta' => [
+                'timestamp' => now()->toIso8601String(),
+                'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
+            ],
+        ]);
+    }
+
+    /**
+     * Map error messages to translation keys.
+     */
+    private function getTranslationKey(string $message): string
+    {
+        return match ($message) {
+            'Invalid verification token.' => 'verify_email_invalid_token',
+            'Verification token has expired. Please request a new one.' => 'verify_email_expired_token',
+            'Email is already verified.' => 'verify_email_already_verified',
+            default => 'verify_email_invalid_token',
+        };
     }
 
     /**

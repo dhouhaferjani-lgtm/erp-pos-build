@@ -10,6 +10,7 @@ interface User {
   email: string
   tenant_id: string
   roles: string[]
+  email_verified_at: string | null
 }
 
 /**

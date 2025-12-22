@@ -27,4 +27,17 @@ return [
     'email_not_verified' => 'Please verify your email address.',
     'logout_success' => 'You have been logged out successfully.',
     'login_success' => 'Login successful.',
+
+    // Email verification
+    'verify_email_subject' => 'Verify Your Email Address',
+    'verify_email_greeting' => 'Hello :name,',
+    'verify_email_body' => 'Please click the button below to verify your email address.',
+    'verify_email_button' => 'Verify Email Address',
+    'verify_email_expiry' => 'This verification link will expire in :hours hours.',
+    'verify_email_salutation' => 'Best regards, The AutoERP Team',
+    'verify_email_success' => 'Email verified successfully.',
+    'verify_email_invalid_token' => 'Invalid verification token.',
+    'verify_email_expired_token' => 'Verification token has expired. Please request a new one.',
+    'verify_email_already_verified' => 'Email is already verified.',
+    'verify_email_sent' => 'Verification email sent successfully.',
 ];

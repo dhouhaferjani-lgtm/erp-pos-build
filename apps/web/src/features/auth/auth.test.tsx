@@ -149,6 +149,7 @@ describe('Authentication', () => {
         email: 'test@example.com',
         tenant_id: 'tenant-1',
         roles: ['admin'],
+        email_verified_at: null,
       }
 
       useAuthStore.getState().setUser(testUser)
@@ -165,6 +166,7 @@ describe('Authentication', () => {
         email: 'test@example.com',
         tenant_id: 'tenant-1',
         roles: ['admin'],
+        email_verified_at: null,
       }
 
       useAuthStore.getState().setUser(testUser)
@@ -209,6 +211,7 @@ describe('Authentication', () => {
         email: 'test@example.com',
         tenant_id: 'tenant-1',
         roles: ['admin'],
+        email_verified_at: null,
       }
       useAuthStore.getState().setUser(testUser)
 
@@ -247,6 +250,7 @@ describe('Authentication', () => {
           email: 'test@example.com',
           tenant_id: 'tenant-1',
           roles: ['admin'],
+          email_verified_at: null,
         },
         'test-token'
       )

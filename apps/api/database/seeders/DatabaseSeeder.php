@@ -50,6 +50,14 @@ class DatabaseSeeder extends Seeder
         $this->command->info('Creating test users...');
         $this->createUsers($tenant, $company);
 
+        $this->command->info('Creating chart of accounts...');
+        $franceSeeder = new FranceChartOfAccountsSeeder();
+        $franceSeeder->setCommand($this->command);
+        $franceSeeder->run($company->id, $tenant->id);
+
+        $this->command->info('Creating fiscal year...');
+        $this->call(FiscalYearSeeder::class);
+
         $this->command->info('Creating payment methods...');
         $this->call(PaymentMethodSeeder::class);
 

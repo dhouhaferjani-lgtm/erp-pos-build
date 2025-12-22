@@ -266,6 +266,8 @@
   "clear": "Clear",
   "yes": "Yes",
   "no": "No",
+  "optional": "optional",
+  "continue": "Continue",
   "actionsLabel": "Actions",
   "allStatuses": "All Statuses",
   "reports": {

@@ -122,6 +122,40 @@ done
 
 if [ "$DB_CONNECTED" = "false" ]; then
     echo "  Database: [not available - app may have issues until DB is ready]"
+else
+    # Run migrations automatically
+    echo ""
+    echo "Running database migrations..."
+    if php artisan migrate --force; then
+        echo "  Migrations: [completed successfully]"
+    else
+        echo "  Migrations: [failed - check logs]"
+    fi
+
+    # Run seeders only if AUTO_SEED is set to true (prevents re-seeding on every restart)
+    if [ "$AUTO_SEED" = "true" ]; then
+        echo ""
+        echo "Running database seeders..."
+
+        # Check if database is empty (no tenants exist)
+        TENANT_COUNT=$(php artisan tinker --execute="echo \App\Modules\Tenant\Domain\Tenant::count();" 2>/dev/null || echo "0")
+
+        if [ "$TENANT_COUNT" = "0" ]; then
+            echo "  Database is empty, running initial seed..."
+            if php artisan db:seed --force; then
+                echo "  Seeding: [completed successfully]"
+            else
+                echo "  Seeding: [failed - check logs]"
+            fi
+        else
+            echo "  Database already contains data ($TENANT_COUNT tenants), skipping seed"
+            echo "  To force reseed, run: php artisan db:seed --force manually"
+        fi
+    else
+        echo ""
+        echo "  AUTO_SEED not enabled, skipping database seeding"
+        echo "  To enable automatic seeding on first deploy, set AUTO_SEED=true"
+    fi
 fi
 
 # Enable Horizon in supervisor config if Redis is available

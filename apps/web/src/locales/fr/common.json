@@ -217,6 +217,8 @@
   "clear": "Effacer",
   "yes": "Oui",
   "no": "Non",
+  "optional": "optionnel",
+  "continue": "Continuer",
   "actionsLabel": "Actions",
   "allStatuses": "Tous les statuts",
   "total": "total",

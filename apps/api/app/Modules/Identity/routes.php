@@ -21,12 +21,14 @@ Route::prefix('api/v1/auth')->group(function () {
     // Public routes
     Route::post('login', [AuthController::class, 'login'])->name('auth.login');
     Route::post('register', [AuthController::class, 'register'])->name('auth.register');
+    Route::post('verify-email', [AuthController::class, 'verifyEmail'])->name('auth.verify-email');
 
     // Protected routes (no company context required for auth endpoints)
     Route::middleware(['auth:sanctum', SetPermissionsTeam::class])->group(function () {
         Route::get('me', [AuthController::class, 'me'])->name('auth.me');
         Route::post('logout', [AuthController::class, 'logout'])->name('auth.logout');
         Route::post('logout-all', [AuthController::class, 'logoutAll'])->name('auth.logout-all');
+        Route::post('resend-verification', [AuthController::class, 'resendVerification'])->name('auth.resend-verification');
     });
 });
 

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { LogIn, AlertCircle } from 'lucide-react'
@@ -17,6 +17,7 @@ interface LoginResponseUser {
   email: string
   tenantId: string
   roles: string[]
+  emailVerifiedAt: string | null
 }
 
 interface LoginResponse {
@@ -59,6 +60,7 @@ export function LoginPage() {
         email: data.user.email,
         tenant_id: data.user.tenantId,
         roles: data.user.roles,
+        email_verified_at: data.user.emailVerifiedAt,
       }
       setAuth(user, data.token)
       // Redirect to the page they were trying to access, or home
@@ -192,6 +194,13 @@ export function LoginPage() {
             </span>
             {loginMutation.isPending ? t('login.signingIn') : t('login.submit')}
           </button>
+
+          <p className="text-center text-sm text-gray-600 mt-4">
+            {t('register.alreadyHaveAccount', { defaultValue: "Don't have an account?" })}{' '}
+            <Link to="/register" className="font-medium text-blue-600 hover:text-blue-500">
+              {t('login.signUp', { defaultValue: 'Sign up' })}
+            </Link>
+          </p>
         </form>
       </div>
     </div>

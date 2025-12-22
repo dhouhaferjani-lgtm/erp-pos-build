@@ -1,0 +1,118 @@
+# =============================================================================
+# Nginx Configuration for AutoERP Frontend (React/Vite SPA)
+# =============================================================================
+# This file should be placed at /etc/nginx/conf.d/default.conf
+# in your frontend container/service
+#
+# IMPORTANT: Replace ${BACKEND_URL} with your actual backend URL
+# Example: https://api.erp.otospex.dev
+# =============================================================================
+
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Logging
+    access_log /var/log/nginx/access.log;
+    error_log /var/log/nginx/error.log;
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # =============================================================================
+    # API PROXY - Forward API requests to backend
+    # =============================================================================
+    # CRITICAL: No trailing slash after backend URL!
+    # This preserves the /api/ prefix in the request
+    location /api/ {
+        # Handle CORS preflight requests
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' '$http_origin' always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+            add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,X-XSRF-TOKEN' always;
+            add_header 'Access-Control-Max-Age' 1728000 always;
+            add_header 'Content-Type' 'text/plain; charset=utf-8' always;
+            add_header 'Content-Length' 0 always;
+            return 204;
+        }
+
+        # Proxy to backend - NO TRAILING SLASH!
+        proxy_pass ${BACKEND_URL};
+
+        # HTTP version
+        proxy_http_version 1.1;
+
+        # CRITICAL: Use $proxy_host, not $host
+        # This sends the correct Host header to the backend
+        proxy_set_header Host $proxy_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+
+        # WebSocket support (for future use)
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+
+        # Buffer settings
+        proxy_buffer_size 128k;
+        proxy_buffers 4 256k;
+        proxy_busy_buffers_size 256k;
+    }
+
+    # =============================================================================
+    # SANCTUM CSRF COOKIE ENDPOINT
+    # =============================================================================
+    location /sanctum/ {
+        proxy_pass ${BACKEND_URL}/sanctum/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $proxy_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # =============================================================================
+    # SPA ROUTING - Serve index.html for all routes
+    # =============================================================================
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # =============================================================================
+    # STATIC ASSET CACHING
+    # =============================================================================
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+    }
+
+    # =============================================================================
+    # HEALTH CHECK ENDPOINT
+    # =============================================================================
+    location = /health {
+        access_log off;
+        return 200 "OK";
+        add_header Content-Type text/plain;
+    }
+
+    # =============================================================================
+    # DENY ACCESS TO HIDDEN FILES
+    # =============================================================================
+    location ~ /\. {
+        deny all;
+    }
+}

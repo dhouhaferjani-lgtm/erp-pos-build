@@ -7,6 +7,8 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 
 // Lazy loaded pages
 const LoginPage = lazy(() => import('../features/auth/LoginPage').then((m) => ({ default: m.LoginPage })))
+const RegisterPage = lazy(() => import('../features/auth/RegisterPage').then((m) => ({ default: m.RegisterPage })))
+const VerifyEmailPage = lazy(() => import('../features/auth/VerifyEmailPage').then((m) => ({ default: m.VerifyEmailPage })))
 const Dashboard = lazy(() => import('../features/dashboard/Dashboard').then((m) => ({ default: m.Dashboard })))
 
 // Admin pages
@@ -128,6 +130,22 @@ export function AppRoutes() {
         element={
           <SuspenseWrapper>
             <LoginPage />
+          </SuspenseWrapper>
+        }
+      />
+      <Route
+        path="/register"
+        element={
+          <SuspenseWrapper>
+            <RegisterPage />
+          </SuspenseWrapper>
+        }
+      />
+      <Route
+        path="/verify-email"
+        element={
+          <SuspenseWrapper>
+            <VerifyEmailPage />
           </SuspenseWrapper>
         }
       />
