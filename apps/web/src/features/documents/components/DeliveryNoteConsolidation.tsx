@@ -234,7 +234,7 @@ export function DeliveryNoteConsolidation({
       {/* Delivery notes grouped by partner */}
       <div className="space-y-4">
         {Array.from(groupedByPartner.entries()).map(([partnerIdKey, partnerDns]) => {
-          const partnerName = partnerDns[0]?.partner_name ?? t('common.unknown')
+          const partnerName = partnerDns[0]?.partner_name ?? t('status.unknown')
           const allSelected = partnerDns.every((dn) => selectedIds.has(dn.id))
           const someSelected = partnerDns.some((dn) => selectedIds.has(dn.id))
 

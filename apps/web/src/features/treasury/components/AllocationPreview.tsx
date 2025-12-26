@@ -30,7 +30,7 @@ export function AllocationPreview({ preview, isLoading }: AllocationPreviewProps
         <div className="flex items-center gap-2">
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
           <span className="text-sm text-gray-600">
-            {t('common.loading', 'Loading preview...')}
+            {t('loading', 'Loading preview...')}
           </span>
         </div>
       </div>

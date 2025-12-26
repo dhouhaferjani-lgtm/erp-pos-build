@@ -48,7 +48,7 @@ export function CountingDashboardPage() {
   if (isLoading) {
     return (
       <div className="p-8 text-center text-gray-500">
-        {t('common.loading')}...
+        {t('loading')}...
       </div>
     )
   }
@@ -56,7 +56,7 @@ export function CountingDashboardPage() {
   if (error) {
     return (
       <div className="p-8 text-center text-red-600">
-        {t('common.error')}: {error.message}
+        {t('error')}: {error.message}
       </div>
     )
   }
@@ -129,7 +129,7 @@ export function CountingDashboardPage() {
             to="/inventory/counting/list?status=active"
             className="text-sm text-blue-600 hover:text-blue-700"
           >
-            {t('common.viewAll')}
+            {t('viewAll')}
           </Link>
         </div>
 
@@ -158,7 +158,7 @@ export function CountingDashboardPage() {
             to="/inventory/counting/list?status=pending_review"
             className="text-sm text-blue-600 hover:text-blue-700"
           >
-            {t('common.viewAll')}
+            {t('viewAll')}
           </Link>
         </div>
 

@@ -148,7 +148,7 @@ export function CountingCard({ counting, onSendReminder }: Props) {
           className="flex-1 inline-flex items-center justify-center px-3 py-2 text-sm font-medium rounded-md border border-gray-300 bg-white hover:bg-gray-50"
         >
           <Eye className="w-4 h-4 me-2" />
-          {t('common.viewDetails')}
+          {t('viewDetails')}
         </Link>
         {onSendReminder && (
           <button

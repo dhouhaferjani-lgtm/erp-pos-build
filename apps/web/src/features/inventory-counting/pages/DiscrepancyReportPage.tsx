@@ -26,7 +26,7 @@ export function DiscrepancyReportPage() {
   if (isLoading) {
     return (
       <div className="p-8 text-center text-gray-500">
-        {t('common.loading')}...
+        {t('loading')}...
       </div>
     )
   }
@@ -34,12 +34,12 @@ export function DiscrepancyReportPage() {
   if (error || !report) {
     return (
       <div className="p-8 text-center">
-        <p className="text-red-600 mb-4">{t('common.error')}</p>
+        <p className="text-red-600 mb-4">{t('error')}</p>
         <Link
           to={`/inventory/counting/${String(countingId)}`}
           className="text-blue-600 hover:text-blue-700"
         >
-          {t('common.back')}
+          {t('back')}
         </Link>
       </div>
     )

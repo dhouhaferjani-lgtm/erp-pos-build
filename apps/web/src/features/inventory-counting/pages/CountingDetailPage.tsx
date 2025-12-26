@@ -33,7 +33,7 @@ export function CountingDetailPage() {
   if (isLoading) {
     return (
       <div className="p-8 text-center text-gray-500">
-        {t('common.loading')}...
+        {t('loading')}...
       </div>
     )
   }
@@ -41,12 +41,12 @@ export function CountingDetailPage() {
   if (error || !counting) {
     return (
       <div className="p-8 text-center">
-        <p className="text-red-600 mb-4">{t('common.error')}</p>
+        <p className="text-red-600 mb-4">{t('error')}</p>
         <Link
           to="/inventory/counting"
           className="text-blue-600 hover:text-blue-700"
         >
-          {t('common.back')}
+          {t('back')}
         </Link>
       </div>
     )
@@ -84,7 +84,7 @@ export function CountingDetailPage() {
             className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-2"
           >
             <ArrowLeft className="w-4 h-4 me-1" />
-            {t('common.back')}
+            {t('back')}
           </Link>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold">
@@ -280,8 +280,8 @@ export function CountingDetailPage() {
                 </dt>
                 <dd className="font-medium">
                   {counting.allow_unexpected_items
-                    ? t('common.yes')
-                    : t('common.no')}
+                    ? t('yes')
+                    : t('no')}
                 </dd>
               </div>
             </dl>

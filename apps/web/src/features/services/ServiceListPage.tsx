@@ -101,7 +101,7 @@ export function ServiceListPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{t('services.title', 'Services')}</h1>
           <p className="text-gray-500">
-            {total} {total === 1 ? t('services.serviceCount.singular', 'service') : t('services.serviceCount.plural', 'services')} {t('common.total', 'total')}
+            {total} {total === 1 ? t('services.serviceCount.singular', 'service') : t('services.serviceCount.plural', 'services')} {t('total', 'total')}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -136,14 +136,14 @@ export function ServiceListPage() {
               <button
                 onClick={() => { setViewMode('list') }}
                 className={`rounded p-1.5 ${viewMode === 'list' ? 'bg-gray-100 text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
-                title={t('common.listView', 'List view')}
+                title={t('views.list')}
               >
                 <List className="h-4 w-4" />
               </button>
               <button
                 onClick={() => { setViewMode('grid') }}
                 className={`rounded p-1.5 ${viewMode === 'grid' ? 'bg-gray-100 text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
-                title={t('common.gridView', 'Grid view')}
+                title={t('views.grid')}
               >
                 <Grid className="h-4 w-4" />
               </button>

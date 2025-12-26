@@ -245,7 +245,7 @@ export function Dashboard() {
               to="/documents"
               className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
             >
-              {t('common.viewAll')}
+              {t('viewAll')}
               <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
@@ -285,7 +285,7 @@ export function Dashboard() {
               to="/treasury/payments"
               className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
             >
-              {t('common.viewAll')}
+              {t('viewAll')}
               <ArrowRight className="h-4 w-4" />
             </Link>
           </div>

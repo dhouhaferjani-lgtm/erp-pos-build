@@ -73,7 +73,7 @@ export function ReconciliationTable({ countingId }: Props) {
   if (isLoading) {
     return (
       <div className="p-8 text-center text-gray-500">
-        {t('common.loading')}...
+        {t('loading')}...
       </div>
     )
   }
@@ -81,7 +81,7 @@ export function ReconciliationTable({ countingId }: Props) {
   if (!data) {
     return (
       <div className="p-8 text-center text-gray-500">
-        {t('common.noData')}
+        {t('noData')}
       </div>
     )
   }
@@ -225,7 +225,7 @@ export function ReconciliationTable({ countingId }: Props) {
             onClick={() => { setSelectedItems([]); }}
             className="px-3 py-1.5 text-sm font-medium text-gray-700 hover:text-gray-900"
           >
-            {t('common.clear')}
+            {t('clear')}
           </button>
         </div>
       )}
@@ -274,7 +274,7 @@ export function ReconciliationTable({ countingId }: Props) {
                 {t('counting.reconciliation.varianceShort')}
               </th>
               <th className="px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                {t('common.actions')}
+                {t('actionsLabel')}
               </th>
             </tr>
           </thead>

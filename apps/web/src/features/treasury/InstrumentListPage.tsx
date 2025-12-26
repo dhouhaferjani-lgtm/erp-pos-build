@@ -80,7 +80,7 @@ export function InstrumentListPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{t('treasury:instruments.title')}</h1>
           <p className="text-gray-500">
-            {total} {total === 1 ? t('treasury:instruments.singular') : t('treasury:instruments.plural')} {t('common.total')}
+            {total} {total === 1 ? t('treasury:instruments.singular') : t('treasury:instruments.plural')} {t('total')}
           </p>
         </div>
       </div>
@@ -158,7 +158,7 @@ export function InstrumentListPage() {
                         {instrument.partner_name}
                       </Link>
                     ) : (
-                      <span className="text-gray-500">{instrument.partner_name ?? t('common.unknown')}</span>
+                      <span className="text-gray-500">{instrument.partner_name ?? t('status.unknown')}</span>
                     )}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
@@ -180,7 +180,7 @@ export function InstrumentListPage() {
                         {instrument.repository_name}
                       </Link>
                     ) : (
-                      <span>{instrument.repository_name ?? t('common.unknown')}</span>
+                      <span>{instrument.repository_name ?? t('status.unknown')}</span>
                     )}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">

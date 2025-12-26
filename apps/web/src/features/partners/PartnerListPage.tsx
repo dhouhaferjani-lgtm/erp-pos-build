@@ -107,7 +107,7 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{pageTitle}</h1>
           <p className="text-gray-500">
-            {total} {entitySingular.toLowerCase()} {t('common.total')}
+            {total} {entitySingular.toLowerCase()} {t('total')}
           </p>
         </div>
         <Link

@@ -172,7 +172,7 @@ function StartReconciliationModal({
 
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
-              {t('common.notes')}
+              {t('fields.notes')}
             </label>
             <textarea
               value={notes}
@@ -184,10 +184,10 @@ function StartReconciliationModal({
 
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="secondary" onClick={onClose}>
-              {t('common.cancel')}
+              {t('cancel')}
             </Button>
             <Button type="submit" disabled={isLoading || !repositoryId}>
-              {isLoading ? t('common.loading') : t('reconciliation.startNew')}
+              {isLoading ? t('loading') : t('reconciliation.startNew')}
             </Button>
           </div>
         </form>
@@ -308,7 +308,7 @@ function ReconciliationDetail({
             className="mb-2 flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4" />
-            {t('common.back')}
+            {t('back')}
           </button>
           <h2 className="text-xl font-semibold">{reconciliation.repository_name}</h2>
           <p className="text-sm text-gray-500">
@@ -386,7 +386,7 @@ function ReconciliationDetail({
         <div className="divide-y divide-gray-100">
           {reconciliation.items?.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
-              {t('common.noData')}
+              {t('noData')}
             </div>
           ) : (
             reconciliation.items?.map((item: BankReconciliationItem) => (
@@ -496,10 +496,10 @@ function ReconciliationDetail({
             </p>
             <div className="flex justify-end gap-3">
               <Button variant="secondary" onClick={() => { setShowCompleteConfirm(false); }}>
-                {t('common.cancel')}
+                {t('cancel')}
               </Button>
               <Button onClick={handleComplete} disabled={completeMutation.isPending}>
-                {completeMutation.isPending ? t('common.loading') : t('reconciliation.confirmations.complete.confirm')}
+                {completeMutation.isPending ? t('loading') : t('reconciliation.confirmations.complete.confirm')}
               </Button>
             </div>
           </div>
@@ -518,10 +518,10 @@ function ReconciliationDetail({
             </p>
             <div className="flex justify-end gap-3">
               <Button variant="secondary" onClick={() => { setShowCancelConfirm(false); }}>
-                {t('common.cancel')}
+                {t('cancel')}
               </Button>
               <Button variant="danger" onClick={handleCancel} disabled={cancelMutation.isPending}>
-                {cancelMutation.isPending ? t('common.loading') : t('reconciliation.confirmations.cancel.confirm')}
+                {cancelMutation.isPending ? t('loading') : t('reconciliation.confirmations.cancel.confirm')}
               </Button>
             </div>
           </div>
@@ -589,7 +589,7 @@ export function BankReconciliationPage() {
               className="mb-2 flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
             >
               <ArrowLeft className="h-4 w-4" />
-              {t('common.back')}
+              {t('back')}
             </Link>
             <h1 className="text-2xl font-bold">{t('reconciliation.title')}</h1>
             <p className="text-gray-500">{t('reconciliation.subtitle')}</p>
@@ -678,7 +678,7 @@ export function BankReconciliationPage() {
                     {t('reconciliation.table.status')}
                   </th>
                   <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('common.actions')}
+                    {t('actionsLabel')}
                   </th>
                 </tr>
               </thead>

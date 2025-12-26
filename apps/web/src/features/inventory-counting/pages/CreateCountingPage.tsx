@@ -123,7 +123,7 @@ export function CreateCountingPage() {
           className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-4"
         >
           <ArrowLeft className="w-4 h-4 me-1" />
-          {t('common.back')}
+          {t('back')}
         </Link>
         <h1 className="text-2xl font-bold">{t('counting.create.title')}</h1>
         <p className="text-gray-500">{t('counting.create.description')}</p>
@@ -214,7 +214,7 @@ export function CreateCountingPage() {
           className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <ArrowLeft className="w-4 h-4 me-2" />
-          {t('common.previous')}
+          {t('previous')}
         </button>
 
         {currentStep === 'review' ? (
@@ -225,7 +225,7 @@ export function CreateCountingPage() {
             className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {createCounting.isPending
-              ? t('common.creating')
+              ? t('creating')
               : t('counting.create.submit')}
           </button>
         ) : (
@@ -235,7 +235,7 @@ export function CreateCountingPage() {
             disabled={!canProceed()}
             className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {t('common.next')}
+            {t('next')}
             <ArrowRight className="w-4 h-4 ms-2" />
           </button>
         )}
@@ -635,12 +635,12 @@ function ReviewStep({ data }: ReviewStepProps) {
             <dt className="text-gray-500">{t('counting.create.executionMode')}</dt>
             <dd>{t(`counting.executionModes.${data.execution_mode ?? 'parallel'}`)}</dd>
             <dt className="text-gray-500">{t('counting.create.requiresCount2')}</dt>
-            <dd>{data.requires_count_2 ? t('common.yes') : t('common.no')}</dd>
+            <dd>{data.requires_count_2 ? t('yes') : t('no')}</dd>
             <dt className="text-gray-500">{t('counting.create.requiresCount3')}</dt>
-            <dd>{data.requires_count_3 ? t('common.yes') : t('common.no')}</dd>
+            <dd>{data.requires_count_3 ? t('yes') : t('no')}</dd>
             <dt className="text-gray-500">{t('counting.create.allowUnexpectedItems')}</dt>
             <dd>
-              {data.allow_unexpected_items ? t('common.yes') : t('common.no')}
+              {data.allow_unexpected_items ? t('yes') : t('no')}
             </dd>
           </dl>
         </div>

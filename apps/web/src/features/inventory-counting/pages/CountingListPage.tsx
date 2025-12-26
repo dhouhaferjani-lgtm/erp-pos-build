@@ -106,7 +106,7 @@ export function CountingListPage() {
           {STATUS_OPTIONS.map((status) => (
             <option key={status} value={status}>
               {status === 'all'
-                ? t('common.allStatuses')
+                ? t('allStatuses')
                 : t(`counting.status.${status}`)}
             </option>
           ))}
@@ -132,7 +132,7 @@ export function CountingListPage() {
       {/* Table */}
       {isLoading ? (
         <div className="p-8 text-center text-gray-500">
-          {t('common.loading')}...
+          {t('loading')}...
         </div>
       ) : error ? (
         <QueryError
@@ -173,7 +173,7 @@ export function CountingListPage() {
                     {t('counting.list.columns.created')}
                   </th>
                   <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('common.actions')}
+                    {t('actionsLabel')}
                   </th>
                 </tr>
               </thead>
@@ -223,7 +223,7 @@ export function CountingListPage() {
                         className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700"
                       >
                         <Eye className="w-4 h-4 me-1" />
-                        {t('common.view')}
+                        {t('view')}
                       </Link>
                     </td>
                   </tr>
@@ -236,7 +236,7 @@ export function CountingListPage() {
           {data.meta.last_page > 1 && (
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-500">
-                {t('common.pagination.showing', {
+                {t('pagination.showing', {
                   from: (data.meta.current_page - 1) * data.meta.per_page + 1,
                   to: Math.min(
                     data.meta.current_page * data.meta.per_page,

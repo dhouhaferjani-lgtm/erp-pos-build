@@ -191,7 +191,7 @@ export function RepositoryDetailPage() {
       {/* Repository Info */}
       <div className="grid gap-6 md:grid-cols-2">
         <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('common.details', 'Details')}</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('table.noData', 'Details')}</h2>
           <dl className="space-y-3">
             <div className="flex justify-between">
               <dt className="text-gray-500">{t('treasury.type', 'Type')}</dt>
@@ -202,14 +202,14 @@ export function RepositoryDetailPage() {
               </dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-gray-500">{t('common.status', 'Status')}</dt>
+              <dt className="text-gray-500">{t('fields.status', 'Status')}</dt>
               <dd>
                 <span
                   className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
                     repository.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                   }`}
                 >
-                  {repository.is_active ? t('common.active', 'Active') : t('common.inactive', 'Inactive')}
+                  {repository.is_active ? t('active', 'Active') : t('inactive', 'Inactive')}
                 </span>
               </dd>
             </div>
@@ -286,16 +286,16 @@ export function RepositoryDetailPage() {
                     {t('treasury.payment', 'Payment')}
                   </th>
                   <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('common.partner', 'Partner')}
+                    {t('fields.partner', 'Partner')}
                   </th>
                   <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
                     {t('treasury.method', 'Method')}
                   </th>
                   <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('common.date', 'Date')}
+                    {t('fields.date', 'Date')}
                   </th>
                   <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                    {t('common.status', 'Status')}
+                    {t('fields.status', 'Status')}
                   </th>
                   <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
                     {t('treasury.allocatedTo', 'Allocated To')}

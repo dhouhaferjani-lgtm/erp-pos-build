@@ -8,33 +8,14 @@ import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
 import { SearchInput } from '../../components/ui/SearchInput'
 import { FilterTabs } from '../../components/ui/FilterTabs'
-
-interface Document {
-  id: string
-  document_number: string
-  type: 'quote' | 'order' | 'invoice' | 'credit_note' | 'delivery_note' | 'sales_order' | 'purchase_order'
-  status: 'draft' | 'confirmed' | 'posted' | 'cancelled' | 'received'
-  fiscal_category: 'NON_FISCAL' | 'FISCAL_RECEIPT' | 'TAX_INVOICE' | 'CREDIT_NOTE'
-  fiscal_status: 'DRAFT' | 'SEALED' | 'VOIDED'
-  is_sealed: boolean
-  is_fiscal: boolean
-  partner_id: string
-  partner_name: string | null
-  subtotal: string | null
-  tax_amount: string | null
-  total: string | null
-  balance_due: string | null
-  document_date: string
-  due_date: string | null
-  created_at: string
-}
+import type { Document } from '../../types/document'
 
 interface DocumentsResponse {
   data: Document[]
   meta?: { total: number }
 }
 
-export type DocumentType = 'quote' | 'sales_order' | 'invoice' | 'purchase_order' | 'delivery_note' | 'credit_note'
+export type DocumentType = 'quote' | 'sales_order' | 'invoice' | 'purchase_order' | 'delivery_note' | 'credit_note' | 'return_note'
 
 const typeColors: Record<string, string> = {
   quote: 'bg-yellow-100 text-yellow-800',
@@ -44,6 +25,7 @@ const typeColors: Record<string, string> = {
   invoice: 'bg-green-100 text-green-800',
   credit_note: 'bg-red-100 text-red-800',
   delivery_note: 'bg-purple-100 text-purple-800',
+  return_note: 'bg-orange-100 text-orange-800',
 }
 
 const statusColors: Record<Document['status'], string> = {
@@ -62,6 +44,7 @@ const documentTypeToPath: Record<DocumentType, string> = {
   purchase_order: '/purchases/orders',
   delivery_note: '/inventory/delivery-notes',
   credit_note: '/sales/credit-notes',
+  return_note: '/inventory/return-notes',
 }
 
 // Map document types to translation keys (navigation titles)
@@ -72,6 +55,7 @@ const documentTypeToTitleKey: Record<DocumentType, string> = {
   purchase_order: 'navigation.purchaseOrders',
   delivery_note: 'navigation.deliveryNotes',
   credit_note: 'navigation.creditNotes',
+  return_note: 'navigation.returnNotes',
 }
 
 // Map document types to their API endpoints
@@ -82,6 +66,7 @@ const documentTypeToApiEndpoint: Record<DocumentType, string> = {
   purchase_order: '/purchase-orders',
   delivery_note: '/delivery-notes',
   credit_note: '/credit-notes',
+  return_note: '/return-notes',
 }
 
 function getDocumentTypeFromPath(pathname: string): DocumentType | undefined {
@@ -90,6 +75,7 @@ function getDocumentTypeFromPath(pathname: string): DocumentType | undefined {
   if (pathname.includes('/sales/invoices')) return 'invoice'
   if (pathname.includes('/purchases/orders')) return 'purchase_order'
   if (pathname.includes('/inventory/delivery-notes')) return 'delivery_note'
+  if (pathname.includes('/inventory/return-notes')) return 'return_note'
   if (pathname.includes('/sales/credit-notes')) return 'credit_note'
   return undefined
 }
@@ -119,7 +105,10 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
   const pageTitle = effectiveType ? t(documentTypeToTitleKey[effectiveType]) : t('sales:documents.title')
 
   // Get translated type and status labels
-  const getTypeLabel = (type: string) => t(`sales:documents.types.${type.replace(/_/g, '')}`, t(`sales:documents.types.${type}`, type))
+  const getTypeLabel = (type: string | undefined) => {
+    if (!type) return 'Unknown'
+    return t(`sales:documents.types.${type.replace(/_/g, '')}`, t(`sales:documents.types.${type}`, type))
+  }
   const getStatusLabel = (status: string) => t(`status.${status}`, status)
 
   const { data, isLoading, error } = useQuery({
@@ -211,6 +200,7 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
       purchase_order: 'sales:documents.types.purchaseOrder',
       delivery_note: 'sales:documents.types.deliveryNote',
       credit_note: 'sales:documents.types.creditNote',
+      return_note: 'sales:documents.types.returnNote',
     }
     return t(singularKeys[effectiveType])
   }
@@ -223,11 +213,11 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{pageTitle}</h1>
           <p className="text-gray-500">
-            {total} {entitySingular.toLowerCase()} {t('common.total')}
+            {total} {entitySingular.toLowerCase()} {t('total')}
           </p>
         </div>
         <Link
-          to={`${basePath}/new`}
+          to={documentType === 'credit_note' ? `${basePath}/create` : `${basePath}/new`}
           className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
         >
           <Plus className="h-4 w-4" />
@@ -264,7 +254,7 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
           </p>
           <div className="mt-6">
             <Link
-              to={`${basePath}/new`}
+              to={documentType === 'credit_note' ? `${basePath}/create` : `${basePath}/new`}
               className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
             >
               <Plus className="h-4 w-4" />

@@ -25,7 +25,7 @@ export function ToleranceSettingsDisplay() {
       <div className="rounded-lg border border-gray-200 bg-white p-4">
         <div className="flex items-center gap-2">
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
-          <span className="text-sm text-gray-600">{t('common.loading', 'Loading...')}</span>
+          <span className="text-sm text-gray-600">{t('loading', 'Loading...')}</span>
         </div>
       </div>
     )
@@ -37,7 +37,7 @@ export function ToleranceSettingsDisplay() {
         <div className="flex items-center gap-2">
           <Info className="h-5 w-5 text-red-600" />
           <span className="text-sm text-red-800">
-            {t('common.error', 'Error loading tolerance settings')}
+            {t('error', 'Error loading tolerance settings')}
           </span>
         </div>
       </div>

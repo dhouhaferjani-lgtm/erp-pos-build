@@ -73,7 +73,7 @@ export function PaymentListPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{t('treasury:payments.title')}</h1>
           <p className="text-gray-500">
-            {total} {total === 1 ? t('treasury:payments.singular', 'payment') : t('treasury:payments.plural', 'payments')} {t('common.total')}
+            {total} {total === 1 ? t('treasury:payments.singular', 'payment') : t('treasury:payments.plural', 'payments')} {t('total')}
           </p>
         </div>
         <Link
