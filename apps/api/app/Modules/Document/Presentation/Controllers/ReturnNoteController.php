@@ -9,6 +9,8 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FiscalCategory;
+use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\ReturnCondition;
 use App\Modules\Document\Domain\Enums\ReturnReason;
 use App\Modules\Document\Domain\Services\ReturnNoteService;
@@ -165,6 +167,8 @@ class ReturnNoteController extends Controller
                 'tenant_id' => $company->tenant_id,
                 'company_id' => $company->id,
                 'type' => DocumentType::ReturnNote,
+                'fiscal_category' => FiscalCategory::ReturnNote,
+                'fiscal_status' => FiscalStatus::Draft,
                 'status' => DocumentStatus::Draft,
                 'document_number' => $documentNumber,
                 'document_date' => $data['document_date'],
