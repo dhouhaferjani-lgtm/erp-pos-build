@@ -103,7 +103,7 @@ export function ExpenseCard({ expense, onDelete, onPost }: ExpenseCardProps) {
         <div className="mt-4 flex items-center gap-2 border-t border-gray-100 pt-3 dark:border-gray-700">
           {isDraft && onPost && (
             <button
-              onClick={() => onPost(expense.id)}
+              onClick={() => { onPost(expense.id); }}
               className="flex-1 rounded-md bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
             >
               {t('expenses:actions.post')}
@@ -111,7 +111,7 @@ export function ExpenseCard({ expense, onDelete, onPost }: ExpenseCardProps) {
           )}
           {isDraft && onDelete && (
             <button
-              onClick={() => onDelete(expense.id)}
+              onClick={() => { onDelete(expense.id); }}
               className="rounded-md border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
             >
               <Trash2 className="h-4 w-4" />

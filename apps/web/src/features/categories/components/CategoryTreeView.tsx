@@ -32,12 +32,12 @@ function CategoryNode({ category, level, onEdit, onDelete, onAddSubcategory }: C
       <div
         className="flex items-center gap-2 py-2 px-3 hover:bg-gray-50 rounded-md group"
         style={{ paddingInlineStart: `${indentWidth}px` }}
-        onMouseEnter={() => setShowActions(true)}
-        onMouseLeave={() => setShowActions(false)}
+        onMouseEnter={() => { setShowActions(true); }}
+        onMouseLeave={() => { setShowActions(false); }}
       >
         {/* Expand/Collapse Button */}
         <button
-          onClick={() => setIsExpanded(!isExpanded)}
+          onClick={() => { setIsExpanded(!isExpanded); }}
           className={`flex-shrink-0 p-0.5 rounded hover:bg-gray-200 ${
             hasChildren ? 'visible' : 'invisible'
           }`}
@@ -82,7 +82,7 @@ function CategoryNode({ category, level, onEdit, onDelete, onAddSubcategory }: C
         <div className={`flex items-center gap-1 ${showActions ? 'opacity-100' : 'opacity-0'} transition-opacity`}>
           {onAddSubcategory && (
             <button
-              onClick={() => onAddSubcategory(category)}
+              onClick={() => { onAddSubcategory(category); }}
               className="p-1 rounded hover:bg-gray-200 text-gray-600 hover:text-blue-600"
               title={t('inventory:categories.actions.addSubcategory')}
             >
@@ -91,7 +91,7 @@ function CategoryNode({ category, level, onEdit, onDelete, onAddSubcategory }: C
           )}
           {onEdit && (
             <button
-              onClick={() => onEdit(category)}
+              onClick={() => { onEdit(category); }}
               className="p-1 rounded hover:bg-gray-200 text-gray-600 hover:text-blue-600"
               title={t('inventory:categories.actions.edit')}
             >
@@ -100,7 +100,7 @@ function CategoryNode({ category, level, onEdit, onDelete, onAddSubcategory }: C
           )}
           {onDelete && (
             <button
-              onClick={() => onDelete(category)}
+              onClick={() => { onDelete(category); }}
               className="p-1 rounded hover:bg-gray-200 text-gray-600 hover:text-red-600"
               title={t('inventory:categories.actions.delete')}
             >

@@ -197,7 +197,7 @@ export function FraudSettingsPage() {
                 min="1"
                 max="100"
                 value={formData.abandoned_draft_threshold || 5}
-                onChange={(e) => setFormData({ ...formData, abandoned_draft_threshold: parseInt(e.target.value) })}
+                onChange={(e) => { setFormData({ ...formData, abandoned_draft_threshold: parseInt(e.target.value) }); }}
                 className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
               />
               <p className="text-sm text-gray-500 mt-1">
@@ -218,7 +218,7 @@ export function FraudSettingsPage() {
                 min="1"
                 max="365"
                 value={formData.time_window_days || 30}
-                onChange={(e) => setFormData({ ...formData, time_window_days: parseInt(e.target.value) })}
+                onChange={(e) => { setFormData({ ...formData, time_window_days: parseInt(e.target.value) }); }}
                 className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
               />
               <p className="text-sm text-gray-500 mt-1">
@@ -244,7 +244,7 @@ export function FraudSettingsPage() {
                 type="checkbox"
                 id="alertEnabled"
                 checked={formData.alert_enabled ?? true}
-                onChange={(e) => setFormData({ ...formData, alert_enabled: e.target.checked })}
+                onChange={(e) => { setFormData({ ...formData, alert_enabled: e.target.checked }); }}
                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               <label htmlFor="alertEnabled" className="ms-2 text-sm font-medium text-gray-700">
@@ -261,7 +261,7 @@ export function FraudSettingsPage() {
                   type="email"
                   id="emailInput"
                   value={emailInput}
-                  onChange={(e) => setEmailInput(e.target.value)}
+                  onChange={(e) => { setEmailInput(e.target.value); }}
                   onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddEmail())}
                   placeholder={t('compliance:fraudSettings.fields.emails.placeholder')}
                   className="block flex-1 rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
@@ -292,7 +292,7 @@ export function FraudSettingsPage() {
                     {email}
                     <button
                       type="button"
-                      onClick={() => handleRemoveEmail(email)}
+                      onClick={() => { handleRemoveEmail(email); }}
                       className="hover:text-blue-900"
                     >
                       ×
@@ -316,7 +316,7 @@ export function FraudSettingsPage() {
                 type="checkbox"
                 id="autoCounting"
                 checked={formData.auto_trigger_counting ?? true}
-                onChange={(e) => setFormData({ ...formData, auto_trigger_counting: e.target.checked })}
+                onChange={(e) => { setFormData({ ...formData, auto_trigger_counting: e.target.checked }); }}
                 className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               <label htmlFor="autoCounting" className="ms-2">
@@ -334,7 +334,7 @@ export function FraudSettingsPage() {
                 type="checkbox"
                 id="autoRestrict"
                 checked={formData.auto_restrict_access ?? false}
-                onChange={(e) => setFormData({ ...formData, auto_restrict_access: e.target.checked })}
+                onChange={(e) => { setFormData({ ...formData, auto_restrict_access: e.target.checked }); }}
                 className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               <label htmlFor="autoRestrict" className="ms-2">
@@ -365,7 +365,7 @@ export function FraudSettingsPage() {
       {/* Reset Confirmation Dialog */}
       <ConfirmDialog
         isOpen={showResetConfirm}
-        onClose={() => setShowResetConfirm(false)}
+        onClose={() => { setShowResetConfirm(false); }}
         onConfirm={handleResetConfirm}
         title={t('compliance:fraudSettings.actions.reset')}
         message={t('compliance:fraudSettings.messages.confirmReset')}

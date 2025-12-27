@@ -265,7 +265,7 @@ export function CreateCreditNoteForm({
           <div className="flex gap-4">
             <button
               type="button"
-              onClick={() => setCreditMode('amount')}
+              onClick={() => { setCreditMode('amount'); }}
               className={`flex-1 rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
                 creditMode === 'amount'
                   ? 'border-blue-500 bg-blue-50 text-blue-700'
@@ -280,7 +280,7 @@ export function CreateCreditNoteForm({
             </button>
             <button
               type="button"
-              onClick={() => setCreditMode('line')}
+              onClick={() => { setCreditMode('line'); }}
               className={`flex-1 rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
                 creditMode === 'line'
                   ? 'border-blue-500 bg-blue-50 text-blue-700'
@@ -382,7 +382,7 @@ export function CreateCreditNoteForm({
                         <input
                           type="checkbox"
                           checked={isSelected}
-                          onChange={() => handleToggleLine(line.id, line.quantity, unitPrice)}
+                          onChange={() => { handleToggleLine(line.id, line.quantity, unitPrice); }}
                           className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                           disabled={isSubmitting}
                         />
@@ -401,11 +401,11 @@ export function CreateCreditNoteForm({
                             min="1"
                             max={line.quantity}
                             value={creditQty}
-                            onChange={(e) => handleUpdateLineQuantity(
+                            onChange={(e) => { handleUpdateLineQuantity(
                               line.id,
                               parseInt(e.target.value) || 0,
                               line.quantity
-                            )}
+                            ); }}
                             className="w-20 rounded border-gray-300 px-2 py-1 text-sm text-end"
                             disabled={isSubmitting}
                           />

@@ -103,7 +103,7 @@ export function ExpenseCategoryPage() {
           </p>
         </div>
         <button
-          onClick={() => handleOpenForm()}
+          onClick={() => { handleOpenForm(); }}
           className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
         >
           <Plus className="h-4 w-4" />
@@ -151,7 +151,7 @@ export function ExpenseCategoryPage() {
                     </span>
                   )}
                   <button
-                    onClick={() => handleOpenForm(category)}
+                    onClick={() => { handleOpenForm(category); }}
                     className="rounded-md p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
                   >
                     <Pencil className="h-4 w-4" />
@@ -188,7 +188,7 @@ export function ExpenseCategoryPage() {
                       </span>
                     )}
                     <button
-                      onClick={() => handleOpenForm(child)}
+                      onClick={() => { handleOpenForm(child); }}
                       className="rounded-md p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
                     >
                       <Pencil className="h-4 w-4" />
@@ -225,7 +225,7 @@ export function ExpenseCategoryPage() {
                 <input
                   type="text"
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  onChange={(e) => { setFormData({ ...formData, name: e.target.value }); }}
                   required
                   className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                 />
@@ -237,7 +237,7 @@ export function ExpenseCategoryPage() {
                 </label>
                 <textarea
                   value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  onChange={(e) => { setFormData({ ...formData, description: e.target.value }); }}
                   rows={3}
                   className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                 />
@@ -249,7 +249,7 @@ export function ExpenseCategoryPage() {
                 </label>
                 <select
                   value={formData.parent_id}
-                  onChange={(e) => setFormData({ ...formData, parent_id: e.target.value })}
+                  onChange={(e) => { setFormData({ ...formData, parent_id: e.target.value }); }}
                   className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                 >
                   <option value="">{t('common:none')}</option>
@@ -268,7 +268,7 @@ export function ExpenseCategoryPage() {
                   type="checkbox"
                   id="is_active"
                   checked={formData.is_active}
-                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                  onChange={(e) => { setFormData({ ...formData, is_active: e.target.checked }); }}
                   className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <label

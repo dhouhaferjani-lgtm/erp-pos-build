@@ -111,7 +111,7 @@ export function ExpenseListPage() {
             <input
               type="text"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => { setSearchTerm(e.target.value); }}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               placeholder={t('expenses:searchPlaceholder')}
               className="w-full rounded-md border border-gray-300 bg-white py-2 pe-3 ps-10 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
@@ -124,7 +124,7 @@ export function ExpenseListPage() {
             {t('common:actions.search')}
           </button>
           <button
-            onClick={() => setShowFilters(!showFilters)}
+            onClick={() => { setShowFilters(!showFilters); }}
             className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
           >
             <Filter className="h-4 w-4" />
@@ -147,7 +147,7 @@ export function ExpenseListPage() {
                 </label>
                 <select
                   value={filters.status || ''}
-                  onChange={(e) => handleFilterChange('status', e.target.value)}
+                  onChange={(e) => { handleFilterChange('status', e.target.value); }}
                   className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                 >
                   <option value="">{t('common:all')}</option>
@@ -159,7 +159,7 @@ export function ExpenseListPage() {
               <div>
                 <ExpenseCategorySelect
                   value={filters.category_id || ''}
-                  onChange={(value) => handleFilterChange('category_id', value)}
+                  onChange={(value) => { handleFilterChange('category_id', value); }}
                   placeholder={t('common:all')}
                 />
               </div>
@@ -171,7 +171,7 @@ export function ExpenseListPage() {
                 <input
                   type="date"
                   value={filters.date_from || ''}
-                  onChange={(e) => handleFilterChange('date_from', e.target.value)}
+                  onChange={(e) => { handleFilterChange('date_from', e.target.value); }}
                   className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                 />
               </div>

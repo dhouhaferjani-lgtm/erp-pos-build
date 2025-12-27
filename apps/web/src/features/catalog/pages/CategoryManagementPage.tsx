@@ -131,7 +131,7 @@ export function CategoryManagementPage() {
               <CategoryTree
                 categories={categoryTree.data}
                 selectedId={selectedCategory?.id}
-                onSelect={(cat) => setSelectedCategory(cat)}
+                onSelect={(cat) => { setSelectedCategory(cat); }}
               />
             </div>
           ) : (
@@ -161,14 +161,14 @@ export function CategoryManagementPage() {
                 )}
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => handleOpenEdit(selectedCategory)}>
+                <Button variant="outline" size="sm" onClick={() => { handleOpenEdit(selectedCategory); }}>
                   <Edit2 className="h-4 w-4 me-2" />
                   {t('common:actions.edit')}
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleOpenDelete(selectedCategory)}
+                  onClick={() => { handleOpenDelete(selectedCategory); }}
                   className="text-red-600 hover:text-red-700 hover:border-red-300"
                 >
                   <Trash2 className="h-4 w-4 me-2" />
@@ -183,7 +183,7 @@ export function CategoryManagementPage() {
       {/* Create Category Modal */}
       <Modal
         isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        onClose={() => { setIsCreateModalOpen(false); }}
         title={t('common:catalog.categories.create')}
       >
         <div className="space-y-4">
@@ -193,7 +193,7 @@ export function CategoryManagementPage() {
             </label>
             <Input
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) => { setFormData({ ...formData, name: e.target.value }); }}
               placeholder={t('common:catalog.categories.name')}
             />
           </div>
@@ -205,7 +205,7 @@ export function CategoryManagementPage() {
             <Select
               value={formData.parent_id?.toString() || ''}
               onChange={(e) =>
-                setFormData({ ...formData, parent_id: e.target.value ? Number(e.target.value) : null })
+                { setFormData({ ...formData, parent_id: e.target.value ? Number(e.target.value) : null }); }
               }
             >
               <option value="">{t('common:catalog.categories.rootCategory')}</option>
@@ -224,7 +224,7 @@ export function CategoryManagementPage() {
             </label>
             <textarea
               value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              onChange={(e) => { setFormData({ ...formData, description: e.target.value }); }}
               placeholder={t('common:catalog.categories.description')}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               rows={3}
@@ -232,7 +232,7 @@ export function CategoryManagementPage() {
           </div>
 
           <div className="flex justify-end gap-2 mt-6">
-            <Button variant="outline" onClick={() => setIsCreateModalOpen(false)}>
+            <Button variant="outline" onClick={() => { setIsCreateModalOpen(false); }}>
               {t('common:actions.cancel')}
             </Button>
             <Button onClick={handleCreate} disabled={createMutation.isPending || !formData.name}>
@@ -245,7 +245,7 @@ export function CategoryManagementPage() {
       {/* Edit Category Modal */}
       <Modal
         isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
+        onClose={() => { setIsEditModalOpen(false); }}
         title={t('common:catalog.categories.edit')}
       >
         <div className="space-y-4">
@@ -255,7 +255,7 @@ export function CategoryManagementPage() {
             </label>
             <Input
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) => { setFormData({ ...formData, name: e.target.value }); }}
               placeholder={t('common:catalog.categories.name')}
             />
           </div>
@@ -267,7 +267,7 @@ export function CategoryManagementPage() {
             <Select
               value={formData.parent_id?.toString() || ''}
               onChange={(e) =>
-                setFormData({ ...formData, parent_id: e.target.value ? Number(e.target.value) : null })
+                { setFormData({ ...formData, parent_id: e.target.value ? Number(e.target.value) : null }); }
               }
             >
               <option value="">{t('common:catalog.categories.rootCategory')}</option>
@@ -288,7 +288,7 @@ export function CategoryManagementPage() {
             </label>
             <textarea
               value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              onChange={(e) => { setFormData({ ...formData, description: e.target.value }); }}
               placeholder={t('common:catalog.categories.description')}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               rows={3}
@@ -296,7 +296,7 @@ export function CategoryManagementPage() {
           </div>
 
           <div className="flex justify-end gap-2 mt-6">
-            <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>
+            <Button variant="outline" onClick={() => { setIsEditModalOpen(false); }}>
               {t('common:actions.cancel')}
             </Button>
             <Button onClick={handleUpdate} disabled={updateMutation.isPending || !formData.name}>
@@ -309,7 +309,7 @@ export function CategoryManagementPage() {
       {/* Delete Confirmation Dialog */}
       <Modal
         isOpen={isDeleteDialogOpen}
-        onClose={() => setIsDeleteDialogOpen(false)}
+        onClose={() => { setIsDeleteDialogOpen(false); }}
         title={t('common:actions.delete')}
       >
         <div className="space-y-4">
@@ -325,7 +325,7 @@ export function CategoryManagementPage() {
           )}
 
           <div className="flex justify-end gap-2 mt-6">
-            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
+            <Button variant="outline" onClick={() => { setIsDeleteDialogOpen(false); }}>
               {t('common:actions.cancel')}
             </Button>
             <Button

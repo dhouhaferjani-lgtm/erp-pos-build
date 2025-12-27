@@ -213,7 +213,7 @@ export function CategoriesPage() {
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog
         isOpen={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
+        onClose={() => { setDeleteDialogOpen(false); }}
         onConfirm={handleDeleteConfirm}
         title={t('inventory:categories.deleteDialog.title')}
         message={

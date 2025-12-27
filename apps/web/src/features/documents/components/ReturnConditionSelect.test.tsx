@@ -45,7 +45,7 @@ describe('ReturnConditionSelect', () => {
   it('shows selected value', () => {
     render(<ReturnConditionSelect value="used" onChange={vi.fn()} />)
 
-    const select = screen.getByRole('combobox') as HTMLSelectElement
+    const select = screen.getByRole('combobox')
     expect(select.value).toBe('used')
   })
 

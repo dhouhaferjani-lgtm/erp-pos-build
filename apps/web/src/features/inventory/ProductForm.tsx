@@ -253,7 +253,7 @@ export function ProductForm() {
               </label>
               <CategorySelect
                 value={categoryId}
-                onChange={(id) => setValue('category_id', id)}
+                onChange={(id) => { setValue('category_id', id); }}
                 className="mt-1"
               />
             </div>

@@ -48,7 +48,7 @@ describe('ReturnReasonSelect', () => {
   it('shows selected value', () => {
     render(<ReturnReasonSelect value="warranty" onChange={vi.fn()} />)
 
-    const select = screen.getByRole('combobox') as HTMLSelectElement
+    const select = screen.getByRole('combobox')
     expect(select.value).toBe('warranty')
   })
 

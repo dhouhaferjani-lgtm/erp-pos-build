@@ -46,7 +46,7 @@ export function CategoryTree({
             isSelected && 'bg-blue-50 text-blue-700 hover:bg-blue-100'
           )}
           style={{ paddingInlineStart: `${level * 16 + 8}px` }}
-          onClick={() => onSelect(category)}
+          onClick={() => { onSelect(category); }}
           role="button"
           tabIndex={0}
           onKeyDown={(e) => {
@@ -58,7 +58,7 @@ export function CategoryTree({
         >
           {hasChildren ? (
             <button
-              onClick={(e) => toggleExpand(category.id, e)}
+              onClick={(e) => { toggleExpand(category.id, e); }}
               className="p-0.5 hover:bg-gray-200 rounded shrink-0"
               aria-label={isExpanded ? 'Collapse' : 'Expand'}
             >

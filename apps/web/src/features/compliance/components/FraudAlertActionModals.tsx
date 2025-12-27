@@ -80,7 +80,7 @@ export function AssignAlertModal({ alert, onClose }: AssignModalProps) {
               <select
                 id="assignee"
                 value={selectedUserId}
-                onChange={(e) => setSelectedUserId(e.target.value)}
+                onChange={(e) => { setSelectedUserId(e.target.value); }}
                 className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 required
               >
@@ -176,7 +176,7 @@ export function DismissAlertModal({ alert, onClose }: DismissModalProps) {
             <textarea
               id="dismissNotes"
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={(e) => { setNotes(e.target.value); }}
               placeholder={t('compliance:fraudAlerts.modals.dismiss.notesPlaceholder')}
               rows={4}
               className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
@@ -266,7 +266,7 @@ export function ResolveAlertModal({ alert, onClose }: ResolveModalProps) {
             <textarea
               id="resolveNotes"
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={(e) => { setNotes(e.target.value); }}
               placeholder={t('compliance:fraudAlerts.modals.resolve.notesPlaceholder')}
               rows={4}
               className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"

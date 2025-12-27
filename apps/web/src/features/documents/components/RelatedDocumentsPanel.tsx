@@ -236,7 +236,7 @@ export function RelatedDocumentsPanel({
       {/* Header */}
       <button
         type="button"
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={() => { setIsExpanded(!isExpanded); }}
         className="flex w-full items-center justify-between p-4 text-start hover:bg-gray-50 transition-colors"
       >
         <h2 className="text-lg font-semibold text-gray-900">

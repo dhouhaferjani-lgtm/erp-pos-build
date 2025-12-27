@@ -285,7 +285,7 @@ export function FraudAlertsPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-end text-sm font-medium">
                       <div className="flex items-center justify-end gap-2">
                         <button
-                          onClick={() => setSelectedAlert(alert)}
+                          onClick={() => { setSelectedAlert(alert); }}
                           className="text-blue-600 hover:text-blue-900"
                           title={t('compliance:fraudAlerts.actions.view')}
                         >
@@ -293,7 +293,7 @@ export function FraudAlertsPage() {
                         </button>
                         {alert.status === 'open' && (
                           <button
-                            onClick={() => setActionModal({ type: 'assign', alert })}
+                            onClick={() => { setActionModal({ type: 'assign', alert }); }}
                             className="text-purple-600 hover:text-purple-900"
                             title={t('compliance:fraudAlerts.actions.assign')}
                           >
@@ -303,14 +303,14 @@ export function FraudAlertsPage() {
                         {alert.status !== 'dismissed' && alert.status !== 'resolved' && (
                           <>
                             <button
-                              onClick={() => setActionModal({ type: 'dismiss', alert })}
+                              onClick={() => { setActionModal({ type: 'dismiss', alert }); }}
                               className="text-gray-600 hover:text-gray-900"
                               title={t('compliance:fraudAlerts.actions.dismiss')}
                             >
                               <XCircle className="h-4 w-4" />
                             </button>
                             <button
-                              onClick={() => setActionModal({ type: 'resolve', alert })}
+                              onClick={() => { setActionModal({ type: 'resolve', alert }); }}
                               className="text-green-600 hover:text-green-900"
                               title={t('compliance:fraudAlerts.actions.resolve')}
                             >
@@ -332,14 +332,14 @@ export function FraudAlertsPage() {
           <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
             <div className="flex-1 flex justify-between sm:hidden">
               <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                onClick={() => { setCurrentPage((p) => Math.max(1, p - 1)); }}
                 disabled={currentPage === 1}
                 className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
               >
                 {t('common:pagination.previous')}
               </button>
               <button
-                onClick={() => setCurrentPage((p) => Math.min(alertsData.last_page, p + 1))}
+                onClick={() => { setCurrentPage((p) => Math.min(alertsData.last_page, p + 1)); }}
                 disabled={currentPage === alertsData.last_page}
                 className="ms-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
               >
@@ -359,7 +359,7 @@ export function FraudAlertsPage() {
               <div>
                 <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
                   <button
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    onClick={() => { setCurrentPage((p) => Math.max(1, p - 1)); }}
                     disabled={currentPage === 1}
                     className="relative inline-flex items-center px-2 py-2 rounded-s-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
                   >
@@ -415,7 +415,7 @@ export function FraudAlertsPage() {
                       return (
                         <button
                           key={page}
-                          onClick={() => setCurrentPage(page)}
+                          onClick={() => { setCurrentPage(page); }}
                           className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
                             currentPage === page
                               ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
@@ -428,7 +428,7 @@ export function FraudAlertsPage() {
                     })
                   })()}
                   <button
-                    onClick={() => setCurrentPage((p) => Math.min(alertsData.last_page, p + 1))}
+                    onClick={() => { setCurrentPage((p) => Math.min(alertsData.last_page, p + 1)); }}
                     disabled={currentPage === alertsData.last_page}
                     className="relative inline-flex items-center px-2 py-2 rounded-e-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
                   >
@@ -443,26 +443,26 @@ export function FraudAlertsPage() {
 
       {/* Detail Modal */}
       {selectedAlert && (
-        <FraudAlertDetailModal alert={selectedAlert} onClose={() => setSelectedAlert(null)} />
+        <FraudAlertDetailModal alert={selectedAlert} onClose={() => { setSelectedAlert(null); }} />
       )}
 
       {/* Action Modals */}
       {actionModal.type === 'assign' && actionModal.alert && (
         <AssignAlertModal
           alert={actionModal.alert}
-          onClose={() => setActionModal({ type: null, alert: null })}
+          onClose={() => { setActionModal({ type: null, alert: null }); }}
         />
       )}
       {actionModal.type === 'dismiss' && actionModal.alert && (
         <DismissAlertModal
           alert={actionModal.alert}
-          onClose={() => setActionModal({ type: null, alert: null })}
+          onClose={() => { setActionModal({ type: null, alert: null }); }}
         />
       )}
       {actionModal.type === 'resolve' && actionModal.alert && (
         <ResolveAlertModal
           alert={actionModal.alert}
-          onClose={() => setActionModal({ type: null, alert: null })}
+          onClose={() => { setActionModal({ type: null, alert: null }); }}
         />
       )}
     </div>

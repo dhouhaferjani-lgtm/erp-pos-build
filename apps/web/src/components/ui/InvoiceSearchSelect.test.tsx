@@ -256,7 +256,7 @@ describe('InvoiceSearchSelect', () => {
       expect(screen.getByPlaceholderText(/Search by invoice number or partner/i)).toBeInTheDocument()
     })
 
-    const searchInput = screen.getByPlaceholderText(/Search by invoice number or partner/i) as HTMLInputElement
+    const searchInput = screen.getByPlaceholderText(/Search by invoice number or partner/i)
     await user.type(searchInput, 'INV-00001')
 
     expect(searchInput.value).toBe('INV-00001')
@@ -274,7 +274,7 @@ describe('InvoiceSearchSelect', () => {
       expect(screen.getByPlaceholderText(/Search by invoice number or partner/i)).toBeInTheDocument()
     })
 
-    const searchInput = screen.getByPlaceholderText(/Search by invoice number or partner/i) as HTMLInputElement
+    const searchInput = screen.getByPlaceholderText(/Search by invoice number or partner/i)
     await user.type(searchInput, 'test')
 
     expect(searchInput.value).toBe('test')

@@ -63,7 +63,7 @@ export function PaymentMethodsPage() {
       return t('treasury:paymentMethods.feeTypes.none')
     }
     if (method.fee_type === 'fixed' && method.fixed_fee_amount) {
-      return `${method.fixed_fee_amount}`
+      return method.fixed_fee_amount
     }
     if (method.fee_type === 'percentage' && method.variable_fee_percentage) {
       return `${method.variable_fee_percentage}%`

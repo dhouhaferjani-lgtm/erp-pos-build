@@ -277,7 +277,7 @@ export function CreateCreditNotePage() {
             <div className="flex gap-4">
               <button
                 type="button"
-                onClick={() => setCreditMode('invoice')}
+                onClick={() => { setCreditMode('invoice'); }}
                 className={`flex-1 rounded-lg border-2 p-4 text-start transition-all ${
                   creditMode === 'invoice'
                     ? 'border-blue-500 bg-blue-50'
@@ -299,7 +299,7 @@ export function CreateCreditNotePage() {
 
               <button
                 type="button"
-                onClick={() => setCreditMode('customer')}
+                onClick={() => { setCreditMode('customer'); }}
                 className={`flex-1 rounded-lg border-2 p-4 text-start transition-all ${
                   creditMode === 'customer'
                     ? 'border-blue-500 bg-blue-50'
@@ -445,7 +445,7 @@ export function CreateCreditNotePage() {
 
                 <button
                   type="button"
-                  onClick={() => setLineMode('partial')}
+                  onClick={() => { setLineMode('partial'); }}
                   className={`flex-1 rounded-lg border-2 p-4 text-start transition-all ${
                     lineMode === 'partial'
                       ? 'border-blue-500 bg-blue-50'
@@ -493,7 +493,7 @@ export function CreateCreditNotePage() {
                               <input
                                 type="checkbox"
                                 checked={isSelected}
-                                onChange={() => toggleLineSelection(line.id)}
+                                onChange={() => { toggleLineSelection(line.id); }}
                                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                               />
                             </td>
@@ -508,7 +508,7 @@ export function CreateCreditNotePage() {
                                   min="1"
                                   max={line.quantity}
                                   value={creditQty}
-                                  onChange={(e) => updateLineQuantity(line.id, parseInt(e.target.value))}
+                                  onChange={(e) => { updateLineQuantity(line.id, parseInt(e.target.value)); }}
                                   className="w-20 rounded border border-gray-300 px-2 py-1 text-end"
                                 />
                               ) : (

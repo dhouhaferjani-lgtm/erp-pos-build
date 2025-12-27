@@ -192,7 +192,7 @@ describe('DeliveryNoteSearchSelect', () => {
   it('shows loading state', async () => {
     const user = userEvent.setup()
     vi.mocked(api.api.get).mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve({ data: { data: [] } }), 100))
+      () => new Promise((resolve) => setTimeout(() => { resolve({ data: { data: [] } }); }, 100))
     )
 
     renderComponent()

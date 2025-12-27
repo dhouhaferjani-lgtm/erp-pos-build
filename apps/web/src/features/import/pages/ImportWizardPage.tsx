@@ -760,7 +760,7 @@ export function ImportWizardPage() {
       {/* Partial import confirmation dialog */}
       <ConfirmDialog
         isOpen={showPartialImportDialog}
-        onClose={() => setShowPartialImportDialog(false)}
+        onClose={() => { setShowPartialImportDialog(false); }}
         onConfirm={handleConfirmPartialImport}
         title={t('wizard.confirmPartialImport')}
         message={t('wizard.partialImportDescription', {
