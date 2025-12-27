@@ -5,13 +5,17 @@ declare(strict_types=1);
 namespace App\Modules\Document\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Application\DTOs\DocumentData;
 use App\Modules\Document\Application\Services\CreditNoteService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\CreditNoteReason;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Services\DocumentPostingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rules\Enum;
 
 class CreditNoteController extends Controller
@@ -19,6 +23,7 @@ class CreditNoteController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly CreditNoteService $creditNoteService,
+        private readonly DocumentPostingService $postingService,
     ) {}
 
     /**
@@ -141,6 +146,156 @@ class CreditNoteController extends Controller
                     'message' => $e->getMessage(),
                 ],
             ], 422);
+        }
+    }
+
+    /**
+     * Confirm a credit note (Draft -> Confirmed).
+     *
+     * Confirming a credit note makes it ready for posting.
+     * The credit note remains editable until posted.
+     *
+     * POST /api/v1/credit-notes/{id}/confirm
+     */
+    public function confirm(string $id): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $tenantId = $company->tenant_id;
+
+        // Initial existence check (without lock - for fast 404 response)
+        $exists = Document::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('type', DocumentType::CreditNote)
+            ->where('id', $id)
+            ->exists();
+
+        if (! $exists) {
+            return response()->json([
+                'error' => [
+                    'code' => 'CREDIT_NOTE_NOT_FOUND',
+                    'message' => 'Credit note not found',
+                ],
+            ], 404);
+        }
+
+        try {
+            $creditNote = DB::transaction(function () use ($tenantId, $companyId, $id): Document {
+                // Re-fetch with pessimistic lock inside transaction to prevent race conditions
+                $lockedDocument = Document::where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
+                    ->where('type', DocumentType::CreditNote)
+                    ->lockForUpdate()
+                    ->find($id);
+
+                if ($lockedDocument === null) {
+                    throw new \DomainException('Credit note not found');
+                }
+
+                // Check status inside the lock - this is the idempotency check
+                if (! $lockedDocument->isDraft()) {
+                    // Already confirmed - return silently (idempotent)
+                    if ($lockedDocument->status === DocumentStatus::Confirmed) {
+                        return $lockedDocument;
+                    }
+                    throw new \DomainException('Only draft credit notes can be confirmed. Current status: '.$lockedDocument->status->value);
+                }
+
+                // For credit notes, simple status change (posting creates GL entries)
+                $lockedDocument->update([
+                    'status' => DocumentStatus::Confirmed,
+                    'confirmed_at' => now(),
+                    'confirmed_by' => auth()->id(),
+                ]);
+
+                return $lockedDocument;
+            });
+        } catch (\DomainException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'INVALID_STATUS_TRANSITION',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        }
+
+        // Reload with relations
+        $creditNote->load(['partner', 'sourceDocument', 'lines']);
+
+        return response()->json([
+            'data' => $this->formatCreditNote($creditNote),
+            'message' => 'Credit note confirmed successfully',
+        ]);
+    }
+
+    /**
+     * Post a credit note (Confirmed -> Posted).
+     *
+     * Posting makes the credit note final and immutable. For fiscal documents,
+     * this creates an entry in the SHA-256 hash chain for compliance.
+     *
+     * The credit note becomes:
+     * - Fiscally sealed (cannot be modified)
+     * - Part of the hash chain (tamper-proof)
+     * - Ready for GL entry creation (reverses invoice GL entries)
+     *
+     * POST /api/v1/credit-notes/{id}/post
+     */
+    public function post(string $id): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $tenantId = $company->tenant_id;
+
+        $creditNote = Document::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('type', DocumentType::CreditNote)
+            ->find($id);
+
+        if ($creditNote === null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'CREDIT_NOTE_NOT_FOUND',
+                    'message' => 'Credit note not found',
+                ],
+            ], 404);
+        }
+
+        if (! $creditNote->isConfirmed()) {
+            return response()->json([
+                'error' => [
+                    'code' => 'CREDIT_NOTE_NOT_CONFIRMED',
+                    'message' => 'Only confirmed credit notes can be posted. Current status: '.$creditNote->status->value,
+                ],
+            ], 422);
+        }
+
+        try {
+            $postedCreditNote = $this->postingService->post($creditNote);
+
+            return response()->json([
+                'data' => DocumentData::fromModel($postedCreditNote),
+                'meta' => [
+                    'timestamp' => now()->toIso8601String(),
+                    'fiscal_hash' => $postedCreditNote->fiscal_hash,
+                    'chain_sequence' => $postedCreditNote->chain_sequence,
+                ],
+                'message' => 'Credit note posted successfully',
+            ]);
+        } catch (\DomainException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'POSTING_FAILED',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'CONFIGURATION_ERROR',
+                    'message' => $e->getMessage(),
+                ],
+            ], 500);
         }
     }
 

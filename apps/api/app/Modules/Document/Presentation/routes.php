@@ -186,14 +186,13 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:credit-notes.create')
         ->name('credit-notes.store');
 
-    // Credit note confirm/post use DocumentController (CreditNoteController doesn't have these methods yet)
-    Route::post('/credit-notes/{creditNote}/confirm', function (Request $request, string $creditNote) {
-        return app(DocumentController::class)->confirm($request, DocumentType::CreditNote, $creditNote);
-    })->middleware('can:credit-notes.create')->name('credit-notes.confirm');
+    Route::post('/credit-notes/{id}/confirm', [CreditNoteController::class, 'confirm'])
+        ->middleware('can:credit-notes.create')
+        ->name('credit-notes.confirm');
 
-    Route::post('/credit-notes/{creditNote}/post', function (Request $request, string $creditNote) {
-        return app(DocumentController::class)->post($request, DocumentType::CreditNote, $creditNote);
-    })->middleware('can:credit-notes.post')->name('credit-notes.post');
+    Route::post('/credit-notes/{id}/post', [CreditNoteController::class, 'post'])
+        ->middleware('can:credit-notes.post')
+        ->name('credit-notes.post');
 
     Route::post('/credit-notes/{creditNote}/cancel', [RefundController::class, 'cancelCreditNote'])
         ->middleware('can:credit-notes.cancel')
