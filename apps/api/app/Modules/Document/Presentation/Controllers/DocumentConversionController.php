@@ -6,14 +6,15 @@ namespace App\Modules\Document\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Document\Domain\Document;
-use App\Modules\Document\Domain\Services\DocumentConversionService;
+use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class DocumentConversionController extends Controller
 {
     public function __construct(
-        private readonly DocumentConversionService $conversionService
+        private readonly DocumentConverterRegistry $converterRegistry
     ) {}
 
     /**
@@ -24,7 +25,7 @@ class DocumentConversionController extends Controller
         $quote = Document::findOrFail($id);
 
         try {
-            $order = $this->conversionService->convertQuoteToOrder($quote);
+            $order = $this->converterRegistry->convert($quote, DocumentType::SalesOrder);
 
             return response()->json([
                 'data' => $order->load(['lines', 'partner', 'vehicleContext']),
@@ -58,11 +59,10 @@ class DocumentConversionController extends Controller
         $order = Document::findOrFail($id);
 
         try {
-            $invoice = $this->conversionService->convertOrderToInvoice(
-                $order,
-                (bool) $request->input('partial', false),
-                $request->input('line_ids')
-            );
+            $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice, [
+                'partial' => (bool) $request->input('partial', false),
+                'line_ids' => $request->input('line_ids'),
+            ]);
 
             return response()->json([
                 'data' => $invoice->load(['lines', 'partner', 'vehicleContext']),
@@ -90,7 +90,7 @@ class DocumentConversionController extends Controller
         $order = Document::findOrFail($id);
 
         try {
-            $delivery = $this->conversionService->convertOrderToDelivery($order);
+            $delivery = $this->converterRegistry->convert($order, DocumentType::DeliveryNote);
 
             return response()->json([
                 'data' => $delivery->load(['lines', 'partner', 'vehicleContext']),
@@ -111,7 +111,11 @@ class DocumentConversionController extends Controller
         $quote = Document::findOrFail($id);
 
         try {
-            $isExpired = $this->conversionService->isQuoteExpired($quote);
+            if ($quote->type !== DocumentType::Quote) {
+                throw new \InvalidArgumentException('Document must be a quote');
+            }
+
+            $isExpired = $quote->valid_until !== null && $quote->valid_until->isPast();
 
             return response()->json([
                 'data' => [
@@ -134,12 +138,17 @@ class DocumentConversionController extends Controller
         $order = Document::findOrFail($id);
 
         try {
-            $isFullyInvoiced = $this->conversionService->isOrderFullyInvoiced($order);
+            if ($order->type !== DocumentType::SalesOrder) {
+                throw new \InvalidArgumentException('Document must be a sales order');
+            }
+
+            $payload = $order->payload ?? [];
+            $isFullyInvoiced = $payload['fully_invoiced'] ?? false;
 
             return response()->json([
                 'data' => [
                     'fully_invoiced' => $isFullyInvoiced,
-                    'invoice_ids' => $order->payload['invoice_ids'] ?? [],
+                    'invoice_ids' => $payload['invoice_ids'] ?? [],
                 ],
             ]);
         } catch (\Exception $e) {
@@ -162,32 +171,32 @@ class DocumentConversionController extends Controller
             'delivery_note_ids.*' => 'uuid|exists:documents,id',
         ]);
 
-        /** @var array<string> $deliveryNoteIds */
-        $deliveryNoteIds = $request->input('delivery_note_ids');
+        /** @var array<int, string> $deliveryNoteIds */
+        $deliveryNoteIds = array_values($request->input('delivery_note_ids'));
 
-        // Load delivery notes with lines
-        $deliveryNotes = Document::whereIn('id', $deliveryNoteIds)
-            ->with('lines')
-            ->get()
-            ->all();
+        // Load first delivery note to use as source
+        $firstDn = Document::with('lines')->find($deliveryNoteIds[0]);
 
-        if (count($deliveryNotes) !== count($deliveryNoteIds)) {
+        if ($firstDn === null) {
             return response()->json([
                 'error' => [
                     'code' => 'DELIVERY_NOTES_NOT_FOUND',
-                    'message' => 'One or more delivery notes were not found',
+                    'message' => 'First delivery note was not found',
                 ],
             ], 404);
         }
 
         try {
-            $invoice = $this->conversionService->createInvoiceFromDeliveryNotes($deliveryNotes);
+            // Use registry to convert DN(s) to invoice with consolidation option
+            $invoice = $this->converterRegistry->convert($firstDn, DocumentType::Invoice, [
+                'delivery_note_ids' => $deliveryNoteIds,
+            ]);
 
             return response()->json([
                 'data' => $invoice->load(['lines', 'partner', 'vehicleContext']),
                 'message' => 'Invoice created from delivery notes successfully',
                 'meta' => [
-                    'consolidated_delivery_notes' => count($deliveryNotes),
+                    'consolidated_delivery_notes' => count($deliveryNoteIds),
                     'source_delivery_note_ids' => $deliveryNoteIds,
                 ],
             ], 201);
