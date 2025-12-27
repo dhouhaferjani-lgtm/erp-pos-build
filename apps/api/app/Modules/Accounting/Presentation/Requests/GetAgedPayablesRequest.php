@@ -13,15 +13,11 @@ use Illuminate\Foundation\Http\FormRequest;
  *
  * Validates query parameters for retrieving an aged payables report:
  * - as_of_date: Optional snapshot date (defaults to today if not provided)
- *
- * @package App\Modules\Accounting\Presentation\Requests
  */
 class GetAgedPayablesRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
-     *
-     * @return bool
      */
     public function authorize(): bool
     {

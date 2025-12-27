@@ -13,7 +13,6 @@ use App\Modules\Service\Domain\Service;
 use App\Modules\Service\Domain\ServiceCategory;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Collection;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 

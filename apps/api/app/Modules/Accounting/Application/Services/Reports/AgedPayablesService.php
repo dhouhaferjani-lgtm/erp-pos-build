@@ -11,7 +11,6 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 
 /**
  * AgedPayablesService
@@ -25,19 +24,18 @@ use Illuminate\Support\Facades\DB;
  * - Over 90 days
  *
  * Aging is calculated from the invoice due date (or invoice date if no due date).
- *
- * @package App\Modules\Accounting\Application\Services\Reports
  */
 final readonly class AgedPayablesService
 {
     private const DECIMAL_SCALE = 4;
+
     private const ZERO_THRESHOLD = '0.0001';
 
     /**
      * Generate aged payables report.
      *
-     * @param string $companyId The company ID
-     * @param Carbon|null $asOfDate The snapshot date (defaults to today)
+     * @param  string  $companyId  The company ID
+     * @param  Carbon|null  $asOfDate  The snapshot date (defaults to today)
      * @return AgedPayablesData The aged payables report
      */
     public function generate(
@@ -90,8 +88,6 @@ final readonly class AgedPayablesService
      * - Have a remaining balance > 0
      * - Invoice date <= as_of_date
      *
-     * @param string $companyId
-     * @param Carbon $asOfDate
      * @return Collection<Document>
      */
     private function getOutstandingInvoices(string $companyId, Carbon $asOfDate): Collection
@@ -119,8 +115,7 @@ final readonly class AgedPayablesService
      * - days_90: 91-120 days
      * - over_90: >120 days
      *
-     * @param Collection<Document> $invoices
-     * @param Carbon $asOfDate
+     * @param  Collection<Document>  $invoices
      * @return Collection<array>
      */
     private function calculateVendorAging(Collection $invoices, Carbon $asOfDate): Collection
@@ -152,7 +147,7 @@ final readonly class AgedPayablesService
 
                 $total = array_reduce(
                     $buckets,
-                    fn($carry, $amount) => bcadd($carry, $amount, self::DECIMAL_SCALE),
+                    fn ($carry, $amount) => bcadd($carry, $amount, self::DECIMAL_SCALE),
                     '0.0000'
                 );
 
@@ -173,7 +168,7 @@ final readonly class AgedPayablesService
     /**
      * Determine which aging bucket a balance belongs to based on days overdue.
      *
-     * @param int $daysOverdue Positive = overdue, Negative = not due yet
+     * @param  int  $daysOverdue  Positive = overdue, Negative = not due yet
      * @return string The bucket key ('current', 'days_30', etc.)
      */
     private function determineBucket(int $daysOverdue): string
@@ -200,7 +195,7 @@ final readonly class AgedPayablesService
     /**
      * Calculate total amounts across all aging buckets.
      *
-     * @param array<AgedPayablesLineData> $lines
+     * @param  array<AgedPayablesLineData>  $lines
      * @return array<string, string>
      */
     private function calculateTotals(array $lines): array

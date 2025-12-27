@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Document\Domain\Services;
 
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentVehicleContext;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use Illuminate\Support\Facades\DB;
@@ -95,7 +96,6 @@ class RefundService
                 'company_id' => $invoice->company_id,
                 'location_id' => $invoice->location_id,
                 'partner_id' => $invoice->partner_id,
-                'vehicle_id' => $invoice->vehicle_id,
                 'type' => DocumentType::CreditNote,
                 'status' => DocumentStatus::Draft,
                 'document_number' => $numberingService->generateNumber(
@@ -115,6 +115,17 @@ class RefundService
                     'credit_type' => 'full',
                 ],
             ]);
+
+            // Copy vehicle context if exists
+            if ($invoice->vehicleContext) {
+                DocumentVehicleContext::create([
+                    'document_id' => $creditNote->id,
+                    'vehicle_id' => $invoice->vehicleContext->vehicle_id,
+                    'vehicle_snapshot' => $invoice->vehicleContext->vehicle_snapshot,
+                    'mileage_at_service' => $invoice->vehicleContext->mileage_at_service,
+                    'context_data' => $invoice->vehicleContext->context_data,
+                ]);
+            }
 
             // Copy all lines
             foreach ($invoice->lines as $line) {
@@ -176,7 +187,6 @@ class RefundService
                 'company_id' => $invoice->company_id,
                 'location_id' => $invoice->location_id,
                 'partner_id' => $invoice->partner_id,
-                'vehicle_id' => $invoice->vehicle_id,
                 'type' => DocumentType::CreditNote,
                 'status' => DocumentStatus::Draft,
                 'document_number' => $numberingService->generateNumber(
@@ -192,6 +202,17 @@ class RefundService
                     'credit_type' => 'partial',
                 ],
             ]);
+
+            // Copy vehicle context if exists
+            if ($invoice->vehicleContext) {
+                DocumentVehicleContext::create([
+                    'document_id' => $creditNote->id,
+                    'vehicle_id' => $invoice->vehicleContext->vehicle_id,
+                    'vehicle_snapshot' => $invoice->vehicleContext->vehicle_snapshot,
+                    'mileage_at_service' => $invoice->vehicleContext->mileage_at_service,
+                    'context_data' => $invoice->vehicleContext->context_data,
+                ]);
+            }
 
             $subtotal = '0.00';
             $taxAmount = '0.00';

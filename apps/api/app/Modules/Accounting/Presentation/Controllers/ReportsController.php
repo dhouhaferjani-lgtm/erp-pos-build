@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\Accounting\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Modules\Accounting\Application\DTOs\Reports\AgedPayablesData;
-use App\Modules\Accounting\Application\DTOs\Reports\AgedReceivablesData;
 use App\Modules\Accounting\Application\DTOs\Reports\BalanceSheetData;
 use App\Modules\Accounting\Application\DTOs\Reports\ProfitLossData;
 use App\Modules\Accounting\Application\DTOs\Reports\TrialBalanceData;
@@ -59,8 +57,6 @@ use Illuminate\Http\JsonResponse;
  * - Laravel handles validation errors (422 responses)
  * - ModelNotFoundException for missing fiscal periods
  * - General exceptions logged and returned as 500
- *
- * @package App\Modules\Accounting\Presentation\Controllers
  */
 class ReportsController extends Controller
 {
@@ -114,8 +110,7 @@ class ReportsController extends Controller
      * - 404: Fiscal period not found
      * - 500: Internal server error
      *
-     * @param GetTrialBalanceRequest $request Validated request
-     * @return JsonResponse
+     * @param  GetTrialBalanceRequest  $request  Validated request
      *
      * @example
      * GET /api/v1/reports/trial-balance
@@ -196,9 +191,6 @@ class ReportsController extends Controller
      * 2. as_of_date parameter → use specified date
      * 3. Default → today
      *
-     * @param GetTrialBalanceRequest $request
-     * @param string $companyId
-     * @return Carbon
      * @throws ModelNotFoundException If fiscal period not found
      */
     private function resolveDateForTrialBalance(GetTrialBalanceRequest $request, string $companyId): Carbon
@@ -273,8 +265,7 @@ class ReportsController extends Controller
      * - 404: Fiscal period not found
      * - 500: Internal server error
      *
-     * @param GetProfitLossRequest $request Validated request
-     * @return JsonResponse
+     * @param  GetProfitLossRequest  $request  Validated request
      *
      * @example
      * GET /api/v1/reports/profit-loss?date_from=2025-01-01&date_to=2025-12-31
@@ -355,9 +346,8 @@ class ReportsController extends Controller
      * 1. fiscal_period_id → use period's start_date and end_date
      * 2. date_from + date_to parameters → use specified dates
      *
-     * @param GetProfitLossRequest $request
-     * @param string $companyId
      * @return array{start: Carbon, end: Carbon}
+     *
      * @throws ModelNotFoundException If fiscal period not found
      */
     private function resolveDateRangeForProfitLoss(GetProfitLossRequest $request, string $companyId): array
@@ -427,8 +417,7 @@ class ReportsController extends Controller
      * - 404: Fiscal period not found
      * - 500: Internal server error
      *
-     * @param GetBalanceSheetRequest $request Validated request
-     * @return JsonResponse
+     * @param  GetBalanceSheetRequest  $request  Validated request
      *
      * @example
      * GET /api/v1/reports/balance-sheet
@@ -508,9 +497,6 @@ class ReportsController extends Controller
      * 2. as_of_date parameter → use specified date
      * 3. Default → today
      *
-     * @param GetBalanceSheetRequest $request
-     * @param string $companyId
-     * @return Carbon
      * @throws ModelNotFoundException If fiscal period not found
      */
     private function resolveDateForBalanceSheet(GetBalanceSheetRequest $request, string $companyId): Carbon
@@ -546,8 +532,7 @@ class ReportsController extends Controller
      * Query Parameters:
      * - as_of_date: Snapshot date (YYYY-MM-DD format, defaults to today)
      *
-     * @param GetAgedReceivablesRequest $request Validated request
-     * @return JsonResponse
+     * @param  GetAgedReceivablesRequest  $request  Validated request
      */
     public function agedReceivables(GetAgedReceivablesRequest $request): JsonResponse
     {
@@ -595,8 +580,7 @@ class ReportsController extends Controller
      * Query Parameters:
      * - as_of_date: Snapshot date (YYYY-MM-DD format, defaults to today)
      *
-     * @param GetAgedPayablesRequest $request Validated request
-     * @return JsonResponse
+     * @param  GetAgedPayablesRequest  $request  Validated request
      */
     public function agedPayables(GetAgedPayablesRequest $request): JsonResponse
     {

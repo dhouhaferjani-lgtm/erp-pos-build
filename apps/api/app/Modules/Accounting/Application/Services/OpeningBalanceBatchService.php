@@ -48,7 +48,7 @@ class OpeningBalanceBatchService
         if ($existingUnlocked !== null) {
             throw new RuntimeException(
                 "Company already has an unlocked {$type->label()} batch. ".
-                "Please complete or delete the existing batch first."
+                'Please complete or delete the existing batch first.'
             );
         }
 
@@ -127,7 +127,8 @@ class OpeningBalanceBatchService
     /**
      * Add import rows to a batch.
      *
-     * @param array<int, array<string, mixed>> $rows Array of raw CSV rows
+     * @param  array<int, array<string, mixed>>  $rows  Array of raw CSV rows
+     *
      * @throws RuntimeException If batch is not editable
      */
     public function addImportRows(OpeningBalanceBatch $batch, array $rows): void
@@ -183,7 +184,8 @@ class OpeningBalanceBatchService
     /**
      * Update a single import row's mapped data.
      *
-     * @param array<string, mixed> $mappedData
+     * @param  array<string, mixed>  $mappedData
+     *
      * @throws RuntimeException If row is not editable
      */
     public function updateImportRow(OpeningBalanceImportRow $row, array $mappedData): void
@@ -209,7 +211,7 @@ class OpeningBalanceBatchService
     public function skipImportRow(OpeningBalanceImportRow $row): void
     {
         if ($row->isPosted()) {
-            throw new RuntimeException("Cannot skip a row that has already been posted.");
+            throw new RuntimeException('Cannot skip a row that has already been posted.');
         }
 
         $row->update(['status' => OpeningImportRowStatus::Skipped]);
@@ -262,7 +264,7 @@ class OpeningBalanceBatchService
         }
 
         if ($validCount === 0) {
-            throw new RuntimeException("Cannot validate batch: no valid rows to process.");
+            throw new RuntimeException('Cannot validate batch: no valid rows to process.');
         }
 
         $batch->update([
@@ -378,7 +380,7 @@ class OpeningBalanceBatchService
     /**
      * Update file reference for a batch (after file upload).
      *
-     * @param array<string, mixed> $fileReference
+     * @param  array<string, mixed>  $fileReference
      */
     public function updateFileReference(OpeningBalanceBatch $batch, array $fileReference): void
     {
@@ -394,7 +396,7 @@ class OpeningBalanceBatchService
     /**
      * Mark import rows with validation results.
      *
-     * @param array<string, array{valid: bool, errors: array<string, array<string>>, mapped_data: array<string, mixed>}> $validationResults
+     * @param  array<string, array{valid: bool, errors: array<string, array<string>>, mapped_data: array<string, mixed>}>  $validationResults
      */
     public function applyValidationResults(OpeningBalanceBatch $batch, array $validationResults): void
     {
@@ -420,7 +422,7 @@ class OpeningBalanceBatchService
     /**
      * Mark rows as posted with their entity IDs.
      *
-     * @param array<string, string> $rowEntityMap Map of row ID => entity ID
+     * @param  array<string, string>  $rowEntityMap  Map of row ID => entity ID
      */
     public function markRowsPosted(array $rowEntityMap): void
     {

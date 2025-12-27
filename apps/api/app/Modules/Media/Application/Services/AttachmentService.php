@@ -172,7 +172,7 @@ class AttachmentService
         $extension = $file->getClientOriginalExtension();
         $uniqueId = Str::uuid()->toString();
 
-        return $uniqueId . '.' . $extension;
+        return $uniqueId.'.'.$extension;
     }
 
     /**

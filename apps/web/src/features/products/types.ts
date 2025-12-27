@@ -28,17 +28,19 @@ export interface GetProductsParams {
   type?: ProductType
   active?: boolean
   per_page?: number
+  cursor?: string | null
 }
 
 export interface PaginatedProductsResponse {
   data: Product[]
   meta: {
-    current_page: number
     per_page: number
-    total: number
-    last_page: number
-    timestamp: string
-    request_id: string
+    has_more: boolean
+    total?: number
+  }
+  links: {
+    next: string | null
+    prev: string | null
   }
 }
 

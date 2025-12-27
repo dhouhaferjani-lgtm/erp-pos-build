@@ -191,7 +191,7 @@ class CountingReconciliationService
     /**
      * Find majority value (2 of 3 must match).
      *
-     * @param array<float> $counts
+     * @param  array<float>  $counts
      */
     private function findMajority(array $counts): ?float
     {

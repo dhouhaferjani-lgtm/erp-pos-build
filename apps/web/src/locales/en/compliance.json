@@ -1,0 +1,142 @@
+{
+  "fraudSettings": {
+    "title": "Fraud Detection Settings",
+    "description": "Configure automated fraud detection and alert thresholds for your company",
+    "notConfigured": {
+      "title": "Fraud detection not yet configured",
+      "description": "Using default settings. Configure thresholds and alert preferences to match your business needs."
+    },
+    "sections": {
+      "detection": "Detection Thresholds",
+      "alerts": "Alert Configuration",
+      "actions": "Automated Actions"
+    },
+    "fields": {
+      "threshold": {
+        "label": "Abandoned Draft Threshold",
+        "hint": "Number of abandoned drafts before triggering an alert (1-100)"
+      },
+      "timeWindow": {
+        "label": "Time Window (Days)",
+        "hint": "Detection period in days (1-365)"
+      },
+      "alertEnabled": {
+        "label": "Enable fraud detection alerts"
+      },
+      "emails": {
+        "label": "Alert Recipients",
+        "placeholder": "admin@company.com",
+        "hint": "Email addresses to notify when fraud patterns are detected"
+      },
+      "autoCounting": {
+        "label": "Auto-trigger inventory counting",
+        "hint": "Automatically create counting operations for flagged products"
+      },
+      "autoRestrict": {
+        "label": "Auto-restrict user access",
+        "hint": "Temporarily restrict access for flagged users (use with caution)"
+      }
+    },
+    "actions": {
+      "reset": "Reset to Defaults"
+    },
+    "messages": {
+      "updateSuccess": "Fraud detection settings updated successfully",
+      "resetSuccess": "Settings reset to defaults",
+      "confirmReset": "Are you sure you want to reset fraud detection settings to defaults?"
+    },
+    "errors": {
+      "thresholdRange": "Threshold must be between 1 and 100",
+      "timeWindowRange": "Time window must be between 1 and 365 days",
+      "invalidEmail": "Please enter a valid email address",
+      "duplicateEmail": "This email is already in the list"
+    }
+  },
+  "fraudAlerts": {
+    "title": "Fraud Alerts",
+    "description": "Monitor and investigate suspicious activity patterns",
+    "filters": {
+      "status": "Status",
+      "severity": "Severity",
+      "type": "Alert Type",
+      "dateRange": "Date Range"
+    },
+    "statuses": {
+      "open": "Open",
+      "investigating": "Investigating",
+      "dismissed": "Dismissed",
+      "resolved": "Resolved",
+      "all": "All Statuses"
+    },
+    "severities": {
+      "critical": "Critical",
+      "warning": "Warning",
+      "info": "Info",
+      "all": "All Severities"
+    },
+    "types": {
+      "high_abandonment": "High Abandonment",
+      "suspicious_items": "Suspicious Items",
+      "rapid_cycle": "Rapid Cycling",
+      "all": "All Types"
+    },
+    "table": {
+      "user": "User",
+      "type": "Type",
+      "severity": "Severity",
+      "detected": "Detected",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "actions": {
+      "view": "View Details",
+      "assign": "Assign",
+      "dismiss": "Dismiss",
+      "resolve": "Resolve",
+      "assignTo": "Assign to...",
+      "viewCounting": "View Counting"
+    },
+    "detail": {
+      "title": "Alert Details",
+      "description": "Description",
+      "detectedAt": "Detected At",
+      "flaggedProducts": "Flagged Products",
+      "metadata": "Additional Information",
+      "assignedTo": "Assigned To",
+      "resolvedAt": "Resolved At",
+      "resolutionNotes": "Resolution Notes",
+      "noProducts": "No products flagged",
+      "occurrenceCount": "{{count}} time",
+      "occurrenceCount_plural": "{{count}} times"
+    },
+    "modals": {
+      "assign": {
+        "title": "Assign Alert",
+        "selectUser": "Select an admin to investigate this alert"
+      },
+      "dismiss": {
+        "title": "Dismiss Alert",
+        "notesLabel": "Reason for dismissal",
+        "notesPlaceholder": "Explain why this alert is being dismissed as a false positive..."
+      },
+      "resolve": {
+        "title": "Resolve Alert",
+        "notesLabel": "Resolution notes",
+        "notesPlaceholder": "Document the investigation outcome and actions taken..."
+      }
+    },
+    "statistics": {
+      "totalAlerts": "Total Alerts",
+      "openAlerts": "Open",
+      "investigating": "Investigating",
+      "recentAlerts": "Last 7 Days"
+    },
+    "messages": {
+      "assignSuccess": "Alert assigned successfully",
+      "dismissSuccess": "Alert dismissed",
+      "resolveSuccess": "Alert resolved",
+      "noAlerts": "No fraud alerts found",
+      "loadingAlerts": "Loading alerts..."
+    }
+  }
+}

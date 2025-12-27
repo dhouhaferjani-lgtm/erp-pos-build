@@ -11,9 +11,9 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
+use App\Modules\Treasury\Domain\Events\PaymentAllocated;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
-use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -28,7 +28,7 @@ class PaymentAllocationService
     /**
      * Preview how a payment will be allocated
      *
-     * @param array<int, array{document_id: string, amount: string}>|null $manualAllocations
+     * @param  array<int, array{document_id: string, amount: string}>|null  $manualAllocations
      * @return array{
      *     allocations: array<int, array{document_id: string, document_number: string, amount: string, tolerance_writeoff: string|null}>,
      *     total_to_invoices: string,
@@ -56,7 +56,7 @@ class PaymentAllocationService
     /**
      * Apply allocation for a payment
      *
-     * @param array<int, array{document_id: string, amount: string}>|null $manualAllocations
+     * @param  array<int, array{document_id: string, amount: string}>|null  $manualAllocations
      * @return array{success: bool, allocations: array<int, array{document_id: string, amount: string}>, journal_entry_id: string|null, advance_journal_entry_id: string|null, excess_amount: string}
      */
     public function applyAllocation(
@@ -237,8 +237,21 @@ class PaymentAllocationService
                 'journal_entry_id' => $journalEntryId,
                 'advance_journal_entry_id' => $advanceJournalEntryId,
                 'excess_amount' => $excessAmount,
+                'total_allocated' => $totalAllocated,
             ];
         });
+
+        // Dispatch event after transaction completes
+        event(new PaymentAllocated(
+            paymentId: $payment->id,
+            tenantId: $payment->tenant_id,
+            companyId: $payment->company_id,
+            allocationMethod: $allocationMethod->value,
+            allocations: $result['allocations'],
+            totalAllocated: $result['total_allocated'],
+            excessAmount: $result['excess_amount'],
+            allocatedAt: now()->toIso8601String(),
+        ));
 
         return $result;
     }
@@ -281,7 +294,7 @@ class PaymentAllocationService
     /**
      * Preview automatic allocation (FIFO or Due Date)
      *
-     * @param Collection<int, Document> $openInvoices
+     * @param  Collection<int, Document>  $openInvoices
      * @return array{
      *     allocations: array<int, array{document_id: string, document_number: string, amount: string, tolerance_writeoff: string|null}>,
      *     total_to_invoices: string,
@@ -357,9 +370,9 @@ class PaymentAllocationService
         /** @phpstan-ignore-next-line argument.type */
         if (bccomp($remainingAmount, '0', 4) > 0) {
             // Check if any allocation has tolerance
-            $hasTolerance = collect($allocations)->contains(fn($a) => $a['tolerance_writeoff'] !== null);
+            $hasTolerance = collect($allocations)->contains(fn ($a) => $a['tolerance_writeoff'] !== null);
             $excessHandling = $hasTolerance ? 'tolerance_writeoff' : 'credit_balance';
-        } elseif (collect($allocations)->contains(fn($a) => $a['tolerance_writeoff'] !== null)) {
+        } elseif (collect($allocations)->contains(fn ($a) => $a['tolerance_writeoff'] !== null)) {
             $excessHandling = 'tolerance_writeoff';
         }
 
@@ -374,7 +387,7 @@ class PaymentAllocationService
     /**
      * Preview manual allocation
      *
-     * @param array<int, array{document_id: string, amount: string}> $manualAllocations
+     * @param  array<int, array{document_id: string, amount: string}>  $manualAllocations
      * @return array{
      *     allocations: array<int, array{document_id: string, document_number: string, amount: string, tolerance_writeoff: string|null}>,
      *     total_to_invoices: string,

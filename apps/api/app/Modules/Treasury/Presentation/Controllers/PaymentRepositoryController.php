@@ -184,7 +184,7 @@ class PaymentRepositoryController extends Controller
         return response()->json([
             'data' => $payments->map(fn (Payment $payment) => [
                 'id' => $payment->id,
-                'payment_number' => $payment->reference ?? 'PMT-' . substr($payment->id, 0, 8),
+                'payment_number' => $payment->reference ?? 'PMT-'.substr($payment->id, 0, 8),
                 'partner_id' => $payment->partner_id,
                 'partner_name' => $payment->partner?->name,
                 'payment_method_name' => $payment->paymentMethod?->name,

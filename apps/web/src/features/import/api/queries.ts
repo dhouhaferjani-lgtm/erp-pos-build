@@ -10,8 +10,9 @@ export const importKeys = {
   lists: () => [...importKeys.all, 'list'] as const,
   list: (filters: string) => [...importKeys.lists(), filters] as const,
   details: () => [...importKeys.all, 'detail'] as const,
-  detail: (id: number) => [...importKeys.details(), id] as const,
-  errors: (id: number) => [...importKeys.all, 'errors', id] as const,
+  detail: (id: string) => [...importKeys.details(), id] as const,
+  errors: (id: string) => [...importKeys.all, 'errors', id] as const,
+  preview: (id: string) => [...importKeys.all, 'preview', id] as const,
   wizard: ['migration-wizard'] as const,
   wizardOrder: () => [...importKeys.wizard, 'order'] as const,
   wizardStatus: () => [...importKeys.wizard, 'status'] as const,
@@ -28,7 +29,7 @@ export function useImportJobs() {
 }
 
 export function useImportJob(
-  id: number,
+  id: string,
   options?: {
     enabled?: boolean
     refetchInterval?: number | false
@@ -37,16 +38,24 @@ export function useImportJob(
   return useQuery({
     queryKey: importKeys.detail(id),
     queryFn: () => importApi.getJob(id),
-    enabled: options?.enabled ?? id > 0,
+    enabled: options?.enabled ?? id.length > 0,
     ...(options?.refetchInterval !== undefined && { refetchInterval: options.refetchInterval }),
   })
 }
 
-export function useImportErrors(jobId: number) {
+export function useImportErrors(jobId: string) {
   return useQuery({
     queryKey: importKeys.errors(jobId),
     queryFn: () => importApi.getErrors(jobId),
-    enabled: jobId > 0,
+    enabled: jobId.length > 0,
+  })
+}
+
+export function useImportPreview(jobId: string) {
+  return useQuery({
+    queryKey: importKeys.preview(jobId),
+    queryFn: () => importApi.getPreview(jobId),
+    enabled: jobId.length > 0,
   })
 }
 
@@ -102,7 +111,7 @@ export function useExecuteImport() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (jobId: number) => importApi.executeImport(jobId),
+    mutationFn: (jobId: string) => importApi.executeImport(jobId),
     onSuccess: (data) => {
       void queryClient.invalidateQueries({ queryKey: importKeys.detail(data.id) })
       void queryClient.invalidateQueries({ queryKey: importKeys.lists() })
@@ -120,7 +129,7 @@ export function useDeleteImport() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (jobId: number) => importApi.deleteJob(jobId),
+    mutationFn: (jobId: string) => importApi.deleteJob(jobId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: importKeys.lists() })
       toast.success(t('messages.deleted'))

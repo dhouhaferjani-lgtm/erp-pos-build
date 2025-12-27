@@ -89,8 +89,6 @@ use Illuminate\Support\Facades\DB;
  * - Uses ProfitLossService for retained earnings calculation
  * - Returns arrays (not DTOs) for flexibility
  * - Controller transforms to DTOs for API response
- *
- * @package App\Modules\Accounting\Application\Services\Reports
  */
 class BalanceSheetService
 {
@@ -129,10 +127,10 @@ class BalanceSheetService
      * 7. Verify accounting equation: assets = liabilities + equity
      * 8. Return formatted array
      *
-     * @param string $companyId Company UUID for multi-tenancy
-     * @param Carbon $asOfDate Point-in-time date for the balance sheet
-     * @param bool $includeZeroBalances Whether to include accounts with zero balance
-     * @param bool $includeHierarchy Whether to build hierarchical structure
+     * @param  string  $companyId  Company UUID for multi-tenancy
+     * @param  Carbon  $asOfDate  Point-in-time date for the balance sheet
+     * @param  bool  $includeZeroBalances  Whether to include accounts with zero balance
+     * @param  bool  $includeHierarchy  Whether to build hierarchical structure
      * @return array{
      *     assets: list<array{
      *         account_code: string,
@@ -254,9 +252,9 @@ class BalanceSheetService
      * - GROUP BY account to aggregate balances
      * - Calculate balance based on account type
      *
-     * @param string $companyId Company UUID
-     * @param AccountType $accountType Type of accounts to query (asset, liability, equity)
-     * @param Carbon $asOfDate As-of date for the balance sheet
+     * @param  string  $companyId  Company UUID
+     * @param  AccountType  $accountType  Type of accounts to query (asset, liability, equity)
+     * @param  Carbon  $asOfDate  As-of date for the balance sheet
      * @return Collection Collection of objects with account_id and balance
      */
     private function queryAccountBalances(
@@ -299,7 +297,7 @@ class BalanceSheetService
     /**
      * Load Account models and attach calculated balances.
      *
-     * @param Collection $balances Collection from queryAccountBalances
+     * @param  Collection  $balances  Collection from queryAccountBalances
      * @return Collection<Account> Account models with balance attached
      */
     private function loadAccountsWithBalances(Collection $balances): \Illuminate\Database\Eloquent\Collection
@@ -335,8 +333,8 @@ class BalanceSheetService
      * This is the cumulative result of all revenue and expense transactions
      * since the company's inception (or start of fiscal records).
      *
-     * @param string $companyId Company UUID
-     * @param Carbon $asOfDate As-of date for the calculation
+     * @param  string  $companyId  Company UUID
+     * @param  Carbon  $asOfDate  As-of date for the calculation
      * @return numeric-string Retained earnings amount
      */
     private function calculateRetainedEarnings(string $companyId, Carbon $asOfDate): string
@@ -361,8 +359,8 @@ class BalanceSheetService
      *
      * Uses AccountHierarchyService to build the tree structure.
      *
-     * @param Collection<Account> $accounts Accounts with calculated balances
-     * @param bool $includeZeroBalances Whether to include zero-balance accounts
+     * @param  Collection<Account>  $accounts  Accounts with calculated balances
+     * @param  bool  $includeZeroBalances  Whether to include zero-balance accounts
      * @return list<array> Hierarchical account lines
      */
     private function buildHierarchicalReport(Collection $accounts, bool $includeZeroBalances): array
@@ -381,10 +379,10 @@ class BalanceSheetService
         $this->hierarchyService->calculateSubtotals($tree);
 
         // Filter zero balances if requested
-        if (!$includeZeroBalances) {
+        if (! $includeZeroBalances) {
             $tree = $this->hierarchyService->filterTree(
                 $tree,
-                fn($node) => $this->isNonZero($node->balance),
+                fn ($node) => $this->isNonZero($node->balance),
                 keepEmptyParents: true // Keep parents even if they don't match, as long as children do
             );
         }
@@ -393,14 +391,14 @@ class BalanceSheetService
         $flatTree = $this->hierarchyService->flattenTree($tree);
 
         // Transform AccountNode objects to Balance Sheet line arrays
-        return array_map(fn($node) => $this->formatBalanceSheetLine($node), $flatTree);
+        return array_map(fn ($node) => $this->formatBalanceSheetLine($node), $flatTree);
     }
 
     /**
      * Build flat report (no hierarchy, just sorted by code).
      *
-     * @param Collection<Account> $accounts Accounts with calculated balances
-     * @param bool $includeZeroBalances Whether to include zero-balance accounts
+     * @param  Collection<Account>  $accounts  Accounts with calculated balances
+     * @param  bool  $includeZeroBalances  Whether to include zero-balance accounts
      * @return list<array> Flat account lines
      */
     private function buildFlatReport(Collection $accounts, bool $includeZeroBalances): array
@@ -408,6 +406,7 @@ class BalanceSheetService
         return $accounts
             ->filter(function (Account $account) use ($includeZeroBalances) {
                 $balance = $account->getAttribute('calculated_balance') ?? '0.0000';
+
                 return $includeZeroBalances || $this->isNonZero($balance);
             })
             ->map(function (Account $account) {
@@ -431,7 +430,7 @@ class BalanceSheetService
      *
      * Sums only the leaf accounts (not parent subtotals) to avoid double-counting.
      *
-     * @param array $lines Report lines
+     * @param  array  $lines  Report lines
      * @return numeric-string Total amount
      */
     private function calculateTotal(array $lines): string
@@ -440,7 +439,7 @@ class BalanceSheetService
 
         foreach ($lines as $line) {
             // Only sum leaf accounts (non-parents) to avoid double-counting
-            if (!($line['is_parent'] ?? false)) {
+            if (! ($line['is_parent'] ?? false)) {
                 $total = bcadd($total, $line['amount'], self::DECIMAL_SCALE);
             }
         }
@@ -451,7 +450,7 @@ class BalanceSheetService
     /**
      * Check if a balance is non-zero (above threshold).
      *
-     * @param numeric-string $balance Balance to check
+     * @param  numeric-string  $balance  Balance to check
      * @return bool True if balance is above zero threshold
      */
     private function isNonZero(string $balance): bool
@@ -470,8 +469,7 @@ class BalanceSheetService
      * but we store calculated balances in 'calculated_balance' attribute.
      * This method copies calculated_balance to the balance property.
      *
-     * @param Collection<Account> $accounts Accounts with calculated_balance attribute
-     * @return void
+     * @param  Collection<Account>  $accounts  Accounts with calculated_balance attribute
      */
     private function setAccountBalances(Collection $accounts): void
     {

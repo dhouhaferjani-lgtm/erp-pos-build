@@ -9,6 +9,8 @@ use App\Modules\Compliance\Listeners\DomainEventSubscriber;
 use App\Modules\Compliance\Services\AnomalyDetectionService;
 use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Compliance\Services\FiscalHashService;
+use App\Modules\Compliance\Services\FraudAlertNotificationService;
+use App\Modules\Inventory\Application\Services\FraudTriggeredCountingService;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -25,8 +27,16 @@ class ComplianceServiceProvider extends ServiceProvider
             return new AuditService;
         });
 
+        $this->app->singleton(FraudAlertNotificationService::class, function () {
+            return new FraudAlertNotificationService;
+        });
+
         $this->app->singleton(AnomalyDetectionService::class, function ($app) {
-            return new AnomalyDetectionService($app->make(AuditService::class));
+            return new AnomalyDetectionService(
+                $app->make(AuditService::class),
+                $app->make(FraudAlertNotificationService::class),
+                $app->make(FraudTriggeredCountingService::class),
+            );
         });
     }
 
@@ -52,6 +62,11 @@ class ComplianceServiceProvider extends ServiceProvider
 
     private function registerRoutes(): void
     {
+        // Load module routes
+        Route::middleware('web')
+            ->group(base_path('app/Modules/Compliance/Presentation/routes.php'));
+
+        // Legacy audit routes (keeping for backward compatibility)
         Route::middleware(['api', 'auth:sanctum'])
             ->prefix('api/v1')
             ->group(function (): void {

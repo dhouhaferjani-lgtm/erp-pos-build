@@ -21,6 +21,7 @@ interface DocumentLine {
   quantity: string
   unit_price: string
   line_total: string
+  landed_unit_cost: string | null
 }
 
 interface Document {
@@ -131,10 +132,16 @@ export function ProductDocumentsTab({ productId }: ProductDocumentsTabProps) {
         (sum, line) => sum + parseFloat(line.line_total || '0'),
         0
       )
+      // Get landed unit cost from the first product line (should be same for all lines of same product)
+      const landedUnitCost = productLines[0]?.landed_unit_cost
+        ? parseFloat(productLines[0].landed_unit_cost)
+        : null
+
       return {
         ...doc,
         productQuantity,
         productLineTotal,
+        landedUnitCost,
       }
     })
   }, [data?.data, productId])
@@ -239,6 +246,9 @@ export function ProductDocumentsTab({ productId }: ProductDocumentsTabProps) {
                   {t('products.financialTab.columns.quantity')}
                 </th>
                 <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                  {t('landedCost.unitCost')}
+                </th>
+                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
                   {t('products.financialTab.columns.lineTotal')}
                 </th>
               </tr>
@@ -294,6 +304,11 @@ export function ProductDocumentsTab({ productId }: ProductDocumentsTabProps) {
                     <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
                       {doc.productQuantity > 0
                         ? doc.productQuantity.toFixed(2)
+                        : '-'}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
+                      {doc.landedUnitCost !== null
+                        ? formatAmount(doc.landedUnitCost, doc.currency)
                         : '-'}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-end text-sm font-medium text-gray-900">

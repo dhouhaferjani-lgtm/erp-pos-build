@@ -63,12 +63,12 @@ return new class extends Migration
 
         // Create trigger on documents table
         DB::statement('DROP TRIGGER IF EXISTS trg_document_immutability ON documents');
-        DB::statement("
+        DB::statement('
             CREATE TRIGGER trg_document_immutability
             BEFORE UPDATE ON documents
             FOR EACH ROW
             EXECUTE FUNCTION enforce_document_immutability()
-        ");
+        ');
 
         // Create function to prevent deletion of fiscal documents
         DB::statement("
@@ -89,12 +89,12 @@ return new class extends Migration
 
         // Create trigger to prevent deletion
         DB::statement('DROP TRIGGER IF EXISTS trg_prevent_fiscal_deletion ON documents');
-        DB::statement("
+        DB::statement('
             CREATE TRIGGER trg_prevent_fiscal_deletion
             BEFORE DELETE ON documents
             FOR EACH ROW
             EXECUTE FUNCTION prevent_fiscal_document_deletion()
-        ");
+        ');
     }
 
     public function down(): void

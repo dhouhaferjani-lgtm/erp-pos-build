@@ -80,21 +80,19 @@ use Spatie\LaravelData\DataCollection;
  *   "as_of_date": "2025-12-31"
  * }
  * ```
- *
- * @package App\Modules\Accounting\Application\DTOs\Reports
  */
 final class BalanceSheetData extends Data
 {
     /**
-     * @param DataCollection<int, BalanceSheetLineData> $assets Asset account lines
-     * @param DataCollection<int, BalanceSheetLineData> $liabilities Liability account lines
-     * @param DataCollection<int, BalanceSheetLineData> $equity Equity account lines
-     * @param numeric-string $total_assets Sum of all asset balances
-     * @param numeric-string $total_liabilities Sum of all liability balances
-     * @param numeric-string $total_equity Sum of all equity balances (including retained earnings)
-     * @param numeric-string $retained_earnings Cumulative net income from inception
-     * @param bool $is_balanced Whether the accounting equation holds (Assets = Liabilities + Equity)
-     * @param string $as_of_date Snapshot date (YYYY-MM-DD)
+     * @param  DataCollection<int, BalanceSheetLineData>  $assets  Asset account lines
+     * @param  DataCollection<int, BalanceSheetLineData>  $liabilities  Liability account lines
+     * @param  DataCollection<int, BalanceSheetLineData>  $equity  Equity account lines
+     * @param  numeric-string  $total_assets  Sum of all asset balances
+     * @param  numeric-string  $total_liabilities  Sum of all liability balances
+     * @param  numeric-string  $total_equity  Sum of all equity balances (including retained earnings)
+     * @param  numeric-string  $retained_earnings  Cumulative net income from inception
+     * @param  bool  $is_balanced  Whether the accounting equation holds (Assets = Liabilities + Equity)
+     * @param  string  $as_of_date  Snapshot date (YYYY-MM-DD)
      */
     public function __construct(
         #[DataCollectionOf(BalanceSheetLineData::class)]
@@ -127,7 +125,6 @@ final class BalanceSheetData extends Data
      *     is_balanced: bool,
      *     as_of_date: string
      * } $data
-     * @return self
      */
     public static function fromArray(array $data): self
     {
@@ -170,13 +167,12 @@ final class BalanceSheetData extends Data
     public function getBalanceDifference(): string
     {
         $liabilitiesAndEquity = bcadd($this->total_liabilities, $this->total_equity, 4);
+
         return bcsub($this->total_assets, $liabilitiesAndEquity, 4);
     }
 
     /**
      * Get the count of asset accounts.
-     *
-     * @return int
      */
     public function getAssetAccountCount(): int
     {
@@ -185,8 +181,6 @@ final class BalanceSheetData extends Data
 
     /**
      * Get the count of liability accounts.
-     *
-     * @return int
      */
     public function getLiabilityAccountCount(): int
     {
@@ -195,8 +189,6 @@ final class BalanceSheetData extends Data
 
     /**
      * Get the count of equity accounts.
-     *
-     * @return int
      */
     public function getEquityAccountCount(): int
     {
@@ -205,8 +197,6 @@ final class BalanceSheetData extends Data
 
     /**
      * Check if the balance sheet has any data.
-     *
-     * @return bool
      */
     public function isEmpty(): bool
     {
@@ -266,6 +256,7 @@ final class BalanceSheetData extends Data
         }
 
         $ratio = bcdiv($this->total_equity, $this->total_assets, 6);
+
         return bcmul($ratio, '100', 4);
     }
 }

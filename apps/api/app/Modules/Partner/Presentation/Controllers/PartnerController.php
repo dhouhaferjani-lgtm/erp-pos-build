@@ -10,12 +10,15 @@ use App\Modules\Partner\Application\DTOs\PartnerData;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Partner\Presentation\Requests\CreatePartnerRequest;
 use App\Modules\Partner\Presentation\Requests\UpdatePartnerRequest;
+use App\Support\Traits\PaginatesResults;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 
 class PartnerController extends Controller
 {
+    use PaginatesResults;
+
     public function __construct(
         private readonly CompanyContext $companyContext,
     ) {}
@@ -26,6 +29,7 @@ class PartnerController extends Controller
     public function index(Request $request): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
+        $params = $this->getPaginationParams($request);
 
         $query = Partner::query()
             ->where('company_id', $companyId);
@@ -52,6 +56,8 @@ class PartnerController extends Controller
         // Use LOWER() for database-agnostic case-insensitive search (works on both PostgreSQL and SQLite)
         if ($request->has('search')) {
             $search = mb_strtolower($request->input('search'));
+            // Escape LIKE special characters to prevent LIKE pattern injection
+            $search = addcslashes($search, '%_\\');
             $query->where(function ($q) use ($search) {
                 $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])
                     ->orWhereRaw('LOWER(email) LIKE ?', ["%{$search}%"])
@@ -59,24 +65,15 @@ class PartnerController extends Controller
             });
         }
 
-        $perPage = (int) $request->input('per_page', 15);
-        $partners = $query->orderBy('name')->paginate($perPage);
+        // Order by name for consistent pagination
+        $query->orderBy('name');
 
-        $data = $partners->getCollection()->map(
-            fn (Partner $partner) => PartnerData::fromModel($partner)
+        // Use cursor pagination
+        $paginator = $query->cursorPaginate($params['per_page'], ['*'], 'cursor', $params['cursor']);
+
+        return response()->json(
+            $this->formatPaginatedResponse($paginator, PartnerData::class)
         );
-
-        return response()->json([
-            'data' => $data,
-            'meta' => [
-                'current_page' => $partners->currentPage(),
-                'per_page' => $partners->perPage(),
-                'total' => $partners->total(),
-                'last_page' => $partners->lastPage(),
-                'timestamp' => now()->toIso8601String(),
-                'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
-            ],
-        ]);
     }
 
     /**

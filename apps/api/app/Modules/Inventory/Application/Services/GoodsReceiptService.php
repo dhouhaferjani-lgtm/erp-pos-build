@@ -26,8 +26,8 @@ final class GoodsReceiptService
     /**
      * Receive goods for a purchase order.
      *
-     * @param Document $purchaseOrder The confirmed purchase order
-     * @param array<string, string> $receivedQuantities Map of line_id => quantity to receive
+     * @param  Document  $purchaseOrder  The confirmed purchase order
+     * @param  array<string, string>  $receivedQuantities  Map of line_id => quantity to receive
      * @return Document The updated purchase order
      *
      * @throws \DomainException If PO is not in valid state for receiving
@@ -66,7 +66,7 @@ final class GoodsReceiptService
 
                 if (bccomp($qtyToReceive, $remaining, 4) > 0) {
                     throw new \DomainException(
-                        "Cannot receive more than ordered for line {$line->id}. " .
+                        "Cannot receive more than ordered for line {$line->id}. ".
                         "Ordered: {$line->quantity}, Already received: {$alreadyReceived}, Requested: {$qtyToReceive}"
                     );
                 }
@@ -84,13 +84,15 @@ final class GoodsReceiptService
                 // Use landed cost from the PO line (includes allocated additional costs)
                 $landedUnitCost = (float) ($line->landed_unit_cost ?? $line->unit_price);
 
-                // Record purchase with WAC update
+                // Record purchase with WAC update and audit trail
                 $this->wacService->recordPurchase(
-                    $product,
-                    $location,
-                    (float) $qtyToReceive,
-                    $landedUnitCost,
-                    $purchaseOrder->document_number
+                    product: $product,
+                    location: $location,
+                    quantity: (float) $qtyToReceive,
+                    landedUnitCost: $landedUnitCost,
+                    reference: $purchaseOrder->document_number,
+                    referenceType: 'Document',
+                    referenceId: $purchaseOrder->id
                 );
 
                 // Update line's received quantity
@@ -124,7 +126,7 @@ final class GoodsReceiptService
     /**
      * Receive all remaining items for a purchase order.
      *
-     * @param Document $purchaseOrder The confirmed purchase order
+     * @param  Document  $purchaseOrder  The confirmed purchase order
      * @return Document The updated purchase order
      */
     public function receiveAll(Document $purchaseOrder): Document

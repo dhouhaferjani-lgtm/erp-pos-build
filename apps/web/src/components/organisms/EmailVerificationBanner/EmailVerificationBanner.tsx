@@ -38,7 +38,9 @@ export function EmailVerificationBanner() {
   }
 
   // Don't show if user is verified or banner is dismissed
-  if (!user || user.email_verified_at !== null || isDismissed) {
+  // Check for both null and undefined to handle old persisted state without email_verified_at
+  const isVerified = user?.email_verified_at != null
+  if (!user || isVerified || isDismissed) {
     return null
   }
 

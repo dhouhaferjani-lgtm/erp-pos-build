@@ -11,6 +11,10 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Events\DeliveryNoteConfirmed;
+use App\Modules\Inventory\Application\Services\StockReservationService;
+use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
+use App\Modules\Inventory\Domain\Enums\ReleaseReason;
+use App\Modules\Inventory\Domain\Enums\ReservationSource;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -22,12 +26,18 @@ use Illuminate\Support\Facades\DB;
  * - DN has its own separate hash chain per company
  * - Required for Tunisia fiscal compliance (tamper-proof delivery documents)
  *
+ * Stock Reservations:
+ * - When DN is confirmed, releases reservations from source sales order
+ * - Only releases reservations for lines actually delivered
+ *
  * Hash Chain Format: SHA256(previous_hash | document_number | date | total | currency)
  */
 final class DeliveryNoteService
 {
     public function __construct(
         private readonly FiscalHashService $hashService,
+        private readonly StockReservationService $stockReservationService,
+        private readonly WeightedAverageCostService $wacService,
     ) {}
 
     /**
@@ -48,7 +58,7 @@ final class DeliveryNoteService
             );
         }
 
-        if (!$deliveryNote->isDraft()) {
+        if (! $deliveryNote->isDraft()) {
             throw new \DomainException(
                 'Only draft delivery notes can be confirmed. Current status: '.$deliveryNote->status->value
             );
@@ -93,6 +103,12 @@ final class DeliveryNoteService
 
         $fiscalHash = $this->hashService->calculateHash($input, $previousHash, $genesisSeed);
 
+        // Release stock reservations if this DN is linked to a sales order
+        $this->releaseSourceReservations($deliveryNote);
+
+        // Issue stock for all product lines
+        $this->issueStock($deliveryNote);
+
         // Update delivery note with fiscal chain data and seal it
         $deliveryNote->update([
             'status' => DocumentStatus::Confirmed,
@@ -105,6 +121,35 @@ final class DeliveryNoteService
 
         // Dispatch the fiscal event for audit log
         $this->dispatchConfirmedEvent($deliveryNote, $confirmedAt->toIso8601String());
+    }
+
+    /**
+     * Release stock reservations for source sales order.
+     *
+     * When a delivery note is created from a sales order and confirmed,
+     * we need to release the stock reservations that were created when
+     * the sales order was confirmed.
+     */
+    private function releaseSourceReservations(Document $deliveryNote): void
+    {
+        // Check if this delivery note has a source document (sales order)
+        if ($deliveryNote->source_document_id === null) {
+            return; // No source document, nothing to release
+        }
+
+        // Load the source document to verify it's a sales order
+        $sourceDoc = Document::find($deliveryNote->source_document_id);
+        if ($sourceDoc === null || $sourceDoc->type !== DocumentType::SalesOrder) {
+            return; // Source is not a sales order
+        }
+
+        // Release all active reservations for this sales order
+        $this->stockReservationService->releaseBySource(
+            sourceType: ReservationSource::SalesOrder,
+            sourceId: $sourceDoc->id,
+            reason: ReleaseReason::Delivered,
+            releasedBy: (string) auth()->id(),
+        );
     }
 
     /**
@@ -148,5 +193,32 @@ final class DeliveryNoteService
         }
 
         return $company->fiscal_chain_seed;
+    }
+
+    /**
+     * Issue stock for all product lines in the delivery note.
+     *
+     * This actually decreases stock levels by calling the WAC service
+     * to record sales and update inventory quantities.
+     */
+    private function issueStock(Document $deliveryNote): void
+    {
+        foreach ($deliveryNote->lines as $line) {
+            if ($line->product === null || ($line->product->is_service ?? false)) {
+                continue; // Skip services
+            }
+
+            $location = $line->location ?? $deliveryNote->location;
+
+            // Record stock sale with audit trail
+            $this->wacService->recordSale(
+                product: $line->product,
+                location: $location,
+                quantity: (float) $line->quantity,
+                reference: $deliveryNote->document_number,
+                referenceType: 'Document',
+                referenceId: $deliveryNote->id
+            );
+        }
     }
 }

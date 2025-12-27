@@ -50,7 +50,7 @@ class DeliveryNoteConsolidationTest extends TestCase
 
         $this->tenant = Tenant::create([
             'name' => 'Test Tenant',
-            'slug' => 'test-tenant-' . Str::random(8),
+            'slug' => 'test-tenant-'.Str::random(8),
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
         ]);
@@ -73,7 +73,7 @@ class DeliveryNoteConsolidationTest extends TestCase
         $this->user = User::create([
             'tenant_id' => $this->tenant->id,
             'name' => 'Test User',
-            'email' => 'user-' . Str::random(8) . '@example.com',
+            'email' => 'user-'.Str::random(8).'@example.com',
             'password' => bcrypt('password'),
             'status' => UserStatus::Active,
         ]);

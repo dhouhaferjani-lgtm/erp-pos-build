@@ -117,11 +117,27 @@ class ImportJob extends Model
     }
 
     /**
-     * Check if import can be started
+     * Check if import can be started.
+     *
+     * Import can start if status allows and there are valid rows to import.
+     * Partial imports are supported - invalid rows will be skipped.
      */
     public function canStart(): bool
     {
-        return $this->status->canStartImport() && $this->failed_rows === 0;
+        return $this->status->canStartImport() && $this->getValidRowsCount() > 0;
+    }
+
+    /**
+     * Get count of valid rows ready for import.
+     */
+    public function getValidRowsCount(): int
+    {
+        // Use successful_rows if already validated, otherwise count from DB
+        if ($this->status === \App\Modules\Import\Domain\Enums\ImportStatus::Validated) {
+            return $this->successful_rows;
+        }
+
+        return $this->rows()->where('is_valid', true)->count();
     }
 
     /**

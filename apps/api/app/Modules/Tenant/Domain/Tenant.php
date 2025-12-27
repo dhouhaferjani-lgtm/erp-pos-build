@@ -56,16 +56,15 @@ use Stancl\Tenancy\Database\Models\Tenant as BaseTenant;
  */
 class Tenant extends BaseTenant implements TenantWithDatabase
 {
+    use HasDatabase;
+
+    use HasDomains;
     /** @use HasFactory<TenantFactory> */
     use HasFactory;
-    use HasDatabase;
-    use HasDomains;
     use HasUuids;
 
     /**
      * Create a new factory instance for the model.
-     *
-     * @return TenantFactory
      */
     protected static function newFactory(): TenantFactory
     {

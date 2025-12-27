@@ -34,6 +34,7 @@ import {
   ClipboardCheck,
   Wrench,
   FolderTree,
+  RotateCcw,
 } from 'lucide-react'
 import { usePermissions } from '../../../hooks/usePermissions'
 
@@ -85,10 +86,12 @@ const navigation: NavModule[] = [
     icon: Package,
     children: [
       { key: 'products', href: '/inventory/products', icon: Package },
+      { key: 'categories', href: '/inventory/categories', icon: FolderTree },
       { key: 'stockLevels', href: '/inventory/stock', icon: Layers },
       { key: 'stockMovements', href: '/inventory/movements', icon: ArrowLeftRight },
       { key: 'counting', href: '/inventory/counting', icon: ClipboardCheck },
       { key: 'deliveryNotes', href: '/inventory/delivery-notes', icon: FileBox },
+      { key: 'returnNotes', href: '/inventory/return-notes', icon: RotateCcw },
     ],
   },
   {
@@ -110,7 +113,10 @@ const navigation: NavModule[] = [
     icon: CreditCard,
     children: [
       { key: 'payments', href: '/treasury/payments', icon: Wallet },
+      { key: 'expenses', href: '/expenses', icon: Receipt },
+      { key: 'expenseCategories', href: '/expenses/categories', icon: FolderTree },
       { key: 'instruments', href: '/treasury/instruments', icon: CreditCard },
+      { key: 'paymentMethods', href: '/treasury/payment-methods', icon: CreditCard },
       { key: 'repositories', href: '/treasury/repositories', icon: Building2 },
     ],
   },

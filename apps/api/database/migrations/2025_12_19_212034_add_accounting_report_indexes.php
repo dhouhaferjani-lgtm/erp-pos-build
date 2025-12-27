@@ -68,10 +68,6 @@ return new class extends Migration
 
     /**
      * Drop an index if it exists.
-     *
-     * @param string $table
-     * @param string $indexName
-     * @return void
      */
     private function dropIndexIfExists(string $table, string $indexName): void
     {

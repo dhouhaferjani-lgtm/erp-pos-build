@@ -15,8 +15,7 @@ final class DocumentEmailController extends Controller
 {
     public function __construct(
         private readonly DocumentEmailService $emailService,
-    ) {
-    }
+    ) {}
 
     /**
      * Send a document via email.

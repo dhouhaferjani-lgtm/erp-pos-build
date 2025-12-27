@@ -21,18 +21,18 @@ use App\Shared\Domain\Events\DomainEvent;
 final class DocumentConverted extends DomainEvent
 {
     /**
-     * @param string $sourceDocumentId The ID of the source document
-     * @param string $targetDocumentId The ID of the created document
-     * @param string $companyId Company ID for multi-tenancy
-     * @param string $tenantId Tenant ID for multi-tenancy
-     * @param string $sourceDocumentNumber The source document number for audit
-     * @param string $targetDocumentNumber The target document number for audit
-     * @param string $sourceType The type of the source document (quote, sales_order, delivery_note)
-     * @param string $targetType The type of the created document (sales_order, invoice, delivery_note)
-     * @param string|null $userId The user who performed the conversion
-     * @param string $convertedAt ISO timestamp of conversion
-     * @param bool $isPartial Whether this was a partial conversion
-     * @param array<string, mixed> $metadata Additional metadata about the conversion
+     * @param  string  $sourceDocumentId  The ID of the source document
+     * @param  string  $targetDocumentId  The ID of the created document
+     * @param  string  $companyId  Company ID for multi-tenancy
+     * @param  string  $tenantId  Tenant ID for multi-tenancy
+     * @param  string  $sourceDocumentNumber  The source document number for audit
+     * @param  string  $targetDocumentNumber  The target document number for audit
+     * @param  string  $sourceType  The type of the source document (quote, sales_order, delivery_note)
+     * @param  string  $targetType  The type of the created document (sales_order, invoice, delivery_note)
+     * @param  string|null  $userId  The user who performed the conversion
+     * @param  string  $convertedAt  ISO timestamp of conversion
+     * @param  bool  $isPartial  Whether this was a partial conversion
+     * @param  array<string, mixed>  $metadata  Additional metadata about the conversion
      */
     public function __construct(
         public readonly string $sourceDocumentId,

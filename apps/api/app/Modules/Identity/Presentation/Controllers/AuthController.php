@@ -17,12 +17,14 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Identity\Presentation\Requests\LoginRequest;
 use App\Modules\Identity\Presentation\Requests\RegisterRequest;
 use App\Modules\Identity\Presentation\Requests\VerifyEmailRequest;
+use App\Modules\Tenant\Application\Services\TenantInitializationService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -32,28 +34,46 @@ class AuthController extends Controller
 {
     public function __construct(
         private readonly EmailVerificationService $emailVerificationService,
+        private readonly TenantInitializationService $tenantInitializationService,
     ) {}
 
     /**
      * Authenticate user and return token.
+     *
+     * Supports both session-based SPA auth and token-based API auth:
+     * - SPA (stateful): Uses Auth::attempt() to establish session, token optional
+     * - API (stateless): Returns token for Authorization header
      */
     public function login(LoginRequest $request): JsonResponse
     {
         $validated = $request->validated();
 
+        // First check if user exists and is active before attempting auth
         $user = User::where('email', $validated['email'])->first();
 
-        if ($user === null || ! Hash::check($validated['password'], $user->password)) {
+        if ($user !== null && ! $user->isActive()) {
+            throw ValidationException::withMessages([
+                'email' => ['Your account is not active. Please contact support.'],
+            ]);
+        }
+
+        // Use Auth::attempt() to validate credentials AND establish session
+        // This is required for Sanctum SPA cookie-based authentication
+        if (! Auth::attempt([
+            'email' => $validated['email'],
+            'password' => $validated['password'],
+        ])) {
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);
         }
 
-        if (! $user->isActive()) {
-            throw ValidationException::withMessages([
-                'email' => ['Your account is not active. Please contact support.'],
-            ]);
-        }
+        // Regenerate session to prevent session fixation attacks
+        $request->session()->regenerate();
+
+        // Get the authenticated user (now properly loaded via Auth)
+        /** @var User $user */
+        $user = Auth::user();
 
         // Record login
         $user->recordLogin($request->ip() ?? 'unknown');
@@ -61,7 +81,8 @@ class AuthController extends Controller
         // Handle device registration
         $device = $this->handleDevice($user, $validated);
 
-        // Create token with device name
+        // Create token for mobile/API clients that need it
+        // SPA clients will use the session cookie instead
         $tokenName = $validated['device_name'] ?? 'api-token';
         $token = $user->createToken($tokenName, ['*']);
 
@@ -152,6 +173,17 @@ class AuthController extends Controller
                 'accepted_at' => now(),
             ]);
 
+            // 5. Initialize tenant with country-specific data
+            // This assigns the 'admin' Spatie role (for sidebar access) and seeds:
+            // - Country-specific chart of accounts (Tunisia/France)
+            // - Fiscal years and periods
+            // - Standard payment methods
+            $this->tenantInitializationService->initializeForNewRegistration(
+                $tenant,
+                $company,
+                $user
+            );
+
             // Handle device registration if provided
             $device = $this->handleDevice($user, $validated);
 
@@ -188,14 +220,24 @@ class AuthController extends Controller
 
     /**
      * Log the user out.
+     *
+     * Handles both session-based and token-based logout.
      */
     public function logout(Request $request): JsonResponse
     {
         /** @var User $user */
         $user = $request->user();
 
-        // Revoke current token
-        $user->currentAccessToken()->delete();
+        // Revoke current token if using token-based auth
+        $currentToken = $user->currentAccessToken();
+        if ($currentToken !== null) {
+            $currentToken->delete();
+        }
+
+        // Invalidate and regenerate session for SPA auth
+        Auth::guard('web')->logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
 
         return response()->json([
             'data' => ['message' => 'Successfully logged out'],

@@ -3,77 +3,23 @@ import { Link, useParams, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Edit, Calendar, Building2, FileText, Check, X, ArrowRight, Printer, Send, CreditCard, MinusCircle, Package, AlertTriangle, Truck, Link2, Paperclip, Download, Eye } from 'lucide-react'
+import { ArrowLeft, Edit, Calendar, Building2, FileText, Check, X, ArrowRight, Printer, Send, CreditCard, MinusCircle, Package, AlertTriangle, Truck, Link2, Paperclip, Download, Eye, Car } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../lib/api'
 import { formatCurrency } from '../../lib/format'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { RecordPaymentModal, Modal } from '../../components/organisms'
 import { PurchaseOrderLandedCostBreakdown } from './components/PurchaseOrderLandedCostBreakdown'
-import { CreateCreditNoteForm, CreditNoteList, CreditNoteDetail } from './components'
+import { CreateCreditNoteForm, CreditNoteList, CreditNoteDetail, ReturnNoteMetadata } from './components'
+import { CreateReturnNoteForm } from './components/CreateReturnNoteForm'
 import { RelatedDocumentsTab } from './components/RelatedDocumentsTab'
 import { DocumentAttachments } from './components/DocumentAttachments'
 import { useCreditNotes, useCreditNote, useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail } from './hooks'
 import { useCompany } from '../../hooks/useCompany'
 import type { DocumentType } from './DocumentListPage'
 import type { CreditNote, DocumentStatus } from '../../types/creditNote'
+import type { Document } from '../../types/document'
 
 type ConfirmAction = 'confirm' | 'cancel' | 'convert' | 'convertToDelivery' | 'post' | 'receiveGoods' | null
-
-interface DocumentLine {
-  id: string
-  product_id: string
-  product_name: string
-  description: string
-  quantity: number
-  unit_price: number
-  tax_rate: number
-  line_total: number
-}
-
-interface PaymentRecord {
-  id: string
-  payment_id: string
-  amount: string
-  payment_date: string
-  payment_reference: string | null
-  payment_method: string | null
-}
-
-interface Document {
-  id: string
-  document_number: string
-  type: 'quote' | 'order' | 'invoice' | 'credit_note' | 'delivery_note' | 'sales_order' | 'purchase_order'
-  status: 'draft' | 'confirmed' | 'posted' | 'cancelled'
-  fiscal_category: 'NON_FISCAL' | 'FISCAL_RECEIPT' | 'TAX_INVOICE' | 'CREDIT_NOTE'
-  fiscal_status: 'DRAFT' | 'SEALED' | 'VOIDED'
-  is_sealed: boolean
-  is_fiscal: boolean
-  partner_id: string
-  partner_name: string | null
-  partner_email: string | null
-  subtotal: string | null
-  tax_amount: string | null
-  total: string | null
-  balance_due: string | null
-  document_date: string
-  due_date: string | null
-  valid_until: string | null
-  notes: string | null
-  converted_to_order_id: string | null
-  converted_at: string | null
-  source_document_id: string | null
-  source_document_number: string | null
-  source_document_type: string | null
-  fully_delivered: boolean
-  fully_invoiced: boolean
-  goods_received: boolean
-  delivery_note_ids: string[]
-  invoice_ids: string[]
-  lines: DocumentLine[]
-  payments?: PaymentRecord[]
-  created_at: string
-  updated_at: string
-}
 
 const typeColors: Record<string, string> = {
   quote: 'bg-yellow-100 text-yellow-800',
@@ -83,6 +29,7 @@ const typeColors: Record<string, string> = {
   invoice: 'bg-green-100 text-green-800',
   credit_note: 'bg-red-100 text-red-800',
   delivery_note: 'bg-purple-100 text-purple-800',
+  return_note: 'bg-orange-100 text-orange-800',
 }
 
 const statusColors: Record<Document['status'], string> = {
@@ -99,6 +46,7 @@ const documentTypeToPath: Record<DocumentType, string> = {
   purchase_order: '/purchases/orders',
   delivery_note: '/inventory/delivery-notes',
   credit_note: '/sales/credit-notes',
+  return_note: '/inventory/return-notes',
 }
 
 // Map document types to their API endpoints
@@ -109,6 +57,7 @@ const documentTypeToApiEndpoint: Record<DocumentType, string> = {
   purchase_order: '/purchase-orders',
   delivery_note: '/delivery-notes',
   credit_note: '/credit-notes',
+  return_note: '/return-notes',
 }
 
 function getDocumentTypeFromPath(pathname: string): DocumentType | undefined {
@@ -117,6 +66,7 @@ function getDocumentTypeFromPath(pathname: string): DocumentType | undefined {
   if (pathname.includes('/sales/invoices')) return 'invoice'
   if (pathname.includes('/purchases/orders')) return 'purchase_order'
   if (pathname.includes('/inventory/delivery-notes')) return 'delivery_note'
+  if (pathname.includes('/inventory/return-notes')) return 'return_note'
   if (pathname.includes('/sales/credit-notes')) return 'credit_note'
   return undefined
 }
@@ -150,6 +100,8 @@ export function DocumentDetailPage() {
   // State for credit note modals
   const [showCreditNoteForm, setShowCreditNoteForm] = useState(false)
   const [selectedCreditNoteId, setSelectedCreditNoteId] = useState<string | null>(null)
+  // State for return note modal
+  const [showReturnNoteForm, setShowReturnNoteForm] = useState(false)
   // State for email modal
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [emailForm, setEmailForm] = useState({
@@ -684,13 +636,46 @@ export function DocumentDetailPage() {
 
           {/* Create Credit Note button - for posted invoices */}
           {document.type === 'invoice' && document.status === 'posted' && (
+            <>
+              <button
+                type="button"
+                onClick={() => { setShowCreditNoteForm(true) }}
+                className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors"
+              >
+                <MinusCircle className="h-4 w-4" />
+                {t('documents.createCreditNote')}
+              </button>
+              <Link
+                to={`/sales/credit-notes/create?invoice_id=${document.id}`}
+                className="inline-flex items-center gap-2 rounded-lg border border-red-600 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+              >
+                <FileText className="h-4 w-4" />
+                {t('sales:creditNotes.createFromInvoice')}
+              </Link>
+            </>
+          )}
+
+          {/* Create Return Note button - for posted invoices */}
+          {document.type === 'invoice' && document.status === 'posted' && (
             <button
               type="button"
-              onClick={() => { setShowCreditNoteForm(true) }}
-              className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors"
+              onClick={() => { setShowReturnNoteForm(true) }}
+              className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 transition-colors"
             >
-              <MinusCircle className="h-4 w-4" />
-              {t('documents.createCreditNote')}
+              <Package className="h-4 w-4" />
+              {t('returnNotes.createFromInvoice', 'Create Return Note')}
+            </button>
+          )}
+
+          {/* Create Return Note button - for confirmed delivery notes */}
+          {document.type === 'delivery_note' && document.status === 'confirmed' && (
+            <button
+              type="button"
+              onClick={() => { setShowReturnNoteForm(true) }}
+              className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 transition-colors"
+            >
+              <Package className="h-4 w-4" />
+              {t('returnNotes.createFromDelivery', 'Create Return Note')}
             </button>
           )}
         </div>
@@ -728,6 +713,31 @@ export function DocumentDetailPage() {
               <div>
                 <dt className="text-sm font-medium text-gray-500">{t('documents.email')}</dt>
                 <dd className="text-gray-900">{document.partner_email}</dd>
+              </div>
+            )}
+            {document.vehicle_context && (
+              <div className="flex items-start gap-3">
+                <Car className="mt-0.5 h-5 w-5 text-gray-400" />
+                <div className="flex-1">
+                  <dt className="text-sm font-medium text-gray-500">{t('documents.vehicle', 'Vehicle')}</dt>
+                  <dd>
+                    {document.vehicle_context.vehicle_id ? (
+                      <Link
+                        to={`/vehicles/${document.vehicle_context.vehicle_id}`}
+                        className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                      >
+                        {document.vehicle_context.display ?? t('common:status.unknown')}
+                      </Link>
+                    ) : (
+                      <span className="text-gray-900">{document.vehicle_context.display ?? t('common:status.unknown')}</span>
+                    )}
+                  </dd>
+                  {document.vehicle_context.mileage && (
+                    <dd className="mt-1 text-sm text-gray-500">
+                      {t('documents.mileage', 'Mileage')}: {document.vehicle_context.mileage.toLocaleString()} km
+                    </dd>
+                  )}
+                </div>
               </div>
             )}
           </dl>
@@ -935,6 +945,16 @@ export function DocumentDetailPage() {
         <PurchaseOrderLandedCostBreakdown
           documentId={document.id}
           currency={currentCompany?.currency ?? 'USD'}
+        />
+      )}
+
+      {/* Return Note Metadata (for return notes) */}
+      {document.type === 'return_note' && (document as any).metadata && (
+        <ReturnNoteMetadata
+          metadata={(document as any).metadata}
+          sourceDeliveryNoteNumber={(document as any).source_delivery_note_number}
+          sourceInvoiceNumber={(document as any).source_invoice_number}
+          linkedCreditNoteNumber={(document as any).linked_credit_note_number}
         />
       )}
 
@@ -1160,6 +1180,34 @@ export function DocumentDetailPage() {
               toast.success(t('documents.creditNoteCreated', 'Credit note created successfully'))
             }}
             onCancel={() => { setShowCreditNoteForm(false) }}
+          />
+        </Modal>
+      )}
+
+      {/* Create Return Note Modal - for invoices and delivery notes */}
+      {(document.type === 'invoice' || document.type === 'delivery_note') && (
+        <Modal
+          isOpen={showReturnNoteForm}
+          onClose={() => { setShowReturnNoteForm(false) }}
+          title={t('returnNotes.createFromInvoice', 'Create Return Note')}
+          size="lg"
+        >
+          <CreateReturnNoteForm
+            sourceDocument={{
+              id: document.id,
+              document_number: document.document_number,
+              document_date: document.document_date,
+              partner_name: document.partner_name ?? '',
+              total: document.total ?? '0',
+            }}
+            sourceType={document.type === 'invoice' ? 'invoice' : 'delivery_note'}
+            onSuccess={() => {
+              setShowReturnNoteForm(false)
+              void queryClient.invalidateQueries({ queryKey: ['return-notes'] })
+              void queryClient.invalidateQueries({ queryKey: ['document', contextType, id] })
+              toast.success(t('returnNotes.messages.created', 'Return note created successfully'))
+            }}
+            onCancel={() => { setShowReturnNoteForm(false) }}
           />
         </Modal>
       )}

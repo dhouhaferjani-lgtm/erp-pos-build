@@ -1,0 +1,6 @@
+partner_code,external_invoice_number,document_date,due_date,total,open_amount,document_type,currency,notes
+SUPP-001,BILL-2024-A,2024-11-01,2024-12-01,2500.00,2500.00,invoice,EUR,Migrated supplier invoice
+SUPP-001,BILL-2024-B,2024-10-15,2024-11-15,1200.00,600.00,invoice,EUR,Partial payment made
+SUPP-002,BILL-2024-C,2024-11-05,2024-12-05,3800.00,3800.00,invoice,EUR,Parts order outstanding
+SUPP-003,BILL-2024-D,2024-09-20,2024-10-20,950.00,475.00,invoice,EUR,Half paid
+SUPP-002,BILL-CN-001,2024-11-08,2024-12-08,-200.00,-200.00,credit_note,EUR,Supplier credit for defective parts

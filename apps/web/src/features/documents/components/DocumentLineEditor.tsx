@@ -11,7 +11,7 @@ interface Product {
   id: string
   name: string
   sku: string
-  price: number
+  sale_price: number
   tax_rate: number
 }
 
@@ -22,6 +22,7 @@ interface ProductsResponse {
 export interface DocumentLine {
   id: string
   product_id: string
+  product_code?: string
   product_name: string
   description: string
   quantity: number
@@ -106,12 +107,13 @@ export function DocumentLineEditor({ lines, onChange, readonly = false }: Docume
       const newLine: DocumentLine = {
         id: generateId(),
         product_id: product.id,
+        product_code: product.sku,
         product_name: product.name,
         description: product.name,
         quantity: 1,
-        unit_price: product.price,
+        unit_price: product.sale_price,
         tax_rate: product.tax_rate,
-        line_total: calculateLineTotal(1, product.price, product.tax_rate),
+        line_total: calculateLineTotal(1, product.sale_price, product.tax_rate),
       }
       onChange([...lines, newLine])
       setShowProductSearch(false)
@@ -223,8 +225,11 @@ export function DocumentLineEditor({ lines, onChange, readonly = false }: Docume
                     <span className="sr-only">{t('sales:lineItems.actions.dragToReorder')}</span>
                   </th>
                 )}
+                <th className="w-32 px-4 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                  {t('sales:lineItems.article')}
+                </th>
                 <th className="px-4 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('sales:lineItems.item')}
+                  {t('sales:lineItems.description')}
                 </th>
                 <th className="w-24 px-4 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
                   {t('sales:lineItems.quantity')}
@@ -270,6 +275,11 @@ export function DocumentLineEditor({ lines, onChange, readonly = false }: Docume
                       </button>
                     </td>
                   )}
+                  <td className="px-4 py-3">
+                    <span className="text-sm font-mono text-gray-600">
+                      {line.product_code || '-'}
+                    </span>
+                  </td>
                   <td className="px-4 py-3">
                     {editingLineId === line.id && !readonly ? (
                       <input
@@ -461,7 +471,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false }: Docume
                               <div className="text-xs text-gray-500">{product.sku}</div>
                             </div>
                             <div className="text-sm font-medium text-gray-900">
-                              {formatAmount(product.price)}
+                              {formatAmount(product.sale_price)}
                             </div>
                           </button>
                         </li>
@@ -518,7 +528,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false }: Docume
             id: product.id,
             name: product.name,
             sku: product.sku ?? '',
-            price: product.sale_price,
+            sale_price: product.sale_price,
             tax_rate: product.tax_rate,
           }
           // Add the new product to the lines

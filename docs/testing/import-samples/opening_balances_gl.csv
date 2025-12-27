@@ -1,0 +1,8 @@
+account_code,debit,credit,description,reference
+512000,15000.00,,Bank Account - Main,OB-2024
+512100,5000.00,,Bank Account - Secondary,OB-2024
+531000,2500.00,,Petty Cash,OB-2024
+411000,8500.00,,Accounts Receivable - Trade,OB-2024
+401000,,12000.00,Accounts Payable - Trade,OB-2024
+370000,18000.00,,Inventory - Parts,OB-2024
+101000,,37000.00,Opening Balance Equity,OB-2024

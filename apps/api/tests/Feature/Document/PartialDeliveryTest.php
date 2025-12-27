@@ -372,7 +372,7 @@ class PartialDeliveryTest extends TestCase
             'partner_id' => $this->partner->id,
             'type' => DocumentType::SalesOrder,
             'status' => DocumentStatus::Confirmed,
-            'document_number' => 'SO-' . time() . '-' . random_int(1000, 9999),
+            'document_number' => 'SO-'.time().'-'.random_int(1000, 9999),
             'document_date' => now(),
             'currency' => 'TND',
             'subtotal' => '0.00',

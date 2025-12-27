@@ -309,7 +309,7 @@ class UninvoicedDeliveryNoteService
                     'account_id' => $originalLine->account_id,
                     'debit' => $originalLine->credit,
                     'credit' => $originalLine->debit,
-                    'description' => 'Reversal: ' . $originalLine->description,
+                    'description' => 'Reversal: '.$originalLine->description,
                 ]);
             }
 

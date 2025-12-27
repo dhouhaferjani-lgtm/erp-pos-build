@@ -93,6 +93,8 @@
       "credit_note": "Avoir",
       "deliveryNote": "Bon de livraison",
       "delivery_note": "Bon de livraison",
+      "returnNote": "Bon de retour",
+      "return_note": "Bon de retour",
       "purchaseOrder": "Bon d'achat",
       "purchase_order": "Bon d'achat"
     },
@@ -121,6 +123,7 @@
   },
   "lineItems": {
     "title": "Lignes",
+    "article": "Référence",
     "item": "Article",
     "description": "Description",
     "quantity": "Qté",
@@ -182,12 +185,21 @@
     "title": "Factures",
     "new": "Nouvelle facture",
     "post": "Comptabiliser la facture",
-    "createCreditNote": "Créer un avoir"
+    "createCreditNote": "Créer un avoir",
+    "searchInvoicePlaceholder": "Rechercher par numéro de facture ou partenaire...",
+    "noInvoicesFound": "Aucune facture trouvée",
+    "noPostedInvoices": "Aucune facture comptabilisée disponible",
+    "invoice": "Facture",
+    "balance": "Solde",
+    "total": "Total"
   },
   "deliveryNotes": {
     "title": "Bons de livraison",
     "singular": "bon de livraison",
     "plural": "bons de livraison",
+    "searchPlaceholder": "Rechercher par numéro de bon de livraison ou partenaire...",
+    "noResults": "Aucun bon de livraison trouvé",
+    "noConfirmed": "Aucun bon de livraison confirmé disponible",
     "consolidation": {
       "title": "Regrouper les bons de livraison",
       "description": "Sélectionnez les bons de livraison confirmés à regrouper en une seule facture. Tous les bons sélectionnés doivent appartenir au même partenaire et utiliser la même devise.",
@@ -206,8 +218,11 @@
   "relatedDocuments": {
     "title": "Documents liés",
     "description": "Afficher la chaîne documentaire montrant les liens entre ce document et les autres",
+    "documentChain": "Chaîne documentaire",
     "sourceDocuments": "Documents sources",
     "derivedDocuments": "Documents dérivés",
+    "creditNotes": "Avoirs",
+    "returnNotes": "Bons de retour",
     "currentDocument": "Document actuel",
     "current": "Actuel",
     "noRelated": "Ce document n'a pas de documents liés"
@@ -237,8 +252,34 @@
       "amountPositive": "Le montant doit être positif",
       "reasonRequired": "Le motif est requis",
       "maxAmount": "Maximum : {{amount}}",
-      "remainingCreditable": "Reste à créditer : {{amount}}"
+      "remainingCreditable": "Reste à créditer : {{amount}}",
+      "mode": "Mode de crédit",
+      "amountBased": "Basé sur le montant",
+      "lineBased": "Basé sur les lignes",
+      "selectLines": "Sélectionner les lignes à créditer",
+      "noLinesSelected": "Veuillez sélectionner au moins une ligne",
+      "creditQuantity": "Qté à créditer",
+      "maxQuantity": "Max : {{quantity}}",
+      "quantityExceedsMax": "La quantité dépasse le maximum disponible",
+      "creditMode": "Type d'avoir",
+      "fromInvoice": "À partir d'une facture",
+      "fromInvoiceDesc": "Créditer une facture existante",
+      "fromCustomer": "À partir d'un client",
+      "fromCustomerDesc": "Créer sans facture source",
+      "details": "Détails de l'avoir",
+      "lineSelection": "Sélection des lignes",
+      "creditAll": "Créditer toutes les lignes",
+      "creditAllDesc": "Créditer toutes les lignes de la facture",
+      "creditPartial": "Crédit partiel",
+      "creditPartialDesc": "Sélectionner des lignes et quantités spécifiques",
+      "selectLinesRequired": "Veuillez sélectionner au moins une ligne à créditer",
+      "linesRequired": "Veuillez ajouter au moins une ligne",
+      "create": "Créer l'avoir"
     },
+    "createDescription": "Créer un nouvel avoir",
+    "selectInvoiceDescription": "Sélectionnez une facture comptabilisée pour créer un avoir",
+    "selectInvoiceHint": "Seules les factures comptabilisées avec un solde restant sont disponibles pour les avoirs.",
+    "loadInvoiceError": "Échec du chargement des détails de la facture. Veuillez réessayer.",
     "summary": {
       "title": "Résumé des avoirs",
       "totalCreditNotes": "Total des avoirs",
@@ -276,6 +317,103 @@
         "title": "Remboursement complet",
         "message": "Cela créera un avoir pour le montant total de la facture. Êtes-vous sûr ?",
         "button": "Créer le remboursement complet"
+      }
+    }
+  },
+  "returnNotes": {
+    "title": "Bons de retour",
+    "new": "Nouveau bon de retour",
+    "createDescription": "Créer un nouveau bon de retour",
+    "createFromInvoice": "Créer un bon de retour",
+    "createFromDelivery": "Créer un bon de retour",
+    "fromInvoiceDesc": "Retourner et créditer des marchandises facturées",
+    "fromDeliveryNoteDesc": "Retourner des marchandises d'un bon de livraison",
+    "viewReturnNotes": "Voir les bons de retour",
+    "sourceDeliveryNote": "Bon de livraison source",
+    "sourceInvoice": "Facture source",
+    "linkedCreditNote": "Avoir lié",
+    "reason": {
+      "title": "Motif du retour",
+      "label": "Motif du retour",
+      "defective": "Produit défectueux",
+      "wrongItem": "Mauvais article expédié",
+      "customerRegret": "Remords du client",
+      "damagedInTransit": "Endommagé pendant le transport",
+      "warranty": "Retour sous garantie",
+      "exchange": "Échange pour un autre produit",
+      "other": "Autre"
+    },
+    "condition": {
+      "title": "État du produit",
+      "label": "État",
+      "unopened": "Non ouvert / Neuf",
+      "used": "Utilisé / Ouvert",
+      "damaged": "Endommagé",
+      "unusable": "Inutilisable"
+    },
+    "refundMethod": {
+      "title": "Mode de remboursement",
+      "label": "Mode de remboursement",
+      "originalPayment": "Mode de paiement d'origine",
+      "storeCredit": "Avoir en magasin",
+      "exchange": "Échange uniquement",
+      "none": "Pas de remboursement (Inspection/Réparation)"
+    },
+    "notes": "Notes de retour",
+    "notesPlaceholder": "Détails sur le retour...",
+    "form": {
+      "selectSource": "Sélectionner le document source",
+      "sourceRequired": "Le document source est requis",
+      "reasonRequired": "Le motif du retour est requis",
+      "conditionRequired": "L'état du produit est requis",
+      "returnMode": "Mode de retour",
+      "fullReturn": "Tout retourner",
+      "fullReturnDesc": "Retourner tous les articles du document",
+      "partialReturn": "Retour partiel",
+      "partialReturnDesc": "Sélectionner des articles et quantités spécifiques",
+      "lineSelection": "Sélection des lignes",
+      "selectLinesToReturn": "Sélectionner les lignes à retourner",
+      "returnQuantity": "Qté à retourner",
+      "returnTotal": "Total du retour",
+      "returnDetails": "Détails du retour",
+      "noLinesSelected": "Veuillez sélectionner au moins une ligne à retourner",
+      "returningAllItems": "Retour de tous les {{count}} articles",
+      "autoCreateCreditNote": "Créer automatiquement un avoir",
+      "autoCreateCreditNoteHint": "Un avoir sera créé automatiquement lorsque ce retour sera confirmé",
+      "create": "Créer le bon de retour"
+    },
+    "summary": {
+      "title": "Résumé des bons de retour",
+      "totalReturns": "Total des retours",
+      "totalValue": "Valeur totale retournée",
+      "awaitingCredit": "En attente d'avoir"
+    },
+    "status": {
+      "draft": "Brouillon",
+      "confirmed": "Confirmé",
+      "cancelled": "Annulé"
+    },
+    "messages": {
+      "created": "Bon de retour créé avec succès",
+      "confirmed": "Bon de retour confirmé - stock retourné à l'inventaire",
+      "createFailed": "Échec de la création du bon de retour",
+      "confirmFailed": "Échec de la confirmation du bon de retour"
+    },
+    "errors": {
+      "invalidQuantity": "La quantité retournée ne peut pas dépasser la quantité d'origine",
+      "noSourceDocument": "Le bon de retour doit référencer un bon de livraison ou une facture",
+      "alreadyReturned": "Les articles de ce document ont déjà été retournés"
+    },
+    "confirmations": {
+      "confirm": {
+        "title": "Confirmer le bon de retour",
+        "message": "Cela réceptionnera les marchandises retournées dans l'inventaire. Continuer ?",
+        "button": "Confirmer le retour"
+      },
+      "createCreditNote": {
+        "title": "Créer un avoir",
+        "message": "Souhaitez-vous créer un avoir pour ce retour ?",
+        "button": "Créer un avoir"
       }
     }
   }

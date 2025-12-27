@@ -67,19 +67,17 @@ use Spatie\LaravelData\DataCollection;
  *   "date_to": "2025-12-31"
  * }
  * ```
- *
- * @package App\Modules\Accounting\Application\DTOs\Reports
  */
 final class ProfitLossData extends Data
 {
     /**
-     * @param DataCollection<int, ProfitLossLineData> $revenue Revenue account lines
-     * @param DataCollection<int, ProfitLossLineData> $expenses Expense account lines
-     * @param numeric-string $total_revenue Sum of all revenue
-     * @param numeric-string $total_expenses Sum of all expenses
-     * @param numeric-string $net_income Profit or loss (revenue - expenses)
-     * @param string $date_from Period start date (YYYY-MM-DD)
-     * @param string $date_to Period end date (YYYY-MM-DD)
+     * @param  DataCollection<int, ProfitLossLineData>  $revenue  Revenue account lines
+     * @param  DataCollection<int, ProfitLossLineData>  $expenses  Expense account lines
+     * @param  numeric-string  $total_revenue  Sum of all revenue
+     * @param  numeric-string  $total_expenses  Sum of all expenses
+     * @param  numeric-string  $net_income  Profit or loss (revenue - expenses)
+     * @param  string  $date_from  Period start date (YYYY-MM-DD)
+     * @param  string  $date_to  Period end date (YYYY-MM-DD)
      */
     public function __construct(
         #[DataCollectionOf(ProfitLossLineData::class)]
@@ -107,7 +105,6 @@ final class ProfitLossData extends Data
      *     date_from: string,
      *     date_to: string
      * } $data
-     * @return self
      */
     public static function fromArray(array $data): self
     {
@@ -177,13 +174,12 @@ final class ProfitLossData extends Data
         }
 
         $margin = bcdiv($this->net_income, $this->total_revenue, 6);
+
         return bcmul($margin, '100', 4);
     }
 
     /**
      * Get the count of revenue accounts.
-     *
-     * @return int
      */
     public function getRevenueAccountCount(): int
     {
@@ -192,8 +188,6 @@ final class ProfitLossData extends Data
 
     /**
      * Get the count of expense accounts.
-     *
-     * @return int
      */
     public function getExpenseAccountCount(): int
     {
@@ -202,8 +196,6 @@ final class ProfitLossData extends Data
 
     /**
      * Check if the report has any data.
-     *
-     * @return bool
      */
     public function isEmpty(): bool
     {

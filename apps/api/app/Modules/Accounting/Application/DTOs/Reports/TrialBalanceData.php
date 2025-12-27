@@ -48,17 +48,15 @@ use Spatie\LaravelData\DataCollection;
  *   "as_of_date": "2025-12-31"
  * }
  * ```
- *
- * @package App\Modules\Accounting\Application\DTOs\Reports
  */
 final class TrialBalanceData extends Data
 {
     /**
-     * @param DataCollection<int, TrialBalanceLineData> $lines Trial balance lines
-     * @param numeric-string $total_debit Sum of all debits
-     * @param numeric-string $total_credit Sum of all credits
-     * @param bool $is_balanced Whether total_debit == total_credit (within threshold)
-     * @param string $as_of_date Report date in ISO 8601 format (YYYY-MM-DD)
+     * @param  DataCollection<int, TrialBalanceLineData>  $lines  Trial balance lines
+     * @param  numeric-string  $total_debit  Sum of all debits
+     * @param  numeric-string  $total_credit  Sum of all credits
+     * @param  bool  $is_balanced  Whether total_debit == total_credit (within threshold)
+     * @param  string  $as_of_date  Report date in ISO 8601 format (YYYY-MM-DD)
      */
     public function __construct(
         #[DataCollectionOf(TrialBalanceLineData::class)]
@@ -74,8 +72,7 @@ final class TrialBalanceData extends Data
      *
      * Converts the array output from TrialBalanceService into a typed DTO.
      *
-     * @param array{lines: list<array>, total_debit: numeric-string, total_credit: numeric-string, is_balanced: bool, as_of_date: string} $data
-     * @return self
+     * @param  array{lines: list<array>, total_debit: numeric-string, total_credit: numeric-string, is_balanced: bool, as_of_date: string}  $data
      */
     public static function fromArray(array $data): self
     {
@@ -96,8 +93,6 @@ final class TrialBalanceData extends Data
 
     /**
      * Get the count of accounts in the trial balance.
-     *
-     * @return int
      */
     public function getAccountCount(): int
     {
@@ -106,8 +101,6 @@ final class TrialBalanceData extends Data
 
     /**
      * Check if the report has any data.
-     *
-     * @return bool
      */
     public function isEmpty(): bool
     {

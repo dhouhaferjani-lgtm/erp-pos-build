@@ -27,7 +27,7 @@ class DocumentConversionController extends Controller
             $order = $this->conversionService->convertQuoteToOrder($quote);
 
             return response()->json([
-                'data' => $order->load(['lines', 'partner', 'vehicle']),
+                'data' => $order->load(['lines', 'partner', 'vehicleContext']),
                 'message' => 'Quote converted to sales order successfully',
             ], 201);
         } catch (\DomainException $e) {
@@ -65,7 +65,7 @@ class DocumentConversionController extends Controller
             );
 
             return response()->json([
-                'data' => $invoice->load(['lines', 'partner', 'vehicle']),
+                'data' => $invoice->load(['lines', 'partner', 'vehicleContext']),
                 'message' => 'Sales order converted to invoice successfully',
             ], 201);
         } catch (\DomainException $e) {
@@ -93,7 +93,7 @@ class DocumentConversionController extends Controller
             $delivery = $this->conversionService->convertOrderToDelivery($order);
 
             return response()->json([
-                'data' => $delivery->load(['lines', 'partner', 'vehicle']),
+                'data' => $delivery->load(['lines', 'partner', 'vehicleContext']),
                 'message' => 'Sales order converted to delivery note successfully',
             ], 201);
         } catch (\Exception $e) {
@@ -184,7 +184,7 @@ class DocumentConversionController extends Controller
             $invoice = $this->conversionService->createInvoiceFromDeliveryNotes($deliveryNotes);
 
             return response()->json([
-                'data' => $invoice->load(['lines', 'partner', 'vehicle']),
+                'data' => $invoice->load(['lines', 'partner', 'vehicleContext']),
                 'message' => 'Invoice created from delivery notes successfully',
                 'meta' => [
                     'consolidated_delivery_notes' => count($deliveryNotes),

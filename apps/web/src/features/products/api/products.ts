@@ -23,6 +23,10 @@ export async function getProducts(params?: GetProductsParams): Promise<Paginated
     queryParams['per_page'] = String(params.per_page)
   }
 
+  if (params?.cursor) {
+    queryParams['cursor'] = params.cursor
+  }
+
   const response = await api.get<PaginatedProductsResponse>('/products', { params: queryParams })
   return response.data
 }

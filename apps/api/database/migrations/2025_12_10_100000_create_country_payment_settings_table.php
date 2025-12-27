@@ -51,7 +51,7 @@ return new class extends Migration
             ];
         }
 
-        if (!empty($settings)) {
+        if (! empty($settings)) {
             DB::table('country_payment_settings')->insert($settings);
         }
     }

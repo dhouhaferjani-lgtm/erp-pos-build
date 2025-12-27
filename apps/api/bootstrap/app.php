@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\CompanyContextMiddleware;
 use App\Http\Middleware\EnsureSuperAdmin;
+use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
@@ -20,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
         web: __DIR__.'/../routes/web.php',
         api: __DIR__.'/../routes/api.php',
         commands: __DIR__.'/../routes/console.php',
+        channels: __DIR__.'/../routes/channels.php',
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
@@ -28,8 +30,14 @@ return Application::configure(basePath: dirname(__DIR__))
             'super_admin' => EnsureSuperAdmin::class,
         ]);
 
-        // Apply SetLocale and CompanyContext middleware to all API requests
+        // Apply Sanctum's stateful middleware first (enables session for SPA requests)
+        // Then apply security headers, SetLocale and CompanyContext middleware
+        $middleware->prependToGroup('api', [
+            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
+        ]);
+
         $middleware->appendToGroup('api', [
+            SecurityHeaders::class,
             SetLocale::class,
             CompanyContextMiddleware::class,
         ]);

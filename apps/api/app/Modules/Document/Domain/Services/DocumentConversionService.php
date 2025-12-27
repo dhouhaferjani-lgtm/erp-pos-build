@@ -7,6 +7,7 @@ namespace App\Modules\Document\Domain\Services;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\DocumentVehicleContext;
 use App\Modules\Document\Domain\Enums\DeliveryStatus;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -53,7 +54,6 @@ class DocumentConversionService
                 'company_id' => $quote->company_id,
                 'location_id' => $quote->location_id,
                 'partner_id' => $quote->partner_id,
-                'vehicle_id' => $quote->vehicle_id,
                 'type' => DocumentType::SalesOrder,
                 'status' => DocumentStatus::Draft,
                 'document_number' => $this->numberingService->generateNumber(
@@ -76,6 +76,9 @@ class DocumentConversionService
 
             // Copy lines
             $this->copyLines($quote, $order);
+
+            // Copy vehicle context if present
+            $this->copyVehicleContext($quote, $order);
 
             // Mark quote as converted
             $quote->update([
@@ -150,7 +153,6 @@ class DocumentConversionService
                 'company_id' => $order->company_id,
                 'location_id' => $order->location_id,
                 'partner_id' => $order->partner_id,
-                'vehicle_id' => $order->vehicle_id,
                 'type' => DocumentType::Invoice,
                 'status' => DocumentStatus::Draft,
                 'document_number' => $this->numberingService->generateNumber(
@@ -176,6 +178,9 @@ class DocumentConversionService
 
             // Recalculate totals
             $this->recalculateTotals($invoice);
+
+            // Copy vehicle context if present
+            $this->copyVehicleContext($order, $invoice);
 
             // Transfer any prepayments from the order to the invoice
             $this->transferPrepayments($order, $invoice);
@@ -236,7 +241,6 @@ class DocumentConversionService
                 'company_id' => $order->company_id,
                 'location_id' => $order->location_id,
                 'partner_id' => $order->partner_id,
-                'vehicle_id' => $order->vehicle_id,
                 'type' => DocumentType::DeliveryNote,
                 'status' => DocumentStatus::Draft,
                 'document_number' => $this->numberingService->generateNumber(
@@ -258,6 +262,9 @@ class DocumentConversionService
 
             // Copy lines and update quantity_delivered on source lines
             $this->copyLinesForFullDelivery($order, $delivery);
+
+            // Copy vehicle context if present
+            $this->copyVehicleContext($order, $delivery);
 
             // Update order payload to track delivery notes (as array, like invoice_ids)
             $orderPayload = $order->payload ?? [];
@@ -347,7 +354,6 @@ class DocumentConversionService
                 'company_id' => $order->company_id,
                 'location_id' => $order->location_id,
                 'partner_id' => $order->partner_id,
-                'vehicle_id' => $order->vehicle_id,
                 'type' => DocumentType::DeliveryNote,
                 'status' => DocumentStatus::Draft,
                 'document_number' => $this->numberingService->generateNumber(
@@ -368,6 +374,9 @@ class DocumentConversionService
 
             // Recalculate totals based on partial quantities
             $this->recalculateTotals($delivery);
+
+            // Copy vehicle context if present
+            $this->copyVehicleContext($order, $delivery);
 
             // Update order payload to track delivery notes
             $orderPayload = $order->payload ?? [];
@@ -684,7 +693,6 @@ class DocumentConversionService
                 'company_id' => $companyId,
                 'location_id' => $firstDn->location_id,
                 'partner_id' => $partnerId,
-                'vehicle_id' => $firstDn->vehicle_id,
                 'type' => DocumentType::Invoice,
                 'status' => DocumentStatus::Draft,
                 'document_number' => $this->numberingService->generateNumber(
@@ -739,6 +747,9 @@ class DocumentConversionService
 
             // Recalculate totals
             $this->recalculateTotals($invoice);
+
+            // Copy vehicle context from first delivery note if present
+            $this->copyVehicleContext($firstDn, $invoice);
 
             // Dispatch conversion events for each DN (consolidation audit trail)
             foreach ($deliveryNotes as $dn) {
@@ -992,6 +1003,31 @@ class DocumentConversionService
     }
 
     /**
+     * Copy vehicle context from source document to target document.
+     *
+     * If the source document has a vehicle context, this method creates
+     * a new vehicle context for the target document with the same vehicle
+     * and context data.
+     *
+     * @param  Document  $source  The source document
+     * @param  Document  $target  The target document
+     */
+    private function copyVehicleContext(Document $source, Document $target): void
+    {
+        $sourceContext = $source->vehicleContext;
+
+        if ($sourceContext !== null) {
+            DocumentVehicleContext::create([
+                'document_id' => $target->id,
+                'vehicle_id' => $sourceContext->vehicle_id,
+                'vehicle_snapshot' => $sourceContext->vehicle_snapshot,
+                'mileage_at_service' => $sourceContext->mileage_at_service,
+                'context_data' => $sourceContext->context_data,
+            ]);
+        }
+    }
+
+    /**
      * Dispatch a DocumentConverted event for audit trail.
      *
      * This method creates and dispatches a DocumentConverted event that records
@@ -1000,10 +1036,10 @@ class DocumentConversionService
      * - Document lifecycle visibility
      * - Integration with external systems
      *
-     * @param Document $source The source document being converted
-     * @param Document $target The newly created document
-     * @param bool $isPartial Whether this was a partial conversion
-     * @param array<string, mixed> $metadata Additional metadata about the conversion
+     * @param  Document  $source  The source document being converted
+     * @param  Document  $target  The newly created document
+     * @param  bool  $isPartial  Whether this was a partial conversion
+     * @param  array<string, mixed>  $metadata  Additional metadata about the conversion
      */
     private function dispatchConversionEvent(
         Document $source,

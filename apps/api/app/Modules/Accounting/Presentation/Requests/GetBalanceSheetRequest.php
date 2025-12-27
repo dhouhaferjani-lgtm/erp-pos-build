@@ -46,8 +46,6 @@ use Illuminate\Foundation\Http\FormRequest;
  * GET /api/v1/reports/balance-sheet?as_of_date=2025-12-31&include_zero_balances=true
  * GET /api/v1/reports/balance-sheet?include_hierarchy=false
  * ```
- *
- * @package App\Modules\Accounting\Presentation\Requests
  */
 class GetBalanceSheetRequest extends FormRequest
 {
@@ -57,8 +55,6 @@ class GetBalanceSheetRequest extends FormRequest
      * Authorization is handled via middleware (auth:sanctum) and
      * route-level permission checks (can:reports.view), so this
      * always returns true.
-     *
-     * @return bool
      */
     public function authorize(): bool
     {
@@ -100,6 +96,7 @@ class GetBalanceSheetRequest extends FormRequest
                         $companyId = $companyContext->requireCompanyId();
                     } catch (\RuntimeException $e) {
                         $fail('Company context is required to validate fiscal period.');
+
                         return;
                     }
 
@@ -108,7 +105,7 @@ class GetBalanceSheetRequest extends FormRequest
                         ->where('company_id', $companyId)
                         ->exists();
 
-                    if (!$period) {
+                    if (! $period) {
                         $fail('The selected fiscal period does not belong to your company.');
                     }
                 },
@@ -170,8 +167,6 @@ class GetBalanceSheetRequest extends FormRequest
      * Normalizes input data before validation:
      * - Converts string booleans ('true', 'false', '1', '0') to actual booleans
      * - Trims whitespace from strings
-     *
-     * @return void
      */
     protected function prepareForValidation(): void
     {

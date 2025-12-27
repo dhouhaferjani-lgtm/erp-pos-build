@@ -15,10 +15,12 @@ interface User {
 
 /**
  * Auth state interface
+ *
+ * SECURITY: Token is NOT stored - authentication relies on httpOnly cookies
+ * managed by Sanctum. Only user info is persisted for UI display.
  */
 interface AuthState {
   user: User | null
-  token: string | null
   isAuthenticated: boolean
   isLoading: boolean
 }
@@ -27,11 +29,10 @@ interface AuthState {
  * Auth actions interface
  */
 interface AuthActions {
-  setAuth: (user: User, token: string) => void
+  setAuth: (user: User) => void
   setUser: (user: User | null) => void
   setLoading: (loading: boolean) => void
   logout: () => void
-  getToken: () => string | null
 }
 
 /**
@@ -44,7 +45,6 @@ type AuthStore = AuthState & AuthActions
  */
 const initialState: AuthState = {
   user: null,
-  token: null,
   isAuthenticated: false,
   isLoading: true,
 }
@@ -54,16 +54,19 @@ const initialState: AuthState = {
  *
  * Uses Zustand for minimal client state (per CLAUDE.md).
  * Server state is managed by TanStack Query.
+ *
+ * SECURITY NOTE: Authentication tokens are managed via httpOnly cookies
+ * by Laravel Sanctum. We only persist user info for UI display purposes.
+ * The actual authentication state is determined by the session cookie.
  */
 export const useAuthStore = create<AuthStore>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       ...initialState,
 
-      setAuth: (user, token) =>
+      setAuth: (user) =>
         set({
           user,
-          token,
           isAuthenticated: true,
           isLoading: false,
         }),
@@ -80,19 +83,16 @@ export const useAuthStore = create<AuthStore>()(
       logout: () =>
         set({
           user: null,
-          token: null,
           isAuthenticated: false,
           isLoading: false,
         }),
-
-      getToken: () => get().token,
     }),
     {
       name: 'autoerp-auth',
+      // Only persist user info for UI - NOT authentication state
+      // The session cookie determines actual auth status
       partialize: (state) => ({
         user: state.user,
-        token: state.token,
-        isAuthenticated: state.isAuthenticated,
       }),
     }
   )

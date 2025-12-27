@@ -1,0 +1,141 @@
+{
+  "fraudSettings": {
+    "title": "Paramètres de détection de fraude",
+    "description": "Configurez la détection automatique de fraude et les seuils d'alerte pour votre entreprise",
+    "notConfigured": {
+      "title": "Détection de fraude non configurée",
+      "description": "Utilisation des paramètres par défaut. Configurez les seuils et préférences d'alerte selon vos besoins."
+    },
+    "sections": {
+      "detection": "Seuils de détection",
+      "alerts": "Configuration des alertes",
+      "actions": "Actions automatisées"
+    },
+    "fields": {
+      "threshold": {
+        "label": "Seuil de brouillons abandonnés",
+        "hint": "Nombre de brouillons abandonnés avant déclenchement d'alerte (1-100)"
+      },
+      "timeWindow": {
+        "label": "Fenêtre temporelle (jours)",
+        "hint": "Période de détection en jours (1-365)"
+      },
+      "alertEnabled": {
+        "label": "Activer les alertes de détection de fraude"
+      },
+      "emails": {
+        "label": "Destinataires des alertes",
+        "placeholder": "admin@entreprise.com",
+        "hint": "Adresses e-mail à notifier lors de la détection de patterns frauduleux"
+      },
+      "autoCounting": {
+        "label": "Déclencher automatiquement l'inventaire",
+        "hint": "Créer automatiquement des opérations d'inventaire pour les produits signalés"
+      },
+      "autoRestrict": {
+        "label": "Restreindre l'accès automatiquement",
+        "hint": "Restreindre temporairement l'accès des utilisateurs signalés (à utiliser avec précaution)"
+      }
+    },
+    "actions": {
+      "reset": "Réinitialiser"
+    },
+    "messages": {
+      "updateSuccess": "Paramètres de détection de fraude mis à jour avec succès",
+      "resetSuccess": "Paramètres réinitialisés aux valeurs par défaut",
+      "confirmReset": "Êtes-vous sûr de vouloir réinitialiser les paramètres de détection de fraude ?"
+    },
+    "errors": {
+      "thresholdRange": "Le seuil doit être entre 1 et 100",
+      "timeWindowRange": "La fenêtre temporelle doit être entre 1 et 365 jours",
+      "invalidEmail": "Veuillez entrer une adresse e-mail valide",
+      "duplicateEmail": "Cet e-mail est déjà dans la liste"
+    }
+  },
+  "fraudAlerts": {
+    "title": "Alertes de fraude",
+    "description": "Surveillez et enquêtez sur les patterns d'activité suspects",
+    "filters": {
+      "status": "Statut",
+      "severity": "Sévérité",
+      "type": "Type d'alerte",
+      "dateRange": "Période"
+    },
+    "statuses": {
+      "open": "Ouvert",
+      "investigating": "En cours d'enquête",
+      "dismissed": "Rejeté",
+      "resolved": "Résolu",
+      "all": "Tous les statuts"
+    },
+    "severities": {
+      "critical": "Critique",
+      "warning": "Avertissement",
+      "info": "Information",
+      "all": "Toutes les sévérités"
+    },
+    "types": {
+      "high_abandonment": "Abandon élevé",
+      "suspicious_items": "Articles suspects",
+      "rapid_cycle": "Cycle rapide",
+      "all": "Tous les types"
+    },
+    "table": {
+      "user": "Utilisateur",
+      "type": "Type",
+      "severity": "Sévérité",
+      "detected": "Détecté",
+      "status": "Statut",
+      "actions": "Actions"
+    },
+    "actions": {
+      "view": "Voir les détails",
+      "assign": "Assigner",
+      "dismiss": "Rejeter",
+      "resolve": "Résoudre",
+      "assignTo": "Assigner à...",
+      "viewCounting": "Voir l'inventaire"
+    },
+    "detail": {
+      "title": "Détails de l'alerte",
+      "description": "Description",
+      "detectedAt": "Détecté le",
+      "flaggedProducts": "Produits signalés",
+      "metadata": "Informations supplémentaires",
+      "assignedTo": "Assigné à",
+      "resolvedAt": "Résolu le",
+      "resolutionNotes": "Notes de résolution",
+      "noProducts": "Aucun produit signalé",
+      "occurrenceCount": "{{count}} fois"
+    },
+    "modals": {
+      "assign": {
+        "title": "Assigner l'alerte",
+        "selectUser": "Sélectionnez un administrateur pour enquêter sur cette alerte"
+      },
+      "dismiss": {
+        "title": "Rejeter l'alerte",
+        "notesLabel": "Raison du rejet",
+        "notesPlaceholder": "Expliquez pourquoi cette alerte est rejetée comme faux positif..."
+      },
+      "resolve": {
+        "title": "Résoudre l'alerte",
+        "notesLabel": "Notes de résolution",
+        "notesPlaceholder": "Documentez le résultat de l'enquête et les actions prises..."
+      }
+    },
+    "statistics": {
+      "totalAlerts": "Total des alertes",
+      "openAlerts": "Ouvertes",
+      "investigating": "En cours",
+      "recentAlerts": "7 derniers jours"
+    },
+    "messages": {
+      "assignSuccess": "Alerte assignée avec succès",
+      "dismissSuccess": "Alerte rejetée",
+      "resolveSuccess": "Alerte résolue",
+      "noAlerts": "Aucune alerte de fraude trouvée",
+      "loadingAlerts": "Chargement des alertes..."
+    }
+  }
+}

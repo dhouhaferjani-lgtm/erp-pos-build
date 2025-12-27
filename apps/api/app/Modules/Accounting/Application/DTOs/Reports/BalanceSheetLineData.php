@@ -38,18 +38,16 @@ use Spatie\LaravelData\Data;
  *     'is_parent' => false,
  * ]);
  * ```
- *
- * @package App\Modules\Accounting\Application\DTOs\Reports
  */
 final class BalanceSheetLineData extends Data
 {
     /**
-     * @param string $account_code Account code (e.g., "100", "200", "300")
-     * @param string $account_name Account name (e.g., "Cash", "Accounts Payable", "Capital Stock")
-     * @param string $account_type Account type ('asset', 'liability', or 'equity')
-     * @param numeric-string $amount Balance as of the reporting date
-     * @param int $level Hierarchy depth (0 = root, 1 = child, etc.)
-     * @param bool $is_parent Whether this account has children (subtotal row)
+     * @param  string  $account_code  Account code (e.g., "100", "200", "300")
+     * @param  string  $account_name  Account name (e.g., "Cash", "Accounts Payable", "Capital Stock")
+     * @param  string  $account_type  Account type ('asset', 'liability', or 'equity')
+     * @param  numeric-string  $amount  Balance as of the reporting date
+     * @param  int  $level  Hierarchy depth (0 = root, 1 = child, etc.)
+     * @param  bool  $is_parent  Whether this account has children (subtotal row)
      */
     public function __construct(
         public readonly string $account_code,
@@ -73,7 +71,6 @@ final class BalanceSheetLineData extends Data
      *     level: int,
      *     is_parent: bool
      * } $data
-     * @return self
      */
     public static function fromArray(array $data): self
     {
@@ -89,12 +86,10 @@ final class BalanceSheetLineData extends Data
 
     /**
      * Check if this is a leaf account (not a parent).
-     *
-     * @return bool
      */
     public function isLeaf(): bool
     {
-        return !$this->is_parent;
+        return ! $this->is_parent;
     }
 
     /**
@@ -109,8 +104,6 @@ final class BalanceSheetLineData extends Data
 
     /**
      * Check if this is an asset account.
-     *
-     * @return bool
      */
     public function isAsset(): bool
     {
@@ -119,8 +112,6 @@ final class BalanceSheetLineData extends Data
 
     /**
      * Check if this is a liability account.
-     *
-     * @return bool
      */
     public function isLiability(): bool
     {
@@ -129,8 +120,6 @@ final class BalanceSheetLineData extends Data
 
     /**
      * Check if this is an equity account.
-     *
-     * @return bool
      */
     public function isEquity(): bool
     {

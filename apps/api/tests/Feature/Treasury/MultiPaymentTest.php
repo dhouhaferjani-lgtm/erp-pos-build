@@ -465,7 +465,7 @@ class MultiPaymentTest extends TestCase
         // but the database has a NOT NULL constraint on that column.
         // This is a known limitation - on-account payments need schema change to support.
         $this->markTestSkipped(
-            'Service sets payment_method_id to null but DB requires it. ' .
+            'Service sets payment_method_id to null but DB requires it. '.
             'On-account payments need schema migration to make payment_method_id nullable.'
         );
     }

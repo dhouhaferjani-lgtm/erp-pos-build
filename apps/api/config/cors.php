@@ -17,7 +17,7 @@ return [
 
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
-    'allowed_methods' => ['*'],
+    'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 
     'allowed_origins' => env('CORS_ALLOWED_ORIGINS') === '*'
         ? ['*']
@@ -25,7 +25,15 @@ return [
 
     'allowed_origins_patterns' => [],
 
-    'allowed_headers' => ['*'],
+    'allowed_headers' => [
+        'Content-Type',
+        'Authorization',
+        'Accept',
+        'X-Requested-With',
+        'X-XSRF-TOKEN',
+        'X-Company-Id',
+        'X-Location-Id',
+    ],
 
     'exposed_headers' => [],
 

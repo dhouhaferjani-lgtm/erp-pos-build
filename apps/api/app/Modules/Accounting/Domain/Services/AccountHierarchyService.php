@@ -34,8 +34,6 @@ use Illuminate\Database\Eloquent\Collection;
  * - buildTree: O(n) where n = number of accounts
  * - calculateSubtotals: O(n) recursive traversal
  * - flattenTree: O(n) depth-first traversal
- *
- * @package App\Modules\Accounting\Domain\Services
  */
 class AccountHierarchyService
 {
@@ -67,7 +65,7 @@ class AccountHierarchyService
      * 3. Identify root accounts (parent_id = null or parent not found)
      * 4. Assign hierarchy levels recursively
      *
-     * @param Collection<int, Account> $accounts Flat collection of accounts with balance data
+     * @param  Collection<int, Account>  $accounts  Flat collection of accounts with balance data
      * @return list<AccountNode> Root-level account nodes (forest structure)
      *
      * @example
@@ -95,7 +93,7 @@ class AccountHierarchyService
         $indexed = [];
 
         foreach ($accounts as $account) {
-            $node = new AccountNode();
+            $node = new AccountNode;
             $node->account = $account;
             $node->level = 0;
             // Ensure balance is always a string (handle null values)
@@ -145,7 +143,7 @@ class AccountHierarchyService
      *
      * Uses bcmath for precise decimal arithmetic (required for financial data).
      *
-     * @param list<AccountNode> $tree Tree structure from buildTree()
+     * @param  list<AccountNode>  $tree  Tree structure from buildTree()
      * @return void Modifies the tree in place
      *
      * @example
@@ -192,7 +190,7 @@ class AccountHierarchyService
      *
      * Order is preserved (parent before children, siblings in original order).
      *
-     * @param list<AccountNode> $tree Tree structure from buildTree()
+     * @param  list<AccountNode>  $tree  Tree structure from buildTree()
      * @return list<AccountNode> Flattened list with level indicators
      *
      * @example
@@ -238,10 +236,11 @@ class AccountHierarchyService
      *
      * Includes circular reference detection to prevent infinite loops.
      *
-     * @param list<AccountNode> $nodes Array of nodes at current level
-     * @param int $level Current hierarchy level (0 = root)
-     * @param array<string> $visited Account IDs visited in current branch (for cycle detection)
+     * @param  list<AccountNode>  $nodes  Array of nodes at current level
+     * @param  int  $level  Current hierarchy level (0 = root)
+     * @param  array<string>  $visited  Account IDs visited in current branch (for cycle detection)
      * @return void Modifies nodes in place
+     *
      * @throws \RuntimeException If circular reference detected or max depth exceeded
      */
     private function assignLevels(array $nodes, int $level, array $visited = []): void
@@ -260,9 +259,9 @@ class AccountHierarchyService
             // Detect circular references
             if (in_array($accountId, $visited, true)) {
                 throw new \RuntimeException(
-                    "Circular reference detected in account hierarchy. ".
+                    'Circular reference detected in account hierarchy. '.
                     "Account {$accountId} ({$node->account->code} - {$node->account->name}) ".
-                    "is its own ancestor."
+                    'is its own ancestor.'
                 );
             }
 
@@ -285,9 +284,9 @@ class AccountHierarchyService
      * as long as they have matching children. Set $keepEmptyParents to false to
      * exclude parents that don't match.
      *
-     * @param list<AccountNode> $tree The tree to filter
-     * @param callable(AccountNode): bool $predicate Filter function
-     * @param bool $keepEmptyParents Whether to keep parents with matching children (default: true)
+     * @param  list<AccountNode>  $tree  The tree to filter
+     * @param  callable(AccountNode): bool  $predicate  Filter function
+     * @param  bool  $keepEmptyParents  Whether to keep parents with matching children (default: true)
      * @return list<AccountNode> Filtered tree
      *
      * @example
@@ -326,7 +325,7 @@ class AccountHierarchyService
      *
      * Useful for UI rendering decisions (e.g., limiting expansion depth).
      *
-     * @param list<AccountNode> $tree The tree to analyze
+     * @param  list<AccountNode>  $tree  The tree to analyze
      * @return int Maximum depth (0 for empty tree)
      *
      * @example
@@ -376,8 +375,6 @@ class AccountHierarchyService
  * - Not a full domain entity (no persistence)
  * - Used only for in-memory tree operations
  * - Keeps hierarchy logic separate from Account model
- *
- * @package App\Modules\Accounting\Domain\Services
  */
 class AccountNode
 {
@@ -444,7 +441,7 @@ class AccountNode
      *
      * Generates spaces based on hierarchy level.
      *
-     * @param int $spacesPerLevel Number of spaces per level (default: 2)
+     * @param  int  $spacesPerLevel  Number of spaces per level (default: 2)
      * @return string Indentation spaces
      *
      * @example

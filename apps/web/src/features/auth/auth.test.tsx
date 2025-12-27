@@ -241,20 +241,8 @@ describe('Authentication', () => {
   })
 
   describe('AuthProvider', () => {
-    it('checks for existing session on mount when token exists', async () => {
-      // Set a token in the auth store first
-      useAuthStore.getState().setAuth(
-        {
-          id: '123',
-          name: 'Test User',
-          email: 'test@example.com',
-          tenant_id: 'tenant-1',
-          roles: ['admin'],
-          email_verified_at: null,
-        },
-        'test-token'
-      )
-
+    it('checks for existing session on mount', async () => {
+      // With cookie-based auth, session is always checked on mount
       mockApiGet.mockResolvedValue({
         data: {
           data: {
@@ -263,6 +251,7 @@ describe('Authentication', () => {
             email: 'test@example.com',
             tenantId: 'tenant-1',
             roles: ['admin'],
+            emailVerifiedAt: null,
           },
         },
       })
@@ -282,9 +271,21 @@ describe('Authentication', () => {
       })
     })
 
-    it('does not check session when no token exists', () => {
-      // Ensure no token
-      useAuthStore.getState().logout()
+    it('logs out when session is invalid', async () => {
+      // Set user in store (from persisted state)
+      useAuthStore.getState().setAuth({
+        id: '123',
+        name: 'Test User',
+        email: 'test@example.com',
+        tenant_id: 'tenant-1',
+        roles: ['admin'],
+        email_verified_at: null,
+      })
+
+      // API returns 401 - session expired
+      mockApiGet.mockRejectedValue({
+        response: { status: 401 },
+      })
 
       render(
         <QueryClientProvider client={createTestQueryClient()}>
@@ -296,8 +297,10 @@ describe('Authentication', () => {
         </QueryClientProvider>
       )
 
-      expect(screen.getByText('App Content')).toBeInTheDocument()
-      expect(mockApiGet).not.toHaveBeenCalled()
+      await waitFor(() => {
+        // After session check fails, user should be logged out
+        expect(useAuthStore.getState().isAuthenticated).toBe(false)
+      })
     })
   })
 })

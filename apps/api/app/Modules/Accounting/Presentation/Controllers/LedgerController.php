@@ -58,8 +58,6 @@ use Illuminate\Http\JsonResponse;
  * - Default page size: 50 transactions
  * - Frontend should implement infinite scroll or traditional pagination
  * - Consider caching for historical periods (closed fiscal periods)
- *
- * @package App\Modules\Accounting\Presentation\Controllers
  */
 class LedgerController extends Controller
 {
@@ -144,8 +142,7 @@ class LedgerController extends Controller
      * - 422: Validation error (invalid date format, etc.)
      * - 500: Internal server error
      *
-     * @param GetLedgerRequest $request Validated request
-     * @return JsonResponse
+     * @param  GetLedgerRequest  $request  Validated request
      *
      * @example
      * GET /api/v1/ledger

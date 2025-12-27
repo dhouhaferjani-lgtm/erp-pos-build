@@ -93,6 +93,8 @@
       "credit_note": "Credit Note",
       "deliveryNote": "Delivery Note",
       "delivery_note": "Delivery Note",
+      "returnNote": "Return Note",
+      "return_note": "Return Note",
       "purchaseOrder": "Purchase Order",
       "purchase_order": "Purchase Order"
     },
@@ -121,6 +123,7 @@
   },
   "lineItems": {
     "title": "Line Items",
+    "article": "Article",
     "item": "Item",
     "description": "Description",
     "quantity": "Qty",
@@ -182,12 +185,21 @@
     "title": "Invoices",
     "new": "New Invoice",
     "post": "Post Invoice",
-    "createCreditNote": "Create Credit Note"
+    "createCreditNote": "Create Credit Note",
+    "searchInvoicePlaceholder": "Search by invoice number or partner...",
+    "noInvoicesFound": "No invoices found",
+    "noPostedInvoices": "No posted invoices available",
+    "invoice": "Invoice",
+    "balance": "Balance",
+    "total": "Total"
   },
   "deliveryNotes": {
     "title": "Delivery Notes",
     "singular": "delivery note",
     "plural": "delivery notes",
+    "searchPlaceholder": "Search by delivery note number or partner...",
+    "noResults": "No delivery notes found",
+    "noConfirmed": "No confirmed delivery notes available",
     "consolidation": {
       "title": "Consolidate Delivery Notes",
       "description": "Select confirmed delivery notes to combine into a single invoice. All selected notes must belong to the same partner and use the same currency.",
@@ -206,8 +218,11 @@
   "relatedDocuments": {
     "title": "Related Documents",
     "description": "View the document chain showing how this document relates to others",
+    "documentChain": "Document Chain",
     "sourceDocuments": "Source Documents",
     "derivedDocuments": "Derived Documents",
+    "creditNotes": "Credit Notes",
+    "returnNotes": "Return Notes",
     "currentDocument": "Current Document",
     "current": "Current",
     "noRelated": "This document has no related documents"
@@ -237,8 +252,38 @@
       "amountPositive": "Amount must be positive",
       "reasonRequired": "Reason is required",
       "maxAmount": "Maximum: {{amount}}",
-      "remainingCreditable": "Remaining creditable: {{amount}}"
+      "remainingCreditable": "Remaining creditable: {{amount}}",
+      "mode": "Credit Mode",
+      "amountBased": "Amount-Based",
+      "lineBased": "Line-Based",
+      "selectLines": "Select lines to credit",
+      "noLinesSelected": "Please select at least one line",
+      "creditQuantity": "Credit Qty",
+      "maxQuantity": "Max: {{quantity}}",
+      "quantityExceedsMax": "Quantity exceeds available",
+      "creditMode": "Credit Note Type",
+      "fromInvoice": "From Invoice",
+      "fromInvoiceDesc": "Credit an existing invoice",
+      "fromCustomer": "From Customer",
+      "fromCustomerDesc": "Create without source invoice",
+      "details": "Credit Note Details",
+      "lineSelection": "Line Selection",
+      "creditAll": "Credit All Lines",
+      "creditAllDesc": "Credit all lines from invoice",
+      "creditPartial": "Credit Partial",
+      "creditPartialDesc": "Select specific lines and quantities",
+      "selectLinesRequired": "Please select at least one line to credit",
+      "linesRequired": "Please add at least one line",
+      "create": "Create Credit Note"
     },
+    "createDescription": "Create a new credit note",
+    "messages": {
+      "created": "Credit note created successfully",
+      "createFailed": "Failed to create credit note"
+    },
+    "selectInvoiceDescription": "Select a posted invoice to create a credit note",
+    "selectInvoiceHint": "Only posted invoices with a remaining balance are available for credit notes.",
+    "loadInvoiceError": "Failed to load invoice details. Please try again.",
     "summary": {
       "title": "Credit Note Summary",
       "totalCreditNotes": "Total Credit Notes",
@@ -276,6 +321,103 @@
         "title": "Full Refund",
         "message": "This will create a credit note for the full invoice amount. Are you sure?",
         "button": "Create Full Refund"
+      }
+    }
+  },
+  "returnNotes": {
+    "title": "Return Notes",
+    "new": "New Return Note",
+    "createDescription": "Create a new return note",
+    "createFromInvoice": "Create Return Note",
+    "createFromDelivery": "Create Return Note",
+    "fromInvoiceDesc": "Return and credit invoiced goods",
+    "fromDeliveryNoteDesc": "Return goods from delivery note",
+    "viewReturnNotes": "View Return Notes",
+    "sourceDeliveryNote": "Source Delivery Note",
+    "sourceInvoice": "Source Invoice",
+    "linkedCreditNote": "Linked Credit Note",
+    "reason": {
+      "title": "Return Reason",
+      "label": "Reason for Return",
+      "defective": "Defective Product",
+      "wrongItem": "Wrong Item Shipped",
+      "customerRegret": "Customer Regret",
+      "damagedInTransit": "Damaged in Transit",
+      "warranty": "Warranty Return",
+      "exchange": "Exchange for Other Product",
+      "other": "Other"
+    },
+    "condition": {
+      "title": "Product Condition",
+      "label": "Condition",
+      "unopened": "Unopened / New",
+      "used": "Used / Opened",
+      "damaged": "Damaged",
+      "unusable": "Unusable"
+    },
+    "refundMethod": {
+      "title": "Refund Method",
+      "label": "Refund Method",
+      "originalPayment": "Original Payment Method",
+      "storeCredit": "Store Credit",
+      "exchange": "Exchange Only",
+      "none": "No Refund (Inspection/Repair)"
+    },
+    "notes": "Return Notes",
+    "notesPlaceholder": "Details about the return...",
+    "form": {
+      "selectSource": "Select Source Document",
+      "sourceRequired": "Source document is required",
+      "reasonRequired": "Return reason is required",
+      "conditionRequired": "Product condition is required",
+      "returnMode": "Return Mode",
+      "fullReturn": "Return All",
+      "fullReturnDesc": "Return all items from document",
+      "partialReturn": "Partial Return",
+      "partialReturnDesc": "Select specific items and quantities",
+      "lineSelection": "Line Selection",
+      "selectLinesToReturn": "Select Lines to Return",
+      "returnQuantity": "Return Qty",
+      "returnTotal": "Return Total",
+      "returnDetails": "Return Details",
+      "noLinesSelected": "Please select at least one line to return",
+      "returningAllItems": "Returning all {{count}} items",
+      "autoCreateCreditNote": "Automatically create credit note",
+      "autoCreateCreditNoteHint": "A credit note will be created automatically when this return is confirmed",
+      "create": "Create Return Note"
+    },
+    "summary": {
+      "title": "Return Note Summary",
+      "totalReturns": "Total Returns",
+      "totalValue": "Total Returned Value",
+      "awaitingCredit": "Awaiting Credit Note"
+    },
+    "status": {
+      "draft": "Draft",
+      "confirmed": "Confirmed",
+      "cancelled": "Cancelled"
+    },
+    "messages": {
+      "created": "Return note created successfully",
+      "confirmed": "Return note confirmed - stock returned to inventory",
+      "createFailed": "Failed to create return note",
+      "confirmFailed": "Failed to confirm return note"
+    },
+    "errors": {
+      "invalidQuantity": "Return quantity cannot exceed original quantity",
+      "noSourceDocument": "Return note must reference a delivery note or invoice",
+      "alreadyReturned": "Items from this document have already been returned"
+    },
+    "confirmations": {
+      "confirm": {
+        "title": "Confirm Return Note",
+        "message": "This will receive the returned goods back into inventory. Continue?",
+        "button": "Confirm Return"
+      },
+      "createCreditNote": {
+        "title": "Create Credit Note",
+        "message": "Would you like to create a credit note for this return?",
+        "button": "Create Credit Note"
       }
     }
   }

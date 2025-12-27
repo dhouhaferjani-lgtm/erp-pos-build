@@ -47,8 +47,6 @@ use Illuminate\Support\Facades\DB;
  * - No business rules (pure query/aggregation)
  * - Returns arrays (not DTOs) for flexibility
  * - Controller transforms to DTOs for API response
- *
- * @package App\Modules\Accounting\Application\Services\Reports
  */
 class GeneralLedgerReportService
 {
@@ -76,13 +74,13 @@ class GeneralLedgerReportService
      * IMPORTANT: For pagination to work correctly, the opening_balance must account
      * for ALL transactions before the current page (including prior pages in the result set).
      *
-     * @param string $companyId Company UUID for multi-tenancy
-     * @param string|null $accountId Optional account UUID (null = all accounts)
-     * @param Carbon|null $dateFrom Optional start date (null = from beginning)
-     * @param Carbon|null $dateTo Optional end date (null = to today)
-     * @param string|null $partnerId Optional partner UUID for subledger filtering
-     * @param int $offset Number of records to skip for pagination (default: 0)
-     * @param int|null $limit Max records to return (null = all records, no pagination)
+     * @param  string  $companyId  Company UUID for multi-tenancy
+     * @param  string|null  $accountId  Optional account UUID (null = all accounts)
+     * @param  Carbon|null  $dateFrom  Optional start date (null = from beginning)
+     * @param  Carbon|null  $dateTo  Optional end date (null = to today)
+     * @param  string|null  $partnerId  Optional partner UUID for subledger filtering
+     * @param  int  $offset  Number of records to skip for pagination (default: 0)
+     * @param  int|null  $limit  Max records to return (null = all records, no pagination)
      * @return array{
      *     opening_balance: numeric-string,
      *     closing_balance: numeric-string,
@@ -187,11 +185,11 @@ class GeneralLedgerReportService
      *
      * Used for pagination metadata.
      *
-     * @param string $companyId Company UUID
-     * @param string|null $accountId Optional account UUID filter
-     * @param Carbon|null $dateFrom Optional start date
-     * @param Carbon $dateTo End date
-     * @param string|null $partnerId Optional partner UUID filter
+     * @param  string  $companyId  Company UUID
+     * @param  string|null  $accountId  Optional account UUID filter
+     * @param  Carbon|null  $dateFrom  Optional start date
+     * @param  Carbon  $dateTo  End date
+     * @param  string|null  $partnerId  Optional partner UUID filter
      * @return int Total number of transactions matching filters
      */
     private function getTotalCount(
@@ -243,12 +241,12 @@ class GeneralLedgerReportService
      * - SUM journal lines in date range but before current offset
      * - Total = historical + prior_pages
      *
-     * @param string $companyId Company UUID
-     * @param string|null $accountId Optional account UUID filter
-     * @param Carbon|null $dateFrom Start date for the report
-     * @param Carbon $dateTo End date for the report
-     * @param string|null $partnerId Optional partner UUID filter
-     * @param int $offset Number of records being skipped (for pagination)
+     * @param  string  $companyId  Company UUID
+     * @param  string|null  $accountId  Optional account UUID filter
+     * @param  Carbon|null  $dateFrom  Start date for the report
+     * @param  Carbon  $dateTo  End date for the report
+     * @param  string|null  $partnerId  Optional partner UUID filter
+     * @param  int  $offset  Number of records being skipped (for pagination)
      * @return numeric-string Opening balance for this page
      */
     private function calculatePageOpeningBalance(
@@ -348,13 +346,13 @@ class GeneralLedgerReportService
      *   - journal_lines(account_id, journal_entry_id)
      *   - journal_lines(partner_id) if using partner filter
      *
-     * @param string $companyId Company UUID
-     * @param string|null $accountId Optional account UUID filter
-     * @param Carbon|null $dateFrom Optional start date
-     * @param Carbon $dateTo End date (default: today)
-     * @param string|null $partnerId Optional partner UUID filter
-     * @param int $offset Number of records to skip (for pagination)
-     * @param int|null $limit Max records to return (null = no limit)
+     * @param  string  $companyId  Company UUID
+     * @param  string|null  $accountId  Optional account UUID filter
+     * @param  Carbon|null  $dateFrom  Optional start date
+     * @param  Carbon  $dateTo  End date (default: today)
+     * @param  string|null  $partnerId  Optional partner UUID filter
+     * @param  int  $offset  Number of records to skip (for pagination)
+     * @param  int|null  $limit  Max records to return (null = no limit)
      * @return \Illuminate\Support\Collection<int, object{
      *     line_id: string,
      *     entry_date: string,
@@ -458,8 +456,8 @@ class GeneralLedgerReportService
      * Transaction 3: +100.00 debit  → Balance: 1400.00
      * ```
      *
-     * @param \Illuminate\Support\Collection $lines Raw journal lines from query
-     * @param numeric-string $openingBalance Starting balance before transactions
+     * @param  \Illuminate\Support\Collection  $lines  Raw journal lines from query
+     * @param  numeric-string  $openingBalance  Starting balance before transactions
      * @return list<array{
      *     id: string,
      *     date: string,
@@ -515,7 +513,7 @@ class GeneralLedgerReportService
      * Returns account information to display in the report header
      * (e.g., "General Ledger - Account 100: Cash").
      *
-     * @param string $accountId Account UUID
+     * @param  string  $accountId  Account UUID
      * @return array{code: string, name: string, type: string}|null
      */
     public function getAccountDetails(string $accountId): ?array

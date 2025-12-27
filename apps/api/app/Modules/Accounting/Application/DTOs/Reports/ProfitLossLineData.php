@@ -38,18 +38,16 @@ use Spatie\LaravelData\Data;
  *     'is_parent' => false,
  * ]);
  * ```
- *
- * @package App\Modules\Accounting\Application\DTOs\Reports
  */
 final class ProfitLossLineData extends Data
 {
     /**
-     * @param string $account_code Account code (e.g., "400", "600")
-     * @param string $account_name Account name (e.g., "Sales Revenue", "Rent Expense")
-     * @param string $account_type Account type ('revenue' or 'expense')
-     * @param numeric-string $amount Amount for the period (always positive)
-     * @param int $level Hierarchy depth (0 = root, 1 = child, etc.)
-     * @param bool $is_parent Whether this account has children (subtotal row)
+     * @param  string  $account_code  Account code (e.g., "400", "600")
+     * @param  string  $account_name  Account name (e.g., "Sales Revenue", "Rent Expense")
+     * @param  string  $account_type  Account type ('revenue' or 'expense')
+     * @param  numeric-string  $amount  Amount for the period (always positive)
+     * @param  int  $level  Hierarchy depth (0 = root, 1 = child, etc.)
+     * @param  bool  $is_parent  Whether this account has children (subtotal row)
      */
     public function __construct(
         public readonly string $account_code,
@@ -73,7 +71,6 @@ final class ProfitLossLineData extends Data
      *     level: int,
      *     is_parent: bool
      * } $data
-     * @return self
      */
     public static function fromArray(array $data): self
     {
@@ -89,12 +86,10 @@ final class ProfitLossLineData extends Data
 
     /**
      * Check if this is a leaf account (not a parent).
-     *
-     * @return bool
      */
     public function isLeaf(): bool
     {
-        return !$this->is_parent;
+        return ! $this->is_parent;
     }
 
     /**

@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\DocumentVehicleContext;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\Enums\UserStatus;
@@ -17,6 +18,7 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Vehicle\Domain\Vehicle;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
@@ -300,5 +302,140 @@ class UpdateDocumentTest extends TestCase
             ]);
 
         $response->assertNotFound();
+    }
+
+    public function test_can_add_vehicle_to_document(): void
+    {
+        $vehicle = Vehicle::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/quotes/{$this->quote->id}", [
+                'vehicle_context' => [
+                    'vehicle_id' => $vehicle->id,
+                    'snapshot' => [
+                        'license_plate' => $vehicle->license_plate,
+                        'brand' => $vehicle->brand,
+                        'model' => $vehicle->model,
+                        'year' => $vehicle->year,
+                        'vin' => $vehicle->vin,
+                    ],
+                    'mileage' => 50000,
+                ],
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.vehicle_context.vehicle_id', $vehicle->id)
+            ->assertJsonPath('data.vehicle_context.snapshot.license_plate', $vehicle->license_plate)
+            ->assertJsonPath('data.vehicle_context.snapshot.brand', $vehicle->brand)
+            ->assertJsonPath('data.vehicle_context.mileage', 50000);
+
+        $this->assertDatabaseHas('document_vehicle_contexts', [
+            'document_id' => $this->quote->id,
+            'vehicle_id' => $vehicle->id,
+        ]);
+    }
+
+    public function test_can_change_vehicle_on_document(): void
+    {
+        $vehicle1 = Vehicle::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+        ]);
+
+        $vehicle2 = Vehicle::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+        ]);
+
+        // Add vehicle1 first using vehicle_context
+        $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/quotes/{$this->quote->id}", [
+                'vehicle_context' => [
+                    'vehicle_id' => $vehicle1->id,
+                    'snapshot' => [
+                        'license_plate' => $vehicle1->license_plate,
+                        'brand' => $vehicle1->brand,
+                        'model' => $vehicle1->model,
+                        'year' => $vehicle1->year,
+                        'vin' => $vehicle1->vin,
+                    ],
+                    'mileage' => 30000,
+                ],
+            ]);
+
+        // Update to vehicle2
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/quotes/{$this->quote->id}", [
+                'vehicle_context' => [
+                    'vehicle_id' => $vehicle2->id,
+                    'snapshot' => [
+                        'license_plate' => $vehicle2->license_plate,
+                        'brand' => $vehicle2->brand,
+                        'model' => $vehicle2->model,
+                        'year' => $vehicle2->year,
+                        'vin' => $vehicle2->vin,
+                    ],
+                    'mileage' => 60000,
+                ],
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.vehicle_context.vehicle_id', $vehicle2->id)
+            ->assertJsonPath('data.vehicle_context.snapshot.license_plate', $vehicle2->license_plate)
+            ->assertJsonPath('data.vehicle_context.mileage', 60000);
+
+        $this->assertDatabaseHas('document_vehicle_contexts', [
+            'document_id' => $this->quote->id,
+            'vehicle_id' => $vehicle2->id,
+        ]);
+
+        $this->assertDatabaseMissing('document_vehicle_contexts', [
+            'document_id' => $this->quote->id,
+            'vehicle_id' => $vehicle1->id,
+        ]);
+    }
+
+    public function test_can_remove_vehicle_from_document(): void
+    {
+        $vehicle = Vehicle::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+        ]);
+
+        // Add vehicle first using vehicle_context
+        $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/quotes/{$this->quote->id}", [
+                'vehicle_context' => [
+                    'vehicle_id' => $vehicle->id,
+                    'snapshot' => [
+                        'license_plate' => $vehicle->license_plate,
+                        'brand' => $vehicle->brand,
+                        'model' => $vehicle->model,
+                        'year' => $vehicle->year,
+                        'vin' => $vehicle->vin,
+                    ],
+                    'mileage' => 40000,
+                ],
+            ]);
+
+        // Remove vehicle by sending null
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/quotes/{$this->quote->id}", [
+                'vehicle_context' => null,
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.vehicle_context', null);
+
+        $this->assertDatabaseMissing('document_vehicle_contexts', [
+            'document_id' => $this->quote->id,
+        ]);
     }
 }

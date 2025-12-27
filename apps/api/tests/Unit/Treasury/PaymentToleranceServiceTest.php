@@ -17,8 +17,11 @@ class PaymentToleranceServiceTest extends TestCase
     use RefreshDatabase;
 
     private PaymentToleranceService $service;
+
     private Company $company;
+
     private Country $country;
+
     private Tenant $tenant;
 
     protected function setUp(): void

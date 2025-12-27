@@ -165,7 +165,7 @@ class InventoryCounting extends Model
     /**
      * Scope to filter active countings.
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeActive(Builder $query): Builder
@@ -180,7 +180,7 @@ class InventoryCounting extends Model
     /**
      * Scope to filter countings pending review.
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopePendingReview(Builder $query): Builder
@@ -191,7 +191,7 @@ class InventoryCounting extends Model
     /**
      * Scope to filter by company.
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeForCompany(Builder $query, string $companyId): Builder

@@ -54,6 +54,8 @@ class UserController extends Controller
         // Search by name or email (use LIKE for SQLite compatibility in tests)
         if ($request->has('search') && $request->get('search') !== null) {
             $search = $request->get('search');
+            // Escape LIKE special characters to prevent LIKE pattern injection
+            $search = addcslashes($search, '%_\\');
 
             $query->where(function ($q) use ($search): void {
                 $q->whereRaw('LOWER(name) LIKE LOWER(?)', ["%{$search}%"])

@@ -97,7 +97,7 @@ class StockLevel extends Model
      */
     public function getAvailableQuantity(): string
     {
-        return bcsub($this->quantity, $this->reserved, 2);
+        return bcsub($this->quantity, $this->reserved, 4);
     }
 
     /**
@@ -166,5 +166,36 @@ class StockLevel extends Model
     public function scopeForCompany(Builder $query, string $companyId): Builder
     {
         return $query->where('company_id', $companyId);
+    }
+
+    /**
+     * Get detailed breakdown of active reservations for this stock level.
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, StockReservation>
+     */
+    public function getReservationBreakdown(): \Illuminate\Database\Eloquent\Collection
+    {
+        return StockReservation::where('product_id', $this->product_id)
+            ->where('location_id', $this->location_id)
+            ->active()
+            ->with(['createdBy'])
+            ->orderBy('created_at')
+            ->get();
+    }
+
+    /**
+     * Recalculate and update the reserved quantity from active reservations.
+     * Useful for fixing drift between reserved field and actual reservations.
+     */
+    public function recalculateReserved(): void
+    {
+        /** @var string $total */
+        $total = StockReservation::where('product_id', $this->product_id)
+            ->where('location_id', $this->location_id)
+            ->active()
+            ->sum('quantity');
+
+        $this->reserved = $total;
+        $this->save();
     }
 }

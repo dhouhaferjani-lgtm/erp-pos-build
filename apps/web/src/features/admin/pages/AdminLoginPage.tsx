@@ -15,15 +15,13 @@ export function AdminLoginPage() {
   const loginMutation = useMutation({
     mutationFn: () => loginSuperAdmin(email, password),
     onSuccess: (data) => {
-      setAuth(
-        {
-          id: data.id,
-          email: data.email,
-          name: data.name,
-          role: data.role,
-        },
-        data.token ?? ''
-      )
+      // Cookie is set automatically by Sanctum - just update UI state
+      setAuth({
+        id: data.id,
+        email: data.email,
+        name: data.name,
+        role: data.role,
+      })
       navigate('/admin/dashboard')
     },
     onError: (err: Error) => {

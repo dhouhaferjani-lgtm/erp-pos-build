@@ -5,6 +5,7 @@ import { useForm, useFieldArray } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Plus, X } from 'lucide-react'
 import { api, apiPost, apiPatch } from '../../lib/api'
+import { CategorySelect } from '../../components/catalog/CategorySelect'
 
 type ProductType = 'part' | 'service' | 'consumable'
 
@@ -13,6 +14,7 @@ interface Product {
   name: string
   sku: string
   type: ProductType
+  category_id: number | null
   description: string | null
   sale_price: string | null
   purchase_price: string | null
@@ -34,6 +36,7 @@ interface ProductFormData {
   name: string
   sku: string
   type: ProductType
+  category_id: number | null
   description: string
   sale_price: string
   purchase_price: string
@@ -67,6 +70,7 @@ export function ProductForm() {
       name: '',
       sku: '',
       type: 'part',
+      category_id: null,
       description: '',
       sale_price: '',
       purchase_price: '',
@@ -80,6 +84,7 @@ export function ProductForm() {
   })
 
   const oemNumbers = watch('oem_numbers')
+  const categoryId = watch('category_id')
 
   const { fields: crossRefFields, append: appendCrossRef, remove: removeCrossRef } = useFieldArray({
     control,
@@ -106,6 +111,7 @@ export function ProductForm() {
         name: product.name,
         sku: product.sku,
         type: product.type,
+        category_id: product.category_id ?? null,
         description: product.description ?? '',
         sale_price: product.sale_price ?? '',
         purchase_price: product.purchase_price ?? '',
@@ -239,6 +245,17 @@ export function ProductForm() {
               {errors.type && (
                 <p className="mt-1 text-sm text-red-600">{errors.type.message}</p>
               )}
+            </div>
+
+            <div>
+              <label htmlFor="category" className="block text-sm font-medium text-gray-700">
+                {t('catalog.products.category')}
+              </label>
+              <CategorySelect
+                value={categoryId}
+                onChange={(id) => setValue('category_id', id)}
+                className="mt-1"
+              />
             </div>
 
             <div>

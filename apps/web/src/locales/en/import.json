@@ -123,9 +123,13 @@
       "imported": "Successfully imported",
       "failed": "Failed to import",
       "backToDashboard": "Back to Import Dashboard",
-      "importMore": "Import More Data"
+      "importMore": "Import More Data",
+      "downloadFailedRows": "Download failed rows (CSV)"
     },
-    "proceedWithErrors": "Some rows have validation errors and will be skipped. Do you want to proceed with valid rows only?"
+    "proceedWithErrors": "Some rows have validation errors and will be skipped. Do you want to proceed with valid rows only?",
+    "confirmPartialImport": "Import with Errors",
+    "partialImportDescription": "{{valid}} rows are valid and will be imported. {{failed}} rows have errors and will be skipped. You can download the failed rows after import.",
+    "proceedWithValid": "Import Valid Rows"
   },
   "mapping": {
     "sourceColumn": "Source Column",
@@ -145,7 +149,23 @@
     "allValidDescription": "Your data passed all validation checks and is ready to import.",
     "rowsWithErrors": "{{count}} rows with errors",
     "row": "Row",
-    "showingPage": "Page {{current}} of {{total}}"
+    "showingPage": "Page {{current}} of {{total}}",
+    "errorsTitle": "Validation Errors",
+    "executionError": "Import error",
+    "validationErrorsCount": "{{count}} validation errors",
+    "executionErrorsCount": "{{count}} import errors"
+  },
+  "preview": {
+    "title": "Data Preview",
+    "loading": "Loading preview...",
+    "loadError": "Failed to load preview. Please try again.",
+    "totalRows": "{{count}} total rows",
+    "validRows": "{{count}} valid",
+    "invalidRows": "{{count}} with errors",
+    "status": "Status",
+    "valid": "Valid",
+    "error": "Error",
+    "moreRows": "+ {{count}} more rows"
   },
   "history": {
     "title": "Import History",

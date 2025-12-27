@@ -1,0 +1,109 @@
+{
+  "title": "Expenses",
+  "description": "Manage your business expenses and track spending",
+  "createExpense": "Create Expense",
+  "editExpense": "Edit Expense",
+  "viewExpense": "View Expense",
+  "deleteExpense": "Delete Expense",
+  "postExpense": "Post Expense",
+  "noExpenses": "No expenses found",
+  "noExpensesDescription": "Get started by creating your first expense",
+  "searchPlaceholder": "Search expenses by vendor, receipt number...",
+  "confirmDelete": "Are you sure you want to delete this expense?",
+  "confirmPost": "Are you sure you want to post this expense? This action cannot be undone.",
+  "paid": "Paid",
+  "vendorName": "Vendor Name",
+  "category": "Category",
+  "amount": "Amount",
+  "date": "Date",
+  "paymentMethod": "Payment Method",
+  "paymentRepository": "Paid From",
+  "receiptNumber": "Receipt Number",
+  "notes": "Notes",
+  "status": {
+    "draft": "Draft",
+    "confirmed": "Confirmed",
+    "posted": "Posted",
+    "cancelled": "Cancelled",
+    "paid": "Paid"
+  },
+  "actions": {
+    "post": "Post Expense",
+    "delete": "Delete Expense",
+    "save": "Save",
+    "cancel": "Cancel"
+  },
+  "form": {
+    "vendorInfo": "Vendor Information",
+    "vendorName": "Vendor Name",
+    "vendorNamePlaceholder": "Enter vendor or supplier name",
+    "receiptNumber": "Receipt Number",
+    "receiptNumberPlaceholder": "Enter receipt or invoice number",
+    "category": "Category",
+    "selectCategory": "Select a category",
+    "amount": "Amount",
+    "amountPlaceholder": "0.00",
+    "date": "Date",
+    "paymentDetails": "Payment Details",
+    "paymentDate": "Payment Date",
+    "paymentMethod": "Payment Method",
+    "paymentRepository": "Payment From",
+    "isPaid": "Mark as paid",
+    "notes": "Notes",
+    "notesPlaceholder": "Add any additional notes",
+    "internalNotes": "Internal Notes",
+    "internalNotesPlaceholder": "Add internal notes (not visible to vendor)",
+    "noPaymentMethods": "No payment methods available",
+    "noPaymentMethodsDescription": "Configure payment methods in Treasury settings",
+    "noRepositories": "No payment repositories available",
+    "noRepositoriesDescription": "Configure payment repositories in Treasury settings"
+  },
+  "filters": {
+    "status": "Status",
+    "category": "Category",
+    "dateFrom": "Date From",
+    "dateTo": "Date To"
+  },
+  "list": {
+    "noExpenses": "No expenses found",
+    "total": "Total",
+    "filter": "Filter"
+  },
+  "messages": {
+    "created": "Expense created successfully",
+    "updated": "Expense updated successfully",
+    "posted": "Expense posted successfully",
+    "deleted": "Expense deleted successfully",
+    "confirmDelete": "Are you sure you want to delete this expense?"
+  },
+  "errors": {
+    "notFound": "Expense not found"
+  },
+  "noVendor": "No vendor specified",
+  "attachments": "Attachments",
+  "categories": {
+    "title": "Expense Categories",
+    "description": "Organize expenses by category for better tracking",
+    "create": "Create Category",
+    "createCategory": "Create Category",
+    "edit": "Edit Category",
+    "editCategory": "Edit Category",
+    "confirmDelete": "Are you sure you want to delete this category?",
+    "noCategories": "No categories found",
+    "noCategoriesDescription": "Create categories to organize your expenses",
+    "name": "Category Name",
+    "description": "Description",
+    "parentCategory": "Parent Category",
+    "account": "Default Account",
+    "form": {
+      "name": "Category Name",
+      "description": "Description",
+      "parentCategory": "Parent Category"
+    },
+    "messages": {
+      "created": "Category created successfully",
+      "updated": "Category updated successfully",
+      "deleted": "Category deleted successfully"
+    }
+  }
+}

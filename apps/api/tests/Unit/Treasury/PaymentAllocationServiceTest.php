@@ -24,9 +24,13 @@ class PaymentAllocationServiceTest extends TestCase
     use RefreshDatabase;
 
     private PaymentAllocationService $service;
+
     private Company $company;
+
     private Partner $partner;
+
     private Tenant $tenant;
+
     private PaymentMethod $paymentMethod;
 
     protected function setUp(): void

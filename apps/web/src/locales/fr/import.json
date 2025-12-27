@@ -123,9 +123,13 @@
       "imported": "Importés avec succès",
       "failed": "Échec d'importation",
       "backToDashboard": "Retour au tableau de bord",
-      "importMore": "Importer plus de données"
+      "importMore": "Importer plus de données",
+      "downloadFailedRows": "Télécharger les lignes échouées (CSV)"
     },
-    "proceedWithErrors": "Certaines lignes ont des erreurs de validation et seront ignorées. Voulez-vous continuer avec les lignes valides uniquement ?"
+    "proceedWithErrors": "Certaines lignes ont des erreurs de validation et seront ignorées. Voulez-vous continuer avec les lignes valides uniquement ?",
+    "confirmPartialImport": "Import avec erreurs",
+    "partialImportDescription": "{{valid}} lignes sont valides et seront importées. {{failed}} lignes ont des erreurs et seront ignorées. Vous pouvez télécharger les lignes échouées après l'import.",
+    "proceedWithValid": "Importer les lignes valides"
   },
   "mapping": {
     "sourceColumn": "Colonne source",
@@ -145,7 +149,23 @@
     "allValidDescription": "Vos données ont passé tous les contrôles de validation et sont prêtes à être importées.",
     "rowsWithErrors": "{{count}} lignes avec erreurs",
     "row": "Ligne",
-    "showingPage": "Page {{current}} sur {{total}}"
+    "showingPage": "Page {{current}} sur {{total}}",
+    "errorsTitle": "Erreurs de validation",
+    "executionError": "Erreur d'import",
+    "validationErrorsCount": "{{count}} erreurs de validation",
+    "executionErrorsCount": "{{count}} erreurs d'import"
+  },
+  "preview": {
+    "title": "Aperçu des données",
+    "loading": "Chargement de l'aperçu...",
+    "loadError": "Échec du chargement de l'aperçu. Veuillez réessayer.",
+    "totalRows": "{{count}} lignes au total",
+    "validRows": "{{count}} valides",
+    "invalidRows": "{{count}} avec erreurs",
+    "status": "Statut",
+    "valid": "Valide",
+    "error": "Erreur",
+    "moreRows": "+ {{count}} lignes supplémentaires"
   },
   "history": {
     "title": "Historique des imports",

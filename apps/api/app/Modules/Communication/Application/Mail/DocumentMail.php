@@ -22,12 +22,12 @@ final class DocumentMail extends Mailable
     /**
      * Create a new message instance.
      *
-     * @param Document $document The document to send
-     * @param Company $company The company sending the document
-     * @param string $pdfContent The PDF content as binary string
-     * @param string $pdfFilename The filename for the PDF attachment
-     * @param string|null $customMessage Optional custom message to include
-     * @param string|null $customSubject Optional custom subject line
+     * @param  Document  $document  The document to send
+     * @param  Company  $company  The company sending the document
+     * @param  string  $pdfContent  The PDF content as binary string
+     * @param  string  $pdfFilename  The filename for the PDF attachment
+     * @param  string|null  $customMessage  Optional custom message to include
+     * @param  string|null  $customSubject  Optional custom subject line
      */
     public function __construct(
         public readonly Document $document,
@@ -36,8 +36,7 @@ final class DocumentMail extends Mailable
         public readonly string $pdfFilename,
         public readonly ?string $customMessage = null,
         public readonly ?string $customSubject = null,
-    ) {
-    }
+    ) {}
 
     /**
      * Get the message envelope.

@@ -42,7 +42,8 @@
     "invalidEmail": "Invalid email address",
     "invalidPhone": "Invalid phone number",
     "minLength": "Must be at least {{min}} characters",
-    "maxLength": "Must be at most {{max}} characters"
+    "maxLength": "Must be at most {{max}} characters",
+    "minAmount": "Minimum amount is {{amount}}"
   },
   "error": {
     "generic": "An error occurred. Please try again."
@@ -128,7 +129,8 @@
     "loadingFailed": "Error loading data. Please try again.",
     "documentNotFound": "Document not found or an error occurred.",
     "permissionDenied": "Permission Denied",
-    "permissionDeniedDescription": "You don't have permission to access this page. Please contact your administrator if you believe this is an error."
+    "permissionDeniedDescription": "You don't have permission to access this page. Please contact your administrator if you believe this is an error.",
+    "unexpected": "An unexpected error occurred. Please try again."
   },
   "dashboard": {
     "title": "Dashboard",
@@ -162,10 +164,12 @@
     "goodsReceipts": "Goods Receipts",
     "inventory": "Inventory",
     "products": "Products",
+    "categories": "Categories",
     "stockLevels": "Stock Levels",
     "stockMovements": "Stock Movements",
     "counting": "Inventory Counting",
     "deliveryNotes": "Delivery Notes",
+    "returnNotes": "Return Notes",
     "inventoryCounting": "Inventory Counting",
     "vehicles": "Vehicles",
     "services": "Services",
@@ -173,7 +177,10 @@
     "serviceCategories": "Categories",
     "treasury": "Treasury",
     "payments": "Payments",
+    "expenses": "Expenses",
+    "expenseCategories": "Expense Categories",
     "instruments": "Instruments",
+    "paymentMethods": "Payment Methods",
     "repositories": "Repositories",
     "finance": "Finance",
     "chartOfAccounts": "Chart of Accounts",
@@ -243,7 +250,8 @@
   "pagination": {
     "showing": "Showing {{from}} to {{to}} of {{total}} results",
     "previous": "Previous",
-    "next": "Next"
+    "next": "Next",
+    "rowsPerPage": "Rows per page"
   },
   "confirmation": {
     "delete": "Are you sure you want to delete this item?",
@@ -266,8 +274,14 @@
   "clear": "Clear",
   "yes": "Yes",
   "no": "No",
+  "none": "None",
+  "active": "Active",
+  "inactive": "Inactive",
   "optional": "optional",
   "continue": "Continue",
+  "dismiss": "Dismiss",
+  "clearFilters": "Clear Filters",
+  "all": "All",
   "actionsLabel": "Actions",
   "allStatuses": "All Statuses",
   "reports": {
@@ -679,6 +693,10 @@
         "title": "Company",
         "description": "Company information and branding"
       },
+      "inventory": {
+        "title": "Inventory & Pricing",
+        "description": "Configure costing methods, margins, and stock reservations"
+      },
       "import": {
         "title": "Data Import",
         "description": "Import data from CSV or Excel files"
@@ -842,6 +860,24 @@
       "difference": "Difference",
       "status": "Status",
       "createdBy": "Created By"
+    }
+  },
+  "catalog": {
+    "categories": {
+      "title": "Categories",
+      "create": "Create Category",
+      "edit": "Edit Category",
+      "name": "Category Name",
+      "description": "Description",
+      "parent": "Parent Category",
+      "noCategory": "No category",
+      "tree": "Category Tree",
+      "cannotDelete": "Cannot delete category with products or subcategories",
+      "selectCategory": "Select category...",
+      "rootCategory": "Root Category (No Parent)"
+    },
+    "products": {
+      "category": "Category"
     }
   }
 }

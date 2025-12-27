@@ -8,6 +8,11 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Import\Services\MigrationWizardService;
 use App\Modules\Import\Services\ValidationEngine;
+use App\Shared\Contracts\AccountingServiceInterface;
+use App\Shared\Contracts\InventoryServiceInterface;
+use App\Shared\Contracts\LocationServiceInterface;
+use App\Shared\Contracts\PartnerServiceInterface;
+use App\Shared\Contracts\ProductServiceInterface;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
@@ -22,7 +27,12 @@ class ImportServiceProvider extends ServiceProvider
         $this->app->singleton(ImportService::class, function ($app) {
             return new ImportService(
                 $app->make(ValidationEngine::class),
-                $app->make(CompanyContext::class)
+                $app->make(CompanyContext::class),
+                $app->make(PartnerServiceInterface::class),
+                $app->make(ProductServiceInterface::class),
+                $app->make(InventoryServiceInterface::class),
+                $app->make(LocationServiceInterface::class),
+                $app->make(AccountingServiceInterface::class)
             );
         });
 
@@ -45,8 +55,10 @@ class ImportServiceProvider extends ServiceProvider
                 Route::get('/imports', [\App\Modules\Import\Presentation\Controllers\ImportController::class, 'index']);
                 Route::post('/imports', [\App\Modules\Import\Presentation\Controllers\ImportController::class, 'store']);
                 Route::get('/imports/{id}', [\App\Modules\Import\Presentation\Controllers\ImportController::class, 'show']);
+                Route::get('/imports/{id}/preview', [\App\Modules\Import\Presentation\Controllers\ImportController::class, 'preview']);
                 Route::get('/imports/{id}/errors', [\App\Modules\Import\Presentation\Controllers\ImportController::class, 'errors']);
                 Route::post('/imports/{id}/execute', [\App\Modules\Import\Presentation\Controllers\ImportController::class, 'execute']);
+                Route::get('/imports/{id}/failed-rows.csv', [\App\Modules\Import\Presentation\Controllers\ImportController::class, 'downloadFailedRows']);
 
                 // Migration wizard routes
                 Route::get('/migration-wizard/order', [\App\Modules\Import\Presentation\Controllers\MigrationWizardController::class, 'order']);

@@ -1,22 +1,26 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, ArrowRight, Upload, Loader2, CheckCircle, XCircle } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Upload, Loader2, CheckCircle, XCircle, Download } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
   FileUpload,
   ColumnMapper,
   ValidationGrid,
   ImportProgress,
+  ImportPreviewTable,
 } from '../components'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import {
   useCreateImport,
   useExecuteImport,
   useSuggestMapping,
   useImportJob,
   useImportErrors,
+  useImportPreview,
 } from '../api/queries'
 import { importApi } from '../api/importApi'
+import { useImportProgressStore } from '../../../stores/importProgressStore'
 import type { ImportType } from '../types'
 
 type WizardStep = 'upload' | 'mapping' | 'validation' | 'execute' | 'complete'
@@ -91,23 +95,100 @@ export function ImportWizardPage() {
   const [suggestions, setSuggestions] = useState<Record<string, string | null>>({})
 
   // Job state
-  const [jobId, setJobId] = useState<number | null>(null)
+  const [jobId, setJobId] = useState<string | null>(null)
+
+  // Dialog state for partial import confirmation
+  const [showPartialImportDialog, setShowPartialImportDialog] = useState(false)
+
+  // Import results state (from execute response)
+  const [importResults, setImportResults] = useState<{
+    imported_count: number
+    skipped_count: number
+    execution_error_count: number
+    total_rows: number
+    failed_rows_csv_url: string | null
+  } | null>(null)
 
   // Mutations
   const createImport = useCreateImport()
   const executeImport = useExecuteImport()
   const suggestMapping = useSuggestMapping()
 
-  // Poll job status when executing
-  const isPolling = jobId !== null && (currentStep === 'execute' || currentStep === 'complete')
-  const { data: jobData } = useImportJob(jobId ?? 0, {
-    enabled: isPolling,
-    refetchInterval: isPolling ? 2000 : false, // Poll every 2 seconds while on execute/complete step
+  // Get real-time progress from WebSocket store
+  const { getImportProgress, updateProgress } = useImportProgressStore()
+  const realtimeProgress = jobId ? getImportProgress(jobId) : undefined
+
+  // Track if we're actively importing (for polling fallback)
+  const [isImporting, setIsImporting] = useState(false)
+
+  // Fetch job status from API - poll during importing as fallback for WebSocket
+  const shouldFetchJob = jobId !== null && (currentStep === 'validation' || currentStep === 'execute' || currentStep === 'complete')
+  const { data: apiJobData } = useImportJob(jobId ?? '', {
+    enabled: shouldFetchJob,
+    // Poll every 2 seconds during importing as fallback (WebSocket may not be working)
+    refetchInterval: isImporting ? 2000 : false,
   })
 
+  // Merge API data with real-time WebSocket progress
+  // Real-time data takes precedence during execution
+  const jobData = useMemo(() => {
+    if (!apiJobData) return undefined
+
+    // If we have real-time progress from WebSocket, merge it with API data
+    if (realtimeProgress && (realtimeProgress.status === 'importing' || realtimeProgress.status === 'completed' || realtimeProgress.status === 'failed')) {
+      return {
+        ...apiJobData,
+        status: realtimeProgress.status,
+        processed_rows: realtimeProgress.processedRows,
+        successful_rows: realtimeProgress.successfulRows,
+        failed_rows: realtimeProgress.failedRows,
+        error_message: realtimeProgress.errorMessage,
+      }
+    }
+
+    return apiJobData
+  }, [apiJobData, realtimeProgress])
+
+  // Initialize real-time progress store when execution starts
+  useEffect(() => {
+    if (jobId && apiJobData && executeImport.isSuccess) {
+      // Seed the progress store with initial data when execution starts
+      updateProgress({
+        import_job_id: jobId,
+        status: 'importing',
+        total_rows: apiJobData.total_rows ?? 0,
+        processed_rows: 0,
+        successful_rows: 0,
+        failed_rows: 0,
+        progress_percentage: 0,
+        import_type: importType,
+        original_filename: selectedFile?.name ?? '',
+      })
+    }
+  }, [jobId, apiJobData, executeImport.isSuccess, updateProgress, importType, selectedFile?.name])
+
+  // Auto-navigate to complete step when import is completed (from API or WebSocket)
+  useEffect(() => {
+    const status = realtimeProgress?.status ?? apiJobData?.status
+    if ((status === 'completed' || status === 'failed') && currentStep === 'execute') {
+      setIsImporting(false)
+      setCompletedSteps((prev) => [...prev, 3])
+      setCurrentStep('complete')
+    }
+  }, [realtimeProgress?.status, apiJobData?.status, currentStep])
+
   // Fetch validation errors when on validation step
-  const { data: errorsData } = useImportErrors(jobId ?? 0)
+  const { data: errorsData } = useImportErrors(jobId ?? '')
   const validationRows = errorsData?.data ?? []
+
+  // Fetch preview data when on validation step
+  const {
+    data: previewData,
+    isLoading: isPreviewLoading,
+    isError: isPreviewError
+  } = useImportPreview(
+    currentStep === 'validation' && jobId ? jobId : ''
+  )
 
   // Get step index
   const stepIndex = useMemo(() => {
@@ -178,28 +259,72 @@ export function ImportWizardPage() {
 
   // Handle validation step completion
   const handleValidationComplete = useCallback(() => {
-    const hasErrors = validationRows.some((row) => !row.is_valid)
+    const hasErrors = (jobData?.failed_rows ?? 0) > 0
     if (hasErrors) {
-      // Show warning but allow proceeding
-      if (!window.confirm(t('wizard.proceedWithErrors'))) {
-        return
-      }
+      // Show dialog to confirm partial import
+      setShowPartialImportDialog(true)
+      return
     }
 
     setCompletedSteps((prev) => [...prev, 2])
     setCurrentStep('execute')
-  }, [validationRows, t])
+  }, [jobData?.failed_rows])
+
+  // Handle confirmation to proceed with partial import
+  const handleConfirmPartialImport = useCallback(() => {
+    setShowPartialImportDialog(false)
+    setCompletedSteps((prev) => [...prev, 2])
+    setCurrentStep('execute')
+  }, [])
 
   // Handle execute step
   const handleExecute = useCallback(() => {
     if (!jobId) return
 
     executeImport.mutate(jobId, {
-      onSuccess: () => {
-        setCompletedSteps((prev) => [...prev, 3])
+      onSuccess: (response) => {
+        // Cast to any to access import_result from extended response
+        const fullResponse = response as typeof response & {
+          import_result?: {
+            imported_count: number
+            skipped_count: number
+            execution_error_count: number
+            total_rows: number
+            failed_rows_csv_url: string | null
+          }
+        }
+
+        // Capture import results if present (synchronous import)
+        if (fullResponse.import_result) {
+          setImportResults(fullResponse.import_result)
+        }
+
+        // Check if import completed synchronously (small imports < 100 rows)
+        if (response.status === 'completed' || response.status === 'failed') {
+          // Import finished synchronously - go directly to complete step
+          setIsImporting(false)
+          setCompletedSteps((prev) => [...prev, 3])
+          setCurrentStep('complete')
+        } else {
+          // Import is async (pending/importing) - start polling for updates
+          setIsImporting(true)
+          // Also populate the progress store with initial state so GlobalImportProgress shows
+          updateProgress({
+            import_job_id: response.id,
+            status: response.status as 'pending' | 'validating' | 'validated' | 'importing' | 'completed' | 'failed',
+            total_rows: response.total_rows,
+            processed_rows: response.processed_rows,
+            successful_rows: response.successful_rows,
+            failed_rows: response.failed_rows,
+            progress_percentage: response.progress_percentage,
+            import_type: response.type,
+            original_filename: response.original_filename,
+          })
+          setCompletedSteps((prev) => [...prev, 3])
+        }
       },
     })
-  }, [jobId, executeImport])
+  }, [jobId, executeImport, updateProgress])
 
 
   // Check if mapping is valid
@@ -329,10 +454,42 @@ export function ImportWizardPage() {
               </p>
             </div>
 
-            <ValidationGrid
-              rows={validationRows}
-              showOnlyErrors
-            />
+            {/* Data Preview Table */}
+            {isPreviewLoading && (
+              <div className="flex items-center justify-center gap-2 py-8 text-gray-500">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span>{t('preview.loading')}</span>
+              </div>
+            )}
+
+            {isPreviewError && (
+              <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <XCircle className="h-5 w-5" />
+                <span>{t('preview.loadError')}</span>
+              </div>
+            )}
+
+            {!isPreviewLoading && !isPreviewError && previewData && (
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium text-gray-700">
+                  {t('preview.title')}
+                </h3>
+                <ImportPreviewTable preview={previewData} />
+              </div>
+            )}
+
+            {/* Validation Errors Grid */}
+            {validationRows.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium text-gray-700">
+                  {t('validation.errorsTitle')}
+                </h3>
+                <ValidationGrid
+                  rows={validationRows}
+                  showOnlyErrors
+                />
+              </div>
+            )}
 
             <div className="flex items-center justify-between border-t border-gray-200 pt-4">
               <button
@@ -379,18 +536,18 @@ export function ImportWizardPage() {
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-sm text-gray-500">{t('wizard.execute.totalRows')}</dt>
-                  <dd className="text-sm font-medium text-gray-900">{validationRows.length}</dd>
+                  <dd className="text-sm font-medium text-gray-900">{jobData?.total_rows ?? 0}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-sm text-gray-500">{t('wizard.execute.validRows')}</dt>
                   <dd className="text-sm font-medium text-green-600">
-                    {validationRows.filter((r) => r.is_valid).length}
+                    {(jobData?.total_rows ?? 0) - (jobData?.failed_rows ?? 0)}
                   </dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-sm text-gray-500">{t('wizard.execute.invalidRows')}</dt>
                   <dd className="text-sm font-medium text-red-600">
-                    {validationRows.filter((r) => !r.is_valid).length}
+                    {jobData?.failed_rows ?? 0}
                   </dd>
                 </div>
               </dl>
@@ -413,10 +570,17 @@ export function ImportWizardPage() {
                     </>
                   )}
                   {jobData.status === 'failed' && (
-                    <>
-                      <XCircle className="h-5 w-5 text-red-600" />
-                      <span className="font-medium text-red-900">{t('wizard.execute.failed')}</span>
-                    </>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <XCircle className="h-5 w-5 text-red-600" />
+                        <span className="font-medium text-red-900">{t('wizard.execute.failed')}</span>
+                      </div>
+                      {jobData.error_message && (
+                        <p className="mt-2 text-sm text-red-700 bg-red-100 rounded-md px-3 py-2">
+                          {jobData.error_message}
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
 
@@ -499,7 +663,7 @@ export function ImportWizardPage() {
             </div>
 
             {/* Results summary */}
-            {jobData && (
+            {(jobData || importResults) && (
               <div className="rounded-lg border border-gray-200 bg-white p-6">
                 <h3 className="font-medium text-gray-900 mb-4">
                   {t('wizard.complete.results')}
@@ -508,16 +672,30 @@ export function ImportWizardPage() {
                   <div className="rounded-lg bg-green-50 p-4">
                     <dt className="text-sm text-green-600">{t('wizard.complete.imported')}</dt>
                     <dd className="text-2xl font-bold text-green-900">
-                      {jobData.successful_rows ?? 0}
+                      {importResults?.imported_count ?? jobData?.successful_rows ?? 0}
                     </dd>
                   </div>
                   <div className="rounded-lg bg-red-50 p-4">
                     <dt className="text-sm text-red-600">{t('wizard.complete.failed')}</dt>
                     <dd className="text-2xl font-bold text-red-900">
-                      {jobData.failed_rows ?? 0}
+                      {((importResults?.skipped_count ?? 0) + (importResults?.execution_error_count ?? 0)) || (jobData?.failed_rows ?? 0)}
                     </dd>
                   </div>
                 </dl>
+
+                {/* Download failed rows CSV */}
+                {importResults?.failed_rows_csv_url && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <a
+                      href={importResults.failed_rows_csv_url}
+                      download
+                      className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-800"
+                    >
+                      <Download className="h-4 w-4" />
+                      {t('wizard.complete.downloadFailedRows')}
+                    </a>
+                  </div>
+                )}
               </div>
             )}
 
@@ -578,6 +756,21 @@ export function ImportWizardPage() {
       <div className="rounded-lg border border-gray-200 bg-white p-6">
         {renderStepContent()}
       </div>
+
+      {/* Partial import confirmation dialog */}
+      <ConfirmDialog
+        isOpen={showPartialImportDialog}
+        onClose={() => setShowPartialImportDialog(false)}
+        onConfirm={handleConfirmPartialImport}
+        title={t('wizard.confirmPartialImport')}
+        message={t('wizard.partialImportDescription', {
+          valid: (jobData?.total_rows ?? 0) - (jobData?.failed_rows ?? 0),
+          failed: jobData?.failed_rows ?? 0
+        })}
+        confirmText={t('wizard.proceedWithValid')}
+        cancelText={t('common:actions.cancel')}
+        variant="warning"
+      />
     </div>
   )
 }

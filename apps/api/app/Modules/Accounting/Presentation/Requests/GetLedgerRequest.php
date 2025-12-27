@@ -50,8 +50,6 @@ use Illuminate\Foundation\Http\FormRequest;
  * GET /api/v1/ledger?partner_id={uuid}
  * GET /api/v1/ledger?page=2&per_page=100
  * ```
- *
- * @package App\Modules\Accounting\Presentation\Requests
  */
 class GetLedgerRequest extends FormRequest
 {
@@ -61,8 +59,6 @@ class GetLedgerRequest extends FormRequest
      * Authorization is handled via middleware (auth:sanctum) and
      * route-level permission checks (can:ledger.view), so this
      * always returns true.
-     *
-     * @return bool
      */
     public function authorize(): bool
     {

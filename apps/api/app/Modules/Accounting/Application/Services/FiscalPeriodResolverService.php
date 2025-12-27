@@ -8,7 +8,6 @@ use App\Modules\Company\Domain\FiscalPeriod;
 use App\Modules\Company\Domain\FiscalYear;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-use RuntimeException;
 
 /**
  * FiscalPeriodResolverService
@@ -32,8 +31,6 @@ use RuntimeException;
  * - Depends on FiscalYear and FiscalPeriod domain models
  * - Used by report services to translate period selections into queries
  * - Follows hexagonal architecture: no dependencies on infrastructure
- *
- * @package App\Modules\Accounting\Application\Services
  */
 class FiscalPeriodResolverService
 {
@@ -47,8 +44,9 @@ class FiscalPeriodResolverService
      * If multiple periods match (overlapping periods - data quality issue),
      * returns the first one ordered by start_date.
      *
-     * @param string $companyId UUID of the company
+     * @param  string  $companyId  UUID of the company
      * @return FiscalPeriod The current open period
+     *
      * @throws ModelNotFoundException When no current period exists
      *
      * @example
@@ -86,8 +84,9 @@ class FiscalPeriodResolverService
      * - start_date <= today <= end_date
      * - is_closed = false (optional, we still return closed years if they contain today)
      *
-     * @param string $companyId UUID of the company
+     * @param  string  $companyId  UUID of the company
      * @return FiscalYear The current fiscal year
+     *
      * @throws ModelNotFoundException When no fiscal year contains today's date
      *
      * @example
@@ -125,9 +124,10 @@ class FiscalPeriodResolverService
      *
      * Returns an associative array with 'start_date' and 'end_date' Carbon instances.
      *
-     * @param string $companyId UUID of the company
-     * @param string|null $periodId UUID of the period (null = current period)
+     * @param  string  $companyId  UUID of the company
+     * @param  string|null  $periodId  UUID of the period (null = current period)
      * @return array{start_date: Carbon, end_date: Carbon, period: FiscalPeriod}
+     *
      * @throws ModelNotFoundException When period not found
      *
      * @example
@@ -167,8 +167,9 @@ class FiscalPeriodResolverService
      *
      * This is commonly used for reports like "YTD Revenue" or "YTD Profit".
      *
-     * @param string $companyId UUID of the company
+     * @param  string  $companyId  UUID of the company
      * @return array{start_date: Carbon, end_date: Carbon, fiscal_year: FiscalYear}
+     *
      * @throws ModelNotFoundException When no current fiscal year exists
      *
      * @example
@@ -201,8 +202,8 @@ class FiscalPeriodResolverService
      * Useful for user-friendly period selection like "January 2025", "Q1 2025".
      * Performs a case-insensitive LIKE search on the period name.
      *
-     * @param string $companyId UUID of the company
-     * @param string $periodName Name or partial name to search for
+     * @param  string  $companyId  UUID of the company
+     * @param  string  $periodName  Name or partial name to search for
      * @return FiscalPeriod|null The first matching period, or null if none found
      *
      * @example
@@ -229,8 +230,8 @@ class FiscalPeriodResolverService
      * This is used to prevent posting transactions to closed periods,
      * which is a critical compliance requirement.
      *
-     * @param string $companyId UUID of the company
-     * @param Carbon $date The date to validate
+     * @param  string  $companyId  UUID of the company
+     * @param  Carbon  $date  The date to validate
      * @return bool True if date is in an open period, false otherwise
      *
      * @example
@@ -257,7 +258,7 @@ class FiscalPeriodResolverService
      *
      * Useful for UI dropdowns showing available periods for transaction posting.
      *
-     * @param string $fiscalYearId UUID of the fiscal year
+     * @param  string  $fiscalYearId  UUID of the fiscal year
      * @return \Illuminate\Database\Eloquent\Collection<int, FiscalPeriod>
      */
     public function getOpenPeriodsForYear(string $fiscalYearId): \Illuminate\Database\Eloquent\Collection
@@ -279,10 +280,10 @@ class FiscalPeriodResolverService
      *
      * Used by report services to standardize date range resolution.
      *
-     * @param string $companyId UUID of the company
-     * @param Carbon|null $dateFrom Explicit start date (overrides period)
-     * @param Carbon|null $dateTo Explicit end date (overrides period)
-     * @param string|null $fiscalPeriodId Optional period ID
+     * @param  string  $companyId  UUID of the company
+     * @param  Carbon|null  $dateFrom  Explicit start date (overrides period)
+     * @param  Carbon|null  $dateTo  Explicit end date (overrides period)
+     * @param  string|null  $fiscalPeriodId  Optional period ID
      * @return array{start_date: Carbon, end_date: Carbon}
      *
      * @example

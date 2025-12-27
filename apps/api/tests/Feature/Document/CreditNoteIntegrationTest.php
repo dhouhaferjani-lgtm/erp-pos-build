@@ -7,12 +7,12 @@ namespace Tests\Feature\Document;
 use App\Models\Country;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
-use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\CreditNoteReason;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -35,8 +35,11 @@ class CreditNoteIntegrationTest extends TestCase
     use RefreshDatabase;
 
     private Tenant $tenant;
+
     private Company $company;
+
     private User $user;
+
     private Partner $customer;
 
     protected function setUp(): void
@@ -383,7 +386,39 @@ class CreditNoteIntegrationTest extends TestCase
         preg_match('/CN-(\d+)/', $cn1Number, $matches1);
         preg_match('/CN-(\d+)/', $cn2Number, $matches2);
 
-        $this->assertEquals((int)$matches1[1] + 1, (int)$matches2[1]);
+        $this->assertEquals((int) $matches1[1] + 1, (int) $matches2[1]);
+    }
+
+    /** @test */
+    public function it_creates_credit_note_with_line_items(): void
+    {
+        $invoice = $this->createPostedInvoiceWithLines('INV-001', '1000.00', '190.00', '1190.00');
+
+        $response = $this->actingAs($this->user)
+            ->postJson('/api/v1/credit-notes', [
+                'source_invoice_id' => $invoice->id,
+                'reason' => 'return',
+                'lines' => [
+                    [
+                        'line_id' => $invoice->lines->first()->id,
+                        'quantity' => 5,
+                    ],
+                ],
+                'notes' => 'Partial return',
+            ]);
+
+        $response->assertCreated()
+            ->assertJson([
+                'message' => 'Credit note created successfully',
+            ]);
+
+        $creditNoteId = $response->json('data.id');
+        $creditNote = Document::find($creditNoteId);
+
+        // Verify credit note was created
+        $this->assertNotNull($creditNote);
+        $this->assertEquals(DocumentType::CreditNote, $creditNote->type);
+        $this->assertEquals('Partial return', $creditNote->notes);
     }
 
     private function createPostedInvoice(
@@ -430,6 +465,42 @@ class CreditNoteIntegrationTest extends TestCase
             'balance_due' => $total,
             'currency' => 'TND',
         ]);
+    }
+
+    private function createPostedInvoiceWithLines(
+        string $number,
+        string $subtotal,
+        string $taxAmount,
+        string $total
+    ): Document {
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::Invoice,
+            'status' => DocumentStatus::Posted,
+            'document_number' => $number,
+            'document_date' => now(),
+            'due_date' => now()->addDays(30),
+            'subtotal' => $subtotal,
+            'tax_amount' => $taxAmount,
+            'total' => $total,
+            'balance_due' => $total,
+            'currency' => 'TND',
+        ]);
+
+        // Create invoice lines
+        DocumentLine::create([
+            'document_id' => $invoice->id,
+            'line_number' => 1,
+            'description' => 'Product A',
+            'quantity' => '10',
+            'unit_price' => '100.00',
+            'tax_rate' => '19',
+            'line_total' => '1000.00',
+        ]);
+
+        return $invoice->load('lines');
     }
 
     private function createChartOfAccounts(): void

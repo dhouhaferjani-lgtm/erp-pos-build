@@ -7,9 +7,18 @@ namespace App\Modules\Compliance\Listeners;
 use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Document\Domain\Events\DeliveryNoteConfirmed;
 use App\Modules\Document\Domain\Events\DocumentConverted;
+use App\Modules\Document\Domain\Events\DraftDocumentCreated;
+use App\Modules\Document\Domain\Events\DraftLineAdded;
+use App\Modules\Document\Domain\Events\DraftLineModified;
+use App\Modules\Document\Domain\Events\DraftLineRemoved;
 use App\Modules\Document\Domain\Events\InvoiceCancelled;
 use App\Modules\Document\Domain\Events\InvoicePaid;
 use App\Modules\Document\Domain\Events\InvoicePosted;
+use App\Modules\Document\Domain\Events\SalesOrderCancelled;
+use App\Modules\Document\Domain\Events\SalesOrderConfirmed;
+use App\Modules\Inventory\Domain\Events\ReservationCreated;
+use App\Modules\Inventory\Domain\Events\ReservationExpired;
+use App\Modules\Inventory\Domain\Events\ReservationReleased;
 use App\Modules\Treasury\Domain\Events\PaymentRecorded;
 use App\Shared\Domain\Events\DomainEvent;
 use Illuminate\Events\Dispatcher;
@@ -176,9 +185,215 @@ final class DomainEventSubscriber
     }
 
     /**
+     * Handle DraftDocumentCreated events.
+     *
+     * This captures when users start creating documents (auto-save or explicit).
+     * Critical for fraud detection - tracks all document creation attempts,
+     * even if never completed.
+     */
+    public function handleDraftDocumentCreated(DraftDocumentCreated $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Document',
+            aggregateId: $event->documentId,
+            eventType: $event->getEventName(),
+            payload: $event->getAuditPayload()
+        );
+    }
+
+    /**
+     * Handle DraftLineAdded events.
+     *
+     * This captures when users add items to drafts.
+     * Essential for fraud detection - tracks which products are being
+     * added to drafts that may never be completed.
+     */
+    public function handleDraftLineAdded(DraftLineAdded $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'DocumentLine',
+            aggregateId: $event->lineId ?? $event->documentId,
+            eventType: $event->getEventName(),
+            payload: $event->getAuditPayload()
+        );
+    }
+
+    /**
+     * Handle DraftLineModified events.
+     *
+     * This captures changes to draft line items.
+     * Useful for detecting unusual editing patterns.
+     */
+    public function handleDraftLineModified(DraftLineModified $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'DocumentLine',
+            aggregateId: $event->lineId,
+            eventType: $event->getEventName(),
+            payload: $event->getAuditPayload()
+        );
+    }
+
+    /**
+     * Handle DraftLineRemoved events.
+     *
+     * This captures when users remove items from drafts.
+     * Useful for detecting "add then remove" suspicious patterns.
+     */
+    public function handleDraftLineRemoved(DraftLineRemoved $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'DocumentLine',
+            aggregateId: $event->lineId,
+            eventType: $event->getEventName(),
+            payload: $event->getAuditPayload()
+        );
+    }
+
+    /**
+     * Handle SalesOrderConfirmed events.
+     *
+     * This captures when sales orders are confirmed and stock is reserved.
+     * Essential for fraud detection - tracks order confirmation patterns.
+     */
+    public function handleSalesOrderConfirmed(SalesOrderConfirmed $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Document',
+            aggregateId: $event->salesOrderId,
+            eventType: $event->getEventName(),
+            payload: [
+                'document_number' => $event->documentNumber,
+                'partner_id' => $event->partnerId,
+                'total' => $event->total,
+                'currency' => $event->currency,
+                'lines_count' => count($event->lines),
+                'confirmed_by' => $event->confirmedBy,
+                'confirmed_at' => $event->confirmedAt,
+            ]
+        );
+    }
+
+    /**
+     * Handle SalesOrderCancelled events.
+     *
+     * This captures when sales orders are cancelled.
+     * Essential for fraud detection - frequent cancellations may indicate issues.
+     */
+    public function handleSalesOrderCancelled(SalesOrderCancelled $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Document',
+            aggregateId: $event->salesOrderId,
+            eventType: $event->getEventName(),
+            payload: [
+                'document_number' => $event->documentNumber,
+                'partner_id' => $event->partnerId,
+                'cancellation_reason' => $event->cancellationReason,
+                'cancelled_by' => $event->cancelledBy,
+                'cancelled_at' => $event->cancelledAt,
+            ]
+        );
+    }
+
+    /**
+     * Handle ReservationCreated events.
+     *
+     * This captures when stock is reserved for orders, carts, etc.
+     * Essential for fraud detection - tracks reservation patterns and high-value holds.
+     */
+    public function handleReservationCreated(ReservationCreated $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'StockReservation',
+            aggregateId: $event->reservationId,
+            eventType: $event->getEventName(),
+            payload: [
+                'product_id' => $event->productId,
+                'location_id' => $event->locationId,
+                'quantity' => $event->quantity,
+                'source_type' => $event->sourceType,
+                'source_id' => $event->sourceId,
+                'source_line_id' => $event->sourceLineId,
+                'expires_at' => $event->expiresAt,
+                'priority' => $event->priority,
+                'created_by' => $event->createdBy,
+                'created_at' => $event->createdAt,
+            ]
+        );
+    }
+
+    /**
+     * Handle ReservationReleased events.
+     *
+     * This captures when stock reservations are released.
+     * Tracks release reasons for fraud detection (expired, manual releases are suspicious).
+     */
+    public function handleReservationReleased(ReservationReleased $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'StockReservation',
+            aggregateId: $event->reservationId,
+            eventType: $event->getEventName(),
+            payload: [
+                'product_id' => $event->productId,
+                'location_id' => $event->locationId,
+                'quantity' => $event->quantity,
+                'source_type' => $event->sourceType,
+                'source_id' => $event->sourceId,
+                'release_reason' => $event->releaseReason,
+                'released_by' => $event->releasedBy,
+                'released_at' => $event->releasedAt,
+            ]
+        );
+    }
+
+    /**
+     * Handle ReservationExpired events.
+     *
+     * This captures when stock reservations expire due to timeout.
+     * CRITICAL for fraud detection - expired reservations are suspicious behavior.
+     */
+    public function handleReservationExpired(ReservationExpired $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'StockReservation',
+            aggregateId: $event->reservationId,
+            eventType: $event->getEventName(),
+            payload: [
+                'product_id' => $event->productId,
+                'location_id' => $event->locationId,
+                'quantity' => $event->quantity,
+                'source_type' => $event->sourceType,
+                'source_id' => $event->sourceId,
+                'original_expires_at' => $event->originalExpiresAt,
+                'expired_at' => $event->expiredAt,
+            ]
+        );
+    }
+
+    /**
      * Persist an event to the audit log.
      *
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      */
     private function persistEvent(
         DomainEvent $event,
@@ -229,12 +444,28 @@ final class DomainEventSubscriber
     public function subscribe(Dispatcher $events): array
     {
         return [
+            // Fiscal events (compliance)
             InvoicePosted::class => 'handleInvoicePosted',
             InvoiceCancelled::class => 'handleInvoiceCancelled',
             InvoicePaid::class => 'handleInvoicePaid',
             DeliveryNoteConfirmed::class => 'handleDeliveryNoteConfirmed',
             PaymentRecorded::class => 'handlePaymentRecorded',
             DocumentConverted::class => 'handleDocumentConverted',
+
+            // Sales order events (fraud detection)
+            SalesOrderConfirmed::class => 'handleSalesOrderConfirmed',
+            SalesOrderCancelled::class => 'handleSalesOrderCancelled',
+
+            // Stock reservation events (fraud detection)
+            ReservationCreated::class => 'handleReservationCreated',
+            ReservationReleased::class => 'handleReservationReleased',
+            ReservationExpired::class => 'handleReservationExpired',
+
+            // Draft events (fraud detection)
+            DraftDocumentCreated::class => 'handleDraftDocumentCreated',
+            DraftLineAdded::class => 'handleDraftLineAdded',
+            DraftLineModified::class => 'handleDraftLineModified',
+            DraftLineRemoved::class => 'handleDraftLineRemoved',
         ];
     }
 }

@@ -6,14 +6,11 @@ namespace App\Modules\Accounting\Application\Services\Reports;
 
 use App\Modules\Accounting\Application\DTOs\Reports\AgedReceivablesData;
 use App\Modules\Accounting\Application\DTOs\Reports\AgedReceivablesLineData;
-use App\Modules\Accounting\Domain\Account;
-use App\Modules\Accounting\Domain\Enums\AccountPurpose;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 
 /**
  * AgedReceivablesService
@@ -27,19 +24,18 @@ use Illuminate\Support\Facades\DB;
  * - Over 90 days
  *
  * Aging is calculated from the invoice due date (or invoice date if no due date).
- *
- * @package App\Modules\Accounting\Application\Services\Reports
  */
 final readonly class AgedReceivablesService
 {
     private const DECIMAL_SCALE = 4;
+
     private const ZERO_THRESHOLD = '0.0001';
 
     /**
      * Generate aged receivables report.
      *
-     * @param string $companyId The company ID
-     * @param Carbon|null $asOfDate The snapshot date (defaults to today)
+     * @param  string  $companyId  The company ID
+     * @param  Carbon|null  $asOfDate  The snapshot date (defaults to today)
      * @return AgedReceivablesData The aged receivables report
      */
     public function generate(
@@ -92,8 +88,6 @@ final readonly class AgedReceivablesService
      * - Have a remaining balance > 0
      * - Invoice date <= as_of_date
      *
-     * @param string $companyId
-     * @param Carbon $asOfDate
      * @return Collection<Document>
      */
     private function getOutstandingInvoices(string $companyId, Carbon $asOfDate): Collection
@@ -121,8 +115,7 @@ final readonly class AgedReceivablesService
      * - days_90: 91-120 days
      * - over_90: >120 days
      *
-     * @param Collection<Document> $invoices
-     * @param Carbon $asOfDate
+     * @param  Collection<Document>  $invoices
      * @return Collection<array>
      */
     private function calculateCustomerAging(Collection $invoices, Carbon $asOfDate): Collection
@@ -154,7 +147,7 @@ final readonly class AgedReceivablesService
 
                 $total = array_reduce(
                     $buckets,
-                    fn($carry, $amount) => bcadd($carry, $amount, self::DECIMAL_SCALE),
+                    fn ($carry, $amount) => bcadd($carry, $amount, self::DECIMAL_SCALE),
                     '0.0000'
                 );
 
@@ -175,7 +168,7 @@ final readonly class AgedReceivablesService
     /**
      * Determine which aging bucket a balance belongs to based on days overdue.
      *
-     * @param int $daysOverdue Positive = overdue, Negative = not due yet
+     * @param  int  $daysOverdue  Positive = overdue, Negative = not due yet
      * @return string The bucket key ('current', 'days_30', etc.)
      */
     private function determineBucket(int $daysOverdue): string
@@ -202,7 +195,7 @@ final readonly class AgedReceivablesService
     /**
      * Calculate total amounts across all aging buckets.
      *
-     * @param array<AgedReceivablesLineData> $lines
+     * @param  array<AgedReceivablesLineData>  $lines
      * @return array<string, string>
      */
     private function calculateTotals(array $lines): array

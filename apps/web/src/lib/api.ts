@@ -14,6 +14,22 @@ export interface ApiResponse<T> {
 }
 
 /**
+ * Paginated API Response Format (cursor-based)
+ */
+export interface PaginatedResponse<T> {
+  data: T[]
+  meta: {
+    per_page: number
+    has_more: boolean
+    total?: number
+  }
+  links: {
+    next: string | null
+    prev: string | null
+  }
+}
+
+/**
  * API Error Format (per CLAUDE.md)
  */
 export interface ApiError {
@@ -57,7 +73,22 @@ export function getErrorMessage(error: unknown): string {
 }
 
 /**
- * Create the base API client with auth handling
+ * Fetch CSRF cookie from Sanctum before making auth requests.
+ * This sets the XSRF-TOKEN cookie that axios will automatically
+ * include in subsequent requests via withCredentials.
+ */
+export async function ensureCsrfCookie(): Promise<void> {
+  await axios.get('/sanctum/csrf-cookie', {
+    withCredentials: true,
+  })
+}
+
+/**
+ * Create the base API client with cookie-based auth handling
+ *
+ * SECURITY: Authentication is handled via httpOnly cookies set by Laravel Sanctum.
+ * No tokens are stored in localStorage or sent via Authorization header.
+ * CSRF protection is provided via the XSRF-TOKEN cookie.
  */
 function createApiClient(): AxiosInstance {
   const client = axios.create({
@@ -67,18 +98,14 @@ function createApiClient(): AxiosInstance {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     },
-    withCredentials: true, // For Sanctum cookie-based auth
+    withCredentials: true, // Required for Sanctum cookie-based auth
+    xsrfCookieName: 'XSRF-TOKEN', // Cookie name set by Sanctum
+    xsrfHeaderName: 'X-XSRF-TOKEN', // Header name expected by Sanctum
   })
 
-  // Request interceptor for auth token and company context
+  // Request interceptor for company context (no auth token - using cookies)
   client.interceptors.request.use(
     (config) => {
-      // Get token from auth store and add to Authorization header
-      const token = useAuthStore.getState().token
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`
-      }
-
       // Add company context header for multi-company support
       const companyId = useCompanyStore.getState().currentCompanyId
       if (companyId) {
@@ -106,14 +133,30 @@ function createApiClient(): AxiosInstance {
         if (response.status === 401) {
           const url = error.config?.url ?? ''
           if (!url.includes('/auth/me')) {
-            // For other endpoints, let the caller handle 401
+            // For other endpoints, clear auth state and let caller handle
             console.warn('Unauthorized request:', url)
+            // Clear user state when session expires
+            useAuthStore.getState().logout()
           }
         }
 
         // Handle 403 Forbidden
         if (response.status === 403) {
           console.error('Access denied:', response.data.error.message)
+        }
+
+        // Handle 419 CSRF Token Mismatch - retry after fetching new token
+        if (response.status === 419) {
+          console.warn('CSRF token mismatch, refreshing token...')
+          try {
+            await ensureCsrfCookie()
+            // Retry the original request
+            if (error.config) {
+              return client.request(error.config)
+            }
+          } catch (csrfError) {
+            console.error('Failed to refresh CSRF token:', csrfError)
+          }
         }
 
         // Handle 500+ Server Errors
@@ -155,6 +198,14 @@ export async function apiPost<T>(url: string, data?: unknown): Promise<T> {
  */
 export async function apiPatch<T>(url: string, data?: unknown): Promise<T> {
   const response = await api.patch<ApiResponse<T>>(url, data)
+  return response.data.data
+}
+
+/**
+ * Helper for PUT requests
+ */
+export async function apiPut<T>(url: string, data?: unknown): Promise<T> {
+  const response = await api.put<ApiResponse<T>>(url, data)
   return response.data.data
 }
 

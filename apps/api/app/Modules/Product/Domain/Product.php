@@ -51,6 +51,7 @@ class Product extends Model
     protected $fillable = [
         'tenant_id',
         'company_id',
+        'category_id',
         'name',
         'sku',
         'type',
@@ -116,6 +117,14 @@ class Product extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    /**
+     * @return BelongsTo<Category, $this>
+     */
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
     }
 
     public function isPart(): bool

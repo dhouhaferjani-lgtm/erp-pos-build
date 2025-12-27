@@ -67,21 +67,19 @@ use Spatie\LaravelData\DataCollection;
  *   "partner_filter": null
  * }
  * ```
- *
- * @package App\Modules\Accounting\Application\DTOs\Reports
  */
 final class LedgerData extends Data
 {
     /**
-     * @param numeric-string $opening_balance Balance before date_from
-     * @param numeric-string $closing_balance Balance after all transactions
-     * @param numeric-string $total_debits Sum of all debits in period
-     * @param numeric-string $total_credits Sum of all credits in period
-     * @param DataCollection<int, LedgerLineData> $lines Ledger transaction lines
-     * @param string|null $date_from Report start date (YYYY-MM-DD) or null for all history
-     * @param string $date_to Report end date (YYYY-MM-DD)
-     * @param string|null $account_filter Account UUID filter or null for all accounts
-     * @param string|null $partner_filter Partner UUID filter or null for all partners
+     * @param  numeric-string  $opening_balance  Balance before date_from
+     * @param  numeric-string  $closing_balance  Balance after all transactions
+     * @param  numeric-string  $total_debits  Sum of all debits in period
+     * @param  numeric-string  $total_credits  Sum of all credits in period
+     * @param  DataCollection<int, LedgerLineData>  $lines  Ledger transaction lines
+     * @param  string|null  $date_from  Report start date (YYYY-MM-DD) or null for all history
+     * @param  string  $date_to  Report end date (YYYY-MM-DD)
+     * @param  string|null  $account_filter  Account UUID filter or null for all accounts
+     * @param  string|null  $partner_filter  Partner UUID filter or null for all partners
      */
     public function __construct(
         public readonly string $opening_balance,
@@ -112,7 +110,6 @@ final class LedgerData extends Data
      *     account_filter: string|null,
      *     partner_filter: string|null
      * } $data
-     * @return self
      */
     public static function fromArray(array $data): self
     {
@@ -139,8 +136,6 @@ final class LedgerData extends Data
      * Convert to array with proper DataCollection serialization.
      *
      * Override to ensure lines DataCollection serializes as JSON array.
-     *
-     * @return array
      */
     public function toArray(): array
     {
@@ -159,8 +154,6 @@ final class LedgerData extends Data
 
     /**
      * Get the count of transactions in the ledger.
-     *
-     * @return int
      */
     public function getTransactionCount(): int
     {
@@ -169,8 +162,6 @@ final class LedgerData extends Data
 
     /**
      * Check if the ledger has any transactions.
-     *
-     * @return bool
      */
     public function isEmpty(): bool
     {

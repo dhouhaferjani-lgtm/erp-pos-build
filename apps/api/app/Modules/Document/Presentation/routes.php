@@ -3,13 +3,19 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Api\DocumentAdditionalCostController;
+use App\Modules\Communication\Presentation\Controllers\DocumentEmailController;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Presentation\Controllers\CreditNoteController;
+use App\Modules\Document\Presentation\Controllers\DeliveryNoteController;
 use App\Modules\Document\Presentation\Controllers\DocumentController;
 use App\Modules\Document\Presentation\Controllers\DocumentConversionController;
-use App\Modules\Communication\Presentation\Controllers\DocumentEmailController;
 use App\Modules\Document\Presentation\Controllers\DocumentPdfController;
+use App\Modules\Document\Presentation\Controllers\DraftController;
+use App\Modules\Document\Presentation\Controllers\InvoiceController;
+use App\Modules\Document\Presentation\Controllers\PurchaseOrderController;
+use App\Modules\Document\Presentation\Controllers\QuoteController;
 use App\Modules\Document\Presentation\Controllers\RefundController;
+use App\Modules\Document\Presentation\Controllers\SalesOrderController;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -24,6 +30,10 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function (): void {
+    // Draft auto-save (no permissions required - fraud detection)
+    Route::post('/documents/auto-save', [DraftController::class, 'autoSave'])
+        ->name('documents.auto-save');
+
     // All documents (unified view)
     Route::get('/documents', [DocumentController::class, 'indexAll'])
         ->middleware('can:documents.view')
@@ -34,36 +44,29 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->name('documents.show');
 
     // Quotes
-    Route::get('/quotes', function (Request $request) {
-        return app(DocumentController::class)->index($request, DocumentType::Quote);
-    })->middleware('can:quotes.view')->name('quotes.index');
+    Route::get('/quotes', [QuoteController::class, 'index'])
+        ->middleware('can:quotes.view')
+        ->name('quotes.index');
 
-    Route::get('/quotes/{quote}', function (Request $request, string $quote) {
-        return app(DocumentController::class)->show($request, DocumentType::Quote, $quote);
-    })->middleware('can:quotes.view')->name('quotes.show');
+    Route::get('/quotes/{quote}', [QuoteController::class, 'show'])
+        ->middleware('can:quotes.view')
+        ->name('quotes.show');
 
-    Route::post('/quotes', function (Request $request) {
-        return app(DocumentController::class)->store(
-            app(\App\Modules\Document\Presentation\Requests\CreateDocumentRequest::class),
-            DocumentType::Quote
-        );
-    })->middleware('can:quotes.create')->name('quotes.store');
+    Route::post('/quotes', [QuoteController::class, 'store'])
+        ->middleware('can:quotes.create')
+        ->name('quotes.store');
 
-    Route::patch('/quotes/{quote}', function (Request $request, string $quote) {
-        return app(DocumentController::class)->update(
-            app(\App\Modules\Document\Presentation\Requests\UpdateDocumentRequest::class),
-            DocumentType::Quote,
-            $quote
-        );
-    })->middleware('can:quotes.update')->name('quotes.update');
+    Route::patch('/quotes/{quote}', [QuoteController::class, 'update'])
+        ->middleware('can:quotes.update')
+        ->name('quotes.update');
 
-    Route::delete('/quotes/{quote}', function (Request $request, string $quote) {
-        return app(DocumentController::class)->destroy($request, DocumentType::Quote, $quote);
-    })->middleware('can:quotes.delete')->name('quotes.destroy');
+    Route::delete('/quotes/{quote}', [QuoteController::class, 'destroy'])
+        ->middleware('can:quotes.delete')
+        ->name('quotes.destroy');
 
-    Route::post('/quotes/{quote}/confirm', function (Request $request, string $quote) {
-        return app(DocumentController::class)->confirm($request, DocumentType::Quote, $quote);
-    })->middleware('can:quotes.update')->name('quotes.confirm');
+    Route::post('/quotes/{quote}/confirm', [QuoteController::class, 'confirm'])
+        ->middleware('can:quotes.update')
+        ->name('quotes.confirm');
 
     Route::post('/quotes/{quote}/convert-to-order', [DocumentConversionController::class, 'convertQuoteToOrder'])
         ->middleware('can:quotes.convert')
@@ -74,36 +77,29 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->name('quotes.check-expiry');
 
     // Sales Orders
-    Route::get('/orders', function (Request $request) {
-        return app(DocumentController::class)->index($request, DocumentType::SalesOrder);
-    })->middleware('can:orders.view')->name('orders.index');
+    Route::get('/orders', [SalesOrderController::class, 'index'])
+        ->middleware('can:orders.view')
+        ->name('orders.index');
 
-    Route::get('/orders/{order}', function (Request $request, string $order) {
-        return app(DocumentController::class)->show($request, DocumentType::SalesOrder, $order);
-    })->middleware('can:orders.view')->name('orders.show');
+    Route::get('/orders/{order}', [SalesOrderController::class, 'show'])
+        ->middleware('can:orders.view')
+        ->name('orders.show');
 
-    Route::post('/orders', function (Request $request) {
-        return app(DocumentController::class)->store(
-            app(\App\Modules\Document\Presentation\Requests\CreateDocumentRequest::class),
-            DocumentType::SalesOrder
-        );
-    })->middleware('can:orders.create')->name('orders.store');
+    Route::post('/orders', [SalesOrderController::class, 'store'])
+        ->middleware('can:orders.create')
+        ->name('orders.store');
 
-    Route::patch('/orders/{order}', function (Request $request, string $order) {
-        return app(DocumentController::class)->update(
-            app(\App\Modules\Document\Presentation\Requests\UpdateDocumentRequest::class),
-            DocumentType::SalesOrder,
-            $order
-        );
-    })->middleware('can:orders.update')->name('orders.update');
+    Route::patch('/orders/{order}', [SalesOrderController::class, 'update'])
+        ->middleware('can:orders.update')
+        ->name('orders.update');
 
-    Route::delete('/orders/{order}', function (Request $request, string $order) {
-        return app(DocumentController::class)->destroy($request, DocumentType::SalesOrder, $order);
-    })->middleware('can:orders.delete')->name('orders.destroy');
+    Route::delete('/orders/{order}', [SalesOrderController::class, 'destroy'])
+        ->middleware('can:orders.delete')
+        ->name('orders.destroy');
 
-    Route::post('/orders/{order}/confirm', function (Request $request, string $order) {
-        return app(DocumentController::class)->confirm($request, DocumentType::SalesOrder, $order);
-    })->middleware('can:orders.confirm')->name('orders.confirm');
+    Route::post('/orders/{order}/confirm', [SalesOrderController::class, 'confirm'])
+        ->middleware('can:orders.confirm')
+        ->name('orders.confirm');
 
     Route::post('/orders/{order}/convert-to-invoice', [DocumentConversionController::class, 'convertOrderToInvoice'])
         ->middleware('can:invoices.create')
@@ -118,41 +114,35 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->name('orders.invoice-status');
 
     // Invoices
-    Route::get('/invoices', function (Request $request) {
-        return app(DocumentController::class)->index($request, DocumentType::Invoice);
-    })->middleware('can:invoices.view')->name('invoices.index');
+    Route::get('/invoices', [InvoiceController::class, 'index'])
+        ->middleware('can:invoices.view')
+        ->name('invoices.index');
 
-    Route::get('/invoices/{invoice}', function (Request $request, string $invoice) {
-        return app(DocumentController::class)->show($request, DocumentType::Invoice, $invoice);
-    })->middleware('can:invoices.view')->name('invoices.show');
+    Route::get('/invoices/{invoice}', [InvoiceController::class, 'show'])
+        ->middleware('can:invoices.view')
+        ->name('invoices.show');
 
-    Route::post('/invoices', function (Request $request) {
-        return app(DocumentController::class)->store(
-            app(\App\Modules\Document\Presentation\Requests\CreateDocumentRequest::class),
-            DocumentType::Invoice
-        );
-    })->middleware('can:invoices.create')->name('invoices.store');
+    Route::post('/invoices', [InvoiceController::class, 'store'])
+        ->middleware('can:invoices.create')
+        ->name('invoices.store');
 
-    Route::patch('/invoices/{invoice}', function (Request $request, string $invoice) {
-        return app(DocumentController::class)->update(
-            app(\App\Modules\Document\Presentation\Requests\UpdateDocumentRequest::class),
-            DocumentType::Invoice,
-            $invoice
-        );
-    })->middleware('can:invoices.update')->name('invoices.update');
+    Route::patch('/invoices/{invoice}', [InvoiceController::class, 'update'])
+        ->middleware('can:invoices.update')
+        ->name('invoices.update');
 
-    Route::delete('/invoices/{invoice}', function (Request $request, string $invoice) {
-        return app(DocumentController::class)->destroy($request, DocumentType::Invoice, $invoice);
-    })->middleware('can:invoices.delete')->name('invoices.destroy');
+    Route::delete('/invoices/{invoice}', [InvoiceController::class, 'destroy'])
+        ->middleware('can:invoices.delete')
+        ->name('invoices.destroy');
 
-    Route::post('/invoices/{invoice}/confirm', function (Request $request, string $invoice) {
-        return app(DocumentController::class)->confirm($request, DocumentType::Invoice, $invoice);
-    })->middleware('can:invoices.update')->name('invoices.confirm');
+    Route::post('/invoices/{invoice}/confirm', [InvoiceController::class, 'confirm'])
+        ->middleware('can:invoices.update')
+        ->name('invoices.confirm');
 
-    Route::post('/invoices/{invoice}/post', function (Request $request, string $invoice) {
-        return app(DocumentController::class)->post($request, DocumentType::Invoice, $invoice);
-    })->middleware('can:invoices.post')->name('invoices.post');
+    Route::post('/invoices/{invoice}/post', [InvoiceController::class, 'post'])
+        ->middleware('can:invoices.post')
+        ->name('invoices.post');
 
+    // Credit note creation from invoice (uses DocumentController until migrated)
     Route::post('/invoices/{invoice}/create-credit-note', function (Request $request, string $invoice) {
         return app(DocumentController::class)->createCreditNote($request, $invoice);
     })->middleware('can:credit-notes.create')->name('invoices.create-credit-note');
@@ -195,6 +185,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:credit-notes.create')
         ->name('credit-notes.store');
 
+    // Credit note confirm/post use DocumentController (CreditNoteController doesn't have these methods yet)
     Route::post('/credit-notes/{creditNote}/confirm', function (Request $request, string $creditNote) {
         return app(DocumentController::class)->confirm($request, DocumentType::CreditNote, $creditNote);
     })->middleware('can:credit-notes.create')->name('credit-notes.confirm');
@@ -208,69 +199,79 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->name('credit-notes.cancel');
 
     // Purchase Orders
-    Route::get('/purchase-orders', function (Request $request) {
-        return app(DocumentController::class)->index($request, DocumentType::PurchaseOrder);
-    })->middleware('can:purchase-orders.view')->name('purchase-orders.index');
+    Route::get('/purchase-orders', [PurchaseOrderController::class, 'index'])
+        ->middleware('can:purchase-orders.view')
+        ->name('purchase-orders.index');
 
-    Route::get('/purchase-orders/{purchaseOrder}', function (Request $request, string $purchaseOrder) {
-        return app(DocumentController::class)->show($request, DocumentType::PurchaseOrder, $purchaseOrder);
-    })->middleware('can:purchase-orders.view')->name('purchase-orders.show');
+    Route::get('/purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'show'])
+        ->middleware('can:purchase-orders.view')
+        ->name('purchase-orders.show');
 
-    Route::post('/purchase-orders', function (Request $request) {
-        return app(DocumentController::class)->store(
-            app(\App\Modules\Document\Presentation\Requests\CreateDocumentRequest::class),
-            DocumentType::PurchaseOrder
-        );
-    })->middleware('can:purchase-orders.create')->name('purchase-orders.store');
+    Route::post('/purchase-orders', [PurchaseOrderController::class, 'store'])
+        ->middleware('can:purchase-orders.create')
+        ->name('purchase-orders.store');
 
-    Route::patch('/purchase-orders/{purchaseOrder}', function (Request $request, string $purchaseOrder) {
-        return app(DocumentController::class)->update(
-            app(\App\Modules\Document\Presentation\Requests\UpdateDocumentRequest::class),
-            DocumentType::PurchaseOrder,
-            $purchaseOrder
-        );
-    })->middleware('can:purchase-orders.update')->name('purchase-orders.update');
+    Route::patch('/purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'update'])
+        ->middleware('can:purchase-orders.update')
+        ->name('purchase-orders.update');
 
-    Route::delete('/purchase-orders/{purchaseOrder}', function (Request $request, string $purchaseOrder) {
-        return app(DocumentController::class)->destroy($request, DocumentType::PurchaseOrder, $purchaseOrder);
-    })->middleware('can:purchase-orders.delete')->name('purchase-orders.destroy');
+    Route::delete('/purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'destroy'])
+        ->middleware('can:purchase-orders.delete')
+        ->name('purchase-orders.destroy');
 
-    Route::post('/purchase-orders/{purchaseOrder}/confirm', function (Request $request, string $purchaseOrder) {
-        return app(DocumentController::class)->confirm($request, DocumentType::PurchaseOrder, $purchaseOrder);
-    })->middleware('can:purchase-orders.confirm')->name('purchase-orders.confirm');
+    Route::post('/purchase-orders/{purchaseOrder}/confirm', [PurchaseOrderController::class, 'confirm'])
+        ->middleware('can:purchase-orders.confirm')
+        ->name('purchase-orders.confirm');
 
-    Route::post('/purchase-orders/{purchaseOrder}/receive', function (Request $request, string $purchaseOrder) {
-        return app(DocumentController::class)->receive($request, DocumentType::PurchaseOrder, $purchaseOrder);
-    })->middleware('can:purchase-orders.receive')->name('purchase-orders.receive');
+    Route::post('/purchase-orders/{purchaseOrder}/receive', [PurchaseOrderController::class, 'receive'])
+        ->middleware('can:purchase-orders.receive')
+        ->name('purchase-orders.receive');
 
-    Route::get('/purchase-orders/{purchaseOrder}/receipt-status', function (Request $request, string $purchaseOrder) {
-        return app(DocumentController::class)->receiptStatus($request, DocumentType::PurchaseOrder, $purchaseOrder);
-    })->middleware('can:purchase-orders.view')->name('purchase-orders.receipt-status');
+    Route::get('/purchase-orders/{purchaseOrder}/receipt-status', [PurchaseOrderController::class, 'receiptStatus'])
+        ->middleware('can:purchase-orders.view')
+        ->name('purchase-orders.receipt-status');
 
     // Delivery Notes
-    Route::get('/delivery-notes', function (Request $request) {
-        return app(DocumentController::class)->index($request, DocumentType::DeliveryNote);
-    })->middleware('can:deliveries.view')->name('delivery-notes.index');
+    Route::get('/delivery-notes', [DeliveryNoteController::class, 'index'])
+        ->middleware('can:deliveries.view')
+        ->name('delivery-notes.index');
 
-    Route::get('/delivery-notes/{deliveryNote}', function (Request $request, string $deliveryNote) {
-        return app(DocumentController::class)->show($request, DocumentType::DeliveryNote, $deliveryNote);
-    })->middleware('can:deliveries.view')->name('delivery-notes.show');
+    Route::get('/delivery-notes/{deliveryNote}', [DeliveryNoteController::class, 'show'])
+        ->middleware('can:deliveries.view')
+        ->name('delivery-notes.show');
 
-    Route::post('/delivery-notes', function (Request $request) {
-        return app(DocumentController::class)->store(
-            app(\App\Modules\Document\Presentation\Requests\CreateDocumentRequest::class),
-            DocumentType::DeliveryNote
-        );
-    })->middleware('can:deliveries.create')->name('delivery-notes.store');
+    Route::post('/delivery-notes', [DeliveryNoteController::class, 'store'])
+        ->middleware('can:deliveries.create')
+        ->name('delivery-notes.store');
 
-    Route::post('/delivery-notes/{deliveryNote}/confirm', function (Request $request, string $deliveryNote) {
-        return app(DocumentController::class)->confirm($request, DocumentType::DeliveryNote, $deliveryNote);
-    })->middleware('can:deliveries.confirm')->name('delivery-notes.confirm');
+    Route::post('/delivery-notes/{deliveryNote}/confirm', [DeliveryNoteController::class, 'confirm'])
+        ->middleware('can:deliveries.confirm')
+        ->name('delivery-notes.confirm');
 
     // Delivery Note Consolidation (Tunisia model) - Create invoice from multiple delivery notes
     Route::post('/delivery-notes/consolidate-to-invoice', [DocumentConversionController::class, 'createInvoiceFromDeliveryNotes'])
         ->middleware('can:invoices.create')
         ->name('delivery-notes.consolidate-to-invoice');
+
+    // Return Notes (no dedicated controller yet - uses DocumentController)
+    Route::get('/return-notes', function (Request $request) {
+        return app(DocumentController::class)->index($request, DocumentType::ReturnNote);
+    })->middleware('can:deliveries.view')->name('return-notes.index');
+
+    Route::get('/return-notes/{returnNote}', function (Request $request, string $returnNote) {
+        return app(DocumentController::class)->show($request, DocumentType::ReturnNote, $returnNote);
+    })->middleware('can:deliveries.view')->name('return-notes.show');
+
+    Route::post('/return-notes', function (Request $request) {
+        return app(DocumentController::class)->store(
+            app(\App\Modules\Document\Presentation\Requests\CreateDocumentRequest::class),
+            DocumentType::ReturnNote
+        );
+    })->middleware('can:deliveries.create')->name('return-notes.store');
+
+    Route::post('/return-notes/{returnNote}/confirm', function (Request $request, string $returnNote) {
+        return app(DocumentController::class)->confirm($request, DocumentType::ReturnNote, $returnNote);
+    })->middleware('can:deliveries.confirm')->name('return-notes.confirm');
 
     // Document Additional Costs
     Route::get('/documents/{document}/additional-costs', [DocumentAdditionalCostController::class, 'index'])

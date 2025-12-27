@@ -9,39 +9,54 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Application\DTOs\DocumentData;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\DocumentVehicleContext;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
+use App\Modules\Document\Domain\Services\ReturnNoteService;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
-use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
-use App\Modules\Inventory\Application\Services\GoodsReceiptService;
-use App\Modules\Inventory\Application\Services\LandedCostService;
-use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
-use App\Modules\Product\Domain\Product;
+use App\Support\Traits\PaginatesResults;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * @deprecated This controller is being phased out in favor of type-specific controllers.
+ * Use QuoteController, SalesOrderController, InvoiceController, DeliveryNoteController,
+ * or PurchaseOrderController for CRUD operations on specific document types.
+ *
+ * This class now only handles:
+ * - Cross-type document search (indexAll)
+ * - Generic document retrieval by ID (showAny)
+ * - Document relationship chains (related)
+ * - Legacy operations for document types not yet migrated (ReturnNote, CreditNote)
+ *
+ * Will be removed in v3.0
+ */
 class DocumentController extends Controller
 {
+    use PaginatesResults;
+
     public function __construct(
-        private readonly DocumentNumberingService $numberingService,
         private readonly CompanyContext $companyContext,
-        private readonly LandedCostService $landedCostService,
-        private readonly WeightedAverageCostService $wacService,
+        private readonly DocumentNumberingService $numberingService,
         private readonly DocumentPostingService $postingService,
-        private readonly GoodsReceiptService $goodsReceiptService,
+        private readonly ReturnNoteService $returnNoteService,
     ) {}
 
     /**
-     * List all documents regardless of type
+     * List all documents regardless of type.
+     *
+     * This is used for cross-type document search (e.g., find all documents for a partner).
+     *
+     * GET /api/v1/documents
      */
     public function indexAll(Request $request): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
+        $params = $this->getPaginationParams($request);
 
         $query = Document::forCompany($companyId);
 
@@ -84,10 +99,10 @@ class DocumentController extends Controller
             });
         }
 
-        // Handle limit parameter
+        // Handle limit parameter for backwards compatibility
         $limit = $request->query('limit');
         if (is_string($limit) && is_numeric($limit)) {
-            $documents = $query->orderBy('created_at', 'desc')->take((int) $limit)->get();
+            $documents = $query->with('vehicleContext')->orderBy('created_at', 'desc')->take((int) $limit)->get();
 
             return response()->json([
                 'data' => $documents->map(fn (Document $doc): DocumentData => DocumentData::fromModel($doc, false)),
@@ -97,27 +112,41 @@ class DocumentController extends Controller
             ]);
         }
 
-        $documents = $query->orderBy('created_at', 'desc')->paginate(15);
+        // Order by created_at desc and id for consistent cursor pagination (in case created_at is the same)
+        $query->orderBy('created_at', 'desc')->orderBy('id', 'desc');
+
+        // Use cursor pagination with vehicleContext eager loaded
+        $paginator = $query->with('vehicleContext')->cursorPaginate($params['per_page'], ['*'], 'cursor', $params['cursor']);
+
+        // Transform items
+        $items = collect($paginator->items())->map(fn (Document $doc): DocumentData => DocumentData::fromModel($doc, false))->all();
 
         return response()->json([
-            'data' => $documents->map(fn (Document $doc): DocumentData => DocumentData::fromModel($doc, false)),
+            'data' => $items,
             'meta' => [
-                'current_page' => $documents->currentPage(),
-                'per_page' => $documents->perPage(),
-                'total' => $documents->total(),
+                'per_page' => $paginator->perPage(),
+                'has_more' => $paginator->hasMorePages(),
+            ],
+            'links' => [
+                'next' => $paginator->nextCursor()?->encode(),
+                'prev' => $paginator->previousCursor()?->encode(),
             ],
         ]);
     }
 
     /**
-     * Get a single document by ID (any type)
+     * Get a single document by ID (any type).
+     *
+     * This is used when you have a document ID but don't know its type.
+     *
+     * GET /api/v1/documents/{document}
      */
     public function showAny(Request $request, string $document): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
 
         $documentModel = Document::forCompany($companyId)
-            ->with('lines')
+            ->with(['lines', 'vehicleContext'])
             ->find($document);
 
         if ($documentModel === null) {
@@ -138,11 +167,15 @@ class DocumentController extends Controller
     }
 
     /**
-     * List documents of a specific type
+     * List documents of a specific type.
+     *
+     * @deprecated Use type-specific controllers instead (QuoteController, InvoiceController, etc.)
+     * This method is only kept for ReturnNote which doesn't have a dedicated controller yet.
      */
     public function index(Request $request, DocumentType $type): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
+        $params = $this->getPaginationParams($request);
 
         $query = Document::forCompany($companyId)->ofType($type);
 
@@ -167,20 +200,33 @@ class DocumentController extends Controller
             $query->where('document_number', 'like', "%{$search}%");
         }
 
-        $documents = $query->orderBy('created_at', 'desc')->paginate(15);
+        // Order by created_at desc and id for consistent cursor pagination (in case created_at is the same)
+        $query->orderBy('created_at', 'desc')->orderBy('id', 'desc');
+
+        // Use cursor pagination with vehicleContext eager loaded
+        $paginator = $query->with('vehicleContext')->cursorPaginate($params['per_page'], ['*'], 'cursor', $params['cursor']);
+
+        // Transform items
+        $items = collect($paginator->items())->map(fn (Document $doc): DocumentData => DocumentData::fromModel($doc, false))->all();
 
         return response()->json([
-            'data' => $documents->map(fn (Document $doc): DocumentData => DocumentData::fromModel($doc, false)),
+            'data' => $items,
             'meta' => [
-                'current_page' => $documents->currentPage(),
-                'per_page' => $documents->perPage(),
-                'total' => $documents->total(),
+                'per_page' => $paginator->perPage(),
+                'has_more' => $paginator->hasMorePages(),
+            ],
+            'links' => [
+                'next' => $paginator->nextCursor()?->encode(),
+                'prev' => $paginator->previousCursor()?->encode(),
             ],
         ]);
     }
 
     /**
-     * Get a single document
+     * Get a single document.
+     *
+     * @deprecated Use type-specific controllers instead (QuoteController, InvoiceController, etc.)
+     * This method is only kept for ReturnNote which doesn't have a dedicated controller yet.
      */
     public function show(Request $request, DocumentType $type, string $document): JsonResponse
     {
@@ -188,7 +234,7 @@ class DocumentController extends Controller
 
         $documentModel = Document::forCompany($companyId)
             ->ofType($type)
-            ->with(['lines', 'allocations.payment.paymentMethod'])
+            ->with(['lines', 'allocations.payment.paymentMethod', 'vehicleContext'])
             ->find($document);
 
         if ($documentModel === null) {
@@ -209,7 +255,10 @@ class DocumentController extends Controller
     }
 
     /**
-     * Create a new document
+     * Create a new document.
+     *
+     * @deprecated Use type-specific controllers instead (QuoteController, InvoiceController, etc.)
+     * This method is only kept for ReturnNote which doesn't have a dedicated controller yet.
      */
     public function store(CreateDocumentRequest $request, DocumentType $type): JsonResponse
     {
@@ -223,6 +272,11 @@ class DocumentController extends Controller
         $lines = $validated['lines'] ?? [];
         unset($validated['lines']);
 
+        // Extract vehicle_context for separate handling
+        /** @var array{vehicle_id: string, snapshot?: array<string, mixed>, mileage?: int, additional_data?: array<string, mixed>}|null $vehicleContext */
+        $vehicleContext = $validated['vehicle_context'] ?? null;
+        unset($validated['vehicle_context']);
+
         // Normalize issue_date to document_date (frontend sends issue_date)
         if (isset($validated['issue_date']) && ! isset($validated['document_date'])) {
             $validated['document_date'] = $validated['issue_date'];
@@ -233,7 +287,7 @@ class DocumentController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
-        return DB::transaction(function () use ($tenantId, $companyId, $type, $validated, $lines): JsonResponse {
+        return DB::transaction(function () use ($tenantId, $companyId, $type, $validated, $lines, $vehicleContext): JsonResponse {
             // Generate document number
             $documentNumber = $this->numberingService->generateNumber($tenantId, $companyId, $type);
 
@@ -295,8 +349,29 @@ class DocumentController extends Controller
                 ]);
             }
 
+            // Create vehicle context if vehicle_context provided
+            if ($vehicleContext !== null) {
+                $vehicleContextBuilder = app(\App\Modules\Vehicle\Application\Services\VehicleContextBuilder::class);
+
+                // Build authoritative context from vehicle_id
+                $builtContext = $vehicleContextBuilder->buildFromVehicleId(
+                    vehicleId: $vehicleContext['vehicle_id'],
+                    tenantId: $tenantId,
+                    companyId: $companyId,
+                    mileage: $vehicleContext['mileage'] ?? null
+                );
+
+                DocumentVehicleContext::create([
+                    'document_id' => $document->id,
+                    'vehicle_id' => $builtContext['vehicle_id'],
+                    'vehicle_snapshot' => $builtContext['snapshot'],
+                    'mileage_at_service' => $builtContext['mileage'],
+                    'context_data' => $builtContext['additional_data'],
+                ]);
+            }
+
             /** @var Document $freshDocument */
-            $freshDocument = $document->fresh(['lines']);
+            $freshDocument = $document->fresh(['lines', 'vehicleContext']);
 
             return response()->json([
                 'data' => DocumentData::fromModel($freshDocument),
@@ -308,169 +383,10 @@ class DocumentController extends Controller
     }
 
     /**
-     * Update an existing document
-     */
-    public function update(UpdateDocumentRequest $request, DocumentType $type, string $document): JsonResponse
-    {
-        /** @var User $user */
-        $user = $request->user();
-
-        $documentModel = Document::forCompany($this->companyContext->requireCompanyId())
-            ->ofType($type)
-            ->find($document);
-
-        if ($documentModel === null) {
-            return response()->json([
-                'error' => [
-                    'code' => 'NOT_FOUND',
-                    'message' => 'Document not found',
-                ],
-            ], 404);
-        }
-
-        if ($documentModel->isFiscallyImmutable()) {
-            return response()->json([
-                'error' => [
-                    'code' => 'DOCUMENT_SEALED',
-                    'message' => 'Sealed fiscal documents cannot be modified. Use credit notes for corrections.',
-                ],
-            ], 422);
-        }
-
-        if (! $documentModel->isEditable()) {
-            return response()->json([
-                'error' => [
-                    'code' => 'DOCUMENT_NOT_EDITABLE',
-                    'message' => 'Posted documents cannot be modified',
-                ],
-            ], 422);
-        }
-
-        /** @var array<string, mixed> $validated */
-        $validated = $request->validated();
-
-        /** @var array<int, array{description: string, quantity: string, unit_price: string, product_id?: string, tax_rate?: string, discount_percent?: string, discount_amount?: string, notes?: string}>|null $lines */
-        $lines = $validated['lines'] ?? null;
-        unset($validated['lines']);
-
-        // Normalize issue_date to document_date (frontend sends issue_date)
-        if (isset($validated['issue_date']) && ! isset($validated['document_date'])) {
-            $validated['document_date'] = $validated['issue_date'];
-            unset($validated['issue_date']);
-        }
-
-        return DB::transaction(function () use ($documentModel, $validated, $lines): JsonResponse {
-            // Update document fields (excluding lines)
-            $documentModel->update($validated);
-
-            // If lines are provided, replace all lines
-            if ($lines !== null) {
-                // Delete existing lines
-                $documentModel->lines()->delete();
-
-                // Calculate totals from new lines
-                $subtotal = '0.00';
-                $taxAmount = '0.00';
-
-                foreach ($lines as $index => $lineData) {
-                    /** @var numeric-string $quantity */
-                    $quantity = (string) $lineData['quantity'];
-                    /** @var numeric-string $unitPrice */
-                    $unitPrice = (string) $lineData['unit_price'];
-                    /** @var numeric-string $taxRate */
-                    $taxRate = (string) ($lineData['tax_rate'] ?? '0');
-
-                    $lineSubtotal = bcmul($quantity, $unitPrice, 2);
-                    $lineTax = bcmul($lineSubtotal, bcdiv($taxRate, '100', 4), 2);
-
-                    $subtotal = bcadd($subtotal, $lineSubtotal, 2);
-                    $taxAmount = bcadd($taxAmount, $lineTax, 2);
-
-                    DocumentLine::create([
-                        'document_id' => $documentModel->id,
-                        'product_id' => $lineData['product_id'] ?? null,
-                        'line_number' => $index + 1,
-                        'description' => $lineData['description'],
-                        'quantity' => $quantity,
-                        'unit_price' => $unitPrice,
-                        'discount_percent' => isset($lineData['discount_percent']) ? (string) $lineData['discount_percent'] : null,
-                        'discount_amount' => isset($lineData['discount_amount']) ? (string) $lineData['discount_amount'] : null,
-                        'tax_rate' => $taxRate,
-                        'line_total' => $lineSubtotal,
-                        'notes' => $lineData['notes'] ?? null,
-                    ]);
-                }
-
-                $total = bcadd($subtotal, $taxAmount, 2);
-
-                $documentModel->update([
-                    'subtotal' => $subtotal,
-                    'tax_amount' => $taxAmount,
-                    'total' => $total,
-                ]);
-            }
-
-            /** @var Document $freshDocument */
-            $freshDocument = $documentModel->fresh(['lines']);
-
-            return response()->json([
-                'data' => DocumentData::fromModel($freshDocument),
-                'meta' => [
-                    'timestamp' => now()->toIso8601String(),
-                ],
-            ]);
-        });
-    }
-
-    /**
-     * Delete a document (soft delete)
-     */
-    public function destroy(Request $request, DocumentType $type, string $document): Response|JsonResponse
-    {
-        /** @var User $user */
-        $user = $request->user();
-
-        $documentModel = Document::forCompany($this->companyContext->requireCompanyId())
-            ->ofType($type)
-            ->find($document);
-
-        if ($documentModel === null) {
-            return response()->json([
-                'error' => [
-                    'code' => 'NOT_FOUND',
-                    'message' => 'Document not found',
-                ],
-            ], 404);
-        }
-
-        if ($documentModel->isFiscallyImmutable()) {
-            return response()->json([
-                'error' => [
-                    'code' => 'FISCAL_DOCUMENT_NOT_DELETABLE',
-                    'message' => 'Sealed fiscal documents cannot be deleted. Use credit notes for corrections.',
-                ],
-            ], 422);
-        }
-
-        if (! $documentModel->isDeletable()) {
-            return response()->json([
-                'error' => [
-                    'code' => 'DOCUMENT_NOT_DELETABLE',
-                    'message' => 'Posted documents cannot be deleted. Use cancellation instead.',
-                ],
-            ], 422);
-        }
-
-        $documentModel->delete();
-
-        return response()->noContent();
-    }
-
-    /**
-     * Confirm a document (Draft → Confirmed)
+     * Confirm a document (Draft -> Confirmed).
      *
-     * Uses pessimistic locking inside the transaction to prevent race conditions
-     * when two requests try to confirm the same document simultaneously.
+     * @deprecated Use type-specific controllers instead (QuoteController::confirm, InvoiceController::confirm, etc.)
+     * This method is only kept for CreditNote and ReturnNote which don't have dedicated confirm methods yet.
      */
     public function confirm(Request $request, DocumentType $type, string $document): JsonResponse
     {
@@ -515,12 +431,13 @@ class DocumentController extends Controller
                     throw new \DomainException('Only draft documents can be confirmed');
                 }
 
-                $lockedDocument->update(['status' => DocumentStatus::Confirmed]);
-
-                // Integration Hook: For Purchase Orders, allocate landed costs after confirmation
-                if ($type === DocumentType::PurchaseOrder) {
-                    $this->landedCostService->allocateCosts($lockedDocument);
-                }
+                // Dispatch to type-specific domain service for proper lifecycle management
+                // Note: Most types now have dedicated controllers. This only handles
+                // CreditNote and ReturnNote which still use this generic controller.
+                match ($type) {
+                    DocumentType::ReturnNote => $this->returnNoteService->confirm($lockedDocument),
+                    default => $this->confirmDefault($lockedDocument),
+                };
 
                 return $lockedDocument;
             });
@@ -534,7 +451,7 @@ class DocumentController extends Controller
         }
 
         /** @var Document $freshDocument */
-        $freshDocument = $documentModel->fresh(['lines']);
+        $freshDocument = $documentModel->fresh(['lines', 'vehicleContext']);
 
         return response()->json([
             'data' => DocumentData::fromModel($freshDocument),
@@ -545,10 +462,10 @@ class DocumentController extends Controller
     }
 
     /**
-     * Post a document (Confirmed → Posted) - Makes it final/immutable.
+     * Post a document (Confirmed -> Posted).
      *
-     * For fiscal documents (Invoice, CreditNote), this creates an entry in the
-     * hash chain for NF525 compliance. The document becomes immutable once posted.
+     * @deprecated Use InvoiceController::post for invoices.
+     * This method is only kept for CreditNote which doesn't have a dedicated post method yet.
      */
     public function post(Request $request, DocumentType $type, string $document): JsonResponse
     {
@@ -602,362 +519,9 @@ class DocumentController extends Controller
     }
 
     /**
-     * Cancel a posted document.
+     * Create a credit note from a posted invoice.
      *
-     * For fiscal documents, the cancellation is recorded in the audit trail
-     * while preserving the original hash chain entry.
-     */
-    public function cancel(Request $request, DocumentType $type, string $document): JsonResponse
-    {
-        $documentModel = Document::forCompany($this->companyContext->requireCompanyId())
-            ->ofType($type)
-            ->find($document);
-
-        if ($documentModel === null) {
-            return response()->json([
-                'error' => [
-                    'code' => 'NOT_FOUND',
-                    'message' => 'Document not found',
-                ],
-            ], 404);
-        }
-
-        if (! $documentModel->isPosted()) {
-            return response()->json([
-                'error' => [
-                    'code' => 'DOCUMENT_NOT_POSTED',
-                    'message' => 'Only posted documents can be cancelled',
-                ],
-            ], 422);
-        }
-
-        try {
-            $freshDocument = $this->postingService->cancel($documentModel);
-
-            return response()->json([
-                'data' => DocumentData::fromModel($freshDocument),
-                'meta' => [
-                    'timestamp' => now()->toIso8601String(),
-                ],
-            ]);
-        } catch (\DomainException $e) {
-            return response()->json([
-                'error' => [
-                    'code' => 'CANCELLATION_FAILED',
-                    'message' => $e->getMessage(),
-                ],
-            ], 422);
-        }
-    }
-
-    /**
-     * Convert a quote to a sales order
-     */
-    public function convertQuoteToOrder(Request $request, string $quote): JsonResponse
-    {
-        /** @var User $user */
-        $user = $request->user();
-
-        $quoteModel = Document::forCompany($this->companyContext->requireCompanyId())
-            ->ofType(DocumentType::Quote)
-            ->with('lines')
-            ->find($quote);
-
-        if ($quoteModel === null) {
-            return response()->json([
-                'error' => [
-                    'code' => 'NOT_FOUND',
-                    'message' => 'Quote not found',
-                ],
-            ], 404);
-        }
-
-        if (! $quoteModel->isConfirmed()) {
-            return response()->json([
-                'error' => [
-                    'code' => 'QUOTE_NOT_CONFIRMED',
-                    'message' => 'Only confirmed quotes can be converted to orders',
-                ],
-            ], 422);
-        }
-
-        // Check if quote has already been converted
-        $payload = $quoteModel->payload ?? [];
-        if (isset($payload['converted_to_order_id'])) {
-            return response()->json([
-                'error' => [
-                    'code' => 'QUOTE_ALREADY_CONVERTED',
-                    'message' => 'This quote has already been converted to an order',
-                    'details' => [
-                        'order_id' => $payload['converted_to_order_id'],
-                    ],
-                ],
-            ], 422);
-        }
-
-        return DB::transaction(function () use ($quoteModel): JsonResponse {
-            $orderNumber = $this->numberingService->generateNumber($quoteModel->tenant_id, $quoteModel->company_id, DocumentType::SalesOrder);
-
-            // Create the sales order (inherits tenant and company from source document)
-            $order = Document::create([
-                'tenant_id' => $quoteModel->tenant_id,
-                'company_id' => $quoteModel->company_id,
-                'partner_id' => $quoteModel->partner_id,
-                'vehicle_id' => $quoteModel->vehicle_id,
-                'type' => DocumentType::SalesOrder,
-                'status' => DocumentStatus::Draft,
-                'document_number' => $orderNumber,
-                'document_date' => now()->toDateString(),
-                'currency' => $quoteModel->currency,
-                'subtotal' => $quoteModel->subtotal,
-                'discount_amount' => $quoteModel->discount_amount,
-                'tax_amount' => $quoteModel->tax_amount,
-                'total' => $quoteModel->total,
-                'notes' => $quoteModel->notes,
-                'reference' => $quoteModel->reference,
-                'source_document_id' => $quoteModel->id,
-            ]);
-
-            // Copy lines
-            foreach ($quoteModel->lines as $line) {
-                DocumentLine::create([
-                    'document_id' => $order->id,
-                    'product_id' => $line->product_id,
-                    'line_number' => $line->line_number,
-                    'description' => $line->description,
-                    'quantity' => $line->quantity,
-                    'unit_price' => $line->unit_price,
-                    'discount_percent' => $line->discount_percent,
-                    'discount_amount' => $line->discount_amount,
-                    'tax_rate' => $line->tax_rate,
-                    'line_total' => $line->line_total,
-                    'notes' => $line->notes,
-                ]);
-            }
-
-            // Mark quote as converted
-            $quoteModel->update([
-                'payload' => array_merge($quoteModel->payload ?? [], [
-                    'converted_to_order_id' => $order->id,
-                    'converted_at' => now()->toIso8601String(),
-                ]),
-            ]);
-
-            /** @var Document $freshOrder */
-            $freshOrder = $order->fresh(['lines']);
-
-            return response()->json([
-                'data' => DocumentData::fromModel($freshOrder),
-                'meta' => [
-                    'timestamp' => now()->toIso8601String(),
-                ],
-            ], 201);
-        });
-    }
-
-    /**
-     * Convert a sales order to an invoice
-     */
-    public function convertOrderToInvoice(Request $request, string $order): JsonResponse
-    {
-        /** @var User $user */
-        $user = $request->user();
-
-        $orderModel = Document::forCompany($this->companyContext->requireCompanyId())
-            ->ofType(DocumentType::SalesOrder)
-            ->with('lines')
-            ->find($order);
-
-        if ($orderModel === null) {
-            return response()->json([
-                'error' => [
-                    'code' => 'NOT_FOUND',
-                    'message' => 'Sales order not found',
-                ],
-            ], 404);
-        }
-
-        if (! $orderModel->isConfirmed()) {
-            return response()->json([
-                'error' => [
-                    'code' => 'ORDER_NOT_CONFIRMED',
-                    'message' => 'Only confirmed orders can be converted to invoices',
-                ],
-            ], 422);
-        }
-
-        return DB::transaction(function () use ($orderModel): JsonResponse {
-            $invoiceNumber = $this->numberingService->generateNumber($orderModel->tenant_id, $orderModel->company_id, DocumentType::Invoice);
-
-            // Create the invoice (inherits tenant and company from source document)
-            $invoice = Document::create([
-                'tenant_id' => $orderModel->tenant_id,
-                'company_id' => $orderModel->company_id,
-                'partner_id' => $orderModel->partner_id,
-                'vehicle_id' => $orderModel->vehicle_id,
-                'type' => DocumentType::Invoice,
-                'status' => DocumentStatus::Draft,
-                'document_number' => $invoiceNumber,
-                'document_date' => now()->toDateString(),
-                'due_date' => now()->addDays(30)->toDateString(),
-                'currency' => $orderModel->currency,
-                'subtotal' => $orderModel->subtotal,
-                'discount_amount' => $orderModel->discount_amount,
-                'tax_amount' => $orderModel->tax_amount,
-                'total' => $orderModel->total,
-                'notes' => $orderModel->notes,
-                'reference' => $orderModel->reference,
-                'source_document_id' => $orderModel->id,
-            ]);
-
-            // Copy lines
-            foreach ($orderModel->lines as $line) {
-                DocumentLine::create([
-                    'document_id' => $invoice->id,
-                    'product_id' => $line->product_id,
-                    'line_number' => $line->line_number,
-                    'description' => $line->description,
-                    'quantity' => $line->quantity,
-                    'unit_price' => $line->unit_price,
-                    'discount_percent' => $line->discount_percent,
-                    'discount_amount' => $line->discount_amount,
-                    'tax_rate' => $line->tax_rate,
-                    'line_total' => $line->line_total,
-                    'notes' => $line->notes,
-                ]);
-            }
-
-            /** @var Document $freshInvoice */
-            $freshInvoice = $invoice->fresh(['lines']);
-
-            return response()->json([
-                'data' => DocumentData::fromModel($freshInvoice),
-                'meta' => [
-                    'timestamp' => now()->toIso8601String(),
-                ],
-            ], 201);
-        });
-    }
-
-    /**
-     * Receive goods for a purchase order.
-     *
-     * Supports partial receipts via the `quantities` request body:
-     * - If `quantities` is provided: receive specified quantities per line
-     * - If `quantities` is empty/missing: receive all remaining quantities
-     *
-     * Request body (optional):
-     * {
-     *   "quantities": {
-     *     "line_uuid_1": "10.00",
-     *     "line_uuid_2": "5.00"
-     *   }
-     * }
-     */
-    public function receive(Request $request, DocumentType $type, string $document): JsonResponse
-    {
-        $documentModel = Document::forCompany($this->companyContext->requireCompanyId())
-            ->ofType($type)
-            ->with('lines')
-            ->find($document);
-
-        if ($documentModel === null) {
-            return response()->json([
-                'error' => [
-                    'code' => 'NOT_FOUND',
-                    'message' => 'Document not found',
-                ],
-            ], 404);
-        }
-
-        if ($type !== DocumentType::PurchaseOrder) {
-            return response()->json([
-                'error' => [
-                    'code' => 'INVALID_DOCUMENT_TYPE',
-                    'message' => 'Only purchase orders can receive goods',
-                ],
-            ], 422);
-        }
-
-        try {
-            /** @var array<string, string>|null $quantities */
-            $quantities = $request->input('quantities');
-
-            if (is_array($quantities) && count($quantities) > 0) {
-                // Partial receipt with specified quantities
-                $updatedDocument = $this->goodsReceiptService->receiveGoods($documentModel, $quantities);
-            } else {
-                // Receive all remaining quantities
-                $updatedDocument = $this->goodsReceiptService->receiveAll($documentModel);
-            }
-
-            // Get receipt status for response
-            $receiptStatus = $this->goodsReceiptService->getReceiptStatus($updatedDocument);
-
-            return response()->json([
-                'data' => DocumentData::fromModel($updatedDocument),
-                'meta' => [
-                    'timestamp' => now()->toIso8601String(),
-                    'receipt_status' => $receiptStatus,
-                ],
-            ]);
-        } catch (\DomainException $e) {
-            return response()->json([
-                'error' => [
-                    'code' => 'GOODS_RECEIPT_FAILED',
-                    'message' => $e->getMessage(),
-                ],
-            ], 422);
-        } catch (\RuntimeException $e) {
-            return response()->json([
-                'error' => [
-                    'code' => 'CONFIGURATION_ERROR',
-                    'message' => $e->getMessage(),
-                ],
-            ], 500);
-        }
-    }
-
-    /**
-     * Get receipt status for a purchase order.
-     */
-    public function receiptStatus(Request $request, DocumentType $type, string $document): JsonResponse
-    {
-        $documentModel = Document::forCompany($this->companyContext->requireCompanyId())
-            ->ofType($type)
-            ->with('lines')
-            ->find($document);
-
-        if ($documentModel === null) {
-            return response()->json([
-                'error' => [
-                    'code' => 'NOT_FOUND',
-                    'message' => 'Document not found',
-                ],
-            ], 404);
-        }
-
-        if ($type !== DocumentType::PurchaseOrder) {
-            return response()->json([
-                'error' => [
-                    'code' => 'INVALID_DOCUMENT_TYPE',
-                    'message' => 'Only purchase orders have receipt status',
-                ],
-            ], 422);
-        }
-
-        $status = $this->goodsReceiptService->getReceiptStatus($documentModel);
-
-        return response()->json([
-            'data' => $status,
-            'meta' => [
-                'timestamp' => now()->toIso8601String(),
-            ],
-        ]);
-    }
-
-    /**
-     * Create a credit note from a posted invoice
+     * @deprecated Will be moved to InvoiceController or CreditNoteController in v3.0
      */
     public function createCreditNote(Request $request, string $invoice): JsonResponse
     {
@@ -966,7 +530,7 @@ class DocumentController extends Controller
 
         $invoiceModel = Document::forCompany($this->companyContext->requireCompanyId())
             ->ofType(DocumentType::Invoice)
-            ->with('lines')
+            ->with(['lines', 'vehicleContext'])
             ->find($invoice);
 
         if ($invoiceModel === null) {
@@ -995,7 +559,6 @@ class DocumentController extends Controller
                 'tenant_id' => $invoiceModel->tenant_id,
                 'company_id' => $invoiceModel->company_id,
                 'partner_id' => $invoiceModel->partner_id,
-                'vehicle_id' => $invoiceModel->vehicle_id,
                 'type' => DocumentType::CreditNote,
                 'status' => DocumentStatus::Draft,
                 'document_number' => $creditNoteNumber,
@@ -1008,6 +571,17 @@ class DocumentController extends Controller
                 'notes' => 'Credit note for '.$invoiceModel->document_number,
                 'source_document_id' => $invoiceModel->id,
             ]);
+
+            // Copy vehicle context if exists
+            if ($invoiceModel->vehicleContext !== null) {
+                DocumentVehicleContext::create([
+                    'document_id' => $creditNote->id,
+                    'vehicle_id' => $invoiceModel->vehicleContext->vehicle_id,
+                    'vehicle_snapshot' => $invoiceModel->vehicleContext->vehicle_snapshot,
+                    'mileage_at_service' => $invoiceModel->vehicleContext->mileage_at_service,
+                    'context_data' => $invoiceModel->vehicleContext->context_data,
+                ]);
+            }
 
             // Copy lines
             foreach ($invoiceModel->lines as $line) {
@@ -1027,7 +601,7 @@ class DocumentController extends Controller
             }
 
             /** @var Document $freshCreditNote */
-            $freshCreditNote = $creditNote->fresh(['lines']);
+            $freshCreditNote = $creditNote->fresh(['lines', 'vehicleContext']);
 
             return response()->json([
                 'data' => DocumentData::fromModel($freshCreditNote),
@@ -1039,12 +613,14 @@ class DocumentController extends Controller
     }
 
     /**
-     * Get related documents (ancestors and descendants) for a document
+     * Get related documents (ancestors and descendants) for a document.
      *
      * Returns the full document chain showing:
-     * - ancestors: Documents that led to this one (e.g., Quote → Order → Invoice)
+     * - ancestors: Documents that led to this one (e.g., Quote -> Order -> Invoice)
      * - current: The requested document
      * - descendants: Documents derived from this one (e.g., Delivery Notes, Credit Notes)
+     *
+     * GET /api/v1/documents/{document}/related
      */
     public function related(Request $request, string $document): JsonResponse
     {
@@ -1098,6 +674,24 @@ class DocumentController extends Controller
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
             ],
+        ]);
+    }
+
+    /**
+     * Default confirmation for document types without specialized services.
+     *
+     * This is used for document types that don't have complex lifecycle requirements:
+     * - Quote: Simple status change (now handled by QuoteController)
+     * - Invoice: Just status update (now handled by InvoiceController)
+     * - CreditNote: Just status update (posting creates GL entries)
+     * - Expense: Simple status change
+     */
+    private function confirmDefault(Document $document): void
+    {
+        $document->update([
+            'status' => DocumentStatus::Confirmed,
+            'confirmed_at' => now(),
+            'confirmed_by' => auth()->id(),
         ]);
     }
 }

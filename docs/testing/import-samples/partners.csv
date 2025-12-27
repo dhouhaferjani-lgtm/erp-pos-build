@@ -1,0 +1,9 @@
+name,type,email,phone,vat_number,address,city,country
+Garage Dupont,customer,garage.dupont@example.fr,+33612345678,FR12345678901,123 Rue de la Paix,Paris,FR
+Auto Parts Express,supplier,contact@autoparts.tn,+21698765432,TN1234567ABC,45 Avenue Habib Bourguiba,Tunis,TN
+Meca Service Pro,both,info@mecaservice.fr,+33698765432,,78 Boulevard Victor Hugo,Lyon,FR
+Transport Maghreb,customer,transport@maghreb.tn,+21655443322,TN9876543DEF,12 Rue de Carthage,Sousse,TN
+Euro Auto Parts,supplier,sales@euroautoparts.eu,+33145678900,FR98765432109,5 Zone Industrielle Nord,Marseille,FR
+Carrosserie Martin,customer,contact@carrosserie-martin.fr,+33478123456,,25 Avenue Jean Jaures,Grenoble,FR
+Quick Lube Center,customer,quicklube@example.com,+33687654321,,8 Rue du Commerce,Toulouse,FR
+Global Auto Supplies,supplier,orders@globalautosupplies.com,+33156789012,FR55667788990,100 Rue de l'Industrie,Lille,FR

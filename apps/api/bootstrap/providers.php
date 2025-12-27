@@ -2,6 +2,8 @@
 
 return [
     App\Providers\AppServiceProvider::class,
+    App\Providers\BroadcastServiceProvider::class,
+    App\Providers\EventServiceProvider::class,
     App\Modules\Identity\Infrastructure\Providers\IdentityServiceProvider::class,
     App\Modules\Tenant\Infrastructure\Providers\TenantServiceProvider::class,
     App\Modules\Company\CompanyServiceProvider::class,
@@ -19,4 +21,5 @@ return [
     App\Modules\Pricing\Providers\PricingServiceProvider::class,
     App\Modules\Service\Providers\ServiceModuleServiceProvider::class,
     App\Modules\Billing\Providers\BillingServiceProvider::class,
+    App\Modules\Expense\Providers\ExpenseServiceProvider::class,
 ];

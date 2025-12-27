@@ -1,7 +1,6 @@
 import { api, apiPost, apiGet } from '@/lib/api'
 import type {
   ImportJob,
-  ImportJobResponse,
   ImportJobListResponse,
   ImportErrorsResponse,
   CreateImportResponse,
@@ -10,6 +9,7 @@ import type {
   ColumnMappingSuggestions,
   MigrationStatus,
   ImportType,
+  ImportPreview,
 } from '../types'
 
 const IMPORT_URL = '/imports'
@@ -22,9 +22,8 @@ export const importApi = {
     return response
   },
 
-  getJob: async (id: number): Promise<ImportJob> => {
-    const response = await apiGet<ImportJobResponse>(`${IMPORT_URL}/${String(id)}`)
-    return response.data
+  getJob: async (id: string): Promise<ImportJob> => {
+    return apiGet<ImportJob>(`${IMPORT_URL}/${id}`)
   },
 
   createJob: async (
@@ -36,28 +35,31 @@ export const importApi = {
     formData.append('type', type)
     formData.append('file', file)
 
+    // Large files need more time for parsing + validation (up to 2 minutes)
     const response = await api.post<CreateImportResponse>(IMPORT_URL, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000, // 120 seconds for large imports
     })
     return response.data
   },
 
-  getErrors: async (jobId: number): Promise<ImportErrorsResponse> => {
+  getErrors: async (jobId: string): Promise<ImportErrorsResponse> => {
     const response = await apiGet<ImportErrorsResponse>(
-      `${IMPORT_URL}/${String(jobId)}/errors`
+      `${IMPORT_URL}/${jobId}/errors`
     )
     return response
   },
 
-  executeImport: async (jobId: number): Promise<ImportJob> => {
-    const response = await apiPost<ImportJobResponse>(
-      `${IMPORT_URL}/${String(jobId)}/execute`
-    )
-    return response.data
+  getPreview: async (jobId: string): Promise<ImportPreview> => {
+    return apiGet<ImportPreview>(`${IMPORT_URL}/${jobId}/preview`)
   },
 
-  deleteJob: async (jobId: number): Promise<void> => {
-    await api.delete(`${IMPORT_URL}/${String(jobId)}`)
+  executeImport: async (jobId: string): Promise<ImportJob> => {
+    return apiPost<ImportJob>(`${IMPORT_URL}/${jobId}/execute`)
+  },
+
+  deleteJob: async (jobId: string): Promise<void> => {
+    await api.delete(`${IMPORT_URL}/${jobId}`)
   },
 
   // Migration Wizard
@@ -67,21 +69,17 @@ export const importApi = {
   },
 
   checkDependencies: async (type: ImportType): Promise<DependencyCheck> => {
-    const response = await apiGet<{ data: DependencyCheck }>(
-      `${WIZARD_URL}/dependencies/${type}`
-    )
-    return response.data
+    return apiGet<DependencyCheck>(`${WIZARD_URL}/dependencies/${type}`)
   },
 
   suggestMapping: async (
     type: ImportType,
     headers: string[]
   ): Promise<ColumnMappingSuggestions> => {
-    const response = await apiPost<{ data: ColumnMappingSuggestions }>(
+    return apiPost<ColumnMappingSuggestions>(
       `${WIZARD_URL}/suggest-mapping`,
       { type, headers }
     )
-    return response.data
   },
 
   downloadTemplateUrl: (type: ImportType): string => {
@@ -90,9 +88,6 @@ export const importApi = {
   },
 
   getMigrationStatus: async (): Promise<MigrationStatus> => {
-    const response = await apiGet<{ data: MigrationStatus }>(
-      `${WIZARD_URL}/status`
-    )
-    return response.data
+    return apiGet<MigrationStatus>(`${WIZARD_URL}/status`)
   },
 }

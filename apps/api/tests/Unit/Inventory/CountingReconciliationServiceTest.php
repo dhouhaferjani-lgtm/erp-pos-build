@@ -274,7 +274,7 @@ class CountingReconciliationServiceTest extends TestCase
     /**
      * Create a test counting item.
      *
-     * @param array<string, mixed> $attributes
+     * @param  array<string, mixed>  $attributes
      */
     private function createTestItem(array $attributes): InventoryCountingItem
     {

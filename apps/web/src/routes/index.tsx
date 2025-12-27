@@ -21,6 +21,7 @@ const AdminSubscriptionsPage = lazy(() => import('../features/admin/pages/Subscr
 const AdminInvoicesPage = lazy(() => import('../features/admin/pages/InvoicesPage').then((m) => ({ default: m.InvoicesPage })))
 const AdminPaymentsPage = lazy(() => import('../features/admin/pages/PaymentsPage').then((m) => ({ default: m.PaymentsPage })))
 const AdminMonitoringPage = lazy(() => import('../features/admin/pages/MonitoringPage').then((m) => ({ default: m.MonitoringPage })))
+const CompanyOwnersPage = lazy(() => import('../features/admin/pages/CompanyOwnersPage').then((m) => ({ default: m.CompanyOwnersPage })))
 const AdminLayout = lazy(() => import('../features/admin/components/AdminLayout').then((m) => ({ default: m.AdminLayout })))
 const RequireAdminAuth = lazy(() => import('../features/admin/components/RequireAdminAuth').then((m) => ({ default: m.RequireAdminAuth })))
 
@@ -34,6 +35,10 @@ const DocumentListPage = lazy(() => import('../features/documents/DocumentListPa
 const DocumentDetailPage = lazy(() => import('../features/documents/DocumentDetailPage').then((m) => ({ default: m.DocumentDetailPage })))
 const DocumentForm = lazy(() => import('../features/documents/DocumentForm').then((m) => ({ default: m.DocumentForm })))
 const DeliveryNoteConsolidationPage = lazy(() => import('../features/documents/DeliveryNoteConsolidationPage').then((m) => ({ default: m.DeliveryNoteConsolidationPage })))
+const CreateCreditNotePage = lazy(() => import('../features/documents/CreateCreditNotePage').then((m) => ({ default: m.CreateCreditNotePage })))
+const ReturnNoteListPage = lazy(() => import('../features/documents/ReturnNoteListPage').then((m) => ({ default: m.ReturnNoteListPage })))
+const ReturnNoteDetailPage = lazy(() => import('../features/documents/ReturnNoteDetailPage').then((m) => ({ default: m.ReturnNoteDetailPage })))
+const CreateReturnNotePage = lazy(() => import('../features/documents/CreateReturnNotePage').then((m) => ({ default: m.CreateReturnNotePage })))
 
 // Purchases module
 const GoodsReceiptListPage = lazy(() => import('../features/purchases/GoodsReceiptListPage').then((m) => ({ default: m.GoodsReceiptListPage })))
@@ -46,6 +51,7 @@ const InstrumentListPage = lazy(() => import('../features/treasury/InstrumentLis
 const InstrumentDetailPage = lazy(() => import('../features/treasury/InstrumentDetailPage').then((m) => ({ default: m.InstrumentDetailPage })))
 const RepositoryListPage = lazy(() => import('../features/treasury/RepositoryListPage').then((m) => ({ default: m.RepositoryListPage })))
 const RepositoryDetailPage = lazy(() => import('../features/treasury/RepositoryDetailPage').then((m) => ({ default: m.RepositoryDetailPage })))
+const PaymentMethodsPage = lazy(() => import('../features/treasury/PaymentMethodsPage').then((m) => ({ default: m.PaymentMethodsPage })))
 const BankReconciliationPage = lazy(() => import('../features/treasury/BankReconciliationPage').then((m) => ({ default: m.BankReconciliationPage })))
 
 // Reports module
@@ -57,6 +63,7 @@ const ProductDetailPage = lazy(() => import('../features/inventory/ProductDetail
 const ProductForm = lazy(() => import('../features/inventory/ProductForm').then((m) => ({ default: m.ProductForm })))
 const StockLevelsPage = lazy(() => import('../features/inventory/StockLevelsPage').then((m) => ({ default: m.StockLevelsPage })))
 const StockMovementsPage = lazy(() => import('../features/inventory/StockMovementsPage').then((m) => ({ default: m.StockMovementsPage })))
+const CategoriesPage = lazy(() => import('../features/categories/CategoriesPage').then((m) => ({ default: m.CategoriesPage })))
 
 // Inventory Counting
 const CountingDashboardPage = lazy(() => import('../features/inventory-counting/pages/CountingDashboardPage').then((m) => ({ default: m.CountingDashboardPage })))
@@ -80,6 +87,7 @@ const UsersPage = lazy(() => import('../features/settings/UsersPage').then((m) =
 const RolesPage = lazy(() => import('../features/settings/RolesPage').then((m) => ({ default: m.RolesPage })))
 const CompanyPage = lazy(() => import('../features/settings/CompanyPage').then((m) => ({ default: m.CompanyPage })))
 const LocationsPage = lazy(() => import('../features/settings/LocationsPage').then((m) => ({ default: m.LocationsPage })))
+const InventorySettings = lazy(() => import('../features/settings/components/InventorySettings').then((m) => ({ default: m.InventorySettings })))
 
 // Finance module
 const ChartOfAccountsPage = lazy(() => import('../features/finance/pages/ChartOfAccountsPage').then((m) => ({ default: m.ChartOfAccountsPage })))
@@ -112,6 +120,16 @@ const ServiceCategoryListPage = lazy(() => import('../features/services/ServiceC
 // Opening Balances module
 const OpeningBalancesPage = lazy(() => import('../features/opening-balances/pages/OpeningBalancesPage').then((m) => ({ default: m.OpeningBalancesPage })))
 const OpeningBalanceWizardPage = lazy(() => import('../features/opening-balances/pages/OpeningBalanceWizardPage').then((m) => ({ default: m.OpeningBalanceWizardPage })))
+
+// Expenses module
+const ExpenseListPage = lazy(() => import('../features/expenses/pages/ExpenseListPage').then((m) => ({ default: m.ExpenseListPage })))
+const ExpenseFormPage = lazy(() => import('../features/expenses/pages/ExpenseFormPage').then((m) => ({ default: m.ExpenseFormPage })))
+const ExpenseDetailPage = lazy(() => import('../features/expenses/pages/ExpenseDetailPage').then((m) => ({ default: m.ExpenseDetailPage })))
+const ExpenseCategoryPage = lazy(() => import('../features/expenses/pages/ExpenseCategoryPage').then((m) => ({ default: m.ExpenseCategoryPage })))
+
+// Compliance module
+const FraudSettingsPage = lazy(() => import('../features/compliance/pages/FraudSettingsPage').then((m) => ({ default: m.FraudSettingsPage })))
+const FraudAlertsPage = lazy(() => import('../features/compliance/pages/FraudAlertsPage').then((m) => ({ default: m.FraudAlertsPage })))
 
 function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   return (
@@ -183,6 +201,14 @@ export function AppRoutes() {
           element={
             <SuspenseWrapper>
               <TenantsPage />
+            </SuspenseWrapper>
+          }
+        />
+        <Route
+          path="company-owners"
+          element={
+            <SuspenseWrapper>
+              <CompanyOwnersPage />
             </SuspenseWrapper>
           }
         />
@@ -464,11 +490,53 @@ export function AppRoutes() {
             }
           />
           <Route
+            path="credit-notes/create"
+            element={
+              <RequirePermission permission="sales.create">
+                <SuspenseWrapper>
+                  <CreateCreditNotePage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
             path="credit-notes/:id"
             element={
               <RequirePermission moduleKey="sales">
                 <SuspenseWrapper>
                   <DocumentDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+
+          {/* Return Notes */}
+          <Route
+            path="return-notes"
+            element={
+              <RequirePermission moduleKey="sales">
+                <SuspenseWrapper>
+                  <ReturnNoteListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="return-notes/create"
+            element={
+              <RequirePermission moduleKey="sales">
+                <SuspenseWrapper>
+                  <CreateReturnNotePage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="return-notes/:id"
+            element={
+              <RequirePermission moduleKey="sales">
+                <SuspenseWrapper>
+                  <ReturnNoteDetailPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -643,6 +711,17 @@ export function AppRoutes() {
             }
           />
 
+          <Route
+            path="categories"
+            element={
+              <RequirePermission moduleKey="inventory">
+                <SuspenseWrapper>
+                  <CategoriesPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+
           {/* Delivery Notes */}
           <Route
             path="delivery-notes"
@@ -676,6 +755,38 @@ export function AppRoutes() {
           />
           <Route
             path="delivery-notes/:id"
+            element={
+              <RequirePermission moduleKey="inventory">
+                <SuspenseWrapper>
+                  <DocumentDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+
+          {/* Return Notes */}
+          <Route
+            path="return-notes"
+            element={
+              <RequirePermission moduleKey="inventory">
+                <SuspenseWrapper>
+                  <DocumentListPage documentType="return_note" />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="return-notes/new"
+            element={
+              <RequirePermission permission="inventory.create">
+                <SuspenseWrapper>
+                  <CreateReturnNotePage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="return-notes/:id"
             element={
               <RequirePermission moduleKey="inventory">
                 <SuspenseWrapper>
@@ -844,6 +955,70 @@ export function AppRoutes() {
           />
         </Route>
 
+        {/* Expenses Module */}
+        <Route path="expenses">
+          <Route
+            index
+            element={
+              <RequirePermission moduleKey="treasury">
+                <SuspenseWrapper>
+                  <ExpenseListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="new"
+            element={
+              <RequirePermission permission="treasury.create">
+                <SuspenseWrapper>
+                  <ExpenseFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="categories"
+            element={
+              <RequirePermission moduleKey="treasury">
+                <SuspenseWrapper>
+                  <ExpenseCategoryPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path=":id"
+            element={
+              <RequirePermission moduleKey="treasury">
+                <SuspenseWrapper>
+                  <ExpenseFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path=":id/view"
+            element={
+              <RequirePermission moduleKey="treasury">
+                <SuspenseWrapper>
+                  <ExpenseDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path=":id/edit"
+            element={
+              <RequirePermission permission="treasury.edit">
+                <SuspenseWrapper>
+                  <ExpenseFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+        </Route>
+
         {/* Treasury Module */}
         <Route path="treasury">
           <Route index element={<Navigate to="/treasury/payments" replace />} />
@@ -895,6 +1070,17 @@ export function AppRoutes() {
               <RequirePermission moduleKey="treasury">
                 <SuspenseWrapper>
                   <InstrumentDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+
+          <Route
+            path="payment-methods"
+            element={
+              <RequirePermission moduleKey="treasury">
+                <SuspenseWrapper>
+                  <PaymentMethodsPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -1156,6 +1342,16 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
+          <Route
+            path="inventory"
+            element={
+              <RequirePermission moduleKey="settings">
+                <SuspenseWrapper>
+                  <InventorySettings />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
 
           {/* Import Wizard */}
           <Route
@@ -1206,6 +1402,28 @@ export function AppRoutes() {
               <RequirePermission moduleKey="settings">
                 <SuspenseWrapper>
                   <OpeningBalanceWizardPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+
+          {/* Compliance */}
+          <Route
+            path="compliance/fraud-settings"
+            element={
+              <RequirePermission moduleKey="settings">
+                <SuspenseWrapper>
+                  <FraudSettingsPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="compliance/fraud-alerts"
+            element={
+              <RequirePermission moduleKey="settings">
+                <SuspenseWrapper>
+                  <FraudAlertsPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

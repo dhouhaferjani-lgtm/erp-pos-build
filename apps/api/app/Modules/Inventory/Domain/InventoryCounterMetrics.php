@@ -87,7 +87,7 @@ class InventoryCounterMetrics extends Model
     /**
      * Scope to filter by company.
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeForCompany(Builder $query, string $companyId): Builder
@@ -98,7 +98,7 @@ class InventoryCounterMetrics extends Model
     /**
      * Scope to filter by user.
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeForUser(Builder $query, string $userId): Builder

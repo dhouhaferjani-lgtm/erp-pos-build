@@ -14,17 +14,16 @@ final class DocumentEmailService
 {
     public function __construct(
         private readonly DocumentPdfService $pdfService,
-    ) {
-    }
+    ) {}
 
     /**
      * Send a document via email to the partner.
      *
-     * @param Document $document The document to send
-     * @param string|null $recipientEmail Override the default recipient email
-     * @param string|null $customMessage Custom message to include in the email body
-     * @param string|null $customSubject Custom subject line
-     * @param array<string> $ccEmails Additional CC recipients
+     * @param  Document  $document  The document to send
+     * @param  string|null  $recipientEmail  Override the default recipient email
+     * @param  string|null  $customMessage  Custom message to include in the email body
+     * @param  string|null  $customSubject  Custom subject line
+     * @param  array<string>  $ccEmails  Additional CC recipients
      * @return bool Whether the email was sent successfully
      */
     public function send(
@@ -79,11 +78,11 @@ final class DocumentEmailService
     /**
      * Queue a document email for later sending.
      *
-     * @param Document $document The document to send
-     * @param string|null $recipientEmail Override the default recipient email
-     * @param string|null $customMessage Custom message to include in the email body
-     * @param string|null $customSubject Custom subject line
-     * @param array<string> $ccEmails Additional CC recipients
+     * @param  Document  $document  The document to send
+     * @param  string|null  $recipientEmail  Override the default recipient email
+     * @param  string|null  $customMessage  Custom message to include in the email body
+     * @param  string|null  $customSubject  Custom subject line
+     * @param  array<string>  $ccEmails  Additional CC recipients
      */
     public function queue(
         Document $document,

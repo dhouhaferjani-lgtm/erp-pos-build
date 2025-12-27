@@ -1,0 +1,46 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Providers;
+
+use App\Modules\Accounting\Listeners\InvoicePostedListener;
+use App\Modules\Company\Domain\Events\CompanyCreated;
+use App\Modules\Company\Listeners\CreateFiscalYearsForNewCompany;
+use App\Modules\Document\Domain\Events\InvoicePosted;
+use App\Modules\Import\Infrastructure\Listeners\BroadcastImportEventsListener;
+use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
+
+class EventServiceProvider extends ServiceProvider
+{
+    /**
+     * The event listener mappings for the application.
+     *
+     * @var array<class-string, array<int, class-string>>
+     */
+    protected $listen = [
+        CompanyCreated::class => [
+            CreateFiscalYearsForNewCompany::class,
+        ],
+        InvoicePosted::class => [
+            InvoicePostedListener::class,
+        ],
+    ];
+
+    /**
+     * The subscriber classes to register.
+     *
+     * @var array<int, class-string>
+     */
+    protected $subscribe = [
+        BroadcastImportEventsListener::class,
+    ];
+
+    /**
+     * Register any events for your application.
+     */
+    public function boot(): void
+    {
+        parent::boot();
+    }
+}

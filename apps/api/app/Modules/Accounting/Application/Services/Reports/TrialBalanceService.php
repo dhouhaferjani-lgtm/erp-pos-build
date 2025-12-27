@@ -45,8 +45,6 @@ use Illuminate\Support\Facades\DB;
  * - Critical for financial audits and regulatory compliance
  * - Hash chain verification should be performed separately
  * - Must match sub-ledger totals (AR/AP)
- *
- * @package App\Modules\Accounting\Application\Services\Reports
  */
 class TrialBalanceService
 {
@@ -82,10 +80,10 @@ class TrialBalanceService
      * 5. Flatten tree for display
      * 6. Validate that total debits = total credits
      *
-     * @param string $companyId UUID of the company
-     * @param Carbon|null $asOfDate Point-in-time date (null = today)
-     * @param bool $includeZeroBalances Whether to include accounts with zero balance (default: false)
-     * @param bool $includeHierarchy Whether to build hierarchical structure (default: true)
+     * @param  string  $companyId  UUID of the company
+     * @param  Carbon|null  $asOfDate  Point-in-time date (null = today)
+     * @param  bool  $includeZeroBalances  Whether to include accounts with zero balance (default: false)
+     * @param  bool  $includeHierarchy  Whether to build hierarchical structure (default: true)
      * @return array{lines: list<array>, total_debit: numeric-string, total_credit: numeric-string, is_balanced: bool, as_of_date: string}
      *
      * @example
@@ -166,8 +164,8 @@ class TrialBalanceService
      *   - journal_lines(journal_entry_id, account_id)
      *   - accounts(company_id, is_active)
      *
-     * @param string $companyId UUID of the company
-     * @param Carbon $asOfDate Point-in-time cutoff date
+     * @param  string  $companyId  UUID of the company
+     * @param  Carbon  $asOfDate  Point-in-time cutoff date
      * @return \Illuminate\Support\Collection<int, object{account_id: string, account_code: string, account_name: string, account_type: string, parent_id: string|null, total_debit: numeric-string, total_credit: numeric-string, balance: numeric-string}>
      */
     private function queryAccountBalances(string $companyId, Carbon $asOfDate): \Illuminate\Support\Collection
@@ -205,7 +203,7 @@ class TrialBalanceService
      * This removes accounts that have no activity or whose debits
      * exactly offset their credits.
      *
-     * @param \Illuminate\Support\Collection<int, object> $accountBalances
+     * @param  \Illuminate\Support\Collection<int, object>  $accountBalances
      * @return \Illuminate\Support\Collection<int, object>
      */
     private function filterZeroBalances(\Illuminate\Support\Collection $accountBalances): \Illuminate\Support\Collection
@@ -231,14 +229,14 @@ class TrialBalanceService
      * Note: This creates a temporary in-memory join between query results
      * and Eloquent models. For very large datasets, consider optimizing.
      *
-     * @param string $companyId UUID of the company
-     * @param \Illuminate\Support\Collection<int, object> $balances
+     * @param  string  $companyId  UUID of the company
+     * @param  \Illuminate\Support\Collection<int, object>  $balances
      * @return \Illuminate\Database\Eloquent\Collection<int, Account>
      */
     private function loadAccounts(string $companyId, \Illuminate\Support\Collection $balances): \Illuminate\Database\Eloquent\Collection
     {
         if ($balances->isEmpty()) {
-            return new \Illuminate\Database\Eloquent\Collection();
+            return new \Illuminate\Database\Eloquent\Collection;
         }
 
         $accountIds = $balances->pluck('account_id')->toArray();
@@ -273,7 +271,7 @@ class TrialBalanceService
      * 4. Flatten tree for display
      * 5. Format each line for API response
      *
-     * @param \Illuminate\Database\Eloquent\Collection<int, Account> $accounts
+     * @param  \Illuminate\Database\Eloquent\Collection<int, Account>  $accounts
      * @return list<array{account_code: string, account_name: string, account_type: string, debit: numeric-string, credit: numeric-string, level: int, is_parent: bool}>
      */
     private function buildHierarchicalReport(\Illuminate\Database\Eloquent\Collection $accounts): array
@@ -298,9 +296,6 @@ class TrialBalanceService
 
     /**
      * Recursively set balances on tree nodes from Account attributes.
-     *
-     * @param \App\Modules\Accounting\Domain\Services\AccountNode $node
-     * @return void
      */
     private function setNodeBalances(\App\Modules\Accounting\Domain\Services\AccountNode $node): void
     {
@@ -317,7 +312,7 @@ class TrialBalanceService
      * Used when includeHierarchy = false. Returns accounts in code order
      * without parent-child structure.
      *
-     * @param \Illuminate\Database\Eloquent\Collection<int, Account> $accounts
+     * @param  \Illuminate\Database\Eloquent\Collection<int, Account>  $accounts
      * @return list<array>
      */
     private function buildFlatReport(\Illuminate\Database\Eloquent\Collection $accounts): array
@@ -360,7 +355,6 @@ class TrialBalanceService
      * - Negative balance → credit column (absolute value)
      * - Zero balance → both columns zero
      *
-     * @param \App\Modules\Accounting\Domain\Services\AccountNode $node
      * @return array{account_code: string, account_name: string, account_type: string, debit: numeric-string, credit: numeric-string, level: int, is_parent: bool}
      */
     private function formatTrialBalanceLine(\App\Modules\Accounting\Domain\Services\AccountNode $node): array
@@ -395,7 +389,7 @@ class TrialBalanceService
     /**
      * Calculate total debits and credits across all accounts.
      *
-     * @param \Illuminate\Support\Collection<int, object> $accountBalances
+     * @param  \Illuminate\Support\Collection<int, object>  $accountBalances
      * @return array{total_debit: numeric-string, total_credit: numeric-string}
      */
     private function calculateTotals(\Illuminate\Support\Collection $accountBalances): array
@@ -422,8 +416,8 @@ class TrialBalanceService
      *
      * Uses ZERO_THRESHOLD to account for floating-point precision issues.
      *
-     * @param numeric-string $totalDebit
-     * @param numeric-string $totalCredit
+     * @param  numeric-string  $totalDebit
+     * @param  numeric-string  $totalCredit
      * @return bool True if balanced (debits = credits within threshold)
      */
     private function validateBalance(string $totalDebit, string $totalCredit): bool
@@ -441,8 +435,8 @@ class TrialBalanceService
 /**
  * Helper function to get absolute value using bcmath.
  *
- * @param numeric-string $value
- * @param int $scale Decimal scale
+ * @param  numeric-string  $value
+ * @param  int  $scale  Decimal scale
  * @return numeric-string
  */
 function bcabs(string $value, int $scale): string

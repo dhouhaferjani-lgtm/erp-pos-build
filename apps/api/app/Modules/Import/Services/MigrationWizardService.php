@@ -170,59 +170,122 @@ final class MigrationWizardService
         );
 
         $header = implode(',', $columns);
-        $exampleRow = $this->generateExampleRow($type, $columns);
+        $exampleRows = $this->generateExampleRows($type, $columns);
 
-        return $header."\n".$exampleRow;
+        return $header."\n".implode("\n", $exampleRows);
     }
 
     /**
-     * Generate an example data row for a template
+     * Generate example data rows for a template
      *
      * @param  array<string>  $columns
+     * @return array<string>
      */
-    private function generateExampleRow(ImportType $type, array $columns): string
+    private function generateExampleRows(ImportType $type, array $columns): array
     {
-        $examples = match ($type) {
+        $allExamples = match ($type) {
             ImportType::Partners => [
-                'name' => 'Acme Corporation',
-                'type' => 'customer',
-                'email' => 'contact@acme.com',
-                'phone' => '+1234567890',
-                'vat_number' => 'FR12345678901',
-                'address' => '123 Main Street',
-                'city' => 'Paris',
-                'country' => 'France',
+                // Customer example
+                [
+                    'name' => 'Acme Corporation',
+                    'type' => 'customer',
+                    'email' => 'contact@acme.com',
+                    'phone' => '+1234567890',
+                    'vat_number' => 'FR12345678901',
+                    'address' => '123 Main Street',
+                    'city' => 'Paris',
+                    'country' => 'France',
+                ],
+                // Supplier example
+                [
+                    'name' => 'Global Supplies Ltd',
+                    'type' => 'supplier',
+                    'email' => 'sales@global-supplies.com',
+                    'phone' => '+0987654321',
+                    'vat_number' => 'DE987654321',
+                    'address' => '456 Industrial Ave',
+                    'city' => 'Berlin',
+                    'country' => 'Germany',
+                ],
+                // Both (customer AND supplier) example
+                [
+                    'name' => 'Parts & Service Co',
+                    'type' => 'both',
+                    'email' => 'info@parts-service.com',
+                    'phone' => '+1122334455',
+                    'vat_number' => 'GB123456789',
+                    'address' => '789 Trade Center',
+                    'city' => 'London',
+                    'country' => 'United Kingdom',
+                ],
             ],
             ImportType::Products => [
-                'name' => 'Brake Pad Set',
-                'sku' => 'BP-001',
-                'type' => 'part',
-                'description' => 'Front brake pads for sedan',
-                'sale_price' => '29.99',
-                'purchase_price' => '15.00',
-                'barcode' => '1234567890123',
+                [
+                    'name' => 'Brake Pad Set',
+                    'sku' => 'BP-001',
+                    'type' => 'part',
+                    'description' => 'Front brake pads for sedan',
+                    'sale_price' => '29.99',
+                    'purchase_price' => '15.00',
+                    'barcode' => '1234567890123',
+                ],
+                [
+                    'name' => 'Oil Change Service',
+                    'sku' => 'SVC-OIL',
+                    'type' => 'service',
+                    'description' => 'Standard oil change with filter',
+                    'sale_price' => '45.00',
+                    'purchase_price' => '',
+                    'barcode' => '',
+                ],
             ],
             ImportType::StockLevels => [
-                'product_sku' => 'BP-001',
-                'location_code' => 'WH-MAIN',
-                'quantity' => '100',
-                'notes' => 'Initial stock',
+                [
+                    'product_sku' => 'BP-001',
+                    'location_code' => 'WH-MAIN',
+                    'quantity' => '100',
+                    'notes' => 'Initial stock',
+                ],
+                [
+                    'product_sku' => 'BP-002',
+                    'location_code' => 'WH-MAIN',
+                    'quantity' => '50',
+                    'notes' => 'Rear brake pads',
+                ],
             ],
             ImportType::OpeningBalances => [
-                'account_code' => '1000',
-                'debit' => '5000.00',
-                'credit' => '0.00',
-                'description' => 'Opening balance',
-                'reference' => 'OB-2025',
+                [
+                    'account_code' => '1000',
+                    'debit' => '5000.00',
+                    'credit' => '0.00',
+                    'description' => 'Opening balance - Cash',
+                    'reference' => 'OB-2025',
+                ],
+                [
+                    'account_code' => '2000',
+                    'debit' => '0.00',
+                    'credit' => '3000.00',
+                    'description' => 'Opening balance - Accounts Payable',
+                    'reference' => 'OB-2025',
+                ],
             ],
         };
 
-        $values = [];
-        foreach ($columns as $column) {
-            $values[] = $examples[$column] ?? '';
+        $rows = [];
+        foreach ($allExamples as $example) {
+            $values = [];
+            foreach ($columns as $column) {
+                $value = $example[$column] ?? '';
+                // Escape commas and quotes in CSV
+                if (str_contains($value, ',') || str_contains($value, '"')) {
+                    $value = '"'.str_replace('"', '""', $value).'"';
+                }
+                $values[] = $value;
+            }
+            $rows[] = implode(',', $values);
         }
 
-        return implode(',', $values);
+        return $rows;
     }
 
     /**

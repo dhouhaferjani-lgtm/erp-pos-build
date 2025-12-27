@@ -32,31 +32,38 @@ class FiscalYearSeeder extends Seeder
 {
     /**
      * Run the database seeds.
+     *
+     * @param  Company|null  $company  Optional specific company to seed for
      */
-    public function run(): void
+    public function run(?Company $company = null): void
     {
-        // Get all existing companies
-        $companies = Company::all();
+        if ($company !== null) {
+            // Seed for a specific company (used during registration)
+            $this->seedFiscalYearsForCompany($company);
 
-        if ($companies->isEmpty()) {
-            $this->command->warn('No companies found. Run TenantSeeder first.');
             return;
         }
 
-        foreach ($companies as $company) {
-            $this->seedFiscalYearsForCompany($company);
+        // Seed for all existing companies (batch mode)
+        $companies = Company::all();
+
+        if ($companies->isEmpty()) {
+            $this->command?->warn('No companies found. Run TenantSeeder first.');
+
+            return;
+        }
+
+        foreach ($companies as $comp) {
+            $this->seedFiscalYearsForCompany($comp);
         }
     }
 
     /**
      * Seed fiscal years and periods for a specific company.
-     *
-     * @param Company $company
-     * @return void
      */
     private function seedFiscalYearsForCompany(Company $company): void
     {
-        $this->command->info("Seeding fiscal years for company: {$company->name}");
+        $this->command?->info("Seeding fiscal years for company: {$company->name}");
 
         // Create 2024 fiscal year (closed)
         $year2024 = $this->createFiscalYear(
@@ -85,18 +92,11 @@ class FiscalYearSeeder extends Seeder
             isClosed: false
         );
 
-        $this->command->info("  ✓ Created 3 fiscal years (2024-2026)");
+        $this->command?->info('  ✓ Created 3 fiscal years (2024-2026)');
     }
 
     /**
      * Create a fiscal year with 12 monthly periods.
-     *
-     * @param Company $company
-     * @param string $name
-     * @param Carbon $startDate
-     * @param Carbon $endDate
-     * @param bool $isClosed
-     * @return FiscalYear
      */
     private function createFiscalYear(
         Company $company,
@@ -128,12 +128,6 @@ class FiscalYearSeeder extends Seeder
 
     /**
      * Create 12 monthly periods for a fiscal year.
-     *
-     * @param FiscalYear $fiscalYear
-     * @param Carbon $yearStart
-     * @param Carbon $yearEnd
-     * @param bool $isClosed
-     * @return void
      */
     private function createMonthlyPeriods(
         FiscalYear $fiscalYear,
@@ -143,7 +137,7 @@ class FiscalYearSeeder extends Seeder
     ): void {
         $monthNames = [
             'January', 'February', 'March', 'April', 'May', 'June',
-            'July', 'August', 'September', 'October', 'November', 'December'
+            'July', 'August', 'September', 'October', 'November', 'December',
         ];
 
         $currentDate = $yearStart->copy();
@@ -190,11 +184,6 @@ class FiscalYearSeeder extends Seeder
      * - If period ended more than 1 month ago → Closed
      * - If period ended in the last month → Open (allow adjustments)
      * - If period hasn't ended yet → Open
-     *
-     * @param Carbon $periodEnd
-     * @param bool $fiscalYearClosed
-     * @param Carbon $now
-     * @return PeriodStatus
      */
     private function determinePeriodStatus(Carbon $periodEnd, bool $fiscalYearClosed, Carbon $now): PeriodStatus
     {

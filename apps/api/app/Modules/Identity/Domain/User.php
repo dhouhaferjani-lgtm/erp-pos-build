@@ -6,10 +6,12 @@ namespace App\Modules\Identity\Domain;
 
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\Enums\UserStatus;
+use App\Modules\Tenant\Domain\Tenant;
 use Carbon\Carbon;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -128,6 +130,27 @@ class User extends Authenticatable
     }
 
     /**
+     * Get the tenant the user belongs to.
+     *
+     * @return BelongsTo<Tenant, $this>
+     */
+    public function tenant(): BelongsTo
+    {
+        return $this->belongsTo(Tenant::class);
+    }
+
+    /**
+     * Get the team (tenant) ID for Spatie Permission multi-tenancy.
+     *
+     * This method is required by Spatie Permission when teams are enabled.
+     * It tells the package which tenant context to use when checking permissions.
+     */
+    public function getPermissionsTeamId(): string
+    {
+        return $this->tenant_id;
+    }
+
+    /**
      * Check if the user is active.
      */
     public function isActive(): bool
@@ -161,5 +184,62 @@ class User extends Authenticatable
     public function getDefaultGuardName(): string
     {
         return 'sanctum';
+    }
+
+    /**
+     * Check if user can access a product channel for WebSocket subscriptions.
+     *
+     * Verifies that:
+     * 1. User belongs to the specified tenant
+     * 2. User has active membership in the specified company
+     * 3. User account is active
+     */
+    public function canAccessChannel(
+        string $tenantId,
+        string $companyId,
+        string $productId
+    ): bool {
+        // User must belong to the tenant
+        if ($this->tenant_id !== $tenantId) {
+            return false;
+        }
+
+        // User must be active
+        if (! $this->isActive()) {
+            return false;
+        }
+
+        // User must have an active membership in the company
+        $hasMembership = $this->companyMemberships()
+            ->where('company_id', $companyId)
+            ->where('status', 'active')
+            ->exists();
+
+        return $hasMembership;
+    }
+
+    /**
+     * Check if user can access the import progress channel.
+     *
+     * Used for WebSocket channel authorization for real-time import updates.
+     * Verifies that user belongs to tenant and has company membership.
+     */
+    public function canAccessImportChannel(string $tenantId, string $companyId): bool
+    {
+        // User must belong to the tenant
+        if ($this->tenant_id !== $tenantId) {
+            return false;
+        }
+
+        // User must be active
+        if (! $this->isActive()) {
+            return false;
+        }
+
+        // User must have an active membership in the company
+        return $this->companyMemberships()
+            ->where('company_id', $companyId)
+            ->where('status', 'active')
+            ->exists();
     }
 }

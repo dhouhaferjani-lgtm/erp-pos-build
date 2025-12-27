@@ -62,6 +62,11 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/tenants/{id}/activate', [SuperAdminController::class, 'activateTenant']);
             Route::get('/audit-logs', [SuperAdminController::class, 'auditLogs']);
 
+            // User management
+            Route::get('/users', [SuperAdminController::class, 'users']);
+            Route::get('/users/{id}', [SuperAdminController::class, 'showUser']);
+            Route::post('/users/{id}/verify-email', [SuperAdminController::class, 'verifyUserEmail']);
+
             // Monitoring endpoints
             Route::prefix('monitoring')->group(function (): void {
                 Route::get('/health', [MonitoringController::class, 'health']);

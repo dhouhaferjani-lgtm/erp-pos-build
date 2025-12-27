@@ -59,7 +59,7 @@ class PaymentToleranceService
     ): array {
         $settings = $this->getToleranceSettings($companyId);
 
-        if (!$settings['enabled']) {
+        if (! $settings['enabled']) {
             return [
                 'qualifies' => false,
                 'difference' => '0.0000',
@@ -85,6 +85,7 @@ class PaymentToleranceService
 
         if ($withinPercentage && $withinMaxAmount && bccomp($absDifference, '0', 4) > 0) {
             $type = bccomp($difference, '0', 4) < 0 ? 'underpayment' : 'overpayment';
+
             return [
                 'qualifies' => true,
                 'difference' => $absDifference,
@@ -94,9 +95,9 @@ class PaymentToleranceService
         }
 
         $reason = null;
-        if (!$withinPercentage) {
+        if (! $withinPercentage) {
             $reason = "Exceeds percentage threshold ({$settings['percentage']})";
-        } elseif (!$withinMaxAmount) {
+        } elseif (! $withinMaxAmount) {
             $reason = "Exceeds max amount threshold ({$settings['max_amount']})";
         }
 
@@ -140,6 +141,7 @@ class PaymentToleranceService
         if ($countrySettings?->payment_tolerance_enabled !== null) {
             return 'country';
         }
+
         return 'system_default';
     }
 }

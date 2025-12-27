@@ -10,8 +10,8 @@ use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Partner\Domain\Partner;
-use App\Modules\Product\Domain\Product;
 use App\Modules\Product\Domain\Enums\ProductType;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Seeder;
 
@@ -27,14 +27,16 @@ class SmartPaymentTestDataSeeder extends Seeder
 
         // Get demo tenant and company
         $tenant = Tenant::where('slug', 'demo-garage')->first();
-        if (!$tenant) {
+        if (! $tenant) {
             $this->command->error('Demo tenant not found! Run DatabaseSeeder first.');
+
             return;
         }
 
         $company = Company::where('tenant_id', $tenant->id)->first();
-        if (!$company) {
+        if (! $company) {
             $this->command->error('Demo company not found! Run DatabaseSeeder first.');
+
             return;
         }
 
@@ -43,8 +45,9 @@ class SmartPaymentTestDataSeeder extends Seeder
             ->where('type', 'customer')
             ->first();
 
-        if (!$customer) {
+        if (! $customer) {
             $this->command->error('No customers found! Run DatabaseSeeder first.');
+
             return;
         }
 
@@ -54,8 +57,9 @@ class SmartPaymentTestDataSeeder extends Seeder
             ->where('is_active', true)
             ->first();
 
-        if (!$product) {
+        if (! $product) {
             $this->command->error('No products found! Run DatabaseSeeder first.');
+
             return;
         }
 

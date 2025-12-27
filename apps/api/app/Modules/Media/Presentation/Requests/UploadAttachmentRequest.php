@@ -26,8 +26,8 @@ class UploadAttachmentRequest extends FormRequest
             'file' => [
                 'required',
                 'file',
-                'max:' . $maxSize,
-                'mimetypes:' . $allowedMimes,
+                'max:'.$maxSize,
+                'mimetypes:'.$allowedMimes,
             ],
             'description' => [
                 'nullable',

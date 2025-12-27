@@ -1,0 +1,40 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\Inventory\Application\DTOs;
+
+use App\Modules\Inventory\Domain\StockLevel;
+use Spatie\LaravelData\Data;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
+
+#[TypeScript]
+class StockLevelData extends Data
+{
+    public function __construct(
+        public string $id,
+        public string $location_id,
+        public string $location_name,
+        public string $quantity,
+        public string $reserved,
+        public string $available,
+        public ?string $min_quantity,
+        public ?string $max_quantity,
+        public bool $is_below_minimum,
+    ) {}
+
+    public static function fromModel(StockLevel $stockLevel): self
+    {
+        return new self(
+            id: $stockLevel->id,
+            location_id: $stockLevel->location_id,
+            location_name: $stockLevel->location->name,
+            quantity: (string) $stockLevel->quantity,
+            reserved: (string) $stockLevel->reserved,
+            available: $stockLevel->getAvailableQuantity(),
+            min_quantity: $stockLevel->min_quantity !== null ? (string) $stockLevel->min_quantity : null,
+            max_quantity: $stockLevel->max_quantity !== null ? (string) $stockLevel->max_quantity : null,
+            is_below_minimum: $stockLevel->isBelowMinimum(),
+        );
+    }
+}

@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { UserPlus, AlertCircle, Building2, User, CheckCircle, ChevronRight, ChevronLeft } from 'lucide-react'
-import { api } from '../../lib/api'
+import { api, ensureCsrfCookie } from '../../lib/api'
 import { useAuthStore } from '../../stores/authStore'
 
 interface Country {
@@ -92,6 +92,8 @@ export function RegisterPage() {
 
   const registerMutation = useMutation({
     mutationFn: async (data: RegisterFormData) => {
+      // First, ensure CSRF cookie is set (required for Sanctum SPA auth)
+      await ensureCsrfCookie()
       const payload = {
         name: data.name,
         email: data.email,
@@ -108,6 +110,7 @@ export function RegisterPage() {
       return response.data.data
     },
     onSuccess: (data) => {
+      // Cookie is set automatically by Sanctum - just update UI state
       const user = {
         id: data.user.id,
         name: data.user.name,
@@ -116,7 +119,7 @@ export function RegisterPage() {
         roles: data.user.roles,
         email_verified_at: null, // New users are not verified yet
       }
-      setAuth(user, data.token)
+      setAuth(user)
       void navigate('/', { replace: true })
     },
     onError: (error: unknown) => {

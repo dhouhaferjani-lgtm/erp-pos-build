@@ -252,6 +252,93 @@
       "blockSalesAtLoss": "Bloquer les ventes à perte"
     }
   },
+  "settings": {
+    "title": "Paramètres d'inventaire et tarification",
+    "description": "Configurer les méthodes de coût d'inventaire et les politiques de marge par défaut pour votre entreprise.",
+    "costing": {
+      "title": "Méthode de coût d'inventaire",
+      "description": "Choisissez comment les coûts des produits sont calculés lors de la réception de l'inventaire.",
+      "fifo": {
+        "label": "FIFO (Premier Entré, Premier Sorti)",
+        "description": "L'inventaire le plus ancien est vendu en premier. Bon pour les produits périssables."
+      },
+      "wac": {
+        "label": "CMP (Coût Moyen Pondéré)",
+        "badge": "Recommandé",
+        "description": "Coût moyen de tout l'inventaire. Meilleur pour la plupart des entreprises. Se recalcule automatiquement lors de la réception des marchandises."
+      },
+      "lifo": {
+        "label": "LIFO (Dernier Entré, Premier Sorti)",
+        "description": "L'inventaire le plus récent est vendu en premier. Rarement utilisé (non autorisé dans certains pays)."
+      }
+    },
+    "margins": {
+      "title": "Politiques de marge par défaut",
+      "description": "Définir les marges par défaut à l'échelle de l'entreprise. Les produits individuels peuvent remplacer ces paramètres.",
+      "targetLabel": "Marge cible (%)",
+      "targetHint": "Marge bénéficiaire recommandée pour les produits",
+      "minimumLabel": "Marge minimum (%)",
+      "minimumHint": "Marge acceptable la plus basse avant avertissement",
+      "calculationInfo": "Calcul de la marge :",
+      "calculationFormula": "Marge % = (Prix de vente - Coût) / Coût × 100",
+      "calculationExample": "Exemple : Si le coût est de 100 $ et la marge cible est de 30 %, prix suggéré = 100 $ / (1 - 0,30) = 142,86 $"
+    },
+    "restrictions": {
+      "title": "Restrictions de vente",
+      "description": "Contrôler si les utilisateurs peuvent vendre des produits en dessous du coût.",
+      "allowBelowCost": "Autoriser les ventes en dessous du coût",
+      "allowBelowCostHint": "Lorsque désactivé, les utilisateurs doivent avoir une permission spéciale pour vendre des produits à perte."
+    },
+    "reservations": {
+      "title": "Paramètres de réservation de stock",
+      "description": "Configurer les délais d'expiration de réservation automatique et les seuils de détection de fraude.",
+      "expiry": {
+        "heading": "Expiration des réservations",
+        "salesOrder": {
+          "label": "Expiration commande client (jours)",
+          "hint": "Durée de conservation du stock pour les commandes clients confirmées"
+        },
+        "cart": {
+          "label": "Expiration panier e-commerce (minutes)",
+          "hint": "Délai d'expiration de session du panier pour les commandes en ligne"
+        },
+        "marketplace": {
+          "label": "Expiration commande marketplace (heures)",
+          "hint": "Durée de conservation pour les commandes de plateforme marketplace"
+        },
+        "returns": {
+          "label": "Expiration retour client (jours)",
+          "hint": "Durée de réservation du stock pour les retours en attente"
+        }
+      },
+      "fraud": {
+        "heading": "Détection de fraude",
+        "highValue": {
+          "label": "Seuil d'alerte valeur élevée",
+          "hint": "Déclencher des alertes pour les réservations au-dessus de cette valeur"
+        },
+        "countTrigger": {
+          "label": "Déclencheur d'inventaire physique",
+          "hint": "Déclencher un comptage physique lorsque les écarts dépassent ce seuil"
+        }
+      },
+      "autoReserve": {
+        "label": "Réserver automatiquement le stock lors de la confirmation de commande client",
+        "hint": "Réserver automatiquement le stock lorsqu'une commande client est confirmée (recommandé pour un suivi précis de l'inventaire)"
+      },
+      "info": {
+        "title": "Comment fonctionne la réservation de stock :",
+        "description": "Lorsqu'elle est activée, le stock est automatiquement réservé lorsque les commandes sont confirmées, empêchant la survente. Les réservations sont libérées lorsque les commandes sont livrées, annulées, ou lorsqu'elles expirent en fonction des délais configurés ci-dessus."
+      }
+    },
+    "messages": {
+      "saved": "Paramètres enregistrés avec succès !",
+      "saveFailed": "Échec de l'enregistrement des paramètres. Veuillez réessayer.",
+      "inventorySaveFailed": "Échec de l'enregistrement des paramètres d'inventaire. Veuillez réessayer.",
+      "reservationSaveFailed": "Échec de l'enregistrement des paramètres de réservation. Veuillez réessayer.",
+      "unsavedChanges": "Vous avez des modifications non enregistrées"
+    }
+  },
   "counting": {
     "title": "Inventaire physique",
     "subtitle": "Gérer les comptages d'inventaire physique et la réconciliation",
@@ -482,6 +569,90 @@
       "exportFailed": "Échec de l'export du rapport : {{error}}",
       "reminderSent": "Rappel envoyé avec succès",
       "reminderFailed": "Échec de l'envoi du rappel : {{error}}"
+    }
+  },
+  "categories": {
+    "title": "Catégories de produits",
+    "singular": "catégorie",
+    "plural": "catégories",
+    "new": "Nouvelle catégorie",
+    "edit": "Modifier la catégorie",
+    "searchPlaceholder": "Rechercher des catégories...",
+    "name": "Nom",
+    "namePlaceholder": "Entrez le nom de la catégorie",
+    "description": "Description",
+    "descriptionPlaceholder": "Entrez la description de la catégorie (optionnel)",
+    "parent": "Catégorie parente",
+    "parentPlaceholder": "Sélectionnez la catégorie parente (optionnel)",
+    "rootCategory": "Catégorie racine",
+    "noParent": "Aucun parent (catégorie de premier niveau)",
+    "image": "Image de la catégorie",
+    "isActive": "Active",
+    "sortOrder": "Ordre de tri",
+    "productsCount": "Produits",
+    "breadcrumb": "Chemin de la catégorie",
+    "viewTree": "Vue arborescente",
+    "viewList": "Vue liste",
+    "expandAll": "Tout développer",
+    "collapseAll": "Tout réduire",
+    "subcategories": "Sous-catégories",
+    "actions": {
+      "addSubcategory": "Ajouter une sous-catégorie",
+      "edit": "Modifier",
+      "delete": "Supprimer",
+      "activate": "Activer",
+      "deactivate": "Désactiver",
+      "moveUp": "Monter",
+      "moveDown": "Descendre"
+    },
+    "deleteDialog": {
+      "title": "Supprimer la catégorie",
+      "description": "Êtes-vous sûr de vouloir supprimer \"{{name}}\" ?",
+      "cannotDelete": "Impossible de supprimer cette catégorie",
+      "hasProducts": "Cette catégorie contient {{count}} produit et ne peut pas être supprimée",
+      "hasProducts_plural": "Cette catégorie contient {{count}} produits et ne peut pas être supprimée",
+      "hasChildren": "Cette catégorie contient des sous-catégories et ne peut pas être supprimée",
+      "removeProductsFirst": "Retirez d'abord tous les produits de cette catégorie",
+      "removeChildrenFirst": "Supprimez ou déplacez d'abord toutes les sous-catégories",
+      "confirm": "Supprimer la catégorie"
+    },
+    "messages": {
+      "created": "Catégorie créée avec succès",
+      "updated": "Catégorie mise à jour avec succès",
+      "deleted": "Catégorie supprimée avec succès",
+      "createFailed": "Échec de la création de la catégorie : {{error}}",
+      "updateFailed": "Échec de la mise à jour de la catégorie : {{error}}",
+      "deleteFailed": "Échec de la suppression de la catégorie : {{error}}",
+      "circularReference": "Impossible de définir une catégorie comme son propre parent ou descendant",
+      "invalidParent": "Catégorie parente invalide sélectionnée",
+      "reordered": "Catégories réorganisées avec succès",
+      "reorderFailed": "Échec de la réorganisation des catégories : {{error}}"
+    },
+    "empty": {
+      "title": "Aucune catégorie pour le moment",
+      "description": "Organisez vos produits en créant des catégories",
+      "action": "Créer la première catégorie"
+    },
+    "tree": {
+      "title": "Arborescence des catégories",
+      "description": "Organisez et gérez vos catégories de produits",
+      "dragToReorder": "Glissez pour réorganiser",
+      "loading": "Chargement des catégories..."
+    },
+    "form": {
+      "basicInfo": "Informations de base",
+      "hierarchy": "Hiérarchie",
+      "settings": "Paramètres",
+      "nameRequired": "Le nom de la catégorie est requis",
+      "save": "Enregistrer la catégorie",
+      "cancel": "Annuler",
+      "saving": "Enregistrement..."
+    },
+    "stats": {
+      "total": "Total des catégories",
+      "active": "Actives",
+      "inactive": "Inactives",
+      "withProducts": "Avec produits"
     }
   }
 }

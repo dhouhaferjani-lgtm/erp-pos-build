@@ -389,3 +389,31 @@ export interface TenantDetailResponse {
   }
   plan_summary: PlanSummary
 }
+
+// User Management Types
+export interface AdminUser {
+  id: string
+  tenant_id: string
+  name: string
+  email: string
+  status: 'active' | 'inactive' | 'suspended'
+  email_verified_at: string | null
+  created_at: string
+  updated_at: string
+  tenant?: {
+    id: string
+    name: string
+  }
+}
+
+export interface AdminUserDetail {
+  user: AdminUser
+  memberships: Array<{
+    id: string
+    company_id: string
+    company_name: string
+    role: string
+    is_primary: boolean
+    status: string
+  }>
+}

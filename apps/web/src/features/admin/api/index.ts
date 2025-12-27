@@ -1,4 +1,4 @@
-import { apiPost } from '@/lib/api'
+import { apiPost, ensureCsrfCookie } from '@/lib/api'
 import { adminApiGet, adminApiGetPaginated, adminApiPost, adminApiPatch } from '../lib/adminApi'
 import type {
   AdminAuthResponse,
@@ -25,14 +25,14 @@ export async function loginSuperAdmin(
   email: string,
   password: string
 ): Promise<AdminAuthResponse> {
-  const response = await apiPost<{ admin: AdminAuthResponse; token: string }>(
+  // Ensure CSRF cookie is set before login (required for Sanctum SPA auth)
+  await ensureCsrfCookie()
+  const response = await apiPost<{ admin: AdminAuthResponse }>(
     '/admin/auth/login',
     { email, password }
   )
-  return {
-    ...response.admin,
-    token: response.token,
-  }
+  // Cookie is set automatically by Sanctum - just return admin data
+  return response.admin
 }
 
 export async function logoutSuperAdmin(): Promise<void> {
@@ -454,4 +454,47 @@ export async function flushFailedJobs(): Promise<{ count: number }> {
     {}
   )
   return response
+}
+
+// ============================================================================
+// User Management API (for company owner email verification)
+// ============================================================================
+
+export interface AdminUser {
+  id: string
+  tenant_id: string
+  name: string
+  email: string
+  status: string
+  email_verified_at: string | null
+  created_at: string
+  tenant?: {
+    id: string
+    name: string
+  }
+}
+
+export async function getAdminUsers(params?: {
+  search?: string
+  tenant_id?: string
+  email_verified?: boolean
+  status?: string
+}): Promise<{ data: AdminUser[] }> {
+  const queryParams = new URLSearchParams()
+  if (params?.search) queryParams.append('search', params.search)
+  if (params?.tenant_id) queryParams.append('tenant_id', params.tenant_id)
+  if (params?.email_verified !== undefined) {
+    queryParams.append('email_verified', String(params.email_verified))
+  }
+  if (params?.status) queryParams.append('status', params.status)
+
+  const query = queryParams.toString()
+  const response = await adminApiGetPaginated<WrappedPaginatedResponse<AdminUser>>(
+    `/admin/users${query ? `?${query}` : ''}`
+  )
+  return { data: response.data.data }
+}
+
+export async function verifyUserEmail(userId: string, notes?: string): Promise<AdminUser> {
+  return adminApiPost<AdminUser>(`/admin/users/${userId}/verify-email`, { notes })
 }

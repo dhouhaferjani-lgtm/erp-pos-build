@@ -8,8 +8,8 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
-use App\Modules\Identity\Domain\User;
 use App\Modules\Document\Domain\Events\InvoicePaid;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Application\Services\PaymentAllocationService;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
@@ -320,7 +320,7 @@ class PaymentController extends Controller
     /**
      * Store multiple payments for a document with excess allocation options
      *
-     * @param array<string, mixed> $validated
+     * @param  array<string, mixed>  $validated
      */
     private function storeMultiple(Request $request, User $user, string $tenantId, string $companyId): JsonResponse
     {
@@ -437,8 +437,8 @@ class PaymentController extends Controller
                     'payment_date' => $validated['payment_date'],
                     'status' => PaymentStatus::Completed,
                     'payment_type' => $paymentType,
-                    'reference' => $paymentLine['reference'] ?? 'Payment ' . ($index + 1) . " for {$primaryDocument->document_number}",
-                    'notes' => 'Multi-payment (part ' . ($index + 1) . ' of ' . count($validated['payments']) . ')',
+                    'reference' => $paymentLine['reference'] ?? 'Payment '.($index + 1)." for {$primaryDocument->document_number}",
+                    'notes' => 'Multi-payment (part '.($index + 1).' of '.count($validated['payments']).')',
                     'created_by' => $user->id,
                 ]);
 
@@ -551,7 +551,7 @@ class PaymentController extends Controller
                             );
                         }
                     }
-                } elseif ($excessAllocationMethod === 'manual' && !empty($excessAllocations)) {
+                } elseif ($excessAllocationMethod === 'manual' && ! empty($excessAllocations)) {
                     // Manual allocation to specified documents
                     foreach ($excessAllocations as $allocation) {
                         /** @var Document $targetDoc */
@@ -683,7 +683,7 @@ class PaymentController extends Controller
     {
         return [
             'id' => $payment->id,
-            'payment_number' => $payment->reference ?? 'PMT-' . substr($payment->id, 0, 8),
+            'payment_number' => $payment->reference ?? 'PMT-'.substr($payment->id, 0, 8),
             'partner_id' => $payment->partner_id,
             'partner_name' => $payment->partner?->name,
             'partner_type' => $payment->partner?->type,

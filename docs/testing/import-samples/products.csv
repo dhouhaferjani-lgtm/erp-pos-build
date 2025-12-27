@@ -1,0 +1,13 @@
+name,sku,type,description,sale_price,purchase_price,barcode
+Brake Pad Set Front,BRK-PAD-001,part,High quality ceramic brake pads for passenger cars,85.00,45.00,3456789012345
+Brake Pad Set Rear,BRK-PAD-002,part,Ceramic brake pads rear axle,78.00,42.00,3456789012346
+Oil Filter Premium,OIL-FLT-001,part,Premium oil filter for all engines,18.50,8.25,3456789012347
+Air Filter Standard,AIR-FLT-001,part,Standard air filter replacement,24.00,12.00,3456789012348
+Spark Plug Set 4pc,SPK-PLG-004,part,Iridium spark plugs set of 4,56.00,28.00,3456789012349
+Wiper Blade 24inch,WIP-BLD-024,part,Premium wiper blade 24 inch,22.00,11.00,3456789012350
+Diagnostic Service,SVC-DIAG,service,Full vehicle diagnostic scan with report,75.00,,
+Oil Change Service,SVC-OIL,service,Complete oil change with filter,45.00,,
+Wheel Alignment,SVC-ALIGN,service,4-wheel computer alignment,60.00,,
+Engine Oil 5W30 5L,OIL-5W30-5L,consumable,Synthetic engine oil 5W30 5 liters,42.00,28.00,3456789012351
+Brake Fluid DOT4 1L,BRK-FLD-DOT4,consumable,DOT4 brake fluid 1 liter,12.00,6.50,3456789012352
+Coolant G12 5L,COOL-G12-5L,consumable,G12 antifreeze coolant 5 liters,28.00,15.00,3456789012353

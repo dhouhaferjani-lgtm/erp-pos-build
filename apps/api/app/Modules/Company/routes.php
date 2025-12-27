@@ -18,7 +18,14 @@ use Illuminate\Support\Facades\Route;
 */
 
 // Routes that do NOT require company context
-Route::prefix('api/v1')->middleware(['auth:sanctum', SetPermissionsTeam::class])->group(function () {
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function () {
     // Company creation - available to any authenticated user within their tenant
     Route::post('companies', [CompanyController::class, 'store'])->name('companies.store');
+
+    // Reservation settings management
+    Route::get('companies/{companyId}/reservation-settings', [CompanyController::class, 'getReservationSettings'])
+        ->name('companies.reservation-settings.show');
+
+    Route::put('companies/{companyId}/reservation-settings', [CompanyController::class, 'updateReservationSettings'])
+        ->name('companies.reservation-settings.update');
 });

@@ -34,6 +34,11 @@ enum SystemAccountPurpose: string
     // Expense Accounts
     case CostOfGoodsSold = 'cost_of_goods_sold';
     case PurchaseExpenses = 'purchase_expenses';
+    case OfficeExpense = 'office_expense';
+    case TravelExpense = 'travel_expense';
+    case MealsExpense = 'meals_expense';
+    case UtilitiesExpense = 'utilities_expense';
+    case GeneralExpense = 'general_expense';
 
     // Equity Accounts
     case RetainedEarnings = 'retained_earnings';
@@ -73,6 +78,11 @@ enum SystemAccountPurpose: string
             self::ServiceRevenue => 'Service Revenue',
             self::CostOfGoodsSold => 'Cost of Goods Sold',
             self::PurchaseExpenses => 'Purchase Expenses',
+            self::OfficeExpense => 'Office Expense',
+            self::TravelExpense => 'Travel Expense',
+            self::MealsExpense => 'Meals & Entertainment',
+            self::UtilitiesExpense => 'Utilities Expense',
+            self::GeneralExpense => 'General Expense',
             self::RetainedEarnings => 'Retained Earnings',
             self::OpeningBalanceEquity => 'Opening Balance Equity',
             self::PaymentToleranceExpense => 'Payment Tolerance Expense',
@@ -121,8 +131,10 @@ enum SystemAccountPurpose: string
             self::ProductRevenue, self::ServiceRevenue,
             self::PaymentToleranceIncome, self::RealizedFxGain => AccountType::Revenue,
 
-            self::CostOfGoodsSold, self::PurchaseExpenses, self::PaymentToleranceExpense,
-            self::SalesReturn, self::RealizedFxLoss, self::SalesDiscount => AccountType::Expense,
+            self::CostOfGoodsSold, self::PurchaseExpenses, self::OfficeExpense,
+            self::TravelExpense, self::MealsExpense, self::UtilitiesExpense, self::GeneralExpense,
+            self::PaymentToleranceExpense, self::SalesReturn, self::RealizedFxLoss,
+            self::SalesDiscount => AccountType::Expense,
 
             self::RetainedEarnings, self::OpeningBalanceEquity => AccountType::Equity,
         };

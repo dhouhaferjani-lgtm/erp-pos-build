@@ -19,7 +19,6 @@ import {
   getAttachmentDownloadUrl,
   type DocumentAttachment
 } from '../hooks/useAttachments'
-import { useAuthStore } from '../../../stores/authStore'
 
 interface DocumentAttachmentsProps {
   documentId: string
@@ -32,7 +31,6 @@ export function DocumentAttachments({ documentId, readOnly = false }: DocumentAt
   const { data: config } = useAttachmentConfig()
   const uploadMutation = useUploadAttachment(documentId)
   const deleteMutation = useDeleteAttachment(documentId)
-  const token = useAuthStore((state) => state.token)
 
   const [dragActive, setDragActive] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -116,31 +114,25 @@ export function DocumentAttachments({ documentId, readOnly = false }: DocumentAt
 
   const handleDownload = useCallback((attachment: DocumentAttachment) => {
     const url = getAttachmentDownloadUrl(documentId, attachment.id)
-    // Create a link with auth header
-    const link = document.createElement('a')
-    link.href = url
-    if (token) {
-      // For authenticated downloads, we need to fetch with the token
-      fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+    // For authenticated downloads, use fetch with credentials (session cookie)
+    fetch(url, {
+      credentials: 'include', // Include session cookie for authentication
+    })
+      .then(response => response.blob())
+      .then(blob => {
+        const blobUrl = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = blobUrl
+        link.download = attachment.original_filename
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(blobUrl)
       })
-        .then(response => response.blob())
-        .then(blob => {
-          const blobUrl = window.URL.createObjectURL(blob)
-          link.href = blobUrl
-          link.download = attachment.original_filename
-          document.body.appendChild(link)
-          link.click()
-          document.body.removeChild(link)
-          window.URL.revokeObjectURL(blobUrl)
-        })
-        .catch(() => {
-          setUploadError(t('documents:attachments.errors.downloadFailed'))
-        })
-    }
-  }, [documentId, token, t])
+      .catch(() => {
+        setUploadError(t('documents:attachments.errors.downloadFailed'))
+      })
+  }, [documentId, t])
 
   const getFileIcon = (attachment: DocumentAttachment) => {
     if (attachment.is_image) {

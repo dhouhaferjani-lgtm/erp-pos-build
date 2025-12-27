@@ -6,6 +6,7 @@ namespace Tests\Feature\Document;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Document\Domain\DocumentVehicleContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
@@ -15,6 +16,7 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Vehicle\Domain\Vehicle;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
@@ -392,5 +394,137 @@ class CreateDocumentTest extends TestCase
 
         $response->assertCreated()
             ->assertJsonPath('data.lines.0.product_id', $this->product->id);
+    }
+
+    public function test_can_create_document_with_vehicle(): void
+    {
+        $vehicle = Vehicle::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/quotes', [
+                'partner_id' => $this->customer->id,
+                'vehicle_context' => [
+                    'vehicle_id' => $vehicle->id,
+                    'snapshot' => [
+                        'license_plate' => $vehicle->license_plate,
+                        'brand' => $vehicle->brand,
+                        'model' => $vehicle->model,
+                        'year' => $vehicle->year,
+                        'vin' => $vehicle->vin,
+                    ],
+                    'mileage' => 50000,
+                ],
+                'document_date' => now()->toDateString(),
+                'lines' => [
+                    [
+                        'description' => 'Oil Change',
+                        'quantity' => '1.00',
+                        'unit_price' => '50.00',
+                        'tax_rate' => '20.00',
+                    ],
+                ],
+            ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.vehicle_context.vehicle_id', $vehicle->id)
+            ->assertJsonPath('data.vehicle_context.snapshot.license_plate', $vehicle->license_plate)
+            ->assertJsonPath('data.vehicle_context.snapshot.brand', $vehicle->brand)
+            ->assertJsonPath('data.vehicle_context.mileage', 50000);
+
+        $documentId = $response->json('data.id');
+
+        $this->assertDatabaseHas('document_vehicle_contexts', [
+            'document_id' => $documentId,
+            'vehicle_id' => $vehicle->id,
+            'mileage_at_service' => 50000,
+        ]);
+
+        // Ensure vehicle_snapshot is populated in database
+        $context = DocumentVehicleContext::where('document_id', $documentId)->first();
+        $this->assertNotNull($context->vehicle_snapshot);
+        $this->assertEquals($vehicle->license_plate, $context->vehicle_snapshot['license_plate']);
+    }
+
+    public function test_can_create_document_without_vehicle(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/quotes', [
+                'partner_id' => $this->customer->id,
+                'document_date' => now()->toDateString(),
+                'lines' => [
+                    [
+                        'description' => 'Consulting',
+                        'quantity' => '1.00',
+                        'unit_price' => '100.00',
+                        'tax_rate' => '20.00',
+                    ],
+                ],
+            ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.vehicle_context', null);
+
+        $documentId = $response->json('data.id');
+
+        $this->assertDatabaseMissing('document_vehicle_contexts', [
+            'document_id' => $documentId,
+        ]);
+    }
+
+    public function test_vehicle_must_belong_to_same_tenant(): void
+    {
+        $otherTenant = Tenant::create([
+            'name' => 'Other Tenant',
+            'slug' => 'other-tenant-vehicle',
+            'status' => TenantStatus::Active,
+            'plan' => SubscriptionPlan::Professional,
+        ]);
+
+        $otherCompany = Company::create([
+            'tenant_id' => $otherTenant->id,
+            'name' => 'Other Company',
+            'legal_name' => 'Other Company LLC',
+            'tax_id' => 'TAX789',
+            'country_code' => 'FR',
+            'locale' => 'fr_FR',
+            'timezone' => 'Europe/Paris',
+            'currency' => 'EUR',
+            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+        ]);
+
+        $otherVehicle = Vehicle::factory()->create([
+            'tenant_id' => $otherTenant->id,
+            'company_id' => $otherCompany->id,
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/quotes', [
+                'partner_id' => $this->customer->id,
+                'vehicle_context' => [
+                    'vehicle_id' => $otherVehicle->id,
+                    'snapshot' => [
+                        'license_plate' => $otherVehicle->license_plate,
+                        'brand' => $otherVehicle->brand,
+                        'model' => $otherVehicle->model,
+                        'year' => $otherVehicle->year,
+                        'vin' => $otherVehicle->vin,
+                    ],
+                    'mileage' => 30000,
+                ],
+                'document_date' => now()->toDateString(),
+                'lines' => [
+                    [
+                        'description' => 'Service',
+                        'quantity' => '1.00',
+                        'unit_price' => '100.00',
+                    ],
+                ],
+            ]);
+
+        $this->assertApiValidationErrors($response, ['vehicle_context.vehicle_id']);
     }
 }

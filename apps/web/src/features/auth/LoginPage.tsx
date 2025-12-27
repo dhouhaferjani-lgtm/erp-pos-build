@@ -3,7 +3,7 @@ import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { LogIn, AlertCircle } from 'lucide-react'
-import { api } from '../../lib/api'
+import { api, ensureCsrfCookie } from '../../lib/api'
 import { useAuthStore } from '../../stores/authStore'
 
 interface LoginFormData {
@@ -48,12 +48,15 @@ export function LoginPage() {
 
   const loginMutation = useMutation({
     mutationFn: async (data: LoginFormData) => {
-      // Login and get token
+      // First, ensure CSRF cookie is set (required for Sanctum SPA auth)
+      await ensureCsrfCookie()
+      // Then login
       const response = await api.post<LoginResponse>('/auth/login', data)
       return response.data.data
     },
     onSuccess: (data) => {
       // Map tenantId to tenant_id for store compatibility
+      // Cookie is set automatically by Sanctum - just update UI state
       const user = {
         id: data.user.id,
         name: data.user.name,
@@ -62,7 +65,7 @@ export function LoginPage() {
         roles: data.user.roles,
         email_verified_at: data.user.emailVerifiedAt,
       }
-      setAuth(user, data.token)
+      setAuth(user)
       // Redirect to the page they were trying to access, or home
       const locationState = location.state as { from?: { pathname: string } } | null
       const from = locationState?.from?.pathname ?? '/'

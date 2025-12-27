@@ -113,6 +113,7 @@ final class SpreadsheetParserService
             if (empty($headers)) {
                 /** @var array<string> $headers */
                 $headers = array_map(fn (string $h) => strtolower(trim($h)), $rowData);
+
                 continue;
             }
 
@@ -142,7 +143,7 @@ final class SpreadsheetParserService
     /**
      * Check if a row is empty
      *
-     * @param array<string> $rowData
+     * @param  array<string>  $rowData
      */
     private function isEmptyRow(array $rowData): bool
     {
@@ -151,6 +152,7 @@ final class SpreadsheetParserService
                 return false;
             }
         }
+
         return true;
     }
 
@@ -176,6 +178,7 @@ final class SpreadsheetParserService
     {
         try {
             $this->detectFileType($filePath);
+
             return true;
         } catch (\InvalidArgumentException) {
             return false;

@@ -236,7 +236,7 @@ class OpeningBalanceBatch extends Model
     /**
      * Scope to filter by tenant
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeForTenant(Builder $query, string $tenantId): Builder
@@ -247,7 +247,7 @@ class OpeningBalanceBatch extends Model
     /**
      * Scope to filter by company
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeForCompany(Builder $query, string $companyId): Builder
@@ -258,7 +258,7 @@ class OpeningBalanceBatch extends Model
     /**
      * Scope to filter by type
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeOfType(Builder $query, OpeningBatchType $type): Builder
@@ -269,7 +269,7 @@ class OpeningBalanceBatch extends Model
     /**
      * Scope to filter by status
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeInStatus(Builder $query, OpeningBatchStatus $status): Builder
@@ -280,7 +280,7 @@ class OpeningBalanceBatch extends Model
     /**
      * Scope to filter unlocked batches
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeUnlocked(Builder $query): Builder

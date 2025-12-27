@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Application\DTOs;
 
+use App\Modules\Document\Application\DTOs\VehicleContextData;
 use App\Modules\Document\Domain\Document;
 use Spatie\LaravelData\Data;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
+#[TypeScript]
 final class DocumentData extends Data
 {
     /**
@@ -21,7 +24,7 @@ final class DocumentData extends Data
         public string $partner_id,
         public ?string $partner_name,
         public ?string $partner_email,
-        public ?string $vehicle_id,
+        public readonly ?VehicleContextData $vehicle_context,
         public string $type,
         public string $fiscal_category,
         public string $fiscal_status,
@@ -79,15 +82,21 @@ final class DocumentData extends Data
                     'id' => $allocation->id,
                     'payment_id' => $allocation->payment_id,
                     'amount' => number_format((float) $allocation->amount, 2, '.', ''),
-                    'payment_date' => $payment?->payment_date?->toDateString() ?? '',
-                    'payment_reference' => $payment?->reference,
-                    'payment_method' => $payment?->paymentMethod?->name ?? null,
+                    'payment_date' => $payment->payment_date->toDateString(),
+                    'payment_reference' => $payment->reference,
+                    'payment_method' => $payment->paymentMethod->name ?? null,
                 ];
             }
         }
 
         // Load partner if not already loaded
         $partner = $document->relationLoaded('partner') ? $document->partner : $document->partner()->first();
+
+        // Get vehicle context if exists
+        $vehicleContext = null;
+        if ($document->relationLoaded('vehicleContext') && $document->vehicleContext !== null) {
+            $vehicleContext = VehicleContextData::fromModel($document->vehicleContext);
+        }
 
         // Extract conversion info from payload
         $payload = $document->payload ?? [];
@@ -126,7 +135,7 @@ final class DocumentData extends Data
             partner_id: $document->partner_id,
             partner_name: $partner?->name,
             partner_email: $partner?->email,
-            vehicle_id: $document->vehicle_id,
+            vehicle_context: $vehicleContext,
             type: $document->type->value,
             fiscal_category: $document->fiscal_category->value,
             fiscal_status: $document->fiscal_status->value,

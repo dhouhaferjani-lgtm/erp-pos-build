@@ -4,17 +4,54 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Inventory;
 
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
+use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\Product\Application\Services\MarginService;
+use App\Modules\Product\Domain\Product;
+use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class WeightedAverageCostServiceTest extends TestCase
 {
+    use RefreshDatabase;
+
     private WeightedAverageCostService $service;
+    private Tenant $tenant;
+    private Company $company;
+    private Location $location;
+    private Product $product;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new WeightedAverageCostService;
+
+        $marginService = $this->app->make(MarginService::class);
+        $this->service = new WeightedAverageCostService($marginService);
+
+        // Create test entities
+        $this->tenant = Tenant::factory()->create();
+        $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
+
+        // Create location manually (no factory exists yet)
+        $this->location = Location::create([
+            'id' => \Illuminate\Support\Str::uuid()->toString(),
+            'company_id' => $this->company->id,
+            'name' => 'Test Location',
+            'type' => \App\Modules\Company\Domain\Enums\LocationType::Shop,
+            'is_default' => true,
+            'is_active' => true,
+            'pos_enabled' => false,
+        ]);
+
+        $this->product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'cost_price' => '0',
+            'sale_price' => '0',
+        ]);
     }
 
     public function test_calculate_new_wac_with_first_purchase(): void
@@ -86,5 +123,180 @@ class WeightedAverageCostServiceTest extends TestCase
     public function test_service_has_record_return_method(): void
     {
         $this->assertTrue(method_exists(WeightedAverageCostService::class, 'recordReturn'));
+    }
+
+    /**
+     * Phase 1.1: Audit Trail Tests
+     * These tests verify that reference_type and reference_id are properly populated
+     */
+    public function test_record_sale_populates_reference_type_and_id(): void
+    {
+        // Arrange - Create initial stock
+        $this->service->recordPurchase(
+            product: $this->product,
+            location: $this->location,
+            quantity: 10.0,
+            landedUnitCost: 50.0
+        );
+
+        $documentId = '019b481c-7eac-7045-8ba2-cfa7eedf2d08';
+
+        // Act - Record sale with audit trail
+        $movement = $this->service->recordSale(
+            product: $this->product,
+            location: $this->location,
+            quantity: 5.0,
+            reference: 'DN-2025-001',
+            referenceType: 'Document',
+            referenceId: $documentId
+        );
+
+        // Assert
+        $this->assertEquals('DN-2025-001', $movement->reference);
+        $this->assertEquals('Document', $movement->reference_type);
+        $this->assertEquals($documentId, $movement->reference_id);
+
+        // Verify it's stored in database
+        $this->assertDatabaseHas('stock_movements', [
+            'id' => $movement->id,
+            'reference' => 'DN-2025-001',
+            'reference_type' => 'Document',
+            'reference_id' => $documentId,
+        ]);
+    }
+
+    public function test_record_purchase_populates_reference_type_and_id(): void
+    {
+        // Arrange
+        $documentId = '019b481c-7eac-7045-8ba2-cfa7eedf2d09';
+
+        // Act - Record purchase with audit trail
+        $movement = $this->service->recordPurchase(
+            product: $this->product,
+            location: $this->location,
+            quantity: 10.0,
+            landedUnitCost: 50.0,
+            reference: 'PO-2025-001',
+            referenceType: 'Document',
+            referenceId: $documentId
+        );
+
+        // Assert
+        $this->assertEquals('PO-2025-001', $movement->reference);
+        $this->assertEquals('Document', $movement->reference_type);
+        $this->assertEquals($documentId, $movement->reference_id);
+
+        // Verify it's stored in database
+        $this->assertDatabaseHas('stock_movements', [
+            'id' => $movement->id,
+            'reference' => 'PO-2025-001',
+            'reference_type' => 'Document',
+            'reference_id' => $documentId,
+        ]);
+    }
+
+    public function test_record_return_populates_reference_type_and_id(): void
+    {
+        // Arrange - Create initial stock
+        $this->service->recordPurchase(
+            product: $this->product,
+            location: $this->location,
+            quantity: 10.0,
+            landedUnitCost: 50.0
+        );
+
+        // Sell some stock
+        $this->service->recordSale(
+            product: $this->product,
+            location: $this->location,
+            quantity: 5.0
+        );
+
+        $documentId = '019b481c-7eac-7045-8ba2-cfa7eedf2d10';
+
+        // Act - Record return with audit trail
+        $movement = $this->service->recordReturn(
+            product: $this->product,
+            location: $this->location,
+            quantity: 2.0,
+            originalCost: 50.0,
+            reference: 'RN-2025-001',
+            referenceType: 'Document',
+            referenceId: $documentId
+        );
+
+        // Assert
+        $this->assertEquals('RN-2025-001', $movement->reference);
+        $this->assertEquals('Document', $movement->reference_type);
+        $this->assertEquals($documentId, $movement->reference_id);
+
+        // Verify it's stored in database
+        $this->assertDatabaseHas('stock_movements', [
+            'id' => $movement->id,
+            'reference' => 'RN-2025-001',
+            'reference_type' => 'Document',
+            'reference_id' => $documentId,
+        ]);
+    }
+
+    public function test_record_sale_without_reference_type_stores_null(): void
+    {
+        // Arrange - Create initial stock
+        $this->service->recordPurchase(
+            product: $this->product,
+            location: $this->location,
+            quantity: 10.0,
+            landedUnitCost: 50.0
+        );
+
+        // Act - Record sale without audit trail (backward compatibility)
+        $movement = $this->service->recordSale(
+            product: $this->product,
+            location: $this->location,
+            quantity: 5.0,
+            reference: 'DN-2025-002'
+        );
+
+        // Assert - reference_type and reference_id should be null
+        $this->assertEquals('DN-2025-002', $movement->reference);
+        $this->assertNull($movement->reference_type);
+        $this->assertNull($movement->reference_id);
+    }
+
+    public function test_can_query_movements_by_reference_type_and_id(): void
+    {
+        // Arrange - Create stock movements with different references
+        $documentId1 = '019b481c-7eac-7045-8ba2-cfa7eedf2d11';
+        $documentId2 = '019b481c-7eac-7045-8ba2-cfa7eedf2d12';
+
+        $this->service->recordPurchase(
+            product: $this->product,
+            location: $this->location,
+            quantity: 10.0,
+            landedUnitCost: 50.0,
+            reference: 'DN-001',
+            referenceType: 'Document',
+            referenceId: $documentId1
+        );
+
+        $this->service->recordPurchase(
+            product: $this->product,
+            location: $this->location,
+            quantity: 5.0,
+            landedUnitCost: 45.0,
+            reference: 'DN-002',
+            referenceType: 'Document',
+            referenceId: $documentId2
+        );
+
+        // Act - Query movements for specific document
+        $movements = StockMovement::where('reference_type', 'Document')
+            ->where('reference_id', $documentId1)
+            ->get();
+
+        // Assert
+        $this->assertCount(1, $movements);
+        $this->assertEquals('DN-001', $movements->first()->reference);
+        $this->assertEquals($documentId1, $movements->first()->reference_id);
     }
 }

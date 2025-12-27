@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocationStore } from '../../stores/locationStore'
 import { useCompanyStore } from '../../stores/companyStore'
@@ -13,12 +14,18 @@ interface LocationProviderProps {
  *
  * Must be used inside CompanyProvider. Automatically refetches
  * when the current company changes.
+ *
+ * Skips fetching on admin routes since they use separate authentication.
  */
 export function LocationProvider({ children }: LocationProviderProps) {
+  const routerLocation = useLocation()
   const currentCompanyId = useCompanyStore((state) => state.currentCompanyId)
   const setLocations = useLocationStore((state) => state.setLocations)
   const setLoading = useLocationStore((state) => state.setLoading)
   const resetForCompanyChange = useLocationStore((state) => state.resetForCompanyChange)
+
+  // Skip fetching on admin routes - they use separate authentication
+  const isAdminRoute = routerLocation.pathname === '/admin' || routerLocation.pathname.startsWith('/admin/')
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['locations', currentCompanyId],
@@ -28,7 +35,7 @@ export function LocationProvider({ children }: LocationProviderProps) {
     },
     retry: 1,
     staleTime: 1000 * 60 * 5, // 5 minutes
-    enabled: Boolean(currentCompanyId),
+    enabled: Boolean(currentCompanyId) && !isAdminRoute,
   })
 
   // Reset location selection when company changes

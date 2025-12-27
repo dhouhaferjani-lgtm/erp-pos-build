@@ -24,19 +24,17 @@ use Spatie\LaravelData\Data;
  * - All monetary values are numeric-strings (precision-safe)
  * - Level indicates hierarchy depth (0 = root)
  * - is_parent flag indicates subtotal rows
- *
- * @package App\Modules\Accounting\Application\DTOs\Reports
  */
 final class TrialBalanceLineData extends Data
 {
     /**
-     * @param string $account_code Account code (e.g., "100", "411")
-     * @param string $account_name Account name (e.g., "Cash", "Accounts Receivable")
-     * @param string $account_type Account type enum value ('asset', 'liability', 'revenue', 'expense', 'equity')
-     * @param numeric-string $debit Debit balance (0.00 if credit balance)
-     * @param numeric-string $credit Credit balance (0.00 if debit balance)
-     * @param int $level Hierarchy depth (0 = root, 1 = child, 2 = grandchild, etc.)
-     * @param bool $is_parent Whether this account has children (subtotal row)
+     * @param  string  $account_code  Account code (e.g., "100", "411")
+     * @param  string  $account_name  Account name (e.g., "Cash", "Accounts Receivable")
+     * @param  string  $account_type  Account type enum value ('asset', 'liability', 'revenue', 'expense', 'equity')
+     * @param  numeric-string  $debit  Debit balance (0.00 if credit balance)
+     * @param  numeric-string  $credit  Credit balance (0.00 if debit balance)
+     * @param  int  $level  Hierarchy depth (0 = root, 1 = child, 2 = grandchild, etc.)
+     * @param  bool  $is_parent  Whether this account has children (subtotal row)
      */
     public function __construct(
         public readonly string $account_code,
@@ -51,8 +49,7 @@ final class TrialBalanceLineData extends Data
     /**
      * Create from array (typically from TrialBalanceService output).
      *
-     * @param array{account_code: string, account_name: string, account_type: string, debit: numeric-string, credit: numeric-string, level: int, is_parent: bool} $data
-     * @return self
+     * @param  array{account_code: string, account_name: string, account_type: string, debit: numeric-string, credit: numeric-string, level: int, is_parent: bool}  $data
      */
     public static function fromArray(array $data): self
     {

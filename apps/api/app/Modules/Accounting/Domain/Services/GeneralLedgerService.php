@@ -707,7 +707,7 @@ final class GeneralLedgerService
      * Debit: Cost of Goods Sold (expense - 601 in Tunisia)
      * Credit: Inventory (asset - 37 in Tunisia)
      *
-     * @param array<int, array{product_id: string, quantity: string, unit_cost: string}> $lineItems
+     * @param  array<int, array{product_id: string, quantity: string, unit_cost: string}>  $lineItems
      */
     public function createCOGSEntry(
         string $companyId,
@@ -801,6 +801,77 @@ final class GeneralLedgerService
             'posted_at' => now(),
             'posted_by' => $user->id,
         ]);
+    }
+
+    /**
+     * Create journal entry from a posted expense.
+     *
+     * Expenses are typically non-fiscal operational documents.
+     * Debit: Expense Account (from category or default to GeneralExpense)
+     * Credit: Cash/Bank Account (based on payment repository)
+     */
+    public function createFromExpense(Document $expense, User $user): JournalEntry
+    {
+        $entry = DB::transaction(function () use ($expense): JournalEntry {
+            $companyId = $expense->company_id;
+            $metadata = $expense->expenseMetadata;
+
+            // Determine expense account (from category or default to GeneralExpense)
+            $expenseAccountPurpose = SystemAccountPurpose::GeneralExpense;
+            if ($metadata?->category?->account_id !== null) {
+                $expenseAccount = Account::findOrFail($metadata->category->account_id);
+            } else {
+                $expenseAccount = $this->getAccountByPurpose($companyId, $expenseAccountPurpose);
+            }
+
+            // Determine payment account (Cash or Bank based on repository type)
+            $paymentAccount = match ($metadata?->paymentRepository?->type ?? 'cash_register') {
+                'bank_account' => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Bank),
+                default => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Cash),
+            };
+
+            $entryNumber = $this->generateEntryNumber($companyId);
+            $vendorName = $metadata?->vendor_name ?? 'General Expense';
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $expense->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => $metadata?->payment_date ?? $expense->document_date,
+                'description' => "Expense: {$expense->document_number} - {$vendorName}",
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'expense',
+                'source_id' => $expense->id,
+            ]);
+
+            $lineOrder = 0;
+
+            // Debit: Expense Account
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $expenseAccount->id,
+                'partner_id' => null, // Expenses typically don't have partner tracking
+                'debit' => $expense->total ?? '0.00',
+                'credit' => '0.00',
+                'description' => $vendorName,
+                'line_order' => $lineOrder++,
+            ]);
+
+            // Credit: Cash/Bank Account
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $paymentAccount->id,
+                'partner_id' => null,
+                'debit' => '0.00',
+                'credit' => $expense->total ?? '0.00',
+                'description' => 'Expense payment',
+                'line_order' => $lineOrder,
+            ]);
+
+            return $entry->load('lines');
+        });
+
+        return $entry;
     }
 
     /**

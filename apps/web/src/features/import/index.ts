@@ -20,7 +20,7 @@ export type {
   ImportStatus,
   ImportJob,
   ImportRow,
-  ImportRowError,
+  ImportRowErrors,
   ImportTypeMetadata,
   DependencyCheck,
   MigrationStatus,

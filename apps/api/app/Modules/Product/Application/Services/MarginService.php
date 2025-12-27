@@ -64,6 +64,43 @@ class MarginService
     }
 
     /**
+     * Update product sale price based on current cost and target margin.
+     *
+     * This method is called automatically after WAC updates.
+     * Only updates if product uses auto-pricing (no manual sale_price override).
+     *
+     * @return bool True if sale price was updated
+     */
+    public function updateSalePrice(Product $product): bool
+    {
+        $cost = (float) ($product->cost_price ?? 0);
+
+        // Don't update if no cost
+        if ($cost <= 0) {
+            return false;
+        }
+
+        // Get target margin (product > company)
+        $margins = $this->getEffectiveMargins($product);
+        $targetMargin = $margins['target_margin'];
+
+        // Calculate new sale price
+        $newSalePrice = round($cost * (1 + $targetMargin / 100), 2);
+
+        // Only update if different (avoid unnecessary writes)
+        $currentSalePrice = (float) ($product->sale_price ?? 0);
+        if (abs($newSalePrice - $currentSalePrice) < 0.01) {
+            return false;
+        }
+
+        // Update sale price
+        $product->sale_price = (string) $newSalePrice;
+        $product->save();
+
+        return true;
+    }
+
+    /**
      * Calculate actual margin for a given sell price
      */
     public function calculateMargin(float $cost, float $sellPrice): ?float

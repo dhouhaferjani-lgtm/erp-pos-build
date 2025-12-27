@@ -84,7 +84,7 @@ class InventoryCountingAssignment extends Model
     /**
      * Scope to filter by user.
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeForUser(Builder $query, string $userId): Builder
@@ -95,7 +95,7 @@ class InventoryCountingAssignment extends Model
     /**
      * Scope to filter pending assignments.
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopePending(Builder $query): Builder
@@ -106,7 +106,7 @@ class InventoryCountingAssignment extends Model
     /**
      * Scope to filter active assignments.
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeActive(Builder $query): Builder

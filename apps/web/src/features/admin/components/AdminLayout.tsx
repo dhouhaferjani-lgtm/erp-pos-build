@@ -1,10 +1,11 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Shield, LayoutDashboard, Users, FileText, LogOut, CreditCard, Activity } from 'lucide-react'
+import { Shield, LayoutDashboard, Users, FileText, LogOut, CreditCard, Activity, UserCheck } from 'lucide-react'
 import { useAdminAuthStore } from '../stores/adminAuthStore'
 
 const navigation = [
   { name: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
   { name: 'Tenants', href: '/admin/tenants', icon: Users },
+  { name: 'Company Owners', href: '/admin/company-owners', icon: UserCheck },
   { name: 'Billing', href: '/admin/billing', icon: CreditCard },
   { name: 'Monitoring', href: '/admin/monitoring', icon: Activity },
   { name: 'Audit Logs', href: '/admin/audit-logs', icon: FileText },

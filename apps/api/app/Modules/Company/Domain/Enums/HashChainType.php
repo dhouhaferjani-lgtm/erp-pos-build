@@ -14,6 +14,8 @@ enum HashChainType: string
 {
     case Invoice = 'invoice';
     case CreditNote = 'credit_note';
+    case DeliveryNote = 'delivery_note';
+    case ReturnNote = 'return_note';
     case Receipt = 'receipt';
     case Payment = 'payment';
     case JournalEntry = 'journal_entry';

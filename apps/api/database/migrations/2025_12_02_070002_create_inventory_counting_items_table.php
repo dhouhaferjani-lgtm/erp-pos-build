@@ -89,17 +89,17 @@ return new class extends Migration
         if (DB::connection()->getDriverName() !== 'sqlite') {
             // Unique constraint for product+variant+location within a counting
             // Using a partial index to handle nullable variant_id
-            DB::statement("
+            DB::statement('
                 CREATE UNIQUE INDEX idx_counting_item_unique
                 ON inventory_counting_items (counting_id, product_id, location_id)
                 WHERE variant_id IS NULL
-            ");
+            ');
 
-            DB::statement("
+            DB::statement('
                 CREATE UNIQUE INDEX idx_counting_item_variant_unique
                 ON inventory_counting_items (counting_id, product_id, variant_id, location_id)
                 WHERE variant_id IS NOT NULL
-            ");
+            ');
 
             // Add CHECK constraint for resolution_method
             DB::statement("

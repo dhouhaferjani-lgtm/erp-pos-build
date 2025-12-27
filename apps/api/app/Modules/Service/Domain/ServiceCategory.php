@@ -39,6 +39,7 @@ class ServiceCategory extends Model
 {
     /** @use HasFactory<\Database\Factories\ServiceCategoryFactory> */
     use HasFactory;
+
     use HasUuids;
 
     /**

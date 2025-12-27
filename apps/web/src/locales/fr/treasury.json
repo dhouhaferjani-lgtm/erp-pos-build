@@ -328,5 +328,76 @@
       "customers": "Clients",
       "products": "Produits"
     }
+  },
+  "paymentMethods": {
+    "title": "Modes de paiement",
+    "singular": "mode de paiement",
+    "plural": "modes de paiement",
+    "new": "Ajouter un mode de paiement",
+    "edit": "Modifier le mode de paiement",
+    "name": "Nom",
+    "code": "Code",
+    "description": "Description",
+    "type": "Type",
+    "feeConfig": "Configuration des frais",
+    "status": "Statut",
+    "active": "Actif",
+    "inactive": "Inactif",
+    "capabilities": "Capacités",
+    "flags": {
+      "is_physical": "Physique",
+      "has_maturity": "À échéance",
+      "requires_third_party": "Tiers requis",
+      "is_push": "Paiement push",
+      "has_deducted_fees": "Frais déduits",
+      "is_restricted": "Restreint"
+    },
+    "feeTypes": {
+      "none": "Aucun frais",
+      "fixed": "Frais fixe",
+      "percentage": "Pourcentage",
+      "mixed": "Mixte"
+    },
+    "form": {
+      "codeRequired": "Le code est requis",
+      "codeUnique": "Le code doit être unique",
+      "nameRequired": "Le nom est requis",
+      "feeAmount": "Montant des frais fixes",
+      "feePercentage": "Pourcentage des frais",
+      "feeAmountPlaceholder": "0.00",
+      "feePercentagePlaceholder": "0.00",
+      "descriptionPlaceholder": "Informations supplémentaires sur ce mode de paiement..."
+    },
+    "table": {
+      "name": "Nom",
+      "code": "Code",
+      "capabilities": "Capacités",
+      "fees": "Frais",
+      "status": "Statut",
+      "actions": "Actions"
+    },
+    "empty": {
+      "title": "Aucun mode de paiement",
+      "description": "Commencez par ajouter votre premier mode de paiement."
+    },
+    "messages": {
+      "created": "Mode de paiement créé avec succès",
+      "updated": "Mode de paiement mis à jour avec succès",
+      "deleted": "Mode de paiement supprimé avec succès",
+      "activated": "Mode de paiement activé",
+      "deactivated": "Mode de paiement désactivé"
+    },
+    "confirmations": {
+      "delete": {
+        "title": "Supprimer le mode de paiement",
+        "message": "Êtes-vous sûr de vouloir supprimer ce mode de paiement ? Cette action est irréversible.",
+        "button": "Supprimer"
+      },
+      "deactivate": {
+        "title": "Désactiver le mode de paiement",
+        "message": "Êtes-vous sûr de vouloir désactiver ce mode de paiement ? Il ne sera plus disponible pour les nouveaux paiements.",
+        "button": "Désactiver"
+      }
+    }
   }
 }

@@ -31,7 +31,7 @@ class PartnerFactory extends Factory
             'id' => Str::uuid()->toString(),
             'company_id' => null, // Will be set by seeder
             'type' => $this->faker->randomElement(['customer', 'supplier', 'both']),
-            'code' => strtoupper(Str::random(3)) . $this->faker->unique()->numberBetween(100, 999),
+            'code' => strtoupper(Str::random(3)).$this->faker->unique()->numberBetween(100, 999),
             'name' => $fullName,
             'email' => $this->faker->unique()->companyEmail(),
             'phone' => $this->faker->phoneNumber(),
@@ -49,7 +49,7 @@ class PartnerFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'type' => 'customer',
-            'code' => 'CUST' . $this->faker->unique()->numberBetween(1000, 9999),
+            'code' => 'CUST'.$this->faker->unique()->numberBetween(1000, 9999),
         ]);
     }
 
@@ -60,7 +60,7 @@ class PartnerFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'type' => 'supplier',
-            'code' => 'SUPP' . $this->faker->unique()->numberBetween(1000, 9999),
+            'code' => 'SUPP'.$this->faker->unique()->numberBetween(1000, 9999),
         ]);
     }
 

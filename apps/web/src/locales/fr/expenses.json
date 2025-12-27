@@ -1,0 +1,109 @@
+{
+  "title": "Dépenses",
+  "description": "Gérez vos dépenses professionnelles et suivez vos dépenses",
+  "createExpense": "Créer une Dépense",
+  "editExpense": "Modifier la Dépense",
+  "viewExpense": "Voir la Dépense",
+  "deleteExpense": "Supprimer la Dépense",
+  "postExpense": "Comptabiliser la Dépense",
+  "noExpenses": "Aucune dépense trouvée",
+  "noExpensesDescription": "Commencez par créer votre première dépense",
+  "searchPlaceholder": "Rechercher des dépenses par fournisseur, numéro de reçu...",
+  "confirmDelete": "Êtes-vous sûr de vouloir supprimer cette dépense ?",
+  "confirmPost": "Êtes-vous sûr de vouloir comptabiliser cette dépense ? Cette action est irréversible.",
+  "paid": "Payé",
+  "vendorName": "Nom du Fournisseur",
+  "category": "Catégorie",
+  "amount": "Montant",
+  "date": "Date",
+  "paymentMethod": "Mode de Paiement",
+  "paymentRepository": "Payé Depuis",
+  "receiptNumber": "Numéro de Reçu",
+  "notes": "Notes",
+  "status": {
+    "draft": "Brouillon",
+    "confirmed": "Confirmé",
+    "posted": "Comptabilisé",
+    "cancelled": "Annulé",
+    "paid": "Payé"
+  },
+  "actions": {
+    "post": "Comptabiliser la Dépense",
+    "delete": "Supprimer la Dépense",
+    "save": "Enregistrer",
+    "cancel": "Annuler"
+  },
+  "form": {
+    "vendorInfo": "Informations Fournisseur",
+    "vendorName": "Nom du Fournisseur",
+    "vendorNamePlaceholder": "Entrez le nom du fournisseur",
+    "receiptNumber": "Numéro de Reçu",
+    "receiptNumberPlaceholder": "Entrez le numéro de reçu ou de facture",
+    "category": "Catégorie",
+    "selectCategory": "Sélectionnez une catégorie",
+    "amount": "Montant",
+    "amountPlaceholder": "0.00",
+    "date": "Date",
+    "paymentDetails": "Détails du Paiement",
+    "paymentDate": "Date de Paiement",
+    "paymentMethod": "Mode de Paiement",
+    "paymentRepository": "Payé Depuis",
+    "isPaid": "Marquer comme payé",
+    "notes": "Notes",
+    "notesPlaceholder": "Ajoutez des notes supplémentaires",
+    "internalNotes": "Notes Internes",
+    "internalNotesPlaceholder": "Ajoutez des notes internes (non visibles par le fournisseur)",
+    "noPaymentMethods": "Aucun mode de paiement disponible",
+    "noPaymentMethodsDescription": "Configurez les modes de paiement dans les paramètres de trésorerie",
+    "noRepositories": "Aucun dépôt de paiement disponible",
+    "noRepositoriesDescription": "Configurez les dépôts de paiement dans les paramètres de trésorerie"
+  },
+  "filters": {
+    "status": "Statut",
+    "category": "Catégorie",
+    "dateFrom": "Date Début",
+    "dateTo": "Date Fin"
+  },
+  "list": {
+    "noExpenses": "Aucune dépense trouvée",
+    "total": "Total",
+    "filter": "Filtrer"
+  },
+  "messages": {
+    "created": "Dépense créée avec succès",
+    "updated": "Dépense mise à jour avec succès",
+    "posted": "Dépense comptabilisée avec succès",
+    "deleted": "Dépense supprimée avec succès",
+    "confirmDelete": "Êtes-vous sûr de vouloir supprimer cette dépense ?"
+  },
+  "errors": {
+    "notFound": "Dépense introuvable"
+  },
+  "noVendor": "Aucun fournisseur spécifié",
+  "attachments": "Pièces jointes",
+  "categories": {
+    "title": "Catégories de Dépenses",
+    "description": "Organisez les dépenses par catégorie pour un meilleur suivi",
+    "create": "Créer une Catégorie",
+    "createCategory": "Créer une Catégorie",
+    "edit": "Modifier la Catégorie",
+    "editCategory": "Modifier la Catégorie",
+    "confirmDelete": "Êtes-vous sûr de vouloir supprimer cette catégorie ?",
+    "noCategories": "Aucune catégorie trouvée",
+    "noCategoriesDescription": "Créez des catégories pour organiser vos dépenses",
+    "name": "Nom de la Catégorie",
+    "description": "Description",
+    "parentCategory": "Catégorie Parente",
+    "account": "Compte par Défaut",
+    "form": {
+      "name": "Nom de la Catégorie",
+      "description": "Description",
+      "parentCategory": "Catégorie Parente"
+    },
+    "messages": {
+      "created": "Catégorie créée avec succès",
+      "updated": "Catégorie mise à jour avec succès",
+      "deleted": "Catégorie supprimée avec succès"
+    }
+  }
+}

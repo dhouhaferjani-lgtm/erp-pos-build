@@ -49,24 +49,22 @@ use Spatie\LaravelData\Data;
  *     'source_id' => 'inv-uuid',
  * ]);
  * ```
- *
- * @package App\Modules\Accounting\Application\DTOs\Reports
  */
 final class LedgerLineData extends Data
 {
     /**
-     * @param string $id Journal line UUID
-     * @param string $date Transaction date (YYYY-MM-DD format)
-     * @param string $entry_number Journal entry number (e.g., "JE-2025-001")
-     * @param string $description Line or entry description
-     * @param string $account_code Account code (e.g., "100", "411")
-     * @param string $account_name Account name (e.g., "Cash", "Revenue")
-     * @param string|null $partner_name Partner name (customer/supplier) if applicable
-     * @param numeric-string $debit Debit amount (0.0000 if credit transaction)
-     * @param numeric-string $credit Credit amount (0.0000 if debit transaction)
-     * @param numeric-string $balance Running balance after this transaction
-     * @param string|null $source_type Source document type (e.g., "invoice", "payment")
-     * @param string|null $source_id Source document UUID
+     * @param  string  $id  Journal line UUID
+     * @param  string  $date  Transaction date (YYYY-MM-DD format)
+     * @param  string  $entry_number  Journal entry number (e.g., "JE-2025-001")
+     * @param  string  $description  Line or entry description
+     * @param  string  $account_code  Account code (e.g., "100", "411")
+     * @param  string  $account_name  Account name (e.g., "Cash", "Revenue")
+     * @param  string|null  $partner_name  Partner name (customer/supplier) if applicable
+     * @param  numeric-string  $debit  Debit amount (0.0000 if credit transaction)
+     * @param  numeric-string  $credit  Credit amount (0.0000 if debit transaction)
+     * @param  numeric-string  $balance  Running balance after this transaction
+     * @param  string|null  $source_type  Source document type (e.g., "invoice", "payment")
+     * @param  string|null  $source_id  Source document UUID
      */
     public function __construct(
         public readonly string $id,
@@ -102,7 +100,6 @@ final class LedgerLineData extends Data
      *     source_type: string|null,
      *     source_id: string|null
      * } $data
-     * @return self
      */
     public static function fromArray(array $data): self
     {
@@ -124,8 +121,6 @@ final class LedgerLineData extends Data
 
     /**
      * Check if this is a debit transaction.
-     *
-     * @return bool
      */
     public function isDebit(): bool
     {
@@ -134,8 +129,6 @@ final class LedgerLineData extends Data
 
     /**
      * Check if this is a credit transaction.
-     *
-     * @return bool
      */
     public function isCredit(): bool
     {

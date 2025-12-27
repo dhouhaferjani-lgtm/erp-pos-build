@@ -20,8 +20,9 @@ class PaymentRepositorySeeder extends Seeder
         $tenant = \App\Modules\Tenant\Domain\Tenant::first();
         $company = Company::first();
 
-        if (!$tenant || !$company) {
+        if (! $tenant || ! $company) {
             $this->command->error('No tenant or company found. Please run DatabaseSeeder first.');
+
             return;
         }
 
@@ -117,6 +118,6 @@ class PaymentRepositorySeeder extends Seeder
             ], $repository));
         }
 
-        $this->command->info('Created ' . count($repositories) . ' payment repositories for company: ' . $company->name);
+        $this->command->info('Created '.count($repositories).' payment repositories for company: '.$company->name);
     }
 }

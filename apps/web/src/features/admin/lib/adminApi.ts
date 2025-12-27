@@ -1,8 +1,11 @@
 import axios, { type AxiosInstance } from 'axios'
-import { useAdminAuthStore } from '../stores/adminAuthStore'
 
 /**
- * Create admin API client with admin auth token
+ * Create admin API client with cookie-based auth
+ *
+ * SECURITY: Authentication is handled via httpOnly cookies set by Laravel Sanctum.
+ * No tokens are stored in localStorage or sent via Authorization header.
+ * CSRF protection is provided via the XSRF-TOKEN cookie.
  */
 function createAdminApiClient(): AxiosInstance {
   const client = axios.create({
@@ -12,19 +15,10 @@ function createAdminApiClient(): AxiosInstance {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     },
+    withCredentials: true, // Required for Sanctum cookie-based auth
+    xsrfCookieName: 'XSRF-TOKEN', // Cookie name set by Sanctum
+    xsrfHeaderName: 'X-XSRF-TOKEN', // Header name expected by Sanctum
   })
-
-  // Request interceptor for admin auth token
-  client.interceptors.request.use(
-    (config) => {
-      const token = useAdminAuthStore.getState().token
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`
-      }
-      return config
-    },
-    (error: unknown) => Promise.reject(new Error(String(error)))
-  )
 
   return client
 }

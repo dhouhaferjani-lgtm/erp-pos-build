@@ -35,8 +35,6 @@ use Illuminate\Foundation\Http\FormRequest;
  *     // ...
  * }
  * ```
- *
- * @package App\Modules\Accounting\Presentation\Requests
  */
 class GetTrialBalanceRequest extends FormRequest
 {
@@ -46,8 +44,6 @@ class GetTrialBalanceRequest extends FormRequest
      * Authorization is handled via middleware (auth:sanctum) and
      * route-level permission checks (can:reports.view), so this
      * always returns true.
-     *
-     * @return bool
      */
     public function authorize(): bool
     {
@@ -135,8 +131,6 @@ class GetTrialBalanceRequest extends FormRequest
      * Normalizes input data before validation:
      * - Converts string booleans ('true', 'false', '1', '0') to actual booleans
      * - Trims whitespace from strings
-     *
-     * @return void
      */
     protected function prepareForValidation(): void
     {

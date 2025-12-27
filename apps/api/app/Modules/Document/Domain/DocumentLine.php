@@ -14,11 +14,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $id
  * @property string $document_id
  * @property string|null $product_id
+ * @property string|null $product_code
  * @property string|null $service_id
  * @property int $line_number
  * @property string $description
  * @property numeric-string $quantity
  * @property numeric-string $quantity_delivered
+ * @property numeric-string $quantity_received
  * @property numeric-string $unit_price
  * @property numeric-string|null $discount_percent
  * @property numeric-string|null $discount_amount
@@ -50,11 +52,13 @@ class DocumentLine extends Model
     protected $fillable = [
         'document_id',
         'product_id',
+        'product_code',
         'service_id',
         'line_number',
         'description',
         'quantity',
         'quantity_delivered',
+        'quantity_received',
         'unit_price',
         'discount_percent',
         'discount_amount',
@@ -75,6 +79,7 @@ class DocumentLine extends Model
             'line_number' => 'integer',
             'quantity' => 'decimal:4',
             'quantity_delivered' => 'decimal:4',
+            'quantity_received' => 'decimal:4',
             'unit_price' => 'decimal:2',
             'discount_percent' => 'decimal:2',
             'discount_amount' => 'decimal:2',

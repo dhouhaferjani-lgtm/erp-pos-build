@@ -33,9 +33,13 @@ class FiscalHardeningE2ETest extends TestCase
     use RefreshDatabase;
 
     private Tenant $tenant;
+
     private Company $company;
+
     private Partner $partner;
+
     private DocumentPostingService $postingService;
+
     private FiscalHashService $hashService;
 
     protected function setUp(): void
@@ -81,8 +85,8 @@ class FiscalHardeningE2ETest extends TestCase
         $this->assertNull($postedInvoice->previous_hash); // First in chain
 
         echo "\n✓ Invoice posted and sealed successfully";
-        echo "\n  - Fiscal Hash: " . substr($postedInvoice->fiscal_hash, 0, 16) . '...';
-        echo "\n  - Chain Sequence: " . $postedInvoice->chain_sequence;
+        echo "\n  - Fiscal Hash: ".substr($postedInvoice->fiscal_hash, 0, 16).'...';
+        echo "\n  - Chain Sequence: ".$postedInvoice->chain_sequence;
     }
 
     /**
@@ -111,7 +115,7 @@ class FiscalHardeningE2ETest extends TestCase
             // Verify we got the expected trigger error
             $this->assertStringContainsString('sealed', strtolower($e->getMessage()));
             echo "\n✓ Immutability trigger correctly blocked total modification";
-            echo "\n  - Error: " . substr($e->getMessage(), 0, 80) . '...';
+            echo "\n  - Error: ".substr($e->getMessage(), 0, 80).'...';
         }
     }
 
@@ -243,9 +247,9 @@ class FiscalHardeningE2ETest extends TestCase
         $this->assertTrue($isValid, 'Hash chain integrity check failed');
 
         echo "\n✓ Hash chain verified for 3 invoices";
-        echo "\n  - Chain 1: " . substr($invoice1->fiscal_hash, 0, 16) . '...';
-        echo "\n  - Chain 2: " . substr($invoice2->fiscal_hash, 0, 16) . '... (prev: ' . substr($invoice2->previous_hash, 0, 8) . '...)';
-        echo "\n  - Chain 3: " . substr($invoice3->fiscal_hash, 0, 16) . '... (prev: ' . substr($invoice3->previous_hash, 0, 8) . '...)';
+        echo "\n  - Chain 1: ".substr($invoice1->fiscal_hash, 0, 16).'...';
+        echo "\n  - Chain 2: ".substr($invoice2->fiscal_hash, 0, 16).'... (prev: '.substr($invoice2->previous_hash, 0, 8).'...)';
+        echo "\n  - Chain 3: ".substr($invoice3->fiscal_hash, 0, 16).'... (prev: '.substr($invoice3->previous_hash, 0, 8).'...)';
     }
 
     public function test_cancellation_voids_fiscal_status(): void
@@ -267,7 +271,7 @@ class FiscalHardeningE2ETest extends TestCase
         $this->assertNotNull($cancelledInvoice->fiscal_hash);
 
         echo "\n✓ Invoice cancelled and voided";
-        echo "\n  - Fiscal Status: " . $cancelledInvoice->fiscal_status->value;
+        echo "\n  - Fiscal Status: ".$cancelledInvoice->fiscal_status->value;
     }
 
     public function test_credit_note_has_separate_chain(): void
@@ -309,8 +313,8 @@ class FiscalHardeningE2ETest extends TestCase
         echo "\n✓ DocumentData DTO includes fiscal fields correctly";
         echo "\n  - fiscal_category: {$dto->fiscal_category}";
         echo "\n  - fiscal_status: {$dto->fiscal_status}";
-        echo "\n  - is_sealed: " . ($dto->is_sealed ? 'true' : 'false');
-        echo "\n  - is_fiscal: " . ($dto->is_fiscal ? 'true' : 'false');
+        echo "\n  - is_sealed: ".($dto->is_sealed ? 'true' : 'false');
+        echo "\n  - is_fiscal: ".($dto->is_fiscal ? 'true' : 'false');
     }
 
     public function test_company_has_unique_genesis_seed(): void
@@ -325,8 +329,8 @@ class FiscalHardeningE2ETest extends TestCase
         $this->assertNotEquals($this->company->fiscal_chain_seed, $company2->fiscal_chain_seed);
 
         echo "\n✓ Companies have unique 256-bit genesis seeds";
-        echo "\n  - Company 1 seed: " . substr($this->company->fiscal_chain_seed, 0, 16) . '...';
-        echo "\n  - Company 2 seed: " . substr($company2->fiscal_chain_seed, 0, 16) . '...';
+        echo "\n  - Company 1 seed: ".substr($this->company->fiscal_chain_seed, 0, 16).'...';
+        echo "\n  - Company 2 seed: ".substr($company2->fiscal_chain_seed, 0, 16).'...';
     }
 
     public function test_genesis_seed_used_in_first_document_hash(): void
@@ -360,8 +364,8 @@ class FiscalHardeningE2ETest extends TestCase
         $this->assertNotEquals($wrongHash, $invoice->fiscal_hash);
 
         echo "\n✓ Genesis document uses company's unique seed in hash calculation";
-        echo "\n  - With seed: " . substr($invoice->fiscal_hash, 0, 16) . '...';
-        echo "\n  - Without seed would be: " . substr($wrongHash, 0, 16) . '...';
+        echo "\n  - With seed: ".substr($invoice->fiscal_hash, 0, 16).'...';
+        echo "\n  - Without seed would be: ".substr($wrongHash, 0, 16).'...';
     }
 
     public function test_different_companies_have_different_genesis_hashes(): void
@@ -422,8 +426,8 @@ class FiscalHardeningE2ETest extends TestCase
         $this->assertNotEquals($posted1->fiscal_hash, $posted2->fiscal_hash);
 
         echo "\n✓ Different companies have different genesis hashes for identical documents";
-        echo "\n  - Company 1 hash: " . substr($posted1->fiscal_hash, 0, 16) . '...';
-        echo "\n  - Company 2 hash: " . substr($posted2->fiscal_hash, 0, 16) . '...';
+        echo "\n  - Company 1 hash: ".substr($posted1->fiscal_hash, 0, 16).'...';
+        echo "\n  - Company 2 hash: ".substr($posted2->fiscal_hash, 0, 16).'...';
     }
 
     // =========================================================================
@@ -460,7 +464,7 @@ class FiscalHardeningE2ETest extends TestCase
         static $counter = 0;
         $counter++;
 
-        $invoice = $this->createInvoice($documentNumber ?? "INV-2025-" . str_pad((string) $counter, 4, '0', STR_PAD_LEFT));
+        $invoice = $this->createInvoice($documentNumber ?? 'INV-2025-'.str_pad((string) $counter, 4, '0', STR_PAD_LEFT));
         $invoice->update(['status' => DocumentStatus::Confirmed]);
 
         return $this->postingService->post($invoice);

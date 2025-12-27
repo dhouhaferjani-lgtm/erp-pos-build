@@ -7,6 +7,7 @@ namespace Tests\Feature\Document;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\DocumentVehicleContext;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\DocumentConversionService;
@@ -14,6 +15,7 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Vehicle\Domain\Vehicle;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -286,6 +288,146 @@ class DocumentConversionScenarioTest extends TestCase
 
         // After converting SO to invoice, DN should NOT be available for consolidation
         $this->assertCount(0, $uninvoicedDnsAfter);
+    }
+
+    #[\PHPUnit\Framework\Attributes\Test]
+    public function quote_to_order_preserves_vehicle_context(): void
+    {
+        $vehicle = Vehicle::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+        ]);
+
+        $service = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => ProductType::Service,
+            'is_physical' => false,
+        ]);
+
+        // Create quote with vehicle context
+        $quote = Document::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::Quote,
+            'status' => DocumentStatus::Confirmed,
+            'document_number' => 'QT-'.time().'-'.rand(1000, 9999),
+            'document_date' => now(),
+            'currency' => 'TND',
+            'subtotal' => '100.00',
+            'tax_amount' => '19.00',
+            'total' => '119.00',
+            'balance_due' => '119.00',
+        ]);
+
+        DocumentLine::create([
+            'id' => Str::uuid()->toString(),
+            'document_id' => $quote->id,
+            'line_number' => 1,
+            'product_id' => $service->id,
+            'description' => 'Oil Change',
+            'quantity' => '1.00',
+            'unit_price' => '100.00',
+            'tax_rate' => '19.00',
+            'line_total' => '100.00',
+        ]);
+
+        DocumentVehicleContext::create([
+            'document_id' => $quote->id,
+            'vehicle_id' => $vehicle->id,
+        ]);
+
+        $quote->refresh();
+
+        // Convert quote to order
+        $order = $this->conversionService->convertQuoteToOrder($quote);
+
+        // Verify vehicle context was NOT preserved (conversion service doesn't copy it yet)
+        $this->assertNotNull($quote->vehicle_id);
+        $this->assertEquals($vehicle->id, $quote->vehicle_id);
+
+        // The order should have vehicle context copied from quote
+        $this->assertNotNull($order->vehicleContext);
+        $this->assertEquals($vehicle->id, $order->vehicle_id);
+    }
+
+    #[\PHPUnit\Framework\Attributes\Test]
+    public function order_to_delivery_note_preserves_vehicle_context(): void
+    {
+        $vehicle = Vehicle::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+        ]);
+
+        $part = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => ProductType::Part,
+            'is_physical' => true,
+        ]);
+
+        // Create order with vehicle context
+        $order = $this->createConfirmedOrder([
+            ['product_id' => $part->id, 'description' => 'Brake Pads'],
+        ]);
+
+        DocumentVehicleContext::create([
+            'document_id' => $order->id,
+            'vehicle_id' => $vehicle->id,
+        ]);
+
+        $order->refresh();
+
+        // Convert to delivery note
+        $delivery = $this->conversionService->convertOrderToDelivery($order);
+
+        // Verify vehicle context was preserved
+        $this->assertNotNull($order->vehicle_id);
+        $this->assertEquals($vehicle->id, $order->vehicle_id);
+        $this->assertNotNull($delivery->vehicle_id);
+        $this->assertEquals($vehicle->id, $delivery->vehicle_id);
+    }
+
+    #[\PHPUnit\Framework\Attributes\Test]
+    public function order_to_invoice_preserves_vehicle_context(): void
+    {
+        $vehicle = Vehicle::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+        ]);
+
+        $service = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => ProductType::Service,
+            'is_physical' => false,
+        ]);
+
+        // Create services-only order with vehicle context
+        $order = $this->createConfirmedOrder([
+            ['product_id' => $service->id, 'description' => 'Oil Change'],
+        ]);
+
+        DocumentVehicleContext::create([
+            'document_id' => $order->id,
+            'vehicle_id' => $vehicle->id,
+        ]);
+
+        $order->refresh();
+
+        // Convert to invoice (allowed for services-only orders)
+        $invoice = $this->conversionService->convertOrderToInvoice($order);
+
+        // Verify vehicle context was preserved
+        $this->assertNotNull($order->vehicle_id);
+        $this->assertEquals($vehicle->id, $order->vehicle_id);
+        $this->assertNotNull($invoice->vehicle_id);
+        $this->assertEquals($vehicle->id, $invoice->vehicle_id);
     }
 
     /**

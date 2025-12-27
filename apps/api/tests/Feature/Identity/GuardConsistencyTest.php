@@ -56,7 +56,7 @@ class GuardConsistencyTest extends TestCase
             self::EXPECTED_GUARD,
             $user->getDefaultGuardName(),
             'User::getDefaultGuardName() must return "sanctum" to match permission/role guard. '
-            . 'If you change this, ALL permission checks will fail with 403 errors.'
+            .'If you change this, ALL permission checks will fail with 403 errors.'
         );
     }
 
@@ -73,7 +73,7 @@ class GuardConsistencyTest extends TestCase
             'sanctum',
             $guards,
             'The "sanctum" guard must be defined in config/auth.php. '
-            . 'Without this, Spatie Permission will throw an error when checking permissions.'
+            .'Without this, Spatie Permission will throw an error when checking permissions.'
         );
     }
 
@@ -88,8 +88,8 @@ class GuardConsistencyTest extends TestCase
 
         $this->assertEmpty(
             $wrongGuardPermissions->toArray(),
-            'Found permissions with wrong guard: ' . $wrongGuardPermissions->pluck('name', 'guard_name')->toJson()
-            . '. All permissions must use "sanctum" guard.'
+            'Found permissions with wrong guard: '.$wrongGuardPermissions->pluck('name', 'guard_name')->toJson()
+            .'. All permissions must use "sanctum" guard.'
         );
     }
 
@@ -104,8 +104,8 @@ class GuardConsistencyTest extends TestCase
 
         $this->assertEmpty(
             $wrongGuardRoles->toArray(),
-            'Found roles with wrong guard: ' . $wrongGuardRoles->pluck('name', 'guard_name')->toJson()
-            . '. All roles must use "sanctum" guard.'
+            'Found roles with wrong guard: '.$wrongGuardRoles->pluck('name', 'guard_name')->toJson()
+            .'. All roles must use "sanctum" guard.'
         );
     }
 
@@ -179,9 +179,9 @@ class GuardConsistencyTest extends TestCase
         $this->assertTrue(
             $user->can('products.view'),
             'User with admin role cannot check "products.view" permission using $user->can(). '
-            . 'This indicates a guard mismatch between User model and permissions. '
-            . 'User guard: ' . $user->getDefaultGuardName() . ', '
-            . 'Expected guard: ' . self::EXPECTED_GUARD
+            .'This indicates a guard mismatch between User model and permissions. '
+            .'User guard: '.$user->getDefaultGuardName().', '
+            .'Expected guard: '.self::EXPECTED_GUARD
         );
 
         // Test a few more permissions to be thorough
@@ -282,8 +282,8 @@ class GuardConsistencyTest extends TestCase
             403,
             $response->getStatusCode(),
             'Authenticated user with admin role received 403 Forbidden. '
-            . 'This indicates permission guard mismatch. '
-            . 'Response: ' . $response->getContent()
+            .'This indicates permission guard mismatch. '
+            .'Response: '.$response->getContent()
         );
     }
 

@@ -51,12 +51,11 @@ class DatabaseSeeder extends Seeder
         $this->createUsers($tenant, $company);
 
         $this->command->info('Creating chart of accounts...');
-        $franceSeeder = new FranceChartOfAccountsSeeder();
+        $franceSeeder = new FranceChartOfAccountsSeeder;
         $franceSeeder->setCommand($this->command);
         $franceSeeder->run($company->id, $tenant->id);
 
-        $this->command->info('Creating fiscal year...');
-        $this->call(FiscalYearSeeder::class);
+        // Fiscal years are automatically created via CompanyCreated event
 
         $this->command->info('Creating payment methods...');
         $this->call(PaymentMethodSeeder::class);
@@ -75,6 +74,9 @@ class DatabaseSeeder extends Seeder
 
         $this->command->info('Creating Smart Payment test data...');
         $this->call(SmartPaymentTestDataSeeder::class);
+
+        $this->command->info('Creating stock levels...');
+        $this->call(StockLevelSeeder::class);
 
         $this->command->info('Database seeding completed!');
     }
@@ -270,6 +272,7 @@ class DatabaseSeeder extends Seeder
 
         if ($customers->isEmpty()) {
             $this->command->warn('No customers found to assign vehicles');
+
             return;
         }
 

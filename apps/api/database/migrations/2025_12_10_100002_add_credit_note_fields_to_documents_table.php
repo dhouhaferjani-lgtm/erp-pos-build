@@ -20,7 +20,7 @@ return new class extends Migration
             $table->text('return_comment')->nullable();
 
             // Ensure due_date exists (for payment allocation)
-            if (!Schema::hasColumn('documents', 'due_date')) {
+            if (! Schema::hasColumn('documents', 'due_date')) {
                 $table->date('due_date')->nullable();
             }
         });

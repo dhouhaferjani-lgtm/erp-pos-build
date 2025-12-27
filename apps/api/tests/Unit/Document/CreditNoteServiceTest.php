@@ -22,8 +22,11 @@ class CreditNoteServiceTest extends TestCase
     use RefreshDatabase;
 
     private CreditNoteService $service;
+
     private Company $company;
+
     private Partner $partner;
+
     private Tenant $tenant;
 
     protected function setUp(): void

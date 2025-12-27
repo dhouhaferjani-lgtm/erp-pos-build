@@ -132,7 +132,7 @@ class InventoryCountingItem extends Model
     /**
      * Scope to filter flagged items.
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeFlagged(Builder $query): Builder
@@ -143,7 +143,7 @@ class InventoryCountingItem extends Model
     /**
      * Scope to filter items needing resolution.
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeNeedsResolution(Builder $query): Builder
@@ -154,7 +154,7 @@ class InventoryCountingItem extends Model
     /**
      * Scope to filter items needing third count.
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeNeedsThirdCount(Builder $query): Builder

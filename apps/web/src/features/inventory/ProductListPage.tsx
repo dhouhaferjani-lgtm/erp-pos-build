@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -8,6 +8,8 @@ import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
 import { SearchInput } from '../../components/ui/SearchInput'
 import { FilterTabs } from '../../components/ui/FilterTabs'
+import { Pagination } from '../../components/ui/Pagination'
+import { usePagination } from '../../hooks/usePagination'
 
 type ProductType = 'part' | 'service' | 'consumable'
 
@@ -31,11 +33,14 @@ interface Product {
 
 interface ProductsResponse {
   data: Product[]
-  meta?: {
-    total: number
-    current_page: number
+  meta: {
     per_page: number
-    last_page: number
+    has_more: boolean
+    total?: number
+  }
+  links: {
+    next: string | null
+    prev: string | null
   }
 }
 
@@ -64,18 +69,34 @@ export function ProductListPage() {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [viewMode, setViewMode] = useState<ViewMode>('list')
 
+  const pagination = usePagination({ initialPerPage: 25 })
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ['products', searchQuery, statusFilter, typeFilter],
+    queryKey: ['products', searchQuery, statusFilter, typeFilter, pagination.cursor, pagination.perPage],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (searchQuery) params.append('search', searchQuery)
       if (statusFilter !== 'all') params.append('is_active', statusFilter === 'active' ? '1' : '0')
       if (typeFilter !== 'all') params.append('type', typeFilter)
+      params.append('per_page', String(pagination.perPage))
+      if (pagination.cursor) params.append('cursor', pagination.cursor)
       const queryString = params.toString()
       const response = await api.get<ProductsResponse>(`/products${queryString ? `?${queryString}` : ''}`)
       return response.data
     },
   })
+
+  // Update pagination state when data arrives
+  useEffect(() => {
+    if (data?.meta && data?.links) {
+      pagination.updateFromResponse(data.meta, data.links)
+    }
+  }, [data, pagination.updateFromResponse])
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    pagination.reset()
+  }, [searchQuery, statusFilter, typeFilter, pagination.reset])
 
   const products = data?.data ?? []
   const total = data?.meta?.total ?? products.length
@@ -321,6 +342,19 @@ export function ProductListPage() {
             </Link>
           ))}
         </div>
+      )}
+
+      {/* Pagination */}
+      {!isLoading && !error && products.length > 0 && (
+        <Pagination
+          hasPrev={pagination.hasPrev}
+          hasNext={pagination.hasNext}
+          onPrev={pagination.goToPrev}
+          onNext={pagination.goToNext}
+          perPage={pagination.perPage}
+          onPerPageChange={pagination.setPerPage}
+          isLoading={isLoading}
+        />
       )}
     </div>
   )

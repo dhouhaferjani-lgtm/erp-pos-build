@@ -195,7 +195,7 @@ class ConcurrentNumberingTest extends TestCase
         $number1 = $this->numberingService->generateNumber($this->tenant->id, $this->company->id, DocumentType::Invoice);
 
         // Create new service instance
-        $newService = new DocumentNumberingService();
+        $newService = new DocumentNumberingService;
         $number2 = $newService->generateNumber($this->tenant->id, $this->company->id, DocumentType::Invoice);
 
         $this->assertEquals("INV-{$year}-0001", $number1);
@@ -225,7 +225,7 @@ class ConcurrentNumberingTest extends TestCase
         $this->assertEquals($sortedNumbers, $numbers);
     }
 
-    public function test_getCurrentNumber_returns_correct_value(): void
+    public function test_get_current_number_returns_correct_value(): void
     {
         $this->assertEquals(0, $this->numberingService->getCurrentNumber($this->company->id, DocumentType::Invoice));
 

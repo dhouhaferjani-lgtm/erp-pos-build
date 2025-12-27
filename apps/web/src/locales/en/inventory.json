@@ -252,6 +252,93 @@
       "blockSalesAtLoss": "Block Sales at Loss"
     }
   },
+  "settings": {
+    "title": "Inventory & Pricing Settings",
+    "description": "Configure inventory costing methods and default margin policies for your company.",
+    "costing": {
+      "title": "Inventory Costing Method",
+      "description": "Choose how product costs are calculated when inventory is received.",
+      "fifo": {
+        "label": "FIFO (First In, First Out)",
+        "description": "Oldest inventory is sold first. Good for perishable goods."
+      },
+      "wac": {
+        "label": "WAC (Weighted Average Cost)",
+        "badge": "Recommended",
+        "description": "Average cost of all inventory. Best for most businesses. Automatically recalculates when goods are received."
+      },
+      "lifo": {
+        "label": "LIFO (Last In, First Out)",
+        "description": "Newest inventory is sold first. Rarely used (not allowed in some countries)."
+      }
+    },
+    "margins": {
+      "title": "Default Margin Policies",
+      "description": "Set company-wide default margins. Individual products can override these settings.",
+      "targetLabel": "Target Margin (%)",
+      "targetHint": "Recommended profit margin for products",
+      "minimumLabel": "Minimum Margin (%)",
+      "minimumHint": "Lowest acceptable margin before warning",
+      "calculationInfo": "Margin Calculation:",
+      "calculationFormula": "Margin % = (Sell Price - Cost) / Cost × 100",
+      "calculationExample": "Example: If cost is $100 and target margin is 30%, suggested price = $100 / (1 - 0.30) = $142.86"
+    },
+    "restrictions": {
+      "title": "Sales Restrictions",
+      "description": "Control whether users can sell products below cost.",
+      "allowBelowCost": "Allow Sales Below Cost",
+      "allowBelowCostHint": "When disabled, users must have special permission to sell products at a loss."
+    },
+    "reservations": {
+      "title": "Stock Reservation Settings",
+      "description": "Configure automatic stock reservation timeouts and fraud detection thresholds.",
+      "expiry": {
+        "heading": "Reservation Expiry",
+        "salesOrder": {
+          "label": "Sales Order Expiry (days)",
+          "hint": "How long to hold stock for confirmed sales orders"
+        },
+        "cart": {
+          "label": "E-commerce Cart Expiry (minutes)",
+          "hint": "Cart session timeout for online orders"
+        },
+        "marketplace": {
+          "label": "Marketplace Order Expiry (hours)",
+          "hint": "Hold time for marketplace platform orders"
+        },
+        "returns": {
+          "label": "Customer Return Expiry (days)",
+          "hint": "How long to reserve stock for pending returns"
+        }
+      },
+      "fraud": {
+        "heading": "Fraud Detection",
+        "highValue": {
+          "label": "High Value Alert Threshold",
+          "hint": "Trigger alerts for reservations above this value"
+        },
+        "countTrigger": {
+          "label": "Inventory Count Trigger",
+          "hint": "Trigger physical count when discrepancies exceed this"
+        }
+      },
+      "autoReserve": {
+        "label": "Auto-reserve Stock on Sales Order Confirmation",
+        "hint": "Automatically reserve stock when a sales order is confirmed (recommended for accurate inventory tracking)"
+      },
+      "info": {
+        "title": "How Stock Reservation Works:",
+        "description": "When enabled, stock is automatically reserved when orders are confirmed, preventing overselling. Reservations are released when orders are delivered, cancelled, or when they expire based on the timeouts configured above."
+      }
+    },
+    "messages": {
+      "saved": "Settings saved successfully!",
+      "saveFailed": "Failed to save settings. Please try again.",
+      "inventorySaveFailed": "Failed to save inventory settings. Please try again.",
+      "reservationSaveFailed": "Failed to save reservation settings. Please try again.",
+      "unsavedChanges": "You have unsaved changes"
+    }
+  },
   "counting": {
     "title": "Inventory Counting",
     "subtitle": "Manage physical inventory counts and reconciliation",
@@ -482,6 +569,90 @@
       "exportFailed": "Failed to export report: {{error}}",
       "reminderSent": "Reminder sent successfully",
       "reminderFailed": "Failed to send reminder: {{error}}"
+    }
+  },
+  "categories": {
+    "title": "Product Categories",
+    "singular": "category",
+    "plural": "categories",
+    "new": "New Category",
+    "edit": "Edit Category",
+    "searchPlaceholder": "Search categories...",
+    "name": "Name",
+    "namePlaceholder": "Enter category name",
+    "description": "Description",
+    "descriptionPlaceholder": "Enter category description (optional)",
+    "parent": "Parent Category",
+    "parentPlaceholder": "Select parent category (optional)",
+    "rootCategory": "Root Category",
+    "noParent": "No parent (top-level category)",
+    "image": "Category Image",
+    "isActive": "Active",
+    "sortOrder": "Sort Order",
+    "productsCount": "Products",
+    "breadcrumb": "Category Path",
+    "viewTree": "View Tree",
+    "viewList": "View List",
+    "expandAll": "Expand All",
+    "collapseAll": "Collapse All",
+    "subcategories": "Subcategories",
+    "actions": {
+      "addSubcategory": "Add Subcategory",
+      "edit": "Edit",
+      "delete": "Delete",
+      "activate": "Activate",
+      "deactivate": "Deactivate",
+      "moveUp": "Move Up",
+      "moveDown": "Move Down"
+    },
+    "deleteDialog": {
+      "title": "Delete Category",
+      "description": "Are you sure you want to delete \"{{name}}\"?",
+      "cannotDelete": "Cannot delete this category",
+      "hasProducts": "This category has {{count}} product and cannot be deleted",
+      "hasProducts_plural": "This category has {{count}} products and cannot be deleted",
+      "hasChildren": "This category has subcategories and cannot be deleted",
+      "removeProductsFirst": "Remove all products from this category first",
+      "removeChildrenFirst": "Delete or move all subcategories first",
+      "confirm": "Delete Category"
+    },
+    "messages": {
+      "created": "Category created successfully",
+      "updated": "Category updated successfully",
+      "deleted": "Category deleted successfully",
+      "createFailed": "Failed to create category: {{error}}",
+      "updateFailed": "Failed to update category: {{error}}",
+      "deleteFailed": "Failed to delete category: {{error}}",
+      "circularReference": "Cannot set a category as its own parent or descendant",
+      "invalidParent": "Invalid parent category selected",
+      "reordered": "Categories reordered successfully",
+      "reorderFailed": "Failed to reorder categories: {{error}}"
+    },
+    "empty": {
+      "title": "No categories yet",
+      "description": "Organize your products by creating categories",
+      "action": "Create First Category"
+    },
+    "tree": {
+      "title": "Category Tree",
+      "description": "Organize and manage your product categories",
+      "dragToReorder": "Drag to reorder",
+      "loading": "Loading categories..."
+    },
+    "form": {
+      "basicInfo": "Basic Information",
+      "hierarchy": "Hierarchy",
+      "settings": "Settings",
+      "nameRequired": "Category name is required",
+      "save": "Save Category",
+      "cancel": "Cancel",
+      "saving": "Saving..."
+    },
+    "stats": {
+      "total": "Total Categories",
+      "active": "Active",
+      "inactive": "Inactive",
+      "withProducts": "With Products"
     }
   }
 }

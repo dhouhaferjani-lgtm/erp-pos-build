@@ -46,8 +46,6 @@ use Illuminate\Foundation\Http\FormRequest;
  * GET /api/v1/reports/profit-loss?fiscal_period_id={uuid}
  * GET /api/v1/reports/profit-loss?date_from=2025-01-01&date_to=2025-12-31&include_zero_balances=true
  * ```
- *
- * @package App\Modules\Accounting\Presentation\Requests
  */
 class GetProfitLossRequest extends FormRequest
 {
@@ -57,8 +55,6 @@ class GetProfitLossRequest extends FormRequest
      * Authorization is handled via middleware (auth:sanctum) and
      * route-level permission checks (can:reports.view), so this
      * always returns true.
-     *
-     * @return bool
      */
     public function authorize(): bool
     {
@@ -110,6 +106,7 @@ class GetProfitLossRequest extends FormRequest
                         $companyId = $companyContext->requireCompanyId();
                     } catch (\RuntimeException $e) {
                         $fail('Company context is required to validate fiscal period.');
+
                         return;
                     }
 
@@ -118,7 +115,7 @@ class GetProfitLossRequest extends FormRequest
                         ->where('company_id', $companyId)
                         ->exists();
 
-                    if (!$period) {
+                    if (! $period) {
                         $fail('The selected fiscal period does not belong to your company.');
                     }
                 },
@@ -185,8 +182,6 @@ class GetProfitLossRequest extends FormRequest
      * Normalizes input data before validation:
      * - Converts string booleans ('true', 'false', '1', '0') to actual booleans
      * - Trims whitespace from strings
-     *
-     * @return void
      */
     protected function prepareForValidation(): void
     {

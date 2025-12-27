@@ -8,6 +8,7 @@ use App\Modules\Inventory\Presentation\Controllers\CountingItemController;
 use App\Modules\Inventory\Presentation\Controllers\InventoryCountingController;
 use App\Modules\Inventory\Presentation\Controllers\StockLevelController;
 use App\Modules\Inventory\Presentation\Controllers\StockMovementController;
+use App\Modules\Inventory\Presentation\Controllers\StockReservationController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -74,6 +75,27 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/stock-movements/adjust', [StockMovementController::class, 'adjust'])
         ->middleware('can:inventory.adjust')
         ->name('stock-movements.adjust');
+
+    // Stock Reservations
+    Route::get('/stock-reservations', [StockReservationController::class, 'index'])
+        ->middleware('can:inventory.view')
+        ->name('stock-reservations.index');
+
+    Route::get('/stock-reservations/{id}', [StockReservationController::class, 'show'])
+        ->middleware('can:inventory.view')
+        ->name('stock-reservations.show');
+
+    Route::post('/stock-reservations', [StockReservationController::class, 'store'])
+        ->middleware('can:inventory.adjust')
+        ->name('stock-reservations.store');
+
+    Route::post('/stock-reservations/{id}/release', [StockReservationController::class, 'release'])
+        ->middleware('can:inventory.adjust')
+        ->name('stock-reservations.release');
+
+    Route::get('/stock-reservations/breakdown', [StockReservationController::class, 'breakdown'])
+        ->middleware('can:inventory.view')
+        ->name('stock-reservations.breakdown');
 
     // ==========================================
     // Inventory Counting Routes

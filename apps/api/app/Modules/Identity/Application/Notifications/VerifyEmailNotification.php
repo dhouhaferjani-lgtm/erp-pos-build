@@ -50,7 +50,7 @@ class VerifyEmailNotification extends Notification implements ShouldQueue
     private function buildMailMessage(string $url, string $name, string $locale): MailMessage
     {
         if ($locale === 'fr') {
-            return (new MailMessage())
+            return (new MailMessage)
                 ->subject(__('auth.verify_email_subject', [], 'fr'))
                 ->greeting(__('auth.verify_email_greeting', ['name' => $name], 'fr'))
                 ->line(__('auth.verify_email_body', [], 'fr'))
@@ -59,7 +59,7 @@ class VerifyEmailNotification extends Notification implements ShouldQueue
                 ->salutation(__('auth.verify_email_salutation', [], 'fr'));
         }
 
-        return (new MailMessage())
+        return (new MailMessage)
             ->subject(__('auth.verify_email_subject', [], 'en'))
             ->greeting(__('auth.verify_email_greeting', ['name' => $name], 'en'))
             ->line(__('auth.verify_email_body', [], 'en'))

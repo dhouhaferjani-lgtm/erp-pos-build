@@ -234,6 +234,7 @@ class ArApOpeningService
      * No GL entry is created (GL was handled by accounting opening).
      *
      * @return array<string, mixed> Summary of documents created
+     *
      * @throws RuntimeException If batch cannot be posted
      */
     public function postBatch(OpeningBalanceBatch $batch, string $userId): array
@@ -378,7 +379,7 @@ class ArApOpeningService
         return [
             'batch' => [
                 'cutover_date' => $batch->cutover_date->toDateString(),
-                'description' => ($isAr ? 'AR' : 'AP') . " Open Items - {$batch->name}",
+                'description' => ($isAr ? 'AR' : 'AP')." Open Items - {$batch->name}",
                 'is_historical' => true,
                 'batch_type' => $isAr ? 'AR_OPEN_ITEMS' : 'AP_OPEN_ITEMS',
             ],

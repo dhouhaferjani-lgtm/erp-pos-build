@@ -146,6 +146,86 @@ class CompanyController extends Controller
     }
 
     /**
+     * Get reservation settings for a company.
+     */
+    public function getReservationSettings(string $companyId): JsonResponse
+    {
+        /** @var User $user */
+        $user = auth()->user();
+
+        $company = Company::where('tenant_id', $user->tenant_id)
+            ->where('id', $companyId)
+            ->firstOrFail();
+
+        $settings = $company->getReservationSettings();
+
+        return response()->json([
+            'data' => [
+                'sales_order_expiry_days' => $settings->salesOrderExpiryDays,
+                'ecommerce_cart_expiry_minutes' => $settings->ecommerceCartExpiryMinutes,
+                'marketplace_order_expiry_hours' => $settings->marketplaceOrderExpiryHours,
+                'customer_return_expiry_days' => $settings->customerReturnExpiryDays,
+                'high_value_alert_threshold' => $settings->highValueAlertThreshold,
+                'inventory_count_trigger_threshold' => $settings->inventoryCountTriggerThreshold,
+                'auto_reserve_on_sales_order' => $settings->autoReserveOnSalesOrder,
+            ],
+        ]);
+    }
+
+    /**
+     * Update reservation settings for a company.
+     */
+    public function updateReservationSettings(string $companyId, \Illuminate\Http\Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = auth()->user();
+
+        $company = Company::where('tenant_id', $user->tenant_id)
+            ->where('id', $companyId)
+            ->firstOrFail();
+
+        $validated = $request->validate([
+            'sales_order_expiry_days' => ['sometimes', 'integer', 'min:0', 'max:365'],
+            'ecommerce_cart_expiry_minutes' => ['sometimes', 'integer', 'min:0', 'max:1440'],
+            'marketplace_order_expiry_hours' => ['sometimes', 'integer', 'min:0', 'max:168'],
+            'customer_return_expiry_days' => ['sometimes', 'integer', 'min:0', 'max:90'],
+            'high_value_alert_threshold' => ['sometimes', 'numeric', 'min:0'],
+            'inventory_count_trigger_threshold' => ['sometimes', 'numeric', 'min:0'],
+            'auto_reserve_on_sales_order' => ['sometimes', 'boolean'],
+        ]);
+
+        // Get current settings and merge with updates
+        $currentSettings = $company->getReservationSettings();
+
+        $newSettings = new \App\Modules\Company\Domain\ValueObjects\ReservationSettings(
+            salesOrderExpiryDays: $validated['sales_order_expiry_days'] ?? $currentSettings->salesOrderExpiryDays,
+            ecommerceCartExpiryMinutes: $validated['ecommerce_cart_expiry_minutes'] ?? $currentSettings->ecommerceCartExpiryMinutes,
+            marketplaceOrderExpiryHours: $validated['marketplace_order_expiry_hours'] ?? $currentSettings->marketplaceOrderExpiryHours,
+            customerReturnExpiryDays: $validated['customer_return_expiry_days'] ?? $currentSettings->customerReturnExpiryDays,
+            highValueAlertThreshold: $validated['high_value_alert_threshold'] ?? $currentSettings->highValueAlertThreshold,
+            inventoryCountTriggerThreshold: $validated['inventory_count_trigger_threshold'] ?? $currentSettings->inventoryCountTriggerThreshold,
+            autoReserveOnSalesOrder: $validated['auto_reserve_on_sales_order'] ?? $currentSettings->autoReserveOnSalesOrder,
+        );
+
+        $company->update([
+            'reservation_settings' => $newSettings->toArray(),
+        ]);
+
+        return response()->json([
+            'data' => [
+                'sales_order_expiry_days' => $newSettings->salesOrderExpiryDays,
+                'ecommerce_cart_expiry_minutes' => $newSettings->ecommerceCartExpiryMinutes,
+                'marketplace_order_expiry_hours' => $newSettings->marketplaceOrderExpiryHours,
+                'customer_return_expiry_days' => $newSettings->customerReturnExpiryDays,
+                'high_value_alert_threshold' => $newSettings->highValueAlertThreshold,
+                'inventory_count_trigger_threshold' => $newSettings->inventoryCountTriggerThreshold,
+                'auto_reserve_on_sales_order' => $newSettings->autoReserveOnSalesOrder,
+            ],
+            'message' => 'Reservation settings updated successfully',
+        ]);
+    }
+
+    /**
      * Format company data for response.
      *
      * @return array<string, mixed>

@@ -14,7 +14,6 @@ use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Accounting\Domain\OpeningBalanceImportRow;
 use App\Modules\Company\Domain\Company;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -81,7 +80,7 @@ class AccountingOpeningService
         if (! $isBalanced && $validCount > 0) {
             $errors['_batch'] = [
                 "Total debits ({$totalDebit}) do not equal total credits ({$totalCredit}). ".
-                "Difference: ".bcsub($totalDebit, $totalCredit, self::SCALE),
+                'Difference: '.bcsub($totalDebit, $totalCredit, self::SCALE),
             ];
         }
 

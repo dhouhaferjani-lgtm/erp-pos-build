@@ -43,7 +43,7 @@ class VehicleFactory extends Factory
 
         $colors = [
             'Black', 'White', 'Silver', 'Gray', 'Blue', 'Red',
-            'Green', 'Beige', 'Brown', 'Yellow', 'Orange'
+            'Green', 'Beige', 'Brown', 'Yellow', 'Orange',
         ];
 
         return [
@@ -76,12 +76,14 @@ class VehicleFactory extends Factory
             $letters1 = strtoupper($this->faker->bothify('??'));
             $numbers = $this->faker->numerify('###');
             $letters2 = strtoupper($this->faker->bothify('??'));
+
             return "{$letters1}-{$numbers}-{$letters2}";
         } else {
             // Old format: 123-ABC-45
             $numbers1 = $this->faker->numerify('###');
             $letters = strtoupper($this->faker->bothify('???'));
             $numbers2 = $this->faker->numerify('##');
+
             return "{$numbers1}-{$letters}-{$numbers2}";
         }
     }

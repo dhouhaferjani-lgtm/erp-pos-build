@@ -8,6 +8,7 @@ use App\Models\Country;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\VerificationStatus;
 use App\Modules\Company\Domain\Enums\VerificationTier;
+use App\Modules\Company\Domain\Events\CompanyCreated;
 use App\Modules\Tenant\Domain\Tenant;
 use Carbon\Carbon;
 use Database\Factories\CompanyFactory;
@@ -50,6 +51,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string $timezone Timezone identifier
  * @property string $date_format Date display format
  * @property int $fiscal_year_start_month Month fiscal year starts (1-12)
+ * @property Carbon|null $fiscal_year_validated_at When fiscal year was validated
+ * @property string|null $fiscal_year_validated_by UUID of user who validated fiscal year
+ * @property Carbon|null $first_transaction_posted_at When first transaction was posted (locks fiscal year)
+ * @property string|null $first_transaction_document_id UUID of first posted document
  * @property string $invoice_prefix Prefix for invoice numbers
  * @property int $invoice_next_number Next invoice number
  * @property string $quote_prefix Prefix for quote numbers
@@ -89,6 +94,7 @@ class Company extends Model
 {
     /** @use HasFactory<CompanyFactory> */
     use HasFactory;
+
     use HasUuids;
     use SoftDeletes;
 
@@ -103,12 +109,25 @@ class Company extends Model
                 $company->fiscal_chain_seed = bin2hex(random_bytes(32));
             }
         });
+
+        static::created(function (Company $company): void {
+            $userId = auth()->id() ?? 'system';
+
+            event(new CompanyCreated(
+                companyId: $company->id,
+                tenantId: $company->tenant_id,
+                name: $company->name,
+                countryCode: $company->country_code,
+                currency: $company->currency,
+                fiscalYearStartMonth: $company->fiscal_year_start_month,
+                createdBy: (string) $userId,
+                createdAt: $company->created_at->toIso8601String(),
+            ));
+        });
     }
 
     /**
      * Create a new factory instance for the model.
-     *
-     * @return CompanyFactory
      */
     protected static function newFactory(): CompanyFactory
     {
@@ -150,6 +169,10 @@ class Company extends Model
         'timezone',
         'date_format',
         'fiscal_year_start_month',
+        'fiscal_year_validated_at',
+        'fiscal_year_validated_by',
+        'first_transaction_posted_at',
+        'first_transaction_document_id',
         'invoice_prefix',
         'invoice_next_number',
         'quote_prefix',
@@ -181,6 +204,7 @@ class Company extends Model
         'payment_tolerance_percentage',
         'max_payment_tolerance_amount',
         'fiscal_chain_seed',
+        'reservation_settings',
     ];
 
     /**
@@ -205,11 +229,14 @@ class Company extends Model
             'verification_submitted_at' => 'datetime',
             'verified_at' => 'datetime',
             'closed_at' => 'datetime',
+            'fiscal_year_validated_at' => 'datetime',
+            'first_transaction_posted_at' => 'datetime',
             'status' => CompanyStatus::class,
             'allow_below_cost_sales' => 'boolean',
             'payment_tolerance_enabled' => 'boolean',
             'payment_tolerance_percentage' => 'string',
             'max_payment_tolerance_amount' => 'string',
+            'reservation_settings' => 'array',
         ];
     }
 
@@ -353,5 +380,55 @@ class Company extends Model
         ]);
 
         return count($parts) > 0 ? implode(', ', $parts) : null;
+    }
+
+    /**
+     * Check if fiscal year has been validated by the user.
+     */
+    public function isFiscalYearValidated(): bool
+    {
+        return $this->fiscal_year_validated_at !== null;
+    }
+
+    /**
+     * Check if fiscal year is permanently locked (first transaction posted).
+     */
+    public function hasFiscalYearLocked(): bool
+    {
+        return $this->first_transaction_posted_at !== null;
+    }
+
+    /**
+     * Check if the fiscal year start month can be changed.
+     * Can only change if no transaction has been posted yet.
+     */
+    public function canChangeFiscalYear(): bool
+    {
+        return ! $this->hasFiscalYearLocked();
+    }
+
+    /**
+     * Check if transactions can be posted.
+     * Transactions can only be posted after fiscal year is validated.
+     */
+    public function canPostTransactions(): bool
+    {
+        return $this->isFiscalYearValidated();
+    }
+
+    /**
+     * Get reservation settings with defaults.
+     */
+    public function getReservationSettings(): \App\Modules\Company\Domain\ValueObjects\ReservationSettings
+    {
+        if ($this->reservation_settings === null) {
+            return new \App\Modules\Company\Domain\ValueObjects\ReservationSettings();
+        }
+
+        if (is_array($this->reservation_settings)) {
+            return \App\Modules\Company\Domain\ValueObjects\ReservationSettings::fromArray($this->reservation_settings);
+        }
+
+        return $this->reservation_settings;
     }
 }

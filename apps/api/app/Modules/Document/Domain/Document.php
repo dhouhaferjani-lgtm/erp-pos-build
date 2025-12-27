@@ -15,7 +15,6 @@ use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentAllocation;
-use App\Modules\Vehicle\Domain\Vehicle;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -54,6 +53,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $external_document_number
  * @property \Illuminate\Support\Carbon|null $external_document_date
  * @property string|null $source_document_id
+ * @property \Illuminate\Support\Carbon|null $confirmed_at
+ * @property string|null $confirmed_by
+ * @property \Illuminate\Support\Carbon|null $cancelled_at
+ * @property string|null $cancelled_by
+ * @property string|null $cancellation_reason
  * @property array<string, mixed>|null $payload
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
@@ -61,7 +65,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property-read Tenant $tenant
  * @property-read Company $company
  * @property-read Partner $partner
- * @property-read Vehicle|null $vehicle
+ * @property-read array<string, mixed>|null $vehicle
  * @property-read Location|null $location
  * @property-read Document|null $sourceDocument
  * @property-read Collection<int, DocumentLine> $lines
@@ -93,7 +97,6 @@ class Document extends Model
         'company_id',
         'location_id',
         'partner_id',
-        'vehicle_id',
         'type',
         'fiscal_category',
         'fiscal_status',
@@ -119,6 +122,11 @@ class Document extends Model
         'external_document_date',
         'source_document_id',
         'credit_note_reason',
+        'confirmed_at',
+        'confirmed_by',
+        'cancelled_at',
+        'cancelled_by',
+        'cancellation_reason',
         'payload',
     ];
 
@@ -137,6 +145,8 @@ class Document extends Model
             'due_date' => 'date',
             'valid_until' => 'date',
             'external_document_date' => 'date',
+            'confirmed_at' => 'datetime',
+            'cancelled_at' => 'datetime',
             'subtotal' => 'decimal:2',
             'discount_amount' => 'decimal:2',
             'tax_amount' => 'decimal:2',
@@ -180,11 +190,37 @@ class Document extends Model
     }
 
     /**
-     * @return BelongsTo<Vehicle, $this>
+     * @return \Illuminate\Database\Eloquent\Relations\HasOne<DocumentVehicleContext, $this>
      */
-    public function vehicle(): BelongsTo
+    public function vehicleContext(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
-        return $this->belongsTo(Vehicle::class);
+        return $this->hasOne(DocumentVehicleContext::class);
+    }
+
+    /**
+     * Get the associated vehicle (backward-compatible accessor)
+     *
+     * @return array<string, mixed>|null
+     */
+    public function getVehicleAttribute(): ?array
+    {
+        return $this->vehicleContext?->getVehicleSnapshot();
+    }
+
+    /**
+     * Get the vehicle ID (backward-compatible accessor)
+     */
+    public function getVehicleIdAttribute(): ?string
+    {
+        return $this->vehicleContext?->vehicle_id;
+    }
+
+    /**
+     * Get the vehicle display string
+     */
+    public function getVehicleDisplayString(): string
+    {
+        return $this->vehicleContext?->getVehicleDisplayString() ?? 'No vehicle';
     }
 
     /**
@@ -209,6 +245,14 @@ class Document extends Model
     public function additionalCosts(): HasMany
     {
         return $this->hasMany(DocumentAdditionalCost::class);
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Relations\HasOne<\App\Modules\Expense\Domain\ExpenseMetadata, $this>
+     */
+    public function expenseMetadata(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(\App\Modules\Expense\Domain\ExpenseMetadata::class);
     }
 
     /**
@@ -251,7 +295,7 @@ class Document extends Model
     public function getDocumentChain(): array
     {
         // Get all ancestors by traversing up
-        $ancestors = new Collection();
+        $ancestors = new Collection;
         $parent = $this->sourceDocument;
         while ($parent !== null) {
             $ancestors->prepend($parent);
@@ -275,7 +319,7 @@ class Document extends Model
      */
     protected function getAllDescendants(): Collection
     {
-        $descendants = new Collection();
+        $descendants = new Collection;
 
         foreach ($this->childDocuments as $child) {
             $descendants->push($child);
@@ -357,7 +401,7 @@ class Document extends Model
      */
     public function isEditable(): bool
     {
-        return $this->status->isEditable() && !$this->isFiscallyImmutable();
+        return $this->status->isEditable() && ! $this->isFiscallyImmutable();
     }
 
     /**

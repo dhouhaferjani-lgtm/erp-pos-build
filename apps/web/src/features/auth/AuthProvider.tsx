@@ -28,10 +28,14 @@ interface RequireAuthProps {
 
 /**
  * AuthProvider checks for existing session on mount
- * and maintains auth state throughout the app
+ * and maintains auth state throughout the app.
+ *
+ * SECURITY: Authentication is handled via httpOnly cookies set by Laravel Sanctum.
+ * We always check the session on mount - if a valid session cookie exists,
+ * the /auth/me endpoint will return the user data.
  */
 export function AuthProvider({ children }: AuthProviderProps) {
-  const token = useAuthStore((state) => state.token)
+  const user = useAuthStore((state) => state.user)
   const setUser = useAuthStore((state) => state.setUser)
   const setLoading = useAuthStore((state) => state.setLoading)
   const logout = useAuthStore((state) => state.logout)
@@ -44,21 +48,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
     },
     retry: false,
     staleTime: 1000 * 60 * 5, // 5 minutes
-    enabled: !!token, // Only run if we have a token
+    // Always check session on mount - cookie-based auth doesn't require stored token
+    enabled: true,
   })
 
   useEffect(() => {
-    // No token means not authenticated
-    if (!token) {
-      setLoading(false)
-      return
-    }
-
     if (isLoading) {
       setLoading(true)
     } else if (data) {
       // Map tenantId to tenant_id for store compatibility
-      const user = {
+      const userData = {
         id: data.id,
         name: data.name,
         email: data.email,
@@ -66,15 +65,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
         roles: data.roles,
         email_verified_at: data.emailVerifiedAt,
       }
-      setUser(user)
+      setUser(userData)
     } else if (isError) {
-      // Token is invalid, clear auth state
+      // Session is invalid or expired, clear auth state
       logout()
     }
-  }, [token, data, isLoading, isError, setUser, setLoading, logout])
+  }, [data, isLoading, isError, setUser, setLoading, logout])
 
-  // Show loading only if we have a token and are checking it
-  if (token && isLoading) {
+  // Show loading only while checking session
+  if (isLoading && !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-4">

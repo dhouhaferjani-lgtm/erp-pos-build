@@ -29,34 +29,32 @@ class ProductionSeeder extends Seeder
         $this->command->newLine();
 
         // 1. Countries (lookup table)
-        $this->command->info('[1/6] Seeding countries...');
+        $this->command->info('[1/5] Seeding countries...');
         $this->call(CountriesSeeder::class);
         $this->command->info('     Countries seeded successfully.');
 
         // 2. Country Tax Rates (lookup table)
-        $this->command->info('[2/6] Seeding country tax rates...');
+        $this->command->info('[2/5] Seeding country tax rates...');
         $this->call(CountryTaxRatesSeeder::class);
         $this->command->info('     Tax rates seeded successfully.');
 
         // 3. Subscription Plans (required for tenant creation)
-        $this->command->info('[3/6] Seeding subscription plans...');
+        $this->command->info('[3/5] Seeding subscription plans...');
         $this->call(PlansSeeder::class);
         $this->command->info('     Plans seeded successfully.');
 
         // 4. Roles and Permissions (required for authorization)
-        $this->command->info('[4/6] Seeding roles and permissions...');
+        $this->command->info('[4/5] Seeding roles and permissions...');
         $this->call(RolesAndPermissionsSeeder::class);
         $this->command->info('     Roles and permissions seeded successfully.');
 
         // 5. Individual Permissions (additional granular permissions)
-        $this->command->info('[5/6] Seeding individual permissions...');
+        $this->command->info('[5/5] Seeding individual permissions...');
         $this->call(PermissionSeeder::class);
         $this->command->info('     Individual permissions seeded successfully.');
 
-        // 6. Universal Payment Methods (required for treasury)
-        $this->command->info('[6/6] Seeding payment methods...');
-        $this->call(PaymentMethodSeeder::class);
-        $this->command->info('     Payment methods seeded successfully.');
+        // Note: Payment methods are seeded per-company during tenant initialization
+        // See TenantInitializationService for per-tenant seeding
 
         $this->command->newLine();
         $this->command->info('========================================');

@@ -51,7 +51,7 @@ class ProductFactory extends Factory
         return [
             'id' => Str::uuid()->toString(),
             'company_id' => null, // Will be set by seeder
-            'sku' => $isService ? 'SVC-' . strtoupper(Str::random(6)) : 'PRD-' . strtoupper(Str::random(8)),
+            'sku' => $isService ? 'SVC-'.strtoupper(Str::random(6)) : 'PRD-'.strtoupper(Str::random(8)),
             'name' => $item,
             'description' => $this->faker->optional(0.7)->sentence(10),
             'type' => $type,
@@ -74,7 +74,7 @@ class ProductFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'type' => ProductType::Service,
-            'sku' => 'SVC-' . strtoupper(Str::random(6)),
+            'sku' => 'SVC-'.strtoupper(Str::random(6)),
             'barcode' => null,
         ]);
     }
@@ -86,7 +86,7 @@ class ProductFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'type' => ProductType::Part,
-            'sku' => 'PRD-' . strtoupper(Str::random(8)),
+            'sku' => 'PRD-'.strtoupper(Str::random(8)),
         ]);
     }
 

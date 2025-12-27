@@ -39,7 +39,8 @@
     "invalidEmail": "Adresse e-mail invalide",
     "invalidPhone": "Numéro de téléphone invalide",
     "minLength": "Doit contenir au moins {{min}} caractères",
-    "maxLength": "Doit contenir au maximum {{max}} caractères"
+    "maxLength": "Doit contenir au maximum {{max}} caractères",
+    "minAmount": "Le montant minimum est {{amount}}"
   },
   "error": {
     "generic": "Une erreur est survenue. Veuillez réessayer."
@@ -66,7 +67,10 @@
   },
   "errors": {
     "loadingFailed": "Erreur de chargement des données. Veuillez réessayer.",
-    "documentNotFound": "Document non trouvé ou une erreur est survenue."
+    "documentNotFound": "Document non trouvé ou une erreur est survenue.",
+    "permissionDenied": "Permission refusée",
+    "permissionDeniedDescription": "Vous n'avez pas l'autorisation d'accéder à cette page. Veuillez contacter votre administrateur si vous pensez qu'il s'agit d'une erreur.",
+    "unexpected": "Une erreur inattendue s'est produite. Veuillez réessayer."
   },
   "dashboard": {
     "title": "Tableau de bord",
@@ -100,10 +104,12 @@
     "goodsReceipts": "Bons de reception",
     "inventory": "Inventaire",
     "products": "Produits",
+    "categories": "Catégories",
     "stockLevels": "Niveaux de stock",
     "stockMovements": "Mouvements de stock",
     "counting": "Inventaire physique",
     "deliveryNotes": "Bons de livraison",
+    "returnNotes": "Bons de retour",
     "inventoryCounting": "Inventaire physique",
     "vehicles": "Véhicules",
     "services": "Prestations",
@@ -111,7 +117,10 @@
     "serviceCategories": "Catégories",
     "treasury": "Trésorerie",
     "payments": "Paiements",
+    "expenses": "Dépenses",
+    "expenseCategories": "Catégories de Dépenses",
     "instruments": "Instruments",
+    "paymentMethods": "Modes de paiement",
     "repositories": "Dépôts",
     "finance": "Finance",
     "chartOfAccounts": "Plan comptable",
@@ -194,7 +203,8 @@
   "pagination": {
     "showing": "Affichage de {{from}} à {{to}} sur {{total}} résultats",
     "previous": "Précédent",
-    "next": "Suivant"
+    "next": "Suivant",
+    "rowsPerPage": "Lignes par page"
   },
   "confirmation": {
     "delete": "Êtes-vous sûr de vouloir supprimer cet élément ?",
@@ -217,8 +227,14 @@
   "clear": "Effacer",
   "yes": "Oui",
   "no": "Non",
+  "none": "Aucun",
+  "active": "Actif",
+  "inactive": "Inactif",
   "optional": "optionnel",
   "continue": "Continuer",
+  "dismiss": "Ignorer",
+  "clearFilters": "Effacer les filtres",
+  "all": "Tous",
   "actionsLabel": "Actions",
   "allStatuses": "Tous les statuts",
   "total": "total",
@@ -644,6 +660,10 @@
         "title": "Entreprise",
         "description": "Informations et image de marque de l'entreprise"
       },
+      "inventory": {
+        "title": "Inventaire et tarification",
+        "description": "Configurer les méthodes de coûts, marges et réservations de stock"
+      },
       "import": {
         "title": "Importation de données",
         "description": "Importer des données depuis des fichiers CSV ou Excel"
@@ -807,6 +827,24 @@
       "difference": "Différence",
       "status": "Statut",
       "createdBy": "Créé par"
+    }
+  },
+  "catalog": {
+    "categories": {
+      "title": "Catégories",
+      "create": "Créer une catégorie",
+      "edit": "Modifier la catégorie",
+      "name": "Nom de la catégorie",
+      "description": "Description",
+      "parent": "Catégorie parente",
+      "noCategory": "Sans catégorie",
+      "tree": "Arbre des catégories",
+      "cannotDelete": "Impossible de supprimer une catégorie contenant des produits ou des sous-catégories",
+      "selectCategory": "Sélectionner une catégorie...",
+      "rootCategory": "Catégorie racine (Aucune parente)"
+    },
+    "products": {
+      "category": "Catégorie"
     }
   }
 }

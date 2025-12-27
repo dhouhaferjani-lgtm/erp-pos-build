@@ -7,6 +7,7 @@ namespace App\Modules\Inventory\Domain;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
@@ -22,6 +23,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $product_id
  * @property string $location_id
  * @property MovementType $movement_type
+ * @property MovementReason|null $reason
  * @property numeric-string $quantity
  * @property numeric-string $quantity_before
  * @property numeric-string $quantity_after
@@ -30,6 +32,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property numeric-string|null $avg_cost_before
  * @property numeric-string|null $avg_cost_after
  * @property string|null $reference
+ * @property string|null $reference_type
+ * @property string|null $reference_id
  * @property string|null $notes
  * @property string|null $user_id
  * @property bool $is_historical
@@ -53,6 +57,7 @@ class StockMovement extends Model
         'product_id',
         'location_id',
         'movement_type',
+        'reason',
         'quantity',
         'quantity_before',
         'quantity_after',
@@ -61,6 +66,8 @@ class StockMovement extends Model
         'avg_cost_before',
         'avg_cost_after',
         'reference',
+        'reference_type',
+        'reference_id',
         'notes',
         'user_id',
         'is_historical',
@@ -73,6 +80,7 @@ class StockMovement extends Model
     {
         return [
             'movement_type' => MovementType::class,
+            'reason' => MovementReason::class,
             'quantity' => 'decimal:2',
             'quantity_before' => 'decimal:2',
             'quantity_after' => 'decimal:2',

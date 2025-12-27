@@ -137,7 +137,7 @@ class PlansSeeder extends Seeder
         $this->command->info('Plans seeded successfully:');
         foreach ($plans as $plan) {
             $price = $plan['price_monthly'] !== null
-                ? number_format($plan['price_monthly'], 2) . ' ' . $plan['currency'] . '/mo'
+                ? number_format($plan['price_monthly'], 2).' '.$plan['currency'].'/mo'
                 : 'Custom';
             $this->command->line("  - {$plan['name']} ({$plan['code']}): {$price}");
         }

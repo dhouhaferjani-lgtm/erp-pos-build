@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\SuperAdmin;
 use App\Modules\Billing\Application\Services\PlanEnforcementService;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Services\AdminAuditService;
 use Illuminate\Http\JsonResponse;
@@ -253,5 +254,113 @@ class SuperAdminController extends Controller
             ->paginate(50);
 
         return response()->json(['data' => $logs]);
+    }
+
+    /**
+     * List all users with optional search and filter.
+     */
+    public function users(Request $request): JsonResponse
+    {
+        $query = User::with(['tenant']);
+
+        if ($search = $request->input('search')) {
+            $query->where(function ($q) use ($search): void {
+                $q->where('name', 'LIKE', "%{$search}%")
+                    ->orWhere('email', 'LIKE', "%{$search}%");
+            });
+        }
+
+        if ($tenantId = $request->input('tenant_id')) {
+            $query->where('tenant_id', $tenantId);
+        }
+
+        if ($request->has('email_verified')) {
+            $emailVerified = filter_var($request->input('email_verified'), FILTER_VALIDATE_BOOLEAN);
+            if ($emailVerified) {
+                $query->whereNotNull('email_verified_at');
+            } else {
+                $query->whereNull('email_verified_at');
+            }
+        }
+
+        if ($status = $request->input('status')) {
+            $query->where('status', $status);
+        }
+
+        $users = $query->orderBy('created_at', 'desc')->paginate(20);
+
+        return response()->json(['data' => $users]);
+    }
+
+    /**
+     * Show a specific user's details.
+     */
+    public function showUser(string $id): JsonResponse
+    {
+        $user = User::with(['tenant'])->findOrFail($id);
+
+        $memberships = DB::table('user_company_memberships')
+            ->join('companies', 'user_company_memberships.company_id', '=', 'companies.id')
+            ->where('user_company_memberships.user_id', $id)
+            ->select([
+                'user_company_memberships.*',
+                'companies.name as company_name',
+            ])
+            ->get();
+
+        return response()->json([
+            'data' => [
+                'user' => $user,
+                'memberships' => $memberships,
+            ],
+        ]);
+    }
+
+    /**
+     * Manually verify a user's email address (super admin override).
+     */
+    public function verifyUserEmail(Request $request, string $id): JsonResponse
+    {
+        $request->validate([
+            'notes' => 'nullable|string|max:500',
+        ]);
+
+        $user = User::findOrFail($id);
+
+        if ($user->email_verified_at !== null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'ALREADY_VERIFIED',
+                    'message' => 'User email is already verified.',
+                ],
+            ], 400);
+        }
+
+        $user->update([
+            'email_verified_at' => now(),
+        ]);
+
+        // Get the tenant for audit logging
+        $tenant = Tenant::find($user->tenant_id);
+
+        // Type assertion - middleware guarantees this is a SuperAdmin
+        /** @var SuperAdmin $admin */
+        $admin = $request->user();
+
+        $this->auditService->log(
+            admin: $admin,
+            action: 'verify_user_email',
+            tenant: $tenant,
+            entityType: 'user',
+            entityId: $user->id,
+            oldValues: ['email_verified_at' => null],
+            newValues: ['email_verified_at' => $user->email_verified_at?->toDateTimeString()],
+            notes: $request->input('notes') ?? 'Email manually verified by admin'
+        );
+
+        return response()->json([
+            'data' => $user->fresh(),
+            'message' => 'User email verified successfully.',
+        ]);
     }
 }

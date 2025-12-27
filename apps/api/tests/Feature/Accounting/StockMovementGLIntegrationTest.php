@@ -7,7 +7,6 @@ namespace Tests\Feature\Accounting;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
-use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
@@ -20,8 +19,6 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
-use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
-use App\Modules\Inventory\Listeners\PostCOGSOnInvoice;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Enums\ProductType;
@@ -232,7 +229,7 @@ class StockMovementGLIntegrationTest extends TestCase
     /**
      * Create a posted invoice with product lines
      *
-     * @param array<int, array{product: Product, quantity: string, unit_price: string}> $lines
+     * @param  array<int, array{product: Product, quantity: string, unit_price: string}>  $lines
      */
     private function createPostedInvoiceWithProducts(array $lines): Document
     {
@@ -299,7 +296,7 @@ class StockMovementGLIntegrationTest extends TestCase
             $invoice->id,
             $invoice->document_number,
             $lineItems,
-            new \DateTimeImmutable()
+            new \DateTimeImmutable
         );
 
         $this->assertNotNull($entry);
@@ -326,7 +323,7 @@ class StockMovementGLIntegrationTest extends TestCase
             Str::uuid()->toString(),
             'INV-TEST-001',
             $lineItems,
-            new \DateTimeImmutable()
+            new \DateTimeImmutable
         );
 
         $this->assertNotNull($entry);
@@ -361,7 +358,7 @@ class StockMovementGLIntegrationTest extends TestCase
             Str::uuid()->toString(),
             'INV-TEST-002',
             $lineItems,
-            new \DateTimeImmutable()
+            new \DateTimeImmutable
         );
 
         // No entry should be created for zero COGS
@@ -392,7 +389,7 @@ class StockMovementGLIntegrationTest extends TestCase
             Str::uuid()->toString(),
             'INV-TEST-003',
             $lineItems,
-            new \DateTimeImmutable()
+            new \DateTimeImmutable
         );
 
         $this->assertNotNull($entry);
@@ -421,7 +418,7 @@ class StockMovementGLIntegrationTest extends TestCase
             Str::uuid()->toString(),
             'INV-TEST-004',
             $lineItems,
-            new \DateTimeImmutable()
+            new \DateTimeImmutable
         );
 
         $this->assertNotNull($entry);
@@ -457,7 +454,7 @@ class StockMovementGLIntegrationTest extends TestCase
             $invoiceId,
             $documentNumber,
             $lineItems,
-            new \DateTimeImmutable()
+            new \DateTimeImmutable
         );
 
         $this->assertNotNull($entry);
@@ -484,7 +481,7 @@ class StockMovementGLIntegrationTest extends TestCase
             Str::uuid()->toString(),
             $documentNumber,
             $lineItems,
-            new \DateTimeImmutable()
+            new \DateTimeImmutable
         );
 
         $this->assertNotNull($entry);
@@ -510,7 +507,7 @@ class StockMovementGLIntegrationTest extends TestCase
             Str::uuid()->toString(),
             'INV-WAC-TEST',
             $lineItems,
-            new \DateTimeImmutable()
+            new \DateTimeImmutable
         );
 
         $this->assertNotNull($entry);
@@ -536,7 +533,7 @@ class StockMovementGLIntegrationTest extends TestCase
             Str::uuid()->toString(),
             'INV-COMPANY-TEST',
             $lineItems,
-            new \DateTimeImmutable()
+            new \DateTimeImmutable
         );
 
         $this->assertNotNull($entry);
@@ -551,7 +548,7 @@ class StockMovementGLIntegrationTest extends TestCase
             Str::uuid()->toString(),
             'INV-EMPTY-TEST',
             [],
-            new \DateTimeImmutable()
+            new \DateTimeImmutable
         );
 
         $this->assertNull($entry);

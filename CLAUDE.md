@@ -88,6 +88,180 @@ const { t } = useTranslation();
 <p>{t('common.noData')}</p>
 ```
 
+### 12. Module Routes MUST Follow Middleware Pattern
+**CRITICAL: All module route files MUST use the exact same middleware pattern as Identity module.**
+
+When creating or modifying route files in `app/Modules/*/routes.php`:
+
+```php
+// CORRECT - Use this pattern exactly
+use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
+use Illuminate\Support\Facades\Route;
+
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function () {
+    // Your routes here
+});
+
+// WRONG - Missing 'api' middleware
+Route::prefix('api/v1')->middleware(['auth:sanctum', SetPermissionsTeam::class])->group(function () {
+    // This will cause 401 Unauthorized errors
+});
+
+// WRONG - Missing SetPermissionsTeam
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum'])->group(function () {
+    // This will cause permission/team context issues
+});
+```
+
+**Why this matters:**
+- The `'api'` middleware is required for proper API middleware stack initialization
+- The `SetPermissionsTeam` middleware sets up the user's permissions and company context
+- Missing either will cause 401 Unauthorized or permission errors
+
+**Before completing any module with routes:**
+1. Compare your routes.php with `app/Modules/Identity/routes.php`
+2. Ensure exact middleware pattern match
+3. Run `php artisan route:clear` after changes
+4. Test the endpoint with actual authentication
+
+### 13. Frontend API Response Handling Pattern
+**CRITICAL: This is the #1 recurring mistake when adding new features. Follow this pattern exactly.**
+
+#### Understanding the Response Flow
+
+**Backend Response Structure (Laravel):**
+```php
+// All controllers return this format:
+return response()->json([
+    'data' => $yourData,  // ← Your actual data
+]);
+```
+
+**Frontend API Helpers (apps/web/src/lib/api.ts):**
+```typescript
+// These helpers AUTOMATICALLY unwrap the response
+export async function apiGet<T>(url: string): Promise<T> {
+  const response = await api.get<ApiResponse<T>>(url)
+  return response.data.data  // ← Already unwrapped here!
+}
+
+export async function apiPost<T>(url: string, data?: unknown): Promise<T> {
+  const response = await api.post<ApiResponse<T>>(url, data)
+  return response.data.data  // ← Already unwrapped here!
+}
+
+// Same for apiPut, apiPatch, apiDelete
+```
+
+#### The Correct Pattern for Feature API Clients
+
+**✅ CORRECT - Direct return (data is already unwrapped):**
+```typescript
+// apps/web/src/features/yourFeature/api/yourApi.ts
+
+export interface YourDataResponse {
+  id: number
+  name: string
+  // ... your fields
+}
+
+// Single item endpoint
+export async function fetchItem(id: number): Promise<YourDataResponse> {
+  return apiGet<YourDataResponse>(`/items/${id}`)
+  // ✅ apiGet already returns the unwrapped data
+}
+
+// List endpoint
+export async function fetchItems(): Promise<YourDataResponse[]> {
+  return apiGet<YourDataResponse[]>('/items')
+  // ✅ apiGet already returns the unwrapped array
+}
+
+// Create endpoint
+export async function createItem(data: CreateInput): Promise<YourDataResponse> {
+  return apiPost<YourDataResponse>('/items', data)
+  // ✅ apiPost already returns the unwrapped data
+}
+```
+
+**❌ WRONG - Trying to unwrap again (causes undefined errors):**
+```typescript
+// DO NOT DO THIS!
+
+export interface ItemsResponse {
+  data: YourDataResponse[]  // ❌ Don't define a wrapper type
+}
+
+export async function fetchItems(): Promise<YourDataResponse[]> {
+  const response = await apiGet<ItemsResponse>('/items')
+  return response.data  // ❌ response is already the array, .data is undefined!
+}
+
+// DO NOT DO THIS!
+export async function fetchItem(id: number): Promise<YourDataResponse> {
+  const response = await apiGet<{ data: YourDataResponse }>(`/items/${id}`)
+  return response.data  // ❌ response is already the object, .data is undefined!
+}
+```
+
+#### Special Cases
+
+**Paginated Responses (using cursor pagination):**
+```typescript
+// Backend returns:
+// { data: [...], meta: {...}, links: {...} }
+
+export interface PaginatedResponse<T> {
+  data: T[]
+  meta: {
+    per_page: number
+    has_more: boolean
+  }
+  links: {
+    next: string | null
+    prev: string | null
+  }
+}
+
+export async function fetchPaginated(): Promise<PaginatedResponse<YourDataResponse>> {
+  // ✅ apiGet unwraps outer { data: ... } but keeps the pagination structure
+  return apiGet<PaginatedResponse<YourDataResponse>>('/items')
+}
+```
+
+**Empty Responses (DELETE requests):**
+```typescript
+export async function deleteItem(id: number): Promise<void> {
+  return apiDelete(`/items/${id}`)
+  // ✅ No type parameter needed for void responses
+}
+```
+
+#### Checklist When Creating New Feature API Clients
+
+Before writing any fetch function:
+1. ✅ Check `apps/web/src/lib/api.ts` - the helpers unwrap `response.data.data`
+2. ✅ Your function should return `apiGet<YourType>()` directly
+3. ✅ Do NOT create wrapper interfaces like `{ data: YourType }`
+4. ✅ Do NOT access `.data` on the response from apiGet/apiPost/apiPut/apiDelete
+5. ✅ The type parameter to `apiGet<T>` should be your actual data type, not a wrapper
+
+#### Quick Reference
+
+```typescript
+// ✅ ALWAYS DO THIS:
+return apiGet<Item>('/items/1')           // Single item
+return apiGet<Item[]>('/items')           // Array of items
+return apiPost<Item>('/items', data)      // Create
+return apiPut<Item>('/items/1', data)     // Update (full)
+return apiPatch<Item>('/items/1', data)   // Update (partial)
+return apiDelete('/items/1')              // Delete
+
+// ❌ NEVER DO THIS:
+const response = await apiGet<{data: Item}>('/items/1')
+return response.data  // ❌ Causes undefined errors!
+```
+
 ---
 
 ## Executive Summary

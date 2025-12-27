@@ -11,7 +11,7 @@ export type ImportStatus =
   | 'failed'
 
 export interface ImportJob {
-  id: number
+  id: string
   type: ImportType
   status: ImportStatus
   original_filename: string
@@ -26,16 +26,16 @@ export interface ImportJob {
   created_at: string
 }
 
+// Backend returns errors as { fieldName: ['error1', 'error2'] }
+export type ImportRowErrors = Record<string, string[]> | null
+
 export interface ImportRow {
   row_number: number
   data: Record<string, string>
   is_valid: boolean
-  errors: ImportRowError[]
-}
-
-export interface ImportRowError {
-  field: string
-  error: string
+  errors: ImportRowErrors
+  import_error?: string | null
+  error_type?: 'validation' | 'execution'
 }
 
 // Migration Wizard Types - matches backend exactly
@@ -85,6 +85,11 @@ export interface ImportJobListResponse {
 
 export interface ImportErrorsResponse {
   data: ImportRow[]
+  meta?: {
+    job_error_message: string | null
+    validation_errors: number
+    execution_errors: number
+  }
 }
 
 export interface CreateImportResponse {
@@ -93,4 +98,25 @@ export interface CreateImportResponse {
     missing_columns: string[]
     unknown_columns: string[]
   }
+}
+
+export interface ImportPreviewRow {
+  row_number: number
+  data: Record<string, string>
+  is_valid: boolean
+  errors: ImportRowErrors
+}
+
+export interface ImportPreview {
+  headers: string[]
+  rows: ImportPreviewRow[]
+  summary: {
+    total_rows: number
+    valid_rows: number
+    invalid_rows: number
+  }
+}
+
+export interface ImportPreviewResponse {
+  data: ImportPreview
 }

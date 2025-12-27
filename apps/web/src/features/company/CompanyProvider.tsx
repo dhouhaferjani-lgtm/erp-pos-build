@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { api } from '../../lib/api'
@@ -45,14 +46,20 @@ function mapCompanyResponse(company: CompanyResponse): Company {
  *
  * Must be used inside AuthProvider and only renders children
  * when authenticated and company context is ready.
+ *
+ * Skips fetching on admin routes since they use separate authentication.
  */
 export function CompanyProvider({ children }: CompanyProviderProps) {
+  const routerLocation = useLocation()
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const setCompanies = useCompanyStore((state) => state.setCompanies)
   const setLoading = useCompanyStore((state) => state.setLoading)
   const reset = useCompanyStore((state) => state.reset)
   const companies = useCompanyStore((state) => state.companies)
   const queryClient = useQueryClient()
+
+  // Skip fetching on admin routes - they use separate authentication
+  const isAdminRoute = routerLocation.pathname === '/admin' || routerLocation.pathname.startsWith('/admin/')
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['user', 'companies'],
@@ -62,7 +69,7 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
     },
     retry: 1,
     staleTime: 1000 * 60 * 10, // 10 minutes - companies don't change often
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && !isAdminRoute,
   })
 
   // Update company store when data is fetched
@@ -86,8 +93,8 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
     }
   }, [isAuthenticated, reset, queryClient])
 
-  // Show loading while fetching companies (only if authenticated)
-  if (isAuthenticated && isLoading) {
+  // Show loading while fetching companies (only if authenticated and not on admin routes)
+  if (isAuthenticated && !isAdminRoute && isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-4">
@@ -98,8 +105,8 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
     )
   }
 
-  // If authenticated but no companies (edge case), show error
-  if (isAuthenticated && !isLoading && companies.length === 0 && !isError) {
+  // If authenticated but no companies (edge case), show error (skip on admin routes)
+  if (isAuthenticated && !isAdminRoute && !isLoading && companies.length === 0 && !isError) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">

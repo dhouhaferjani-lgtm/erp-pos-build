@@ -7,7 +7,6 @@ namespace App\Modules\Service\Presentation\Controllers;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Service\Application\DTOs\ServiceData;
 use App\Modules\Service\Application\Services\ServiceCatalogService;
-use App\Modules\Service\Domain\Enums\PricingType;
 use App\Modules\Service\Domain\Service;
 use App\Modules\Service\Presentation\Requests\CreateServiceRequest;
 use App\Modules\Service\Presentation\Requests\UpdateServiceRequest;

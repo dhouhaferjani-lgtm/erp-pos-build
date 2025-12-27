@@ -16,7 +16,9 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Seeders\FranceChartOfAccountsSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Database\Seeders\TunisiaChartOfAccountsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -77,6 +79,9 @@ class InvoiceDocumentTest extends TestCase
         // Set company context for the test
         app(\App\Modules\Company\Services\CompanyContext::class)->setCompanyId($this->company->id);
 
+        // Seed chart of accounts based on company country
+        $this->seedChartOfAccounts();
+
         $this->partner = Partner::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -84,6 +89,21 @@ class InvoiceDocumentTest extends TestCase
             'type' => PartnerType::Customer,
             'email' => 'partner@example.com',
         ]);
+    }
+
+    /**
+     * Seed the appropriate chart of accounts based on company country code.
+     */
+    private function seedChartOfAccounts(): void
+    {
+        $seederClass = match ($this->company->country_code) {
+            'FR' => FranceChartOfAccountsSeeder::class,
+            'TN' => TunisiaChartOfAccountsSeeder::class,
+            default => FranceChartOfAccountsSeeder::class, // Default to France
+        };
+
+        $seeder = new $seederClass();
+        $seeder->run($this->company->id, $this->tenant->id);
     }
 
     public function test_invoice_can_be_created(): void

@@ -223,7 +223,7 @@ class DemoTenantSeeder extends Seeder
         $this->command->line('  - Email: admin@trial.local');
         $this->command->line('  - Password: password');
         $this->command->line('  - Plan: Trial (limited)');
-        $this->command->line('  - Trial ends: ' . now()->addDays(14)->format('Y-m-d'));
+        $this->command->line('  - Trial ends: '.now()->addDays(14)->format('Y-m-d'));
     }
 
     /**

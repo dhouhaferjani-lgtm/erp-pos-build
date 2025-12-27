@@ -7,9 +7,6 @@ namespace Tests\Feature\Compliance;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Compliance\Domain\AuditEvent;
-use App\Modules\Document\Domain\Document;
-use App\Modules\Document\Domain\Enums\DocumentStatus;
-use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\DeliveryNoteConfirmed;
 use App\Modules\Document\Domain\Events\InvoiceCancelled;
 use App\Modules\Document\Domain\Events\InvoicePaid;
@@ -21,7 +18,6 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Events\PaymentRecorded;
-use App\Modules\Treasury\Domain\Payment;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -50,7 +46,7 @@ class DomainEventSubscriberTest extends TestCase
 
         $this->tenant = Tenant::create([
             'name' => 'Test Tenant',
-            'slug' => 'test-tenant-' . Str::random(8),
+            'slug' => 'test-tenant-'.Str::random(8),
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
         ]);
@@ -70,7 +66,7 @@ class DomainEventSubscriberTest extends TestCase
         $this->user = User::create([
             'tenant_id' => $this->tenant->id,
             'name' => 'Test User',
-            'email' => 'user-' . Str::random(8) . '@example.com',
+            'email' => 'user-'.Str::random(8).'@example.com',
             'password' => 'password123',
             'status' => UserStatus::Active,
         ]);
@@ -364,7 +360,7 @@ class DomainEventSubscriberTest extends TestCase
         // Create a second tenant and company
         $otherTenant = Tenant::create([
             'name' => 'Other Tenant',
-            'slug' => 'other-tenant-' . Str::random(8),
+            'slug' => 'other-tenant-'.Str::random(8),
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
         ]);

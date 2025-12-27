@@ -19,10 +19,15 @@ export function ValidationGrid({
   const [currentPage, setCurrentPage] = useState(1)
   const pageSize = 20
 
-  // Filter rows based on showOnlyErrors
+  // Helper to check if row has errors (errors is an object, not an array)
+  const hasErrors = (errors: ImportRow['errors']): boolean => {
+    return errors !== null && Object.keys(errors).length > 0
+  }
+
+  // Filter rows based on showOnlyErrors (includes validation errors and execution errors)
   const filteredRows = useMemo(() => {
     if (showOnlyErrors) {
-      return rows.filter((row) => !row.is_valid || row.errors.length > 0)
+      return rows.filter((row) => !row.is_valid || hasErrors(row.errors) || row.import_error)
     }
     return rows
   }, [rows, showOnlyErrors])
@@ -45,10 +50,11 @@ export function ValidationGrid({
     return filteredRows.slice(start, start + pageSize)
   }, [filteredRows, currentPage])
 
-  // Get error for a specific field in a row
+  // Get error for a specific field in a row (errors is now an object keyed by field)
   const getFieldError = (row: ImportRow, field: string): string | null => {
-    const error = row.errors.find((e) => e.field === field)
-    return error?.error ?? null
+    if (!row.errors) return null
+    const fieldErrors = row.errors[field]
+    return fieldErrors && fieldErrors.length > 0 ? fieldErrors[0] : null
   }
 
   if (filteredRows.length === 0) {
@@ -101,13 +107,20 @@ export function ValidationGrid({
                 key={row.row_number}
                 className={cn(
                   'hover:bg-gray-50',
-                  !row.is_valid && 'bg-red-50/50'
+                  (!row.is_valid || row.import_error) && 'bg-red-50/50'
                 )}
               >
                 <td className="sticky left-0 bg-white whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-500">
-                  #{row.row_number}
-                  {!row.is_valid && (
-                    <AlertCircle className="inline-block ms-1 h-3.5 w-3.5 text-red-500" />
+                  <div className="flex items-center gap-1">
+                    #{row.row_number}
+                    {(!row.is_valid || row.import_error) && (
+                      <AlertCircle className="h-3.5 w-3.5 text-red-500" />
+                    )}
+                  </div>
+                  {row.import_error && (
+                    <p className="mt-1 text-xs text-red-600 font-normal max-w-[200px] truncate" title={row.import_error}>
+                      {t('validation.executionError')}: {row.import_error}
+                    </p>
                   )}
                 </td>
                 {columns.map((col) => {

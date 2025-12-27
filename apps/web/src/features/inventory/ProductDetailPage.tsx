@@ -15,6 +15,7 @@ import {
 } from '../../components/molecules/Tabs/Tabs'
 import { ProductMovementsTab } from './components/ProductMovementsTab'
 import { ProductDocumentsTab } from './components/ProductDocumentsTab'
+import { useProductRealtime } from '../products/hooks/useProductRealtime'
 
 type ProductType = 'part' | 'service' | 'consumable'
 
@@ -26,6 +27,7 @@ interface Product {
   description: string | null
   sale_price: string | null
   purchase_price: string | null
+  cost_price: string | null
   tax_rate: string | null
   unit: string | null
   barcode: string | null
@@ -68,6 +70,12 @@ export function ProductDetailPage() {
       const response = await api.get<ProductResponse>(`/products/${id}`)
       return response.data.data
     },
+    enabled: !!id,
+  })
+
+  // Subscribe to real-time product cost/price updates
+  useProductRealtime({
+    productId: id || '',
     enabled: !!id,
   })
 
@@ -243,9 +251,9 @@ export function ProductDetailPage() {
                     </p>
                   </div>
                   <div className="rounded-lg bg-blue-50 p-4">
-                    <label className="text-sm font-medium text-blue-700">{t('products.purchasePrice')}</label>
+                    <label className="text-sm font-medium text-blue-700">{t('pricing.wac')}</label>
                     <p className="mt-1 text-xl font-bold text-blue-900">
-                      {formatAmount(product.purchase_price)}
+                      {formatAmount(product.cost_price)}
                     </p>
                   </div>
                   <div className="rounded-lg bg-gray-50 p-4">
@@ -255,16 +263,16 @@ export function ProductDetailPage() {
                     </p>
                   </div>
                 </div>
-                {product.sale_price && product.purchase_price && (
+                {product.sale_price && product.cost_price && (
                   <div className="mt-4 rounded-lg bg-yellow-50 p-4">
                     <label className="text-sm font-medium text-yellow-700">{t('products.margin')}</label>
                     <p className="mt-1 text-lg font-semibold text-yellow-900">
                       {formatAmount(
-                        String(parseFloat(product.sale_price) - parseFloat(product.purchase_price))
+                        String(parseFloat(product.sale_price) - parseFloat(product.cost_price))
                       )}{' '}
                       ({(
-                        ((parseFloat(product.sale_price) - parseFloat(product.purchase_price)) /
-                          parseFloat(product.purchase_price)) *
+                        ((parseFloat(product.sale_price) - parseFloat(product.cost_price)) /
+                          parseFloat(product.cost_price)) *
                         100
                       ).toFixed(1)}%)
                     </p>

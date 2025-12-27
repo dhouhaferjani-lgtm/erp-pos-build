@@ -9,7 +9,6 @@ use App\Modules\Document\Application\Services\DocumentPdfService;
 use App\Modules\Document\Domain\Document;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class DocumentPdfController extends Controller
 {

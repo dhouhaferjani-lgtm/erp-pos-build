@@ -18,9 +18,8 @@ final class DocumentPdfService
     /**
      * Generate PDF for a document.
      *
-     * @param Document $document The document to generate PDF for
-     * @param bool $stream Whether to return stream or download response
-     * @return DomPdf
+     * @param  Document  $document  The document to generate PDF for
+     * @param  bool  $stream  Whether to return stream or download response
      */
     public function generate(Document $document, bool $stream = false): DomPdf
     {
@@ -73,6 +72,7 @@ final class DocumentPdfService
     {
         $prefix = $document->type->getPrefix();
         $number = str_replace(['/', '\\', ' '], '-', $document->document_number);
+
         return "{$prefix}-{$number}.pdf";
     }
 
@@ -113,9 +113,9 @@ final class DocumentPdfService
             'locale' => $locale,
             'currency' => $currency,
             'documentTitle' => $this->getDocumentTitle($document->type, $locale),
-            'formatMoney' => fn(string|float|null $amount) => $this->formatMoney($amount, $currency, $locale),
-            'formatDate' => fn(Carbon|string|null $date) => $this->formatDate($date, $company->date_format, $locale),
-            'formatNumber' => fn(string|float|null $number, int $decimals = 2) => $this->formatNumber($number, $decimals, $locale),
+            'formatMoney' => fn (string|float|null $amount) => $this->formatMoney($amount, $currency, $locale),
+            'formatDate' => fn (Carbon|string|null $date) => $this->formatDate($date, $company->date_format, $locale),
+            'formatNumber' => fn (string|float|null $number, int $decimals = 2) => $this->formatNumber($number, $decimals, $locale),
         ];
     }
 
@@ -160,7 +160,7 @@ final class DocumentPdfService
         $formatter = new NumberFormatter($locale, NumberFormatter::CURRENCY);
         $result = $formatter->formatCurrency($amount, $currency);
 
-        return $result !== false ? $result : number_format($amount, 2) . ' ' . $currency;
+        return $result !== false ? $result : number_format($amount, 2).' '.$currency;
     }
 
     /**

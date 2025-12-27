@@ -8,6 +8,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
+use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryCountingAssignment;
 use App\Modules\Inventory\Domain\InventoryCountingEvent;
@@ -28,7 +29,7 @@ class InventoryCountingService
     /**
      * Create a new counting operation.
      *
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     public function create(array $data, User $createdBy, string $companyId): InventoryCounting
     {
@@ -98,7 +99,7 @@ class InventoryCountingService
     /**
      * Get stock levels based on counting scope.
      *
-     * @param array<string, mixed> $filters
+     * @param  array<string, mixed>  $filters
      * @return Collection<int, StockLevel>
      */
     private function getStockLevelsForScope(
@@ -388,7 +389,7 @@ class InventoryCountingService
     /**
      * Trigger third count for specific items.
      *
-     * @param array<string> $itemIds
+     * @param  array<string>  $itemIds
      */
     public function triggerThirdCount(
         InventoryCounting $counting,
@@ -498,6 +499,20 @@ class InventoryCountingService
                 ],
                 'user_id' => $user->id,
             ]);
+
+            // Capture data for event dispatch after commit
+            $eventData = [
+                'counting' => $counting,
+                'user' => $user,
+            ];
+
+            // Dispatch event AFTER transaction commits
+            DB::afterCommit(function () use ($eventData): void {
+                $this->dispatchInventoryCountingCompletedEvent(
+                    $eventData['counting'],
+                    $eventData['user']
+                );
+            });
         });
     }
 
@@ -527,5 +542,42 @@ class InventoryCountingService
                 'user_id' => $user->id,
             ]);
         });
+    }
+
+    /**
+     * Dispatch InventoryCountingCompleted event for audit trail.
+     *
+     * @param  InventoryCounting  $counting  The completed counting operation
+     * @param  User  $user  The user who completed the counting
+     */
+    private function dispatchInventoryCountingCompletedEvent(
+        InventoryCounting $counting,
+        User $user
+    ): void {
+        // Calculate total variance across all items
+        $items = $counting->items;
+        $totalVariance = '0.00';
+
+        foreach ($items as $item) {
+            $theoreticalQty = (float) $item->theoretical_qty;
+            $finalQty = (float) ($item->final_qty ?? '0.00');
+            $variance = $finalQty - $theoreticalQty;
+            $totalVariance = bcadd($totalVariance, (string) $variance, 2);
+        }
+
+        // Get tenant_id from counting or fallback to user's tenant_id
+        $tenantId = $counting->tenant_id ?? $user->tenant_id;
+
+        event(new InventoryCountingCompleted(
+            countingId: $counting->id,
+            tenantId: $tenantId,
+            companyId: $counting->company_id,
+            locationId: $counting->scope_filters['location_id'] ?? '',
+            countingNumber: $counting->counting_number ?? 'COUNTING-'.$counting->id,
+            itemsCount: $items->count(),
+            totalVariance: $totalVariance,
+            completedBy: (string) $user->id,
+            completedAt: now()->toIso8601String(),
+        ));
     }
 }

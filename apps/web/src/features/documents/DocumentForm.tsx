@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useForm, Controller } from 'react-hook-form'
+import { useForm, Controller, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
@@ -11,13 +11,15 @@ import { PurchaseOrderAdditionalCosts } from './components/PurchaseOrderAddition
 import { AddPartnerModal } from '../../components/organisms'
 import { PartnerSearchSelect } from '../../components/ui/PartnerSearchSelect'
 import { useCompany } from '../../hooks/useCompany'
+import { useDraftAutoSave } from '../../hooks/useDraftAutoSave'
 import type { DocumentType } from './DocumentListPage'
+import type { Document, DocumentLine as DocumentApiLine } from '../../types/document'
 
 // Determine whether to filter by customer or supplier based on document type
 function getPartnerTypeForDocument(docType: DocumentType | undefined): 'customer' | 'supplier' | undefined {
   if (!docType) return undefined
   // Sales documents need customers
-  if (['quote', 'sales_order', 'invoice', 'credit_note', 'delivery_note'].includes(docType)) {
+  if (['quote', 'sales_order', 'invoice', 'credit_note', 'delivery_note', 'return_note'].includes(docType)) {
     return 'customer'
   }
   // Purchase documents need suppliers
@@ -27,41 +29,8 @@ function getPartnerTypeForDocument(docType: DocumentType | undefined): 'customer
   return undefined
 }
 
-interface DocumentApiLine {
-  id: string
-  product_id: string
-  product_name: string
-  description: string
-  quantity: number
-  unit_price: number
-  tax_rate: number
-  line_total: number
-}
-
-interface Document {
-  id: string
-  document_number: string
-  type: 'quote' | 'order' | 'invoice' | 'credit_note' | 'delivery_note' | 'sales_order' | 'purchase_order'
-  status: string
-  fiscal_category: 'NON_FISCAL' | 'FISCAL_RECEIPT' | 'TAX_INVOICE' | 'CREDIT_NOTE'
-  fiscal_status: 'DRAFT' | 'SEALED' | 'VOIDED'
-  is_sealed: boolean
-  is_fiscal: boolean
-  partner_id: string
-  partner_name: string
-  total_amount: number
-  tax_amount: number
-  net_amount: number
-  issue_date: string
-  due_date: string | null
-  notes: string | null
-  external_document_number: string | null
-  external_document_date: string | null
-  lines?: DocumentApiLine[]
-}
-
 interface DocumentFormData {
-  type: 'quote' | 'order' | 'invoice' | 'credit_note' | 'delivery_note' | 'sales_order' | 'purchase_order' | ''
+  type: 'quote' | 'order' | 'invoice' | 'credit_note' | 'delivery_note' | 'sales_order' | 'purchase_order' | 'return_note' | ''
   partner_id: string
   issue_date: string
   due_date: string
@@ -77,6 +46,7 @@ const documentTypeToPath: Record<DocumentType, string> = {
   purchase_order: '/purchases/orders',
   delivery_note: '/inventory/delivery-notes',
   credit_note: '/sales/credit-notes',
+  return_note: '/inventory/return-notes',
 }
 
 const documentTypeToTitle: Record<DocumentType, string> = {
@@ -86,6 +56,7 @@ const documentTypeToTitle: Record<DocumentType, string> = {
   purchase_order: 'Purchase Order',
   delivery_note: 'Delivery Note',
   credit_note: 'Credit Note',
+  return_note: 'Return Note',
 }
 
 // Map document types to their API endpoints
@@ -96,6 +67,7 @@ const documentTypeToApiEndpoint: Record<DocumentType, string> = {
   purchase_order: '/purchase-orders',
   delivery_note: '/delivery-notes',
   credit_note: '/credit-notes',
+  return_note: '/return-notes',
 }
 
 function getDocumentTypeFromPath(pathname: string): DocumentType | undefined {
@@ -129,6 +101,8 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
   const [lines, setLines] = useState<DocumentLine[]>([])
   // Partner modal state
   const [showPartnerModal, setShowPartnerModal] = useState(false)
+  // Track auto-save draft ID
+  const [autoSaveDraftId, setAutoSaveDraftId] = useState<string | null>(null)
 
   // Parse URL query parameters for pre-population
   const searchParams = new URLSearchParams(location.search)
@@ -163,6 +137,47 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
 
   // Determine partner type to filter based on document type
   const partnerTypeFilter = getPartnerTypeForDocument(effectiveType)
+
+  // Watch form values for auto-save
+  const watchedPartnerId = useWatch({ control, name: 'partner_id' })
+  const watchedNotes = useWatch({ control, name: 'notes' })
+  const watchedDocumentDate = useWatch({ control, name: 'issue_date' })
+  const watchedDueDate = useWatch({ control, name: 'due_date' })
+
+  // Construct draft data for auto-save
+  const draftData = useMemo(() => {
+    if (!effectiveType) return null
+
+    return {
+      type: effectiveType,
+      partner_id: watchedPartnerId || null,
+      notes: watchedNotes || null,
+      document_date: watchedDocumentDate,
+      due_date: watchedDueDate || null,
+      lines: lines.map(line => ({
+        id: line.id,
+        product_id: line.product_id,
+        quantity: line.quantity,
+        unit_price: line.unit_price,
+        tax_rate: line.tax_rate || 0,
+      })),
+    }
+  }, [effectiveType, watchedPartnerId, watchedNotes, watchedDocumentDate, watchedDueDate, lines])
+
+  // Auto-save hook (only for new documents, not when editing)
+  const { draftId, isSaving, lastSavedAt } = useDraftAutoSave(
+    isEditing ? null : draftData,
+    {
+      enabled: !isEditing,
+      onSuccess: (savedDraftId) => {
+        setAutoSaveDraftId(savedDraftId)
+        console.log('Draft auto-saved:', savedDraftId)
+      },
+      onError: (error) => {
+        console.error('Auto-save failed:', error)
+      },
+    }
+  )
 
   // Fetch document data when editing
   const { data: document, isLoading } = useQuery({
@@ -468,6 +483,30 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
 
         {/* Form Actions */}
         <div className="flex items-center justify-end gap-4">
+          {/* Auto-save indicator (only for new documents) */}
+          {!isEditing && (
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              {isSaving ? (
+                <>
+                  <svg className="h-4 w-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span>Saving draft...</span>
+                </>
+              ) : lastSavedAt ? (
+                <>
+                  <svg className="h-4 w-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>
+                    Draft saved {lastSavedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </>
+              ) : null}
+            </div>
+          )}
+
           <Link
             to={basePath}
             className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"

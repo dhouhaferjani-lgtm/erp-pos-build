@@ -90,20 +90,45 @@ class CreditNoteController extends Controller
     {
         $companyId = $this->companyContext->requireCompanyId();
 
-        $validated = $request->validate([
+        // Determine if this is amount-based or line-based credit note
+        $isLineBased = $request->has('lines') && is_array($request->input('lines'));
+
+        $rules = [
             'source_invoice_id' => ['required', 'string', 'exists:documents,id'],
-            'amount' => ['required', 'string', 'regex:/^\d+(\.\d{1,4})?$/'],
             'reason' => ['required', new Enum(CreditNoteReason::class)],
             'notes' => ['nullable', 'string', 'max:1000'],
-        ]);
+        ];
+
+        // Amount-based validation
+        if (! $isLineBased) {
+            $rules['amount'] = ['required', 'string', 'regex:/^\d+(\.\d{1,4})?$/'];
+        } else {
+            // Line-based validation
+            $rules['lines'] = ['required', 'array', 'min:1'];
+            $rules['lines.*.line_id'] = ['required', 'string', 'exists:document_lines,id'];
+            $rules['lines.*.quantity'] = ['required', 'numeric', 'gt:0'];
+        }
+
+        $validated = $request->validate($rules);
 
         try {
-            $creditNote = $this->creditNoteService->createCreditNote(
-                sourceInvoiceId: $validated['source_invoice_id'],
-                amount: $validated['amount'],
-                reason: CreditNoteReason::from($validated['reason']),
-                notes: $validated['notes'] ?? null
-            );
+            if ($isLineBased) {
+                // Line-based credit note
+                $creditNote = $this->creditNoteService->createLineBasedCreditNote(
+                    sourceInvoiceId: $validated['source_invoice_id'],
+                    lines: $validated['lines'],
+                    reason: CreditNoteReason::from($validated['reason']),
+                    notes: $validated['notes'] ?? null
+                );
+            } else {
+                // Amount-based credit note
+                $creditNote = $this->creditNoteService->createCreditNote(
+                    sourceInvoiceId: $validated['source_invoice_id'],
+                    amount: $validated['amount'],
+                    reason: CreditNoteReason::from($validated['reason']),
+                    notes: $validated['notes'] ?? null
+                );
+            }
 
             return response()->json([
                 'data' => $this->formatCreditNote($creditNote->load(['partner', 'sourceDocument'])),

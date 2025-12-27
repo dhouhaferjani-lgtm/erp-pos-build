@@ -93,11 +93,11 @@ return new class extends Migration
 
         // Add CHECK constraints (PostgreSQL only - SQLite doesn't support ALTER TABLE ADD CONSTRAINT)
         if (DB::connection()->getDriverName() !== 'sqlite') {
-            DB::statement("
+            DB::statement('
                 ALTER TABLE inventory_countings
                 ADD CONSTRAINT chk_valid_schedule
                 CHECK (scheduled_end IS NULL OR scheduled_start IS NULL OR scheduled_end > scheduled_start)
-            ");
+            ');
 
             DB::statement("
                 ALTER TABLE inventory_countings

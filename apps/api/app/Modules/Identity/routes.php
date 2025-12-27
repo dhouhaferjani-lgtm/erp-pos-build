@@ -17,23 +17,31 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::prefix('api/v1/auth')->group(function () {
-    // Public routes
-    Route::post('login', [AuthController::class, 'login'])->name('auth.login');
-    Route::post('register', [AuthController::class, 'register'])->name('auth.register');
-    Route::post('verify-email', [AuthController::class, 'verifyEmail'])->name('auth.verify-email');
+Route::prefix('api/v1/auth')->middleware('api')->group(function () {
+    // Public routes with rate limiting
+    Route::post('login', [AuthController::class, 'login'])
+        ->middleware('throttle:login')
+        ->name('auth.login');
+    Route::post('register', [AuthController::class, 'register'])
+        ->middleware('throttle:register')
+        ->name('auth.register');
+    Route::post('verify-email', [AuthController::class, 'verifyEmail'])
+        ->middleware('throttle:email-verification')
+        ->name('auth.verify-email');
 
     // Protected routes (no company context required for auth endpoints)
     Route::middleware(['auth:sanctum', SetPermissionsTeam::class])->group(function () {
         Route::get('me', [AuthController::class, 'me'])->name('auth.me');
         Route::post('logout', [AuthController::class, 'logout'])->name('auth.logout');
         Route::post('logout-all', [AuthController::class, 'logoutAll'])->name('auth.logout-all');
-        Route::post('resend-verification', [AuthController::class, 'resendVerification'])->name('auth.resend-verification');
+        Route::post('resend-verification', [AuthController::class, 'resendVerification'])
+            ->middleware('throttle:email-verification')
+            ->name('auth.resend-verification');
     });
 });
 
 // Routes that don't require company context
-Route::prefix('api/v1')->middleware(['auth:sanctum', SetPermissionsTeam::class])->group(function () {
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function () {
     // Current user routes (no company context - used to get available companies)
     Route::get('user/companies', [UserController::class, 'companies'])->name('user.companies');
 });

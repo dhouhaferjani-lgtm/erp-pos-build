@@ -288,7 +288,6 @@ class ServiceCatalogService
      * Build a hierarchical tree from flat categories.
      *
      * @param  Collection<int, ServiceCategory>  $categories
-     * @param  string|null  $parentId
      * @return array<int, array<string, mixed>>
      */
     private function buildTree(Collection $categories, ?string $parentId = null): array

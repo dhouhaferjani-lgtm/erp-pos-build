@@ -55,11 +55,11 @@ return new class extends Migration
 
         // Add CHECK constraints (PostgreSQL only - SQLite doesn't support ALTER TABLE ADD CONSTRAINT)
         if (DB::connection()->getDriverName() !== 'sqlite') {
-            DB::statement("
+            DB::statement('
                 ALTER TABLE inventory_counting_assignments
                 ADD CONSTRAINT chk_valid_count_number
                 CHECK (count_number BETWEEN 1 AND 3)
-            ");
+            ');
 
             DB::statement("
                 ALTER TABLE inventory_counting_assignments

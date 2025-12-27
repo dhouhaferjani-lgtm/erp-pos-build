@@ -12,6 +12,8 @@ enum DocumentType: string
     case Invoice = 'invoice';
     case CreditNote = 'credit_note';
     case DeliveryNote = 'delivery_note';
+    case ReturnNote = 'return_note';
+    case Expense = 'expense';
 
     /**
      * Get the prefix for document numbering
@@ -25,6 +27,8 @@ enum DocumentType: string
             self::Invoice => 'INV',
             self::CreditNote => 'CN',
             self::DeliveryNote => 'DN',
+            self::ReturnNote => 'RN',
+            self::Expense => 'EXP',
         };
     }
 
@@ -40,6 +44,8 @@ enum DocumentType: string
             self::Invoice => 'Invoice',
             self::CreditNote => 'Credit Note',
             self::DeliveryNote => 'Delivery Note',
+            self::ReturnNote => 'Return Note',
+            self::Expense => 'Expense',
         };
     }
 

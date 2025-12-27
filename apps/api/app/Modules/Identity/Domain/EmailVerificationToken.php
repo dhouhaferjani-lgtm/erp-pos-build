@@ -79,6 +79,6 @@ class EmailVerificationToken extends Model
      */
     public function isValid(): bool
     {
-        return !$this->isExpired();
+        return ! $this->isExpired();
     }
 }

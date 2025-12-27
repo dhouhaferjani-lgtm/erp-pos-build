@@ -166,7 +166,7 @@ class OpeningBalanceImportRow extends Model
     /**
      * Scope to filter by batch
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeForBatch(Builder $query, string $batchId): Builder
@@ -177,7 +177,7 @@ class OpeningBalanceImportRow extends Model
     /**
      * Scope to filter by row type
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeOfRowType(Builder $query, string $rowType): Builder
@@ -188,7 +188,7 @@ class OpeningBalanceImportRow extends Model
     /**
      * Scope to filter by status
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeInStatus(Builder $query, OpeningImportRowStatus $status): Builder
@@ -199,7 +199,7 @@ class OpeningBalanceImportRow extends Model
     /**
      * Scope to filter valid rows only
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeValid(Builder $query): Builder
@@ -210,7 +210,7 @@ class OpeningBalanceImportRow extends Model
     /**
      * Scope to filter invalid rows only
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeInvalid(Builder $query): Builder
@@ -221,7 +221,7 @@ class OpeningBalanceImportRow extends Model
     /**
      * Scope to filter pending rows only
      *
-     * @param Builder<static> $query
+     * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopePending(Builder $query): Builder

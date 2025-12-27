@@ -10,12 +10,12 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
-use App\Modules\Product\Domain\Enums\ProductType;
-use App\Modules\Product\Domain\Product;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Product\Domain\Enums\ProductType;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -127,7 +127,7 @@ class ListDocumentsTest extends TestCase
                 'data' => [
                     '*' => ['id', 'document_number', 'type', 'status', 'partner_id', 'total', 'created_at'],
                 ],
-                'meta' => ['current_page', 'per_page', 'total'],
+                'meta' => ['per_page', 'has_more'],
             ]);
     }
 
@@ -186,10 +186,10 @@ class ListDocumentsTest extends TestCase
             ->getJson('/api/v1/quotes');
 
         $response->assertOk()
-            ->assertJsonPath('meta.total', 25)
-            ->assertJsonPath('meta.per_page', 15);
+            ->assertJsonPath('meta.per_page', 25)
+            ->assertJsonPath('meta.has_more', false); // 25 items with default page size of 25
 
-        $this->assertCount(15, $response->json('data'));
+        $this->assertCount(25, $response->json('data'));
     }
 
     public function test_can_filter_by_status(): void
