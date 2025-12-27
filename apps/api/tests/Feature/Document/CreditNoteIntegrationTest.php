@@ -490,6 +490,17 @@ class CreditNoteIntegrationTest extends TestCase
     /** @test */
     public function it_posts_confirmed_credit_note(): void
     {
+        // Add missing service_revenue account required by posting service
+        Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '706',
+            'name' => 'Service Revenue',
+            'type' => 'revenue',
+            'system_purpose' => SystemAccountPurpose::ServiceRevenue,
+            'is_active' => true,
+        ]);
+
         $invoice = $this->createPostedInvoice('INV-001', '1000.00', '190.00', '1190.00');
 
         // Create a confirmed credit note
