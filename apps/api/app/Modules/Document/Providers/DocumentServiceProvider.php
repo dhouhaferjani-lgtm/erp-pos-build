@@ -26,6 +26,7 @@ class DocumentServiceProvider extends ServiceProvider
             $registry->register($app->make(SalesOrderToInvoiceConverter::class));
             $registry->register($app->make(SalesOrderToDeliveryNoteConverter::class));
             $registry->register($app->make(DeliveryNoteToInvoiceConverter::class));
+            $registry->register($app->make(\App\Modules\Document\Domain\Services\Conversion\Converters\InvoiceToCreditNoteConverter::class));
 
             return $registry;
         });
