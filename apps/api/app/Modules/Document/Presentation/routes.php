@@ -143,10 +143,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:invoices.post')
         ->name('invoices.post');
 
-    // Credit note creation from invoice (uses DocumentController until migrated)
-    Route::post('/invoices/{invoice}/create-credit-note', function (Request $request, string $invoice) {
-        return app(DocumentController::class)->createCreditNote($request, $invoice);
-    })->middleware('can:credit-notes.create')->name('invoices.create-credit-note');
+    // Credit note creation from invoice
+    Route::post('/invoices/{id}/create-credit-note', [DocumentConversionController::class, 'convertInvoiceToCreditNote'])
+        ->middleware('can:credit-notes.create')
+        ->name('invoices.create-credit-note');
 
     // Refund and cancellation routes
     Route::post('/invoices/{invoice}/cancel', [RefundController::class, 'cancelInvoice'])

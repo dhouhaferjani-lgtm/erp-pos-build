@@ -159,6 +159,70 @@ class DocumentConversionController extends Controller
     }
 
     /**
+     * Convert an invoice to a credit note
+     *
+     * Supports two modes:
+     * 1. Amount-based: Credit a fixed amount from an invoice
+     * 2. Line-based: Credit specific line items with quantities
+     */
+    public function convertInvoiceToCreditNote(Request $request, string $id): JsonResponse
+    {
+        // Determine conversion mode
+        $isLineBased = $request->has('lines') && is_array($request->input('lines'));
+
+        $rules = [
+            'reason' => 'required|string',
+            'notes' => 'nullable|string|max:1000',
+        ];
+
+        if ($isLineBased) {
+            $rules['lines'] = 'required|array|min:1';
+            $rules['lines.*.line_id'] = 'required|string|exists:document_lines,id';
+            $rules['lines.*.quantity'] = 'required|numeric|gt:0';
+        } else {
+            $rules['amount'] = 'required|string|regex:/^\d+(\.\d{1,4})?$/';
+        }
+
+        $request->validate($rules);
+
+        $invoice = Document::findOrFail($id);
+
+        try {
+            $options = [
+                'reason' => $request->input('reason'),
+                'notes' => $request->input('notes'),
+            ];
+
+            if ($isLineBased) {
+                $options['lines'] = $request->input('lines');
+            } else {
+                $options['amount'] = $request->input('amount');
+            }
+
+            $creditNote = $this->converterRegistry->convert($invoice, DocumentType::CreditNote, $options);
+
+            return response()->json([
+                'data' => $creditNote->load(['lines', 'partner', 'sourceDocument']),
+                'message' => 'Credit note created from invoice successfully',
+            ], 201);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'VALIDATION_ERROR',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        } catch (\DomainException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'CONVERSION_FAILED',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        }
+    }
+
+    /**
      * Create an invoice from one or more delivery notes (Tunisia consolidation model).
      *
      * Consolidates multiple confirmed delivery notes into a single invoice.
