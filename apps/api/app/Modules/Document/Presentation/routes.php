@@ -15,6 +15,7 @@ use App\Modules\Document\Presentation\Controllers\InvoiceController;
 use App\Modules\Document\Presentation\Controllers\PurchaseOrderController;
 use App\Modules\Document\Presentation\Controllers\QuoteController;
 use App\Modules\Document\Presentation\Controllers\RefundController;
+use App\Modules\Document\Presentation\Controllers\ReturnNoteController;
 use App\Modules\Document\Presentation\Controllers\SalesOrderController;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use Illuminate\Http\Request;
@@ -253,25 +254,30 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:invoices.create')
         ->name('delivery-notes.consolidate-to-invoice');
 
-    // Return Notes (no dedicated controller yet - uses DocumentController)
-    Route::get('/return-notes', function (Request $request) {
-        return app(DocumentController::class)->index($request, DocumentType::ReturnNote);
-    })->middleware('can:deliveries.view')->name('return-notes.index');
+    // Return Notes
+    Route::get('/return-notes', [ReturnNoteController::class, 'index'])
+        ->middleware('can:deliveries.view')
+        ->name('return-notes.index');
 
-    Route::get('/return-notes/{returnNote}', function (Request $request, string $returnNote) {
-        return app(DocumentController::class)->show($request, DocumentType::ReturnNote, $returnNote);
-    })->middleware('can:deliveries.view')->name('return-notes.show');
+    Route::get('/return-notes/{returnNote}', [ReturnNoteController::class, 'show'])
+        ->middleware('can:deliveries.view')
+        ->name('return-notes.show');
 
-    Route::post('/return-notes', function (Request $request) {
-        return app(DocumentController::class)->store(
-            app(\App\Modules\Document\Presentation\Requests\CreateDocumentRequest::class),
-            DocumentType::ReturnNote
-        );
-    })->middleware('can:deliveries.create')->name('return-notes.store');
+    Route::post('/return-notes', [ReturnNoteController::class, 'store'])
+        ->middleware('can:deliveries.create')
+        ->name('return-notes.store');
 
-    Route::post('/return-notes/{returnNote}/confirm', function (Request $request, string $returnNote) {
-        return app(DocumentController::class)->confirm($request, DocumentType::ReturnNote, $returnNote);
-    })->middleware('can:deliveries.confirm')->name('return-notes.confirm');
+    Route::patch('/return-notes/{returnNote}', [ReturnNoteController::class, 'update'])
+        ->middleware('can:deliveries.edit')
+        ->name('return-notes.update');
+
+    Route::delete('/return-notes/{returnNote}', [ReturnNoteController::class, 'destroy'])
+        ->middleware('can:deliveries.delete')
+        ->name('return-notes.destroy');
+
+    Route::post('/return-notes/{returnNote}/confirm', [ReturnNoteController::class, 'confirm'])
+        ->middleware('can:deliveries.confirm')
+        ->name('return-notes.confirm');
 
     // Document Additional Costs
     Route::get('/documents/{document}/additional-costs', [DocumentAdditionalCostController::class, 'index'])
