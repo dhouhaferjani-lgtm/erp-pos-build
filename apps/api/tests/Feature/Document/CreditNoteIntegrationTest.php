@@ -421,6 +421,146 @@ class CreditNoteIntegrationTest extends TestCase
         $this->assertEquals('Partial return', $creditNote->notes);
     }
 
+    /** @test */
+    public function it_confirms_draft_credit_note(): void
+    {
+        $invoice = $this->createPostedInvoice('INV-001', '1000.00', '190.00', '1190.00');
+
+        // Create a draft credit note
+        $creditNote = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::CreditNote,
+            'status' => DocumentStatus::Draft,
+            'document_number' => 'CN-001',
+            'document_date' => now(),
+            'source_document_id' => $invoice->id,
+            'subtotal' => '500.00',
+            'tax_amount' => '95.00',
+            'total' => '595.00',
+            'currency' => 'TND',
+        ]);
+
+        $response = $this->actingAs($this->user)
+            ->postJson("/api/v1/credit-notes/{$creditNote->id}/confirm");
+
+        $response->assertOk()
+            ->assertJson([
+                'message' => 'Credit note confirmed successfully',
+            ]);
+
+        // Verify credit note was confirmed
+        $creditNote->refresh();
+        $this->assertEquals(DocumentStatus::Confirmed, $creditNote->status);
+        $this->assertNotNull($creditNote->confirmed_at);
+        $this->assertEquals($this->user->id, $creditNote->confirmed_by);
+    }
+
+    /** @test */
+    public function it_prevents_confirming_already_confirmed_credit_note(): void
+    {
+        $invoice = $this->createPostedInvoice('INV-001', '1000.00', '190.00', '1190.00');
+
+        // Create an already confirmed credit note
+        $creditNote = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::CreditNote,
+            'status' => DocumentStatus::Confirmed,
+            'document_number' => 'CN-001',
+            'document_date' => now(),
+            'source_document_id' => $invoice->id,
+            'subtotal' => '500.00',
+            'tax_amount' => '95.00',
+            'total' => '595.00',
+            'currency' => 'TND',
+            'confirmed_at' => now(),
+            'confirmed_by' => $this->user->id,
+        ]);
+
+        // Should be idempotent - return success
+        $response = $this->actingAs($this->user)
+            ->postJson("/api/v1/credit-notes/{$creditNote->id}/confirm");
+
+        $response->assertOk();
+    }
+
+    /** @test */
+    public function it_posts_confirmed_credit_note(): void
+    {
+        $invoice = $this->createPostedInvoice('INV-001', '1000.00', '190.00', '1190.00');
+
+        // Create a confirmed credit note
+        $creditNote = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::CreditNote,
+            'status' => DocumentStatus::Confirmed,
+            'document_number' => 'CN-001',
+            'document_date' => now(),
+            'source_document_id' => $invoice->id,
+            'subtotal' => '500.00',
+            'tax_amount' => '95.00',
+            'total' => '595.00',
+            'currency' => 'TND',
+            'confirmed_at' => now(),
+            'confirmed_by' => $this->user->id,
+        ]);
+
+        $this->user->givePermissionTo('credit-notes.post');
+
+        $response = $this->actingAs($this->user)
+            ->postJson("/api/v1/credit-notes/{$creditNote->id}/post");
+
+        $response->assertOk()
+            ->assertJson([
+                'message' => 'Credit note posted successfully',
+            ]);
+
+        // Verify credit note was posted
+        $creditNote->refresh();
+        $this->assertEquals(DocumentStatus::Posted, $creditNote->status);
+        $this->assertNotNull($creditNote->fiscal_hash);
+        $this->assertNotNull($creditNote->chain_sequence);
+    }
+
+    /** @test */
+    public function it_prevents_posting_draft_credit_note(): void
+    {
+        $invoice = $this->createPostedInvoice('INV-001', '1000.00', '190.00', '1190.00');
+
+        // Create a draft credit note (not confirmed)
+        $creditNote = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::CreditNote,
+            'status' => DocumentStatus::Draft,
+            'document_number' => 'CN-001',
+            'document_date' => now(),
+            'source_document_id' => $invoice->id,
+            'subtotal' => '500.00',
+            'tax_amount' => '95.00',
+            'total' => '595.00',
+            'currency' => 'TND',
+        ]);
+
+        $this->user->givePermissionTo('credit-notes.post');
+
+        $response = $this->actingAs($this->user)
+            ->postJson("/api/v1/credit-notes/{$creditNote->id}/post");
+
+        $response->assertUnprocessable()
+            ->assertJson([
+                'error' => [
+                    'code' => 'CREDIT_NOTE_NOT_CONFIRMED',
+                ],
+            ]);
+    }
+
     private function createPostedInvoice(
         string $number,
         string $subtotal,
