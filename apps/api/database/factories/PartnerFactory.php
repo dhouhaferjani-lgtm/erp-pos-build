@@ -83,4 +83,26 @@ class PartnerFactory extends Factory
             'is_active' => false,
         ]);
     }
+
+    /**
+     * Indicate that the partner is from Tunisia.
+     */
+    public function tunisia(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'country_code' => 'TN',
+            'vat_number' => $this->faker->optional(0.8)->regexify('TN[0-9]{13}'),
+        ]);
+    }
+
+    /**
+     * Indicate that the partner is from France.
+     */
+    public function france(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'country_code' => 'FR',
+            'vat_number' => $this->faker->optional(0.8)->regexify('FR[0-9]{11}'),
+        ]);
+    }
 }

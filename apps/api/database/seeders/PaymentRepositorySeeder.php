@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
@@ -13,21 +14,61 @@ class PaymentRepositorySeeder extends Seeder
 {
     /**
      * Run the database seeds.
+     *
+     * @param  Company|null  $company  Optional specific company to seed for
      */
-    public function run(): void
+    public function run(?Company $company = null): void
     {
-        // Get the first tenant and company (demo tenant)
-        $tenant = \App\Modules\Tenant\Domain\Tenant::first();
-        $company = Company::first();
-
-        if (! $tenant || ! $company) {
-            $this->command->error('No tenant or company found. Please run DatabaseSeeder first.');
+        // If a specific company is provided, seed only for that company
+        if ($company !== null) {
+            $tenant = Tenant::find($company->tenant_id);
+            if ($tenant === null) {
+                return;
+            }
+            $this->seedRepositoriesForCompany($company, $tenant);
 
             return;
         }
 
-        $repositories = [
-            // Cash Registers
+        // Otherwise, seed for first/demo company (dev mode)
+        $tenant = Tenant::first();
+        $firstCompany = Company::first();
+
+        if (! $tenant || ! $firstCompany) {
+            $this->command?->error('No tenant or company found. Please run DatabaseSeeder first.');
+
+            return;
+        }
+
+        $this->seedRepositoriesForCompany($firstCompany, $tenant);
+    }
+
+    /**
+     * Seed payment repositories for a specific company.
+     */
+    private function seedRepositoriesForCompany(Company $company, Tenant $tenant): void
+    {
+        $repositories = $this->getRepositoriesForCountry($company->country_code);
+
+        foreach ($repositories as $repo) {
+            PaymentRepository::create([
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $tenant->id,
+                'company_id' => $company->id,
+                ...$repo,
+            ]);
+        }
+
+        $this->command?->info('Created '.count($repositories).' payment repositories for '.$company->name);
+    }
+
+    /**
+     * Get country-specific payment repositories (cash registers, safe, banks).
+     */
+    private function getRepositoriesForCountry(string $countryCode): array
+    {
+        // Common repositories (same for all countries)
+        $common = [
             [
                 'code' => 'CASH-01',
                 'name' => 'Main Cash Register',
@@ -50,7 +91,6 @@ class PaymentRepositorySeeder extends Seeder
                 'balance' => 200.00,
                 'is_active' => true,
             ],
-            // Safe
             [
                 'code' => 'SAFE-01',
                 'name' => 'Office Safe',
@@ -62,62 +102,105 @@ class PaymentRepositorySeeder extends Seeder
                 'balance' => 5000.00,
                 'is_active' => true,
             ],
-            // Bank Accounts
-            [
-                'code' => 'BANK-01',
-                'name' => 'BNP Paribas - Current Account',
-                'type' => 'bank_account',
-                'bank_name' => 'BNP Paribas',
-                'account_number' => '30004 00123 00001234567 25',
-                'iban' => 'FR76 3000 4001 2300 0012 3456 725',
-                'bic' => 'BNPAFRPP',
-                'balance' => 25000.00,
-                'is_active' => true,
-            ],
-            [
-                'code' => 'BANK-02',
-                'name' => 'Crédit Agricole - Business Account',
-                'type' => 'bank_account',
-                'bank_name' => 'Crédit Agricole',
-                'account_number' => '11315 00020 12345678901 54',
-                'iban' => 'FR14 1131 5000 2012 3456 7890 154',
-                'bic' => 'AGRIFRPP',
-                'balance' => 15000.00,
-                'is_active' => true,
-            ],
-            [
-                'code' => 'BANK-03',
-                'name' => 'Société Générale - Savings Account',
-                'type' => 'bank_account',
-                'bank_name' => 'Société Générale',
-                'account_number' => '30003 00123 11223344556 78',
-                'iban' => 'FR31 3000 3001 2311 2233 4455 678',
-                'bic' => 'SOGEFRPP',
-                'balance' => 10000.00,
-                'is_active' => true,
-            ],
-            // Virtual/Online Payment Account
-            [
-                'code' => 'VIRT-01',
-                'name' => 'PayPal Business Account',
-                'type' => 'virtual',
-                'bank_name' => 'PayPal',
-                'account_number' => 'business@example.com',
-                'iban' => null,
-                'bic' => null,
-                'balance' => 3500.00,
-                'is_active' => true,
-            ],
         ];
 
-        foreach ($repositories as $repository) {
-            PaymentRepository::create(array_merge([
-                'id' => Str::uuid()->toString(),
-                'tenant_id' => $tenant->id,
-                'company_id' => $company->id,
-            ], $repository));
-        }
+        // Country-specific banks
+        $banks = match (strtoupper($countryCode)) {
+            'TN' => [
+                [
+                    'code' => 'BANK-01',
+                    'name' => 'Banque de Tunisie - Current Account',
+                    'type' => 'bank_account',
+                    'bank_name' => 'Banque de Tunisie',
+                    'account_number' => '08 000 0012345678',
+                    'iban' => 'TN59 0800 0001 2345 6789 0123',
+                    'bic' => 'BTUETTT',
+                    'balance' => 25000.00,
+                    'is_active' => true,
+                ],
+                [
+                    'code' => 'BANK-02',
+                    'name' => 'STB - Business Account',
+                    'type' => 'bank_account',
+                    'bank_name' => 'Société Tunisienne de Banque',
+                    'account_number' => '10 000 0012345678',
+                    'iban' => 'TN59 1000 0001 2345 6789 0123',
+                    'bic' => 'STBKTTT',
+                    'balance' => 15000.00,
+                    'is_active' => true,
+                ],
+                [
+                    'code' => 'BANK-03',
+                    'name' => 'BIAT - Savings Account',
+                    'type' => 'bank_account',
+                    'bank_name' => 'Banque Internationale Arabe de Tunisie',
+                    'account_number' => '08 030 0012345678',
+                    'iban' => 'TN59 0803 0001 2345 6789 0123',
+                    'bic' => 'BIATTTTT',
+                    'balance' => 10000.00,
+                    'is_active' => true,
+                ],
+                [
+                    'code' => 'VIRT-01',
+                    'name' => 'D17 Digital Wallet',
+                    'type' => 'virtual',
+                    'bank_name' => 'D17',
+                    'account_number' => 'business@example.tn',
+                    'iban' => null,
+                    'bic' => null,
+                    'balance' => 2000.00,
+                    'is_active' => true,
+                ],
+            ],
+            'FR' => [
+                [
+                    'code' => 'BANK-01',
+                    'name' => 'BNP Paribas - Current Account',
+                    'type' => 'bank_account',
+                    'bank_name' => 'BNP Paribas',
+                    'account_number' => '30004 00123 00001234567 25',
+                    'iban' => 'FR76 3000 4001 2300 0012 3456 725',
+                    'bic' => 'BNPAFRPP',
+                    'balance' => 25000.00,
+                    'is_active' => true,
+                ],
+                [
+                    'code' => 'BANK-02',
+                    'name' => 'Crédit Agricole - Business Account',
+                    'type' => 'bank_account',
+                    'bank_name' => 'Crédit Agricole',
+                    'account_number' => '11315 00020 12345678901 54',
+                    'iban' => 'FR14 1131 5000 2012 3456 7890 154',
+                    'bic' => 'AGRIFRPP',
+                    'balance' => 15000.00,
+                    'is_active' => true,
+                ],
+                [
+                    'code' => 'BANK-03',
+                    'name' => 'Société Générale - Savings Account',
+                    'type' => 'bank_account',
+                    'bank_name' => 'Société Générale',
+                    'account_number' => '30003 00123 11223344556 78',
+                    'iban' => 'FR31 3000 3001 2311 2233 4455 678',
+                    'bic' => 'SOGEFRPP',
+                    'balance' => 10000.00,
+                    'is_active' => true,
+                ],
+                [
+                    'code' => 'VIRT-01',
+                    'name' => 'PayPal Business Account',
+                    'type' => 'virtual',
+                    'bank_name' => 'PayPal',
+                    'account_number' => 'business@example.com',
+                    'iban' => null,
+                    'bic' => null,
+                    'balance' => 3500.00,
+                    'is_active' => true,
+                ],
+            ],
+            default => [],
+        };
 
-        $this->command->info('Created '.count($repositories).' payment repositories for company: '.$company->name);
+        return array_merge($common, $banks);
     }
 }

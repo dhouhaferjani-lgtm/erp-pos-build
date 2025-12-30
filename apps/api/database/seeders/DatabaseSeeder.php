@@ -41,58 +41,100 @@ class DatabaseSeeder extends Seeder
         $this->command->info('Creating roles and permissions...');
         $this->call(RolesAndPermissionsSeeder::class);
 
-        $this->command->info('Creating demo tenant...');
-        $tenant = $this->createTenant();
+        // ============================================
+        // FRANCE COMPANY
+        // ============================================
+        $this->command->info('Creating French demo tenant...');
+        $frTenant = $this->createTenant('FR', 'Demo Garage France', 'demo-garage-fr', 'EUR');
 
-        $this->command->info('Creating demo company...');
-        $company = $this->createCompany($tenant);
+        $this->command->info('Creating French demo company...');
+        $frCompany = $this->createCompany($frTenant, 'FR', 'Demo Garage France', 'EUR');
 
-        $this->command->info('Creating test users...');
-        $this->createUsers($tenant, $company);
+        $this->command->info('Creating test users for French company...');
+        $this->createUsers($frTenant, $frCompany);
 
-        $this->command->info('Creating chart of accounts...');
+        $this->command->info('Creating French chart of accounts...');
         $franceSeeder = new FranceChartOfAccountsSeeder;
         $franceSeeder->setCommand($this->command);
-        $franceSeeder->run($company->id, $tenant->id);
+        $franceSeeder->run($frCompany->id, $frTenant->id);
 
-        // Fiscal years are automatically created via CompanyCreated event
+        $this->command->info('Creating payment methods for French company...');
+        $this->call(PaymentMethodSeeder::class, false, ['company' => $frCompany]);
 
-        $this->command->info('Creating payment methods...');
-        $this->call(PaymentMethodSeeder::class);
+        $this->command->info('Creating payment repositories for French company...');
+        $this->call(PaymentRepositorySeeder::class, false, ['company' => $frCompany]);
 
-        $this->command->info('Creating payment repositories...');
-        $this->call(PaymentRepositorySeeder::class);
+        $this->command->info('Creating partners for French company...');
+        $this->createPartners($frTenant, $frCompany);
 
-        $this->command->info('Creating test partners (customers and suppliers)...');
-        $this->createPartners($tenant, $company);
+        $this->command->info('Creating products for French company...');
+        $this->createProducts($frCompany);
 
-        $this->command->info('Creating products...');
-        $this->createProducts($company);
+        $this->command->info('Creating vehicles for French company...');
+        $this->createVehicles($frCompany);
 
-        $this->command->info('Creating vehicles...');
-        $this->createVehicles($company);
+        $this->command->info('Creating stock levels for French company...');
+        $this->call(StockLevelSeeder::class, false, ['company' => $frCompany]);
 
+        // ============================================
+        // TUNISIA COMPANY
+        // ============================================
+        $this->command->info('Creating Tunisian demo tenant...');
+        $tnTenant = $this->createTenant('TN', 'Demo Garage Tunisia', 'demo-garage-tn', 'TND');
+
+        $this->command->info('Creating Tunisian demo company...');
+        $tnCompany = $this->createCompany($tnTenant, 'TN', 'Demo Garage Tunisia', 'TND');
+
+        $this->command->info('Creating test users for Tunisian company...');
+        $this->createUsers($tnTenant, $tnCompany);
+
+        $this->command->info('Creating Tunisian chart of accounts...');
+        $tunisiaSeeder = new TunisiaChartOfAccountsSeeder;
+        $tunisiaSeeder->setCommand($this->command);
+        $tunisiaSeeder->run($tnCompany->id, $tnTenant->id);
+
+        $this->command->info('Creating payment methods for Tunisian company...');
+        $this->call(PaymentMethodSeeder::class, false, ['company' => $tnCompany]);
+
+        $this->command->info('Creating payment repositories for Tunisian company...');
+        $this->call(PaymentRepositorySeeder::class, false, ['company' => $tnCompany]);
+
+        $this->command->info('Creating stamp duty rules for Tunisia...');
+        $this->call(TunisiaStampDutySeeder::class);
+
+        $this->command->info('Creating partners for Tunisian company...');
+        $this->createPartners($tnTenant, $tnCompany);
+
+        $this->command->info('Creating products for Tunisian company...');
+        $this->createProducts($tnCompany);
+
+        $this->command->info('Creating vehicles for Tunisian company...');
+        $this->createVehicles($tnCompany);
+
+        $this->command->info('Creating stock levels for Tunisian company...');
+        $this->call(StockLevelSeeder::class, false, ['company' => $tnCompany]);
+
+        // ============================================
+        // SHARED DATA (create only once)
+        // ============================================
         $this->command->info('Creating Smart Payment test data...');
         $this->call(SmartPaymentTestDataSeeder::class);
 
-        $this->command->info('Creating stock levels...');
-        $this->call(StockLevelSeeder::class);
-
-        $this->command->info('Database seeding completed!');
+        $this->command->info('Database seeding completed with 2 companies (France + Tunisia)!');
     }
 
-    private function createTenant(): Tenant
+    private function createTenant(string $countryCode, string $name, string $slug, string $currency): Tenant
     {
         return Tenant::create([
-            'name' => 'Demo Garage',
-            'slug' => 'demo-garage',
+            'name' => $name,
+            'slug' => $slug,
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
-            'tax_id' => 'FR12345678901',
-            'country_code' => 'FR',
-            'currency_code' => 'EUR',
+            'tax_id' => $countryCode.'12345678901',
+            'country_code' => $countryCode,
+            'currency_code' => $currency,
             'settings' => [
-                'timezone' => 'Europe/Paris',
+                'timezone' => $countryCode === 'TN' ? 'Africa/Tunis' : 'Europe/Paris',
                 'locale' => 'fr',
                 'date_format' => 'd/m/Y',
                 'fiscal_year_start' => '01-01',
@@ -102,17 +144,17 @@ class DatabaseSeeder extends Seeder
         ]);
     }
 
-    private function createCompany(Tenant $tenant): Company
+    private function createCompany(Tenant $tenant, string $countryCode, string $name, string $currency): Company
     {
         return Company::create([
             'tenant_id' => $tenant->id,
-            'name' => 'Demo Garage',
-            'legal_name' => 'Demo Garage SARL',
-            'country_code' => 'FR',
-            'tax_id' => 'FR12345678901',
-            'currency' => 'EUR',
+            'name' => $name,
+            'legal_name' => $name.' SARL',
+            'country_code' => $countryCode,
+            'tax_id' => $countryCode.'12345678901',
+            'currency' => $currency,
             'locale' => 'fr',
-            'timezone' => 'Europe/Paris',
+            'timezone' => $countryCode === 'TN' ? 'Africa/Tunis' : 'Europe/Paris',
             'date_format' => 'd/m/Y',
             'fiscal_year_start_month' => 1,
             'status' => CompanyStatus::Active,
@@ -186,10 +228,14 @@ class DatabaseSeeder extends Seeder
 
     private function createPartners(Tenant $tenant, Company $company): void
     {
+        // Determine country state based on company
+        $countryState = $company->country_code === 'FR' ? 'france' : 'tunisia';
+
         // Create 50 customers using factory
         Partner::factory()
             ->count(50)
             ->customer()
+            ->$countryState()
             ->create([
                 'tenant_id' => $tenant->id,
                 'company_id' => $company->id,
@@ -199,6 +245,7 @@ class DatabaseSeeder extends Seeder
         Partner::factory()
             ->count(30)
             ->supplier()
+            ->$countryState()
             ->create([
                 'tenant_id' => $tenant->id,
                 'company_id' => $company->id,
@@ -208,6 +255,7 @@ class DatabaseSeeder extends Seeder
         Partner::factory()
             ->count(10)
             ->both()
+            ->$countryState()
             ->create([
                 'tenant_id' => $tenant->id,
                 'company_id' => $company->id,
@@ -217,12 +265,13 @@ class DatabaseSeeder extends Seeder
         Partner::factory()
             ->count(5)
             ->inactive()
+            ->$countryState()
             ->create([
                 'tenant_id' => $tenant->id,
                 'company_id' => $company->id,
             ]);
 
-        $this->command->info('Created 95 partners (50 customers, 30 suppliers, 10 both, 5 inactive)');
+        $this->command->info("Created 95 partners for {$company->name} (50 customers, 30 suppliers, 10 both, 5 inactive)");
     }
 
     private function createProducts(Company $company): void

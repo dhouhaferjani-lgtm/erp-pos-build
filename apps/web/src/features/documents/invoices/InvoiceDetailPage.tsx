@@ -1,0 +1,664 @@
+import { useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
+import { ArrowLeft, Edit, Calendar, Building2, FileText, Check, Printer, Send, Download, Eye, Car, CreditCard, MinusCircle, Lock } from 'lucide-react'
+import { api, apiPost, getErrorMessage } from '../../../lib/api'
+import { formatCurrency } from '../../../lib/format'
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
+import { RecordPaymentModal } from '../../../components/organisms'
+import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
+import { DocumentAttachments } from '../components/DocumentAttachments'
+import { TaxBreakdownPanel } from '../components/TaxBreakdownPanel'
+import { CreateCreditNoteForm, CreditNoteList } from '../components'
+import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail, useCreditNotes } from '../hooks'
+import { useCompany } from '../../../hooks/useCompany'
+import type { Document } from '../../../types/document'
+
+type ConfirmAction = 'confirm' | 'post' | null
+type ActiveTab = 'related' | 'attachments' | 'creditNotes' | 'payments'
+
+export function InvoiceDetailPage() {
+  const { t } = useTranslation(['sales', 'common'])
+  const { id = '' } = useParams<{ id: string }>()
+  const queryClient = useQueryClient()
+  const { currentCompany } = useCompany()
+
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [showCreditNoteForm, setShowCreditNoteForm] = useState(false)
+  const [showEmailModal, setShowEmailModal] = useState(false)
+  const [activeTab, setActiveTab] = useState<ActiveTab>('related')
+  const [emailForm, setEmailForm] = useState({
+    recipientEmail: '',
+    subject: '',
+    message: '',
+    ccEmails: '',
+  })
+
+  // Fetch invoice
+  const { data: invoice, isLoading, error } = useQuery({
+    queryKey: ['document', 'invoice', id],
+    queryFn: async () => {
+      const response = await api.get<{ data: Document }>(`/invoices/${id}`)
+      return response.data.data
+    },
+    enabled: id.length > 0,
+  })
+
+  // Fetch credit notes for posted invoices
+  const { data: creditNotesData } = useCreditNotes(
+    invoice?.status === 'posted' ? { source_invoice_id: id } : undefined
+  )
+  const creditNotes = creditNotesData ?? []
+
+  // PDF mutations
+  const downloadPdfMutation = useDownloadPdf()
+  const previewPdfMutation = usePreviewPdf()
+  const printPdfMutation = usePrintPdf()
+  const sendEmailMutation = useSendDocumentEmail()
+
+  // Confirm invoice mutation
+  const confirmMutation = useMutation({
+    mutationFn: () => apiPost<Document>(`/invoices/${id}/confirm`, {}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['document', 'invoice', id] })
+      void queryClient.invalidateQueries({ queryKey: ['documents'] })
+      toast.success(t('documents.messages.confirmed'))
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
+    },
+  })
+
+  // Post invoice mutation (fiscal posting)
+  const postMutation = useMutation({
+    mutationFn: () => apiPost<Document>(`/invoices/${id}/post`, {}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['document', 'invoice', id] })
+      void queryClient.invalidateQueries({ queryKey: ['documents'] })
+      toast.success(t('documents.messages.posted'))
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
+    },
+  })
+
+  const isActionPending = confirmMutation.isPending || postMutation.isPending
+
+  // Action handlers
+  const handleConfirm = () => {
+    confirmMutation.mutate()
+    setConfirmAction(null)
+  }
+
+  const handlePost = () => {
+    postMutation.mutate()
+    setConfirmAction(null)
+  }
+
+  const handleDownloadPdf = () => {
+    if (!invoice) return
+    downloadPdfMutation.mutate(invoice.id)
+  }
+
+  const handlePreviewPdf = () => {
+    if (!invoice) return
+    previewPdfMutation.mutate(invoice.id)
+  }
+
+  const handlePrintPdf = () => {
+    if (!invoice) return
+    printPdfMutation.mutate(invoice.id)
+  }
+
+  const handleSendEmail = () => {
+    if (!invoice) return
+
+    const { recipientEmail, subject, message, ccEmails } = emailForm
+
+    sendEmailMutation.mutate({
+      documentId: invoice.id,
+      recipientEmail,
+      subject,
+      message,
+      ccEmails: ccEmails.split(',').map(e => e.trim()).filter(e => e),
+    }, {
+      onSuccess: () => {
+        setShowEmailModal(false)
+        setEmailForm({ recipientEmail: '', subject: '', message: '', ccEmails: '' })
+        toast.success(t('common.emailSent'))
+      },
+    })
+  }
+
+  const handlePaymentRecorded = () => {
+    setShowPaymentModal(false)
+    void queryClient.invalidateQueries({ queryKey: ['document', 'invoice', id] })
+    void queryClient.invalidateQueries({ queryKey: ['documents'] })
+  }
+
+  const handleCreditNoteCreated = () => {
+    setShowCreditNoteForm(false)
+    void queryClient.invalidateQueries({ queryKey: ['document', 'invoice', id] })
+    void queryClient.invalidateQueries({ queryKey: ['documents'] })
+    void queryClient.invalidateQueries({ queryKey: ['credit-notes'] })
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">{t('common:loading')}</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error || !invoice) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-800">{t('common.errorLoadingData')}</p>
+        </div>
+      </div>
+    )
+  }
+
+  const canEdit = invoice.status === 'draft'
+  const canConfirm = invoice.status === 'draft'
+  const canPost = invoice.status === 'confirmed'
+  const canRecordPayment = invoice.status === 'posted' && parseFloat(invoice.balance_due || '0') > 0
+  const canCreateCreditNote = invoice.status === 'posted'
+  const isPosted = invoice.status === 'posted'
+
+  const balanceDue = parseFloat(invoice.balance_due || invoice.total)
+  const isPaid = balanceDue === 0
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Header */}
+      <div className="mb-6">
+        <Link
+          to="/sales/invoices"
+          className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-4"
+        >
+          <ArrowLeft className="h-4 w-4 mr-1" />
+          {t('invoices.backToList')}
+        </Link>
+
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">{invoice.document_number}</h1>
+            <div className="mt-2 flex items-center gap-2">
+              <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800">
+                {t('documents.types.invoice')}
+              </span>
+              <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${
+                invoice.status === 'draft' ? 'bg-gray-100 text-gray-800' :
+                invoice.status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
+                invoice.status === 'posted' ? 'bg-green-100 text-green-800' :
+                'bg-red-100 text-red-800'
+              }`}>
+                {t(`documents.statuses.${invoice.status}`)}
+              </span>
+              {isPosted && (
+                <>
+                  {isPaid ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800">
+                      <Check className="h-4 w-4" />
+                      {t('invoices.paid')}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-3 py-1 text-sm font-medium text-orange-800">
+                      <CreditCard className="h-4 w-4" />
+                      {t('invoices.balanceDue')}: {formatCurrency(balanceDue, { currency: currentCompany?.currency ?? 'EUR' })}
+                    </span>
+                  )}
+                  <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-800">
+                    <Lock className="h-4 w-4" />
+                    {t('invoices.fiscallySealed')}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {canEdit && (
+              <Link
+                to={`/sales/invoices/${invoice.id}/edit`}
+                className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+              >
+                <Edit className="h-4 w-4" />
+                {t('common:edit')}
+              </Link>
+            )}
+
+            {/* PDF Actions */}
+            <button
+              onClick={handleDownloadPdf}
+              disabled={downloadPdfMutation.isPending}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+            >
+              <Download className="h-4 w-4" />
+              {t('common:download')}
+            </button>
+
+            <button
+              onClick={handlePreviewPdf}
+              disabled={previewPdfMutation.isPending}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+            >
+              <Eye className="h-4 w-4" />
+              {t('common:preview')}
+            </button>
+
+            <button
+              onClick={handlePrintPdf}
+              disabled={printPdfMutation.isPending}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+            >
+              <Printer className="h-4 w-4" />
+              {t('common:print')}
+            </button>
+
+            <button
+              onClick={() => setShowEmailModal(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            >
+              <Send className="h-4 w-4" />
+              {t('common:send')}
+            </button>
+
+            {canRecordPayment && (
+              <button
+                onClick={() => setShowPaymentModal(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700"
+              >
+                <CreditCard className="h-4 w-4" />
+                {t('invoices.recordPayment')}
+              </button>
+            )}
+
+            {canCreateCreditNote && (
+              <button
+                onClick={() => setShowCreditNoteForm(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700"
+              >
+                <MinusCircle className="h-4 w-4" />
+                {t('invoices.createCreditNote')}
+              </button>
+            )}
+
+            {canConfirm && (
+              <button
+                onClick={() => setConfirmAction('confirm')}
+                disabled={isActionPending}
+                className="inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+              >
+                <Check className="h-4 w-4" />
+                {t('documents.confirm')}
+              </button>
+            )}
+
+            {canPost && (
+              <button
+                onClick={() => setConfirmAction('post')}
+                disabled={isActionPending}
+                className="inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
+              >
+                <Lock className="h-4 w-4" />
+                {t('invoices.post')}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
+      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+        {/* Details Section */}
+        <div className="px-4 py-5 sm:px-6">
+          <div className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-3">
+            <div>
+              <dt className="text-sm font-medium text-gray-500 flex items-center gap-1">
+                <Calendar className="h-4 w-4" />
+                {t('documents.documentDate')}
+              </dt>
+              <dd className="mt-1 text-sm text-gray-900">
+                {new Date(invoice.document_date).toLocaleDateString()}
+              </dd>
+            </div>
+
+            {invoice.due_date && (
+              <div>
+                <dt className="text-sm font-medium text-gray-500 flex items-center gap-1">
+                  <Calendar className="h-4 w-4" />
+                  {t('invoices.dueDate')}
+                </dt>
+                <dd className="mt-1 text-sm text-gray-900">
+                  {new Date(invoice.due_date).toLocaleDateString()}
+                </dd>
+              </div>
+            )}
+
+            <div>
+              <dt className="text-sm font-medium text-gray-500 flex items-center gap-1">
+                <Building2 className="h-4 w-4" />
+                {t('documents.customer')}
+              </dt>
+              <dd className="mt-1 text-sm text-gray-900">
+                {invoice.partner?.name || '-'}
+              </dd>
+            </div>
+
+            {invoice.vehicleContext && (
+              <div>
+                <dt className="text-sm font-medium text-gray-500 flex items-center gap-1">
+                  <Car className="h-4 w-4" />
+                  {t('documents.vehicle')}
+                </dt>
+                <dd className="mt-1 text-sm text-gray-900">
+                  {invoice.vehicleContext.vehicle_snapshot?.make} {invoice.vehicleContext.vehicle_snapshot?.model}
+                  {invoice.vehicleContext.vehicle_snapshot?.license_plate &&
+                    ` (${invoice.vehicleContext.vehicle_snapshot.license_plate})`
+                  }
+                </dd>
+              </div>
+            )}
+
+            {invoice.notes && (
+              <div className="sm:col-span-3">
+                <dt className="text-sm font-medium text-gray-500 flex items-center gap-1">
+                  <FileText className="h-4 w-4" />
+                  {t('documents.notes')}
+                </dt>
+                <dd className="mt-1 text-sm text-gray-900 whitespace-pre-wrap">
+                  {invoice.notes}
+                </dd>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Lines Table */}
+        <div className="border-t border-gray-200">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('documents.description')}
+                </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('documents.quantity')}
+                </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('documents.unitPrice')}
+                </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('documents.total')}
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {invoice.lines?.map((line) => (
+                <tr key={line.id}>
+                  <td className="px-6 py-4 text-sm text-gray-900">
+                    {line.description}
+                    {line.notes && (
+                      <div className="text-xs text-gray-500 mt-1">{line.notes}</div>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-900 text-right">
+                    {parseFloat(line.quantity)}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-900 text-right">
+                    {formatCurrency(parseFloat(line.unit_price), { currency: currentCompany?.currency ?? 'EUR' })}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-900 text-right font-medium">
+                    {formatCurrency(parseFloat(line.line_total), { currency: currentCompany?.currency ?? 'EUR' })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Totals */}
+        <div className="bg-gray-50 px-4 py-5 sm:px-6">
+          <div className="flex justify-end">
+            <dl className="space-y-2 text-sm">
+              <div className="flex justify-between gap-12">
+                <dt className="text-gray-500">{t('documents.subtotal')}</dt>
+                <dd className="text-gray-900 font-medium">
+                  {formatCurrency(parseFloat(invoice.subtotal), { currency: currentCompany?.currency ?? 'EUR' })}
+                </dd>
+              </div>
+              {parseFloat(invoice.tax_amount) > 0 && (
+                <div className="flex justify-between gap-12">
+                  <dt className="text-gray-500">{t('documents.tax')}</dt>
+                  <dd className="text-gray-900 font-medium">
+                    {formatCurrency(parseFloat(invoice.tax_amount), { currency: currentCompany?.currency ?? 'EUR' })}
+                  </dd>
+                </div>
+              )}
+              <div className="flex justify-between gap-12 text-base font-bold pt-2 border-t border-gray-200">
+                <dt className="text-gray-900">{t('documents.total')}</dt>
+                <dd className="text-gray-900">
+                  {formatCurrency(parseFloat(invoice.total), { currency: currentCompany?.currency ?? 'EUR' })}
+                </dd>
+              </div>
+              {isPosted && (
+                <div className="flex justify-between gap-12 text-base font-bold text-orange-600">
+                  <dt>{t('invoices.balanceDue')}</dt>
+                  <dd>{formatCurrency(balanceDue, { currency: currentCompany?.currency ?? 'EUR' })}</dd>
+                </div>
+              )}
+            </dl>
+          </div>
+        </div>
+      </div>
+        </div>
+
+        {/* Tax Breakdown Sidebar */}
+        <div className="lg:col-span-1">
+          <TaxBreakdownPanel
+            documentId={invoice.id}
+            documentType="invoice"
+            documentStatus={invoice.status}
+          />
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="mt-6">
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setActiveTab('related')}
+              className={`${
+                activeTab === 'related'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+            >
+              {t('documents.relatedDocuments')}
+            </button>
+            <button
+              onClick={() => setActiveTab('attachments')}
+              className={`${
+                activeTab === 'attachments'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+            >
+              {t('documents.attachments')}
+            </button>
+            {isPosted && (
+              <>
+                <button
+                  onClick={() => setActiveTab('creditNotes')}
+                  className={`${
+                    activeTab === 'creditNotes'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+                >
+                  {t('invoices.creditNotes')} {creditNotes.length > 0 && `(${creditNotes.length})`}
+                </button>
+                <button
+                  onClick={() => setActiveTab('payments')}
+                  className={`${
+                    activeTab === 'payments'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+                >
+                  {t('invoices.paymentHistory')}
+                </button>
+              </>
+            )}
+          </nav>
+        </div>
+
+        <div className="mt-6">
+          {activeTab === 'related' && <RelatedDocumentsTab documentId={invoice.id} />}
+          {activeTab === 'attachments' && <DocumentAttachments documentId={invoice.id} />}
+          {activeTab === 'creditNotes' && isPosted && (
+            <CreditNoteList creditNotes={creditNotes} invoiceId={invoice.id} />
+          )}
+          {activeTab === 'payments' && isPosted && (
+            <div className="bg-white shadow sm:rounded-lg p-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">{t('invoices.paymentHistory')}</h3>
+              {invoice.allocations && invoice.allocations.length > 0 ? (
+                <div className="space-y-4">
+                  {invoice.allocations.map((allocation) => (
+                    <div key={allocation.id} className="flex justify-between items-center border-b border-gray-200 pb-4">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">
+                          {allocation.payment?.paymentMethod?.name || t('common.payment')}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {new Date(allocation.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-gray-900">
+                          {formatCurrency(parseFloat(allocation.amount), { currency: currentCompany?.currency ?? 'EUR' })}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">{t('invoices.noPayments')}</p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Confirmation Dialogs */}
+      <ConfirmDialog
+        isOpen={confirmAction === 'confirm'}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={handleConfirm}
+        title={t('documents.confirmTitle')}
+        message={t('documents.confirmMessage')}
+        confirmText={t('common:confirm')}
+        isLoading={confirmMutation.isPending}
+      />
+
+      <ConfirmDialog
+        isOpen={confirmAction === 'post'}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={handlePost}
+        title={t('invoices.postTitle')}
+        message={t('invoices.postMessage')}
+        confirmText={t('invoices.post')}
+        isLoading={postMutation.isPending}
+      />
+
+      {/* Payment Modal */}
+      {showPaymentModal && (
+        <RecordPaymentModal
+          isOpen={showPaymentModal}
+          onClose={() => setShowPaymentModal(false)}
+          invoiceId={invoice.id}
+          onSuccess={handlePaymentRecorded}
+        />
+      )}
+
+      {/* Credit Note Form Modal */}
+      {showCreditNoteForm && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto">
+            <CreateCreditNoteForm
+              invoiceId={invoice.id}
+              onSuccess={handleCreditNoteCreated}
+              onCancel={() => setShowCreditNoteForm(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Email Modal */}
+      {showEmailModal && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">{t('common.sendEmail')}</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t('common.recipientEmail')}</label>
+                <input
+                  type="email"
+                  value={emailForm.recipientEmail}
+                  onChange={(e) => setEmailForm({ ...emailForm, recipientEmail: e.target.value })}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t('common.subject')}</label>
+                <input
+                  type="text"
+                  value={emailForm.subject}
+                  onChange={(e) => setEmailForm({ ...emailForm, subject: e.target.value })}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t('common.message')}</label>
+                <textarea
+                  value={emailForm.message}
+                  onChange={(e) => setEmailForm({ ...emailForm, message: e.target.value })}
+                  rows={4}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                />
+              </div>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setShowEmailModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  {t('common:cancel')}
+                </button>
+                <button
+                  onClick={handleSendEmail}
+                  disabled={sendEmailMutation.isPending || !emailForm.recipientEmail}
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {t('common:send')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

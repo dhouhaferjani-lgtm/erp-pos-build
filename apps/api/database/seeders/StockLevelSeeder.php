@@ -16,16 +16,40 @@ class StockLevelSeeder extends Seeder
 {
     /**
      * Run the database seeds.
+     *
+     * @param  Company|null  $company  Optional specific company to seed for
      */
-    public function run(): void
+    public function run(?Company $company = null): void
     {
-        // Get the first tenant and company (demo tenant)
-        $tenant = Tenant::first();
-        $company = Company::first();
+        // If a specific company is provided, seed only for that company
+        if ($company !== null) {
+            $this->seedForCompany($company);
 
-        if (! $tenant || ! $company) {
-            $this->command->error('No tenant or company found. Please run DatabaseSeeder first.');
+            return;
+        }
 
+        // Otherwise, seed for ALL companies (dev mode)
+        $companies = Company::all();
+
+        if ($companies->isEmpty()) {
+            $this->command?->error('No companies found. Please run DatabaseSeeder first.');
+
+            return;
+        }
+
+        foreach ($companies as $comp) {
+            $this->seedForCompany($comp);
+        }
+    }
+
+    /**
+     * Seed stock levels for a specific company.
+     */
+    private function seedForCompany(Company $company): void
+    {
+        $tenant = Tenant::find($company->tenant_id);
+
+        if (! $tenant) {
             return;
         }
 
@@ -33,7 +57,7 @@ class StockLevelSeeder extends Seeder
         $defaultLocation = Location::forCompany($company->id)->first();
 
         if (! $defaultLocation) {
-            $this->command->warn('No location found for company. Creating default warehouse...');
+            $this->command?->warn("No location found for {$company->name}. Creating default warehouse...");
             $defaultLocation = Location::create([
                 'id' => Str::uuid()->toString(),
                 'company_id' => $company->id,
@@ -50,12 +74,12 @@ class StockLevelSeeder extends Seeder
         $totalProducts = Product::forCompany($company->id)->count();
 
         if ($totalProducts === 0) {
-            $this->command->error('No products found. Please run DatabaseSeeder first.');
+            $this->command?->warn("No products found for {$company->name}. Skipping stock levels.");
 
             return;
         }
 
-        $this->command->info("Creating stock levels for {$totalProducts} products...");
+        $this->command?->info("Creating stock levels for {$totalProducts} products in {$company->name}...");
 
         // Chunk products to avoid memory issues with 1000+ items
         $batchSize = 100;
@@ -94,6 +118,6 @@ class StockLevelSeeder extends Seeder
                 }
             });
 
-        $this->command->info("Created stock levels for {$created} products in location: {$defaultLocation->name}");
+        $this->command?->info("Created stock levels for {$created} products in {$company->name} ({$defaultLocation->name})");
     }
 }

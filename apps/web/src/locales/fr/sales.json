@@ -60,8 +60,13 @@
     "partnerInfo": "Informations partenaire",
     "documentInfo": "Informations document",
     "date": "Date",
+    "documentDate": "Date du document",
     "issueDate": "Date d'émission",
     "dueDate": "Date d'échéance",
+    "customer": "Client",
+    "description": "Description",
+    "quantity": "Quantité",
+    "unitPrice": "Prix unitaire",
     "total": "Total",
     "subtotal": "Sous-total",
     "tax": "TVA",
@@ -80,9 +85,14 @@
     "send": "Envoyer",
     "cancel": "Annuler",
     "post": "Comptabiliser",
+    "confirm": "Confirmer",
     "recordPayment": "Enregistrer un paiement",
     "createCreditNote": "Créer un avoir",
     "conversionError": "Échec de la conversion du document. Veuillez réessayer.",
+    "relatedDocuments": "Documents liés",
+    "attachments": "Pièces jointes",
+    "confirmTitle": "Confirmer le document",
+    "confirmMessage": "Êtes-vous sûr de vouloir confirmer ce document ? Une fois confirmé, il ne pourra plus être modifié.",
     "types": {
       "quote": "Devis",
       "salesOrder": "Bon de commande",
@@ -153,6 +163,7 @@
   "orders": {
     "title": "Commandes",
     "new": "Nouvelle commande",
+    "backToList": "Retour aux commandes",
     "convertToInvoice": "Convertir en facture",
     "convertToDelivery": "Convertir en bon de livraison",
     "fullyDelivered": "Entièrement livré",
@@ -173,7 +184,10 @@
   "quotes": {
     "title": "Devis",
     "new": "Nouveau devis",
+    "backToList": "Retour aux devis",
     "convertToOrder": "Convertir en commande",
+    "convertToOrderTitle": "Convertir en bon de commande",
+    "convertToOrderMessage": "Cela créera un nouveau bon de commande à partir de ce devis. Le devis restera inchangé.",
     "expiry": {
       "expired": "Ce devis a expiré",
       "expiresIn": "Expire dans {{days}} jours",
@@ -414,6 +428,37 @@
         "title": "Créer un avoir",
         "message": "Souhaitez-vous créer un avoir pour ce retour ?",
         "button": "Créer un avoir"
+      }
+    }
+  },
+  "tax": {
+    "breakdown": {
+      "title": "Détail des taxes",
+      "subtotal": "Sous-total",
+      "discount": "Remise",
+      "lineTax": "TVA",
+      "stampDuty": "Droit de timbre",
+      "totalTax": "Total taxes",
+      "total": "Total",
+      "noTaxes": "Aucune taxe appliquée"
+    },
+    "stampDuty": {
+      "applied": "Le droit de timbre sera appliqué lors de la validation de cette facture",
+      "notApplied": "Pas de droit de timbre (brouillon/devis/avoir)",
+      "tunisiaInvoice": "Timbre facture Tunisie : {{amount}}",
+      "tunisiaReceipt": "Timbre ticket Tunisie : {{amount}}"
+    },
+    "settings": {
+      "title": "Paramètres de taxe",
+      "companyDefault": "Taux de TVA par défaut",
+      "categoryDefault": "Taux TVA par catégorie",
+      "productOverride": "Taux TVA personnalisé",
+      "inheritedFrom": "Hérité de {{source}}",
+      "source": {
+        "company": "Entreprise",
+        "category": "Catégorie",
+        "product": "Produit",
+        "line": "Ligne personnalisée"
       }
     }
   }

@@ -60,8 +60,13 @@
     "partnerInfo": "Partner Information",
     "documentInfo": "Document Information",
     "date": "Date",
+    "documentDate": "Document Date",
     "issueDate": "Issue Date",
     "dueDate": "Due Date",
+    "customer": "Customer",
+    "description": "Description",
+    "quantity": "Quantity",
+    "unitPrice": "Unit Price",
     "total": "Total",
     "subtotal": "Subtotal",
     "tax": "Tax",
@@ -80,9 +85,14 @@
     "send": "Send",
     "cancel": "Cancel",
     "post": "Post",
+    "confirm": "Confirm",
     "recordPayment": "Record Payment",
     "createCreditNote": "Create Credit Note",
     "conversionError": "Failed to convert document. Please try again.",
+    "relatedDocuments": "Related Documents",
+    "attachments": "Attachments",
+    "confirmTitle": "Confirm Document",
+    "confirmMessage": "Are you sure you want to confirm this document? Once confirmed, it cannot be edited.",
     "types": {
       "quote": "Quote",
       "salesOrder": "Sales Order",
@@ -153,6 +163,7 @@
   "orders": {
     "title": "Orders",
     "new": "New Order",
+    "backToList": "Back to Orders",
     "convertToInvoice": "Convert to Invoice",
     "convertToDelivery": "Convert to Delivery Note",
     "fullyDelivered": "Fully Delivered",
@@ -173,7 +184,10 @@
   "quotes": {
     "title": "Quotes",
     "new": "New Quote",
+    "backToList": "Back to Quotes",
     "convertToOrder": "Convert to Order",
+    "convertToOrderTitle": "Convert to Sales Order",
+    "convertToOrderMessage": "This will create a new sales order from this quote. The quote will remain unchanged.",
     "expiry": {
       "expired": "This quote has expired",
       "expiresIn": "Expires in {{days}} days",
@@ -418,6 +432,37 @@
         "title": "Create Credit Note",
         "message": "Would you like to create a credit note for this return?",
         "button": "Create Credit Note"
+      }
+    }
+  },
+  "tax": {
+    "breakdown": {
+      "title": "Tax Breakdown",
+      "subtotal": "Subtotal",
+      "discount": "Discount",
+      "lineTax": "VAT",
+      "stampDuty": "Stamp Duty",
+      "totalTax": "Total Tax",
+      "total": "Total",
+      "noTaxes": "No taxes applied"
+    },
+    "stampDuty": {
+      "applied": "Stamp duty will be applied when this invoice is posted",
+      "notApplied": "No stamp duty (draft/quote/credit note)",
+      "tunisiaInvoice": "Tunisia invoice stamp: {{amount}}",
+      "tunisiaReceipt": "Tunisia receipt stamp: {{amount}}"
+    },
+    "settings": {
+      "title": "Tax Settings",
+      "companyDefault": "Company Default Tax Rate",
+      "categoryDefault": "Category Default Tax Rate",
+      "productOverride": "Product Tax Override",
+      "inheritedFrom": "Inherited from {{source}}",
+      "source": {
+        "company": "Company",
+        "category": "Category",
+        "product": "Product",
+        "line": "Line Override"
       }
     }
   }
