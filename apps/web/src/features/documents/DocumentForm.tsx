@@ -164,11 +164,12 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
     }
   }, [effectiveType, watchedPartnerId, watchedNotes, watchedDocumentDate, watchedDueDate, lines])
 
-  // Auto-save hook (only for new documents, not when editing)
+  // Auto-save hook (works for both new and existing documents)
   const { draftId, isSaving, lastSavedAt } = useDraftAutoSave(
-    isEditing ? null : draftData,
+    draftData,
     {
-      enabled: !isEditing,
+      enabled: true,
+      existingDraftId: id || undefined,
       onSuccess: (savedDraftId) => {
         setAutoSaveDraftId(savedDraftId)
         console.log('Draft auto-saved:', savedDraftId)
