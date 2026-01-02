@@ -1,5 +1,8 @@
 import { useState } from 'react'
 import { ChevronRight, ChevronDown, Edit } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { useCompany } from '@/hooks/useCompany'
+import { formatCurrency } from '@/lib/formatCurrency'
 import type { Account } from '../types'
 
 interface AccountTreeViewProps {
@@ -8,6 +11,8 @@ interface AccountTreeViewProps {
 }
 
 export function AccountTreeView({ accounts, onEdit }: AccountTreeViewProps) {
+  const { i18n } = useTranslation()
+  const { currentCompany } = useCompany()
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
   // Build hierarchy
@@ -71,7 +76,9 @@ export function AccountTreeView({ accounts, onEdit }: AccountTreeViewProps) {
           </div>
 
           <div className="flex items-center gap-4">
-            <span className="font-mono text-sm text-gray-900">${account.balance}</span>
+            <span className="font-mono text-sm text-gray-900">
+              {currentCompany ? formatCurrency(account.balance, currentCompany.currency, i18n.language) : account.balance}
+            </span>
             {!account.is_system && (
               <button
                 onClick={() => { onEdit(account); }}
