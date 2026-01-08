@@ -42,6 +42,8 @@ class TaxationServiceProvider extends ServiceProvider
         $this->app->singleton(WithholdingCalculationService::class);
         $this->app->singleton(WithholdingHashChainService::class);
         $this->app->singleton(WithholdingCertificateService::class);
+        $this->app->singleton(TEJExportService::class);
+        $this->app->singleton(CertificatePDFService::class);
     }
 
     public function boot(): void

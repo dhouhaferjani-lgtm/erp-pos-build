@@ -47,11 +47,14 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // Withholding Certificates
     Route::prefix('withholding/certificates')->group(function (): void {
         Route::get('/', [WithholdingCertificateController::class, 'index']);
+        Route::get('/export-tej-batch', [WithholdingCertificateController::class, 'downloadBatchTEJXML']);
         Route::get('/{id}', [WithholdingCertificateController::class, 'show']);
         Route::post('/', [WithholdingCertificateController::class, 'store']);
         Route::post('/{id}/issue', [WithholdingCertificateController::class, 'issue']);
         Route::post('/{id}/void', [WithholdingCertificateController::class, 'void']);
         Route::post('/{id}/submit-tej', [WithholdingCertificateController::class, 'submitTEJ']);
+        Route::get('/{id}/download-pdf', [WithholdingCertificateController::class, 'downloadPDF']);
+        Route::get('/{id}/download-tej-xml', [WithholdingCertificateController::class, 'downloadTEJXML']);
         Route::delete('/{id}', [WithholdingCertificateController::class, 'destroy']);
     });
 });
