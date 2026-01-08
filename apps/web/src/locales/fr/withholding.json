@@ -1,0 +1,148 @@
+{
+  "title": "Retenue à la Source",
+  "withholdingTax": "Retenue à la Source",
+  "retenue": "Retenue à la Source",
+
+  "preview": {
+    "title": "Aperçu de la Retenue",
+    "calculating": "Calcul de la retenue...",
+    "noRuleFound": "Aucune règle de retenue trouvée",
+    "suggestedRate": "Taux suggéré : {{rate}}%"
+  },
+
+  "form": {
+    "applyWithholding": "Appliquer la retenue à la source",
+    "enable": "Activer la Retenue",
+    "recommendedAlert": "Une retenue à la source peut être requise pour ce paiement selon la réglementation en vigueur.",
+    "rate": "Taux de Retenue (%)",
+    "transactionType": "Type de Transaction",
+    "overrideReason": "Raison du Remplacement",
+    "overrideReasonRequired": "La raison du remplacement est requise lors de la spécification d'un taux manuel",
+    "grossAmount": "Montant Brut",
+    "withholdingAmount": "Montant Retenu",
+    "netPayment": "Paiement Net",
+    "calculation": "Aperçu du Calcul"
+  },
+
+  "transactionTypes": {
+    "services": "Services Professionnels",
+    "goods": "Biens",
+    "rental": "Location",
+    "rental_hotel": "Location Hôtelière",
+    "commission": "Commission / Courtage",
+    "export_services": "Services liés à l'Export"
+  },
+
+  "certificates": {
+    "title": "Attestations de Retenue",
+    "noCertificates": "Aucune attestation de retenue trouvée",
+    "number": "Numéro d'Attestation",
+    "reference": "Référence",
+    "direction": "Direction",
+    "partner": "Partenaire",
+    "year": "Année",
+    "grossAmount": "Montant Brut",
+    "withholdingAmount": "Retenu",
+    "netAmount": "Montant Net",
+    "rate": "Taux",
+    "status": "Statut",
+    "issuedAt": "Émise",
+    "createdAt": "Créée",
+
+    "actions": {
+      "issue": "Émettre l'Attestation",
+      "void": "Annuler l'Attestation",
+      "downloadPDF": "Télécharger PDF",
+      "downloadTEJ": "Télécharger TEJ XML",
+      "submitTEJ": "Soumettre à TEJ",
+      "viewDetails": "Voir les Détails"
+    },
+
+    "filters": {
+      "direction": "Direction",
+      "status": "Statut",
+      "year": "Année",
+      "partner": "Partenaire",
+      "dateRange": "Période"
+    },
+
+    "export": {
+      "batch": "Exporter par Lot",
+      "batchTEJ": "Exporter Lot TEJ XML",
+      "selectPeriod": "Sélectionner la Période",
+      "downloading": "Téléchargement..."
+    }
+  },
+
+  "direction": {
+    "purchase": "Achat (Nous Retenons)",
+    "sales": "Vente (Ils Retiennent)",
+    "purchaseShort": "Achat",
+    "salesShort": "Vente"
+  },
+
+  "status": {
+    "draft": "Brouillon",
+    "issued": "Émise",
+    "submitted": "Soumise",
+    "voided": "Annulée"
+  },
+
+  "details": {
+    "certificateInfo": "Informations sur l'Attestation",
+    "partnerInfo": "Informations sur le Partenaire",
+    "amountBreakdown": "Détail des Montants",
+    "ruleApplied": "Règle Appliquée",
+    "manualOverride": "Remplacement Manuel",
+    "overrideReason": "Raison du Remplacement",
+    "glAccount": "Compte Comptable",
+    "tejReference": "Référence TEJ",
+    "tejSubmittedAt": "Soumis à TEJ",
+    "hashChain": "Chaîne de Hachage Fiscal",
+    "sequence": "Séquence de la Chaîne",
+    "hash": "Hachage",
+    "previousHash": "Hachage Précédent"
+  },
+
+  "rules": {
+    "title": "Règles de Retenue à la Source",
+    "noRules": "Aucune règle de retenue trouvée",
+    "code": "Code",
+    "name": "Nom",
+    "rate": "Taux",
+    "effectiveFrom": "Effectif Depuis",
+    "effectiveTo": "Effectif Jusqu'à",
+    "isActive": "Actif",
+    "isGlobal": "Global",
+    "companySpecific": "Spécifique à l'Entreprise",
+    "conditions": "Conditions",
+    "transactionType": "Type de Transaction",
+    "partnerTaxStatus": "Statut Fiscal du Partenaire",
+    "minAmount": "Montant Minimum",
+    "description": "Description"
+  },
+
+  "messages": {
+    "certificateCreated": "Attestation de retenue créée avec succès",
+    "certificateIssued": "Attestation émise avec succès",
+    "certificateVoided": "Attestation annulée avec succès",
+    "certificateDeleted": "Attestation supprimée avec succès",
+    "tejSubmitted": "Attestation soumise à TEJ avec succès",
+    "downloadStarted": "Téléchargement démarré",
+    "calculationFailed": "Échec du calcul de la retenue",
+    "noApplicableRule": "Aucune règle de retenue applicable trouvée",
+    "confirmIssue": "Êtes-vous sûr de vouloir émettre cette attestation ? Cette action est irréversible.",
+    "confirmVoid": "Êtes-vous sûr de vouloir annuler cette attestation ?",
+    "confirmDelete": "Êtes-vous sûr de vouloir supprimer ce brouillon d'attestation ?",
+    "voidReasonRequired": "Veuillez fournir une raison pour l'annulation de cette attestation"
+  },
+
+  "validation": {
+    "rateRequired": "Le taux de retenue est requis",
+    "rateInvalid": "Le taux doit être entre 0 et 100",
+    "overrideReasonRequired": "La raison du remplacement est requise lors de la spécification d'un taux manuel",
+    "grossAmountRequired": "Le montant brut est requis",
+    "partnerRequired": "Le partenaire est requis",
+    "transactionTypeRequired": "Le type de transaction est requis"
+  }
+}

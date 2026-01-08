@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Product\Presentation\Controllers\CategoryController;
+use App\Modules\Product\Presentation\Controllers\CertificationController;
+use App\Modules\Product\Presentation\Controllers\HealthClaimController;
+use App\Modules\Product\Presentation\Controllers\IngredientController;
+use App\Modules\Product\Presentation\Controllers\KeyComponentController;
 use App\Modules\Product\Presentation\Controllers\ProductController;
 use App\Modules\Product\Presentation\Controllers\ProductImageController;
 use App\Modules\Product\Presentation\Controllers\PublicProductImageController;
@@ -53,6 +57,42 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         Route::put('/{id}', [CategoryController::class, 'update'])->name('categories.update');
         Route::delete('/{id}', [CategoryController::class, 'destroy'])->name('categories.destroy');
         Route::post('/reorder', [CategoryController::class, 'reorder'])->name('categories.reorder');
+    });
+
+    // Parapharmacy Master Data - Ingredients
+    Route::prefix('parapharmacy/ingredients')->middleware('can:settings.manage')->group(function () {
+        Route::get('/', [IngredientController::class, 'index'])->name('parapharmacy.ingredients.index');
+        Route::get('/{id}', [IngredientController::class, 'show'])->name('parapharmacy.ingredients.show');
+        Route::post('/', [IngredientController::class, 'store'])->name('parapharmacy.ingredients.store');
+        Route::patch('/{id}', [IngredientController::class, 'update'])->name('parapharmacy.ingredients.update');
+        Route::delete('/{id}', [IngredientController::class, 'destroy'])->name('parapharmacy.ingredients.destroy');
+    });
+
+    // Parapharmacy Master Data - Certifications
+    Route::prefix('parapharmacy/certifications')->middleware('can:settings.manage')->group(function () {
+        Route::get('/', [CertificationController::class, 'index'])->name('parapharmacy.certifications.index');
+        Route::get('/{id}', [CertificationController::class, 'show'])->name('parapharmacy.certifications.show');
+        Route::post('/', [CertificationController::class, 'store'])->name('parapharmacy.certifications.store');
+        Route::patch('/{id}', [CertificationController::class, 'update'])->name('parapharmacy.certifications.update');
+        Route::delete('/{id}', [CertificationController::class, 'destroy'])->name('parapharmacy.certifications.destroy');
+    });
+
+    // Parapharmacy Master Data - Health Claims
+    Route::prefix('parapharmacy/health-claims')->middleware('can:settings.manage')->group(function () {
+        Route::get('/', [HealthClaimController::class, 'index'])->name('parapharmacy.health-claims.index');
+        Route::get('/{id}', [HealthClaimController::class, 'show'])->name('parapharmacy.health-claims.show');
+        Route::post('/', [HealthClaimController::class, 'store'])->name('parapharmacy.health-claims.store');
+        Route::patch('/{id}', [HealthClaimController::class, 'update'])->name('parapharmacy.health-claims.update');
+        Route::delete('/{id}', [HealthClaimController::class, 'destroy'])->name('parapharmacy.health-claims.destroy');
+    });
+
+    // Parapharmacy Master Data - Key Components
+    Route::prefix('parapharmacy/key-components')->middleware('can:settings.manage')->group(function () {
+        Route::get('/', [KeyComponentController::class, 'index'])->name('parapharmacy.key-components.index');
+        Route::get('/{id}', [KeyComponentController::class, 'show'])->name('parapharmacy.key-components.show');
+        Route::post('/', [KeyComponentController::class, 'store'])->name('parapharmacy.key-components.store');
+        Route::patch('/{id}', [KeyComponentController::class, 'update'])->name('parapharmacy.key-components.update');
+        Route::delete('/{id}', [KeyComponentController::class, 'destroy'])->name('parapharmacy.key-components.destroy');
     });
 
     // Product Images (authenticated)

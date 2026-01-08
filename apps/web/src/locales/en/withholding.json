@@ -1,0 +1,148 @@
+{
+  "title": "Tax Withholding",
+  "withholdingTax": "Withholding Tax",
+  "retenue": "Retenue à la Source",
+
+  "preview": {
+    "title": "Withholding Preview",
+    "calculating": "Calculating withholding...",
+    "noRuleFound": "No withholding rule found",
+    "suggestedRate": "Suggested rate: {{rate}}%"
+  },
+
+  "form": {
+    "applyWithholding": "Apply tax withholding",
+    "enable": "Enable Withholding",
+    "recommendedAlert": "Tax withholding may be required for this payment based on current regulations.",
+    "rate": "Withholding Rate (%)",
+    "transactionType": "Transaction Type",
+    "overrideReason": "Override Reason",
+    "overrideReasonRequired": "Override reason is required when specifying manual rate",
+    "grossAmount": "Gross Amount",
+    "withholdingAmount": "Withholding Amount",
+    "netPayment": "Net Payment",
+    "calculation": "Calculation Preview"
+  },
+
+  "transactionTypes": {
+    "services": "Professional Services",
+    "goods": "Goods",
+    "rental": "Rental",
+    "rental_hotel": "Hotel Rental",
+    "commission": "Commission / Brokerage",
+    "export_services": "Export-Related Services"
+  },
+
+  "certificates": {
+    "title": "Withholding Certificates",
+    "noCertificates": "No withholding certificates found",
+    "number": "Certificate Number",
+    "reference": "Reference",
+    "direction": "Direction",
+    "partner": "Partner",
+    "year": "Year",
+    "grossAmount": "Gross Amount",
+    "withholdingAmount": "Withheld",
+    "netAmount": "Net Amount",
+    "rate": "Rate",
+    "status": "Status",
+    "issuedAt": "Issued",
+    "createdAt": "Created",
+
+    "actions": {
+      "issue": "Issue Certificate",
+      "void": "Void Certificate",
+      "downloadPDF": "Download PDF",
+      "downloadTEJ": "Download TEJ XML",
+      "submitTEJ": "Submit to TEJ",
+      "viewDetails": "View Details"
+    },
+
+    "filters": {
+      "direction": "Direction",
+      "status": "Status",
+      "year": "Year",
+      "partner": "Partner",
+      "dateRange": "Date Range"
+    },
+
+    "export": {
+      "batch": "Export Batch",
+      "batchTEJ": "Export Batch TEJ XML",
+      "selectPeriod": "Select Period",
+      "downloading": "Downloading..."
+    }
+  },
+
+  "direction": {
+    "purchase": "Purchase (We Withhold)",
+    "sales": "Sales (They Withhold)",
+    "purchaseShort": "Purchase",
+    "salesShort": "Sales"
+  },
+
+  "status": {
+    "draft": "Draft",
+    "issued": "Issued",
+    "submitted": "Submitted",
+    "voided": "Voided"
+  },
+
+  "details": {
+    "certificateInfo": "Certificate Information",
+    "partnerInfo": "Partner Information",
+    "amountBreakdown": "Amount Breakdown",
+    "ruleApplied": "Rule Applied",
+    "manualOverride": "Manual Override",
+    "overrideReason": "Override Reason",
+    "glAccount": "GL Account",
+    "tejReference": "TEJ Reference",
+    "tejSubmittedAt": "TEJ Submitted",
+    "hashChain": "Fiscal Hash Chain",
+    "sequence": "Chain Sequence",
+    "hash": "Hash",
+    "previousHash": "Previous Hash"
+  },
+
+  "rules": {
+    "title": "Withholding Tax Rules",
+    "noRules": "No withholding rules found",
+    "code": "Code",
+    "name": "Name",
+    "rate": "Rate",
+    "effectiveFrom": "Effective From",
+    "effectiveTo": "Effective To",
+    "isActive": "Active",
+    "isGlobal": "Global",
+    "companySpecific": "Company Specific",
+    "conditions": "Conditions",
+    "transactionType": "Transaction Type",
+    "partnerTaxStatus": "Partner Tax Status",
+    "minAmount": "Minimum Amount",
+    "description": "Description"
+  },
+
+  "messages": {
+    "certificateCreated": "Withholding certificate created successfully",
+    "certificateIssued": "Certificate issued successfully",
+    "certificateVoided": "Certificate voided successfully",
+    "certificateDeleted": "Certificate deleted successfully",
+    "tejSubmitted": "Certificate submitted to TEJ successfully",
+    "downloadStarted": "Download started",
+    "calculationFailed": "Failed to calculate withholding",
+    "noApplicableRule": "No applicable withholding rule found",
+    "confirmIssue": "Are you sure you want to issue this certificate? This action cannot be undone.",
+    "confirmVoid": "Are you sure you want to void this certificate?",
+    "confirmDelete": "Are you sure you want to delete this draft certificate?",
+    "voidReasonRequired": "Please provide a reason for voiding this certificate"
+  },
+
+  "validation": {
+    "rateRequired": "Withholding rate is required",
+    "rateInvalid": "Rate must be between 0 and 100",
+    "overrideReasonRequired": "Override reason is required when specifying manual rate",
+    "grossAmountRequired": "Gross amount is required",
+    "partnerRequired": "Partner is required",
+    "transactionTypeRequired": "Transaction type is required"
+  }
+}
