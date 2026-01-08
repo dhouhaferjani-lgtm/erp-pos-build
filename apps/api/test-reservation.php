@@ -14,7 +14,6 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Inventory\Application\Services\StockReservationService;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
 use App\Modules\Inventory\Domain\StockLevel;
-use App\Modules\Inventory\Domain\StockReservation;
 use App\Modules\Product\Domain\Product;
 use Illuminate\Support\Facades\DB;
 
@@ -24,7 +23,7 @@ echo "=====================================\n\n";
 try {
     // 1. Find a company
     $company = Company::first();
-    if (!$company) {
+    if (! $company) {
         echo "❌ No company found. Please seed the database first.\n";
         exit(1);
     }
@@ -34,7 +33,7 @@ try {
     $product = Product::where('tenant_id', $company->tenant_id)
         ->where('is_physical', true)
         ->first();
-    if (!$product) {
+    if (! $product) {
         echo "❌ No physical product found. Please seed products first.\n";
         exit(1);
     }
@@ -42,7 +41,7 @@ try {
 
     // 3. Find or create a location
     $location = \App\Modules\Company\Domain\Location::where('company_id', $company->id)->first();
-    if (!$location) {
+    if (! $location) {
         $location = \App\Modules\Company\Domain\Location::create([
             'id' => \Illuminate\Support\Str::uuid()->toString(),
             'tenant_id' => $company->tenant_id,
@@ -62,7 +61,7 @@ try {
         ->where('location_id', $location->id)
         ->first();
 
-    if (!$stockLevel) {
+    if (! $stockLevel) {
         $stockLevel = StockLevel::create([
             'id' => \Illuminate\Support\Str::uuid()->toString(),
             'tenant_id' => $company->tenant_id,
@@ -98,7 +97,7 @@ try {
     echo "   - ID: {$reservation->id}\n";
     echo "   - Quantity: {$reservation->quantity}\n";
     echo "   - Source: {$reservation->source_type->label()}\n";
-    echo "   - Expires: " . ($reservation->expires_at ? $reservation->expires_at->format('Y-m-d H:i:s') : 'Never') . "\n";
+    echo '   - Expires: '.($reservation->expires_at ? $reservation->expires_at->format('Y-m-d H:i:s') : 'Never')."\n";
 
     // 6. Verify stock level was updated
     $stockLevel->refresh();

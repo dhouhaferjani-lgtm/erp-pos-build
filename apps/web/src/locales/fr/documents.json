@@ -1,4 +1,16 @@
 {
+  "taxMention": {
+    "label": "Mention fiscale",
+    "placeholder": "ex: Exonéré TVA - Certificat #123",
+    "description": "Texte légal expliquant l'exonération fiscale (apparaîtra sur le document)"
+  },
+  "exemptionNotice": {
+    "title": "Client exonéré de taxe",
+    "description": "Ce client est marqué comme exonéré de taxe.",
+    "reason": "Raison :",
+    "verifyWarning": "Vérifier le certificat d'exonération avant d'appliquer un taux de 0%.",
+    "addMention": "Ajouter une mention fiscale au document si nécessaire."
+  },
   "attachments": {
     "title": "Pièces jointes",
     "dropzone": "Glissez-déposez des fichiers ici, ou cliquez pour parcourir",

@@ -11,9 +11,15 @@ use App\Modules\Accounting\Domain\Observers\JournalEntryObserver;
 use App\Modules\Accounting\Domain\Observers\JournalLineObserver;
 use App\Modules\Company\Application\Services\LocationService;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationContext;
 use App\Modules\Inventory\Application\Services\InventoryService;
 use App\Modules\Partner\Application\Services\PartnerService;
 use App\Modules\Product\Application\Services\ProductService;
+use App\Modules\Tenant\Domain\Tenant;
+use App\Observers\TenantObserver;
+use App\Services\CompanyConfigService;
+use App\Services\ProductService as AppProductService;
+use App\Services\VerticalConfigService;
 use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\InventoryServiceInterface;
 use App\Shared\Contracts\LocationServiceInterface;
@@ -34,6 +40,18 @@ class AppServiceProvider extends ServiceProvider
         // Register CompanyContext as a singleton so it maintains state across the request
         $this->app->singleton(CompanyContext::class);
 
+        // Register LocationContext as a singleton for location-scoped operations
+        $this->app->singleton(LocationContext::class);
+
+        // Register ProductService (multi-app vertical system) as singleton
+        $this->app->singleton(AppProductService::class);
+
+        // Register VerticalConfigService (vertical configuration) as singleton
+        $this->app->singleton(VerticalConfigService::class);
+
+        // Register CompanyConfigService (company configuration) as singleton
+        $this->app->singleton(CompanyConfigService::class);
+
         // Register cross-module service interfaces
         $this->app->bind(PartnerServiceInterface::class, PartnerService::class);
         $this->app->bind(ProductServiceInterface::class, ProductService::class);
@@ -52,6 +70,9 @@ class AppServiceProvider extends ServiceProvider
         // Register journal entry immutability observers
         JournalEntry::observe(JournalEntryObserver::class);
         JournalLine::observe(JournalLineObserver::class);
+
+        // Register tenant observer for cache invalidation
+        Tenant::observe(TenantObserver::class);
     }
 
     /**
@@ -105,6 +126,19 @@ class AppServiceProvider extends ServiceProvider
             $key = $user !== null ? $user->getAuthIdentifier() : ($request->ip() ?? 'unknown');
 
             return Limit::perMinute(100)->by((string) $key);
+        });
+
+        // Product image upload - 20 per minute per user/IP (prevent abuse)
+        RateLimiter::for('image-upload', function (Request $request): Limit {
+            $user = $request->user();
+            $key = $user !== null ? $user->getAuthIdentifier() : ($request->ip() ?? 'unknown');
+
+            return Limit::perMinute(20)->by((string) $key);
+        });
+
+        // Public product image access - 100 per minute per IP (prevent scraping)
+        RateLimiter::for('public-product-images', function (Request $request): Limit {
+            return Limit::perMinute(100)->by($request->ip() ?? 'unknown');
         });
     }
 }

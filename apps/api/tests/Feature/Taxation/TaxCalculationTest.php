@@ -7,12 +7,11 @@ namespace Tests\Feature\Taxation;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Document\Domain\Document;
-use App\Modules\Partner\Domain\Partner;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
-use App\Modules\Taxation\Domain\Entities\StampDutyRule;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\TunisiaStampDutySeeder;
@@ -25,8 +24,11 @@ class TaxCalculationTest extends TestCase
     use RefreshDatabase;
 
     private Company $frenchCompany;
+
     private Company $tunisianCompany;
+
     private Tenant $tenant;
+
     private Partner $partner;
 
     protected function setUp(): void

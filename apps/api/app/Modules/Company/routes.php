@@ -22,6 +22,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // Company creation - available to any authenticated user within their tenant
     Route::post('companies', [CompanyController::class, 'store'])->name('companies.store');
 
+    // Company retrieval and update
+    Route::get('companies/{companyId}', [CompanyController::class, 'show'])->name('companies.show');
+    Route::put('companies/{companyId}', [CompanyController::class, 'update'])->name('companies.update');
+
     // Reservation settings management
     Route::get('companies/{companyId}/reservation-settings', [CompanyController::class, 'getReservationSettings'])
         ->name('companies.reservation-settings.show');

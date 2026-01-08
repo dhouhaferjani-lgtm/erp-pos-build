@@ -28,6 +28,7 @@ class FraudSettingsController extends Controller
      * Get fraud detection settings for current company.
      *
      * @group Compliance
+     *
      * @subgroup Fraud Detection
      */
     public function show(): JsonResponse
@@ -61,6 +62,7 @@ class FraudSettingsController extends Controller
      * Update fraud detection settings.
      *
      * @group Compliance
+     *
      * @subgroup Fraud Detection
      */
     public function update(Request $request): JsonResponse
@@ -92,6 +94,7 @@ class FraudSettingsController extends Controller
      * Reset fraud detection settings to defaults.
      *
      * @group Compliance
+     *
      * @subgroup Fraud Detection
      */
     public function reset(): JsonResponse

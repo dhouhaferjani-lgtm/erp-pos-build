@@ -7,7 +7,6 @@ namespace Tests\Feature\Taxation;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\MembershipRole;
-use App\Modules\Partner\Domain\Partner;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Document\Domain\Document;
@@ -16,6 +15,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\TunisiaStampDutySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -29,8 +29,11 @@ class TaxBreakdownEndpointTest extends TestCase
     use RefreshDatabase;
 
     private User $user;
+
     private Tenant $tenant;
+
     private Company $tunisianCompany;
+
     private Partner $partner;
 
     protected function setUp(): void

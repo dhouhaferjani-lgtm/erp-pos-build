@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Domain;
 
+use App\Modules\Company\Domain\Location;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -13,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * @property string $id
  * @property string $document_id
+ * @property string|null $location_id
  * @property string|null $product_id
  * @property string|null $product_code
  * @property string|null $service_id
@@ -33,6 +35,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property-read Document $document
+ * @property-read \App\Modules\Company\Domain\Location|null $location
  * @property-read Product|null $product
  * @property-read Service|null $service
  * @property-read DocumentLine|null $sourceLine
@@ -51,6 +54,7 @@ class DocumentLine extends Model
      */
     protected $fillable = [
         'document_id',
+        'location_id',
         'product_id',
         'product_code',
         'service_id',
@@ -115,6 +119,16 @@ class DocumentLine extends Model
     }
 
     /**
+     * Get the location this line ships from/receives to.
+     *
+     * @return BelongsTo<Location, $this>
+     */
+    public function location(): BelongsTo
+    {
+        return $this->belongsTo(Location::class);
+    }
+
+    /**
      * Get the source line this delivery line was created from.
      *
      * @return BelongsTo<DocumentLine, $this>
@@ -122,6 +136,29 @@ class DocumentLine extends Model
     public function sourceLine(): BelongsTo
     {
         return $this->belongsTo(DocumentLine::class, 'source_line_id');
+    }
+
+    /**
+     * Resolve effective location for this line.
+     *
+     * Falls back to parent document location if line doesn't specify.
+     * This enables:
+     * - Per-line location for multi-location orders
+     * - Document-level location for simple scenarios
+     * - Null for central invoicing (no location)
+     */
+    public function getEffectiveLocationId(): ?string
+    {
+        if ($this->location_id !== null) {
+            return $this->location_id;
+        }
+
+        // Load document if not loaded
+        if (! $this->relationLoaded('document')) {
+            $this->load('document');
+        }
+
+        return $this->document->location_id;
     }
 
     /**

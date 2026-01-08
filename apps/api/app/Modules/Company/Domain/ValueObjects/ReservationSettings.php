@@ -25,7 +25,7 @@ final readonly class ReservationSettings
     /**
      * Create from array (used when loading from database).
      *
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     public static function fromArray(array $data): self
     {

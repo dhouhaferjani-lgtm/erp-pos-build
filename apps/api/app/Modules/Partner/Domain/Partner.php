@@ -6,6 +6,7 @@ namespace App\Modules\Partner\Domain;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Partner\Domain\Enums\PartnerType;
+use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -29,6 +30,13 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $phone
  * @property string|null $country_code
  * @property string|null $vat_number
+ * @property PartnerTaxStatus $tax_status
+ * @property string|null $tax_exemption_reason
+ * @property string|null $tax_exemption_certificate_media_id
+ * @property \Illuminate\Support\Carbon|null $tax_exemption_valid_until
+ * @property bool $withholding_exempt
+ * @property string|null $withholding_exemption_reason
+ * @property string|null $withholding_exemption_certificate_id
  * @property string|null $notes
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
@@ -57,6 +65,13 @@ class Partner extends Model
         'phone',
         'country_code',
         'vat_number',
+        'tax_status',
+        'tax_exemption_reason',
+        'tax_exemption_certificate_media_id',
+        'tax_exemption_valid_until',
+        'withholding_exempt',
+        'withholding_exemption_reason',
+        'withholding_exemption_certificate_id',
         'notes',
     ];
 
@@ -67,6 +82,9 @@ class Partner extends Model
     {
         return [
             'type' => PartnerType::class,
+            'tax_status' => PartnerTaxStatus::class,
+            'tax_exemption_valid_until' => 'date',
+            'withholding_exempt' => 'boolean',
             'receivable_balance' => 'decimal:4',
             'credit_balance' => 'decimal:4',
             'payable_balance' => 'decimal:4',
@@ -190,5 +208,65 @@ class Partner extends Model
         }
 
         return $this->balance_updated_at->diffInMinutes(now()) > $minutes;
+    }
+
+    /**
+     * Check if partner has a valid tax exemption
+     */
+    public function hasValidTaxExemption(): bool
+    {
+        if ($this->tax_status !== PartnerTaxStatus::EXEMPT) {
+            return false;
+        }
+
+        if (! $this->tax_exemption_certificate_media_id) {
+            return false;
+        }
+
+        if ($this->tax_exemption_valid_until && $this->tax_exemption_valid_until->isPast()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Get tax exemption warnings
+     *
+     * @return array<int, array<string, string>>
+     */
+    public function getTaxExemptionWarnings(): array
+    {
+        $warnings = [];
+
+        if ($this->tax_status !== PartnerTaxStatus::EXEMPT) {
+            return $warnings;
+        }
+
+        if (! $this->tax_exemption_certificate_media_id) {
+            $warnings[] = [
+                'type' => 'missing_certificate',
+                'message' => 'No exemption certificate on file',
+                'severity' => 'error',
+            ];
+        }
+
+        if ($this->tax_exemption_valid_until) {
+            if ($this->tax_exemption_valid_until->isPast()) {
+                $warnings[] = [
+                    'type' => 'expired_certificate',
+                    'message' => 'Exemption certificate expired on '.$this->tax_exemption_valid_until->format('Y-m-d'),
+                    'severity' => 'error',
+                ];
+            } elseif ($this->tax_exemption_valid_until->diffInDays(now()) <= 30) {
+                $warnings[] = [
+                    'type' => 'expiring_soon',
+                    'message' => 'Exemption certificate expires on '.$this->tax_exemption_valid_until->format('Y-m-d'),
+                    'severity' => 'warning',
+                ];
+            }
+        }
+
+        return $warnings;
     }
 }

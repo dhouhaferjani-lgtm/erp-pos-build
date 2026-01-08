@@ -15,7 +15,7 @@ return new class extends Migration
         });
 
         // Set defaults for existing companies using DTO
-        $defaultSettings = (new \App\Modules\Company\Domain\ValueObjects\ReservationSettings())->toArray();
+        $defaultSettings = (new \App\Modules\Company\Domain\ValueObjects\ReservationSettings)->toArray();
 
         \App\Modules\Company\Domain\Company::query()->each(function ($company) use ($defaultSettings) {
             $company->reservation_settings = $defaultSettings;

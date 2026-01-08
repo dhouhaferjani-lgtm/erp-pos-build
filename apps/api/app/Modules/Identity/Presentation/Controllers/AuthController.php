@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Application\DTOs\AuthUserData;
 use App\Modules\Identity\Application\DTOs\LoginResponseData;
@@ -120,6 +121,8 @@ class AuthController extends Controller
             $tenant = Tenant::create([
                 'name' => $validated['company_name'],
                 'slug' => Str::slug($validated['company_name']).'-'.Str::random(6),
+                'vertical' => $validated['vertical'], // Selected business vertical
+                'enabled_extras' => [],
                 'status' => TenantStatus::Active,
                 'plan' => SubscriptionPlan::Trial,
                 'country_code' => strtoupper($validated['country_code']),
@@ -161,7 +164,34 @@ class AuthController extends Controller
                 'fiscal_year_start_month' => 1,
                 'status' => CompanyStatus::Active,
                 'is_headquarters' => true,
+
+                // Address fields from signup form
+                'address_street' => $validated['address_street'] ?? null,
+                'address_city' => $validated['address_city'] ?? null,
+                'address_postal_code' => $validated['address_postal_code'] ?? null,
+                'address_state' => $validated['address_state'] ?? null,
+                'email' => $validated['email'], // Use user email as company email
             ]);
+
+            // 3.5. Create default location from company address
+            if ($validated['address_street'] || $validated['address_city']) {
+                Location::create([
+                    'id' => Str::uuid()->toString(),
+                    'company_id' => $company->id,
+                    'name' => 'Main Location',
+                    'code' => 'MAIN',
+                    'type' => 'shop', // Default to shop for service businesses
+                    'is_default' => true,
+                    'is_active' => true,
+                    'pos_enabled' => false,
+                    'address_street' => $company->address_street,
+                    'address_city' => $company->address_city,
+                    'address_postal_code' => $company->address_postal_code,
+                    'address_country' => $company->country_code,
+                    'phone' => $company->phone,
+                    'email' => $company->email,
+                ]);
+            }
 
             // 4. Create UserCompanyMembership (owner role)
             UserCompanyMembership::create([

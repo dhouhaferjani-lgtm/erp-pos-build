@@ -55,11 +55,25 @@ class CreateDocumentRequest extends FormRequest
                 'uuid',
                 Rule::exists('documents', 'id')->where('tenant_id', $tenantId),
             ],
+            'location_id' => [
+                'nullable',
+                'uuid',
+                Rule::exists('locations', 'id')
+                    ->where('tenant_id', $tenantId)
+                    ->where('is_active', true),
+            ],
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.product_id' => [
                 'nullable',
                 'uuid',
                 Rule::exists('products', 'id')->where('tenant_id', $tenantId),
+            ],
+            'lines.*.location_id' => [
+                'nullable',
+                'uuid',
+                Rule::exists('locations', 'id')
+                    ->where('tenant_id', $tenantId)
+                    ->where('is_active', true),
             ],
             'lines.*.description' => ['required', 'string', 'max:1000'],
             'lines.*.quantity' => ['required', 'numeric', 'gt:0'],

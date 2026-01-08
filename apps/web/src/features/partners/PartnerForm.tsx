@@ -18,6 +18,10 @@ interface Partner {
   postal_code: string | null
   country: string | null
   tax_id: string | null
+  tax_status: 'REGISTERED' | 'NON_REGISTERED' | 'EXEMPT'
+  exemption_reason: string | null
+  exemption_certificate_path: string | null
+  exemption_valid_until: string | null
   notes: string | null
 }
 
@@ -31,6 +35,9 @@ interface PartnerFormData {
   postal_code: string
   country: string
   tax_id: string
+  tax_status: 'REGISTERED' | 'NON_REGISTERED' | 'EXEMPT'
+  exemption_reason: string
+  exemption_valid_until: string
   notes: string
 }
 
@@ -73,6 +80,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<PartnerFormData>({
     defaultValues: {
@@ -85,9 +93,14 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
       postal_code: '',
       country: '',
       tax_id: '',
+      tax_status: 'REGISTERED',
+      exemption_reason: '',
+      exemption_valid_until: '',
       notes: '',
     },
   })
+
+  const taxStatus = watch('tax_status')
 
   // Fetch partner data when editing
   const { data: partner, isLoading } = useQuery({
@@ -112,6 +125,9 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
         postal_code: partner.postal_code ?? '',
         country: partner.country ?? '',
         tax_id: partner.tax_id ?? '',
+        tax_status: partner.tax_status || 'REGISTERED',
+        exemption_reason: partner.exemption_reason ?? '',
+        exemption_valid_until: partner.exemption_valid_until ?? '',
         notes: partner.notes ?? '',
       })
     }
@@ -259,7 +275,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
                 htmlFor="tax_id"
                 className="block text-sm font-medium text-gray-700"
               >
-                Tax ID
+                {t('sales:partners.taxId')}
               </label>
               <input
                 type="text"
@@ -268,6 +284,77 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
+
+            {/* Tax Status */}
+            <div className="sm:col-span-2">
+              <label
+                htmlFor="tax_status"
+                className="block text-sm font-medium text-gray-700"
+              >
+                {t('sales:partners.taxInfo.status')}
+              </label>
+              <select
+                id="tax_status"
+                {...register('tax_status')}
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="REGISTERED">{t('sales:partners.taxInfo.statusRegistered')}</option>
+                <option value="NON_REGISTERED">{t('sales:partners.taxInfo.statusNonRegistered')}</option>
+                <option value="EXEMPT">{t('sales:partners.taxInfo.statusExempt')}</option>
+              </select>
+            </div>
+
+            {/* Exemption Fields (shown only when EXEMPT) */}
+            {taxStatus === 'EXEMPT' && (
+              <>
+                <div className="sm:col-span-2">
+                  <label
+                    htmlFor="exemption_reason"
+                    className="block text-sm font-medium text-gray-700"
+                  >
+                    {t('sales:partners.taxInfo.exemptionReason')}
+                  </label>
+                  <textarea
+                    id="exemption_reason"
+                    rows={3}
+                    {...register('exemption_reason')}
+                    placeholder={t('sales:partners.taxInfo.exemptionReasonPlaceholder')}
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="exemption_valid_until"
+                    className="block text-sm font-medium text-gray-700"
+                  >
+                    {t('sales:partners.taxInfo.validUntil')}
+                  </label>
+                  <input
+                    type="date"
+                    id="exemption_valid_until"
+                    {...register('exemption_valid_until')}
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    {t('sales:partners.taxInfo.certificate')}
+                  </label>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {t('sales:partners.taxInfo.certificateHint')}
+                  </p>
+                  <div className="mt-2">
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      className="block w-full text-sm text-gray-500 file:me-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* Address */}
             <div className="sm:col-span-2">

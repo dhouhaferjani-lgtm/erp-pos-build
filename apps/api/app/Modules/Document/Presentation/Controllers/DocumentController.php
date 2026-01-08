@@ -10,6 +10,7 @@ use App\Modules\Document\Application\DTOs\DocumentData;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -39,6 +40,7 @@ class DocumentController extends Controller
 
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly TaxCalculationService $taxCalculationService,
     ) {}
 
     /**
@@ -250,16 +252,15 @@ class DocumentController extends Controller
             abort(404);
         }
 
-        $taxCalculationService = app(\App\Modules\Taxation\Domain\Services\TaxCalculationService::class);
-        $taxResult = $taxCalculationService->calculateDocumentTaxes($document);
+        $taxResult = $this->taxCalculationService->calculateDocumentTaxes($document);
 
         return response()->json([
             'data' => [
                 'subtotal' => $document->subtotal ?? '0.00',
                 'discount' => $document->discount_amount ?? '0.00',
-                'line_tax_amount' => $taxResult->lineTaxAmount,
-                'stamp_duty_amount' => $taxResult->stampDutyAmount,
-                'total_tax_amount' => $taxResult->totalTaxAmount,
+                'line_tax_amount' => $taxResult->lineItemsTaxTotal,
+                'stamp_duty_amount' => $taxResult->documentTaxTotal,
+                'total_tax_amount' => $taxResult->totalTax,
                 'total' => $taxResult->total,
                 'tax_details' => array_map(function ($detail) {
                     return [

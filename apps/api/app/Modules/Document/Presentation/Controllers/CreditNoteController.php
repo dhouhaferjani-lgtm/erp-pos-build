@@ -12,6 +12,7 @@ use App\Modules\Document\Domain\Enums\CreditNoteReason;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
+use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -24,6 +25,7 @@ class CreditNoteController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly CreditNoteService $creditNoteService,
         private readonly DocumentPostingService $postingService,
+        private readonly TaxCalculationService $taxCalculationService,
     ) {}
 
     /**
@@ -207,6 +209,18 @@ class CreditNoteController extends Controller
                     'confirmed_at' => now(),
                     'confirmed_by' => auth()->id(),
                 ]);
+
+                // Calculate and snapshot taxes for immutable audit trail
+                $taxResult = $this->taxCalculationService->calculateDocumentTaxes($lockedDocument);
+
+                // Update document with calculated totals
+                $lockedDocument->update([
+                    'tax_amount' => $taxResult->totalTax,
+                    'total' => $taxResult->total,
+                ]);
+
+                // Snapshot for immutable audit trail
+                $this->taxCalculationService->snapshotTaxDetails($lockedDocument, $taxResult);
 
                 return $lockedDocument;
             });

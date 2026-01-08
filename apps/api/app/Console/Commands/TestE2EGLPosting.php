@@ -168,7 +168,7 @@ final class TestE2EGLPosting extends Command
             $debit = $lines->sum('debit');
             $credit = $lines->sum('credit');
 
-            return bcSub((string) $debit, (string) $credit, 2);
+            return bcsub((string) $debit, (string) $credit, 2);
         });
 
         $this->info('✓ Net GL Impact Analysis:');

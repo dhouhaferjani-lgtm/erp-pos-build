@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Api\Admin\SuperAdminAuthController;
 use App\Http\Controllers\Api\Admin\SuperAdminController;
+use App\Http\Controllers\Api\CompanyConfigController;
 use App\Http\Controllers\Api\CountryController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Modules\Admin\Presentation\Controllers\MonitoringController;
@@ -42,9 +43,10 @@ Route::prefix('v1')->group(function (): void {
         });
     });
 
-    // Protected routes (require authentication)
-    Route::middleware('auth:sanctum')->group(function (): void {
+    // Protected routes (require authentication and company context)
+    Route::middleware(['api', 'auth:sanctum', \App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam::class])->group(function (): void {
         Route::get('/subscription', [SubscriptionController::class, 'show']);
+        Route::get('/company/config', [CompanyConfigController::class, 'show']);
     });
 
     // Super admin routes - require authenticated super admin with rate limiting

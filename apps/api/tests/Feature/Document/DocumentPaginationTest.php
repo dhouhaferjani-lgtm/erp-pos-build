@@ -26,8 +26,11 @@ class DocumentPaginationTest extends TestCase
     use RefreshDatabase;
 
     private User $user;
+
     private Company $company;
+
     private Tenant $tenant;
+
     private Partner $partner;
 
     protected function setUp(): void
@@ -171,7 +174,7 @@ class DocumentPaginationTest extends TestCase
 
         // Get second page
         $response2 = $this->actingAs($this->user)
-            ->getJson('/api/v1/documents?per_page=10&cursor=' . urlencode($nextCursor));
+            ->getJson('/api/v1/documents?per_page=10&cursor='.urlencode($nextCursor));
 
         $response2->assertOk()
             ->assertJsonCount(10, 'data');

@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
@@ -27,6 +29,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $unit
  * @property string|null $barcode
  * @property bool $is_active
+ * @property bool $is_active_for_ecommerce
  * @property array<int, string>|null $oem_numbers
  * @property array<int, array{brand: string, reference: string}>|null $cross_references
  * @property string $cost_price
@@ -41,6 +44,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property \Illuminate\Support\Carbon|null $deleted_at
  * @property-read Tenant $tenant
  * @property-read Company $company
+ * @property-read ParapharmacyProductMetadata|null $parapharmacyMetadata
  */
 class Product extends Model
 {
@@ -63,6 +67,7 @@ class Product extends Model
         'unit',
         'barcode',
         'is_active',
+        'is_active_for_ecommerce',
         'oem_numbers',
         'cross_references',
         'cost_price',
@@ -88,6 +93,7 @@ class Product extends Model
         return [
             'type' => ProductType::class,
             'is_active' => 'boolean',
+            'is_active_for_ecommerce' => 'boolean',
             'is_physical' => 'boolean',
             'oem_numbers' => 'array',
             'cross_references' => 'array',
@@ -204,5 +210,45 @@ class Product extends Model
     public function scopeForCompany(Builder $query, string $companyId): Builder
     {
         return $query->where('company_id', $companyId);
+    }
+
+    /**
+     * Get all images for this product, ordered by sort_order.
+     *
+     * @return HasMany<ProductImage>
+     */
+    public function images(): HasMany
+    {
+        return $this->hasMany(ProductImage::class)->ordered();
+    }
+
+    /**
+     * Get the primary image for this product.
+     *
+     * @return HasOne<ProductImage>
+     */
+    public function primaryImage(): HasOne
+    {
+        return $this->hasOne(ProductImage::class)->where('is_primary', true);
+    }
+
+    /**
+     * Get parapharmacy-specific metadata for this product.
+     *
+     * @return HasOne<ParapharmacyProductMetadata>
+     */
+    public function parapharmacyMetadata(): HasOne
+    {
+        return $this->hasOne(ParapharmacyProductMetadata::class);
+    }
+
+    /**
+     * Get all stock levels for this product across all locations.
+     *
+     * @return HasMany<\App\Modules\Inventory\Domain\StockLevel>
+     */
+    public function stockLevels(): HasMany
+    {
+        return $this->hasMany(\App\Modules\Inventory\Domain\StockLevel::class);
     }
 }

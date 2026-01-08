@@ -24,7 +24,9 @@ class PartnerPaginationTest extends TestCase
     use RefreshDatabase;
 
     private User $user;
+
     private Company $company;
+
     private Tenant $tenant;
 
     protected function setUp(): void
@@ -124,7 +126,7 @@ class PartnerPaginationTest extends TestCase
 
         // Get second page
         $response2 = $this->actingAs($this->user)
-            ->getJson('/api/v1/partners?per_page=10&cursor=' . urlencode($nextCursor));
+            ->getJson('/api/v1/partners?per_page=10&cursor='.urlencode($nextCursor));
 
         $response2->assertOk()
             ->assertJsonCount(10, 'data');

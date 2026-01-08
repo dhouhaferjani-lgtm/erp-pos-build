@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Exceptions\InsufficientStockException;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
@@ -18,6 +19,7 @@ class StockMovementController extends Controller
     public function __construct(
         private readonly StockAdjustmentService $stockService,
         private readonly CompanyContext $companyContext,
+        private readonly LocationContext $locationContext,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -62,6 +64,14 @@ class StockMovementController extends Controller
             'notes' => ['nullable', 'string'],
         ]);
 
+        // Validate user has access to this location
+        $companyId = $this->companyContext->requireCompanyId();
+        $this->locationContext->validateLocationAccess(
+            $validated['location_id'],
+            $companyId,
+            $user
+        );
+
         /** @var numeric-string $quantity */
         $quantity = (string) $validated['quantity'];
 
@@ -92,6 +102,14 @@ class StockMovementController extends Controller
             'reference' => ['required', 'string', 'max:255'],
             'notes' => ['nullable', 'string'],
         ]);
+
+        // Validate user has access to this location
+        $companyId = $this->companyContext->requireCompanyId();
+        $this->locationContext->validateLocationAccess(
+            $validated['location_id'],
+            $companyId,
+            $user
+        );
 
         /** @var numeric-string $quantity */
         $quantity = (string) $validated['quantity'];
@@ -139,6 +157,19 @@ class StockMovementController extends Controller
             'reference' => ['required', 'string', 'max:255'],
         ]);
 
+        // Validate user has access to BOTH source and destination locations
+        $companyId = $this->companyContext->requireCompanyId();
+        $this->locationContext->validateLocationAccess(
+            $validated['from_location_id'],
+            $companyId,
+            $user
+        );
+        $this->locationContext->validateLocationAccess(
+            $validated['to_location_id'],
+            $companyId,
+            $user
+        );
+
         /** @var numeric-string $quantity */
         $quantity = (string) $validated['quantity'];
 
@@ -182,6 +213,14 @@ class StockMovementController extends Controller
             'new_quantity' => ['required', 'numeric', 'min:0'],
             'reason' => ['required', 'string', 'max:500'],
         ]);
+
+        // Validate user has access to this location
+        $companyId = $this->companyContext->requireCompanyId();
+        $this->locationContext->validateLocationAccess(
+            $validated['location_id'],
+            $companyId,
+            $user
+        );
 
         /** @var numeric-string $newQuantity */
         $newQuantity = (string) $validated['new_quantity'];

@@ -45,10 +45,10 @@ return new class extends Migration
         // Add category_id to products
         Schema::table('products', function (Blueprint $table) {
             $table->foreignId('category_id')
-                  ->nullable()
-                  ->after('company_id')
-                  ->constrained('categories')
-                  ->nullOnDelete();
+                ->nullable()
+                ->after('company_id')
+                ->constrained('categories')
+                ->nullOnDelete();
         });
     }
 

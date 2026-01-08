@@ -11,7 +11,6 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Inventory\Application\Services\FraudTriggeredCountingService;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 
 final class AnomalyDetectionService
 {

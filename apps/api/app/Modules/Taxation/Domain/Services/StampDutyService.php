@@ -27,19 +27,19 @@ class StampDutyService
             ->where('document_type', $documentType->value)
             ->where(function ($query) use ($fiscalCategory) {
                 $query->whereNull('fiscal_category')
-                      ->orWhere('fiscal_category', $fiscalCategory?->value);
+                    ->orWhere('fiscal_category', $fiscalCategory?->value);
             })
             ->where('is_active', true)
             ->where('effective_from', '<=', $date->format('Y-m-d'))
             ->where(function ($query) use ($date) {
                 $query->whereNull('effective_to')
-                      ->orWhere('effective_to', '>=', $date->format('Y-m-d'));
+                    ->orWhere('effective_to', '>=', $date->format('Y-m-d'));
             })
             ->orderBy('fiscal_category', 'desc') // Prioritize specific fiscal_category over null
             ->orderBy('effective_from', 'desc')   // Use most recent rule
             ->first();
 
-        if (!$rule) {
+        if (! $rule) {
             return null;
         }
 
@@ -58,8 +58,7 @@ class StampDutyService
         string $countryCode,
         DocumentType $documentType,
         ?FiscalCategory $fiscalCategory
-    ): bool
-    {
+    ): bool {
         return $this->calculateStampDuty($countryCode, $documentType, $fiscalCategory) !== null;
     }
 }

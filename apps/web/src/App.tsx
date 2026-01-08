@@ -4,6 +4,8 @@ import { Toaster } from 'sonner'
 import { AuthProvider } from './features/auth'
 import { CompanyProvider } from './features/company/CompanyProvider'
 import { LocationProvider } from './features/location/LocationProvider'
+import { CompanyConfigProvider } from './contexts/CompanyConfigContext'
+import { ProductConfigProvider } from './contexts/ProductConfigContext'
 import { useImportProgress } from './features/import/hooks/useImportProgress'
 import { GlobalImportProgress } from './components/organisms/GlobalImportProgress/GlobalImportProgress'
 import { AppRoutes } from './routes'
@@ -33,15 +35,19 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <CompanyProvider>
-          <LocationProvider>
-            <AppRoutes />
-            <Toaster position="top-right" richColors />
-            <ImportProgressSubscriber />
-          </LocationProvider>
-        </CompanyProvider>
-      </AuthProvider>
+      <ProductConfigProvider>
+        <AuthProvider>
+          <CompanyProvider>
+            <CompanyConfigProvider>
+              <LocationProvider>
+                <AppRoutes />
+                <Toaster position="top-right" richColors />
+                <ImportProgressSubscriber />
+              </LocationProvider>
+            </CompanyConfigProvider>
+          </CompanyProvider>
+        </AuthProvider>
+      </ProductConfigProvider>
     </ErrorBoundary>
   )
 }

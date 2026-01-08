@@ -19,9 +19,13 @@ class WeightedAverageCostServiceTest extends TestCase
     use RefreshDatabase;
 
     private WeightedAverageCostService $service;
+
     private Tenant $tenant;
+
     private Company $company;
+
     private Location $location;
+
     private Product $product;
 
     protected function setUp(): void

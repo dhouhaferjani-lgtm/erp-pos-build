@@ -1,9 +1,12 @@
 <?php
 
 use App\Http\Middleware\CompanyContextMiddleware;
+use App\Http\Middleware\CorsMiddleware;
 use App\Http\Middleware\EnsureSuperAdmin;
+use App\Http\Middleware\RequireModule;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
+use App\Http\Middleware\ValidateLocationAccess;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use Illuminate\Auth\AuthenticationException;
@@ -28,11 +31,13 @@ return Application::configure(basePath: dirname(__DIR__))
         // Register middleware aliases
         $middleware->alias([
             'super_admin' => EnsureSuperAdmin::class,
+            'validate.location.access' => ValidateLocationAccess::class,
+            'module' => RequireModule::class,
         ]);
 
-        // Apply Sanctum's stateful middleware first (enables session for SPA requests)
-        // Then apply security headers, SetLocale and CompanyContext middleware
+        // Enable CORS handling FIRST (must run before other middleware)
         $middleware->prependToGroup('api', [
+            CorsMiddleware::class,
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
         ]);
 

@@ -1,0 +1,1 @@
+export { SalesOrderDetailPage } from './SalesOrderDetailPage'

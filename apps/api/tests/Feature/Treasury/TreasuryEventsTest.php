@@ -6,10 +6,8 @@ namespace Tests\Feature\Treasury;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
-use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
-use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
@@ -220,7 +218,7 @@ final class TreasuryEventsTest extends TestCase
             allocationMethod: AllocationMethod::FIFO,
         );
 
-        Event::assertDispatched(PaymentAllocated::class, function (PaymentAllocated $event) use ($payment, $invoice): bool {
+        Event::assertDispatched(PaymentAllocated::class, function (PaymentAllocated $event) use ($payment): bool {
             return $event->paymentId === $payment->id
                 && $event->companyId === $payment->company_id
                 && $event->allocationMethod === 'fifo'

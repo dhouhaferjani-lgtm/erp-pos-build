@@ -10,7 +10,7 @@ use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\DocumentVehicleContext;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
-use App\Modules\Document\Domain\Services\DocumentConversionService;
+use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
@@ -37,7 +37,7 @@ class DocumentConversionScenarioTest extends TestCase
 
     private Partner $partner;
 
-    private DocumentConversionService $conversionService;
+    private DocumentConverterRegistry $converterRegistry;
 
     protected function setUp(): void
     {
@@ -53,7 +53,7 @@ class DocumentConversionScenarioTest extends TestCase
             'company_id' => $this->company->id,
         ]);
 
-        $this->conversionService = app(DocumentConversionService::class);
+        $this->converterRegistry = app(DocumentConverterRegistry::class);
     }
 
     #[\PHPUnit\Framework\Attributes\Test]
@@ -73,7 +73,7 @@ class DocumentConversionScenarioTest extends TestCase
         ]);
 
         // Should allow direct conversion to invoice
-        $invoice = $this->conversionService->convertOrderToInvoice($order);
+        $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice);
 
         $this->assertNotNull($invoice);
         $this->assertEquals(DocumentType::Invoice, $invoice->type);
@@ -100,7 +100,7 @@ class DocumentConversionScenarioTest extends TestCase
         $this->expectException(\DomainException::class);
         $this->expectExceptionMessage('Physical products must be delivered before invoicing');
 
-        $this->conversionService->convertOrderToInvoice($order);
+        $this->converterRegistry->convert($order, DocumentType::Invoice);
     }
 
     #[\PHPUnit\Framework\Attributes\Test]
@@ -131,7 +131,7 @@ class DocumentConversionScenarioTest extends TestCase
         $this->expectException(\DomainException::class);
         $this->expectExceptionMessage('Physical products in this order must be delivered before invoicing');
 
-        $this->conversionService->convertOrderToInvoice($order);
+        $this->converterRegistry->convert($order, DocumentType::Invoice);
     }
 
     #[\PHPUnit\Framework\Attributes\Test]
@@ -151,14 +151,14 @@ class DocumentConversionScenarioTest extends TestCase
         ]);
 
         // Create delivery note first
-        $delivery = $this->conversionService->convertOrderToDelivery($order);
+        $delivery = $this->converterRegistry->convert($order, DocumentType::DeliveryNote);
         $this->assertNotNull($delivery);
 
         // Refresh order to get updated payload
         $order->refresh();
 
         // Now invoicing should be allowed
-        $invoice = $this->conversionService->convertOrderToInvoice($order);
+        $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice);
 
         $this->assertNotNull($invoice);
         $this->assertEquals(DocumentType::Invoice, $invoice->type);
@@ -191,7 +191,7 @@ class DocumentConversionScenarioTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('Sales order has already been fully invoiced');
 
-        $this->conversionService->convertOrderToInvoice($order);
+        $this->converterRegistry->convert($order, DocumentType::Invoice);
     }
 
     #[\PHPUnit\Framework\Attributes\Test]
@@ -203,7 +203,7 @@ class DocumentConversionScenarioTest extends TestCase
         ]);
 
         // Manual lines without product_id should be treated as services
-        $invoice = $this->conversionService->convertOrderToInvoice($order);
+        $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice);
 
         $this->assertNotNull($invoice);
         $this->assertEquals(DocumentType::Invoice, $invoice->type);
@@ -226,7 +226,7 @@ class DocumentConversionScenarioTest extends TestCase
         ]);
 
         // Create delivery note first (required for physical products)
-        $delivery = $this->conversionService->convertOrderToDelivery($order);
+        $delivery = $this->converterRegistry->convert($order, DocumentType::DeliveryNote);
         $this->assertNotNull($delivery);
 
         // Verify DN is not yet marked as invoiced
@@ -235,7 +235,7 @@ class DocumentConversionScenarioTest extends TestCase
 
         // Refresh order and convert to invoice
         $order->refresh();
-        $invoice = $this->conversionService->convertOrderToInvoice($order);
+        $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice);
         $this->assertNotNull($invoice);
 
         // Verify DN is now marked as invoiced
@@ -262,7 +262,7 @@ class DocumentConversionScenarioTest extends TestCase
         ]);
 
         // Create delivery note
-        $delivery = $this->conversionService->convertOrderToDelivery($order);
+        $delivery = $this->converterRegistry->convert($order, DocumentType::DeliveryNote);
         $delivery->update(['status' => DocumentStatus::Confirmed]);
 
         // Query for uninvoiced delivery notes (simulating DN consolidation page query)
@@ -277,7 +277,7 @@ class DocumentConversionScenarioTest extends TestCase
 
         // Convert order to invoice
         $order->refresh();
-        $invoice = $this->conversionService->convertOrderToInvoice($order);
+        $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice);
 
         // Query again for uninvoiced delivery notes
         $uninvoicedDnsAfter = Document::where('type', DocumentType::DeliveryNote)
@@ -343,7 +343,7 @@ class DocumentConversionScenarioTest extends TestCase
         $quote->refresh();
 
         // Convert quote to order
-        $order = $this->conversionService->convertQuoteToOrder($quote);
+        $order = $this->converterRegistry->convert($quote, DocumentType::SalesOrder);
 
         // Verify vehicle context was NOT preserved (conversion service doesn't copy it yet)
         $this->assertNotNull($quote->vehicle_id);
@@ -383,7 +383,7 @@ class DocumentConversionScenarioTest extends TestCase
         $order->refresh();
 
         // Convert to delivery note
-        $delivery = $this->conversionService->convertOrderToDelivery($order);
+        $delivery = $this->converterRegistry->convert($order, DocumentType::DeliveryNote);
 
         // Verify vehicle context was preserved
         $this->assertNotNull($order->vehicle_id);
@@ -421,7 +421,7 @@ class DocumentConversionScenarioTest extends TestCase
         $order->refresh();
 
         // Convert to invoice (allowed for services-only orders)
-        $invoice = $this->conversionService->convertOrderToInvoice($order);
+        $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice);
 
         // Verify vehicle context was preserved
         $this->assertNotNull($order->vehicle_id);

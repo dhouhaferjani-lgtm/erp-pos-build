@@ -10,7 +10,7 @@ use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DeliveryStatus;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
-use App\Modules\Document\Domain\Services\DocumentConversionService;
+use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -29,7 +29,7 @@ class PartialDeliveryTest extends TestCase
 {
     use RefreshDatabase;
 
-    private DocumentConversionService $conversionService;
+    private DocumentConverterRegistry $converterRegistry;
 
     private Tenant $tenant;
 
@@ -41,7 +41,7 @@ class PartialDeliveryTest extends TestCase
     {
         parent::setUp();
 
-        $this->conversionService = app(DocumentConversionService::class);
+        $this->converterRegistry = app(DocumentConverterRegistry::class);
 
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->create([
@@ -70,7 +70,7 @@ class PartialDeliveryTest extends TestCase
             $line2->id => '10.00',
         ];
 
-        $delivery = $this->conversionService->convertOrderToPartialDelivery($order, $deliveryQuantities);
+        $delivery = $this->converterRegistry->convert($order, DocumentType::DeliveryNote, ['delivery_quantities' => $deliveryQuantities]);
 
         $this->assertNotNull($delivery);
         $this->assertEquals(DocumentType::DeliveryNote, $delivery->type);
@@ -100,7 +100,7 @@ class PartialDeliveryTest extends TestCase
 
         // Deliver 5 units
         $deliveryQuantities = [$line->id => '5.00'];
-        $this->conversionService->convertOrderToPartialDelivery($order, $deliveryQuantities);
+        $this->converterRegistry->convert($order, DocumentType::DeliveryNote, ['delivery_quantities' => $deliveryQuantities]);
 
         // Reload the line
         $line->refresh();
@@ -116,19 +116,19 @@ class PartialDeliveryTest extends TestCase
         $line = $order->lines->first();
 
         // First delivery: 3 units
-        $this->conversionService->convertOrderToPartialDelivery($order, [$line->id => '3.00']);
+        $this->converterRegistry->convert($order, DocumentType::DeliveryNote, ['delivery_quantities' => [$line->id => '3.00']]);
         $line->refresh();
         $this->assertEquals('3.0000', $line->quantity_delivered);
 
         // Second delivery: 4 units
         $order->refresh();
-        $this->conversionService->convertOrderToPartialDelivery($order, [$line->id => '4.00']);
+        $this->converterRegistry->convert($order, DocumentType::DeliveryNote, ['delivery_quantities' => [$line->id => '4.00']]);
         $line->refresh();
         $this->assertEquals('7.0000', $line->quantity_delivered);
 
         // Third delivery: 3 units (completing the order)
         $order->refresh();
-        $this->conversionService->convertOrderToPartialDelivery($order, [$line->id => '3.00']);
+        $this->converterRegistry->convert($order, DocumentType::DeliveryNote, ['delivery_quantities' => [$line->id => '3.00']]);
         $line->refresh();
         $this->assertEquals('10.0000', $line->quantity_delivered);
     }
@@ -142,7 +142,7 @@ class PartialDeliveryTest extends TestCase
         $line = $order->lines->first();
 
         // First delivery: 8 units
-        $this->conversionService->convertOrderToPartialDelivery($order, [$line->id => '8.00']);
+        $this->converterRegistry->convert($order, DocumentType::DeliveryNote, ['delivery_quantities' => [$line->id => '8.00']]);
 
         // Try to deliver 5 more (only 2 remaining)
         $order->refresh();
@@ -150,7 +150,7 @@ class PartialDeliveryTest extends TestCase
         $this->expectException(\DomainException::class);
         $this->expectExceptionMessage('Cannot deliver more than remaining quantity');
 
-        $this->conversionService->convertOrderToPartialDelivery($order, [$line->id => '5.00']);
+        $this->converterRegistry->convert($order, DocumentType::DeliveryNote, ['delivery_quantities' => [$line->id => '5.00']]);
     }
 
     public function test_delivery_note_lines_link_to_source_order_lines(): void
@@ -161,9 +161,9 @@ class PartialDeliveryTest extends TestCase
 
         $orderLine = $order->lines->first();
 
-        $delivery = $this->conversionService->convertOrderToPartialDelivery($order, [
+        $delivery = $this->converterRegistry->convert($order, DocumentType::DeliveryNote, ['delivery_quantities' => [
             $orderLine->id => '5.00',
-        ]);
+        ]]);
 
         $deliveryLine = $delivery->lines->first();
 
@@ -187,7 +187,7 @@ class PartialDeliveryTest extends TestCase
         ]);
 
         $line = $order->lines->first();
-        $this->conversionService->convertOrderToPartialDelivery($order, [$line->id => '5.00']);
+        $this->converterRegistry->convert($order, DocumentType::DeliveryNote, ['delivery_quantities' => [$line->id => '5.00']]);
 
         $order->refresh();
         $this->assertEquals(DeliveryStatus::PartiallyDelivered, $order->getDeliveryStatus());
@@ -204,10 +204,10 @@ class PartialDeliveryTest extends TestCase
         $line2 = $order->lines->firstWhere('description', 'Product B');
 
         // Deliver all quantities
-        $this->conversionService->convertOrderToPartialDelivery($order, [
+        $this->converterRegistry->convert($order, DocumentType::DeliveryNote, ['delivery_quantities' => [
             $line1->id => '10.00',
             $line2->id => '5.00',
-        ]);
+        ]]);
 
         $order->refresh();
         $this->assertEquals(DeliveryStatus::FullyDelivered, $order->getDeliveryStatus());
@@ -222,14 +222,14 @@ class PartialDeliveryTest extends TestCase
         $line = $order->lines->first();
 
         // Fully deliver the order
-        $this->conversionService->convertOrderToPartialDelivery($order, [$line->id => '10.00']);
+        $this->converterRegistry->convert($order, DocumentType::DeliveryNote, ['delivery_quantities' => [$line->id => '10.00']]);
 
         $order->refresh();
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('Sales order has already been fully delivered');
 
-        $this->conversionService->convertOrderToPartialDelivery($order, [$line->id => '1.00']);
+        $this->converterRegistry->convert($order, DocumentType::DeliveryNote, ['delivery_quantities' => [$line->id => '1.00']]);
     }
 
     public function test_line_remaining_quantity_calculation(): void
@@ -244,13 +244,13 @@ class PartialDeliveryTest extends TestCase
         $this->assertEquals('10.0000', $line->getQuantityRemaining());
 
         // After partial delivery
-        $this->conversionService->convertOrderToPartialDelivery($order, [$line->id => '3.00']);
+        $this->converterRegistry->convert($order, DocumentType::DeliveryNote, ['delivery_quantities' => [$line->id => '3.00']]);
         $line->refresh();
         $this->assertEquals('7.0000', $line->getQuantityRemaining());
 
         // After full delivery
         $order->refresh();
-        $this->conversionService->convertOrderToPartialDelivery($order, [$line->id => '7.00']);
+        $this->converterRegistry->convert($order, DocumentType::DeliveryNote, ['delivery_quantities' => [$line->id => '7.00']]);
         $line->refresh();
         $this->assertEquals('0.0000', $line->getQuantityRemaining());
     }
@@ -264,9 +264,9 @@ class PartialDeliveryTest extends TestCase
         $line = $order->lines->first();
 
         // Deliver 3 units @ 100.00 = 300.00 subtotal + 57.00 tax = 357.00 total
-        $delivery = $this->conversionService->convertOrderToPartialDelivery($order, [
+        $delivery = $this->converterRegistry->convert($order, DocumentType::DeliveryNote, ['delivery_quantities' => [
             $line->id => '3.00',
-        ]);
+        ]]);
 
         $this->assertEquals('300.00', $delivery->subtotal);
         $this->assertEquals('57.00', $delivery->tax_amount);
@@ -282,13 +282,13 @@ class PartialDeliveryTest extends TestCase
         $line = $order->lines->first();
 
         // Create three partial deliveries
-        $dn1 = $this->conversionService->convertOrderToPartialDelivery($order, [$line->id => '3.00']);
+        $dn1 = $this->converterRegistry->convert($order, DocumentType::DeliveryNote, ['delivery_quantities' => [$line->id => '3.00']]);
         $order->refresh();
 
-        $dn2 = $this->conversionService->convertOrderToPartialDelivery($order, [$line->id => '4.00']);
+        $dn2 = $this->converterRegistry->convert($order, DocumentType::DeliveryNote, ['delivery_quantities' => [$line->id => '4.00']]);
         $order->refresh();
 
-        $dn3 = $this->conversionService->convertOrderToPartialDelivery($order, [$line->id => '3.00']);
+        $dn3 = $this->converterRegistry->convert($order, DocumentType::DeliveryNote, ['delivery_quantities' => [$line->id => '3.00']]);
         $order->refresh();
 
         // Verify all DNs are tracked
@@ -308,8 +308,8 @@ class PartialDeliveryTest extends TestCase
             ['description' => 'Product B', 'quantity' => '5.00', 'unit_price' => '50.00'],
         ]);
 
-        // Use the existing convertOrderToDelivery for full delivery
-        $delivery = $this->conversionService->convertOrderToDelivery($order);
+        // Use the existing convert method for full delivery
+        $delivery = $this->converterRegistry->convert($order, DocumentType::DeliveryNote);
 
         $this->assertCount(2, $delivery->lines);
 
@@ -333,9 +333,9 @@ class PartialDeliveryTest extends TestCase
         $this->expectException(\DomainException::class);
         $this->expectExceptionMessage('At least one line must have a quantity greater than zero');
 
-        $this->conversionService->convertOrderToPartialDelivery($order, [
+        $this->converterRegistry->convert($order, DocumentType::DeliveryNote, ['delivery_quantities' => [
             $line->id => '0.00',
-        ]);
+        ]]);
     }
 
     public function test_only_lines_with_positive_quantities_included_in_delivery(): void
@@ -349,10 +349,10 @@ class PartialDeliveryTest extends TestCase
         $line2 = $order->lines->firstWhere('description', 'Product B');
 
         // Only deliver Product A, skip Product B
-        $delivery = $this->conversionService->convertOrderToPartialDelivery($order, [
+        $delivery = $this->converterRegistry->convert($order, DocumentType::DeliveryNote, ['delivery_quantities' => [
             $line1->id => '5.00',
             $line2->id => '0.00',
-        ]);
+        ]]);
 
         // Only one line should be in the delivery note
         $this->assertCount(1, $delivery->lines);

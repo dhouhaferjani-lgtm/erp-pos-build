@@ -5,6 +5,8 @@ declare(strict_types=1);
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Product\Presentation\Controllers\CategoryController;
 use App\Modules\Product\Presentation\Controllers\ProductController;
+use App\Modules\Product\Presentation\Controllers\ProductImageController;
+use App\Modules\Product\Presentation\Controllers\PublicProductImageController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -52,4 +54,38 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         Route::delete('/{id}', [CategoryController::class, 'destroy'])->name('categories.destroy');
         Route::post('/reorder', [CategoryController::class, 'reorder'])->name('categories.reorder');
     });
+
+    // Product Images (authenticated)
+    Route::prefix('products/{product}/images')->middleware('can:products.view')->group(function () {
+        Route::get('/', [ProductImageController::class, 'index'])
+            ->name('products.images.index');
+
+        Route::post('/', [ProductImageController::class, 'store'])
+            ->middleware(['can:products.update', 'throttle:image-upload'])
+            ->name('products.images.store');
+
+        Route::patch('/{image}', [ProductImageController::class, 'update'])
+            ->middleware('can:products.update')
+            ->name('products.images.update');
+
+        Route::delete('/{image}', [ProductImageController::class, 'destroy'])
+            ->middleware('can:products.update')
+            ->name('products.images.destroy');
+
+        Route::get('/{image}/download', [ProductImageController::class, 'download'])
+            ->name('products.images.download');
+
+        Route::post('/reorder', [ProductImageController::class, 'reorder'])
+            ->middleware('can:products.update')
+            ->name('products.images.reorder');
+    });
+});
+
+// Public routes (rate-limited)
+Route::prefix('api/v1/public')->middleware(['api', 'throttle:public-product-images'])->group(function () {
+    Route::get('products/{product}/images', [PublicProductImageController::class, 'index'])
+        ->name('public.products.images.index');
+
+    Route::get('products/{product}/images/{image}', [PublicProductImageController::class, 'show'])
+        ->name('public.products.images.show');
 });

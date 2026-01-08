@@ -41,7 +41,7 @@ class CategoryData extends Data
             name: $category->name,
             slug: $category->slug,
             description: $category->description,
-            image_url: $category->image_path ? asset('storage/' . $category->image_path) : null,
+            image_url: $category->image_path ? asset('storage/'.$category->image_path) : null,
             path: $category->path,
             depth: $category->depth,
             sort_order: $category->sort_order,

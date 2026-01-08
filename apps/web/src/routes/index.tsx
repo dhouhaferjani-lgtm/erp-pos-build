@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { Layout } from '../components/layout/Layout'
 import { RequireAuth } from '../features/auth'
 import { RequirePermission } from '../components/auth'
+import { ModuleGuard } from '../components/guards'
 import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 
 // Lazy loaded pages
@@ -32,13 +33,20 @@ const CustomerForm = lazy(() => import('../features/partners/PartnerForm').then(
 
 // Documents - reusing for quotes/orders/invoices
 const DocumentListPage = lazy(() => import('../features/documents/DocumentListPage').then((m) => ({ default: m.DocumentListPage })))
-const DocumentDetailPage = lazy(() => import('../features/documents/DocumentDetailPage').then((m) => ({ default: m.DocumentDetailPage })))
 const DocumentForm = lazy(() => import('../features/documents/DocumentForm').then((m) => ({ default: m.DocumentForm })))
 const DeliveryNoteConsolidationPage = lazy(() => import('../features/documents/DeliveryNoteConsolidationPage').then((m) => ({ default: m.DeliveryNoteConsolidationPage })))
 const CreateCreditNotePage = lazy(() => import('../features/documents/CreateCreditNotePage').then((m) => ({ default: m.CreateCreditNotePage })))
 const ReturnNoteListPage = lazy(() => import('../features/documents/ReturnNoteListPage').then((m) => ({ default: m.ReturnNoteListPage })))
-const ReturnNoteDetailPage = lazy(() => import('../features/documents/ReturnNoteDetailPage').then((m) => ({ default: m.ReturnNoteDetailPage })))
 const CreateReturnNotePage = lazy(() => import('../features/documents/CreateReturnNotePage').then((m) => ({ default: m.CreateReturnNotePage })))
+
+// Type-specific detail pages
+const QuoteDetailPage = lazy(() => import('../features/documents/quotes').then((m) => ({ default: m.QuoteDetailPage })))
+const SalesOrderDetailPage = lazy(() => import('../features/documents/sales-orders').then((m) => ({ default: m.SalesOrderDetailPage })))
+const InvoiceDetailPage = lazy(() => import('../features/documents/invoices').then((m) => ({ default: m.InvoiceDetailPage })))
+const PurchaseOrderDetailPage = lazy(() => import('../features/documents/purchase-orders').then((m) => ({ default: m.PurchaseOrderDetailPage })))
+const DeliveryNoteDetailPage = lazy(() => import('../features/documents/delivery-notes').then((m) => ({ default: m.DeliveryNoteDetailPage })))
+const CreditNoteDetailPage = lazy(() => import('../features/documents/credit-notes').then((m) => ({ default: m.CreditNoteDetailPage })))
+const ReturnNoteDetailPage = lazy(() => import('../features/documents/return-notes').then((m) => ({ default: m.ReturnNoteDetailPage })))
 
 // Purchases module
 const GoodsReceiptListPage = lazy(() => import('../features/purchases/GoodsReceiptListPage').then((m) => ({ default: m.GoodsReceiptListPage })))
@@ -86,6 +94,7 @@ const SettingsPage = lazy(() => import('../features/settings/SettingsPage').then
 const UsersPage = lazy(() => import('../features/settings/UsersPage').then((m) => ({ default: m.UsersPage })))
 const RolesPage = lazy(() => import('../features/settings/RolesPage').then((m) => ({ default: m.RolesPage })))
 const CompanyPage = lazy(() => import('../features/settings/CompanyPage').then((m) => ({ default: m.CompanyPage })))
+const TaxSettingsPage = lazy(() => import('../features/settings/TaxSettingsPage').then((m) => ({ default: m.TaxSettingsPage })))
 const LocationsPage = lazy(() => import('../features/settings/LocationsPage').then((m) => ({ default: m.LocationsPage })))
 const InventorySettings = lazy(() => import('../features/settings/components/InventorySettings').then((m) => ({ default: m.InventorySettings })))
 
@@ -368,7 +377,7 @@ export function AppRoutes() {
             element={
               <RequirePermission moduleKey="sales">
                 <SuspenseWrapper>
-                  <DocumentDetailPage />
+                  <QuoteDetailPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -410,7 +419,7 @@ export function AppRoutes() {
             element={
               <RequirePermission moduleKey="sales">
                 <SuspenseWrapper>
-                  <DocumentDetailPage />
+                  <SalesOrderDetailPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -452,7 +461,7 @@ export function AppRoutes() {
             element={
               <RequirePermission moduleKey="sales">
                 <SuspenseWrapper>
-                  <DocumentDetailPage />
+                  <InvoiceDetailPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -504,7 +513,7 @@ export function AppRoutes() {
             element={
               <RequirePermission moduleKey="sales">
                 <SuspenseWrapper>
-                  <DocumentDetailPage />
+                  <CreditNoteDetailPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -615,7 +624,7 @@ export function AppRoutes() {
             element={
               <RequirePermission moduleKey="purchases">
                 <SuspenseWrapper>
-                  <DocumentDetailPage />
+                  <PurchaseOrderDetailPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -758,7 +767,7 @@ export function AppRoutes() {
             element={
               <RequirePermission moduleKey="inventory">
                 <SuspenseWrapper>
-                  <DocumentDetailPage />
+                  <DeliveryNoteDetailPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -790,7 +799,7 @@ export function AppRoutes() {
             element={
               <RequirePermission moduleKey="inventory">
                 <SuspenseWrapper>
-                  <DocumentDetailPage />
+                  <ReturnNoteDetailPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -863,41 +872,49 @@ export function AppRoutes() {
         <Route
           path="vehicles"
           element={
-            <RequirePermission moduleKey="vehicles">
-              <SuspenseWrapper>
-                <VehicleListPage />
-              </SuspenseWrapper>
-            </RequirePermission>
+            <ModuleGuard module="Vehicle">
+              <RequirePermission moduleKey="vehicles">
+                <SuspenseWrapper>
+                  <VehicleListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            </ModuleGuard>
           }
         />
         <Route
           path="vehicles/new"
           element={
-            <RequirePermission permission="vehicles.create">
-              <SuspenseWrapper>
-                <VehicleForm />
-              </SuspenseWrapper>
-            </RequirePermission>
+            <ModuleGuard module="Vehicle">
+              <RequirePermission permission="vehicles.create">
+                <SuspenseWrapper>
+                  <VehicleForm />
+                </SuspenseWrapper>
+              </RequirePermission>
+            </ModuleGuard>
           }
         />
         <Route
           path="vehicles/:id"
           element={
-            <RequirePermission moduleKey="vehicles">
-              <SuspenseWrapper>
-                <VehicleDetailPage />
-              </SuspenseWrapper>
-            </RequirePermission>
+            <ModuleGuard module="Vehicle">
+              <RequirePermission moduleKey="vehicles">
+                <SuspenseWrapper>
+                  <VehicleDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            </ModuleGuard>
           }
         />
         <Route
           path="vehicles/:id/edit"
           element={
-            <RequirePermission permission="vehicles.edit">
-              <SuspenseWrapper>
-                <VehicleForm />
-              </SuspenseWrapper>
-            </RequirePermission>
+            <ModuleGuard module="Vehicle">
+              <RequirePermission permission="vehicles.edit">
+                <SuspenseWrapper>
+                  <VehicleForm />
+                </SuspenseWrapper>
+              </RequirePermission>
+            </ModuleGuard>
           }
         />
 
@@ -906,51 +923,61 @@ export function AppRoutes() {
           <Route
             index
             element={
-              <RequirePermission moduleKey="services">
-                <SuspenseWrapper>
-                  <ServiceListPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Workshop">
+                <RequirePermission moduleKey="services">
+                  <SuspenseWrapper>
+                    <ServiceListPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="new"
             element={
-              <RequirePermission permission="services.create">
-                <SuspenseWrapper>
-                  <ServiceForm />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Workshop">
+                <RequirePermission permission="services.create">
+                  <SuspenseWrapper>
+                    <ServiceForm />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path="categories"
             element={
-              <RequirePermission moduleKey="services">
-                <SuspenseWrapper>
-                  <ServiceCategoryListPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Workshop">
+                <RequirePermission moduleKey="services">
+                  <SuspenseWrapper>
+                    <ServiceCategoryListPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path=":id"
             element={
-              <RequirePermission moduleKey="services">
-                <SuspenseWrapper>
-                  <ServiceDetailPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Workshop">
+                <RequirePermission moduleKey="services">
+                  <SuspenseWrapper>
+                    <ServiceDetailPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route
             path=":id/edit"
             element={
-              <RequirePermission permission="services.edit">
-                <SuspenseWrapper>
-                  <ServiceForm />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Workshop">
+                <RequirePermission permission="services.edit">
+                  <SuspenseWrapper>
+                    <ServiceForm />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
         </Route>
@@ -1318,6 +1345,16 @@ export function AppRoutes() {
               <RequirePermission moduleKey="settings">
                 <SuspenseWrapper>
                   <CompanyPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="tax"
+            element={
+              <RequirePermission moduleKey="settings">
+                <SuspenseWrapper>
+                  <TaxSettingsPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

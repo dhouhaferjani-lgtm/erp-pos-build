@@ -26,8 +26,6 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Factories\CompanyFactory;
-use Database\Factories\PartnerFactory;
-use Database\Factories\ProductFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -37,23 +35,38 @@ class CompleteSalesCycleWithReturnTest extends TestCase
     use RefreshDatabase;
 
     private Tenant $tenant;
+
     private Company $company;
+
     private Location $location;
+
     private Partner $customer;
+
     private Product $product;
+
     private Account $arAccount;
+
     private Account $revenueAccount;
+
     private Account $cogsAccount;
+
     private Account $inventoryAccount;
+
     private Account $salesReturnsAccount;
+
     private Account $vatAccount;
 
     // Services needed for direct calls
     private \App\Modules\Document\Domain\Services\SalesOrderService $salesOrderService;
+
     private \App\Modules\Document\Domain\Services\DeliveryNoteService $deliveryNoteService;
+
     private \App\Modules\Document\Domain\Services\ReturnNoteService $returnNoteService;
+
     private \App\Modules\Document\Domain\Services\DocumentPostingService $postingService;
+
     private \App\Modules\Accounting\Domain\Services\GeneralLedgerService $glService;
+
     private \App\Modules\Identity\Domain\User $user;
 
     protected function setUp(): void

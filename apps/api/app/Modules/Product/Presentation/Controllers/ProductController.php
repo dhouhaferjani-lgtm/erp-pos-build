@@ -4,14 +4,20 @@ declare(strict_types=1);
 
 namespace App\Modules\Product\Presentation\Controllers;
 
+use App\Enums\Vertical;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\StockLevelData;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Application\DTOs\ProductData;
+use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Product\Presentation\Requests\CreateProductRequest;
 use App\Modules\Product\Presentation\Requests\UpdateProductRequest;
+use App\Support\Traits\FiltersAndSorts;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,6 +25,7 @@ use Illuminate\Routing\Controller;
 
 class ProductController extends Controller
 {
+    use FiltersAndSorts;
     use PaginatesResults;
 
     public function __construct(
@@ -26,77 +33,135 @@ class ProductController extends Controller
     ) {}
 
     /**
-     * List all products for the current company.
+     * List all products for the current company with sorting, filtering, and aggregates.
      */
     public function index(Request $request): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
-        $params = $this->getPaginationParams($request);
+        $company = $this->companyContext->requireCompany();
+
+        // Get sort parameters
+        $sortParams = $this->getSortParams(
+            $request,
+            $this->getAllowedSortColumns(),
+            $this->getDefaultSort()['column'],
+            $this->getDefaultSort()['direction']
+        );
+
+        // Get filter parameters
+        $filterConfig = $this->getFilterConfig();
+        $filters = $this->getFilterParams($request, $filterConfig);
+
+        // Get per_page parameter
+        $perPage = min((int) $request->input('per_page', 25), 100);
+
+        // Build query with conditional vertical-specific metadata loading
+        $with = ['category', 'primaryImage'];
+        if ($company->tenant->vertical === Vertical::Parapharmacy) {
+            $with[] = 'parapharmacyMetadata';
+        }
 
         $query = Product::query()
-            ->where('company_id', $companyId);
+            ->where('company_id', $companyId)
+            ->with($with);
 
-        // Filter by type
-        if ($request->has('type')) {
-            $query->where('type', $request->input('type'));
-        }
+        // Apply filters
+        $this->applyFilters($query, $filters, $filterConfig);
 
-        // Filter by active status
-        if ($request->has('active')) {
-            $query->where('is_active', $request->boolean('active'));
-        }
+        // Apply sorting
+        $this->applySorting($query, $sortParams);
 
-        // Search by name or SKU (case-insensitive)
-        // Use LOWER() for database-agnostic case-insensitive search (works on both PostgreSQL and SQLite)
-        if ($request->has('search')) {
-            $search = mb_strtolower($request->input('search'));
-            // Escape LIKE special characters to prevent LIKE pattern injection
-            $search = addcslashes($search, '%_\\');
-            $query->where(function ($q) use ($search) {
-                $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])
-                    ->orWhereRaw('LOWER(sku) LIKE ?', ["%{$search}%"]);
-            });
-        }
+        // Calculate aggregates (on filtered query, before pagination)
+        $aggregates = $this->calculateAggregates($query, $this->getAggregateConfig());
 
-        // Order by name for consistent pagination
-        $query->orderBy('name');
+        // Paginate
+        $paginator = $query->paginate($perPage);
 
-        // Use cursor pagination
-        $paginator = $query->cursorPaginate($params['per_page'], ['*'], 'cursor', $params['cursor']);
-
-        // Optionally include total stock across all locations
-        $includeStock = $request->boolean('include_stock');
-
-        // Transform items with optional stock data
-        if ($includeStock) {
-            $items = collect($paginator->items())->map(function (Product $product) use ($companyId) {
-                $productData = ProductData::fromModel($product);
-                $totalStock = StockLevel::where('product_id', $product->id)
-                    ->where('company_id', $companyId)
-                    ->sum('quantity');
-
-                return array_merge($productData->toArray(), [
-                    'total_stock' => (string) $totalStock,
-                ]);
-            })->all();
-
-            return response()->json([
-                'data' => $items,
-                'meta' => [
-                    'per_page' => $paginator->perPage(),
-                    'has_more' => $paginator->hasMorePages(),
-                ],
-                'links' => [
-                    'next' => $paginator->nextCursor()?->encode(),
-                    'prev' => $paginator->previousCursor()?->encode(),
-                ],
-            ]);
-        }
-
-        // Use the trait's formatPaginatedResponse for standard response
+        // Use the trait's formatOffsetPaginatedResponse
         return response()->json(
-            $this->formatPaginatedResponse($paginator, ProductData::class)
+            $this->formatOffsetPaginatedResponse($paginator, ProductData::class, $aggregates)
         );
+    }
+
+    /**
+     * Get allowed sort columns for products.
+     *
+     * @return array<string>
+     */
+    protected function getAllowedSortColumns(): array
+    {
+        return ['name', 'sku', 'sale_price', 'type', 'created_at'];
+    }
+
+    /**
+     * Get default sort configuration.
+     *
+     * @return array{column: string, direction: string}
+     */
+    protected function getDefaultSort(): array
+    {
+        return ['column' => 'name', 'direction' => 'asc'];
+    }
+
+    /**
+     * Get filter configuration for products.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    protected function getFilterConfig(): array
+    {
+        return [
+            'type' => [
+                'type' => 'enum',
+                'enum' => ProductType::class,
+            ],
+            'is_active' => [
+                'type' => 'boolean',
+                'column' => 'is_active',
+            ],
+            'category_id' => [
+                'type' => 'relationship',
+                'column' => 'category_id',
+            ],
+            'price_min' => [
+                'type' => 'range',
+                'column' => 'sale_price',
+                'operator' => '>=',
+            ],
+            'price_max' => [
+                'type' => 'range',
+                'column' => 'sale_price',
+                'operator' => '<=',
+            ],
+            'search' => [
+                'type' => 'text',
+                'columns' => ['name', 'sku', 'barcode'],
+            ],
+            'has_stock' => [
+                'type' => 'computed',
+                'callback' => fn ($q) => $q->whereHas('stockLevels', fn ($sq) => $sq->where('quantity', '>', 0)),
+            ],
+        ];
+    }
+
+    /**
+     * Get aggregate configuration for products.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    protected function getAggregateConfig(): array
+    {
+        return [
+            'total_products' => ['type' => 'count'],
+            'total_active' => [
+                'type' => 'count',
+                'filter' => ['is_active' => true],
+            ],
+            'average_price' => [
+                'type' => 'avg',
+                'column' => 'sale_price',
+            ],
+        ];
     }
 
     /**
@@ -106,6 +171,7 @@ class ProductController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
+        $company = $this->companyContext->requireCompany();
 
         $productModel = Product::where('company_id', $this->companyContext->requireCompanyId())
             ->where('id', $product)
@@ -122,6 +188,11 @@ class ProductController extends Controller
                     'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
                 ],
             ], 404);
+        }
+
+        // Conditionally load vertical-specific metadata
+        if ($company->tenant->vertical === Vertical::Parapharmacy) {
+            $productModel->load('parapharmacyMetadata');
         }
 
         return response()->json([
@@ -145,11 +216,28 @@ class ProductController extends Controller
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
 
+        // Extract parapharmacy metadata if provided
+        $parapharmacyMetadata = null;
+        if (array_key_exists('parapharmacy_metadata', $validated)) {
+            $parapharmacyMetadata = $validated['parapharmacy_metadata'];
+            unset($validated['parapharmacy_metadata']);
+        }
+
         $product = Product::create([
             'tenant_id' => $tenantId,
             'company_id' => $companyId,
             ...$validated,
         ]);
+
+        // Create parapharmacy metadata if provided AND tenant is Parapharmacy vertical
+        if ($parapharmacyMetadata !== null && is_array($parapharmacyMetadata) && $company->tenant->vertical === Vertical::Parapharmacy) {
+            $product->parapharmacyMetadata()->create($parapharmacyMetadata);
+        }
+
+        // Load metadata for response if Parapharmacy vertical
+        if ($company->tenant->vertical === Vertical::Parapharmacy) {
+            $product->load('parapharmacyMetadata');
+        }
 
         return response()->json([
             'data' => ProductData::fromModel($product),
@@ -167,6 +255,7 @@ class ProductController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
+        $company = $this->companyContext->requireCompany();
 
         $productModel = Product::where('company_id', $this->companyContext->requireCompanyId())
             ->where('id', $product)
@@ -187,10 +276,32 @@ class ProductController extends Controller
 
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
+
+        // Extract parapharmacy metadata if provided
+        $parapharmacyMetadata = null;
+        if (array_key_exists('parapharmacy_metadata', $validated)) {
+            $parapharmacyMetadata = $validated['parapharmacy_metadata'];
+            unset($validated['parapharmacy_metadata']);
+        }
+
+        // Update product core fields
         $productModel->update($validated);
+
+        // Update or create parapharmacy metadata if provided AND tenant is Parapharmacy vertical
+        if ($parapharmacyMetadata !== null && is_array($parapharmacyMetadata) && $company->tenant->vertical === Vertical::Parapharmacy) {
+            $productModel->parapharmacyMetadata()->updateOrCreate(
+                ['product_id' => $productModel->id],
+                $parapharmacyMetadata
+            );
+        }
 
         /** @var Product $freshProduct */
         $freshProduct = $productModel->fresh();
+
+        // Load metadata for response if Parapharmacy vertical
+        if ($company->tenant->vertical === Vertical::Parapharmacy) {
+            $freshProduct->load('parapharmacyMetadata');
+        }
 
         return response()->json([
             'data' => ProductData::fromModel($freshProduct),
@@ -260,13 +371,35 @@ class ProductController extends Controller
             ->with('location')
             ->get();
 
-        $data = $stockLevels->map(
-            fn (StockLevel $level) => StockLevelData::fromModel($level)
-        );
+        // Calculate incoming stock from confirmed purchase orders
+        $incomingByLocation = DocumentLine::query()
+            ->join('documents', 'document_lines.document_id', '=', 'documents.id')
+            ->where('documents.type', DocumentType::PurchaseOrder)
+            ->where('documents.status', DocumentStatus::Confirmed)
+            ->where('documents.company_id', $companyId)
+            ->where('document_lines.product_id', $productModel->id)
+            ->whereRaw('document_lines.quantity > COALESCE(document_lines.quantity_received, 0)')
+            ->selectRaw('
+                document_lines.location_id,
+                SUM(document_lines.quantity - COALESCE(document_lines.quantity_received, 0)) as incoming
+            ')
+            ->groupBy('document_lines.location_id')
+            ->get()
+            ->keyBy('location_id');
 
+        // Map stock levels with incoming data
+        $data = $stockLevels->map(function (StockLevel $level) use ($incomingByLocation) {
+            $incoming = $incomingByLocation->get($level->location_id)?->incoming ?? '0.00';
+
+            return StockLevelData::fromModel($level, (string) $incoming);
+        });
+
+        // Calculate totals
         $totalQuantity = $stockLevels->sum('quantity');
         $totalReserved = $stockLevels->sum('reserved');
         $totalAvailable = bcsub((string) $totalQuantity, (string) $totalReserved, 2);
+        $totalIncoming = $incomingByLocation->sum('incoming');
+        $totalProjectedAvailable = bcadd($totalAvailable, (string) $totalIncoming, 2);
 
         return response()->json([
             'data' => [
@@ -275,6 +408,8 @@ class ProductController extends Controller
                     'quantity' => (string) $totalQuantity,
                     'reserved' => (string) $totalReserved,
                     'available' => $totalAvailable,
+                    'incoming' => (string) $totalIncoming,
+                    'projected_available' => $totalProjectedAvailable,
                 ],
             ],
             'meta' => [

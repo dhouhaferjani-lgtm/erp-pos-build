@@ -9,7 +9,6 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Domain\FraudAlert;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 
 /**
  * Controller for managing fraud alerts.
@@ -31,6 +30,7 @@ class FraudAlertController extends Controller
      * List fraud alerts with filtering and pagination.
      *
      * @group Compliance
+     *
      * @subgroup Fraud Detection
      */
     public function index(Request $request): JsonResponse
@@ -76,6 +76,7 @@ class FraudAlertController extends Controller
      * Get single fraud alert with full details.
      *
      * @group Compliance
+     *
      * @subgroup Fraud Detection
      */
     public function show(string $id): JsonResponse
@@ -93,6 +94,7 @@ class FraudAlertController extends Controller
      * Assign fraud alert to admin for investigation.
      *
      * @group Compliance
+     *
      * @subgroup Fraud Detection
      */
     public function assign(Request $request, string $id): JsonResponse
@@ -117,6 +119,7 @@ class FraudAlertController extends Controller
      * Dismiss fraud alert as false positive.
      *
      * @group Compliance
+     *
      * @subgroup Fraud Detection
      */
     public function dismiss(Request $request, string $id): JsonResponse
@@ -141,6 +144,7 @@ class FraudAlertController extends Controller
      * Resolve fraud alert (confirmed fraud case).
      *
      * @group Compliance
+     *
      * @subgroup Fraud Detection
      */
     public function resolve(Request $request, string $id): JsonResponse
@@ -165,6 +169,7 @@ class FraudAlertController extends Controller
      * Get fraud alert statistics for dashboard.
      *
      * @group Compliance
+     *
      * @subgroup Fraud Detection
      */
     public function statistics(): JsonResponse

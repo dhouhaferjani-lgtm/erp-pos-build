@@ -6,6 +6,7 @@ namespace App\Modules\Document\Domain\Services\Conversion\Converters;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DeliveryStatus;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -16,6 +17,7 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * Converter for Sales Order to Invoice conversion.
@@ -138,28 +140,20 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
             throw new \RuntimeException('Sales order has already been fully invoiced');
         }
 
-        // Tunisia fiscal compliance: check if physical items require delivery notes
+        // Tunisia fiscal compliance: auto-create delivery note if physical items exist without delivery notes
         $scenario = $this->detectOrderScenario($source, $lineIds);
+        $autoCreatedDeliveryNote = null;
 
-        if ($scenario === 'products_only') {
+        if ($scenario === 'products_only' || $scenario === 'mixed') {
             if (! $this->hasDeliveryNotesForPhysicalItems($source)) {
-                throw new \DomainException(
-                    'Physical products must be delivered before invoicing. Create a delivery note first.',
-                    422
-                );
-            }
-        } elseif ($scenario === 'mixed') {
-            if (! $this->hasDeliveryNotesForPhysicalItems($source)) {
-                throw new \DomainException(
-                    'Physical products in this order must be delivered before invoicing. '.
-                    'Create a delivery note for physical items first, then invoice.',
-                    422
-                );
+                // Auto-create delivery note (confirmed but not delivered)
+                // User can mark it as delivered when they post the invoice
+                $autoCreatedDeliveryNote = $this->createDeliveryNoteForOrder($source);
             }
         }
         // scenario === 'services_only': allow direct invoicing
 
-        return DB::transaction(function () use ($source, $partial, $lineIds): Document {
+        return DB::transaction(function () use ($source, $partial, $lineIds, $autoCreatedDeliveryNote): Document {
             $invoice = $this->createTargetDocument($source, DocumentType::Invoice, [
                 'due_date' => now()->addDays(30),
             ]);
@@ -190,6 +184,18 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
 
             // Mark associated delivery notes as invoiced
             $this->markDeliveryNotesAsInvoiced($source, $invoice);
+
+            // Store metadata about auto-created delivery note in invoice payload
+            if ($autoCreatedDeliveryNote !== null) {
+                $invoicePayload = $invoice->payload ?? [];
+                $invoicePayload['auto_created_delivery_note'] = [
+                    'id' => $autoCreatedDeliveryNote->id,
+                    'number' => $autoCreatedDeliveryNote->document_number,
+                    'created_at' => $autoCreatedDeliveryNote->created_at->toDateTimeString(),
+                    'status' => 'draft_auto_created', // Draft status - requires confirmation before posting
+                ];
+                $invoice->update(['payload' => $invoicePayload]);
+            }
 
             // Dispatch conversion event for audit trail
             $this->dispatchConversionEvent($source, $invoice, $partial);
@@ -420,5 +426,108 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
 
             $dn->update(['payload' => $dnPayload]);
         }
+    }
+
+    /**
+     * Auto-create a delivery note for an order with physical products.
+     *
+     * Creates delivery note in "confirmed" status but with delivery_status "not_delivered".
+     * This allows the invoice to be created immediately while still enforcing Tunisia
+     * compliance - the delivery note must be marked as delivered before invoice can be posted.
+     *
+     * @return Document The created delivery note
+     */
+    private function createDeliveryNoteForOrder(Document $order): Document
+    {
+        Log::info('Auto-creating delivery note for order conversion to invoice', [
+            'order_id' => $order->id,
+            'order_number' => $order->document_number,
+        ]);
+
+        // Create delivery note document in DRAFT status
+        // User must explicitly confirm via modal before posting invoice
+        $delivery = Document::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $order->tenant_id,
+            'company_id' => $order->company_id,
+            'type' => DocumentType::DeliveryNote,
+            'status' => DocumentStatus::Draft, // Draft - requires explicit confirmation
+            'document_number' => $this->numberingService->generateNumber($order->tenant_id, $order->company_id, DocumentType::DeliveryNote),
+            'document_date' => now(),
+            'partner_id' => $order->partner_id,
+            'partner_name' => $order->partner_name,
+            'partner_address' => $order->partner_address,
+            'currency' => $order->currency,
+            'subtotal' => $order->subtotal,
+            'discount_amount' => $order->discount_amount,
+            'tax_amount' => $order->tax_amount,
+            'total' => $order->total,
+            'notes' => 'Auto-created during invoice conversion - requires confirmation',
+            'source_document_id' => $order->id,
+            'payload' => [
+                'auto_created' => true, // Flag for batch confirmation
+            ],
+        ]);
+
+        // Copy lines (only physical products)
+        foreach ($order->lines as $line) {
+            // Skip non-physical products
+            if ($line->product_id !== null) {
+                $product = Product::find($line->product_id);
+                if ($product !== null && ! $product->isPhysical()) {
+                    continue; // Skip services
+                }
+            }
+
+            // Create delivery note line linked to source order line
+            DocumentLine::create([
+                'id' => Str::uuid()->toString(),
+                'document_id' => $delivery->id,
+                'line_number' => $line->line_number,
+                'product_id' => $line->product_id,
+                'product_code' => $line->product_code,
+                'description' => $line->description,
+                'quantity' => $line->quantity,
+                'unit_price' => $line->unit_price,
+                'discount_percent' => $line->discount_percent,
+                'discount_amount' => $line->discount_amount,
+                'tax_rate' => $line->tax_rate,
+                'line_total' => $line->line_total ?? '0.00',
+                'notes' => $line->notes,
+                'source_line_id' => $line->id,
+            ]);
+
+            // Update order line's quantity_delivered
+            $line->update([
+                'quantity_delivered' => $line->quantity,
+            ]);
+        }
+
+        // Copy vehicle context if present
+        if ($order->vehicleContext !== null) {
+            $delivery->vehicleContext()->create([
+                'id' => Str::uuid()->toString(),
+                'vehicle_id' => $order->vehicleContext->vehicle_id,
+                'snapshot' => $order->vehicleContext->snapshot,
+                'mileage' => $order->vehicleContext->mileage,
+                'additional_data' => $order->vehicleContext->additional_data,
+            ]);
+        }
+
+        // Update order payload to track delivery note
+        $orderPayload = $order->payload ?? [];
+        $deliveryNoteIds = $orderPayload['delivery_note_ids'] ?? [];
+        $deliveryNoteIds[] = $delivery->id;
+        $orderPayload['delivery_note_ids'] = $deliveryNoteIds;
+        $orderPayload['auto_created_delivery_note'] = true; // Flag for UI
+        $order->update(['payload' => $orderPayload]);
+
+        Log::info('Auto-created delivery note', [
+            'delivery_note_id' => $delivery->id,
+            'delivery_note_number' => $delivery->document_number,
+            'order_id' => $order->id,
+        ]);
+
+        return $delivery;
     }
 }

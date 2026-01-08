@@ -228,17 +228,26 @@ export function DocumentSearchSelect<T extends BaseDocument>({
       )}
 
       {/* Selected value display / trigger */}
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={disabled ? -1 : 0}
         onClick={() => {
           if (!disabled) setIsOpen(!isOpen)
         }}
-        disabled={disabled}
-        className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-start shadow-sm transition-colors ${
+        onKeyDown={(e) => {
+          if ((e.key === 'Enter' || e.key === ' ') && !disabled) {
+            e.preventDefault()
+            setIsOpen(!isOpen)
+          }
+        }}
+        aria-disabled={disabled}
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+        className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-start shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
           error
-            ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-            : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
-        } ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white hover:bg-gray-50'}`}
+            ? 'border-red-300'
+            : 'border-gray-300'
+        } ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white hover:bg-gray-50 cursor-pointer'}`}
       >
         <span className={value ? 'text-gray-900' : 'text-gray-500'}>
           {getDisplayText()}
@@ -251,6 +260,7 @@ export function DocumentSearchSelect<T extends BaseDocument>({
                 e.stopPropagation()
                 handleClear()
               }}
+              aria-label="Clear selection"
               className="rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600"
             >
               <X className="h-4 w-4" />
@@ -260,7 +270,7 @@ export function DocumentSearchSelect<T extends BaseDocument>({
             className={`h-4 w-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
           />
         </div>
-      </button>
+      </div>
 
       {/* Error message */}
       {error && <p className="mt-1 text-sm text-red-600">{error}</p>}

@@ -6,11 +6,14 @@ namespace App\Modules\Document\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationContext;
 use App\Modules\Document\Application\DTOs\DocumentData;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FiscalCategory;
+use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\PurchaseOrderService;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
@@ -49,6 +52,7 @@ class PurchaseOrderController extends Controller
 
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly LocationContext $locationContext,
         private readonly DocumentNumberingService $numberingService,
         private readonly PurchaseOrderService $purchaseOrderService,
         private readonly GoodsReceiptService $goodsReceiptService,
@@ -184,13 +188,22 @@ class PurchaseOrderController extends Controller
 
             $total = bcadd($subtotal, $taxAmount, 2);
 
+            // Resolve location using LocationContext fallback chain
+            $locationId = $this->locationContext->resolveLocationId(
+                $validated['location_id'] ?? null,
+                $companyId
+            );
+
             // Create document
             $document = Document::create([
                 ...$validated,
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
                 'type' => DocumentType::PurchaseOrder,
+                'fiscal_category' => FiscalCategory::fromDocumentType(DocumentType::PurchaseOrder),
+                'fiscal_status' => FiscalStatus::Draft,
                 'status' => DocumentStatus::Draft,
+                'location_id' => $locationId,
                 'document_number' => $documentNumber,
                 'currency' => $validated['currency'] ?? 'EUR',
                 'subtotal' => $subtotal,

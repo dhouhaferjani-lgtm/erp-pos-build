@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Product\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Product\Application\DTOs\CategoryData;
 use App\Modules\Product\Domain\Category;
 use App\Support\Traits\PaginatesResults;
@@ -15,10 +16,14 @@ class CategoryController extends Controller
 {
     use PaginatesResults;
 
+    public function __construct(
+        private readonly CompanyContext $companyContext
+    ) {}
+
     public function index(Request $request): JsonResponse
     {
         $params = $this->getPaginationParams($request);
-        $companyId = app(\App\Modules\Company\Services\CompanyContext::class)->getCompanyId();
+        $companyId = $this->companyContext->getCompanyId();
 
         $query = Category::query()
             ->where('company_id', $companyId)
@@ -31,7 +36,7 @@ class CategoryController extends Controller
                 }
             })
             ->when($request->filled('search'), function ($q) use ($request) {
-                $q->where('name', 'ilike', '%' . $request->input('search') . '%');
+                $q->where('name', 'ilike', '%'.$request->input('search').'%');
             })
             ->when($request->filled('is_active'), function ($q) use ($request) {
                 $q->where('is_active', $request->boolean('is_active'));
@@ -48,7 +53,7 @@ class CategoryController extends Controller
 
     public function tree(Request $request): JsonResponse
     {
-        $companyId = app(\App\Modules\Company\Services\CompanyContext::class)->getCompanyId();
+        $companyId = $this->companyContext->getCompanyId();
 
         // Get all categories and build tree in memory
         // More efficient than recursive queries for reasonable category counts
@@ -90,7 +95,7 @@ class CategoryController extends Controller
 
     public function show(Request $request, int $id): JsonResponse
     {
-        $companyId = app(\App\Modules\Company\Services\CompanyContext::class)->getCompanyId();
+        $companyId = $this->companyContext->getCompanyId();
 
         $category = Category::query()
             ->where('company_id', $companyId)
@@ -113,14 +118,14 @@ class CategoryController extends Controller
             'is_active' => 'nullable|boolean',
         ]);
 
-        $companyId = app(\App\Modules\Company\Services\CompanyContext::class)->getCompanyId();
+        $companyId = $this->companyContext->getCompanyId();
 
         // Verify parent belongs to same company
-        if (!empty($validated['parent_id'])) {
+        if (! empty($validated['parent_id'])) {
             $parent = Category::where('company_id', $companyId)
                 ->find($validated['parent_id']);
 
-            if (!$parent) {
+            if (! $parent) {
                 return response()->json(['error' => 'Parent category not found'], 404);
             }
         }
@@ -135,14 +140,16 @@ class CategoryController extends Controller
             'is_active' => $validated['is_active'] ?? true,
         ]);
 
+        $category->refresh();
+
         return response()->json([
-            'data' => CategoryData::fromModel($category->fresh()),
+            'data' => CategoryData::fromModel($category),
         ], 201);
     }
 
     public function update(Request $request, int $id): JsonResponse
     {
-        $companyId = app(\App\Modules\Company\Services\CompanyContext::class)->getCompanyId();
+        $companyId = $this->companyContext->getCompanyId();
 
         $category = Category::query()
             ->where('company_id', $companyId)
@@ -158,27 +165,28 @@ class CategoryController extends Controller
         ]);
 
         // Prevent circular reference
-        if (!empty($validated['parent_id'])) {
+        if (! empty($validated['parent_id'])) {
             if ($validated['parent_id'] == $category->id) {
                 return response()->json(['error' => 'Category cannot be its own parent'], 422);
             }
 
             $newParent = Category::find($validated['parent_id']);
-            if ($newParent && $category->isAncestorOf($newParent)) {
+            if ($newParent instanceof Category && $category->isAncestorOf($newParent)) {
                 return response()->json(['error' => 'Cannot move category under its own descendant'], 422);
             }
         }
 
         $category->update($validated);
+        $category->refresh();
 
         return response()->json([
-            'data' => CategoryData::fromModel($category->fresh()),
+            'data' => CategoryData::fromModel($category),
         ]);
     }
 
     public function destroy(Request $request, int $id): JsonResponse
     {
-        $companyId = app(\App\Modules\Company\Services\CompanyContext::class)->getCompanyId();
+        $companyId = $this->companyContext->getCompanyId();
 
         $category = Category::query()
             ->where('company_id', $companyId)
@@ -212,7 +220,7 @@ class CategoryController extends Controller
             'categories.*.parent_id' => 'nullable|exists:categories,id',
         ]);
 
-        $companyId = app(\App\Modules\Company\Services\CompanyContext::class)->getCompanyId();
+        $companyId = $this->companyContext->getCompanyId();
 
         foreach ($validated['categories'] as $item) {
             Category::where('id', $item['id'])
@@ -224,7 +232,7 @@ class CategoryController extends Controller
         }
 
         // Rebuild paths for affected categories
-        $categoryIds = collect($validated['categories'])->pluck('id');
+        $categoryIds = array_column($validated['categories'], 'id');
         Category::whereIn('id', $categoryIds)->each(function ($cat) {
             $cat->updatePath();
             $cat->updateDescendantPaths();

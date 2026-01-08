@@ -9,6 +9,8 @@ use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\VerificationStatus;
 use App\Modules\Company\Domain\Enums\VerificationTier;
 use App\Modules\Company\Domain\Events\CompanyCreated;
+use App\Modules\Company\Domain\Events\CompanyUpdated;
+use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Carbon\Carbon;
 use Database\Factories\CompanyFactory;
@@ -124,6 +126,32 @@ class Company extends Model
                 createdAt: $company->created_at->toIso8601String(),
             ));
         });
+
+        static::updated(function (Company $company): void {
+            // Only dispatch if there are actual changes
+            if (empty($company->getDirty())) {
+                return;
+            }
+
+            $changes = [];
+            foreach ($company->getDirty() as $key => $newValue) {
+                $changes[$key] = [
+                    'old' => $company->getOriginal($key),
+                    'new' => $newValue,
+                ];
+            }
+
+            $userId = auth()->id() ?? 'system';
+
+            event(new CompanyUpdated(
+                companyId: $company->id,
+                tenantId: $company->tenant_id,
+                userId: (string) $userId,
+                changes: $changes,
+                attributes: $company->attributesToArray(),
+                updatedAt: now()->toIso8601String(),
+            ));
+        });
     }
 
     /**
@@ -169,6 +197,9 @@ class Company extends Model
         'timezone',
         'date_format',
         'fiscal_year_start_month',
+        'default_tax_rate',
+        'default_tax_configuration_id',
+        'tax_status',
         'fiscal_year_validated_at',
         'fiscal_year_validated_by',
         'first_transaction_posted_at',
@@ -232,6 +263,7 @@ class Company extends Model
             'fiscal_year_validated_at' => 'datetime',
             'first_transaction_posted_at' => 'datetime',
             'status' => CompanyStatus::class,
+            'tax_status' => CompanyTaxStatus::class,
             'allow_below_cost_sales' => 'boolean',
             'payment_tolerance_enabled' => 'boolean',
             'payment_tolerance_percentage' => 'string',
@@ -417,12 +449,34 @@ class Company extends Model
     }
 
     /**
+     * Check if company has any posted fiscal documents.
+     * Posted fiscal documents are immutable and prevent tax status changes.
+     */
+    public function hasPostedFiscalDocuments(): bool
+    {
+        return \App\Modules\Document\Domain\Document::query()
+            ->where('company_id', $this->id)
+            ->whereIn('type', ['invoice', 'credit_note'])
+            ->where('status', 'posted')
+            ->exists();
+    }
+
+    /**
+     * Check if company can change tax status.
+     * Tax status changes are only allowed before any fiscal documents are posted.
+     */
+    public function canChangeTaxStatus(): bool
+    {
+        return ! $this->hasPostedFiscalDocuments();
+    }
+
+    /**
      * Get reservation settings with defaults.
      */
     public function getReservationSettings(): \App\Modules\Company\Domain\ValueObjects\ReservationSettings
     {
         if ($this->reservation_settings === null) {
-            return new \App\Modules\Company\Domain\ValueObjects\ReservationSettings();
+            return new \App\Modules\Company\Domain\ValueObjects\ReservationSettings;
         }
 
         if (is_array($this->reservation_settings)) {
@@ -430,5 +484,13 @@ class Company extends Model
         }
 
         return $this->reservation_settings;
+    }
+
+    /**
+     * Check if company can recover VAT on purchases.
+     */
+    public function canRecoverVAT(): bool
+    {
+        return $this->tax_status === CompanyTaxStatus::REGISTERED;
     }
 }

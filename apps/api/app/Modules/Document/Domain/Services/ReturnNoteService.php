@@ -12,6 +12,7 @@ use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Events\ReturnNoteConfirmed;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
+use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -36,6 +37,7 @@ final class ReturnNoteService
     public function __construct(
         private readonly WeightedAverageCostService $wacService,
         private readonly FiscalHashService $hashService,
+        private readonly TaxCalculationService $taxCalculationService,
     ) {}
 
     /**
@@ -117,6 +119,14 @@ final class ReturnNoteService
             'chain_sequence' => $chainSequence,
         ]);
 
+        // Calculate and snapshot taxes for immutable audit trail
+        $taxResult = $this->taxCalculationService->calculateDocumentTaxes($returnNote);
+        $returnNote->update([
+            'tax_amount' => $taxResult->totalTax,
+            'total' => $taxResult->total,
+        ]);
+        $this->taxCalculationService->snapshotTaxDetails($returnNote, $taxResult);
+
         // Dispatch the fiscal event for audit log
         $this->dispatchConfirmedEvent($returnNote, $confirmedAt->toIso8601String());
     }
@@ -140,13 +150,20 @@ final class ReturnNoteService
                 continue;
             }
 
-            // Determine location (use line location or document default location)
-            $location = $line->location ?? $returnNote->location;
-            if ($location === null) {
+            // Determine effective location using the fallback chain:
+            // 1. Line's explicit location_id
+            // 2. Document's location_id
+            // 3. Null (error - location required for stock receipt)
+            $locationId = $line->getEffectiveLocationId();
+
+            if ($locationId === null) {
                 throw new \DomainException(
-                    "Cannot receive stock: no location specified for line {$line->id}"
+                    "Cannot receive stock: no location specified for line {$line->id}. ".
+                    'Please set either line.location_id or document.location_id.'
                 );
             }
+
+            $location = \App\Modules\Company\Domain\Location::findOrFail($locationId);
 
             // Get original cost (from source document if available, otherwise use current cost)
             $originalCost = $this->getOriginalCost($line);

@@ -43,6 +43,23 @@
       "supplier": "Fournisseur",
       "both": "Les deux"
     },
+    "taxInfo": {
+      "title": "Informations fiscales",
+      "status": "Statut fiscal",
+      "statusRegistered": "Assujetti à la TVA",
+      "statusNonRegistered": "Non assujetti à la TVA",
+      "statusExempt": "Exonéré de taxe",
+      "exemptionReason": "Raison de l'exonération",
+      "exemptionReasonPlaceholder": "Décrivez pourquoi ce partenaire est exonéré de taxe",
+      "certificate": "Certificat d'exonération",
+      "certificateHint": "Télécharger le certificat d'exonération fiscale",
+      "validUntil": "Certificat valide jusqu'au",
+      "warnings": {
+        "missingCertificate": "Aucun certificat d'exonération enregistré",
+        "expiredCertificate": "Le certificat d'exonération a expiré",
+        "expiringSoon": "Le certificat d'exonération expire bientôt"
+      }
+    },
     "empty": {
       "title": "Aucun partenaire",
       "description": "Commencez par ajouter votre premier partenaire."
@@ -95,10 +112,13 @@
     "confirmMessage": "Êtes-vous sûr de vouloir confirmer ce document ? Une fois confirmé, il ne pourra plus être modifié.",
     "types": {
       "quote": "Devis",
+      "quotation": "Devis",
       "salesOrder": "Bon de commande",
       "sales_order": "Bon de commande",
       "order": "Commande",
       "invoice": "Facture",
+      "taxInvoice": "Facture fiscale",
+      "fiscalReceipt": "Ticket fiscal",
       "creditNote": "Avoir",
       "credit_note": "Avoir",
       "deliveryNote": "Bon de livraison",
@@ -106,7 +126,8 @@
       "returnNote": "Bon de retour",
       "return_note": "Bon de retour",
       "purchaseOrder": "Bon d'achat",
-      "purchase_order": "Bon d'achat"
+      "purchase_order": "Bon d'achat",
+      "purchaseInvoice": "Facture d'achat"
     },
     "statuses": {
       "draft": "Brouillon",
@@ -129,7 +150,8 @@
       "cancelled": "Document annulé",
       "posted": "Document comptabilisé",
       "goodsReceived": "Marchandises réceptionnées"
-    }
+    },
+    "taxExemptionMention": "Exonération fiscale applicable à {{partner}} - {{reason}}"
   },
   "lineItems": {
     "title": "Lignes",
@@ -205,7 +227,25 @@
     "noPostedInvoices": "Aucune facture comptabilisée disponible",
     "invoice": "Facture",
     "balance": "Solde",
-    "total": "Total"
+    "total": "Total",
+    "deliveryConfirmation": {
+      "title": "Confirmer les livraisons avant comptabilisation",
+      "description": "Les bons de livraison suivants ont été créés automatiquement lors de la conversion du devis en facture. Ils doivent être confirmés avant de pouvoir comptabiliser la facture.",
+      "warning": "Important : Conformité fiscale",
+      "warningDetails": "La confirmation des bons de livraison va sortir le stock de l'inventaire et les ajouter à la chaîne de hachage fiscal. Cette action ne peut pas être annulée.",
+      "deliveryNotesTitle": "Bons de livraison à confirmer",
+      "lineCount_one": "{{count}} ligne",
+      "lineCount_other": "{{count}} lignes",
+      "statusDraft": "Brouillon",
+      "whatHappensTitle": "Ce qui va se passer :",
+      "step1": "Tous les bons de livraison brouillons seront confirmés",
+      "step2": "Le stock sera sorti de l'inventaire (réduit la quantité disponible)",
+      "step3": "Les bons de livraison seront ajoutés à la chaîne de hachage fiscal",
+      "step4": "La facture sera comptabilisée et finalisée",
+      "confirmAndPost": "Confirmer et comptabiliser",
+      "confirming": "Confirmation en cours...",
+      "success": "Facture comptabilisée avec succès avec les bons de livraison confirmés"
+    }
   },
   "deliveryNotes": {
     "title": "Bons de livraison",
@@ -440,7 +480,8 @@
       "stampDuty": "Droit de timbre",
       "totalTax": "Total taxes",
       "total": "Total",
-      "noTaxes": "Aucune taxe appliquée"
+      "noTaxes": "Aucune taxe appliquée",
+      "error": "Impossible de charger le détail des taxes"
     },
     "stampDuty": {
       "applied": "Le droit de timbre sera appliqué lors de la validation de cette facture",
@@ -461,5 +502,17 @@
         "line": "Ligne personnalisée"
       }
     }
+  },
+  "pos": {
+    "title": "Point de vente",
+    "searchProducts": "Rechercher des produits...",
+    "noProducts": "Aucun produit à afficher",
+    "cart": "Panier",
+    "items": "articles",
+    "emptyCart": "Panier vide",
+    "noItems": "Aucun article dans le panier",
+    "subtotal": "Sous-total",
+    "total": "Total",
+    "checkout": "Paiement"
   }
 }

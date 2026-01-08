@@ -16,6 +16,8 @@ import {
 import { ProductMovementsTab } from './components/ProductMovementsTab'
 import { ProductDocumentsTab } from './components/ProductDocumentsTab'
 import { useProductRealtime } from '../products/hooks/useProductRealtime'
+import { ProductPrimaryImageDisplay } from '../products/components'
+import { ProductStockLevels } from './components'
 
 type ProductType = 'part' | 'service' | 'consumable'
 
@@ -49,7 +51,7 @@ const typeColors: Record<ProductType, string> = {
 }
 
 export function ProductDetailPage() {
-  const { t } = useTranslation(['inventory', 'common'])
+  const { t } = useTranslation(['inventory', 'common', 'products'])
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
 
   // Get company currency with fallback
@@ -204,33 +206,36 @@ export function ProductDetailPage() {
 
         {/* Details Tab */}
         <TabsContent value="details" className="mt-6">
-          <div className="grid gap-6 lg:grid-cols-3">
-            {/* Main Info */}
-            <div className="lg:col-span-2 space-y-6">
-              {/* Basic Information */}
-              <div className="rounded-lg border border-gray-200 bg-white p-6">
-                <h2 className="mb-4 text-lg font-semibold text-gray-900">
-                  {t('products.sections.basicInfo')}
-                </h2>
-                <div className="space-y-4">
+          {/* Top Section: Image + Key Info */}
+          <div className="mb-6 grid gap-6 lg:grid-cols-[280px_1fr]">
+            {/* Left: Product Image */}
+            <div>
+              <ProductPrimaryImageDisplay productId={product.id} />
+            </div>
+
+            {/* Right: Essential Info - Clean Data Table */}
+            <div className="space-y-6">
+              {/* Product Information */}
+              <div className="rounded-lg border border-gray-200 bg-white">
+                <div className="border-b border-gray-200 px-6 py-4">
+                  <h2 className="text-base font-semibold text-gray-900">Product Information</h2>
+                </div>
+                <div className="divide-y divide-gray-100">
                   {product.description && (
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">{t('products.description')}</label>
-                      <p className="mt-1 text-gray-900">{product.description}</p>
+                    <div className="px-6 py-3">
+                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Description</div>
+                      <div className="mt-1 text-sm text-gray-900">{product.description}</div>
                     </div>
                   )}
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid grid-cols-2 gap-x-6 px-6 py-3">
                     <div>
-                      <label className="text-sm font-medium text-gray-500">{t('products.unit')}</label>
-                      <p className="mt-1 text-gray-900">{product.unit ?? '-'}</p>
+                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Unit</div>
+                      <div className="mt-1 text-sm font-medium text-gray-900">{product.unit ?? '-'}</div>
                     </div>
                     {product.barcode && (
-                      <div className="flex items-center gap-2">
-                        <Barcode className="h-4 w-4 text-gray-400" />
-                        <div>
-                          <label className="text-sm font-medium text-gray-500">{t('products.barcode')}</label>
-                          <p className="mt-1 text-gray-900">{product.barcode}</p>
-                        </div>
+                      <div>
+                        <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Barcode</div>
+                        <div className="mt-1 font-mono text-sm font-medium text-gray-900">{product.barcode}</div>
                       </div>
                     )}
                   </div>
@@ -238,55 +243,65 @@ export function ProductDetailPage() {
               </div>
 
               {/* Pricing */}
-              <div className="rounded-lg border border-gray-200 bg-white p-6">
-                <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
-                  <DollarSign className="h-5 w-5 text-gray-400" />
-                  {t('products.sections.pricing')}
-                </h2>
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <div className="rounded-lg bg-green-50 p-4">
-                    <label className="text-sm font-medium text-green-700">{t('products.salePrice')}</label>
-                    <p className="mt-1 text-xl font-bold text-green-900">
-                      {formatAmount(product.sale_price)}
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-blue-50 p-4">
-                    <label className="text-sm font-medium text-blue-700">{t('pricing.wac')}</label>
-                    <p className="mt-1 text-xl font-bold text-blue-900">
-                      {formatAmount(product.cost_price)}
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-gray-50 p-4">
-                    <label className="text-sm font-medium text-gray-700">{t('products.taxRate')}</label>
-                    <p className="mt-1 text-xl font-bold text-gray-900">
-                      {product.tax_rate ? `${product.tax_rate}%` : '-'}
-                    </p>
-                  </div>
+              <div className="rounded-lg border border-gray-200 bg-white">
+                <div className="border-b border-gray-200 px-6 py-4">
+                  <h2 className="text-base font-semibold text-gray-900">Pricing</h2>
                 </div>
-                {product.sale_price && product.cost_price && (
-                  <div className="mt-4 rounded-lg bg-yellow-50 p-4">
-                    <label className="text-sm font-medium text-yellow-700">{t('products.margin')}</label>
-                    <p className="mt-1 text-lg font-semibold text-yellow-900">
-                      {formatAmount(
-                        String(parseFloat(product.sale_price) - parseFloat(product.cost_price))
-                      )}{' '}
-                      ({(
-                        ((parseFloat(product.sale_price) - parseFloat(product.cost_price)) /
-                          parseFloat(product.cost_price)) *
-                        100
-                      ).toFixed(1)}%)
-                    </p>
+                <div className="divide-y divide-gray-100">
+                  <div className="grid grid-cols-3 gap-x-6 px-6 py-3">
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Sale Price</div>
+                      <div className="mt-1 text-base font-semibold text-gray-900">{formatAmount(product.sale_price)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Cost (WAC)</div>
+                      <div className="mt-1 text-base font-semibold text-gray-900">{formatAmount(product.cost_price)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Tax Rate</div>
+                      <div className="mt-1 text-base font-semibold text-gray-900">{product.tax_rate ? `${product.tax_rate}%` : '-'}</div>
+                    </div>
                   </div>
-                )}
+                  {product.sale_price && product.cost_price && (
+                    <div className="px-6 py-3">
+                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Margin</div>
+                      <div className="mt-1 text-base font-semibold text-gray-900">
+                        {formatAmount(
+                          String(parseFloat(product.sale_price) - parseFloat(product.cost_price))
+                        )}
+                        <span className="ml-2 text-sm font-normal text-gray-600">
+                          ({(
+                            ((parseFloat(product.sale_price) - parseFloat(product.cost_price)) /
+                              parseFloat(product.cost_price)) *
+                            100
+                          ).toFixed(1)}%)
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
+              {/* Stock Levels */}
+              <ProductStockLevels
+                productId={product.id}
+                costPrice={product.cost_price}
+                currency={companyCurrency}
+                locale={companyLocale}
+              />
+            </div>
+          </div>
+
+          {/* Secondary Sections - Below the fold */}
+          {(product.oem_numbers?.length || product.cross_references?.length) ? (
+            <div className="grid gap-6 lg:grid-cols-3">
               {/* Automotive Info */}
-              {(product.oem_numbers?.length || product.cross_references?.length) && (
+              <div className="lg:col-span-2">
                 <div className="rounded-lg border border-gray-200 bg-white p-6">
-                  <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
+                  <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
                     <Tag className="h-5 w-5 text-gray-400" />
                     {t('products.sections.automotiveInfo')}
-                  </h2>
+                  </h3>
                   <div className="space-y-4">
                     {product.oem_numbers && product.oem_numbers.length > 0 && (
                       <div>
@@ -334,53 +349,58 @@ export function ProductDetailPage() {
                     )}
                   </div>
                 </div>
-              )}
-            </div>
-
-            {/* Sidebar */}
-            <div className="space-y-6">
-              {/* Stock Info (Placeholder) */}
-              <div className="rounded-lg border border-gray-200 bg-white p-6">
-                <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
-                  <Package className="h-5 w-5 text-gray-400" />
-                  {t('products.sections.stockLevels')}
-                </h2>
-                <div className="text-center py-4">
-                  <p className="text-sm text-gray-500">{t('products.messages.stockComingSoon')}</p>
-                  <Link
-                    to="/inventory/stock"
-                    className="mt-2 inline-block text-sm text-blue-600 hover:text-blue-800"
-                  >
-                    {t('products.messages.viewAllStock')}
-                  </Link>
-                </div>
               </div>
 
-              {/* Metadata */}
-              <div className="rounded-lg border border-gray-200 bg-white p-6">
-                <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
-                  <Clock className="h-5 w-5 text-gray-400" />
-                  {t('products.sections.metadata')}
-                </h2>
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">{t('products.created')}</span>
-                    <span className="text-gray-900">{formatDate(product.created_at)}</span>
+              {/* Metadata Sidebar */}
+              <div className="rounded-lg border border-gray-200 bg-white">
+                <div className="border-b border-gray-200 px-6 py-4">
+                  <h3 className="text-base font-semibold text-gray-900">Metadata</h3>
+                </div>
+                <div className="divide-y divide-gray-100 px-6">
+                  <div className="grid grid-cols-1 gap-y-3 py-3">
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Created</div>
+                      <div className="mt-1 text-sm text-gray-900">{formatDate(product.created_at)}</div>
+                    </div>
+                    {product.updated_at && (
+                      <div>
+                        <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Last Updated</div>
+                        <div className="mt-1 text-sm text-gray-900">{formatDate(product.updated_at)}</div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="py-3">
+                    <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Product ID</div>
+                    <div className="mt-1 font-mono text-xs text-gray-600">{product.id}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-gray-200 bg-white">
+              <div className="border-b border-gray-200 px-6 py-4">
+                <h3 className="text-base font-semibold text-gray-900">Metadata</h3>
+              </div>
+              <div className="divide-y divide-gray-100 px-6">
+                <div className="grid grid-cols-2 gap-x-6 py-3">
+                  <div>
+                    <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Created</div>
+                    <div className="mt-1 text-sm text-gray-900">{formatDate(product.created_at)}</div>
                   </div>
                   {product.updated_at && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">{t('products.lastUpdated')}</span>
-                      <span className="text-gray-900">{formatDate(product.updated_at)}</span>
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Last Updated</div>
+                      <div className="mt-1 text-sm text-gray-900">{formatDate(product.updated_at)}</div>
                     </div>
                   )}
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">ID</span>
-                    <span className="font-mono text-xs text-gray-500">{product.id}</span>
-                  </div>
+                </div>
+                <div className="py-3">
+                  <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Product ID</div>
+                  <div className="mt-1 font-mono text-xs text-gray-600">{product.id}</div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </TabsContent>
 
         {/* Inventory Movements Tab */}

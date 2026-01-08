@@ -12,6 +12,7 @@ use App\Modules\Document\Domain\Events\SalesOrderConfirmed;
 use App\Modules\Inventory\Application\Services\StockReservationService;
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
+use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -37,6 +38,7 @@ final class SalesOrderService
 {
     public function __construct(
         private readonly StockReservationService $stockReservationService,
+        private readonly TaxCalculationService $taxCalculationService,
     ) {}
 
     /**
@@ -96,6 +98,14 @@ final class SalesOrderService
                 'confirmed_by' => $confirmedBy,
             ]);
 
+            // Calculate and snapshot taxes for immutable audit trail
+            $taxResult = $this->taxCalculationService->calculateDocumentTaxes($salesOrder);
+            $salesOrder->update([
+                'tax_amount' => $taxResult->totalTax,
+                'total' => $taxResult->total,
+            ]);
+            $this->taxCalculationService->snapshotTaxDetails($salesOrder, $taxResult);
+
             $this->dispatchConfirmedEvent($salesOrder, [], $confirmedAt->toIso8601String());
 
             return;
@@ -149,6 +159,14 @@ final class SalesOrderService
             'confirmed_at' => $confirmedAt,
             'confirmed_by' => $confirmedBy,
         ]);
+
+        // Calculate and snapshot taxes for immutable audit trail
+        $taxResult = $this->taxCalculationService->calculateDocumentTaxes($salesOrder);
+        $salesOrder->update([
+            'tax_amount' => $taxResult->totalTax,
+            'total' => $taxResult->total,
+        ]);
+        $this->taxCalculationService->snapshotTaxDetails($salesOrder, $taxResult);
 
         // Dispatch event for audit trail
         $this->dispatchConfirmedEvent($salesOrder, $reservations, $confirmedAt->toIso8601String());

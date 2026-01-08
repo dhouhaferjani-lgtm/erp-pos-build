@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Settings, Users, Shield, Building2, Upload, Calculator, Package, ChevronRight } from 'lucide-react'
+import { Settings, Users, Shield, Building2, Upload, Calculator, Package, ChevronRight, Receipt } from 'lucide-react'
 
 interface SettingsSection {
   titleKey: string
@@ -31,6 +31,13 @@ const sections: SettingsSection[] = [
     icon: <Building2 className="h-6 w-6" />,
     href: '/settings/company',
     color: 'bg-green-100 text-green-600',
+  },
+  {
+    titleKey: 'settings.sections.tax.title',
+    descriptionKey: 'settings.sections.tax.description',
+    icon: <Receipt className="h-6 w-6" />,
+    href: '/settings/tax',
+    color: 'bg-orange-100 text-orange-600',
   },
   {
     titleKey: 'settings.sections.inventory.title',

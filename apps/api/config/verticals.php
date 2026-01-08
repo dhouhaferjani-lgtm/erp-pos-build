@@ -1,0 +1,305 @@
+<?php
+
+declare(strict_types=1);
+
+return [
+    /*
+    |--------------------------------------------------------------------------
+    | Mechanic (Otospex)
+    |--------------------------------------------------------------------------
+    */
+
+    'mechanic' => [
+        'name' => 'mechanic',
+        'label' => 'Mechanic',
+        'description' => 'Automotive repair and maintenance services',
+        'product' => 'otospex',
+        'compatible_extras' => ['Appointments', 'Fleet'],
+        'default_modules' => [
+            'Identity',
+            'Tenant',
+            'Catalog',
+            'Vehicle',
+            'Partner',
+            'Workshop',
+            'Sales',
+            'Inventory',
+            'Treasury',
+            'Accounting',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Pharmacy (IziPOS)
+    |--------------------------------------------------------------------------
+    */
+
+    'pharmacy' => [
+        'name' => 'pharmacy',
+        'label' => 'Pharmacy',
+        'description' => 'Pharmaceutical retail with prescription management',
+        'product' => 'izipos',
+        'compatible_extras' => ['BatchExpiry', 'Prescription'],
+        'default_modules' => [
+            'Identity',
+            'Tenant',
+            'Catalog',
+            'Partner',
+            'Sales',
+            'Inventory',
+            'Treasury',
+            'Accounting',
+            'BatchExpiry',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Restaurant (IziPOS)
+    |--------------------------------------------------------------------------
+    */
+
+    'restaurant' => [
+        'name' => 'restaurant',
+        'label' => 'Restaurant',
+        'description' => 'Full-service dining with table management',
+        'product' => 'izipos',
+        'compatible_extras' => ['Tables', 'Reservation'],
+        'default_modules' => [
+            'Identity',
+            'Tenant',
+            'Catalog',
+            'Menu',
+            'Partner',
+            'Sales',
+            'Inventory',
+            'Treasury',
+            'Accounting',
+            'Tables',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Coffee Shop (IziPOS)
+    |--------------------------------------------------------------------------
+    */
+
+    'coffee_shop' => [
+        'name' => 'coffee_shop',
+        'label' => 'Coffee Shop',
+        'description' => 'Coffee shop and quick-service cafe',
+        'product' => 'izipos',
+        'compatible_extras' => ['Tables', 'Loyalty'],
+        'default_modules' => [
+            'Identity',
+            'Tenant',
+            'Catalog',
+            'Menu',
+            'Partner',
+            'Sales',
+            'Inventory',
+            'Treasury',
+            'Accounting',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Retail (IziPOS)
+    |--------------------------------------------------------------------------
+    */
+
+    'retail' => [
+        'name' => 'retail',
+        'label' => 'Retail',
+        'description' => 'General retail and merchandise',
+        'product' => 'izipos',
+        'compatible_extras' => ['Loyalty', 'Ecommerce'],
+        'default_modules' => [
+            'Identity',
+            'Tenant',
+            'Catalog',
+            'Partner',
+            'Sales',
+            'Inventory',
+            'Treasury',
+            'Accounting',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Fashion (IziPOS)
+    |--------------------------------------------------------------------------
+    */
+
+    'fashion' => [
+        'name' => 'fashion',
+        'label' => 'Fashion',
+        'description' => 'Fashion retail and boutiques',
+        'product' => 'izipos',
+        'compatible_extras' => ['Loyalty', 'Ecommerce'],
+        'default_modules' => [
+            'Identity',
+            'Tenant',
+            'Catalog',
+            'Partner',
+            'Sales',
+            'Inventory',
+            'Treasury',
+            'Accounting',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Body Shop (Otospex)
+    |--------------------------------------------------------------------------
+    */
+
+    'body_shop' => [
+        'name' => 'body_shop',
+        'label' => 'Body Shop',
+        'description' => 'Automotive body repair and painting',
+        'product' => 'otospex',
+        'compatible_extras' => ['Appointments', 'Fleet'],
+        'default_modules' => [
+            'Identity',
+            'Tenant',
+            'Catalog',
+            'Vehicle',
+            'Partner',
+            'Workshop',
+            'Sales',
+            'Inventory',
+            'Treasury',
+            'Accounting',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Parts Retailer (Otospex)
+    |--------------------------------------------------------------------------
+    */
+
+    'parts_retailer' => [
+        'name' => 'parts_retailer',
+        'label' => 'Parts Retailer',
+        'description' => 'Automotive parts retail and wholesale',
+        'product' => 'otospex',
+        'compatible_extras' => ['Ecommerce'],
+        'default_modules' => [
+            'Identity',
+            'Tenant',
+            'Catalog',
+            'Vehicle',
+            'Partner',
+            'Sales',
+            'Inventory',
+            'Treasury',
+            'Accounting',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Car Glass (Otospex)
+    |--------------------------------------------------------------------------
+    */
+
+    'car_glass' => [
+        'name' => 'car_glass',
+        'label' => 'Car Glass',
+        'description' => 'Automotive glass replacement and repair',
+        'product' => 'otospex',
+        'compatible_extras' => ['Appointments', 'Fleet'],
+        'default_modules' => [
+            'Identity',
+            'Tenant',
+            'Catalog',
+            'Vehicle',
+            'Partner',
+            'Workshop',
+            'Sales',
+            'Inventory',
+            'Treasury',
+            'Accounting',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Tire Shop (Otospex)
+    |--------------------------------------------------------------------------
+    */
+
+    'tire_shop' => [
+        'name' => 'tire_shop',
+        'label' => 'Tire Shop',
+        'description' => 'Tire sales and services',
+        'product' => 'otospex',
+        'compatible_extras' => ['Appointments'],
+        'default_modules' => [
+            'Identity',
+            'Tenant',
+            'Catalog',
+            'Vehicle',
+            'Partner',
+            'Sales',
+            'Inventory',
+            'Treasury',
+            'Accounting',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Service Station (Otospex)
+    |--------------------------------------------------------------------------
+    */
+
+    'service_station' => [
+        'name' => 'service_station',
+        'label' => 'Service Station',
+        'description' => 'Fuel station and quick services',
+        'product' => 'otospex',
+        'compatible_extras' => [],
+        'default_modules' => [
+            'Identity',
+            'Tenant',
+            'Catalog',
+            'Partner',
+            'Sales',
+            'Inventory',
+            'Treasury',
+            'Accounting',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Parapharmacy (IziPOS)
+    |--------------------------------------------------------------------------
+    */
+
+    'parapharmacy' => [
+        'name' => 'parapharmacy',
+        'label' => 'Parapharmacy',
+        'description' => 'Health and wellness retail',
+        'product' => 'izipos',
+        'compatible_extras' => ['BatchExpiry', 'Loyalty'],
+        'default_modules' => [
+            'Identity',
+            'Tenant',
+            'Catalog',
+            'Partner',
+            'Sales',
+            'Inventory',
+            'Treasury',
+            'Accounting',
+        ],
+    ],
+];

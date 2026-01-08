@@ -37,8 +37,25 @@ import {
   RotateCcw,
 } from 'lucide-react'
 import { usePermissions } from '../../../hooks/usePermissions'
+import { useCompanyConfig } from '../../../contexts'
 
 const STORAGE_KEY = 'autoerp-sidebar-expanded'
+
+/**
+ * Maps sidebar navigation keys to backend module names
+ *
+ * This allows the sidebar to use lowercase, user-friendly keys (e.g., "vehicles")
+ * while the backend uses PascalCase module names (e.g., "Vehicle").
+ *
+ * Modules not in this map are considered "always visible" (core modules)
+ * and will be shown regardless of vertical configuration.
+ */
+const MODULE_NAME_MAP: Record<string, string> = {
+  vehicles: 'Vehicle',
+  // services: removed - now a core module available to all verticals
+  // Core modules (always visible): dashboard, sales, purchases, inventory, treasury, finance, pricing, reports, settings
+  // These don't need mapping as they're not filtered by vertical
+}
 
 interface NavChild {
   key: string
@@ -102,7 +119,6 @@ const navigation: NavModule[] = [
   {
     key: 'services',
     icon: Wrench,
-    module: 'services',
     children: [
       { key: 'allServices', href: '/services', icon: Wrench },
       { key: 'serviceCategories', href: '/services/categories', icon: FolderTree },
@@ -163,12 +179,44 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const { t } = useTranslation()
   const location = useLocation()
   const { canAccessModule } = usePermissions()
+  const { hasModule } = useCompanyConfig()
 
-  // Filter navigation based on user permissions
+  /**
+   * Check if a module should be visible based on vertical configuration
+   *
+   * Modules in MODULE_NAME_MAP are vertical-specific (e.g., Vehicle, Workshop)
+   * and will only show if the tenant's vertical includes them.
+   *
+   * Modules NOT in the map are core modules (e.g., Sales, Inventory)
+   * and are always visible regardless of vertical.
+   */
+  const isModuleEnabledForVertical = useCallback(
+    (moduleKey: string): boolean => {
+      const backendModuleName = MODULE_NAME_MAP[moduleKey]
+
+      // If not in the map, it's a core module - always visible
+      if (!backendModuleName) {
+        return true
+      }
+
+      // If in the map, check if the vertical has this module
+      return hasModule(backendModuleName)
+    },
+    [hasModule]
+  )
+
+  // Filter navigation based on BOTH vertical configuration AND user permissions
   const filteredNavigation = useMemo(() => {
     return navigation
       .filter((module) => {
         const moduleKey = module.module ?? module.key
+
+        // First check: Is this module enabled for the current vertical?
+        if (!isModuleEnabledForVertical(moduleKey)) {
+          return false
+        }
+
+        // Second check: Does the user have permission to access this module?
         return canAccessModule(moduleKey)
       })
       .map((module) => {
@@ -186,7 +234,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
         if (module.children && module.children.length === 0) return false
         return true
       })
-  }, [canAccessModule])
+  }, [canAccessModule, isModuleEnabledForVertical])
 
   // Load expanded state from localStorage
   const [expandedModules, setExpandedModules] = useState<Set<string>>(() => {

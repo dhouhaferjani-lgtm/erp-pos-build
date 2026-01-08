@@ -71,7 +71,7 @@ final class FraudAlertNotificationService
     /**
      * Send email notifications to configured admins.
      *
-     * @param array<string> $recipients
+     * @param  array<string>  $recipients
      */
     private function sendEmailNotifications(FraudAlert $alert, array $recipients): void
     {

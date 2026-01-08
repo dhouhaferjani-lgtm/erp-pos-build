@@ -32,7 +32,7 @@ final class VehicleContextData extends Data
                 $snapshot['license_plate'] ?? null,
                 $snapshot['brand'] ?? null,
                 $snapshot['model'] ?? null,
-                isset($snapshot['year']) ? (string)$snapshot['year'] : null,
+                isset($snapshot['year']) ? (string) $snapshot['year'] : null,
             ]);
             $display = implode(' - ', $parts);
         }

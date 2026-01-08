@@ -14,9 +14,9 @@ return new class extends Migration
             $table->decimal('default_tax_rate', 5, 2)->nullable()->after('is_active');
             $table->uuid('default_tax_configuration_id')->nullable()->after('default_tax_rate');
             $table->foreign('default_tax_configuration_id')
-                  ->references('id')
-                  ->on('tax_configurations')
-                  ->nullOnDelete();
+                ->references('id')
+                ->on('tax_configurations')
+                ->nullOnDelete();
         });
     }
 

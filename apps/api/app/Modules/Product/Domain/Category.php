@@ -164,14 +164,14 @@ class Category extends Model
     public function getAncestors(): \Illuminate\Database\Eloquent\Collection
     {
         if (empty($this->path)) {
-            return new \Illuminate\Database\Eloquent\Collection();
+            return new \Illuminate\Database\Eloquent\Collection;
         }
 
         $ancestorIds = explode('/', $this->path);
         array_pop($ancestorIds); // Remove self
 
         if (empty($ancestorIds)) {
-            return new \Illuminate\Database\Eloquent\Collection();
+            return new \Illuminate\Database\Eloquent\Collection;
         }
 
         // Get categories and sort in memory to maintain order
@@ -188,7 +188,7 @@ class Category extends Model
      */
     public function getDescendants(): \Illuminate\Database\Eloquent\Collection
     {
-        return static::where('path', 'like', $this->path . '/%')
+        return static::where('path', 'like', $this->path.'/%')
             ->orderBy('path')
             ->get();
     }
@@ -224,12 +224,12 @@ class Category extends Model
 
     public function isAncestorOf(Category $category): bool
     {
-        return str_starts_with($category->path, $this->path . '/');
+        return str_starts_with($category->path, $this->path.'/');
     }
 
     public function isDescendantOf(Category $category): bool
     {
-        return str_starts_with($this->path, $category->path . '/');
+        return str_starts_with($this->path, $category->path.'/');
     }
 
     // Query Scopes

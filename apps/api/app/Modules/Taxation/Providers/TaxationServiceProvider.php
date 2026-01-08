@@ -4,9 +4,16 @@ declare(strict_types=1);
 
 namespace App\Modules\Taxation\Providers;
 
+use App\Modules\Taxation\Application\Services\WithholdingCertificateService;
+use App\Modules\Taxation\Application\Services\WithholdingHashChainService;
+use App\Modules\Taxation\Domain\Repositories\WithholdingCertificateRepositoryInterface;
+use App\Modules\Taxation\Domain\Repositories\WithholdingTaxRuleRepositoryInterface;
 use App\Modules\Taxation\Domain\Services\StampDutyService;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Taxation\Domain\Services\TaxResolutionService;
+use App\Modules\Taxation\Domain\Services\WithholdingCalculationService;
+use App\Modules\Taxation\Infrastructure\Repositories\EloquentWithholdingCertificateRepository;
+use App\Modules\Taxation\Infrastructure\Repositories\EloquentWithholdingTaxRuleRepository;
 use Illuminate\Support\ServiceProvider;
 
 class TaxationServiceProvider extends ServiceProvider
@@ -17,6 +24,22 @@ class TaxationServiceProvider extends ServiceProvider
         $this->app->singleton(StampDutyService::class);
         $this->app->singleton(TaxResolutionService::class);
         $this->app->singleton(TaxCalculationService::class);
+
+        // Register withholding tax repositories
+        $this->app->bind(
+            WithholdingTaxRuleRepositoryInterface::class,
+            EloquentWithholdingTaxRuleRepository::class
+        );
+
+        $this->app->bind(
+            WithholdingCertificateRepositoryInterface::class,
+            EloquentWithholdingCertificateRepository::class
+        );
+
+        // Register withholding tax services as singletons
+        $this->app->singleton(WithholdingCalculationService::class);
+        $this->app->singleton(WithholdingHashChainService::class);
+        $this->app->singleton(WithholdingCertificateService::class);
     }
 
     public function boot(): void

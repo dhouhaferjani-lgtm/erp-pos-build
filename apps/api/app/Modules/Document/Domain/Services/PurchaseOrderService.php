@@ -9,6 +9,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\PurchaseOrderConfirmed;
 use App\Modules\Inventory\Application\Services\LandedCostService;
+use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -16,17 +17,19 @@ use Illuminate\Support\Facades\DB;
  *
  * Key responsibilities:
  * - Confirm purchase orders (transition from draft)
- * - Allocate landed costs to purchase lines
+ * - Calculate taxes with recoverability determination
+ * - Allocate landed costs and non-recoverable taxes to purchase lines
  * - Manage order lifecycle with proper event sourcing
  *
  * Lifecycle:
- * 1. Draft → Confirmed (allocates landed costs)
+ * 1. Draft → Confirmed (calculates taxes, allocates costs and non-recoverable taxes)
  * 2. Confirmed → Goods Receipt (handled by GoodsReceiptService)
  */
 final class PurchaseOrderService
 {
     public function __construct(
         private readonly LandedCostService $landedCostService,
+        private readonly TaxCalculationService $taxCalculationService,
     ) {}
 
     /**
@@ -65,7 +68,7 @@ final class PurchaseOrderService
     }
 
     /**
-     * Confirm purchase order and allocate landed costs.
+     * Confirm purchase order and allocate landed costs and taxes.
      */
     private function confirmAndAllocateCosts(Document $purchaseOrder): void
     {
@@ -79,8 +82,20 @@ final class PurchaseOrderService
             'confirmed_by' => $confirmedBy,
         ]);
 
-        // Allocate landed costs (has its own transaction - uses savepoints)
-        $this->landedCostService->allocateCosts($purchaseOrder);
+        // Calculate taxes with recoverability determination
+        $taxResult = $this->taxCalculationService->calculateDocumentTaxes($purchaseOrder);
+
+        // Store tax details on document
+        $purchaseOrder->update([
+            'tax_amount' => $taxResult->totalTax,
+            'total' => $taxResult->total,
+        ]);
+
+        // Snapshot tax details for immutable audit trail
+        $this->taxCalculationService->snapshotTaxDetails($purchaseOrder, $taxResult);
+
+        // Allocate landed costs AND non-recoverable taxes (has its own transaction - uses savepoints)
+        $this->landedCostService->allocateCostsAndTaxes($purchaseOrder, $taxResult);
 
         // Dispatch event for audit trail
         $this->dispatchConfirmedEvent($purchaseOrder, $confirmedAt->toIso8601String());

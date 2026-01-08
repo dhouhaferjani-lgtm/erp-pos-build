@@ -43,6 +43,23 @@
       "supplier": "Supplier",
       "both": "Both"
     },
+    "taxInfo": {
+      "title": "Tax Information",
+      "status": "Tax Status",
+      "statusRegistered": "VAT Registered",
+      "statusNonRegistered": "Not VAT Registered",
+      "statusExempt": "Tax Exempt",
+      "exemptionReason": "Exemption Reason",
+      "exemptionReasonPlaceholder": "Describe why this partner is tax exempt",
+      "certificate": "Exemption Certificate",
+      "certificateHint": "Upload the tax exemption certificate",
+      "validUntil": "Certificate Valid Until",
+      "warnings": {
+        "missingCertificate": "No exemption certificate on file",
+        "expiredCertificate": "Exemption certificate has expired",
+        "expiringSoon": "Exemption certificate is expiring soon"
+      }
+    },
     "empty": {
       "title": "No partners yet",
       "description": "Get started by adding your first partner."
@@ -95,10 +112,13 @@
     "confirmMessage": "Are you sure you want to confirm this document? Once confirmed, it cannot be edited.",
     "types": {
       "quote": "Quote",
+      "quotation": "Quotation",
       "salesOrder": "Sales Order",
       "sales_order": "Sales Order",
       "order": "Order",
       "invoice": "Invoice",
+      "taxInvoice": "Tax Invoice",
+      "fiscalReceipt": "Fiscal Receipt",
       "creditNote": "Credit Note",
       "credit_note": "Credit Note",
       "deliveryNote": "Delivery Note",
@@ -106,7 +126,8 @@
       "returnNote": "Return Note",
       "return_note": "Return Note",
       "purchaseOrder": "Purchase Order",
-      "purchase_order": "Purchase Order"
+      "purchase_order": "Purchase Order",
+      "purchaseInvoice": "Purchase Invoice"
     },
     "statuses": {
       "draft": "Draft",
@@ -129,7 +150,8 @@
       "cancelled": "Document cancelled",
       "posted": "Document posted",
       "goodsReceived": "Goods received"
-    }
+    },
+    "taxExemptionMention": "Tax exemption applies to {{partner}} - {{reason}}"
   },
   "lineItems": {
     "title": "Line Items",
@@ -205,7 +227,25 @@
     "noPostedInvoices": "No posted invoices available",
     "invoice": "Invoice",
     "balance": "Balance",
-    "total": "Total"
+    "total": "Total",
+    "deliveryConfirmation": {
+      "title": "Confirm Deliveries Before Posting",
+      "description": "The following delivery notes were auto-created when converting the sales order to an invoice. They must be confirmed before you can post the invoice.",
+      "warning": "Important: Fiscal Compliance",
+      "warningDetails": "Confirming delivery notes will issue stock from inventory and add them to the fiscal hash chain. This action cannot be undone.",
+      "deliveryNotesTitle": "Delivery Notes to Confirm",
+      "lineCount_one": "{{count}} line",
+      "lineCount_other": "{{count}} lines",
+      "statusDraft": "Draft",
+      "whatHappensTitle": "What will happen:",
+      "step1": "All draft delivery notes will be confirmed",
+      "step2": "Stock will be issued from inventory (reduces quantity on hand)",
+      "step3": "Delivery notes will be added to the fiscal hash chain",
+      "step4": "Invoice will be posted and finalized",
+      "confirmAndPost": "Confirm & Post Invoice",
+      "confirming": "Confirming...",
+      "success": "Invoice posted successfully with confirmed delivery notes"
+    }
   },
   "deliveryNotes": {
     "title": "Delivery Notes",
@@ -444,7 +484,8 @@
       "stampDuty": "Stamp Duty",
       "totalTax": "Total Tax",
       "total": "Total",
-      "noTaxes": "No taxes applied"
+      "noTaxes": "No taxes applied",
+      "error": "Unable to load tax breakdown"
     },
     "stampDuty": {
       "applied": "Stamp duty will be applied when this invoice is posted",
@@ -465,5 +506,17 @@
         "line": "Line Override"
       }
     }
+  },
+  "pos": {
+    "title": "Point of Sale",
+    "searchProducts": "Search products...",
+    "noProducts": "No products to display",
+    "cart": "Cart",
+    "items": "items",
+    "emptyCart": "Empty cart",
+    "noItems": "No items in cart",
+    "subtotal": "Subtotal",
+    "total": "Total",
+    "checkout": "Checkout"
   }
 }

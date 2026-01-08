@@ -36,4 +36,8 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::delete('partners/{partner}', [PartnerController::class, 'destroy'])
         ->middleware('can:partners.delete')
         ->name('partners.destroy');
+
+    Route::get('partners/{partner}/tax-status', [PartnerController::class, 'taxStatus'])
+        ->middleware('can:partners.view')
+        ->name('partners.tax-status');
 });

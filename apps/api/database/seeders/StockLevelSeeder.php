@@ -54,10 +54,10 @@ class StockLevelSeeder extends Seeder
         }
 
         // Get or create default location
-        $defaultLocation = Location::forCompany($company->id)->first();
+        $defaultLocation = Location::forCompany($company->id)->where('is_default', true)->first();
 
         if (! $defaultLocation) {
-            $this->command?->warn("No location found for {$company->name}. Creating default warehouse...");
+            $this->command?->warn("No default location found for {$company->name}. Creating fallback warehouse...");
             $defaultLocation = Location::create([
                 'id' => Str::uuid()->toString(),
                 'company_id' => $company->id,
@@ -67,6 +67,14 @@ class StockLevelSeeder extends Seeder
                 'is_default' => true,
                 'is_active' => true,
                 'pos_enabled' => false,
+
+                // Copy address from company (fallback only)
+                'address_street' => $company->address_street,
+                'address_city' => $company->address_city,
+                'address_postal_code' => $company->address_postal_code,
+                'address_country' => $company->country_code,
+                'phone' => $company->phone,
+                'email' => $company->email,
             ]);
         }
 

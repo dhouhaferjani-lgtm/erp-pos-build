@@ -204,8 +204,20 @@
     "showing": "Affichage de {{from}} à {{to}} sur {{total}} résultats",
     "previous": "Précédent",
     "next": "Suivant",
-    "rowsPerPage": "Lignes par page"
+    "rowsPerPage": "Lignes par page",
+    "page": "Page",
+    "of": "sur",
+    "item": "élément",
+    "items": "éléments"
   },
+  "filters": "Filtres",
+  "clearAll": "Tout effacer",
+  "activeFilters": "{{count}} filtre(s) actif(s)",
+  "remove": "Retirer",
+  "sort": "Trier",
+  "sortBy": "Trier par",
+  "ascending": "Croissant",
+  "descending": "Décroissant",
   "confirmation": {
     "delete": "Êtes-vous sûr de vouloir supprimer cet élément ?",
     "unsavedChanges": "Vous avez des modifications non enregistrées. Êtes-vous sûr de vouloir quitter ?"
@@ -213,6 +225,7 @@
   "loading": "Chargement...",
   "noData": "Aucune donnée disponible",
   "error": "Erreur",
+  "details": "Détails",
   "cancel": "Annuler",
   "save": "Enregistrer",
   "saving": "Enregistrement...",
@@ -237,6 +250,13 @@
   "all": "Tous",
   "actionsLabel": "Actions",
   "allStatuses": "Tous les statuts",
+  "edit": "Modifier",
+  "download": "Télécharger",
+  "preview": "Aperçu",
+  "print": "Imprimer",
+  "send": "Envoyer",
+  "confirm": "Confirmer",
+  "convert": "Convertir",
   "total": "total",
   "views": {
     "list": "Vue liste",
@@ -659,6 +679,10 @@
       "company": {
         "title": "Entreprise",
         "description": "Informations et image de marque de l'entreprise"
+      },
+      "tax": {
+        "title": "Paramètres fiscaux",
+        "description": "Configurer les taux de taxe et les paramètres de l'exercice fiscal"
       },
       "inventory": {
         "title": "Inventaire et tarification",

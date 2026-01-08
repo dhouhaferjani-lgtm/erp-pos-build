@@ -23,7 +23,9 @@ class CategoryTest extends TestCase
     use RefreshDatabase;
 
     private User $user;
+
     private Company $company;
+
     private Tenant $tenant;
 
     protected function setUp(): void

@@ -6,6 +6,7 @@ import { useAuthStore } from '../../../stores/authStore'
 import { useLogout } from '../../../features/auth'
 import { languages } from '../../../lib/i18n'
 import { CompanySelector } from '../CompanySelector'
+import { LocationSelector } from '../LocationSelector'
 
 interface TopBarProps {
   onMenuClick?: () => void
@@ -84,6 +85,9 @@ export function TopBar({ onMenuClick }: TopBarProps) {
       <div className="flex items-center gap-2">
         {/* Company selector for multi-company users */}
         <CompanySelector />
+
+        {/* Location selector for multi-location companies */}
+        <LocationSelector className="hidden lg:block" />
 
         {/* Language selector */}
         <div className="relative" ref={langMenuRef}>

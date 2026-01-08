@@ -10,8 +10,9 @@ import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { RecordPaymentModal } from '../../../components/organisms'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
 import { DocumentAttachments } from '../components/DocumentAttachments'
-import { TaxBreakdownPanel } from '../components/TaxBreakdownPanel'
+import { DocumentTotals } from '../components/DocumentTotals'
 import { CreateCreditNoteForm, CreditNoteList } from '../components'
+import { DeliveryConfirmationModal } from '../components/DeliveryConfirmationModal'
 import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail, useCreditNotes } from '../hooks'
 import { useCompany } from '../../../hooks/useCompany'
 import type { Document } from '../../../types/document'
@@ -29,6 +30,8 @@ export function InvoiceDetailPage() {
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showCreditNoteForm, setShowCreditNoteForm] = useState(false)
   const [showEmailModal, setShowEmailModal] = useState(false)
+  const [showDeliveryConfirmationModal, setShowDeliveryConfirmationModal] = useState(false)
+  const [draftDeliveryNotes, setDraftDeliveryNotes] = useState<Array<{ id: string; number: string; total: string; line_count: number }>>([])
   const [activeTab, setActiveTab] = useState<ActiveTab>('related')
   const [emailForm, setEmailForm] = useState({
     recipientEmail: '',
@@ -79,6 +82,33 @@ export function InvoiceDetailPage() {
       void queryClient.invalidateQueries({ queryKey: ['document', 'invoice', id] })
       void queryClient.invalidateQueries({ queryKey: ['documents'] })
       toast.success(t('documents.messages.posted'))
+    },
+    onError: (error: any) => {
+      // Check if error is due to draft delivery notes
+      if (
+        error?.response?.data?.error?.code === 'DELIVERY_NOT_COMPLETED' &&
+        error?.response?.data?.error?.details?.status === 'draft_dns_found' &&
+        error?.response?.data?.error?.details?.can_auto_confirm === true
+      ) {
+        // Show modal with draft DNs
+        const draftDns = error.response.data.error.details.draft_dns || []
+        setDraftDeliveryNotes(draftDns)
+        setShowDeliveryConfirmationModal(true)
+      } else {
+        toast.error(getErrorMessage(error))
+      }
+    },
+  })
+
+  // Confirm deliveries and post mutation (one-click workflow)
+  const confirmDeliveriesAndPostMutation = useMutation({
+    mutationFn: () => apiPost<Document>(`/invoices/${id}/confirm-deliveries-and-post`, {}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['document', 'invoice', id] })
+      void queryClient.invalidateQueries({ queryKey: ['documents'] })
+      void queryClient.invalidateQueries({ queryKey: ['delivery-notes'] })
+      setShowDeliveryConfirmationModal(false)
+      toast.success(t('sales:invoices.deliveryConfirmation.success'))
     },
     onError: (error) => {
       toast.error(getErrorMessage(error))
@@ -319,8 +349,6 @@ export function InvoiceDetailPage() {
       </div>
 
       {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
       <div className="bg-white shadow overflow-hidden sm:rounded-lg">
         {/* Details Section */}
         <div className="px-4 py-5 sm:px-6">
@@ -432,46 +460,16 @@ export function InvoiceDetailPage() {
         {/* Totals */}
         <div className="bg-gray-50 px-4 py-5 sm:px-6">
           <div className="flex justify-end">
-            <dl className="space-y-2 text-sm">
-              <div className="flex justify-between gap-12">
-                <dt className="text-gray-500">{t('documents.subtotal')}</dt>
-                <dd className="text-gray-900 font-medium">
-                  {formatCurrency(parseFloat(invoice.subtotal), { currency: currentCompany?.currency ?? 'EUR' })}
-                </dd>
-              </div>
-              {parseFloat(invoice.tax_amount) > 0 && (
-                <div className="flex justify-between gap-12">
-                  <dt className="text-gray-500">{t('documents.tax')}</dt>
-                  <dd className="text-gray-900 font-medium">
-                    {formatCurrency(parseFloat(invoice.tax_amount), { currency: currentCompany?.currency ?? 'EUR' })}
-                  </dd>
-                </div>
-              )}
-              <div className="flex justify-between gap-12 text-base font-bold pt-2 border-t border-gray-200">
-                <dt className="text-gray-900">{t('documents.total')}</dt>
-                <dd className="text-gray-900">
-                  {formatCurrency(parseFloat(invoice.total), { currency: currentCompany?.currency ?? 'EUR' })}
-                </dd>
-              </div>
-              {isPosted && (
-                <div className="flex justify-between gap-12 text-base font-bold text-orange-600">
-                  <dt>{t('invoices.balanceDue')}</dt>
-                  <dd>{formatCurrency(balanceDue, { currency: currentCompany?.currency ?? 'EUR' })}</dd>
-                </div>
-              )}
-            </dl>
+            <div className="w-full max-w-md">
+              <DocumentTotals
+                documentId={invoice.id}
+                documentType="invoice"
+                currency={currentCompany?.currency ?? 'EUR'}
+                showBalanceDue={isPosted}
+                balanceDue={balanceDue}
+              />
+            </div>
           </div>
-        </div>
-      </div>
-        </div>
-
-        {/* Tax Breakdown Sidebar */}
-        <div className="lg:col-span-1">
-          <TaxBreakdownPanel
-            documentId={invoice.id}
-            documentType="invoice"
-            documentStatus={invoice.status}
-          />
         </div>
       </div>
 
@@ -593,6 +591,15 @@ export function InvoiceDetailPage() {
           onSuccess={handlePaymentRecorded}
         />
       )}
+
+      {/* Delivery Confirmation Modal */}
+      <DeliveryConfirmationModal
+        isOpen={showDeliveryConfirmationModal}
+        onClose={() => setShowDeliveryConfirmationModal(false)}
+        draftDeliveryNotes={draftDeliveryNotes}
+        onConfirmAndPost={() => confirmDeliveriesAndPostMutation.mutate()}
+        isLoading={confirmDeliveriesAndPostMutation.isPending}
+      />
 
       {/* Credit Note Form Modal */}
       {showCreditNoteForm && (

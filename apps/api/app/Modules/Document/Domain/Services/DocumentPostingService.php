@@ -12,6 +12,7 @@ use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Events\InvoiceCancelled;
 use App\Modules\Document\Domain\Events\InvoicePosted;
+use App\Modules\Product\Domain\Product;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -59,6 +60,11 @@ final class DocumentPostingService
             throw new \DomainException(
                 'Only confirmed documents can be posted. Current status: '.$document->status->value
             );
+        }
+
+        // Tunisia fiscal compliance: Check if physical products have been delivered (for invoices)
+        if ($document->type === DocumentType::Invoice) {
+            $this->validateDeliveryCompliance($document);
         }
 
         $requiresFiscalChain = $this->requiresFiscalChain($document->type);
@@ -263,5 +269,82 @@ final class DocumentPostingService
         }
 
         return $company->fiscal_chain_seed;
+    }
+
+    /**
+     * Validate Tunisia fiscal compliance for invoices with physical products.
+     *
+     * Ensures that all physical products have been delivered before posting
+     * the invoice. This is enforced at posting time (not creation time) to
+     * allow for a better UX where delivery notes can be auto-created.
+     *
+     * @throws \DomainException If physical products haven't been delivered
+     */
+    private function validateDeliveryCompliance(Document $invoice): void
+    {
+        // Check if invoice has any physical products
+        $hasPhysicalProducts = false;
+        foreach ($invoice->lines as $line) {
+            if ($line->product_id === null) {
+                continue;
+            }
+
+            $product = Product::find($line->product_id);
+            if ($product !== null && $product->is_physical) {
+                $hasPhysicalProducts = true;
+                break;
+            }
+        }
+
+        if (! $hasPhysicalProducts) {
+            return; // No physical products - no delivery requirement
+        }
+
+        // Get source order if invoice was created from order
+        $sourceOrder = $invoice->sourceDocument;
+        if ($sourceOrder === null || $sourceOrder->type !== DocumentType::SalesOrder) {
+            // No source order - this is a standalone invoice, no delivery check needed
+            return;
+        }
+
+        // Check if order has delivery notes
+        $orderPayload = $sourceOrder->payload ?? [];
+        $deliveryNoteIds = $orderPayload['delivery_note_ids'] ?? [];
+
+        if (empty($deliveryNoteIds)) {
+            throw new \DomainException(
+                'Physical products must be delivered before posting invoice. No delivery notes found for the source order.'
+            );
+        }
+
+        // Get all delivery notes and check if they're fully delivered
+        $deliveryNotes = Document::whereIn('id', $deliveryNoteIds)
+            ->where('type', DocumentType::DeliveryNote)
+            ->with('lines')
+            ->get();
+
+        foreach ($deliveryNotes as $dn) {
+            // Check if all lines have been fully delivered
+            $fullyDelivered = true;
+            foreach ($dn->lines as $line) {
+                $qtyDelivered = $line->quantity_delivered ?? '0.00';
+                $qty = $line->quantity;
+
+                // If any line hasn't been fully delivered, mark as not complete
+                if (bccomp((string) $qtyDelivered, (string) $qty, 4) < 0) {
+                    $fullyDelivered = false;
+                    break;
+                }
+            }
+
+            if (! $fullyDelivered) {
+                throw new \DomainException(
+                    sprintf(
+                        'Delivery note %s must be marked as fully delivered before posting invoice. Please update the delivery quantities.',
+                        $dn->document_number
+                    )
+                );
+            }
+        }
     }
 }

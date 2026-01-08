@@ -76,7 +76,7 @@ final class CompanyContext
     public function requireCompany(): Company
     {
         $companyId = $this->requireCompanyId();
-        $company = Company::find($companyId);
+        $company = Company::with('tenant')->find($companyId);
 
         if ($company === null) {
             throw new \RuntimeException("Company not found with ID: {$companyId}");

@@ -1,0 +1,1 @@
+export { ReturnNoteDetailPage } from './ReturnNoteDetailPage'

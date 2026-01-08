@@ -33,7 +33,7 @@
     "tips": "Conseils pour des importations réussies",
     "tip1": "Assurez-vous que votre fichier a des en-têtes dans la première ligne",
     "tip2": "Utilisez les modèles fournis pour de meilleurs résultats",
-    "tip3": "Importez les partenaires et produits avant les niveaux de stock ou les soldes d'ouverture"
+    "tip3": "Le stock ne peut être importé que lors de la configuration des soldes d'ouverture. Après le démarrage, utilisez Bons de Commande → Bons de Réception pour augmenter le stock."
   },
   "types": {
     "partners": {
@@ -51,6 +51,10 @@
     "opening_balances": {
       "title": "Soldes d'ouverture",
       "description": "Importez les soldes d'ouverture des comptes"
+    },
+    "product_images": {
+      "title": "Images de produits",
+      "description": "Importez des images de produits à partir d'un fichier ZIP. Les images doivent être nommées avec les références produits (ex : PROD-001.jpg)"
     }
   },
   "card": {

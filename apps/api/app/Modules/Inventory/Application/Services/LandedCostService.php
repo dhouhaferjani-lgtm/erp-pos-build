@@ -67,8 +67,8 @@ class LandedCostService
      *
      * Both are distributed proportionally by line value, and both contribute to landed unit cost.
      *
-     * @param Document $purchaseOrder The purchase order
-     * @param TaxCalculationResult $taxResult Tax calculation result from TaxCalculationService
+     * @param  Document  $purchaseOrder  The purchase order
+     * @param  TaxCalculationResult  $taxResult  Tax calculation result from TaxCalculationService
      */
     public function allocateCostsAndTaxes(Document $purchaseOrder, TaxCalculationResult $taxResult): void
     {
@@ -237,10 +237,10 @@ class LandedCostService
     /**
      * Calculate landed unit cost for a line
      *
-     * @param float $lineTotal Line total (quantity × unit_price)
-     * @param float $allocatedCost Allocated additional costs
-     * @param float $nonRecoverableTax Allocated non-recoverable taxes
-     * @param float $quantity Quantity
+     * @param  float  $lineTotal  Line total (quantity × unit_price)
+     * @param  float  $allocatedCost  Allocated additional costs
+     * @param  float  $nonRecoverableTax  Allocated non-recoverable taxes
+     * @param  float  $quantity  Quantity
      */
     public function calculateLandedUnitCost(
         float $lineTotal,

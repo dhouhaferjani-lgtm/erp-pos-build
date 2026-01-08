@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\Accounting\Domain;
 
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
-use App\Modules\Accounting\Domain\Exceptions\ImmutableJournalEntryException;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -159,7 +158,6 @@ class JournalEntry extends Model
      * Create a new Eloquent query builder for the model.
      *
      * @param  \Illuminate\Database\Query\Builder  $query
-     * @return JournalEntryBuilder
      */
     public function newEloquentBuilder($query): JournalEntryBuilder
     {

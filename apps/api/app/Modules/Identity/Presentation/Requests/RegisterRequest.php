@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Identity\Presentation\Requests;
 
+use App\Enums\Vertical;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 /**
  * Request for user registration (signup).
@@ -42,10 +44,19 @@ class RegisterRequest extends FormRequest
             'company_name' => ['required', 'string', 'max:255'],
             'country_code' => ['required', 'string', 'size:2'],
 
+            // Business vertical (required - determines modules)
+            'vertical' => ['required', 'string', Rule::enum(Vertical::class)],
+
             // Optional company fields
             'company_legal_name' => ['nullable', 'string', 'max:255'],
             'tax_id' => ['nullable', 'string', 'max:50'],
             'phone' => ['nullable', 'string', 'max:50'],
+
+            // Company address fields (optional during signup)
+            'address_street' => ['nullable', 'string', 'max:255'],
+            'address_city' => ['nullable', 'string', 'max:100'],
+            'address_postal_code' => ['nullable', 'string', 'max:20'],
+            'address_state' => ['nullable', 'string', 'max:100'],
 
             // Optional locale settings
             'currency' => ['nullable', 'string', 'size:3'],

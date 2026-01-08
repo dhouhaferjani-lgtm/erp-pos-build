@@ -207,4 +207,34 @@ class PartnerController extends Controller
 
         return response()->json(null, 204);
     }
+
+    /**
+     * Get tax status and exemption information for a partner
+     */
+    public function taxStatus(Request $request, string $partner): JsonResponse
+    {
+        $partnerModel = Partner::where('company_id', $this->companyContext->requireCompanyId())
+            ->where('id', $partner)
+            ->first();
+
+        if (! $partnerModel) {
+            return response()->json([
+                'error' => [
+                    'code' => 'PARTNER_NOT_FOUND',
+                    'message' => 'Partner not found',
+                ],
+            ], 404);
+        }
+
+        return response()->json([
+            'data' => [
+                'tax_status' => $partnerModel->tax_status->value,
+                'tax_status_label' => $partnerModel->tax_status->label(),
+                'has_valid_exemption' => $partnerModel->hasValidTaxExemption(),
+                'warnings' => $partnerModel->getTaxExemptionWarnings(),
+                'exemption_reason' => $partnerModel->tax_exemption_reason,
+                'exemption_valid_until' => $partnerModel->tax_exemption_valid_until?->format('Y-m-d'),
+            ],
+        ]);
+    }
 }

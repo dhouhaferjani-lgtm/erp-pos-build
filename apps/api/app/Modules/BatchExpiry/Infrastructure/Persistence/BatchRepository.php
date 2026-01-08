@@ -1,0 +1,107 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\BatchExpiry\Infrastructure\Persistence;
+
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\BatchExpiry\Domain\Repositories\BatchRepositoryInterface;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
+
+class BatchRepository implements BatchRepositoryInterface
+{
+    public function findById(int $id): ?Batch
+    {
+        return Batch::find($id);
+    }
+
+    public function findByUuid(string $uuid): ?Batch
+    {
+        return Batch::where('uuid', $uuid)->first();
+    }
+
+    public function findByBatchNumber(int $companyId, int $productId, string $batchNumber): ?Batch
+    {
+        return Batch::where('company_id', $companyId)
+            ->where('product_id', $productId)
+            ->where('batch_number', $batchNumber)
+            ->first();
+    }
+
+    public function getByProduct(int $productId, bool $activeOnly = true): Collection
+    {
+        $query = Batch::where('product_id', $productId);
+
+        if ($activeOnly) {
+            $query->where('is_active', true)
+                ->where('is_recalled', false);
+        }
+
+        return $query->orderBy('expiry_date', 'asc')->get();
+    }
+
+    public function getByCompany(int $companyId, array $filters = []): Collection
+    {
+        $query = Batch::where('company_id', $companyId);
+
+        if (isset($filters['product_id'])) {
+            $query->where('product_id', $filters['product_id']);
+        }
+
+        if (isset($filters['is_active'])) {
+            $query->where('is_active', $filters['is_active']);
+        }
+
+        if (isset($filters['is_expired'])) {
+            $query->where('is_expired', $filters['is_expired']);
+        }
+
+        if (isset($filters['is_recalled'])) {
+            $query->where('is_recalled', $filters['is_recalled']);
+        }
+
+        if (isset($filters['expiring_within_days'])) {
+            $query->whereBetween('expiry_date', [
+                now()->startOfDay(),
+                now()->addDays($filters['expiring_within_days'])->endOfDay(),
+            ]);
+        }
+
+        return $query->with(['product', 'batchStock'])->orderBy('expiry_date', 'asc')->get();
+    }
+
+    public function create(array $data): Batch
+    {
+        if (! isset($data['uuid'])) {
+            $data['uuid'] = (string) Str::uuid();
+        }
+
+        return Batch::create($data);
+    }
+
+    public function update(Batch $batch, array $data): bool
+    {
+        return $batch->update($data);
+    }
+
+    public function delete(Batch $batch): bool
+    {
+        // Soft deactivate instead of hard delete
+        return $batch->update(['is_active' => false]);
+    }
+
+    public function markAsExpired(int $batchId): bool
+    {
+        return Batch::where('id', $batchId)->update(['is_expired' => true]);
+    }
+
+    public function recall(int $batchId, string $reason): bool
+    {
+        return Batch::where('id', $batchId)->update([
+            'is_recalled' => true,
+            'recall_reason' => $reason,
+            'recalled_at' => now(),
+        ]);
+    }
+}

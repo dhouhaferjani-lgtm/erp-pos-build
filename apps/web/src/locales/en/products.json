@@ -5,5 +5,74 @@
   "selectedProducts": "{{count}} product selected",
   "selectedProducts_plural": "{{count}} products selected",
   "barcodeScannerHint": "Barcode scanning available in mobile app",
-  "selectProducts": "Select Products"
+  "selectProducts": "Select Products",
+  "images": {
+    "title": "Images",
+    "uploadNew": "Upload New Image",
+    "gallery": "Image Gallery",
+    "noImages": "No images yet. Upload your first image above.",
+    "noImage": "No image",
+    "dragDropOrClick": "Drag & drop an image here, or click to select",
+    "supportedFormats": "Supported formats",
+    "uploading": "Uploading image...",
+    "primary": "Primary",
+    "setPrimary": "Set as primary",
+    "confirmDelete": "Are you sure you want to delete this image?",
+    "loadError": "Failed to load images",
+    "viewGallery": "View Gallery ({{count}} image)",
+    "viewGallery_plural": "View Gallery ({{count}} images)",
+    "clickToExpand": "Click to expand",
+    "viewSingle": "View single image",
+    "viewGrid": "View grid",
+    "imageCount": "{{count}} image",
+    "imageCount_plural": "{{count}} images",
+    "errors": {
+      "fileTooLarge": "File is too large (maximum {{max}})",
+      "invalidType": "Invalid file type. Please upload JPEG, PNG, WebP, or GIF images."
+    }
+  },
+  "parapharmacy": {
+    "title": "Parapharmacy Information",
+    "category": "Product Category",
+    "dosageForm": "Dosage Form",
+    "activeIngredients": "Active Ingredients",
+    "addIngredient": "Add Ingredient",
+    "ingredientName": "Ingredient Name",
+    "concentration": "Concentration",
+    "usageInstructions": "Usage Instructions",
+    "warnings": "Warnings",
+    "contraindications": "Contraindications",
+    "minimumAge": "Minimum Age",
+    "ageRestriction": "Age Restriction",
+    "requiresConsultation": "Requires Pharmacist Consultation",
+    "regulatoryCode": "Regulatory Code",
+    "storageRequirements": "Storage Requirements",
+    "categories": {
+      "supplement": "Dietary Supplement",
+      "cosmetic": "Cosmetic & Skincare",
+      "medical_device": "Medical Device",
+      "herbal": "Herbal Product",
+      "baby_care": "Baby Care",
+      "sports_nutrition": "Sports Nutrition",
+      "other": "Other"
+    },
+    "dosageForms": {
+      "capsule": "Capsule",
+      "tablet": "Tablet",
+      "softgel": "Softgel",
+      "liquid": "Liquid",
+      "powder": "Powder",
+      "cream": "Cream",
+      "gel": "Gel",
+      "lotion": "Lotion",
+      "spray": "Spray",
+      "patch": "Patch",
+      "other": "Other"
+    },
+    "ageRestrictions": {
+      "adult_only": "Adults Only",
+      "children_only": "Children Only",
+      "all_ages": "All Ages"
+    }
+  }
 }

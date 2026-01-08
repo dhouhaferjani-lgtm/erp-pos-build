@@ -1,3 +1,7 @@
+declare namespace App.Enums {
+export type Product = 'izipos' | 'otospex';
+export type Vertical = 'mechanic' | 'pharmacy' | 'restaurant' | 'coffee_shop' | 'retail' | 'fashion' | 'body_shop' | 'parts_retailer' | 'car_glass' | 'tire_shop' | 'service_station' | 'parapharmacy';
+}
 declare namespace App.Modules.Accounting.Domain.Enums {
 export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
 export type JournalEntryStatus = 'draft' | 'posted' | 'reversed';
@@ -5,6 +9,9 @@ export type OpeningBatchStatus = 'DRAFT' | 'VALIDATED' | 'LOCKED';
 export type OpeningBatchType = 'ACCOUNTING' | 'INVENTORY' | 'AR_OPEN_ITEMS' | 'AP_OPEN_ITEMS';
 export type OpeningImportRowStatus = 'PENDING' | 'VALID' | 'INVALID' | 'SKIPPED' | 'POSTED';
 export type SystemAccountPurpose = 'bank' | 'cash' | 'customer_receivable' | 'supplier_advance' | 'inventory' | 'uninvoiced_revenue' | 'supplier_payable' | 'customer_advance' | 'vat_collected' | 'vat_deductible' | 'product_revenue' | 'service_revenue' | 'cost_of_goods_sold' | 'purchase_expenses' | 'office_expense' | 'travel_expense' | 'meals_expense' | 'utilities_expense' | 'general_expense' | 'retained_earnings' | 'opening_balance_equity' | 'payment_tolerance_expense' | 'payment_tolerance_income' | 'sales_return' | 'realized_fx_gain' | 'realized_fx_loss' | 'sales_discount';
+}
+declare namespace App.Modules.BatchExpiry.Domain.Enums {
+export type ExpiryStatus = 'ok' | 'approaching' | 'warning' | 'critical' | 'expired';
 }
 declare namespace App.Modules.Billing.Domain.Enums {
 export type InvoiceStatus = 'draft' | 'pending' | 'sent' | 'paid' | 'partially_paid' | 'overdue' | 'cancelled' | 'refunded';
@@ -139,7 +146,7 @@ export type UserStatus = 'active' | 'inactive' | 'suspended' | 'pending_verifica
 }
 declare namespace App.Modules.Import.Domain.Enums {
 export type ImportStatus = 'pending' | 'validating' | 'validated' | 'importing' | 'completed' | 'failed';
-export type ImportType = 'partners' | 'products' | 'stock_levels' | 'opening_balances';
+export type ImportType = 'partners' | 'products' | 'stock_levels' | 'opening_balances' | 'product_images';
 }
 declare namespace App.Modules.Inventory.Application.DTOs {
 export type StockLevelData = {
@@ -149,6 +156,8 @@ location_name: string;
 quantity: string;
 reserved: string;
 available: string;
+incoming: string;
+projected_available: string;
 min_quantity: string | null;
 max_quantity: string | null;
 is_below_minimum: boolean;
@@ -200,6 +209,26 @@ products_count: number | null;
 breadcrumb: Array<any> | null;
 children: Array<any> | null;
 };
+export type ParapharmacyProductMetadataData = {
+id: string;
+product_id: string;
+category: App.Modules.Product.Domain.Enums.ParapharmacyCategory;
+dosage_form: App.Modules.Product.Domain.Enums.DosageForm | null;
+active_ingredients: Array<any> | null;
+key_components: Array<any> | null;
+usage_instructions: string | null;
+warnings: string | null;
+contraindications: string | null;
+minimum_age: number | null;
+age_restriction: App.Modules.Product.Domain.Enums.AgeRestriction | null;
+requires_consultation: boolean;
+regulatory_code: string | null;
+health_claims: Array<any> | null;
+certifications: Array<any> | null;
+storage_requirements: string | null;
+created_at: string;
+updated_at: string | null;
+};
 export type ProductData = {
 id: string;
 name: string;
@@ -219,9 +248,13 @@ target_margin_override: string | null;
 minimum_margin_override: string | null;
 created_at: string;
 updated_at: string | null;
+parapharmacy_metadata: App.Modules.Product.Application.DTOs.ParapharmacyProductMetadataData | null;
 };
 }
 declare namespace App.Modules.Product.Domain.Enums {
+export type AgeRestriction = 'adult_only' | 'children_only' | 'all_ages';
+export type DosageForm = 'capsule' | 'tablet' | 'softgel' | 'liquid' | 'powder' | 'cream' | 'gel' | 'lotion' | 'spray' | 'patch' | 'other';
+export type ParapharmacyCategory = 'supplement' | 'cosmetic' | 'medical_device' | 'herbal' | 'baby_care' | 'sports_nutrition' | 'other';
 export type ProductType = 'part' | 'service' | 'consumable';
 }
 declare namespace App.Modules.Service.Application.DTOs {
@@ -256,6 +289,16 @@ updated_at: string | null;
 }
 declare namespace App.Modules.Service.Domain.Enums {
 export type PricingType = 'flat_rate' | 'hourly' | 'percentage';
+}
+declare namespace App.Modules.Taxation.Domain.Enums {
+export type CompanyTaxStatus = 'REGISTERED' | 'NON_REGISTERED';
+export type PartnerTaxStatus = 'REGISTERED' | 'NON_REGISTERED' | 'EXEMPT';
+export type StackingBehavior = 'SUBTOTAL' | 'TOTAL_INCLUDING_PREVIOUS';
+export type TaxApplicationLevel = 'LINE_ITEMS' | 'DOCUMENT_TOTAL';
+export type TaxType = 'PERCENTAGE' | 'FIXED_AMOUNT';
+}
+declare namespace App.Modules.Taxation.Domain.Services {
+export type TaxSource = 'line' | 'product' | 'category' | 'company';
 }
 declare namespace App.Modules.Tenant.Domain.Enums {
 export type SubscriptionPlan = 'trial' | 'starter' | 'professional' | 'enterprise';

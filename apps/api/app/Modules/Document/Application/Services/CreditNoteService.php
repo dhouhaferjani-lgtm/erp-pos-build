@@ -10,6 +10,8 @@ use App\Modules\Document\Domain\DocumentVehicleContext;
 use App\Modules\Document\Domain\Enums\CreditNoteReason;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FiscalCategory;
+use App\Modules\Document\Domain\Enums\FiscalStatus;
 use Illuminate\Support\Facades\DB;
 
 class CreditNoteService
@@ -74,6 +76,8 @@ class CreditNoteService
                 'partner_id' => $invoice->partner_id,
                 'location_id' => $invoice->location_id,
                 'type' => DocumentType::CreditNote,
+                'fiscal_category' => FiscalCategory::fromDocumentType(DocumentType::CreditNote),
+                'fiscal_status' => FiscalStatus::Draft,
                 'status' => DocumentStatus::Draft,
                 'document_number' => $creditNoteNumber,
                 'document_date' => now(),
@@ -190,6 +194,8 @@ class CreditNoteService
                 'partner_id' => $invoice->partner_id,
                 'location_id' => $invoice->location_id,
                 'type' => DocumentType::CreditNote,
+                'fiscal_category' => FiscalCategory::fromDocumentType(DocumentType::CreditNote),
+                'fiscal_status' => FiscalStatus::Draft,
                 'status' => DocumentStatus::Draft,
                 'document_number' => $creditNoteNumber,
                 'document_date' => now(),

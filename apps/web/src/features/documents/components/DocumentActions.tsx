@@ -54,7 +54,6 @@ export interface DocumentActionsProps {
   onReceiveGoods?: () => void
   onRecordPayment?: () => void
   onCreateCreditNote?: () => void
-  onCreateCreditNotePage?: () => void
   onCreateReturnNote?: () => void
   onSendEmail?: () => void
   onDownloadPdf?: () => void
@@ -83,7 +82,6 @@ export function DocumentActions({
   onReceiveGoods,
   onRecordPayment,
   onCreateCreditNote,
-  onCreateCreditNotePage,
   onCreateReturnNote,
   onSendEmail,
   onDownloadPdf,
@@ -293,7 +291,7 @@ export function DocumentActions({
         </button>
       )}
 
-      {/* Create Credit Note buttons - for posted invoices */}
+      {/* Create Credit Note button - for posted invoices */}
       {canCreateCreditNote && onCreateCreditNote && (
         <button
           type="button"
@@ -303,16 +301,6 @@ export function DocumentActions({
           <MinusCircle className="h-4 w-4" />
           {t('documents.createCreditNote')}
         </button>
-      )}
-
-      {canCreateCreditNote && onCreateCreditNotePage && (
-        <Link
-          to={`/sales/credit-notes/create?invoice_id=${document.id}`}
-          className="inline-flex items-center gap-2 rounded-lg border border-red-600 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
-        >
-          <FileText className="h-4 w-4" />
-          {t('sales:creditNotes.createFromInvoice')}
-        </Link>
       )}
 
       {/* Create Return Note button */}

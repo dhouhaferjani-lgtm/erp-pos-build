@@ -29,7 +29,8 @@
     "tabs": {
       "details": "Détails",
       "movements": "Mouvements de stock",
-      "financialOperations": "Opérations financières"
+      "financialOperations": "Opérations financières",
+      "images": "Images"
     },
     "movementsTab": {
       "title": "Mouvements de stock",
@@ -116,6 +117,20 @@
     "empty": {
       "title": "Aucun produit",
       "description": "Commencez par ajouter votre premier produit."
+    },
+    "filters": {
+      "type": "Type de produit",
+      "active": "Actifs uniquement",
+      "category": "Catégorie",
+      "priceRange": "Plage de prix",
+      "priceMin": "Prix min",
+      "priceMax": "Prix max",
+      "hasStock": "En stock uniquement"
+    },
+    "aggregates": {
+      "totalProducts": "Total produits",
+      "totalActive": "Produits actifs",
+      "averagePrice": "Prix moyen"
     }
   },
   "stock": {
@@ -126,6 +141,12 @@
     "quantity": "Quantité",
     "reserved": "Réservé",
     "available": "Disponible",
+    "onHand": "En stock",
+    "incoming": "En cours de réception",
+    "projectedAvailable": "Disponible prévu",
+    "stockValue": "Valeur du stock",
+    "viewByLocation": "Voir par emplacement ({{count}})",
+    "noStock": "Aucune information de stock disponible",
     "product": "Produit",
     "adjust": "Ajuster le stock",
     "transfer": "Transférer le stock",

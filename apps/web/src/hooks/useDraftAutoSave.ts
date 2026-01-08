@@ -16,6 +16,11 @@ interface AutoSaveConfig {
   enabled?: boolean
 
   /**
+   * Existing draft ID for updates (when editing existing drafts)
+   */
+  existingDraftId?: string
+
+  /**
    * Callback fired when auto-save succeeds
    */
   onSuccess?: (draftId: string) => void
@@ -99,6 +104,7 @@ export function useDraftAutoSave(
   const {
     debounceMs = 3000,
     enabled = true,
+    existingDraftId,
     onSuccess,
     onError,
   } = config
@@ -120,7 +126,7 @@ export function useDraftAutoSave(
 
     try {
       const response = await apiPost<{ draft_id: string; saved_at: string }>('/documents/auto-save', {
-        draft_id: draftId,
+        draft_id: existingDraftId || draftId,
         ...data,
       })
 
@@ -139,7 +145,7 @@ export function useDraftAutoSave(
       // Silent failure - don't disrupt user experience
       console.error('Auto-save failed:', error)
     }
-  }, [data, draftId, enabled, onSuccess, onError])
+  }, [data, draftId, enabled, existingDraftId, onSuccess, onError])
 
   /**
    * Save immediately without debounce

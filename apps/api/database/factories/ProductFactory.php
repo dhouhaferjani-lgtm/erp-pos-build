@@ -50,6 +50,7 @@ class ProductFactory extends Factory
 
         return [
             'id' => Str::uuid()->toString(),
+            'tenant_id' => null, // Will be set when creating
             'company_id' => null, // Will be set by seeder
             'sku' => $isService ? 'SVC-'.strtoupper(Str::random(6)) : 'PRD-'.strtoupper(Str::random(8)),
             'name' => $item,

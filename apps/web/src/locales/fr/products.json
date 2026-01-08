@@ -5,5 +5,74 @@
   "selectedProducts": "{{count}} produit sélectionné",
   "selectedProducts_plural": "{{count}} produits sélectionnés",
   "barcodeScannerHint": "Scanner de code-barres disponible sur l'application mobile",
-  "selectProducts": "Sélectionner des produits"
+  "selectProducts": "Sélectionner des produits",
+  "images": {
+    "title": "Images",
+    "uploadNew": "Télécharger une nouvelle image",
+    "gallery": "Galerie d'images",
+    "noImages": "Aucune image pour le moment. Téléchargez votre première image ci-dessus.",
+    "noImage": "Aucune image",
+    "dragDropOrClick": "Glissez-déposez une image ici, ou cliquez pour sélectionner",
+    "supportedFormats": "Formats supportés",
+    "uploading": "Téléchargement de l'image...",
+    "primary": "Principale",
+    "setPrimary": "Définir comme principale",
+    "confirmDelete": "Êtes-vous sûr de vouloir supprimer cette image ?",
+    "loadError": "Échec du chargement des images",
+    "viewGallery": "Voir la galerie ({{count}} image)",
+    "viewGallery_plural": "Voir la galerie ({{count}} images)",
+    "clickToExpand": "Cliquer pour agrandir",
+    "viewSingle": "Voir l'image seule",
+    "viewGrid": "Voir la grille",
+    "imageCount": "{{count}} image",
+    "imageCount_plural": "{{count}} images",
+    "errors": {
+      "fileTooLarge": "Le fichier est trop volumineux (maximum {{max}})",
+      "invalidType": "Type de fichier non valide. Veuillez télécharger des images JPEG, PNG, WebP ou GIF."
+    }
+  },
+  "parapharmacy": {
+    "title": "Informations Parapharmacie",
+    "category": "Catégorie de Produit",
+    "dosageForm": "Forme Galénique",
+    "activeIngredients": "Ingrédients Actifs",
+    "addIngredient": "Ajouter un Ingrédient",
+    "ingredientName": "Nom de l'Ingrédient",
+    "concentration": "Concentration",
+    "usageInstructions": "Instructions d'Utilisation",
+    "warnings": "Avertissements",
+    "contraindications": "Contre-indications",
+    "minimumAge": "Âge Minimum",
+    "ageRestriction": "Restriction d'Âge",
+    "requiresConsultation": "Nécessite une Consultation Pharmaceutique",
+    "regulatoryCode": "Code Réglementaire",
+    "storageRequirements": "Conditions de Conservation",
+    "categories": {
+      "supplement": "Complément Alimentaire",
+      "cosmetic": "Cosmétique & Soins de la Peau",
+      "medical_device": "Dispositif Médical",
+      "herbal": "Produit à Base de Plantes",
+      "baby_care": "Soins Bébé",
+      "sports_nutrition": "Nutrition Sportive",
+      "other": "Autre"
+    },
+    "dosageForms": {
+      "capsule": "Capsule",
+      "tablet": "Comprimé",
+      "softgel": "Capsule Molle",
+      "liquid": "Liquide",
+      "powder": "Poudre",
+      "cream": "Crème",
+      "gel": "Gel",
+      "lotion": "Lotion",
+      "spray": "Spray",
+      "patch": "Patch",
+      "other": "Autre"
+    },
+    "ageRestrictions": {
+      "adult_only": "Adultes Uniquement",
+      "children_only": "Enfants Uniquement",
+      "all_ages": "Tous Âges"
+    }
+  }
 }

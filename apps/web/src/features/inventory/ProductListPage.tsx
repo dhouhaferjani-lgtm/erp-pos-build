@@ -2,14 +2,20 @@ import { useState, useMemo, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Plus, Package, Grid, List, DollarSign } from 'lucide-react'
+import { Plus, Package, Grid, List } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
-import { SearchInput } from '../../components/ui/SearchInput'
-import { FilterTabs } from '../../components/ui/FilterTabs'
-import { Pagination } from '../../components/ui/Pagination'
-import { usePagination } from '../../hooks/usePagination'
+import { useTableState } from '../../hooks/useTableState'
+import { SortableTableHeader } from '../../components/ui/SortableTableHeader'
+import { FilterPanel } from '../../components/ui/FilterPanel'
+import { ActiveFilters } from '../../components/ui/ActiveFilters'
+import { OffsetPagination } from '../../components/ui/OffsetPagination'
+import { StatCard } from '../../components/ui/StatCard'
+import { EnumFilter } from '../../components/ui/filters/EnumFilter'
+import { BooleanFilter } from '../../components/ui/filters/BooleanFilter'
+import { RangeFilter } from '../../components/ui/filters/RangeFilter'
+import { SearchFilter } from '../../components/ui/filters/SearchFilter'
 
 type ProductType = 'part' | 'service' | 'consumable'
 
@@ -34,13 +40,17 @@ interface Product {
 interface ProductsResponse {
   data: Product[]
   meta: {
+    current_page: number
+    last_page: number
     per_page: number
-    has_more: boolean
-    total?: number
+    total: number
+    from: number | null
+    to: number | null
   }
-  links: {
-    next: string | null
-    prev: string | null
+  aggregates: {
+    total_products: number
+    total_active: number
+    average_price: string | null
   }
 }
 
@@ -50,10 +60,6 @@ const typeColors: Record<ProductType, string> = {
   consumable: 'bg-orange-100 text-orange-800',
 }
 
-// Type labels are loaded from translations
-
-type StatusFilter = 'all' | 'active' | 'inactive'
-type TypeFilter = 'all' | ProductType
 type ViewMode = 'list' | 'grid'
 
 export function ProductListPage() {
@@ -63,51 +69,33 @@ export function ProductListPage() {
   const getTypeLabel = (type: ProductType) => {
     return t(`inventory:products.types.${type}`, type)
   }
-  const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
-  const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
 
-  const pagination = usePagination({ initialPerPage: 25 })
+  const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+  const [viewMode, setViewMode] = useState<ViewMode>('list')
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false)
+
+  const tableState = useTableState({
+    defaultSort: { column: 'name', direction: 'asc' },
+    defaultPerPage: 25,
+    syncToURL: true,
+  })
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['products', searchQuery, statusFilter, typeFilter, pagination.cursor, pagination.perPage],
+    queryKey: ['products', tableState.getQueryParams()],
     queryFn: async () => {
-      const params = new URLSearchParams()
-      if (searchQuery) params.append('search', searchQuery)
-      if (statusFilter !== 'all') params.append('is_active', statusFilter === 'active' ? '1' : '0')
-      if (typeFilter !== 'all') params.append('type', typeFilter)
-      params.append('per_page', String(pagination.perPage))
-      if (pagination.cursor) params.append('cursor', pagination.cursor)
+      const params = new URLSearchParams(tableState.getQueryParams() as Record<string, string>)
       const queryString = params.toString()
       const response = await api.get<ProductsResponse>(`/products${queryString ? `?${queryString}` : ''}`)
       return response.data
     },
   })
 
-  // Update pagination state when data arrives
+  // Reset to page 1 when filters or sort change
   useEffect(() => {
-    if (data?.meta && data?.links) {
-      pagination.updateFromResponse(data.meta, data.links)
-    }
-  }, [data, pagination.updateFromResponse])
-
-  // Reset pagination when filters change
-  useEffect(() => {
-    pagination.reset()
-  }, [searchQuery, statusFilter, typeFilter, pagination.reset])
+    tableState.resetPage()
+  }, [tableState.sortColumn, tableState.sortDirection, tableState.filters])
 
   const products = data?.data ?? []
-  const total = data?.meta?.total ?? products.length
-
-  const filterTabs = useMemo(() => {
-    return [
-      { value: 'all' as StatusFilter, label: t('filters.all'), count: total },
-      { value: 'active' as StatusFilter, label: t('filters.active') },
-      { value: 'inactive' as StatusFilter, label: t('filters.inactive') },
-    ]
-  }, [t, total])
 
   // Get company currency with fallback
   const companyCurrency = currentCompany?.currency ?? 'EUR'
@@ -122,6 +110,23 @@ export function ProductListPage() {
     })
   }
 
+  // Product type options for filter
+  const productTypeOptions = useMemo(() => [
+    { value: 'part', label: getTypeLabel('part') },
+    { value: 'service', label: getTypeLabel('service') },
+    { value: 'consumable', label: getTypeLabel('consumable') },
+  ], [t])
+
+  // Filter config for ActiveFilters component
+  const filterConfig = useMemo(() => ({
+    type: { label: t('inventory:products.filters.type'), type: 'enum' as const },
+    is_active: { label: t('inventory:products.filters.active'), type: 'boolean' as const },
+    price_min: { label: t('inventory:products.filters.priceMin'), type: 'range' as const },
+    price_max: { label: t('inventory:products.filters.priceMax'), type: 'range' as const },
+    search: { label: t('common:search'), type: 'text' as const },
+    has_stock: { label: t('inventory:products.filters.hasStock'), type: 'boolean' as const },
+  }), [t])
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -129,7 +134,7 @@ export function ProductListPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{t('inventory:products.title')}</h1>
           <p className="text-gray-500">
-            {total} {total === 1 ? t('inventory:products.singular') : t('inventory:products.plural')} {t('common:total')}
+            {data?.meta.total ?? 0} {data?.meta.total === 1 ? t('inventory:products.singular') : t('inventory:products.plural')} {t('common:total')}
           </p>
         </div>
         <Link
@@ -141,55 +146,93 @@ export function ProductListPage() {
         </Link>
       </div>
 
-      {/* Filters */}
+      {/* Aggregate Stats */}
+      {data?.aggregates && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <StatCard
+            label={t('inventory:products.aggregates.totalProducts')}
+            value={data.aggregates.total_products.toString()}
+          />
+          <StatCard
+            label={t('inventory:products.aggregates.totalActive')}
+            value={data.aggregates.total_active.toString()}
+          />
+          <StatCard
+            label={t('inventory:products.aggregates.averagePrice')}
+            value={data.aggregates.average_price ? formatAmount(data.aggregates.average_price) : '-'}
+          />
+        </div>
+      )}
+
+      {/* Filter Panel and View Controls */}
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <FilterTabs tabs={filterTabs} value={statusFilter} onChange={setStatusFilter} />
-          <div className="flex items-center gap-4">
-            <SearchInput
-              value={searchQuery}
-              onChange={setSearchQuery}
-              placeholder={t('inventory:products.searchPlaceholder')}
-              className="w-full sm:w-72"
-            />
-            <div className="flex items-center gap-1 rounded-lg border border-gray-200 p-1">
-              <button
-                onClick={() => { setViewMode('list') }}
-                className={`rounded p-1.5 ${viewMode === 'list' ? 'bg-gray-100 text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
-                title={t('common:views.list')}
-              >
-                <List className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => { setViewMode('grid') }}
-                className={`rounded p-1.5 ${viewMode === 'grid' ? 'bg-gray-100 text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
-                title={t('common:views.grid')}
-              >
-                <Grid className="h-4 w-4" />
-              </button>
+          <FilterPanel
+            isOpen={filterPanelOpen}
+            onToggle={() => setFilterPanelOpen(!filterPanelOpen)}
+            onClear={tableState.clearFilters}
+            hasActiveFilters={tableState.hasActiveFilters}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <SearchFilter
+                label={t('common:search')}
+                value={tableState.filters.search as string | undefined}
+                onChange={(v) => tableState.setFilter('search', v)}
+                placeholder={t('inventory:products.searchPlaceholder')}
+              />
+              <EnumFilter
+                label={t('inventory:products.filters.type')}
+                value={tableState.filters.type as string | undefined}
+                onChange={(v) => tableState.setFilter('type', v)}
+                options={productTypeOptions}
+              />
+              <BooleanFilter
+                label={t('inventory:products.filters.active')}
+                value={tableState.filters.is_active as boolean | undefined}
+                onChange={(v) => tableState.setFilter('is_active', v)}
+              />
+              <RangeFilter
+                label={t('inventory:products.filters.priceRange')}
+                min={tableState.filters.price_min as string | undefined}
+                max={tableState.filters.price_max as string | undefined}
+                onMinChange={(v) => tableState.setFilter('price_min', v)}
+                onMaxChange={(v) => tableState.setFilter('price_max', v)}
+                placeholder={companyCurrency}
+              />
+              <BooleanFilter
+                label={t('inventory:products.filters.hasStock')}
+                value={tableState.filters.has_stock as boolean | undefined}
+                onChange={(v) => tableState.setFilter('has_stock', v)}
+              />
             </div>
+          </FilterPanel>
+
+          <div className="flex items-center gap-1 rounded-lg border border-gray-200 p-1">
+            <button
+              onClick={() => { setViewMode('list') }}
+              className={`rounded p-1.5 ${viewMode === 'list' ? 'bg-gray-100 text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
+              title={t('common:views.list')}
+            >
+              <List className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => { setViewMode('grid') }}
+              className={`rounded p-1.5 ${viewMode === 'grid' ? 'bg-gray-100 text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
+              title={t('common:views.grid')}
+            >
+              <Grid className="h-4 w-4" />
+            </button>
           </div>
         </div>
 
-        {/* Type filter */}
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-500">{t('inventory:products.type')}:</span>
-          <div className="flex items-center gap-1">
-            {(['all', 'part', 'service', 'consumable'] as TypeFilter[]).map((type) => (
-              <button
-                key={type}
-                onClick={() => { setTypeFilter(type) }}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                  typeFilter === type
-                    ? 'bg-gray-900 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                {type === 'all' ? t('filters.all') : getTypeLabel(type)}
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* Active Filters */}
+        {tableState.hasActiveFilters && (
+          <ActiveFilters
+            filters={tableState.filters}
+            onRemove={tableState.removeFilter}
+            filterConfig={filterConfig}
+          />
+        )}
       </div>
 
       {/* Content */}
@@ -205,14 +248,14 @@ export function ProductListPage() {
         <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
           <Package className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-sm font-semibold text-gray-900">
-            {searchQuery ? t('status.noResults') : t('inventory:products.empty.title')}
+            {tableState.hasActiveFilters ? t('status.noResults') : t('inventory:products.empty.title')}
           </h3>
           <p className="mt-1 text-sm text-gray-500">
-            {searchQuery
+            {tableState.hasActiveFilters
               ? t('status.tryDifferentSearch')
               : t('inventory:products.empty.description')}
           </p>
-          {!searchQuery && (
+          {!tableState.hasActiveFilters && (
             <div className="mt-6">
               <Link
                 to="/inventory/products/new"
@@ -229,18 +272,38 @@ export function ProductListPage() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('fields.name', 'Name')}
-                </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('inventory:products.sku')}
-                </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('fields.type', 'Type')}
-                </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t('inventory:products.salePrice')}
-                </th>
+                <SortableTableHeader
+                  column="name"
+                  label={t('fields.name', 'Name')}
+                  currentSort={tableState.sortColumn}
+                  currentDirection={tableState.sortDirection}
+                  onSort={tableState.setSorting}
+                  align="left"
+                />
+                <SortableTableHeader
+                  column="sku"
+                  label={t('inventory:products.sku')}
+                  currentSort={tableState.sortColumn}
+                  currentDirection={tableState.sortDirection}
+                  onSort={tableState.setSorting}
+                  align="left"
+                />
+                <SortableTableHeader
+                  column="type"
+                  label={t('fields.type', 'Type')}
+                  currentSort={tableState.sortColumn}
+                  currentDirection={tableState.sortDirection}
+                  onSort={tableState.setSorting}
+                  align="left"
+                />
+                <SortableTableHeader
+                  column="sale_price"
+                  label={t('inventory:products.salePrice')}
+                  currentSort={tableState.sortColumn}
+                  currentDirection={tableState.sortDirection}
+                  onSort={tableState.setSorting}
+                  align="right"
+                />
                 <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
                   {t('fields.status', 'Status')}
                 </th>
@@ -325,8 +388,7 @@ export function ProductListPage() {
                 <p className="mt-2 text-sm text-gray-500 line-clamp-2">{product.description}</p>
               )}
               <div className="mt-4 flex items-center justify-between">
-                <div className="flex items-center gap-1 text-sm font-medium text-gray-900">
-                  <DollarSign className="h-4 w-4 text-gray-400" />
+                <div className="text-sm font-medium text-gray-900">
                   {formatAmount(product.sale_price)}
                 </div>
                 <span
@@ -345,15 +407,16 @@ export function ProductListPage() {
       )}
 
       {/* Pagination */}
-      {!isLoading && !error && products.length > 0 && (
-        <Pagination
-          hasPrev={pagination.hasPrev}
-          hasNext={pagination.hasNext}
-          onPrev={pagination.goToPrev}
-          onNext={pagination.goToNext}
-          perPage={pagination.perPage}
-          onPerPageChange={pagination.setPerPage}
-          isLoading={isLoading}
+      {!isLoading && !error && products.length > 0 && data?.meta && (
+        <OffsetPagination
+          currentPage={data.meta.current_page}
+          lastPage={data.meta.last_page}
+          total={data.meta.total}
+          perPage={data.meta.per_page}
+          from={data.meta.from ?? undefined}
+          to={data.meta.to ?? undefined}
+          onPageChange={tableState.setPage}
+          onPerPageChange={tableState.setPerPage}
         />
       )}
     </div>

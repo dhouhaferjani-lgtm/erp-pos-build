@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Import\Providers;
 
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Import\Services\MigrationWizardService;
 use App\Modules\Import\Services\ValidationEngine;
@@ -48,7 +49,7 @@ class ImportServiceProvider extends ServiceProvider
 
     private function registerRoutes(): void
     {
-        Route::middleware(['api', 'auth:sanctum'])
+        Route::middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])
             ->prefix('api/v1')
             ->group(function (): void {
                 // Import routes
@@ -57,6 +58,7 @@ class ImportServiceProvider extends ServiceProvider
                 Route::get('/imports/{id}', [\App\Modules\Import\Presentation\Controllers\ImportController::class, 'show']);
                 Route::get('/imports/{id}/preview', [\App\Modules\Import\Presentation\Controllers\ImportController::class, 'preview']);
                 Route::get('/imports/{id}/errors', [\App\Modules\Import\Presentation\Controllers\ImportController::class, 'errors']);
+                Route::get('/imports/{id}/error-summary', [\App\Modules\Import\Presentation\Controllers\ImportController::class, 'errorSummary']);
                 Route::post('/imports/{id}/execute', [\App\Modules\Import\Presentation\Controllers\ImportController::class, 'execute']);
                 Route::get('/imports/{id}/failed-rows.csv', [\App\Modules\Import\Presentation\Controllers\ImportController::class, 'downloadFailedRows']);
 

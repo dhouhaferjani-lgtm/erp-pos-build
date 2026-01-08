@@ -109,7 +109,7 @@ class DetectFraudPatterns extends Command
         }
 
         $this->newLine();
-        $this->info("✅ Detection complete!");
+        $this->info('✅ Detection complete!');
         $this->table(
             ['Metric', 'Count'],
             [

@@ -5,12 +5,17 @@ declare(strict_types=1);
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Taxation\Presentation\Controllers\StampDutyRuleController;
 use App\Modules\Taxation\Presentation\Controllers\TaxConfigurationController;
+use App\Modules\Taxation\Presentation\Controllers\WithholdingCertificateController;
+use App\Modules\Taxation\Presentation\Controllers\WithholdingPreviewController;
+use App\Modules\Taxation\Presentation\Controllers\WithholdingTaxRuleController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function (): void {
     // Tax Configuration endpoints
     Route::prefix('taxation/configurations')->group(function (): void {
         Route::get('/', [TaxConfigurationController::class, 'index']);
+        Route::get('/document-types', [TaxConfigurationController::class, 'documentTypes']);
+        Route::post('/reorder', [TaxConfigurationController::class, 'reorder']);
         Route::get('/{id}', [TaxConfigurationController::class, 'show']);
         Route::post('/', [TaxConfigurationController::class, 'store']);
         Route::patch('/{id}', [TaxConfigurationController::class, 'update']);
@@ -24,5 +29,29 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         Route::post('/', [StampDutyRuleController::class, 'store']);
         Route::patch('/{id}', [StampDutyRuleController::class, 'update']);
         Route::delete('/{id}', [StampDutyRuleController::class, 'destroy']);
+    });
+
+    // Withholding Tax Preview endpoint
+    Route::post('withholding/preview', [WithholdingPreviewController::class, 'preview']);
+
+    // Withholding Tax Rules (Admin)
+    Route::prefix('withholding/rules')->group(function (): void {
+        Route::get('/', [WithholdingTaxRuleController::class, 'index']);
+        Route::get('/{id}', [WithholdingTaxRuleController::class, 'show']);
+        Route::post('/', [WithholdingTaxRuleController::class, 'store']);
+        Route::patch('/{id}', [WithholdingTaxRuleController::class, 'update']);
+        Route::post('/{id}/deactivate', [WithholdingTaxRuleController::class, 'deactivate']);
+        Route::delete('/{id}', [WithholdingTaxRuleController::class, 'destroy']);
+    });
+
+    // Withholding Certificates
+    Route::prefix('withholding/certificates')->group(function (): void {
+        Route::get('/', [WithholdingCertificateController::class, 'index']);
+        Route::get('/{id}', [WithholdingCertificateController::class, 'show']);
+        Route::post('/', [WithholdingCertificateController::class, 'store']);
+        Route::post('/{id}/issue', [WithholdingCertificateController::class, 'issue']);
+        Route::post('/{id}/void', [WithholdingCertificateController::class, 'void']);
+        Route::post('/{id}/submit-tej', [WithholdingCertificateController::class, 'submitTEJ']);
+        Route::delete('/{id}', [WithholdingCertificateController::class, 'destroy']);
     });
 });

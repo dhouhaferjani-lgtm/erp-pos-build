@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Application\DTOs;
 
-use App\Modules\Document\Application\DTOs\VehicleContextData;
 use App\Modules\Document\Domain\Document;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;

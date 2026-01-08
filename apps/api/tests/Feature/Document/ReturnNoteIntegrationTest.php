@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
@@ -19,7 +20,6 @@ use App\Modules\Document\Domain\Enums\ReturnCondition;
 use App\Modules\Document\Domain\Enums\ReturnReason;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
-use App\Modules\Company\Domain\Location;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
@@ -86,14 +86,14 @@ class ReturnNoteIntegrationTest extends TestCase
         $this->seed(RolesAndPermissionsSeeder::class);
 
         // Create missing permissions for return notes (if they don't exist)
-        if (!\Spatie\Permission\Models\Permission::where('name', 'deliveries.edit')->exists()) {
+        if (! \Spatie\Permission\Models\Permission::where('name', 'deliveries.edit')->exists()) {
             \Spatie\Permission\Models\Permission::create([
                 'name' => 'deliveries.edit',
                 'guard_name' => 'sanctum',
                 'team_id' => $this->tenant->id,
             ]);
         }
-        if (!\Spatie\Permission\Models\Permission::where('name', 'deliveries.delete')->exists()) {
+        if (! \Spatie\Permission\Models\Permission::where('name', 'deliveries.delete')->exists()) {
             \Spatie\Permission\Models\Permission::create([
                 'name' => 'deliveries.delete',
                 'guard_name' => 'sanctum',
@@ -480,13 +480,6 @@ class ReturnNoteIntegrationTest extends TestCase
     /** @test */
     public function it_confirms_draft_return_note(): void
     {
-        // SKIPPED: document_lines table lacks location_id column
-        // Return notes cannot specify receive location until schema is updated
-        // See: Document Module Remediation Plan - Schema Issue
-        $this->markTestSkipped(
-            'Return note confirmation requires location_id column in document_lines table'
-        );
-
         // Create chart of accounts for GL entry generation
         $this->createChartOfAccounts();
 

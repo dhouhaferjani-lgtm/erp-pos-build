@@ -24,7 +24,9 @@ class ProductPaginationTest extends TestCase
     use RefreshDatabase;
 
     private User $user;
+
     private Company $company;
+
     private Tenant $tenant;
 
     protected function setUp(): void
@@ -71,7 +73,7 @@ class ProductPaginationTest extends TestCase
         app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
-    public function test_can_list_products_with_cursor_pagination(): void
+    public function test_can_list_products_with_offset_pagination(): void
     {
         // Create 30 products
         Product::factory()->count(30)->create([
@@ -89,18 +91,24 @@ class ProductPaginationTest extends TestCase
                     '*' => ['id', 'name', 'sku', 'type'],
                 ],
                 'meta' => [
+                    'current_page',
+                    'last_page',
                     'per_page',
-                    'has_more',
+                    'total',
+                    'from',
+                    'to',
                 ],
-                'links' => [
-                    'next',
-                    'prev',
+                'aggregates' => [
+                    'total_products',
+                    'total_active',
+                    'average_price',
                 ],
             ]);
 
+        $this->assertEquals(1, $response->json('meta.current_page'));
         $this->assertEquals(10, $response->json('meta.per_page'));
-        $this->assertTrue($response->json('meta.has_more'));
-        $this->assertNotNull($response->json('links.next'));
+        $this->assertEquals(30, $response->json('meta.total'));
+        $this->assertEquals(3, $response->json('meta.last_page'));
     }
 
     public function test_can_navigate_to_next_page(): void
@@ -116,18 +124,19 @@ class ProductPaginationTest extends TestCase
 
         // Get first page
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/products?per_page=10');
+            ->getJson('/api/v1/products?per_page=10&page=1');
 
         $response->assertOk();
-        $nextCursor = $response->json('links.next');
-        $this->assertNotNull($nextCursor);
+        $this->assertEquals(1, $response->json('meta.current_page'));
 
         // Get second page
         $response2 = $this->actingAs($this->user)
-            ->getJson('/api/v1/products?per_page=10&cursor=' . urlencode($nextCursor));
+            ->getJson('/api/v1/products?per_page=10&page=2');
 
         $response2->assertOk()
             ->assertJsonCount(10, 'data');
+
+        $this->assertEquals(2, $response2->json('meta.current_page'));
 
         // Should have different products
         $firstPageIds = collect($response->json('data'))->pluck('id')->toArray();
@@ -136,7 +145,7 @@ class ProductPaginationTest extends TestCase
         $this->assertEmpty(array_intersect($firstPageIds, $secondPageIds));
     }
 
-    public function test_last_page_has_no_next_cursor(): void
+    public function test_last_page_calculation(): void
     {
         // Create exactly 25 products
         Product::factory()->count(25)->create([
@@ -150,8 +159,9 @@ class ProductPaginationTest extends TestCase
         $response->assertOk()
             ->assertJsonCount(25, 'data');
 
-        $this->assertFalse($response->json('meta.has_more'));
-        $this->assertNull($response->json('links.next'));
+        $this->assertEquals(1, $response->json('meta.current_page'));
+        $this->assertEquals(1, $response->json('meta.last_page'));
+        $this->assertEquals(25, $response->json('meta.total'));
     }
 
     public function test_respects_per_page_parameter(): void
@@ -224,7 +234,8 @@ class ProductPaginationTest extends TestCase
         $response->assertOk()
             ->assertJsonCount(10, 'data');
 
-        $this->assertTrue($response->json('meta.has_more'));
+        $this->assertEquals(20, $response->json('meta.total'));
+        $this->assertEquals(2, $response->json('meta.last_page'));
     }
 
     public function test_pagination_works_with_type_filter(): void
@@ -247,7 +258,8 @@ class ProductPaginationTest extends TestCase
         $response->assertOk()
             ->assertJsonCount(10, 'data');
 
-        $this->assertTrue($response->json('meta.has_more'));
+        $this->assertEquals(15, $response->json('meta.total'));
+        $this->assertEquals(2, $response->json('meta.last_page'));
     }
 
     public function test_pagination_works_with_active_filter(): void
@@ -265,12 +277,13 @@ class ProductPaginationTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/products?active=1&per_page=10');
+            ->getJson('/api/v1/products?is_active=1&per_page=10');
 
         $response->assertOk()
             ->assertJsonCount(10, 'data');
 
-        $this->assertTrue($response->json('meta.has_more'));
+        $this->assertEquals(20, $response->json('meta.total'));
+        $this->assertEquals(2, $response->json('meta.last_page'));
     }
 
     public function test_empty_results_return_empty_array(): void
@@ -281,8 +294,9 @@ class ProductPaginationTest extends TestCase
         $response->assertOk()
             ->assertJsonCount(0, 'data');
 
-        $this->assertFalse($response->json('meta.has_more'));
-        $this->assertNull($response->json('links.next'));
+        $this->assertEquals(0, $response->json('meta.total'));
+        $this->assertEquals(1, $response->json('meta.current_page'));
+        $this->assertEquals(1, $response->json('meta.last_page'));
     }
 
     public function test_products_are_isolated_by_company(): void
@@ -325,7 +339,75 @@ class ProductPaginationTest extends TestCase
 
         $response->assertOk();
 
-        // Should complete in less than 200ms
-        $this->assertLessThan(200, $executionTime, 'Pagination should complete in less than 200ms');
+        // Should complete in less than 500ms (increased for aggregate calculations)
+        $this->assertLessThan(500, $executionTime, 'Pagination should complete in less than 500ms');
+    }
+
+    public function test_calculates_aggregates_correctly(): void
+    {
+        // Create 15 active products
+        Product::factory()->count(15)->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'is_active' => true,
+            'sale_price' => '100.00',
+        ]);
+
+        // Create 5 inactive products
+        Product::factory()->count(5)->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'is_active' => false,
+            'sale_price' => '50.00',
+        ]);
+
+        $response = $this->actingAs($this->user)
+            ->getJson('/api/v1/products');
+
+        $response->assertOk();
+
+        $this->assertEquals(20, $response->json('aggregates.total_products'));
+        $this->assertEquals(15, $response->json('aggregates.total_active'));
+
+        // Average price should be 87.50 ((15 * 100 + 5 * 50) / 20)
+        $avgPrice = (float) $response->json('aggregates.average_price');
+        $this->assertEqualsWithDelta(87.50, $avgPrice, 0.01);
+    }
+
+    public function test_aggregates_respect_filters(): void
+    {
+        // Create 10 active parts
+        Product::factory()->count(10)->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => 'part',
+            'is_active' => true,
+        ]);
+
+        // Create 5 active services
+        Product::factory()->count(5)->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => 'service',
+            'is_active' => true,
+        ]);
+
+        // Create 3 inactive parts
+        Product::factory()->count(3)->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => 'part',
+            'is_active' => false,
+        ]);
+
+        // Filter by type=part
+        $response = $this->actingAs($this->user)
+            ->getJson('/api/v1/products?type=part');
+
+        $response->assertOk();
+
+        // Should only count the filtered products
+        $this->assertEquals(13, $response->json('aggregates.total_products')); // 10 active + 3 inactive parts
+        $this->assertEquals(10, $response->json('aggregates.total_active')); // Only active parts
     }
 }

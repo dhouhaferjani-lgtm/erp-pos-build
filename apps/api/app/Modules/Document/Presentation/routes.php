@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Api\DocumentAdditionalCostController;
 use App\Modules\Communication\Presentation\Controllers\DocumentEmailController;
-use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Presentation\Controllers\CreditNoteController;
 use App\Modules\Document\Presentation\Controllers\DeliveryNoteController;
 use App\Modules\Document\Presentation\Controllers\DocumentController;
@@ -18,7 +17,6 @@ use App\Modules\Document\Presentation\Controllers\RefundController;
 use App\Modules\Document\Presentation\Controllers\ReturnNoteController;
 use App\Modules\Document\Presentation\Controllers\SalesOrderController;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -142,6 +140,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/invoices/{invoice}/post', [InvoiceController::class, 'post'])
         ->middleware('can:invoices.post')
         ->name('invoices.post');
+
+    Route::post('/invoices/{invoice}/confirm-deliveries-and-post', [InvoiceController::class, 'confirmDeliveriesAndPost'])
+        ->middleware('can:invoices.post')
+        ->name('invoices.confirmDeliveriesAndPost');
 
     // Credit note creation from invoice
     Route::post('/invoices/{id}/create-credit-note', [DocumentConversionController::class, 'convertInvoiceToCreditNote'])
@@ -303,6 +305,11 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/documents/{document}/related', [DocumentController::class, 'related'])
         ->middleware('can:documents.view')
         ->name('documents.related');
+
+    // Tax Breakdown
+    Route::get('/documents/{document}/tax-breakdown', [DocumentController::class, 'taxBreakdown'])
+        ->middleware('can:documents.view')
+        ->name('documents.tax-breakdown');
 
     // PDF Generation
     Route::get('/documents/{document}/pdf', [DocumentPdfController::class, 'download'])

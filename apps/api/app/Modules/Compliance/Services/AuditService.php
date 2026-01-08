@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\Compliance\Services;
 
+use App\Modules\Company\Domain\Company;
 use App\Modules\Compliance\Domain\AuditEvent;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 
 final class AuditService
 {
@@ -25,6 +27,19 @@ final class AuditService
         array $payload = [],
         array $metadata = []
     ): AuditEvent {
+        // Get tenant_id from auth context for performance optimization
+        // Avoids Company::find() query in AuditEvent constructor
+        $user = Auth::user();
+        $tenantId = null;
+        if ($user !== null && property_exists($user, 'tenant_id')) {
+            /** @var \App\Modules\Identity\Domain\User $user */
+            $tenantId = $user->tenant_id;
+        } else {
+            // Fallback: lookup from company (backward compatibility)
+            $company = Company::find($companyId);
+            $tenantId = $company?->tenant_id;
+        }
+
         $event = new AuditEvent(
             companyId: $companyId,
             userId: $userId,
@@ -32,7 +47,10 @@ final class AuditService
             aggregateType: $aggregateType,
             aggregateId: $aggregateId,
             payload: $payload,
-            metadata: $metadata
+            metadata: $metadata,
+            attributes: [
+                'tenant_id' => $tenantId,
+            ]
         );
 
         $event->save();

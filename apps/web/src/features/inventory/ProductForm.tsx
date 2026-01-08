@@ -3,9 +3,11 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Plus, X } from 'lucide-react'
+import { ArrowLeft, Plus, X, Image } from 'lucide-react'
 import { api, apiPost, apiPatch } from '../../lib/api'
 import { CategorySelect } from '../../components/catalog/CategorySelect'
+import { ProductImageSection, ParapharmacyMetadataFields } from '../products/components'
+import { useCompanyConfig } from '../../contexts/CompanyConfigContext'
 
 type ProductType = 'part' | 'service' | 'consumable'
 
@@ -17,19 +19,34 @@ interface Product {
   category_id: number | null
   description: string | null
   sale_price: string | null
-  purchase_price: string | null
+  cost_price: string | null
   tax_rate: string | null
   unit: string | null
   barcode: string | null
   is_active: boolean
   oem_numbers: string[] | null
   cross_references: Array<{ brand: string; reference: string }> | null
+  parapharmacy_metadata: ParapharmacyMetadata | null
   created_at: string
   updated_at: string | null
 }
 
 interface ProductResponse {
   data: Product
+}
+
+interface ParapharmacyMetadata {
+  category: string
+  dosage_form: string | null
+  active_ingredients: Array<{ name: string; concentration: string }>
+  usage_instructions: string | null
+  warnings: string | null
+  contraindications: string | null
+  minimum_age: number | null
+  age_restriction: string | null
+  requires_consultation: boolean
+  regulatory_code: string | null
+  storage_requirements: string | null
 }
 
 interface ProductFormData {
@@ -39,13 +56,13 @@ interface ProductFormData {
   category_id: number | null
   description: string
   sale_price: string
-  purchase_price: string
   tax_rate: string
   unit: string
   barcode: string
   is_active: boolean
   oem_numbers: string[]
   cross_references: Array<{ brand: string; reference: string }>
+  parapharmacy_metadata: ParapharmacyMetadata
 }
 
 export function ProductForm() {
@@ -54,6 +71,8 @@ export function ProductForm() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const isEditing = id.length > 0
+  const { config } = useCompanyConfig()
+  const isParapharmacy = config?.vertical === 'parapharmacy'
 
   const [oemInput, setOemInput] = useState('')
 
@@ -73,13 +92,25 @@ export function ProductForm() {
       category_id: null,
       description: '',
       sale_price: '',
-      purchase_price: '',
       tax_rate: '19',
       unit: 'pcs',
       barcode: '',
       is_active: true,
       oem_numbers: [],
       cross_references: [],
+      parapharmacy_metadata: {
+        category: '',
+        dosage_form: null,
+        active_ingredients: [],
+        usage_instructions: null,
+        warnings: null,
+        contraindications: null,
+        minimum_age: null,
+        age_restriction: null,
+        requires_consultation: false,
+        regulatory_code: null,
+        storage_requirements: null,
+      },
     },
   })
 
@@ -114,13 +145,25 @@ export function ProductForm() {
         category_id: product.category_id ?? null,
         description: product.description ?? '',
         sale_price: product.sale_price ?? '',
-        purchase_price: product.purchase_price ?? '',
         tax_rate: product.tax_rate ?? '19',
         unit: product.unit ?? 'pcs',
         barcode: product.barcode ?? '',
         is_active: product.is_active,
         oem_numbers: product.oem_numbers ?? [],
         cross_references: product.cross_references ?? [],
+        parapharmacy_metadata: product.parapharmacy_metadata ?? {
+          category: '',
+          dosage_form: null,
+          active_ingredients: [],
+          usage_instructions: null,
+          warnings: null,
+          contraindications: null,
+          minimum_age: null,
+          age_restriction: null,
+          requires_consultation: false,
+          regulatory_code: null,
+          storage_requirements: null,
+        },
       })
     }
   }, [product, reset])
@@ -331,23 +374,28 @@ export function ProductForm() {
               </div>
             </div>
 
-            <div>
-              <label htmlFor="purchase_price" className="block text-sm font-medium text-gray-700">
-                Purchase Price
-              </label>
-              <div className="relative mt-1">
-                <span className="absolute inset-y-0 start-0 flex items-center ps-3 text-gray-500">
-                  $
-                </span>
-                <input
-                  type="number"
-                  step="0.01"
-                  id="purchase_price"
-                  {...register('purchase_price')}
-                  className="block w-full rounded-lg border border-gray-300 ps-7 pe-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
+            {/* Cost (WAC) - Read-only when editing */}
+            {isEditing && product && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Cost (WAC)
+                </label>
+                <div className="relative mt-1">
+                  <span className="absolute inset-y-0 start-0 flex items-center ps-3 text-gray-500">
+                    $
+                  </span>
+                  <input
+                    type="text"
+                    value={product.cost_price ? parseFloat(product.cost_price).toFixed(2) : '0.00'}
+                    readOnly
+                    className="block w-full rounded-lg border border-gray-200 bg-gray-50 ps-7 pe-3 py-2 text-gray-600 cursor-not-allowed"
+                  />
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  Automatically calculated from purchase operations
+                </p>
               </div>
-            </div>
+            )}
 
             <div>
               <label htmlFor="tax_rate" className="block text-sm font-medium text-gray-700">
@@ -459,6 +507,26 @@ export function ProductForm() {
             </button>
           </div>
         </div>
+
+        {/* Parapharmacy Metadata - Only for parapharmacy vertical */}
+        {isParapharmacy && (
+          <ParapharmacyMetadataFields
+            control={control}
+            register={register}
+            errors={errors}
+          />
+        )}
+
+        {/* Product Images Section - Only when editing */}
+        {isEditing && id && (
+          <div className="rounded-lg border border-gray-200 bg-white p-6">
+            <div className="mb-4 flex items-center gap-2">
+              <Image className="h-5 w-5 text-gray-400" />
+              <h2 className="text-lg font-semibold text-gray-900">Product Images</h2>
+            </div>
+            <ProductImageSection productId={id} />
+          </div>
+        )}
 
         {/* Form Actions */}
         <div className="flex items-center justify-end gap-4">

@@ -105,6 +105,7 @@ export function RelatedDocumentsPanel({
       invoice: '/sales/invoices',
       credit_note: '/sales/credit-notes',
       return_note: '/sales/return-notes',
+      purchase_order: '/purchases/orders',
     }
     return `${baseUrls[doc.type] || '/sales/documents'}/${doc.id}`
   }

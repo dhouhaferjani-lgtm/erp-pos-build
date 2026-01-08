@@ -28,12 +28,13 @@ const documentTypeIcons: Record<string, React.ElementType> = {
 }
 
 const documentTypeRoutes: Record<string, string> = {
-  quote: '/quotes',
-  sales_order: '/orders',
-  invoice: '/invoices',
-  delivery_note: '/delivery-notes',
-  credit_note: '/credit-notes',
-  purchase_order: '/purchase-orders',
+  quote: '/sales/quotes',
+  sales_order: '/sales/orders',
+  invoice: '/sales/invoices',
+  delivery_note: '/sales/delivery-notes',
+  credit_note: '/sales/credit-notes',
+  purchase_order: '/purchases/orders',
+  return_note: '/sales/return-notes',
 }
 
 function getStatusColor(status: string): string {

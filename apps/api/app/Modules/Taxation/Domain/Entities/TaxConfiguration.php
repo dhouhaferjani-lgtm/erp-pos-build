@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Taxation\Domain\Entities;
 
+use App\Modules\Taxation\Domain\Enums\StackingBehavior;
 use App\Modules\Taxation\Domain\Enums\TaxApplicationLevel;
 use App\Modules\Taxation\Domain\Enums\TaxType;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -40,14 +41,24 @@ class TaxConfiguration extends Model
         'applies_to',
         'is_default',
         'is_active',
+        'sequence_order',
+        'stacks_on',
+        'applicable_document_types',
+        'is_stamp_duty',
+        'is_recoverable',
         'metadata',
     ];
 
     protected $casts = [
         'tax_type' => TaxType::class,
         'applies_to' => TaxApplicationLevel::class,
+        'stacks_on' => StackingBehavior::class,
         'is_default' => 'boolean',
         'is_active' => 'boolean',
+        'sequence_order' => 'integer',
+        'applicable_document_types' => 'array',
+        'is_stamp_duty' => 'boolean',
+        'is_recoverable' => 'boolean',
         'metadata' => 'array',
     ];
 
@@ -92,5 +103,62 @@ class TaxConfiguration extends Model
     public function appliesToDocumentTotal(): bool
     {
         return $this->applies_to === TaxApplicationLevel::DocumentTotal;
+    }
+
+    /**
+     * Scope for filtering by document type
+     */
+    public function scopeForDocumentType($query, string $documentType)
+    {
+        return $query->where(function ($q) use ($documentType) {
+            $q->whereJsonContains('applicable_document_types', $documentType)
+                ->orWhereJsonLength('applicable_document_types', 0);
+        });
+    }
+
+    /**
+     * Scope for ordering by sequence
+     */
+    public function scopeOrdered($query)
+    {
+        return $query->orderBy('sequence_order', 'asc');
+    }
+
+    /**
+     * Scope for active configurations only
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    /**
+     * Check if this tax applies to a specific document type
+     */
+    public function appliesToDocumentType(string $documentType): bool
+    {
+        $types = $this->applicable_document_types ?? [];
+
+        return empty($types) || in_array($documentType, $types, true);
+    }
+
+    /**
+     * Calculate tax amount based on configuration
+     */
+    public function calculateAmount(string $base, ?string $previousTaxesTotal = null): string
+    {
+        if ($this->tax_type === TaxType::FixedAmount) {
+            return $this->fixed_amount ?? '0';
+        }
+
+        $calculationBase = $base;
+
+        if ($this->stacks_on === StackingBehavior::TOTAL_INCLUDING_PREVIOUS && $previousTaxesTotal) {
+            $calculationBase = bcadd($base, $previousTaxesTotal, 3);
+        }
+
+        $rate = bcdiv($this->percentage_rate ?? '0', '100', 6);
+
+        return bcmul($calculationBase, $rate, 3);
     }
 }

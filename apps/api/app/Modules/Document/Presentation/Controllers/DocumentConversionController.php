@@ -287,4 +287,73 @@ class DocumentConversionController extends Controller
             ], 422);
         }
     }
+
+    /**
+     * Receive goods for a purchase order (update PurchaseOrder with received quantities).
+     *
+     * This endpoint uses the converter pattern to wrap the goods receipt functionality.
+     * Unlike other converters, this doesn't create a new document - it updates the
+     * PurchaseOrder with received quantities and changes status to Received when complete.
+     *
+     * Supports partial receipts via the `quantities` request body:
+     * - If `quantities` is provided: receive specified quantities per line
+     * - If `quantities` is empty/missing: receive all remaining quantities
+     *
+     * Request body (optional):
+     * {
+     *   "quantities": {
+     *     "line_uuid_1": "10.00",
+     *     "line_uuid_2": "5.00"
+     *   }
+     * }
+     */
+    public function receivePurchaseOrderGoods(Request $request, string $id): JsonResponse
+    {
+        $request->validate([
+            'quantities' => 'sometimes|array',
+            'quantities.*' => 'required|string|regex:/^\d+(\.\d{1,4})?$/',
+        ]);
+
+        $purchaseOrder = Document::with('lines')->findOrFail($id);
+
+        try {
+            /** @var array<string, string>|null $quantities */
+            $quantities = $request->input('quantities');
+
+            // Convert purchase order to received status using converter
+            $updatedPurchaseOrder = $this->converterRegistry->convert(
+                $purchaseOrder,
+                DocumentType::PurchaseOrder,  // Target is same type (updates existing doc)
+                [
+                    'received_quantities' => $quantities,
+                ]
+            );
+
+            return response()->json([
+                'data' => $updatedPurchaseOrder->load(['lines', 'partner', 'vehicleContext']),
+                'message' => 'Goods received for purchase order successfully',
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'VALIDATION_ERROR',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        } catch (\DomainException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'GOODS_RECEIPT_FAILED',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'GOODS_RECEIPT_ERROR',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        }
+    }
 }

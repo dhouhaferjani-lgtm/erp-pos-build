@@ -6,11 +6,14 @@ namespace App\Modules\Document\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationContext;
 use App\Modules\Document\Application\DTOs\DocumentData;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FiscalCategory;
+use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Services\DeliveryNoteService;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
@@ -46,6 +49,7 @@ class DeliveryNoteController extends Controller
 
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly LocationContext $locationContext,
         private readonly DocumentNumberingService $numberingService,
         private readonly DeliveryNoteService $deliveryNoteService,
     ) {}
@@ -180,13 +184,22 @@ class DeliveryNoteController extends Controller
 
             $total = bcadd($subtotal, $taxAmount, 2);
 
+            // Resolve location using LocationContext fallback chain
+            $locationId = $this->locationContext->resolveLocationId(
+                $validated['location_id'] ?? null,
+                $companyId
+            );
+
             // Create document
             $document = Document::create([
                 ...$validated,
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
                 'type' => DocumentType::DeliveryNote,
+                'fiscal_category' => FiscalCategory::fromDocumentType(DocumentType::DeliveryNote),
+                'fiscal_status' => FiscalStatus::Draft,
                 'status' => DocumentStatus::Draft,
+                'location_id' => $locationId,
                 'document_number' => $documentNumber,
                 'currency' => $validated['currency'] ?? 'EUR',
                 'subtotal' => $subtotal,

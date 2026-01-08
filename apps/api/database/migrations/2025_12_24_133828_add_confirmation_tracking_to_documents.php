@@ -13,21 +13,21 @@ return new class extends Migration
     {
         Schema::table('documents', function (Blueprint $table) {
             // Add confirmation tracking columns if not exists
-            if (!Schema::hasColumn('documents', 'confirmed_at')) {
+            if (! Schema::hasColumn('documents', 'confirmed_at')) {
                 $table->timestamp('confirmed_at')->nullable()->after('document_date');
             }
-            if (!Schema::hasColumn('documents', 'confirmed_by')) {
+            if (! Schema::hasColumn('documents', 'confirmed_by')) {
                 $table->uuid('confirmed_by')->nullable()->after('confirmed_at');
             }
 
             // Add cancellation tracking columns if not exists
-            if (!Schema::hasColumn('documents', 'cancelled_at')) {
+            if (! Schema::hasColumn('documents', 'cancelled_at')) {
                 $table->timestamp('cancelled_at')->nullable()->after('confirmed_by');
             }
-            if (!Schema::hasColumn('documents', 'cancelled_by')) {
+            if (! Schema::hasColumn('documents', 'cancelled_by')) {
                 $table->uuid('cancelled_by')->nullable()->after('cancelled_at');
             }
-            if (!Schema::hasColumn('documents', 'cancellation_reason')) {
+            if (! Schema::hasColumn('documents', 'cancellation_reason')) {
                 $table->text('cancellation_reason')->nullable()->after('cancelled_by');
             }
         });

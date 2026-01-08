@@ -29,7 +29,8 @@
     "tabs": {
       "details": "Details",
       "movements": "Inventory Movements",
-      "financialOperations": "Financial Operations"
+      "financialOperations": "Financial Operations",
+      "images": "Images"
     },
     "movementsTab": {
       "title": "Inventory Movements",
@@ -116,6 +117,20 @@
     "empty": {
       "title": "No products yet",
       "description": "Get started by adding your first product."
+    },
+    "filters": {
+      "type": "Product Type",
+      "active": "Active Only",
+      "category": "Category",
+      "priceRange": "Price Range",
+      "priceMin": "Min Price",
+      "priceMax": "Max Price",
+      "hasStock": "In Stock Only"
+    },
+    "aggregates": {
+      "totalProducts": "Total Products",
+      "totalActive": "Active Products",
+      "averagePrice": "Average Price"
     }
   },
   "stock": {
@@ -126,6 +141,12 @@
     "quantity": "Quantity",
     "reserved": "Reserved",
     "available": "Available",
+    "onHand": "On Hand",
+    "incoming": "Incoming",
+    "projectedAvailable": "Projected Available",
+    "stockValue": "Stock Value",
+    "viewByLocation": "View by Location ({{count}})",
+    "noStock": "No stock information available",
     "product": "Product",
     "adjust": "Adjust Stock",
     "transfer": "Transfer Stock",

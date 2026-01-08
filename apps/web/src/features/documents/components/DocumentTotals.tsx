@@ -1,171 +1,165 @@
-/**
- * DocumentTotals Component
- *
- * Displays subtotal, tax, total, and optional balance due with payment status.
- * Reusable across all document types.
- */
-
 import { useTranslation } from 'react-i18next'
-import type { Document } from '../../../types/document'
+import { useQuery } from '@tanstack/react-query'
+import { AlertCircle } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { fetchTaxBreakdown, type TaxBreakdown } from '../api/taxApi'
 
-export interface DocumentTotalsProps {
-  /** The document to display totals for */
-  document: Document
-  /** Format currency function */
-  formatAmount: (amount: string | number) => string
-  /** Whether to show balance due section (for invoices and confirmed sales orders) */
+interface DocumentTotalsProps {
+  documentId: string
+  documentType: 'invoice' | 'quote' | 'sales_order' | 'credit_note'
+  currency: string
   showBalanceDue?: boolean
-  /** Optional class name for the container */
+  balanceDue?: number
   className?: string
 }
 
 /**
- * Get balance due color class
+ * Inline document totals component displaying:
+ * - Subtotal
+ * - Individual tax lines with rates (e.g., "TVA 19%: 190.000")
+ * - Stamp duty (if applicable)
+ * - Total
+ * - Balance due (optional, for posted invoices)
+ *
+ * Supports multi-currency formatting:
+ * - TND: 3 decimal places
+ * - EUR, USD, etc: 2 decimal places
  */
-function getBalanceDueColorClass(document: Document): string {
-  const balanceDue = parseFloat(document.balance_due ?? document.total ?? '0')
-  const total = parseFloat(document.total ?? '0')
-  const isPaid = balanceDue === 0
-  const isOverdue =
-    document.due_date && new Date(document.due_date) < new Date() && balanceDue > 0
-
-  if (isPaid) return 'text-green-600'
-  if (isOverdue) return 'text-red-600'
-  if (balanceDue < total) return 'text-yellow-600'
-  return 'text-gray-900'
-}
-
 export function DocumentTotals({
-  document,
-  formatAmount,
+  documentId,
+  documentType,
+  currency,
   showBalanceDue = false,
-  className = '',
+  balanceDue,
+  className,
 }: DocumentTotalsProps) {
-  const { t } = useTranslation(['sales'])
+  const { t } = useTranslation('sales')
 
-  const balanceDue = parseFloat(document.balance_due ?? document.total ?? '0')
-  const total = parseFloat(document.total ?? '0')
-  const shouldShowBalanceDue =
-    showBalanceDue ||
-    (document.type === 'invoice' && document.status === 'posted') ||
-    (document.type === 'sales_order' && document.status === 'confirmed')
+  const { data: taxBreakdown, isLoading, error } = useQuery<TaxBreakdown>({
+    queryKey: ['tax-breakdown', documentId],
+    queryFn: () => fetchTaxBreakdown(documentId),
+    enabled: !!documentId,
+  })
 
-  // Calculate payment status inline to avoid t() typing issues
-  const getPaymentStatusInfo = (): { badgeClass: string; label: string } | null => {
-    if (!shouldShowBalanceDue) return null
+  // Determine decimal places based on currency
+  const decimals = currency === 'TND' ? 3 : 2
 
-    if (balanceDue === 0) {
-      return {
-        badgeClass: 'bg-green-100 text-green-800',
-        label: t('documents.statuses.paid'),
-      }
-    }
-
-    if (
-      document.type === 'invoice' &&
-      document.due_date &&
-      new Date(document.due_date) < new Date()
-    ) {
-      const daysOverdue = Math.floor(
-        (new Date().getTime() - new Date(document.due_date).getTime()) /
-          (1000 * 60 * 60 * 24)
-      )
-      return {
-        badgeClass: 'bg-red-100 text-red-800',
-        label: `${t('documents.statuses.overdue')} (${String(daysOverdue)}d)`,
-      }
-    }
-
-    if (balanceDue < total) {
-      return {
-        badgeClass: 'bg-yellow-100 text-yellow-800',
-        label:
-          document.type === 'sales_order'
-            ? t('documents.statuses.prepaid')
-            : t('documents.statuses.partial'),
-      }
-    }
-
-    return {
-      badgeClass: 'bg-orange-100 text-orange-800',
-      label: t('documents.statuses.unpaid'),
-    }
+  const formatAmount = (amount: string | number): string => {
+    return parseFloat(String(amount)).toFixed(decimals)
   }
 
-  const paymentStatus = getPaymentStatusInfo()
+  if (isLoading) {
+    return (
+      <div className={cn('space-y-2', className)}>
+        <div className="h-4 bg-gray-200 rounded animate-pulse w-3/4 ms-auto"></div>
+        <div className="h-4 bg-gray-200 rounded animate-pulse w-3/4 ms-auto"></div>
+        <div className="h-4 bg-gray-200 rounded animate-pulse w-3/4 ms-auto"></div>
+      </div>
+    )
+  }
+
+  if (error || !taxBreakdown) {
+    return (
+      <div className={cn('rounded-lg border border-red-200 bg-red-50 p-4', className)}>
+        <div className="flex items-center gap-2 text-red-700">
+          <AlertCircle className="h-4 w-4" />
+          <p className="text-sm">
+            {t('tax.breakdown.error')}
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  const hasStampDuty = parseFloat(taxBreakdown.stamp_duty_amount) > 0
+  const hasTaxes = parseFloat(taxBreakdown.total_tax_amount) > 0
+  const hasBalanceDue = showBalanceDue && balanceDue !== undefined && balanceDue > 0
 
   return (
-    <div
-      className={`rounded-lg border border-gray-200 bg-white p-6 ${className}`}
-    >
-      <h2 className="mb-4 text-lg font-semibold text-gray-900">
-        {t('documents.totals')}
-      </h2>
-      <dl className="space-y-3">
-        {/* Subtotal */}
-        <div className="flex justify-between">
-          <dt className="text-sm text-gray-500">{t('documents.subtotal')}</dt>
-          <dd className="text-sm font-medium text-gray-900">
-            {formatAmount(document.subtotal ?? 0)}
-          </dd>
-        </div>
+    <div className={cn('space-y-2', className)}>
+      {/* Subtotal */}
+      <div className="flex items-center justify-between py-1">
+        <span className="text-sm text-gray-600">
+          {t('documents.subtotal')}
+        </span>
+        <span className="text-sm font-medium text-gray-900 font-mono">
+          {formatAmount(taxBreakdown.subtotal)} {currency}
+        </span>
+      </div>
 
-        {/* Tax */}
-        <div className="flex justify-between">
-          <dt className="text-sm text-gray-500">{t('documents.tax')}</dt>
-          <dd className="text-sm font-medium text-gray-900">
-            {formatAmount(document.tax_amount ?? 0)}
-          </dd>
-        </div>
+      {/* Individual tax lines from tax_details */}
+      {hasTaxes && taxBreakdown.tax_details.length > 0 && (
+        <>
+          {taxBreakdown.tax_details
+            .filter((detail) => !detail.tax_name.toLowerCase().includes('timbre'))
+            .map((detail, index) => {
+              const displayName = detail.tax_type === 'percentage' && detail.tax_rate
+                ? `${detail.tax_name} ${detail.tax_rate}%`
+                : detail.tax_name
 
-        {/* Total */}
-        <div className="border-t border-gray-200 pt-3">
-          <div className="flex justify-between">
-            <dt className="text-base font-semibold text-gray-900">
-              {t('documents.total')}
-            </dt>
-            <dd className="text-base font-semibold text-gray-900">
-              {formatAmount(document.total ?? 0)}
-            </dd>
-          </div>
-        </div>
-
-        {/* Balance Due Section */}
-        {shouldShowBalanceDue && (
-          <>
-            <div className="border-t border-gray-200 pt-3">
-              <div className="flex items-center justify-between">
-                <dt className="text-base font-semibold text-gray-900">
-                  {document.type === 'sales_order'
-                    ? t('documents.amountDue')
-                    : t('documents.balanceDue')}
-                </dt>
-                <dd
-                  className={`text-base font-semibold ${getBalanceDueColorClass(document)}`}
-                >
-                  {formatAmount(balanceDue)}
-                </dd>
-              </div>
-            </div>
-
-            {/* Payment Status Badge */}
-            {paymentStatus && (
-              <div className="flex items-center justify-between">
-                <dt className="text-sm text-gray-500">
-                  {t('documents.paymentStatus')}
-                </dt>
-                <dd>
-                  <span
-                    className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${paymentStatus.badgeClass}`}
-                  >
-                    {paymentStatus.label}
+              return (
+                <div key={index} className="flex items-center justify-between py-1">
+                  <span className="text-sm text-gray-600">
+                    {displayName}
                   </span>
-                </dd>
-              </div>
-            )}
-          </>
-        )}
-      </dl>
+                  <span className="text-sm font-medium text-gray-900 font-mono">
+                    {formatAmount(detail.tax_amount)} {currency}
+                  </span>
+                </div>
+              )
+            })}
+        </>
+      )}
+
+      {/* Stamp duty (separate from other taxes) */}
+      {hasStampDuty && (
+        <div className="flex items-center justify-between py-1">
+          <span className="text-sm text-gray-600">
+            {t('tax.breakdown.stampDuty')}
+          </span>
+          <span className="text-sm font-medium text-gray-900 font-mono">
+            {formatAmount(taxBreakdown.stamp_duty_amount)} {currency}
+          </span>
+        </div>
+      )}
+
+      {/* Divider before total */}
+      <div className="border-t border-gray-300 my-2"></div>
+
+      {/* Total */}
+      <div className="flex items-center justify-between py-1">
+        <span className="text-base font-semibold text-gray-900">
+          {t('documents.total')}
+        </span>
+        <span className="text-base font-bold text-gray-900 font-mono">
+          {formatAmount(taxBreakdown.total)} {currency}
+        </span>
+      </div>
+
+      {/* Balance due (for posted invoices) */}
+      {hasBalanceDue && (
+        <>
+          <div className="border-t border-gray-200 my-2"></div>
+          <div className="flex items-center justify-between py-1">
+            <span className="text-sm font-medium text-blue-700">
+              {t('invoices.balanceDue')}
+            </span>
+            <span className="text-sm font-semibold text-blue-700 font-mono">
+              {formatAmount(balanceDue!)} {currency}
+            </span>
+          </div>
+        </>
+      )}
+
+      {/* No taxes message */}
+      {!hasTaxes && (
+        <div className="flex items-start gap-2 rounded-lg bg-gray-50 p-3 mt-2">
+          <AlertCircle className="h-4 w-4 text-gray-600 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-gray-600">
+            {t('tax.breakdown.noTaxes')}
+          </p>
+        </div>
+      )}
     </div>
   )
 }

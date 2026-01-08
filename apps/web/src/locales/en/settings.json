@@ -1,0 +1,87 @@
+{
+  "tax": {
+    "title": "Tax Settings",
+    "description": "Configure tax rates and fiscal year settings for your company",
+    "defaultTaxRate": {
+      "title": "Default Tax Rate",
+      "description": "Set the default VAT/tax rate that will be applied to new products and invoices",
+      "label": "Default Tax Rate",
+      "help": "This rate will be used as the default for all taxable items. You can override it per product or per invoice line."
+    },
+    "fiscalYear": {
+      "title": "Fiscal Year",
+      "description": "Configure your company's fiscal year start date",
+      "label": "Fiscal Year Start Month",
+      "help": "The month when your fiscal year begins. This affects financial reporting and year-end calculations."
+    },
+    "configurations": {
+      "title": "Tax Configurations",
+      "description": "Manage VAT rates, stamp duties, and other taxes",
+      "addButton": "Add Tax",
+      "pageTitle": "Tax Configurations",
+      "tabs": {
+        "profile": "Company Tax Profile",
+        "taxes": "Tax Types"
+      },
+      "profile": {
+        "title": "VAT Registration Status",
+        "description": "This affects how VAT is handled on purchases",
+        "registered": "VAT Registered (Assujetti)",
+        "registeredDescription": "You can recover VAT on purchases",
+        "nonRegistered": "Not VAT Registered",
+        "nonRegisteredDescription": "VAT on purchases is added to inventory cost",
+        "vatNumber": "VAT Registration Number"
+      },
+      "table": {
+        "name": "Name",
+        "code": "Code",
+        "type": "Type",
+        "rate": "Rate/Amount",
+        "appliesTo": "Applies To",
+        "documentTypes": "Document Types",
+        "active": "Active",
+        "actions": "Actions",
+        "noData": "No tax configurations found",
+        "allDocuments": "All Documents"
+      },
+      "form": {
+        "addTitle": "Add Tax Configuration",
+        "editTitle": "Edit Tax Configuration",
+        "name": "Tax Name",
+        "namePlaceholder": "e.g., TVA 19%",
+        "code": "Tax Code",
+        "codePlaceholder": "Auto-generated if empty",
+        "typeLabel": "Calculation Type",
+        "typePercentage": "Percentage",
+        "typeFixed": "Fixed Amount",
+        "rate": "Rate (%)",
+        "amount": "Amount",
+        "appliesTo": "Applies To",
+        "appliesToLineItems": "Line Items",
+        "appliesToDocument": "Document Total",
+        "stacking": "Stacking Behavior",
+        "stackingBase": "Calculate on base amount only",
+        "stackingCompound": "Compound (on subtotal + previous taxes)",
+        "documentTypes": "Applicable Document Types",
+        "documentTypesHelp": "Select specific document types or leave empty to apply to all types",
+        "allDocumentTypes": "All Document Types (default)",
+        "orSelectSpecific": "Or select specific types:",
+        "documentTypesHint": "Leave empty to apply to all document types",
+        "active": "Active",
+        "recoverable": "Recoverable/Deductible",
+        "recoverableHelp": "If checked, this tax can be deducted (like VAT for registered companies). If unchecked, it adds to product cost (like stamp duties).",
+        "sequenceOrder": "Sequence Order"
+      },
+      "messages": {
+        "created": "Tax configuration created",
+        "updated": "Tax configuration updated",
+        "deleted": "Tax configuration deactivated",
+        "reordered": "Tax order updated"
+      },
+      "confirmDelete": {
+        "title": "Deactivate Tax?",
+        "message": "This tax will be deactivated but not deleted. Existing documents will not be affected."
+      }
+    }
+  }
+}

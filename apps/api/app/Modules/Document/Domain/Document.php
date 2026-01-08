@@ -290,7 +290,7 @@ class Document extends Model
      * - 'current': This document
      * - 'descendants': Documents derived from this one (DN, Credit Notes)
      *
-     * @return array{ancestors: Collection<int, Document>, current: Document, descendants: Collection<int, Document>}
+     * @return array{ancestors: Collection<int, Document>, current: Document, siblings: Collection<int, Document>, descendants: Collection<int, Document>}
      */
     public function getDocumentChain(): array
     {
@@ -305,9 +305,19 @@ class Document extends Model
         // Get all descendants recursively
         $descendants = $this->getAllDescendants();
 
+        // Get siblings - documents with the same source_document_id
+        $siblings = new Collection;
+        if ($this->source_document_id !== null) {
+            $siblings = static::where('source_document_id', $this->source_document_id)
+                ->where('id', '!=', $this->id)
+                ->orderBy('created_at')
+                ->get();
+        }
+
         return [
             'ancestors' => $ancestors,
             'current' => $this,
+            'siblings' => $siblings,
             'descendants' => $descendants,
         ];
     }
@@ -481,23 +491,22 @@ class Document extends Model
     public function recalculateTotals(): void
     {
         $subtotal = '0.00';
-        $taxAmount = '0.00';
 
         foreach ($this->lines as $line) {
             $lineSubtotal = bcmul($line->quantity, $line->unit_price, 2);
-            $lineTax = bcmul($lineSubtotal, bcdiv($line->tax_rate ?? '0', '100', 4), 2);
-
             $subtotal = bcadd($subtotal, $lineSubtotal, 2);
-            $taxAmount = bcadd($taxAmount, $lineTax, 2);
         }
 
-        $discountAmount = $this->discount_amount ?? '0.00';
-        $total = bcadd(bcsub($subtotal, $discountAmount, 2), $taxAmount, 2);
+        // Use TaxCalculationService to calculate all taxes (line taxes + stamp duties)
+        $taxCalculationService = app(\App\Modules\Taxation\Domain\Services\TaxCalculationService::class);
+        $taxResult = $taxCalculationService->calculateDocumentTaxes($this);
 
         $this->update([
             'subtotal' => $subtotal,
-            'tax_amount' => $taxAmount,
-            'total' => $total,
+            'line_tax_amount' => $taxResult->lineTaxAmount,
+            'stamp_duty_amount' => $taxResult->stampDutyAmount,
+            'tax_amount' => $taxResult->totalTaxAmount,  // Total of line_tax + stamp_duty
+            'total' => $taxResult->total,
         ]);
     }
 

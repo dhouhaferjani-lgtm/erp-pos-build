@@ -5,14 +5,15 @@ declare(strict_types=1);
 namespace App\Modules\Document\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationContext;
 use App\Modules\Document\Domain\Document;
-use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\ReturnCondition;
 use App\Modules\Document\Domain\Enums\ReturnReason;
+use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\ReturnNoteService;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
@@ -39,6 +40,7 @@ class ReturnNoteController extends Controller
 
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly LocationContext $locationContext,
         private readonly ReturnNoteService $returnNoteService,
         private readonly DocumentNumberingService $numberingService,
     ) {}
@@ -162,6 +164,12 @@ class ReturnNoteController extends Controller
                 DocumentType::ReturnNote
             );
 
+            // Resolve location using LocationContext fallback chain
+            $locationId = $this->locationContext->resolveLocationId(
+                $data['location_id'] ?? null,
+                $company->id
+            );
+
             // Create return note in Draft status
             $returnNote = Document::create([
                 'tenant_id' => $company->tenant_id,
@@ -174,6 +182,7 @@ class ReturnNoteController extends Controller
                 'document_date' => $data['document_date'],
                 'partner_id' => $data['partner_id'],
                 'source_document_id' => $data['source_document_id'] ?? null,
+                'location_id' => $locationId,
                 'currency' => $data['currency'] ?? $company->default_currency ?? 'EUR',
                 'notes' => $data['notes'] ?? null,
                 'subtotal' => '0.00',
@@ -214,6 +223,7 @@ class ReturnNoteController extends Controller
                     \App\Modules\Document\Domain\DocumentLine::create([
                         'document_id' => $returnNote->id,
                         'product_id' => $lineData['product_id'] ?? null,
+                        'location_id' => $lineData['location_id'] ?? null, // Optional per-line location
                         'line_number' => $index + 1,
                         'description' => $lineData['description'],
                         'quantity' => $lineData['quantity'],
@@ -334,6 +344,7 @@ class ReturnNoteController extends Controller
                     \App\Modules\Document\Domain\DocumentLine::create([
                         'document_id' => $returnNote->id,
                         'product_id' => $lineData['product_id'] ?? null,
+                        'location_id' => $lineData['location_id'] ?? null, // Optional per-line location
                         'line_number' => $index + 1,
                         'description' => $lineData['description'],
                         'quantity' => $lineData['quantity'],

@@ -14,7 +14,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
-use App\Modules\Document\Domain\Services\DocumentConversionService;
+use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
 use Carbon\Carbon;
@@ -37,7 +37,7 @@ class UninvoicedDNReportTest extends TestCase
 
     private UninvoicedDeliveryNoteService $service;
 
-    private DocumentConversionService $conversionService;
+    private DocumentConverterRegistry $converterRegistry;
 
     private Tenant $tenant;
 
@@ -50,7 +50,7 @@ class UninvoicedDNReportTest extends TestCase
         parent::setUp();
 
         $this->service = app(UninvoicedDeliveryNoteService::class);
-        $this->conversionService = app(DocumentConversionService::class);
+        $this->converterRegistry = app(DocumentConverterRegistry::class);
 
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->create([
@@ -100,7 +100,7 @@ class UninvoicedDNReportTest extends TestCase
         ]);
 
         // Invoice only dn1
-        $this->conversionService->createInvoiceFromDeliveryNotes([$dn1]);
+        $this->converterRegistry->convert($dn1, DocumentType::Invoice, ['delivery_note_ids' => [$dn1->id]]);
 
         $result = $this->service->getUninvoicedDeliveryNotes($this->company->id);
 
@@ -221,7 +221,7 @@ class UninvoicedDNReportTest extends TestCase
             ['description' => 'Product A', 'quantity' => '5.00', 'unit_price' => '100.00'],
         ]);
 
-        $this->conversionService->createInvoiceFromDeliveryNotes([$dn]);
+        $this->converterRegistry->convert($dn, DocumentType::Invoice, ['delivery_note_ids' => [$dn->id]]);
 
         $totals = $this->service->calculateUninvoicedTotals($this->company->id);
 

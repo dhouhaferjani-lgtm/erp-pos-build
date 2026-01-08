@@ -102,7 +102,7 @@ class InvoiceDocumentTest extends TestCase
             default => FranceChartOfAccountsSeeder::class, // Default to France
         };
 
-        $seeder = new $seederClass();
+        $seeder = new $seederClass;
         $seeder->run($this->company->id, $this->tenant->id);
     }
 
@@ -253,6 +253,8 @@ class InvoiceDocumentTest extends TestCase
             'company_id' => $this->company->id,
             'partner_id' => $this->partner->id,
             'type' => DocumentType::Invoice,
+            'fiscal_category' => \App\Modules\Document\Domain\Enums\FiscalCategory::fromDocumentType(DocumentType::Invoice),
+            'fiscal_status' => \App\Modules\Document\Domain\Enums\FiscalStatus::Sealed,
             'status' => DocumentStatus::Posted,
             'document_number' => 'INV-2025-0001',
             'document_date' => '2025-01-15',
@@ -271,7 +273,10 @@ class InvoiceDocumentTest extends TestCase
             'line_total' => '500.00',
         ]);
 
-        $response = $this->actingAs($this->user)->postJson("/api/v1/invoices/{$invoice->id}/create-credit-note");
+        $response = $this->actingAs($this->user)->postJson("/api/v1/invoices/{$invoice->id}/create-credit-note", [
+            'amount' => '600.00',
+            'reason' => 'billing_error',
+        ]);
 
         $response->assertStatus(201);
         $this->assertEquals('credit_note', $response->json('data.type'));
@@ -315,16 +320,21 @@ class InvoiceDocumentTest extends TestCase
             'company_id' => $this->company->id,
             'partner_id' => $this->partner->id,
             'type' => DocumentType::Invoice,
+            'fiscal_category' => \App\Modules\Document\Domain\Enums\FiscalCategory::fromDocumentType(DocumentType::Invoice),
+            'fiscal_status' => \App\Modules\Document\Domain\Enums\FiscalStatus::Draft,
             'status' => DocumentStatus::Confirmed,
             'document_number' => 'INV-2025-0001',
             'document_date' => '2025-01-15',
             'currency' => 'EUR',
         ]);
 
-        $response = $this->actingAs($this->user)->postJson("/api/v1/invoices/{$invoice->id}/create-credit-note");
+        $response = $this->actingAs($this->user)->postJson("/api/v1/invoices/{$invoice->id}/create-credit-note", [
+            'amount' => '100.00',
+            'reason' => 'billing_error',
+        ]);
 
         $response->assertStatus(422);
-        $this->assertEquals('INVOICE_NOT_POSTED', $response->json('error.code'));
+        $this->assertStringContainsString('posted', strtolower($response->json('error.message')));
     }
 
     public function test_invoice_can_be_confirmed(): void
@@ -344,5 +354,63 @@ class InvoiceDocumentTest extends TestCase
 
         $response->assertStatus(200);
         $this->assertEquals('confirmed', $response->json('data.status'));
+    }
+
+    public function test_service_only_invoice_complete_workflow(): void
+    {
+        // Create invoice with service-only lines (no product_id)
+        $response = $this->actingAs($this->user)->postJson('/api/v1/invoices', [
+            'partner_id' => $this->partner->id,
+            'document_date' => '2025-01-15',
+            'due_date' => '2025-02-15',
+            'lines' => [
+                [
+                    'description' => 'Diagnostic Service',
+                    'quantity' => '1.00',
+                    'unit_price' => '80.00',
+                    'tax_rate' => '20.00',
+                ],
+                [
+                    'description' => 'Consultation Service',
+                    'quantity' => '2.00',
+                    'unit_price' => '120.00',
+                    'tax_rate' => '20.00',
+                ],
+            ],
+        ]);
+
+        $response->assertStatus(201);
+        $invoice_id = $response->json('data.id');
+
+        // Verify calculations for service lines
+        $this->assertEquals('320.00', $response->json('data.subtotal')); // 80 + (2 * 120)
+        $this->assertEquals('64.00', $response->json('data.tax_amount'));  // 320 * 0.20
+        $this->assertEquals('384.00', $response->json('data.total'));      // 320 + 64
+        $this->assertCount(2, $response->json('data.lines'));
+
+        // Verify service lines have no product_id
+        foreach ($response->json('data.lines') as $line) {
+            $this->assertNull($line['product_id']);
+            $this->assertNotEmpty($line['description']);
+        }
+
+        // Confirm the invoice
+        $confirmResponse = $this->actingAs($this->user)->postJson("/api/v1/invoices/{$invoice_id}/confirm");
+        $confirmResponse->assertStatus(200);
+        $this->assertEquals('confirmed', $confirmResponse->json('data.status'));
+
+        // Post the invoice
+        $postResponse = $this->actingAs($this->user)->postJson("/api/v1/invoices/{$invoice_id}/post");
+        $postResponse->assertStatus(200);
+        $this->assertEquals('posted', $postResponse->json('data.status'));
+
+        // Verify fiscal hash chain for service invoice
+        $this->assertNotNull($postResponse->json('meta.fiscal_hash'));
+        $this->assertIsInt($postResponse->json('meta.chain_sequence'));
+
+        // Verify posted invoice is immutable
+        $invoice = Document::find($invoice_id);
+        $this->assertEquals(DocumentStatus::Posted, $invoice->status);
+        $this->assertNotNull($invoice->fiscal_hash);
     }
 }

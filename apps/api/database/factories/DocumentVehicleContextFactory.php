@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
-use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentVehicleContext;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;

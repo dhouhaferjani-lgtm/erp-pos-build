@@ -13,9 +13,12 @@ use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Domain\Services\CompanyTaxStatusValidationService;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Presentation\Requests\CreateCompanyRequest;
+use App\Modules\Company\Presentation\Requests\UpdateCompanyRequest;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
@@ -24,7 +27,8 @@ use Illuminate\Support\Facades\Log;
 class CompanyController extends Controller
 {
     public function __construct(
-        private readonly ChartOfAccountsService $chartOfAccountsService
+        private readonly ChartOfAccountsService $chartOfAccountsService,
+        private readonly CompanyTaxStatusValidationService $taxStatusValidationService,
     ) {}
 
     /**
@@ -146,6 +150,52 @@ class CompanyController extends Controller
     }
 
     /**
+     * Get a specific company.
+     */
+    public function show(string $companyId): JsonResponse
+    {
+        /** @var User $user */
+        $user = auth()->user();
+
+        $company = Company::where('tenant_id', $user->tenant_id)
+            ->where('id', $companyId)
+            ->firstOrFail();
+
+        return response()->json([
+            'data' => $this->formatCompany($company),
+        ]);
+    }
+
+    /**
+     * Update a company.
+     */
+    public function update(UpdateCompanyRequest $request, string $companyId): JsonResponse
+    {
+        /** @var User $user */
+        $user = auth()->user();
+
+        $company = Company::where('tenant_id', $user->tenant_id)
+            ->where('id', $companyId)
+            ->firstOrFail();
+
+        /** @var array<string, mixed> $validated */
+        $validated = $request->validated();
+
+        // Validate tax status change if present
+        if (isset($validated['tax_status'])) {
+            $newStatus = CompanyTaxStatus::from($validated['tax_status']);
+            $this->taxStatusValidationService->validateTaxStatusChange($company, $newStatus);
+        }
+
+        $company->update($validated);
+
+        return response()->json([
+            'data' => $this->formatCompany($company),
+            'message' => 'Company updated successfully',
+        ]);
+    }
+
+    /**
      * Get reservation settings for a company.
      */
     public function getReservationSettings(string $companyId): JsonResponse
@@ -254,6 +304,9 @@ class CompanyController extends Controller
             'locale' => $company->locale,
             'timezone' => $company->timezone,
             'status' => $company->status->value,
+            'default_tax_rate' => $company->default_tax_rate,
+            'default_tax_configuration_id' => $company->default_tax_configuration_id,
+            'tax_status' => $company->tax_status?->value,
             'created_at' => $company->created_at->toIso8601String(),
             'updated_at' => $company->updated_at->toIso8601String(),
         ];

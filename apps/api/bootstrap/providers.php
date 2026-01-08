@@ -13,6 +13,7 @@ return [
     App\Modules\Document\Providers\DocumentServiceProvider::class,
     App\Modules\Accounting\Providers\AccountingServiceProvider::class,
     App\Modules\Inventory\Providers\InventoryServiceProvider::class,
+    App\Modules\BatchExpiry\BatchExpiryServiceProvider::class,
     App\Modules\Treasury\Providers\TreasuryServiceProvider::class,
     App\Modules\Compliance\Providers\ComplianceServiceProvider::class,
     App\Modules\Import\Providers\ImportServiceProvider::class,
@@ -22,4 +23,5 @@ return [
     App\Modules\Service\Providers\ServiceModuleServiceProvider::class,
     App\Modules\Billing\Providers\BillingServiceProvider::class,
     App\Modules\Expense\Providers\ExpenseServiceProvider::class,
+    App\Modules\Taxation\Providers\TaxationServiceProvider::class,
 ];

@@ -96,12 +96,17 @@ class AuditEvent extends Model
             $this->occurredAt = now();
             $this->eventHash = $this->calculateHash($payload);
 
-            // Look up tenant_id from company
-            $company = Company::find($companyId);
-            if ($company === null) {
-                throw new \InvalidArgumentException("Company not found with ID: {$companyId}");
+            // Accept tenant_id directly if provided in attributes (optimization)
+            // Otherwise look up from company (backward compatibility)
+            if (isset($attributes['tenant_id'])) {
+                $tenantId = $attributes['tenant_id'];
+            } else {
+                $company = Company::find($companyId);
+                if ($company === null) {
+                    throw new \InvalidArgumentException("Company not found with ID: {$companyId}");
+                }
+                $tenantId = $company->tenant_id;
             }
-            $tenantId = $company->tenant_id;
             $this->tenantId = $tenantId;
 
             // Set attributes for persistence

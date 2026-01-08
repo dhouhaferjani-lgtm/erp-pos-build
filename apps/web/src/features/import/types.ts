@@ -1,6 +1,6 @@
 // Import Types - matches backend API
 
-export type ImportType = 'partners' | 'products' | 'stock_levels' | 'opening_balances'
+export type ImportType = 'partners' | 'products' | 'opening_balances' | 'product_images'
 
 export type ImportStatus =
   | 'pending'
@@ -86,10 +86,26 @@ export interface ImportJobListResponse {
 export interface ImportErrorsResponse {
   data: ImportRow[]
   meta?: {
+    current_page?: number
+    last_page?: number
+    per_page?: number
+    total?: number
     job_error_message: string | null
     validation_errors: number
     execution_errors: number
   }
+}
+
+export interface ImportErrorSummary {
+  total_errors: number
+  validation_errors: number
+  execution_errors: number
+  has_errors: boolean
+  job_error_message: string | null
+}
+
+export interface ImportErrorSummaryResponse {
+  data: ImportErrorSummary
 }
 
 export interface CreateImportResponse {

@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function (): void {
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, 'module:Vehicle'])->group(function (): void {
     Route::get('/vehicles', [VehicleController::class, 'index'])
         ->middleware('can:vehicles.view')
         ->name('vehicles.index');

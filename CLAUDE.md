@@ -124,7 +124,53 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum'])->group(function () 
 3. Run `php artisan route:clear` after changes
 4. Test the endpoint with actual authentication
 
-### 13. Frontend API Response Handling Pattern
+### 13. Constructor Injection is the ONLY Acceptable DI Pattern
+**CRITICAL: All dependencies MUST be injected via constructor. NEVER use `app()` helper in controllers or services.**
+
+**✅ CORRECT:**
+```php
+class InvoiceController extends Controller
+{
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+        private readonly TaxCalculationService $taxCalculationService,
+    ) {}
+
+    public function confirm(string $id): JsonResponse
+    {
+        $companyId = $this->companyContext->getCompanyId();
+        $result = $this->taxCalculationService->calculate($document);
+        // ...
+    }
+}
+```
+
+**❌ WRONG:**
+```php
+class InvoiceController extends Controller
+{
+    public function confirm(string $id): JsonResponse
+    {
+        $companyId = app(CompanyContext::class)->getCompanyId(); // ❌ NO!
+        // ...
+    }
+}
+```
+
+**Why:**
+- Constructor signature documents all dependencies
+- Easy to test - can mock dependencies
+- Type-safe with IDE support
+- Laravel auto-resolves via service container
+
+**When adding dependencies:**
+- Add to constructor with `private readonly`
+- Never use `app()` to resolve services
+- Update tests if controller instantiated directly (rare)
+
+**See:** [docs/conventions/07-DEPENDENCY-INJECTION.md](docs/conventions/07-DEPENDENCY-INJECTION.md) for complete guide with examples, common mistakes, and pre-commit checklist.
+
+### 14. Frontend API Response Handling Pattern
 **CRITICAL: This is the #1 recurring mistake when adding new features. Follow this pattern exactly.**
 
 #### Understanding the Response Flow
@@ -743,6 +789,19 @@ pnpm dev                  # From root - starts all
 
 ## Reference Documents
 
+### Coding Conventions (REQUIRED READING)
+| Document | Purpose | When to Read |
+|----------|---------|--------------|
+| **[docs/conventions/README.md](docs/conventions/README.md)** | **Conventions index** | **Start here for all development** |
+| [docs/conventions/01-API-RESPONSES.md](docs/conventions/01-API-RESPONSES.md) | API response patterns | Creating/modifying controllers |
+| [docs/conventions/02-NAVIGATION-ROUTING.md](docs/conventions/02-NAVIGATION-ROUTING.md) | Adding pages to dashboard | Adding new features |
+| [docs/conventions/03-AUTHORIZATION.md](docs/conventions/03-AUTHORIZATION.md) | Permission system | Protecting routes/endpoints |
+| [docs/conventions/04-FRONTEND-TYPES.md](docs/conventions/04-FRONTEND-TYPES.md) | Type generation from DTOs | Working with types |
+| [docs/conventions/05-REACT-QUERY.md](docs/conventions/05-REACT-QUERY.md) | Data fetching patterns | Creating queries/mutations |
+| [docs/conventions/06-FORMS.md](docs/conventions/06-FORMS.md) | Form validation | Building forms |
+| [docs/conventions/07-DEPENDENCY-INJECTION.md](docs/conventions/07-DEPENDENCY-INJECTION.md) | Constructor injection (ONLY pattern) | Creating controllers/services |
+
+### Architecture & Domain Documentation
 | Document | Purpose |
 |----------|---------|
 | `TASKS.md` | Current sprint tasks and progress |

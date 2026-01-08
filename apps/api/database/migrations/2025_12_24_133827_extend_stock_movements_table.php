@@ -12,18 +12,18 @@ return new class extends Migration
     {
         Schema::table('stock_movements', function (Blueprint $table) {
             // Add if not exists - check first
-            if (!Schema::hasColumn('stock_movements', 'reason')) {
+            if (! Schema::hasColumn('stock_movements', 'reason')) {
                 $table->string('reason', 50)->nullable()->after('movement_type');
             }
-            if (!Schema::hasColumn('stock_movements', 'reference_type')) {
+            if (! Schema::hasColumn('stock_movements', 'reference_type')) {
                 $table->string('reference_type', 100)->nullable()->after('reference');
             }
-            if (!Schema::hasColumn('stock_movements', 'reference_id')) {
+            if (! Schema::hasColumn('stock_movements', 'reference_id')) {
                 $table->uuid('reference_id')->nullable()->after('reference_type');
             }
 
             // Index for polymorphic lookup
-            if (!Schema::hasIndex('stock_movements', 'idx_movements_reference')) {
+            if (! Schema::hasIndex('stock_movements', 'idx_movements_reference')) {
                 $table->index(['reference_type', 'reference_id'], 'idx_movements_reference');
             }
         });

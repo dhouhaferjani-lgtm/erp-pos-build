@@ -35,6 +35,7 @@ class ProductData extends Data
         public ?string $minimum_margin_override,
         public string $created_at,
         public ?string $updated_at,
+        public ?ParapharmacyProductMetadataData $parapharmacy_metadata = null,
     ) {}
 
     public static function fromModel(Product $product): self
@@ -58,6 +59,9 @@ class ProductData extends Data
             minimum_margin_override: $product->minimum_margin_override !== null ? (string) $product->minimum_margin_override : null,
             created_at: $product->created_at?->toIso8601String() ?? '',
             updated_at: $product->updated_at?->toIso8601String(),
+            parapharmacy_metadata: $product->relationLoaded('parapharmacyMetadata') && $product->parapharmacyMetadata !== null
+                ? ParapharmacyProductMetadataData::fromModel($product->parapharmacyMetadata)
+                : null,
         );
     }
 }

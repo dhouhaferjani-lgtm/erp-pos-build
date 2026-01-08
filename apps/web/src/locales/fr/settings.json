@@ -1,0 +1,87 @@
+{
+  "tax": {
+    "title": "Paramètres fiscaux",
+    "description": "Configurez les taux de taxe et les paramètres de l'exercice fiscal pour votre entreprise",
+    "defaultTaxRate": {
+      "title": "Taux de taxe par défaut",
+      "description": "Définissez le taux de TVA/taxe par défaut qui sera appliqué aux nouveaux produits et factures",
+      "label": "Taux de taxe par défaut",
+      "help": "Ce taux sera utilisé par défaut pour tous les articles taxables. Vous pouvez le remplacer par produit ou par ligne de facture."
+    },
+    "fiscalYear": {
+      "title": "Exercice fiscal",
+      "description": "Configurez la date de début de l'exercice fiscal de votre entreprise",
+      "label": "Mois de début de l'exercice fiscal",
+      "help": "Le mois où commence votre exercice fiscal. Cela affecte les rapports financiers et les calculs de fin d'année."
+    },
+    "configurations": {
+      "title": "Configurations fiscales",
+      "description": "Gérer les taux de TVA, timbres fiscaux et autres taxes",
+      "addButton": "Ajouter une taxe",
+      "pageTitle": "Configurations fiscales",
+      "tabs": {
+        "profile": "Profil fiscal de l'entreprise",
+        "taxes": "Types de taxes"
+      },
+      "profile": {
+        "title": "Statut d'assujettissement à la TVA",
+        "description": "Ceci affecte la gestion de la TVA sur les achats",
+        "registered": "Assujetti à la TVA",
+        "registeredDescription": "Vous pouvez récupérer la TVA sur les achats",
+        "nonRegistered": "Non assujetti à la TVA",
+        "nonRegisteredDescription": "La TVA sur les achats est ajoutée au coût du stock",
+        "vatNumber": "Numéro d'identification fiscale"
+      },
+      "table": {
+        "name": "Nom",
+        "code": "Code",
+        "type": "Type",
+        "rate": "Taux/Montant",
+        "appliesTo": "S'applique à",
+        "documentTypes": "Types de documents",
+        "active": "Actif",
+        "actions": "Actions",
+        "noData": "Aucune configuration fiscale trouvée",
+        "allDocuments": "Tous les documents"
+      },
+      "form": {
+        "addTitle": "Ajouter une configuration fiscale",
+        "editTitle": "Modifier la configuration fiscale",
+        "name": "Nom de la taxe",
+        "namePlaceholder": "ex: TVA 19%",
+        "code": "Code de la taxe",
+        "codePlaceholder": "Généré automatiquement si vide",
+        "typeLabel": "Type de calcul",
+        "typePercentage": "Pourcentage",
+        "typeFixed": "Montant fixe",
+        "rate": "Taux (%)",
+        "amount": "Montant",
+        "appliesTo": "S'applique à",
+        "appliesToLineItems": "Lignes de facture",
+        "appliesToDocument": "Total du document",
+        "stacking": "Comportement de cumul",
+        "stackingBase": "Calculer sur le montant de base uniquement",
+        "stackingCompound": "Composé (sur sous-total + taxes précédentes)",
+        "documentTypes": "Types de documents applicables",
+        "documentTypesHelp": "Sélectionnez des types de documents spécifiques ou laissez vide pour tous les types",
+        "allDocumentTypes": "Tous les types de documents (par défaut)",
+        "orSelectSpecific": "Ou sélectionnez des types spécifiques:",
+        "documentTypesHint": "Laisser vide pour appliquer à tous les types de documents",
+        "active": "Actif",
+        "recoverable": "Récupérable/Déductible",
+        "recoverableHelp": "Si coché, cette taxe peut être déduite (comme la TVA pour les entreprises assujetties). Si décoché, elle s'ajoute au coût du produit (comme les timbres fiscaux).",
+        "sequenceOrder": "Ordre de séquence"
+      },
+      "messages": {
+        "created": "Configuration fiscale créée",
+        "updated": "Configuration fiscale mise à jour",
+        "deleted": "Configuration fiscale désactivée",
+        "reordered": "Ordre des taxes mis à jour"
+      },
+      "confirmDelete": {
+        "title": "Désactiver la taxe ?",
+        "message": "Cette taxe sera désactivée mais pas supprimée. Les documents existants ne seront pas affectés."
+      }
+    }
+  }
+}

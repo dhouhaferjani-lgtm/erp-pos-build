@@ -7,6 +7,7 @@ namespace App\Modules\Company\Domain;
 use App\Modules\Company\Domain\Enums\LocationType;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -41,7 +42,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class Location extends Model
 {
+    use HasFactory;
     use HasUuids;
+
+    /**
+     * Create a new factory instance for the model.
+     */
+    protected static function newFactory(): \Database\Factories\LocationFactory
+    {
+        return \Database\Factories\LocationFactory::new();
+    }
 
     /**
      * The table associated with the model.

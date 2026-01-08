@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { UserPlus, AlertCircle, Building2, User, CheckCircle, ChevronRight, ChevronLeft } from 'lucide-react'
+import { UserPlus, AlertCircle, Building2, User, CheckCircle, ChevronRight, ChevronLeft, Store } from 'lucide-react'
 import { api, ensureCsrfCookie } from '../../lib/api'
 import { useAuthStore } from '../../stores/authStore'
 
@@ -24,7 +24,9 @@ interface RegisterFormData {
   company_legal_name: string
   tax_id: string
   phone: string
-  // Step 3: Review
+  // Step 3: Vertical Selection
+  vertical: string
+  // Step 4: Review
   acceptTerms: boolean
 }
 
@@ -54,11 +56,12 @@ interface FormErrors {
   company_legal_name?: string
   tax_id?: string
   phone?: string
+  vertical?: string
   acceptTerms?: string
   general?: string
 }
 
-const WIZARD_STEPS = ['account', 'company', 'review'] as const
+const WIZARD_STEPS = ['account', 'company', 'vertical', 'review'] as const
 type WizardStep = typeof WIZARD_STEPS[number]
 
 export function RegisterPage() {
@@ -77,6 +80,7 @@ export function RegisterPage() {
     company_legal_name: '',
     tax_id: '',
     phone: '',
+    vertical: '',
     acceptTerms: false,
   })
   const [errors, setErrors] = useState<FormErrors>({})
@@ -104,6 +108,7 @@ export function RegisterPage() {
         company_legal_name: data.company_legal_name || undefined,
         tax_id: data.tax_id || undefined,
         phone: data.phone || undefined,
+        vertical: data.vertical,
         platform: 'web',
       }
       const response = await api.post<RegisterResponse>('/auth/register', payload)
@@ -159,6 +164,12 @@ export function RegisterPage() {
       }
       if (!formData.company_name.trim()) {
         newErrors.company_name = t('validation:required')
+      }
+    }
+
+    if (step === 'vertical') {
+      if (!formData.vertical) {
+        newErrors.vertical = t('auth:vertical.required')
       }
     }
 
@@ -224,6 +235,8 @@ export function RegisterPage() {
               <User className="w-5 h-5" />
             ) : index === 1 ? (
               <Building2 className="w-5 h-5" />
+            ) : index === 2 ? (
+              <Store className="w-5 h-5" />
             ) : (
               <CheckCircle className="w-5 h-5" />
             )}
@@ -415,6 +428,60 @@ export function RegisterPage() {
     </div>
   )
 
+  const renderVerticalStep = () => {
+    const verticals = [
+      { value: 'retail', icon: '🏪' },
+      { value: 'pharmacy', icon: '💊' },
+      { value: 'restaurant', icon: '🍽️' },
+      { value: 'coffee_shop', icon: '☕' },
+      { value: 'fashion', icon: '👔' },
+      { value: 'parapharmacy', icon: '🧴' },
+    ]
+
+    return (
+      <div className="space-y-4">
+        <div className="text-center mb-6">
+          <h3 className="text-lg font-semibold text-gray-900">{t('auth:vertical.title')}</h3>
+          <p className="mt-2 text-sm text-gray-600">{t('auth:vertical.description')}</p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {verticals.map((vertical) => (
+            <button
+              key={vertical.value}
+              type="button"
+              onClick={() => {
+                setFormData((prev) => ({ ...prev, vertical: vertical.value }))
+                if (errors.vertical) {
+                  setErrors((prev) => ({ ...prev, vertical: undefined }))
+                }
+              }}
+              className={`rounded-lg border-2 p-4 text-left transition-all hover:shadow-md ${
+                formData.vertical === vertical.value
+                  ? 'border-blue-500 bg-blue-50 shadow-md'
+                  : 'border-gray-300 hover:border-gray-400'
+              }`}
+            >
+              <div className="flex items-start space-x-3">
+                <span className="text-3xl">{vertical.icon}</span>
+                <div className="flex-1">
+                  <h4 className="font-semibold text-gray-900">
+                    {t(`auth:verticals.${vertical.value}.label`)}
+                  </h4>
+                  <p className="mt-1 text-sm text-gray-600">
+                    {t(`auth:verticals.${vertical.value}.description`)}
+                  </p>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {errors.vertical && <p className="mt-2 text-sm text-red-600">{errors.vertical}</p>}
+      </div>
+    )
+  }
+
   const selectedCountry = countries.find((c) => c.code === formData.country_code)
 
   const renderReviewStep = () => (
@@ -467,6 +534,16 @@ export function RegisterPage() {
         </dl>
       </div>
 
+      <div className="bg-gray-50 rounded-lg p-4">
+        <h3 className="text-sm font-medium text-gray-900 mb-3">{t('register.step3Title')}</h3>
+        <dl className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <dt className="text-gray-500">{t('auth:vertical.label')}</dt>
+            <dd className="text-gray-900">{t(`auth:verticals.${formData.vertical}.label`)}</dd>
+          </div>
+        </dl>
+      </div>
+
       <div className="flex items-start">
         <input
           id="acceptTerms"
@@ -512,6 +589,7 @@ export function RegisterPage() {
 
           {currentStep === 'account' && renderAccountStep()}
           {currentStep === 'company' && renderCompanyStep()}
+          {currentStep === 'vertical' && renderVerticalStep()}
           {currentStep === 'review' && renderReviewStep()}
 
           <div className="flex justify-between mt-8">

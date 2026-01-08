@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import {
   Users,
   Package,
-  Warehouse,
   Calculator,
   CheckCircle,
   AlertTriangle,
@@ -18,7 +17,6 @@ import { importApi } from '../api/importApi'
 const typeIcons: Record<ImportType, React.ComponentType<{ className?: string }>> = {
   partners: Users,
   products: Package,
-  stock_levels: Warehouse,
   opening_balances: Calculator,
 }
 

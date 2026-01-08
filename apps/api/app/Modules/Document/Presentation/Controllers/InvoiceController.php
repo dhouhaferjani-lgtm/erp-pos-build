@@ -6,17 +6,22 @@ namespace App\Modules\Document\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationContext;
 use App\Modules\Document\Application\DTOs\DocumentData;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FiscalCategory;
+use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Document\Domain\Services\DeliveryNoteService;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -48,8 +53,11 @@ class InvoiceController extends Controller
 
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly LocationContext $locationContext,
         private readonly DocumentNumberingService $numberingService,
         private readonly DocumentPostingService $postingService,
+        private readonly DeliveryNoteService $deliveryNoteService,
+        private readonly TaxCalculationService $taxCalculationService,
     ) {}
 
     /**
@@ -182,13 +190,22 @@ class InvoiceController extends Controller
 
             $total = bcadd($subtotal, $taxAmount, 2);
 
+            // Resolve location using LocationContext fallback chain
+            $locationId = $this->locationContext->resolveLocationId(
+                $validated['location_id'] ?? null,
+                $companyId
+            );
+
             // Create document
             $document = Document::create([
                 ...$validated,
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
                 'type' => DocumentType::Invoice,
+                'fiscal_category' => FiscalCategory::fromDocumentType(DocumentType::Invoice),
+                'fiscal_status' => FiscalStatus::Draft,
                 'status' => DocumentStatus::Draft,
+                'location_id' => $locationId,
                 'document_number' => $documentNumber,
                 'currency' => $validated['currency'] ?? 'EUR',
                 'subtotal' => $subtotal,
@@ -425,6 +442,18 @@ class InvoiceController extends Controller
                     'confirmed_by' => auth()->id(),
                 ]);
 
+                // Calculate and snapshot taxes for immutable audit trail
+                $taxResult = $this->taxCalculationService->calculateDocumentTaxes($lockedDocument);
+
+                // Update document with calculated totals
+                $lockedDocument->update([
+                    'tax_amount' => $taxResult->totalTax,
+                    'total' => $taxResult->total,
+                ]);
+
+                // Snapshot for immutable audit trail
+                $this->taxCalculationService->snapshotTaxDetails($lockedDocument, $taxResult);
+
                 return $lockedDocument;
             });
         } catch (\DomainException $e) {
@@ -457,6 +486,7 @@ class InvoiceController extends Controller
 
         $documentModel = $this->baseQuery()
             ->ofType(DocumentType::Invoice)
+            ->with(['lines.product', 'sourceDocument'])
             ->find($invoice);
 
         if ($documentModel === null) {
@@ -468,6 +498,26 @@ class InvoiceController extends Controller
                 'INVOICE_NOT_CONFIRMED',
                 'Only confirmed invoices can be posted'
             );
+        }
+
+        // Tunisia fiscal compliance: Check if physical products have been delivered
+        $hasPhysicalProducts = $this->invoiceHasPhysicalProducts($documentModel);
+        if ($hasPhysicalProducts) {
+            $deliveryCheckResult = $this->checkDeliveryNotesDelivered($documentModel);
+            if ($deliveryCheckResult !== null) {
+                // Return structured error with draft DN details for frontend modal
+                return response()->json([
+                    'error' => [
+                        'code' => 'DELIVERY_NOT_COMPLETED',
+                        'message' => $deliveryCheckResult['message'],
+                        'details' => [
+                            'status' => $deliveryCheckResult['status'],
+                            'draft_dns' => $deliveryCheckResult['draft_dns'] ?? [],
+                            'can_auto_confirm' => $deliveryCheckResult['can_auto_confirm'] ?? false,
+                        ],
+                    ],
+                ], 422);
+            }
         }
 
         try {
@@ -484,5 +534,211 @@ class InvoiceController extends Controller
         } catch (\DomainException $e) {
             return $this->validationErrorResponse('POSTING_FAILED', $e->getMessage());
         }
+    }
+
+    /**
+     * Confirm all auto-created delivery notes and post the invoice in one atomic operation.
+     *
+     * This endpoint is called from the frontend modal when user clicks "Confirm & Post".
+     * It confirms all draft delivery notes (issuing stock and adding to fiscal chain),
+     * then posts the invoice.
+     *
+     * POST /api/v1/invoices/{invoice}/confirm-deliveries-and-post
+     */
+    public function confirmDeliveriesAndPost(Request $request, string $invoice): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $documentModel = $this->baseQuery()
+            ->ofType(DocumentType::Invoice)
+            ->with(['lines.product', 'sourceDocument'])
+            ->find($invoice);
+
+        if ($documentModel === null) {
+            return $this->notFoundResponse('Invoice');
+        }
+
+        if (! $documentModel->isConfirmed()) {
+            return $this->validationErrorResponse(
+                'INVOICE_NOT_CONFIRMED',
+                'Only confirmed invoices can be posted'
+            );
+        }
+
+        // Get source order
+        $sourceOrder = $documentModel->sourceDocument;
+        if ($sourceOrder === null || $sourceOrder->type !== DocumentType::SalesOrder) {
+            return $this->validationErrorResponse(
+                'NO_SOURCE_ORDER',
+                'Invoice does not have a source sales order'
+            );
+        }
+
+        // Get delivery notes from order
+        $orderPayload = $sourceOrder->payload ?? [];
+        $deliveryNoteIds = $orderPayload['delivery_note_ids'] ?? [];
+
+        if (empty($deliveryNoteIds)) {
+            return $this->validationErrorResponse(
+                'NO_DELIVERY_NOTES',
+                'No delivery notes found for this order'
+            );
+        }
+
+        $deliveryNotes = Document::whereIn('id', $deliveryNoteIds)
+            ->where('type', DocumentType::DeliveryNote)
+            ->with('lines')
+            ->get();
+
+        // Filter to only draft DNs
+        $draftDns = $deliveryNotes->filter(fn ($dn) => $dn->isDraft());
+
+        if ($draftDns->isEmpty()) {
+            return $this->validationErrorResponse(
+                'NO_DRAFT_DNS',
+                'No draft delivery notes to confirm'
+            );
+        }
+
+        try {
+            return DB::transaction(function () use ($draftDns, $documentModel): JsonResponse {
+                $confirmedDns = [];
+
+                // Confirm each draft DN (issues stock, adds to fiscal chain)
+                foreach ($draftDns as $dn) {
+                    $confirmed = $this->deliveryNoteService->confirm($dn);
+                    $confirmedDns[] = [
+                        'id' => $confirmed->id,
+                        'number' => $confirmed->document_number,
+                        'fiscal_hash' => $confirmed->fiscal_hash,
+                        'chain_sequence' => $confirmed->chain_sequence,
+                    ];
+                }
+
+                // Post the invoice (adds to fiscal chain)
+                $postedInvoice = $this->postingService->post($documentModel);
+
+                return response()->json([
+                    'data' => DocumentData::fromModel($postedInvoice),
+                    'meta' => [
+                        'timestamp' => now()->toIso8601String(),
+                        'invoice_fiscal_hash' => $postedInvoice->fiscal_hash,
+                        'invoice_chain_sequence' => $postedInvoice->chain_sequence,
+                        'confirmed_delivery_notes' => $confirmedDns,
+                    ],
+                ]);
+            });
+        } catch (\DomainException $e) {
+            return $this->validationErrorResponse('OPERATION_FAILED', $e->getMessage());
+        }
+    }
+
+    /**
+     * Check if invoice has any physical products.
+     */
+    private function invoiceHasPhysicalProducts(Document $invoice): bool
+    {
+        foreach ($invoice->lines as $line) {
+            if ($line->product_id === null) {
+                continue;
+            }
+
+            if ($line->product !== null && $line->product->is_physical) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if all delivery notes for this invoice have been delivered.
+     *
+     * Returns array with status and details, or null if all checks pass.
+     *
+     * @return array{status: string, message: string, draft_dns?: array, can_auto_confirm?: bool}|null
+     */
+    private function checkDeliveryNotesDelivered(Document $invoice): ?array
+    {
+        // Get source order if invoice was created from order
+        $sourceOrder = $invoice->sourceDocument;
+        if ($sourceOrder === null || $sourceOrder->type !== DocumentType::SalesOrder) {
+            // No source order - this is a standalone invoice, no delivery check needed
+            return null;
+        }
+
+        // Check if order has delivery notes
+        $orderPayload = $sourceOrder->payload ?? [];
+        $deliveryNoteIds = $orderPayload['delivery_note_ids'] ?? [];
+
+        if (empty($deliveryNoteIds)) {
+            return [
+                'status' => 'error',
+                'message' => 'Physical products must be delivered before posting invoice. No delivery notes found for the source order.',
+            ];
+        }
+
+        // Get all delivery notes and check their status
+        $deliveryNotes = Document::whereIn('id', $deliveryNoteIds)
+            ->where('type', DocumentType::DeliveryNote)
+            ->with('lines')
+            ->get();
+
+        // Check for draft delivery notes (auto-created but not confirmed)
+        $draftDns = $deliveryNotes->filter(fn ($dn) => $dn->isDraft());
+
+        if ($draftDns->isNotEmpty()) {
+            // Check if all draft DNs are auto-created (can be batch confirmed)
+            $canAutoConfirm = $draftDns->every(function ($dn) {
+                $payload = $dn->payload ?? [];
+
+                return isset($payload['auto_created']) && $payload['auto_created'] === true;
+            });
+
+            return [
+                'status' => 'draft_dns_found',
+                'message' => 'Delivery notes must be confirmed before posting invoice',
+                'draft_dns' => $draftDns->map(fn ($dn) => [
+                    'id' => $dn->id,
+                    'number' => $dn->document_number,
+                    'total' => $dn->total,
+                    'line_count' => $dn->lines->count(),
+                ])->values()->toArray(),
+                'can_auto_confirm' => $canAutoConfirm,
+            ];
+        }
+
+        // Check if confirmed DNs are fully delivered
+        foreach ($deliveryNotes as $dn) {
+            if ($dn->isDraft()) {
+                continue; // Already handled above
+            }
+
+            // Check if all lines have been fully delivered
+            $fullyDelivered = true;
+            foreach ($dn->lines as $line) {
+                $qtyDelivered = $line->quantity_delivered ?? '0.00';
+                $qty = $line->quantity;
+
+                // If any line hasn't been fully delivered, mark as not complete
+                if (bccomp((string) $qtyDelivered, (string) $qty, 4) < 0) {
+                    $fullyDelivered = false;
+                    break;
+                }
+            }
+
+            if (! $fullyDelivered) {
+                return [
+                    'status' => 'error',
+                    'message' => sprintf(
+                        'Delivery note %s must be marked as fully delivered before posting invoice. Please update the delivery quantities.',
+                        $dn->document_number
+                    ),
+                ];
+            }
+        }
+
+        return null; // All delivery notes are confirmed and delivered
     }
 }

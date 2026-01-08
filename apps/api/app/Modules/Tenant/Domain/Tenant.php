@@ -53,14 +53,19 @@ use Stancl\Tenancy\Database\Models\Tenant as BaseTenant;
  * @property Carbon $updated_at
  * @property Carbon|null $trial_ends_at
  * @property Carbon|null $subscription_ends_at
+ * @property string $vertical Business vertical (mechanic, pharmacy, etc.)
+ * @property array<int, string>|null $enabled_extras Enabled optional modules
+ * @property string|null $signup_source Signup attribution source
+ * @property array<string, mixed>|null $signup_tracking Signup tracking metadata
  */
 class Tenant extends BaseTenant implements TenantWithDatabase
 {
     use HasDatabase;
-
     use HasDomains;
+
     /** @use HasFactory<TenantFactory> */
     use HasFactory;
+
     use HasUuids;
 
     /**
@@ -101,6 +106,10 @@ class Tenant extends BaseTenant implements TenantWithDatabase
         'settings',
         'trial_ends_at',
         'subscription_ends_at',
+        'vertical',
+        'enabled_extras',
+        'signup_source',
+        'signup_tracking',
     ];
 
     /**
@@ -113,10 +122,13 @@ class Tenant extends BaseTenant implements TenantWithDatabase
         return [
             'status' => TenantStatus::class,
             'plan' => SubscriptionPlan::class,
+            'vertical' => \App\Enums\Vertical::class,
             'address' => 'array',
             'settings' => 'array',
             'trial_ends_at' => 'datetime',
             'subscription_ends_at' => 'datetime',
+            'enabled_extras' => 'array',
+            'signup_tracking' => 'array',
         ];
     }
 
@@ -155,6 +167,10 @@ class Tenant extends BaseTenant implements TenantWithDatabase
             'settings',
             'trial_ends_at',
             'subscription_ends_at',
+            'vertical',
+            'enabled_extras',
+            'signup_source',
+            'signup_tracking',
             'created_at',
             'updated_at',
         ];

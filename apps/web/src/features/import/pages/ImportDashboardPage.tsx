@@ -6,9 +6,9 @@ import {
   History,
   Users,
   Package,
-  Boxes,
   Calculator,
   ArrowRight,
+  Image,
 } from 'lucide-react'
 import type { ImportType } from '../types'
 
@@ -30,9 +30,9 @@ const IMPORT_TYPES: ImportTypeConfig[] = [
     colorClass: 'bg-green-100 text-green-600',
   },
   {
-    type: 'stock_levels',
-    icon: <Boxes className="h-6 w-6" />,
-    colorClass: 'bg-amber-100 text-amber-600',
+    type: 'product_images',
+    icon: <Image className="h-6 w-6" />,
+    colorClass: 'bg-orange-100 text-orange-600',
   },
   {
     type: 'opening_balances',

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Compliance\Listeners;
 
+use App\Modules\Company\Domain\Events\CompanyUpdated;
 use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Document\Domain\Events\DeliveryNoteConfirmed;
 use App\Modules\Document\Domain\Events\DocumentConverted;
@@ -391,6 +392,31 @@ final class DomainEventSubscriber
     }
 
     /**
+     * Handle CompanyUpdated events.
+     *
+     * This captures company setting changes, especially tax_status changes.
+     * CRITICAL for compliance - tracks who changed tax status and when for audit trail.
+     */
+    public function handleCompanyUpdated(CompanyUpdated $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Company',
+            aggregateId: $event->companyId,
+            eventType: $event->getEventName(),
+            payload: [
+                'changes' => $event->changes,
+                'updated_by' => $event->userId,
+                'updated_at' => $event->updatedAt,
+                'full_snapshot' => $event->attributes,
+                'change_count' => count($event->changes),
+                'fields_changed' => array_keys($event->changes),
+            ]
+        );
+    }
+
+    /**
      * Persist an event to the audit log.
      *
      * @param  array<string, mixed>  $payload
@@ -451,6 +477,9 @@ final class DomainEventSubscriber
             DeliveryNoteConfirmed::class => 'handleDeliveryNoteConfirmed',
             PaymentRecorded::class => 'handlePaymentRecorded',
             DocumentConverted::class => 'handleDocumentConverted',
+
+            // Company events (compliance)
+            CompanyUpdated::class => 'handleCompanyUpdated',
 
             // Sales order events (fraud detection)
             SalesOrderConfirmed::class => 'handleSalesOrderConfirmed',

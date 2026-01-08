@@ -104,7 +104,8 @@ final class DraftPersistenceService
             'notes' => $data['notes'] ?? null,
         ]);
 
-        // Fire creation event
+        // Eager load partner before event
+        $document->load('partner');
         $partner = $document->partner;
         $partnerName = $partner?->name;
         event(new DraftDocumentCreated(
@@ -118,14 +119,13 @@ final class DraftPersistenceService
             createdAt: now()->toIso8601String(),
         ));
 
-        // Create lines if provided
-        if (isset($data['lines']) && is_array($data['lines'])) {
-            foreach ($data['lines'] as $lineData) {
-                $this->addLine($document, $companyId, $userId, $lineData);
-            }
+        // Create lines if provided (batch operations for performance)
+        if (isset($data['lines']) && is_array($data['lines']) && count($data['lines']) > 0) {
+            $this->addLinesBatch($document, $companyId, $userId, $data['lines']);
         }
 
-        return $document->fresh(['lines', 'partner']) ?? $document;
+        // Reload only lines (partner already loaded)
+        return $document->load('lines');
     }
 
     /**
@@ -308,5 +308,86 @@ final class DraftPersistenceService
         ));
 
         $line->delete();
+    }
+
+    /**
+     * Add multiple lines in batch for performance optimization.
+     *
+     * This method batches:
+     * - Product lookups (1 query instead of N)
+     * - Line inserts (1 query instead of N)
+     * - Events are still fired individually for audit trail
+     *
+     * @param  array<array<string, mixed>>  $linesData
+     */
+    private function addLinesBatch(
+        Document $document,
+        string $companyId,
+        string $userId,
+        array $linesData
+    ): void {
+        // 1. Batch fetch all products (1 query instead of N)
+        $productIds = collect($linesData)->pluck('product_id')->filter()->unique()->toArray();
+        $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
+
+        // 2. Prepare line data for batch insert
+        $currentLineNumber = $document->lines()->count();
+        $linesToInsert = [];
+        $lineInsertData = []; // Store for event firing
+
+        foreach ($linesData as $lineData) {
+            $currentLineNumber++;
+            $product = $products->get($lineData['product_id'] ?? '');
+
+            $quantity = (float) ($lineData['quantity'] ?? 1);
+            $unitPrice = (float) ($lineData['unit_price'] ?? 0);
+            $lineTotal = $quantity * $unitPrice;
+
+            $insertData = [
+                'id' => (string) \Str::uuid(),
+                'document_id' => $document->id,
+                'product_id' => $lineData['product_id'] ?? '',
+                'line_number' => $currentLineNumber,
+                'description' => $product?->name ?? '',
+                'quantity' => $quantity,
+                'unit_price' => $unitPrice,
+                'tax_rate' => $lineData['tax_rate'] ?? 0,
+                'line_total' => (string) $lineTotal,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+
+            $linesToInsert[] = $insertData;
+            $lineInsertData[] = [
+                'id' => $insertData['id'],
+                'product_id' => $insertData['product_id'],
+                'product_name' => $product?->name ?? '',
+                'quantity' => $quantity,
+                'unit_price' => $unitPrice,
+                'line_total' => $lineTotal,
+            ];
+        }
+
+        // 3. Batch insert all lines (1 query instead of N)
+        if (count($linesToInsert) > 0) {
+            DocumentLine::insert($linesToInsert);
+        }
+
+        // 4. Fire events (still individual for audit trail)
+        foreach ($lineInsertData as $eventData) {
+            event(new DraftLineAdded(
+                documentId: $document->id,
+                tenantId: $document->tenant_id,
+                companyId: $companyId,
+                userId: $userId,
+                productId: $eventData['product_id'],
+                productName: $eventData['product_name'],
+                quantity: $eventData['quantity'],
+                unitPrice: $eventData['unit_price'],
+                lineTotal: $eventData['line_total'],
+                lineId: $eventData['id'],
+                addedAt: now()->toIso8601String(),
+            ));
+        }
     }
 }

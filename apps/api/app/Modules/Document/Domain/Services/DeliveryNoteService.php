@@ -15,6 +15,7 @@ use App\Modules\Inventory\Application\Services\StockReservationService;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
+use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -38,6 +39,7 @@ final class DeliveryNoteService
         private readonly FiscalHashService $hashService,
         private readonly StockReservationService $stockReservationService,
         private readonly WeightedAverageCostService $wacService,
+        private readonly TaxCalculationService $taxCalculationService,
     ) {}
 
     /**
@@ -118,6 +120,14 @@ final class DeliveryNoteService
             'previous_hash' => $previousHash,
             'chain_sequence' => $chainSequence,
         ]);
+
+        // Calculate and snapshot taxes for immutable audit trail
+        $taxResult = $this->taxCalculationService->calculateDocumentTaxes($deliveryNote);
+        $deliveryNote->update([
+            'tax_amount' => $taxResult->totalTax,
+            'total' => $taxResult->total,
+        ]);
+        $this->taxCalculationService->snapshotTaxDetails($deliveryNote, $taxResult);
 
         // Dispatch the fiscal event for audit log
         $this->dispatchConfirmedEvent($deliveryNote, $confirmedAt->toIso8601String());

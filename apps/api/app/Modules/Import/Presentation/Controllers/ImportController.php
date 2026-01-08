@@ -73,8 +73,14 @@ class ImportController extends Controller
         // Extend time limit for large file parsing and validation (up to 5 minutes)
         set_time_limit(300);
 
+        // Different validation for ProductImages (ZIP) vs other types (CSV/XLSX)
+        $typeInput = $request->input('type');
+        $isProductImages = $typeInput === 'product_images';
+
         $request->validate([
-            'file' => ['required', 'file', 'mimes:csv,txt,xlsx,xls', 'max:10240'],
+            'file' => $isProductImages
+                ? ['required', 'file', 'mimes:zip', 'max:102400'] // 100MB for ZIP
+                : ['required', 'file', 'mimes:csv,txt,xlsx,xls', 'max:10240'],
             'type' => ['required', 'string', new Enum(ImportType::class)],
         ]);
 
@@ -87,6 +93,26 @@ class ImportController extends Controller
         /** @var \Illuminate\Http\UploadedFile $file */
         $file = $request->file('file');
         $type = ImportType::from($request->input('type'));
+
+        // Special handling for ProductImages (ZIP file)
+        if ($type === ImportType::ProductImages) {
+            return $this->handleProductImagesUpload($file, $user, $tenantId);
+        }
+
+        // CRITICAL: Prevent stock_levels import in ongoing imports (compliance issue)
+        // Stock can only be imported during opening balances setup
+        if ($type === ImportType::StockLevels) {
+            return response()->json([
+                'error' => [
+                    'code' => 'STOCK_IMPORT_NOT_ALLOWED',
+                    'message' => 'Stock levels cannot be imported after initial setup. Stock increases must be justified through Purchase Orders and Goods Receipt Notes.',
+                    'details' => [
+                        'allowed_for' => 'Opening balances setup only',
+                        'alternative' => 'Use Purchase Orders → Goods Receipt Notes to increase stock',
+                    ],
+                ],
+            ], 403);
+        }
 
         // Store the file
         $path = $file->store('imports/'.$tenantId, 'local');
@@ -231,6 +257,9 @@ class ImportController extends Controller
 
     /**
      * Get all errors (validation and execution) for an import job
+     *
+     * Supports pagination for large error sets via per_page query parameter.
+     * Returns both validation errors (from validation phase) and execution errors (from import phase).
      */
     public function errors(Request $request, string $id): JsonResponse
     {
@@ -246,8 +275,22 @@ class ImportController extends Controller
             return response()->json(['error' => 'Import job not found'], 404);
         }
 
-        // Get all rows with errors (validation or execution)
-        $errorRows = $this->importService->getAllErrorRows($job);
+        // Get pagination parameters
+        $perPage = (int) $request->query('per_page', 50);
+        $perPage = min(max($perPage, 1), 500); // Clamp between 1-500
+
+        // Get paginated error rows
+        $errorRows = $job->rows()
+            ->where(function ($query) {
+                $query->where('is_valid', false)
+                    ->orWhereNotNull('import_error');
+            })
+            ->orderBy('row_number')
+            ->paginate($perPage);
+
+        // Calculate summary counts (use raw counts for efficiency on large datasets)
+        $validationErrorCount = $job->rows()->where('is_valid', false)->count();
+        $executionErrorCount = $job->rows()->whereNotNull('import_error')->count();
 
         return response()->json([
             'data' => $errorRows->map(fn ($row) => [
@@ -258,9 +301,53 @@ class ImportController extends Controller
                 'error_type' => $row->import_error !== null ? 'execution' : 'validation',
             ]),
             'meta' => [
+                'current_page' => $errorRows->currentPage(),
+                'last_page' => $errorRows->lastPage(),
+                'per_page' => $errorRows->perPage(),
+                'total' => $errorRows->total(),
                 'job_error_message' => $job->error_message,
-                'validation_errors' => $errorRows->whereNull('import_error')->count(),
-                'execution_errors' => $errorRows->whereNotNull('import_error')->count(),
+                'validation_errors' => $validationErrorCount,
+                'execution_errors' => $executionErrorCount,
+            ],
+        ]);
+    }
+
+    /**
+     * Get error summary for an import job (lightweight, no row data).
+     *
+     * Useful for dashboards and progress indicators that need quick stats.
+     */
+    public function errorSummary(Request $request, string $id): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $tenantId = $company->tenant_id;
+
+        $job = ImportJob::where('tenant_id', $tenantId)
+            ->where('id', $id)
+            ->first();
+
+        if (! $job) {
+            return response()->json(['error' => 'Import job not found'], 404);
+        }
+
+        // Get counts efficiently without loading row data
+        $validationErrorCount = $job->rows()->where('is_valid', false)->count();
+        $executionErrorCount = $job->rows()->whereNotNull('import_error')->count();
+        $totalErrorCount = $job->rows()
+            ->where(function ($query) {
+                $query->where('is_valid', false)
+                    ->orWhereNotNull('import_error');
+            })
+            ->count();
+
+        return response()->json([
+            'data' => [
+                'total_errors' => $totalErrorCount,
+                'validation_errors' => $validationErrorCount,
+                'execution_errors' => $executionErrorCount,
+                'has_errors' => $totalErrorCount > 0,
+                'job_error_message' => $job->error_message,
             ],
         ]);
     }
@@ -423,5 +510,46 @@ class ImportController extends Controller
             'completed_at' => $job->completed_at?->toIso8601String(),
             'created_at' => $job->created_at?->toIso8601String(),
         ];
+    }
+
+    /**
+     * Handle ProductImages ZIP upload (special case).
+     *
+     * @param  \Illuminate\Http\UploadedFile  $file
+     */
+    private function handleProductImagesUpload($file, User $user, string $tenantId): JsonResponse
+    {
+        // Store the ZIP file
+        $path = $file->store('imports/'.$tenantId.'/product-images', 'local');
+        if ($path === false) {
+            return response()->json(['error' => 'Failed to store ZIP file'], 500);
+        }
+
+        // Get the full file path for queue job
+        $fullPath = Storage::disk('local')->path($path);
+
+        // Create import job
+        $job = $this->importService->createJob(
+            tenantId: $tenantId,
+            userId: $user->id,
+            type: ImportType::ProductImages,
+            filename: $file->getClientOriginalName(),
+            filePath: $path,
+            totalRows: 0 // Will be set after ZIP extraction
+        );
+
+        // Dispatch queue job for async ZIP processing
+        \App\Modules\Import\Application\Jobs\ProcessProductImageImport::dispatch($job->id, $fullPath);
+
+        // Mark as pending
+        $job->update(['status' => ImportStatus::Pending]);
+
+        /** @var ImportJob $freshJob */
+        $freshJob = $job->fresh();
+
+        return response()->json([
+            'data' => $this->formatJob($freshJob),
+            'message' => 'Product images import queued for processing. The ZIP will be extracted and images will be uploaded asynchronously.',
+        ], 202);
     }
 }

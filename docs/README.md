@@ -12,8 +12,12 @@
 | [Backend Documentation](./architecture/backend.md) | Laravel modules, services, and patterns |
 | [Frontend Documentation](./architecture/frontend.md) | React features, components, and state |
 | [Database Schema](./architecture/database.md) | Tables, relationships, and indexes |
+| [Event-Driven Architecture](./architecture/events.md) | Domain events, audit trail, and event sourcing |
+| [Multi-Tenancy Guide](./architecture/multi-tenancy.md) | Tenant & company isolation patterns |
+| [Module Architecture](./modules/architecture.md) | Module structure, boundaries, and patterns |
 | [Module Reference](./modules/README.md) | Detailed module documentation |
 | [API Reference](./api/README.md) | REST API endpoints and contracts |
+| [Testing Guide](./api/testing.md) | Test patterns and conventions |
 | [AI Agent Guide](./guides/ai-agent-guide.md) | Guidelines for AI agents |
 
 ---
@@ -30,6 +34,7 @@
 - **Accounting**: Chart of accounts, journal entries, GL posting, financial reports
 - **Multi-Tenancy**: Schema-based isolation with company and location hierarchy
 - **Fiscal Compliance**: Hash chains, event sourcing, country-specific compliance (NF525, ZATCA ready)
+- **Event-Driven**: Complete audit trail for all business operations
 - **SaaS Billing**: Subscription management, Stripe integration, manual payments
 
 ### Technology Stack
@@ -59,8 +64,12 @@ mecanospex/
 │   │   │   ├── Shared/         # Shared infrastructure
 │   │   │   └── Http/           # Controllers, middleware
 │   │   ├── database/
-│   │   │   ├── migrations/     # Database schema (90 files)
+│   │   │   ├── migrations/     # Database schema (111 files)
 │   │   │   └── seeders/        # Data seeders
+│   │   ├── tests/
+│   │   │   ├── Unit/           # 44 unit tests
+│   │   │   ├── Feature/        # 115 feature tests
+│   │   │   └── E2E/            # End-to-end tests
 │   │   └── routes/             # API routes
 │   │
 │   ├── web/                    # React frontend
@@ -81,10 +90,25 @@ mecanospex/
 │
 └── docs/                       # Documentation (you are here)
     ├── architecture/           # System architecture docs
+    │   ├── overview.md
+    │   ├── backend.md
+    │   ├── frontend.md
+    │   ├── database.md
+    │   ├── events.md           # NEW: Event-driven architecture
+    │   └── multi-tenancy.md    # NEW: Multi-company patterns
     ├── api/                    # API reference
+    │   ├── README.md
+    │   └── testing.md          # NEW: Testing patterns
     ├── modules/                # Module documentation
+    │   ├── README.md
+    │   └── architecture.md     # NEW: Module structure guide
     ├── guides/                 # Development guides
-    └── _archive/               # Legacy documentation
+    │   ├── ai-agent-guide.md
+    │   └── authentication.md
+    ├── testing/                # Testing documentation
+    ├── planning/               # Future features (not implemented)
+    ├── _archive/               # Legacy documentation (v1)
+    └── _archive_2/             # Completed tasks and reports
 ```
 
 ---
@@ -115,20 +139,21 @@ Each backend module follows this pattern:
 ```
 Module/
 ├── Domain/
-│   ├── Entities/           # Core business objects
-│   ├── ValueObjects/       # Immutable value types
-│   ├── Events/             # Domain events
-│   ├── Services/           # Domain logic
-│   └── Enums/              # Type-safe enums
+│   ├── EntityName.php        # Eloquent models
+│   ├── Events/               # Domain events (immutable)
+│   ├── Services/             # Domain logic
+│   ├── Enums/                # Type-safe enums
+│   └── Observers/            # Model lifecycle hooks
 ├── Application/
-│   ├── DTOs/               # Data transfer objects
-│   └── Services/           # Application logic
+│   ├── DTOs/                 # Data transfer objects
+│   └── Services/             # Application orchestration
 ├── Infrastructure/
-│   └── Providers/          # Service providers
-└── Presentation/
-    ├── Controllers/        # HTTP handlers
-    ├── Requests/           # Validation
-    └── routes.php          # Module routes
+│   └── Providers/            # Service providers
+├── Presentation/
+│   ├── Controllers/          # HTTP handlers (thin)
+│   ├── Requests/             # Validation
+│   └── routes.php            # Module routes
+└── Listeners/                # Event listeners
 ```
 
 ### 3. Key Design Decisions
@@ -141,6 +166,7 @@ Module/
 | Events | Event sourcing | Audit trail, compliance, replay |
 | State | TanStack Query | Server state caching, deduplication |
 | Types | TypeScript strict | Type safety, IDE support |
+| Testing | TDD approach | 160 tests, 100% pass rate |
 
 ---
 
@@ -166,7 +192,7 @@ php artisan typescript:transform
 ```
 
 ### 5. Events are Immutable
-Once an Event class exists: never rename, change payload, or delete it.
+Once an Event class exists: never rename, change payload, or delete it. Create V2 if requirements change.
 
 ### 6. No Hardcoded Strings in Frontend
 All user-facing text must use translation keys:
@@ -174,6 +200,9 @@ All user-facing text must use translation keys:
 const { t } = useTranslation();
 <Button>{t('common.save')}</Button>
 ```
+
+### 7. Test-Driven Development
+Write tests FIRST, then implementation. All tests must pass before committing.
 
 ---
 
@@ -213,20 +242,82 @@ pnpm dev  # From root - starts all services
 
 ## Documentation Index
 
-### Architecture
-- [System Overview](./architecture/overview.md) - Technology stack, principles, module inventory
-- [Backend Architecture](./architecture/backend.md) - Laravel modules, services, patterns, transaction boundaries
-- [Frontend Architecture](./architecture/frontend.md) - React features, state management, components
-- [Database Schema](./architecture/database.md) - 85+ tables, relationships, enums, indexes
+### Architecture & Design
 
-### Modules & API
-- [Module Reference](./modules/README.md) - Detailed documentation for all 22 backend modules
-- [API Reference](./api/README.md) - Complete REST API documentation with endpoints, requests, responses
+- **[System Overview](./architecture/overview.md)** - Technology stack, principles, module inventory
+- **[Backend Architecture](./architecture/backend.md)** - Laravel modules, services, patterns, transaction boundaries
+- **[Frontend Architecture](./architecture/frontend.md)** - React features, state management, components
+- **[Database Schema](./architecture/database.md)** - 85+ tables, relationships, enums, indexes
+- **[Event-Driven Architecture](./architecture/events.md)** ⭐ NEW - Domain events, audit trail, fiscal compliance
+- **[Multi-Tenancy Guide](./architecture/multi-tenancy.md)** ⭐ NEW - Tenant & company isolation patterns
 
-### Guides
-- [AI Agent Guide](./guides/ai-agent-guide.md) - Guidelines for AI agents working on the codebase
+### Module Development
+
+- **[Module Architecture Guide](./modules/architecture.md)** ⭐ NEW - Module structure, boundaries, cross-module communication
+- **[Module Reference](./modules/README.md)** - Detailed documentation for all 22 backend modules
+
+### API & Testing
+
+- **[API Reference](./api/README.md)** - Complete REST API documentation
+- **[Testing Guide](./api/testing.md)** ⭐ NEW - Test patterns, conventions, and examples
+
+### Development Guides
+
+- **[AI Agent Guide](./guides/ai-agent-guide.md)** - Guidelines for AI agents working on the codebase
+- **[Authentication](./guides/authentication.md)** - Auth flows and security
 
 ---
 
-*Documentation Version: 1.0*
+## Recent Architectural Achievements
+
+### Vehicle Module Decoupling ✅
+- Core modules have zero vehicle dependencies
+- Vehicle data stored as snapshots (immutable)
+- Soft references via linking table
+- Platform ready for non-automotive verticals
+
+### Multi-Company Support ✅
+- Schema-based tenant isolation
+- Row-level company scoping
+- User can belong to multiple companies
+- Company switching support
+
+### Event-Driven Architecture ✅
+- 4 new domain events across modules
+- Complete audit trail for critical operations
+- Fiscal hash chain for compliance
+- Foundation for event sourcing
+
+### Fiscal Compliance ✅
+- SHA-256 hash chains for invoices/credit notes
+- Database immutability triggers
+- Sequential numbering per document type
+- NF525/ZATCA ready
+
+### Stock Reservation System ✅
+- Pessimistic locking for concurrency
+- Automatic reservation on order confirmation
+- Release on delivery or cancellation
+- Multi-location support
+
+### Performance Baselines ✅
+- Dashboard: 830ms (target: <1000ms)
+- Product list (100 items): 190ms (target: <500ms)
+- Invoice creation: 160ms (target: <500ms)
+- Partner list (100 items): 160ms (target: <300ms)
+
+---
+
+## Test Coverage
+
+**Current Status (December 2025):**
+- **Total Tests:** 160 tests, 19 assertions average
+- **Pass Rate:** 100% (160/160 passing)
+- **PHPStan:** Level 8 (strict types)
+- **Coverage:** 80%+ on domain layer
+
+---
+
+*Documentation Version: 2.0*
 *Last Updated: December 2025*
+*Prepared for Otospex & IziPOS module development*

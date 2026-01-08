@@ -1,4 +1,16 @@
 {
+  "taxMention": {
+    "label": "Tax Mention",
+    "placeholder": "e.g., Exonéré TVA - Certificat #123",
+    "description": "Legal text explaining tax exemption (will appear on document)"
+  },
+  "exemptionNotice": {
+    "title": "Tax Exempt Customer",
+    "description": "This customer is marked as tax-exempt.",
+    "reason": "Reason:",
+    "verifyWarning": "Verify the exemption certificate before applying 0% tax rate.",
+    "addMention": "Add a tax mention to the document if required."
+  },
   "attachments": {
     "title": "Attachments",
     "dropzone": "Drag and drop files here, or click to browse",

@@ -10,6 +10,7 @@ enum ImportType: string
     case Products = 'products';
     case StockLevels = 'stock_levels';
     case OpeningBalances = 'opening_balances';
+    case ProductImages = 'product_images';
 
     /**
      * Get the required columns for this import type
@@ -23,6 +24,7 @@ enum ImportType: string
             self::Products => ['name', 'sku', 'type'],
             self::StockLevels => ['product_sku', 'location_code', 'quantity'],
             self::OpeningBalances => ['account_code', 'debit', 'credit'],
+            self::ProductImages => [], // ZIP-based import, not CSV
         };
     }
 
@@ -38,6 +40,7 @@ enum ImportType: string
             self::Products => ['description', 'sale_price', 'purchase_price', 'barcode'],
             self::StockLevels => ['notes'],
             self::OpeningBalances => ['description', 'reference'],
+            self::ProductImages => [], // ZIP-based import, not CSV
         };
     }
 
@@ -73,6 +76,7 @@ enum ImportType: string
                 'debit' => ['required_without:credit', 'nullable', 'numeric', 'min:0'],
                 'credit' => ['required_without:debit', 'nullable', 'numeric', 'min:0'],
             ],
+            self::ProductImages => [], // ZIP-based import, validation during extraction
         };
     }
 }

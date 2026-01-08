@@ -6,16 +6,20 @@ namespace App\Modules\Document\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationContext;
 use App\Modules\Document\Application\DTOs\DocumentData;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FiscalCategory;
+use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -40,7 +44,9 @@ class QuoteController extends Controller
 
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly LocationContext $locationContext,
         private readonly DocumentNumberingService $numberingService,
+        private readonly TaxCalculationService $taxCalculationService,
     ) {}
 
     /**
@@ -173,13 +179,22 @@ class QuoteController extends Controller
 
             $total = bcadd($subtotal, $taxAmount, 2);
 
+            // Resolve location using LocationContext fallback chain
+            $locationId = $this->locationContext->resolveLocationId(
+                $validated['location_id'] ?? null,
+                $companyId
+            );
+
             // Create document
             $document = Document::create([
                 ...$validated,
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
                 'type' => DocumentType::Quote,
+                'fiscal_category' => FiscalCategory::fromDocumentType(DocumentType::Quote),
+                'fiscal_status' => FiscalStatus::Draft,
                 'status' => DocumentStatus::Draft,
+                'location_id' => $locationId,
                 'document_number' => $documentNumber,
                 'currency' => $validated['currency'] ?? 'EUR',
                 'subtotal' => $subtotal,
@@ -413,6 +428,18 @@ class QuoteController extends Controller
                     'confirmed_at' => now(),
                     'confirmed_by' => auth()->id(),
                 ]);
+
+                // Calculate and snapshot taxes for immutable audit trail
+                $taxResult = $this->taxCalculationService->calculateDocumentTaxes($lockedDocument);
+
+                // Update document with calculated totals
+                $lockedDocument->update([
+                    'tax_amount' => $taxResult->totalTax,
+                    'total' => $taxResult->total,
+                ]);
+
+                // Snapshot for immutable audit trail
+                $this->taxCalculationService->snapshotTaxDetails($lockedDocument, $taxResult);
 
                 return $lockedDocument;
             });

@@ -12,6 +12,7 @@ import enValidation from '../locales/en/validation.json'
 import enPricing from '../locales/en/pricing.json'
 import enFinance from '../locales/en/finance.json'
 import enImport from '../locales/en/import.json'
+import enSettings from '../locales/en/settings.json'
 
 import frCommon from '../locales/fr/common.json'
 import frAuth from '../locales/fr/auth.json'
@@ -22,6 +23,7 @@ import frValidation from '../locales/fr/validation.json'
 import frPricing from '../locales/fr/pricing.json'
 import frFinance from '../locales/fr/finance.json'
 import frImport from '../locales/fr/import.json'
+import frSettings from '../locales/fr/settings.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -42,6 +44,7 @@ const resources = {
     pricing: enPricing,
     finance: enFinance,
     import: enImport,
+    settings: enSettings,
   },
   fr: {
     common: frCommon,
@@ -53,6 +56,7 @@ const resources = {
     pricing: frPricing,
     finance: frFinance,
     import: frImport,
+    settings: frSettings,
   },
   ar: {
     // Arabic falls back to English - translations to be added later
@@ -65,6 +69,7 @@ const resources = {
     pricing: enPricing,
     finance: enFinance,
     import: enImport,
+    settings: enSettings, // Fallback to English
   },
 }
 
@@ -75,7 +80,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

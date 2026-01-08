@@ -251,8 +251,20 @@
     "showing": "Showing {{from}} to {{to}} of {{total}} results",
     "previous": "Previous",
     "next": "Next",
-    "rowsPerPage": "Rows per page"
+    "rowsPerPage": "Rows per page",
+    "page": "Page",
+    "of": "of",
+    "item": "item",
+    "items": "items"
   },
+  "filters": "Filters",
+  "clearAll": "Clear all",
+  "activeFilters": "{{count}} active filter(s)",
+  "remove": "Remove",
+  "sort": "Sort",
+  "sortBy": "Sort by",
+  "ascending": "Ascending",
+  "descending": "Descending",
   "confirmation": {
     "delete": "Are you sure you want to delete this item?",
     "unsavedChanges": "You have unsaved changes. Are you sure you want to leave?"
@@ -260,6 +272,7 @@
   "loading": "Loading...",
   "noData": "No data available",
   "error": "Error",
+  "details": "Details",
   "cancel": "Cancel",
   "save": "Save",
   "saving": "Saving...",
@@ -284,6 +297,13 @@
   "all": "All",
   "actionsLabel": "Actions",
   "allStatuses": "All Statuses",
+  "edit": "Edit",
+  "download": "Download",
+  "preview": "Preview",
+  "print": "Print",
+  "send": "Send",
+  "confirm": "Confirm",
+  "convert": "Convert",
   "reports": {
     "description": "Overview of your business performance",
     "metrics": {
@@ -692,6 +712,10 @@
       "company": {
         "title": "Company",
         "description": "Company information and branding"
+      },
+      "tax": {
+        "title": "Tax Settings",
+        "description": "Configure tax rates and fiscal year settings"
       },
       "inventory": {
         "title": "Inventory & Pricing",

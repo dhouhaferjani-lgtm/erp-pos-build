@@ -3,6 +3,7 @@ import type {
   ImportJob,
   ImportJobListResponse,
   ImportErrorsResponse,
+  ImportErrorSummaryResponse,
   CreateImportResponse,
   MigrationWizardOrder,
   DependencyCheck,
@@ -43,11 +44,25 @@ export const importApi = {
     return response.data
   },
 
-  getErrors: async (jobId: string): Promise<ImportErrorsResponse> => {
-    const response = await apiGet<ImportErrorsResponse>(
-      `${IMPORT_URL}/${jobId}/errors`
-    )
+  getErrors: async (jobId: string, page?: number, perPage?: number): Promise<ImportErrorsResponse> => {
+    const params = new URLSearchParams()
+    if (page) params.set('page', page.toString())
+    if (perPage) params.set('per_page', perPage.toString())
+
+    const url = params.toString()
+      ? `${IMPORT_URL}/${jobId}/errors?${params.toString()}`
+      : `${IMPORT_URL}/${jobId}/errors`
+
+    const response = await apiGet<ImportErrorsResponse>(url)
     return response
+  },
+
+  getErrorSummary: async (jobId: string): Promise<ImportErrorSummaryResponse> => {
+    return apiGet<ImportErrorSummaryResponse>(`${IMPORT_URL}/${jobId}/error-summary`)
+  },
+
+  downloadFailedRowsUrl: (jobId: string): string => {
+    return `/api/v1${IMPORT_URL}/${jobId}/failed-rows.csv`
   },
 
   getPreview: async (jobId: string): Promise<ImportPreview> => {

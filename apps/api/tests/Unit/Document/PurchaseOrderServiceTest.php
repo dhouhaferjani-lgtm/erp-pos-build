@@ -14,6 +14,7 @@ use App\Modules\Document\Domain\Services\PurchaseOrderService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\LandedCostService;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
@@ -24,8 +25,11 @@ class PurchaseOrderServiceTest extends TestCase
     use RefreshDatabase;
 
     private PurchaseOrderService $service;
+
     private Tenant $tenant;
+
     private Company $company;
+
     private Partner $partner;
 
     protected function setUp(): void
@@ -33,7 +37,8 @@ class PurchaseOrderServiceTest extends TestCase
         parent::setUp();
 
         $landedCostService = $this->app->make(LandedCostService::class);
-        $this->service = new PurchaseOrderService($landedCostService);
+        $taxCalculationService = $this->app->make(TaxCalculationService::class);
+        $this->service = new PurchaseOrderService($landedCostService, $taxCalculationService);
 
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);

@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
@@ -42,21 +43,21 @@ class DatabaseSeeder extends Seeder
         $this->call(RolesAndPermissionsSeeder::class);
 
         // ============================================
-        // FRANCE COMPANY
+        // MULTI-COUNTRY TENANT (France + Tunisia)
         // ============================================
-        $this->command->info('Creating French demo tenant...');
-        $frTenant = $this->createTenant('FR', 'Demo Garage France', 'demo-garage-fr', 'EUR');
+        $this->command->info('Creating multi-country demo tenant...');
+        $tenant = $this->createTenant('FR', 'Demo Multi-Country Garage', 'demo-garage', 'EUR');
 
-        $this->command->info('Creating French demo company...');
-        $frCompany = $this->createCompany($frTenant, 'FR', 'Demo Garage France', 'EUR');
-
-        $this->command->info('Creating test users for French company...');
-        $this->createUsers($frTenant, $frCompany);
+        // ============================================
+        // FRENCH COMPANY
+        // ============================================
+        $this->command->info('Creating French company...');
+        $frCompany = $this->createCompany($tenant, 'FR', 'Demo Garage France', 'EUR');
 
         $this->command->info('Creating French chart of accounts...');
         $franceSeeder = new FranceChartOfAccountsSeeder;
         $franceSeeder->setCommand($this->command);
-        $franceSeeder->run($frCompany->id, $frTenant->id);
+        $franceSeeder->run($frCompany->id, $tenant->id);
 
         $this->command->info('Creating payment methods for French company...');
         $this->call(PaymentMethodSeeder::class, false, ['company' => $frCompany]);
@@ -65,7 +66,7 @@ class DatabaseSeeder extends Seeder
         $this->call(PaymentRepositorySeeder::class, false, ['company' => $frCompany]);
 
         $this->command->info('Creating partners for French company...');
-        $this->createPartners($frTenant, $frCompany);
+        $this->createPartners($tenant, $frCompany);
 
         $this->command->info('Creating products for French company...');
         $this->createProducts($frCompany);
@@ -77,21 +78,15 @@ class DatabaseSeeder extends Seeder
         $this->call(StockLevelSeeder::class, false, ['company' => $frCompany]);
 
         // ============================================
-        // TUNISIA COMPANY
+        // TUNISIAN COMPANY (same tenant)
         // ============================================
-        $this->command->info('Creating Tunisian demo tenant...');
-        $tnTenant = $this->createTenant('TN', 'Demo Garage Tunisia', 'demo-garage-tn', 'TND');
-
-        $this->command->info('Creating Tunisian demo company...');
-        $tnCompany = $this->createCompany($tnTenant, 'TN', 'Demo Garage Tunisia', 'TND');
-
-        $this->command->info('Creating test users for Tunisian company...');
-        $this->createUsers($tnTenant, $tnCompany);
+        $this->command->info('Creating Tunisian company...');
+        $tnCompany = $this->createCompany($tenant, 'TN', 'Demo Garage Tunisia', 'TND');
 
         $this->command->info('Creating Tunisian chart of accounts...');
         $tunisiaSeeder = new TunisiaChartOfAccountsSeeder;
         $tunisiaSeeder->setCommand($this->command);
-        $tunisiaSeeder->run($tnCompany->id, $tnTenant->id);
+        $tunisiaSeeder->run($tnCompany->id, $tenant->id);
 
         $this->command->info('Creating payment methods for Tunisian company...');
         $this->call(PaymentMethodSeeder::class, false, ['company' => $tnCompany]);
@@ -99,11 +94,11 @@ class DatabaseSeeder extends Seeder
         $this->command->info('Creating payment repositories for Tunisian company...');
         $this->call(PaymentRepositorySeeder::class, false, ['company' => $tnCompany]);
 
-        $this->command->info('Creating stamp duty rules for Tunisia...');
-        $this->call(TunisiaStampDutySeeder::class);
+        $this->command->info('Creating Tunisia tax configurations...');
+        $this->call(TunisiaTaxConfigurationSeeder::class);
 
         $this->command->info('Creating partners for Tunisian company...');
-        $this->createPartners($tnTenant, $tnCompany);
+        $this->createPartners($tenant, $tnCompany);
 
         $this->command->info('Creating products for Tunisian company...');
         $this->createProducts($tnCompany);
@@ -115,12 +110,18 @@ class DatabaseSeeder extends Seeder
         $this->call(StockLevelSeeder::class, false, ['company' => $tnCompany]);
 
         // ============================================
-        // SHARED DATA (create only once)
+        // USERS (add to BOTH companies)
+        // ============================================
+        $this->command->info('Creating test users with access to both companies...');
+        $this->createUsers($tenant, $frCompany, $tnCompany);
+
+        // ============================================
+        // SHARED DATA
         // ============================================
         $this->command->info('Creating Smart Payment test data...');
         $this->call(SmartPaymentTestDataSeeder::class);
 
-        $this->command->info('Database seeding completed with 2 companies (France + Tunisia)!');
+        $this->command->info('Database seeding completed with 2 companies (France + Tunisia) in one tenant!');
     }
 
     private function createTenant(string $countryCode, string $name, string $slug, string $currency): Tenant
@@ -146,7 +147,7 @@ class DatabaseSeeder extends Seeder
 
     private function createCompany(Tenant $tenant, string $countryCode, string $name, string $currency): Company
     {
-        return Company::create([
+        $company = Company::create([
             'tenant_id' => $tenant->id,
             'name' => $name,
             'legal_name' => $name.' SARL',
@@ -159,10 +160,38 @@ class DatabaseSeeder extends Seeder
             'fiscal_year_start_month' => 1,
             'status' => CompanyStatus::Active,
             'is_headquarters' => true,
+
+            // Address fields based on country
+            'address_street' => $countryCode === 'FR' ? '123 Rue de la Paix' : '456 Avenue Habib Bourguiba',
+            'address_city' => $countryCode === 'FR' ? 'Paris' : 'Tunis',
+            'address_postal_code' => $countryCode === 'FR' ? '75002' : '1000',
+            'address_state' => null,
+            'phone' => $countryCode === 'FR' ? '+33 1 42 86 82 00' : '+216 71 123 456',
+            'email' => strtolower(str_replace(' ', '', $name)).'@example.com',
         ]);
+
+        // Create default location with company address
+        Location::create([
+            'id' => Str::uuid()->toString(),
+            'company_id' => $company->id,
+            'name' => 'Main Location',
+            'code' => 'MAIN',
+            'type' => 'shop', // Primary location for service businesses
+            'is_default' => true,
+            'is_active' => true,
+            'pos_enabled' => false,
+            'address_street' => $company->address_street,
+            'address_city' => $company->address_city,
+            'address_postal_code' => $company->address_postal_code,
+            'address_country' => $company->country_code,
+            'phone' => $company->phone,
+            'email' => $company->email,
+        ]);
+
+        return $company;
     }
 
-    private function createUsers(Tenant $tenant, Company $company): void
+    private function createUsers(Tenant $tenant, Company $frenchCompany, Company $tunisianCompany): void
     {
         // Set the team (tenant) context for Spatie permissions
         setPermissionsTeamId($tenant->id);
@@ -179,12 +208,21 @@ class DatabaseSeeder extends Seeder
             'preferences' => [],
         ]);
 
-        // Create company membership for test user (manager role)
+        // Create company memberships for test user in BOTH companies
         UserCompanyMembership::create([
             'user_id' => $testUser->id,
-            'company_id' => $company->id,
+            'company_id' => $frenchCompany->id,
             'role' => MembershipRole::Manager,
-            'is_primary' => true,
+            'is_primary' => true, // French company is primary
+            'status' => MembershipStatus::Active,
+            'accepted_at' => now(),
+        ]);
+
+        UserCompanyMembership::create([
+            'user_id' => $testUser->id,
+            'company_id' => $tunisianCompany->id,
+            'role' => MembershipRole::Manager,
+            'is_primary' => false, // Tunisia is secondary
             'status' => MembershipStatus::Active,
             'accepted_at' => now(),
         ]);
@@ -193,7 +231,7 @@ class DatabaseSeeder extends Seeder
         $managerRole = Role::where('name', 'manager')->where('guard_name', 'sanctum')->first();
         if ($managerRole) {
             $testUser->assignRole($managerRole);
-            $this->command->info('Assigned manager role to test@example.com');
+            $this->command->info('Assigned manager role to test@example.com (access to both companies)');
         }
 
         // Admin User - assign admin role (full access)
@@ -208,12 +246,21 @@ class DatabaseSeeder extends Seeder
             'preferences' => [],
         ]);
 
-        // Create company membership for admin user (owner role)
+        // Create company memberships for admin user in BOTH companies
         UserCompanyMembership::create([
             'user_id' => $adminUser->id,
-            'company_id' => $company->id,
+            'company_id' => $frenchCompany->id,
             'role' => MembershipRole::Owner,
-            'is_primary' => true,
+            'is_primary' => true, // French company is primary
+            'status' => MembershipStatus::Active,
+            'accepted_at' => now(),
+        ]);
+
+        UserCompanyMembership::create([
+            'user_id' => $adminUser->id,
+            'company_id' => $tunisianCompany->id,
+            'role' => MembershipRole::Owner,
+            'is_primary' => false, // Tunisia is secondary
             'status' => MembershipStatus::Active,
             'accepted_at' => now(),
         ]);
@@ -222,7 +269,7 @@ class DatabaseSeeder extends Seeder
         $adminRole = Role::where('name', 'admin')->where('guard_name', 'sanctum')->first();
         if ($adminRole) {
             $adminUser->assignRole($adminRole);
-            $this->command->info('Assigned admin role to admin@example.com');
+            $this->command->info('Assigned admin role to admin@example.com (access to both companies)');
         }
     }
 

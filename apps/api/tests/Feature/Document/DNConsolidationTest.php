@@ -9,7 +9,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
-use App\Modules\Document\Domain\Services\DocumentConversionService;
+use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -28,7 +28,7 @@ class DNConsolidationTest extends TestCase
 {
     use RefreshDatabase;
 
-    private DocumentConversionService $conversionService;
+    private DocumentConverterRegistry $converterRegistry;
 
     private Tenant $tenant;
 
@@ -40,7 +40,7 @@ class DNConsolidationTest extends TestCase
     {
         parent::setUp();
 
-        $this->conversionService = app(DocumentConversionService::class);
+        $this->converterRegistry = app(DocumentConverterRegistry::class);
 
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->create([
@@ -59,7 +59,7 @@ class DNConsolidationTest extends TestCase
             ['description' => 'Product A', 'quantity' => '5.00', 'unit_price' => '100.00', 'tax_rate' => '19.00'],
         ]);
 
-        $invoice = $this->conversionService->createInvoiceFromDeliveryNotes([$dn]);
+        $invoice = $this->converterRegistry->convert($dn, DocumentType::Invoice, ['delivery_note_ids' => [$dn->id]]);
 
         $this->assertNotNull($invoice);
         $this->assertEquals(DocumentType::Invoice, $invoice->type);
@@ -86,7 +86,9 @@ class DNConsolidationTest extends TestCase
             ['description' => 'Product C', 'quantity' => '2.00', 'unit_price' => '200.00', 'tax_rate' => '19.00'],
         ]);
 
-        $invoice = $this->conversionService->createInvoiceFromDeliveryNotes([$dn1, $dn2, $dn3]);
+        $deliveryNotes = [$dn1, $dn2, $dn3];
+        $deliveryNoteIds = array_map(fn ($dn) => $dn->id, $deliveryNotes);
+        $invoice = $this->converterRegistry->convert($deliveryNotes[0], DocumentType::Invoice, ['delivery_note_ids' => $deliveryNoteIds]);
 
         $this->assertNotNull($invoice);
         $this->assertEquals(DocumentType::Invoice, $invoice->type);
@@ -113,7 +115,9 @@ class DNConsolidationTest extends TestCase
             ['description' => 'Product B', 'quantity' => '10.00', 'unit_price' => '50.00'],
         ]);
 
-        $invoice = $this->conversionService->createInvoiceFromDeliveryNotes([$dn1, $dn2]);
+        $deliveryNotes = [$dn1, $dn2];
+        $deliveryNoteIds = array_map(fn ($dn) => $dn->id, $deliveryNotes);
+        $invoice = $this->converterRegistry->convert($deliveryNotes[0], DocumentType::Invoice, ['delivery_note_ids' => $deliveryNoteIds]);
 
         // Payload should contain all source DN IDs
         $payload = $invoice->payload ?? [];
@@ -136,7 +140,9 @@ class DNConsolidationTest extends TestCase
         $this->assertNull($dn1->fresh()->payload['invoiced_at'] ?? null);
         $this->assertNull($dn2->fresh()->payload['invoiced_at'] ?? null);
 
-        $invoice = $this->conversionService->createInvoiceFromDeliveryNotes([$dn1, $dn2]);
+        $deliveryNotes = [$dn1, $dn2];
+        $deliveryNoteIds = array_map(fn ($dn) => $dn->id, $deliveryNotes);
+        $invoice = $this->converterRegistry->convert($deliveryNotes[0], DocumentType::Invoice, ['delivery_note_ids' => $deliveryNoteIds]);
 
         // Both DNs should now be marked as invoiced
         $dn1->refresh();
@@ -155,13 +161,14 @@ class DNConsolidationTest extends TestCase
         ]);
 
         // First invoice creation should succeed
-        $this->conversionService->createInvoiceFromDeliveryNotes([$dn]);
+        $this->converterRegistry->convert($dn, DocumentType::Invoice, ['delivery_note_ids' => [$dn->id]]);
 
         // Second attempt should fail
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('Delivery note has already been invoiced');
 
-        $this->conversionService->createInvoiceFromDeliveryNotes([$dn->fresh()]);
+        $freshDn = $dn->fresh();
+        $this->converterRegistry->convert($freshDn, DocumentType::Invoice, ['delivery_note_ids' => [$freshDn->id]]);
     }
 
     public function test_cannot_create_invoice_from_draft_delivery_note(): void
@@ -173,15 +180,16 @@ class DNConsolidationTest extends TestCase
         $this->expectException(\DomainException::class);
         $this->expectExceptionMessage('Delivery note must be confirmed before invoicing');
 
-        $this->conversionService->createInvoiceFromDeliveryNotes([$dn]);
+        $this->converterRegistry->convert($dn, DocumentType::Invoice, ['delivery_note_ids' => [$dn->id]]);
     }
 
     public function test_cannot_create_invoice_from_empty_delivery_notes_array(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('At least one delivery note is required');
+        $this->expectExceptionMessage('Source document must be a delivery note');
 
-        $this->conversionService->createInvoiceFromDeliveryNotes([]);
+        // Creating invoice without a source DN should fail
+        $this->converterRegistry->convert(new Document, DocumentType::Invoice, ['delivery_note_ids' => []]);
     }
 
     public function test_delivery_notes_must_belong_to_same_partner(): void
@@ -202,7 +210,9 @@ class DNConsolidationTest extends TestCase
         $this->expectException(\DomainException::class);
         $this->expectExceptionMessage('All delivery notes must belong to the same partner');
 
-        $this->conversionService->createInvoiceFromDeliveryNotes([$dn1, $dn2]);
+        $deliveryNotes = [$dn1, $dn2];
+        $deliveryNoteIds = array_map(fn ($dn) => $dn->id, $deliveryNotes);
+        $this->converterRegistry->convert($deliveryNotes[0], DocumentType::Invoice, ['delivery_note_ids' => $deliveryNoteIds]);
     }
 
     public function test_delivery_notes_must_belong_to_same_company(): void
@@ -247,7 +257,9 @@ class DNConsolidationTest extends TestCase
         $this->expectException(\DomainException::class);
         $this->expectExceptionMessage('All delivery notes must belong to the same company');
 
-        $this->conversionService->createInvoiceFromDeliveryNotes([$dn1, $dn2]);
+        $deliveryNotes = [$dn1, $dn2];
+        $deliveryNoteIds = array_map(fn ($dn) => $dn->id, $deliveryNotes);
+        $this->converterRegistry->convert($deliveryNotes[0], DocumentType::Invoice, ['delivery_note_ids' => $deliveryNoteIds]);
     }
 
     public function test_delivery_notes_must_have_same_currency(): void
@@ -283,7 +295,9 @@ class DNConsolidationTest extends TestCase
         $this->expectException(\DomainException::class);
         $this->expectExceptionMessage('All delivery notes must have the same currency');
 
-        $this->conversionService->createInvoiceFromDeliveryNotes([$dn1, $dn2]);
+        $deliveryNotes = [$dn1, $dn2];
+        $deliveryNoteIds = array_map(fn ($dn) => $dn->id, $deliveryNotes);
+        $this->converterRegistry->convert($deliveryNotes[0], DocumentType::Invoice, ['delivery_note_ids' => $deliveryNoteIds]);
     }
 
     public function test_invoice_lines_link_to_source_delivery_note_lines(): void
@@ -296,7 +310,9 @@ class DNConsolidationTest extends TestCase
             ['description' => 'Product B', 'quantity' => '10.00', 'unit_price' => '50.00'],
         ]);
 
-        $invoice = $this->conversionService->createInvoiceFromDeliveryNotes([$dn1, $dn2]);
+        $deliveryNotes = [$dn1, $dn2];
+        $deliveryNoteIds = array_map(fn ($dn) => $dn->id, $deliveryNotes);
+        $invoice = $this->converterRegistry->convert($deliveryNotes[0], DocumentType::Invoice, ['delivery_note_ids' => $deliveryNoteIds]);
 
         // Each invoice line should link to its source DN line
         foreach ($invoice->lines as $invLine) {
@@ -325,7 +341,7 @@ class DNConsolidationTest extends TestCase
         ]);
 
         // Invoice only dn1
-        $this->conversionService->createInvoiceFromDeliveryNotes([$dn1]);
+        $this->converterRegistry->convert($dn1, DocumentType::Invoice, ['delivery_note_ids' => [$dn1->id]]);
 
         // Query uninvoiced DNs
         $uninvoiced = Document::where('type', DocumentType::DeliveryNote)
@@ -357,7 +373,7 @@ class DNConsolidationTest extends TestCase
             ],
         ]);
 
-        $invoice = $this->conversionService->createInvoiceFromDeliveryNotes([$dn]);
+        $invoice = $this->converterRegistry->convert($dn, DocumentType::Invoice, ['delivery_note_ids' => [$dn->id]]);
 
         $invLine = $invoice->lines->first();
         $this->assertEquals('Premium Service', $invLine->description);
@@ -376,7 +392,9 @@ class DNConsolidationTest extends TestCase
             ['description' => 'Product B', 'quantity' => '10.00', 'unit_price' => '50.00'],
         ]);
 
-        $invoice = $this->conversionService->createInvoiceFromDeliveryNotes([$dn1, $dn2]);
+        $deliveryNotes = [$dn1, $dn2];
+        $deliveryNoteIds = array_map(fn ($dn) => $dn->id, $deliveryNotes);
+        $invoice = $this->converterRegistry->convert($deliveryNotes[0], DocumentType::Invoice, ['delivery_note_ids' => $deliveryNoteIds]);
 
         // Reference should include both DN numbers
         $this->assertStringContainsString($dn1->document_number, $invoice->reference);

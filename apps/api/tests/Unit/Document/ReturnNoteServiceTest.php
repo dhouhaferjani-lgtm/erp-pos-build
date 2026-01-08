@@ -20,6 +20,7 @@ use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
@@ -30,10 +31,15 @@ class ReturnNoteServiceTest extends TestCase
     use RefreshDatabase;
 
     private ReturnNoteService $service;
+
     private Tenant $tenant;
+
     private Company $company;
+
     private Location $location;
+
     private Partner $partner;
+
     private Product $product;
 
     protected function setUp(): void
@@ -43,7 +49,8 @@ class ReturnNoteServiceTest extends TestCase
         // Create dependencies
         $wacService = $this->app->make(WeightedAverageCostService::class);
         $hashService = $this->app->make(FiscalHashService::class);
-        $this->service = new ReturnNoteService($wacService, $hashService);
+        $taxCalculationService = $this->app->make(TaxCalculationService::class);
+        $this->service = new ReturnNoteService($wacService, $hashService, $taxCalculationService);
 
         // Create test data
         $this->tenant = Tenant::factory()->create();
@@ -193,7 +200,7 @@ class ReturnNoteServiceTest extends TestCase
             'partner_id' => $this->partner->id,
             'type' => DocumentType::ReturnNote,
             'status' => DocumentStatus::Draft,
-            'document_number' => 'RN-' . now()->format('Y') . '-' . str_pad((string) rand(1, 999), 3, '0', STR_PAD_LEFT),
+            'document_number' => 'RN-'.now()->format('Y').'-'.str_pad((string) rand(1, 999), 3, '0', STR_PAD_LEFT),
             'document_date' => now(),
             'currency' => 'USD',
             'subtotal' => '500.00',

@@ -18,20 +18,27 @@ class StockLevelData extends Data
         public string $quantity,
         public string $reserved,
         public string $available,
+        public string $incoming,
+        public string $projected_available,
         public ?string $min_quantity,
         public ?string $max_quantity,
         public bool $is_below_minimum,
     ) {}
 
-    public static function fromModel(StockLevel $stockLevel): self
+    public static function fromModel(StockLevel $stockLevel, string $incoming = '0.00'): self
     {
+        $available = $stockLevel->getAvailableQuantity();
+        $projectedAvailable = bcadd($available, $incoming, 2);
+
         return new self(
             id: $stockLevel->id,
             location_id: $stockLevel->location_id,
             location_name: $stockLevel->location->name,
             quantity: (string) $stockLevel->quantity,
             reserved: (string) $stockLevel->reserved,
-            available: $stockLevel->getAvailableQuantity(),
+            available: $available,
+            incoming: $incoming,
+            projected_available: $projectedAvailable,
             min_quantity: $stockLevel->min_quantity !== null ? (string) $stockLevel->min_quantity : null,
             max_quantity: $stockLevel->max_quantity !== null ? (string) $stockLevel->max_quantity : null,
             is_below_minimum: $stockLevel->isBelowMinimum(),

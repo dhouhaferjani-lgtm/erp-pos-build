@@ -21,7 +21,6 @@ class TaxResolutionService
      * @param  string|null  $lineOverrideTaxRate  Tax rate explicitly set on document line
      * @param  Product  $product  Product being sold
      * @param  Company  $company  Company context
-     * @return TaxResolutionResult
      */
     public function resolveProductTax(
         ?string $lineOverrideTaxRate,
