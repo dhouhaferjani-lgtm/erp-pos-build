@@ -8,6 +8,8 @@ use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Application\DTOs\CreateWithholdingCertificateData;
+use App\Modules\Taxation\Application\Services\CertificatePDFService;
+use App\Modules\Taxation\Application\Services\TEJExportService;
 use App\Modules\Taxation\Application\Services\WithholdingCertificateService;
 use App\Modules\Taxation\Domain\Repositories\WithholdingCertificateRepositoryInterface;
 use App\Modules\Taxation\Presentation\Requests\CreateWithholdingCertificateRequest;
@@ -16,6 +18,7 @@ use App\Modules\Taxation\Presentation\Requests\VoidCertificateRequest;
 use App\Modules\Taxation\Presentation\Resources\WithholdingCertificateResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Withholding Certificate Controller
@@ -27,6 +30,8 @@ class WithholdingCertificateController extends Controller
     public function __construct(
         private readonly WithholdingCertificateService $certificateService,
         private readonly WithholdingCertificateRepositoryInterface $certificateRepository,
+        private readonly TEJExportService $tejExportService,
+        private readonly CertificatePDFService $pdfService,
         private readonly CompanyContext $companyContext,
     ) {}
 
@@ -193,6 +198,83 @@ class WithholdingCertificateController extends Controller
                 ],
             ], 422);
         }
+    }
+
+    /**
+     * Download certificate as PDF.
+     */
+    public function downloadPDF(string $id): StreamedResponse
+    {
+        $certificate = $this->certificateRepository->findById($id);
+
+        if (! $certificate) {
+            abort(404, 'Certificate not found');
+        }
+
+        $html = $this->pdfService->generateHTML($certificate);
+        $filename = $this->pdfService->generateFilename($certificate);
+
+        // For now, download as HTML (TODO: integrate PDF library)
+        return response()->streamDownload(function () use ($html) {
+            echo $html;
+        }, str_replace('.pdf', '.html', $filename), [
+            'Content-Type' => 'text/html',
+        ]);
+    }
+
+    /**
+     * Download TEJ XML for single certificate.
+     */
+    public function downloadTEJXML(string $id): StreamedResponse
+    {
+        $certificate = $this->certificateRepository->findById($id);
+
+        if (! $certificate) {
+            abort(404, 'Certificate not found');
+        }
+
+        $xml = $this->tejExportService->generateXML($certificate);
+        $filename = $this->tejExportService->generateFilename($certificate);
+
+        return response()->streamDownload(function () use ($xml) {
+            echo $xml;
+        }, $filename, [
+            'Content-Type' => 'application/xml',
+        ]);
+    }
+
+    /**
+     * Download batch TEJ XML for multiple certificates.
+     */
+    public function downloadBatchTEJXML(Request $request): StreamedResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+
+        $filters = [
+            'year' => $request->input('year'),
+            'direction' => $request->input('direction'),
+            'status' => 'issued', // Only issued certificates
+        ];
+
+        // Get all matching certificates (not paginated)
+        $certificates = $this->certificateRepository->findByCompany(
+            $companyId,
+            array_filter($filters)
+        )->items();
+
+        if (empty($certificates)) {
+            abort(404, 'No certificates found for export');
+        }
+
+        $certificatesCollection = collect($certificates);
+        $xml = $this->tejExportService->generateBatchXML($certificatesCollection);
+        $filename = $this->tejExportService->generateFilename($certificatesCollection->first(), true);
+
+        return response()->streamDownload(function () use ($xml) {
+            echo $xml;
+        }, $filename, [
+            'Content-Type' => 'application/xml',
+        ]);
     }
 
     /**

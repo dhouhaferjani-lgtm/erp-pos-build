@@ -209,13 +209,63 @@ products_count: number | null;
 breadcrumb: Array<any> | null;
 children: Array<any> | null;
 };
+export type CertificationData = {
+id: string;
+type: string;
+slug: string;
+certifying_body: string | null;
+logo_url: string | null;
+verification_url: string | null;
+is_active: boolean;
+display_order: number;
+name: string;
+description: string | null;
+created_at: string;
+updated_at: string | null;
+};
+export type HealthClaimData = {
+id: string;
+claim_type: string;
+slug: string;
+regulatory_status: string;
+efsa_reference: string | null;
+fda_reference: string | null;
+country_restrictions: Array<any> | null;
+requires_disclaimer: boolean;
+claim: string;
+disclaimer_text: string | null;
+created_at: string;
+updated_at: string | null;
+};
+export type IngredientData = {
+id: string;
+slug: string;
+cas_number: string | null;
+is_allergen: boolean;
+allergen_code: string | null;
+regulatory_status: string | null;
+notes: string | null;
+name: string;
+description: string | null;
+created_at: string;
+updated_at: string | null;
+};
+export type KeyComponentData = {
+id: string;
+slug: string;
+is_allergen: boolean;
+name: string;
+description: string | null;
+created_at: string;
+updated_at: string | null;
+};
 export type ParapharmacyProductMetadataData = {
 id: string;
 product_id: string;
 category: App.Modules.Product.Domain.Enums.ParapharmacyCategory;
 dosage_form: App.Modules.Product.Domain.Enums.DosageForm | null;
-active_ingredients: Array<any> | null;
-key_components: Array<any> | null;
+ingredients: any | null;
+key_components: any | null;
 usage_instructions: string | null;
 warnings: string | null;
 contraindications: string | null;
@@ -223,11 +273,19 @@ minimum_age: number | null;
 age_restriction: App.Modules.Product.Domain.Enums.AgeRestriction | null;
 requires_consultation: boolean;
 regulatory_code: string | null;
-health_claims: Array<any> | null;
-certifications: Array<any> | null;
+health_claims: any | null;
+certifications: any | null;
 storage_requirements: string | null;
 created_at: string;
 updated_at: string | null;
+};
+export type ProductCertificationData = {
+certification: App.Modules.Product.Application.DTOs.CertificationData;
+certification_code: string | null;
+issued_date: string | null;
+expiry_date: string | null;
+verification_url: string | null;
+notes: string | null;
 };
 export type ProductData = {
 id: string;
@@ -249,6 +307,22 @@ minimum_margin_override: string | null;
 created_at: string;
 updated_at: string | null;
 parapharmacy_metadata: App.Modules.Product.Application.DTOs.ParapharmacyProductMetadataData | null;
+};
+export type ProductHealthClaimData = {
+health_claim: App.Modules.Product.Application.DTOs.HealthClaimData;
+display_order: number;
+};
+export type ProductIngredientData = {
+ingredient: App.Modules.Product.Application.DTOs.IngredientData;
+concentration: string | null;
+concentration_numeric: number | null;
+concentration_unit: string | null;
+order: number;
+notes: string | null;
+};
+export type ProductKeyComponentData = {
+key_component: App.Modules.Product.Application.DTOs.KeyComponentData;
+order: number;
 };
 }
 declare namespace App.Modules.Product.Domain.Enums {
@@ -291,11 +365,14 @@ declare namespace App.Modules.Service.Domain.Enums {
 export type PricingType = 'flat_rate' | 'hourly' | 'percentage';
 }
 declare namespace App.Modules.Taxation.Domain.Enums {
+export type CertificateStatus = 'draft' | 'issued' | 'submitted' | 'voided';
 export type CompanyTaxStatus = 'REGISTERED' | 'NON_REGISTERED';
 export type PartnerTaxStatus = 'REGISTERED' | 'NON_REGISTERED' | 'EXEMPT';
 export type StackingBehavior = 'SUBTOTAL' | 'TOTAL_INCLUDING_PREVIOUS';
 export type TaxApplicationLevel = 'LINE_ITEMS' | 'DOCUMENT_TOTAL';
 export type TaxType = 'PERCENTAGE' | 'FIXED_AMOUNT';
+export type TransactionType = 'services' | 'goods' | 'rental' | 'rental_hotel' | 'commission' | 'export_services';
+export type WithholdingDirection = 'purchase' | 'sales';
 }
 declare namespace App.Modules.Taxation.Domain.Services {
 export type TaxSource = 'line' | 'product' | 'category' | 'company';

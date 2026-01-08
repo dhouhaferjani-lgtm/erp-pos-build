@@ -12,14 +12,13 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 /**
  * @property string $id
  * @property string $product_id
  * @property ParapharmacyCategory $category
  * @property DosageForm|null $dosage_form
- * @property array<int, array{name: string, concentration?: string}>|null $active_ingredients
- * @property array<int, string>|null $key_components
  * @property string|null $usage_instructions
  * @property string|null $warnings
  * @property string|null $contraindications
@@ -27,12 +26,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property AgeRestriction|null $age_restriction
  * @property bool $requires_consultation
  * @property string|null $regulatory_code
- * @property array<int, string>|null $health_claims
- * @property array<int, array{type: string, code: string}>|null $certifications
  * @property string|null $storage_requirements
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property-read Product $product
+ * @property-read \Illuminate\Database\Eloquent\Collection<Ingredient> $ingredients
+ * @property-read \Illuminate\Database\Eloquent\Collection<Certification> $certifications
+ * @property-read \Illuminate\Database\Eloquent\Collection<HealthClaim> $healthClaims
+ * @property-read \Illuminate\Database\Eloquent\Collection<KeyComponent> $keyComponents
  */
 class ParapharmacyProductMetadata extends Model
 {
@@ -61,8 +62,6 @@ class ParapharmacyProductMetadata extends Model
         'product_id',
         'category',
         'dosage_form',
-        'active_ingredients',
-        'key_components',
         'usage_instructions',
         'warnings',
         'contraindications',
@@ -70,8 +69,6 @@ class ParapharmacyProductMetadata extends Model
         'age_restriction',
         'requires_consultation',
         'regulatory_code',
-        'health_claims',
-        'certifications',
         'storage_requirements',
     ];
 
@@ -91,10 +88,6 @@ class ParapharmacyProductMetadata extends Model
             'category' => ParapharmacyCategory::class,
             'dosage_form' => DosageForm::class,
             'age_restriction' => AgeRestriction::class,
-            'active_ingredients' => 'array',
-            'key_components' => 'array',
-            'health_claims' => 'array',
-            'certifications' => 'array',
             'requires_consultation' => 'boolean',
             'minimum_age' => 'integer',
         ];
@@ -108,5 +101,76 @@ class ParapharmacyProductMetadata extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    /**
+     * Get all ingredients for this product.
+     *
+     * @return BelongsToMany<Ingredient>
+     */
+    public function ingredients(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            Ingredient::class,
+            'product_ingredient',
+            'product_id',
+            'ingredient_id'
+        )
+            ->withPivot(['concentration', 'concentration_numeric', 'concentration_unit', 'order', 'notes'])
+            ->withTimestamps()
+            ->orderByPivot('order');
+    }
+
+    /**
+     * Get all certifications for this product.
+     *
+     * @return BelongsToMany<Certification>
+     */
+    public function certifications(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            Certification::class,
+            'certification_product',
+            'product_id',
+            'certification_id'
+        )
+            ->withPivot(['certification_code', 'issued_date', 'expiry_date', 'verification_url', 'notes'])
+            ->withTimestamps();
+    }
+
+    /**
+     * Get all health claims for this product.
+     *
+     * @return BelongsToMany<HealthClaim>
+     */
+    public function healthClaims(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            HealthClaim::class,
+            'health_claim_product',
+            'product_id',
+            'health_claim_id'
+        )
+            ->withPivot(['display_order'])
+            ->withTimestamps()
+            ->orderByPivot('display_order');
+    }
+
+    /**
+     * Get all key components for this product.
+     *
+     * @return BelongsToMany<KeyComponent>
+     */
+    public function keyComponents(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            KeyComponent::class,
+            'key_component_product',
+            'product_id',
+            'component_id'
+        )
+            ->withPivot(['order'])
+            ->withTimestamps()
+            ->orderByPivot('order');
     }
 }

@@ -42,6 +42,12 @@ class DatabaseSeeder extends Seeder
         $this->command->info('Creating roles and permissions...');
         $this->call(RolesAndPermissionsSeeder::class);
 
+        $this->command->info('Seeding parapharmacy reference data...');
+        $this->call(IngredientsSeeder::class);
+        $this->call(CertificationsSeeder::class);
+        $this->call(HealthClaimsSeeder::class);
+        $this->call(KeyComponentsSeeder::class);
+
         // ============================================
         // MULTI-COUNTRY TENANT (France + Tunisia)
         // ============================================
