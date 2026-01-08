@@ -1,0 +1,87 @@
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
+import type {
+  App.Modules.Product.Application.DTOs.IngredientData,
+  App.Shared.Application.DTOs.PaginationData,
+} from '@shared/types';
+
+export interface IngredientTranslation {
+  id?: string;
+  locale: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface CreateIngredientInput {
+  slug: string;
+  cas_number?: string | null;
+  is_allergen: boolean;
+  allergen_code?: string | null;
+  regulatory_status: 'approved' | 'restricted' | 'banned';
+  notes?: string | null;
+  translations: IngredientTranslation[];
+}
+
+export interface UpdateIngredientInput {
+  slug?: string;
+  cas_number?: string | null;
+  is_allergen?: boolean;
+  allergen_code?: string | null;
+  regulatory_status?: 'approved' | 'restricted' | 'banned';
+  notes?: string | null;
+  translations?: IngredientTranslation[];
+}
+
+export interface IngredientsListResponse {
+  data: App.Modules.Product.Application.DTOs.IngredientData[];
+  meta: {
+    pagination: App.Shared.Application.DTOs.PaginationData;
+  };
+}
+
+export async function fetchIngredients(params?: {
+  page?: number;
+  per_page?: number;
+  sort?: string;
+  direction?: 'asc' | 'desc';
+}): Promise<IngredientsListResponse> {
+  const queryParams = new URLSearchParams();
+  if (params?.page) queryParams.set('page', params.page.toString());
+  if (params?.per_page) queryParams.set('per_page', params.per_page.toString());
+  if (params?.sort) queryParams.set('sort', params.sort);
+  if (params?.direction) queryParams.set('direction', params.direction);
+
+  return apiGet<IngredientsListResponse>(
+    `/parapharmacy/ingredients?${queryParams.toString()}`
+  );
+}
+
+export async function fetchIngredient(
+  id: string
+): Promise<App.Modules.Product.Application.DTOs.IngredientData> {
+  return apiGet<App.Modules.Product.Application.DTOs.IngredientData>(
+    `/parapharmacy/ingredients/${id}`
+  );
+}
+
+export async function createIngredient(
+  data: CreateIngredientInput
+): Promise<App.Modules.Product.Application.DTOs.IngredientData> {
+  return apiPost<App.Modules.Product.Application.DTOs.IngredientData>(
+    '/parapharmacy/ingredients',
+    data
+  );
+}
+
+export async function updateIngredient(
+  id: string,
+  data: UpdateIngredientInput
+): Promise<App.Modules.Product.Application.DTOs.IngredientData> {
+  return apiPatch<App.Modules.Product.Application.DTOs.IngredientData>(
+    `/parapharmacy/ingredients/${id}`,
+    data
+  );
+}
+
+export async function deleteIngredient(id: string): Promise<void> {
+  return apiDelete(`/parapharmacy/ingredients/${id}`);
+}

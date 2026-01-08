@@ -35,6 +35,10 @@ import {
   Wrench,
   FolderTree,
   RotateCcw,
+  Pill,
+  Award,
+  ListChecks,
+  Layers3,
 } from 'lucide-react'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useCompanyConfig } from '../../../contexts'
@@ -162,6 +166,17 @@ const navigation: NavModule[] = [
     key: 'reports',
     href: '/reports',
     icon: BarChart3,
+  },
+  {
+    key: 'parapharmacy',
+    icon: Pill,
+    module: 'settings',
+    children: [
+      { key: 'ingredients', href: '/parapharmacy/ingredients', icon: Layers3, module: 'settings' },
+      { key: 'certifications', href: '/parapharmacy/certifications', icon: Award, module: 'settings' },
+      { key: 'healthClaims', href: '/parapharmacy/health-claims', icon: ListChecks, module: 'settings' },
+      { key: 'keyComponents', href: '/parapharmacy/key-components', icon: Package, module: 'settings' },
+    ],
   },
   {
     key: 'settings',
