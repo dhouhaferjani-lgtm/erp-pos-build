@@ -62,6 +62,10 @@ const RepositoryDetailPage = lazy(() => import('../features/treasury/RepositoryD
 const PaymentMethodsPage = lazy(() => import('../features/treasury/PaymentMethodsPage').then((m) => ({ default: m.PaymentMethodsPage })))
 const BankReconciliationPage = lazy(() => import('../features/treasury/BankReconciliationPage').then((m) => ({ default: m.BankReconciliationPage })))
 
+// Withholding module
+const WithholdingCertificatesList = lazy(() => import('../features/withholding').then((m) => ({ default: m.WithholdingCertificatesList })))
+const WithholdingCertificateDetail = lazy(() => import('../features/withholding').then((m) => ({ default: m.WithholdingCertificateDetail })))
+
 // Reports module
 const ReportsPage = lazy(() => import('../features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })))
 
@@ -72,6 +76,12 @@ const ProductForm = lazy(() => import('../features/inventory/ProductForm').then(
 const StockLevelsPage = lazy(() => import('../features/inventory/StockLevelsPage').then((m) => ({ default: m.StockLevelsPage })))
 const StockMovementsPage = lazy(() => import('../features/inventory/StockMovementsPage').then((m) => ({ default: m.StockMovementsPage })))
 const CategoriesPage = lazy(() => import('../features/categories/CategoriesPage').then((m) => ({ default: m.CategoriesPage })))
+
+// Batch & Expiry Tracking
+const BatchListPage = lazy(() => import('../features/batches/pages').then((m) => ({ default: m.BatchListPage })))
+const BatchDetailPage = lazy(() => import('../features/batches/pages').then((m) => ({ default: m.BatchDetailPage })))
+const CreateBatchPage = lazy(() => import('../features/batches/pages').then((m) => ({ default: m.CreateBatchPage })))
+const EditBatchPage = lazy(() => import('../features/batches/pages').then((m) => ({ default: m.EditBatchPage })))
 
 // Inventory Counting
 const CountingDashboardPage = lazy(() => import('../features/inventory-counting/pages/CountingDashboardPage').then((m) => ({ default: m.CountingDashboardPage })))
@@ -97,6 +107,7 @@ const CompanyPage = lazy(() => import('../features/settings/CompanyPage').then((
 const TaxSettingsPage = lazy(() => import('../features/settings/TaxSettingsPage').then((m) => ({ default: m.TaxSettingsPage })))
 const LocationsPage = lazy(() => import('../features/settings/LocationsPage').then((m) => ({ default: m.LocationsPage })))
 const InventorySettings = lazy(() => import('../features/settings/components/InventorySettings').then((m) => ({ default: m.InventorySettings })))
+const UnitsSettingsPage = lazy(() => import('../features/uom').then((m) => ({ default: m.UnitsSettingsPage })))
 
 // Finance module
 const ChartOfAccountsPage = lazy(() => import('../features/finance/pages/ChartOfAccountsPage').then((m) => ({ default: m.ChartOfAccountsPage })))
@@ -142,13 +153,18 @@ const FraudAlertsPage = lazy(() => import('../features/compliance/pages/FraudAle
 
 // Parapharmacy module
 const IngredientListPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.IngredientListPage })))
-const IngredientFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.IngredientFormPage })))
+// const IngredientFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.IngredientFormPage })))
 const CertificationListPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.CertificationListPage })))
-const CertificationFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.CertificationFormPage })))
+// const CertificationFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.CertificationFormPage })))
 const HealthClaimListPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.HealthClaimListPage })))
-const HealthClaimFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.HealthClaimFormPage })))
+// const HealthClaimFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.HealthClaimFormPage })))
 const KeyComponentListPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.KeyComponentListPage })))
-const KeyComponentFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.KeyComponentFormPage })))
+// const KeyComponentFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.KeyComponentFormPage })))
+
+// POS module
+const POSTerminalsPage = lazy(() => import('../pages/POS/Terminals').then((m) => ({ default: m.TerminalsPage })))
+const POSTransactionsPage = lazy(() => import('../pages/POS/POSDemo').then((m) => ({ default: m.POSDemo })))
+const POSShiftsPage = lazy(() => import('../pages/POS/ShiftDemo').then((m) => ({ default: m.ShiftDemo })))
 
 function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   return (
@@ -741,6 +757,48 @@ export function AppRoutes() {
             }
           />
 
+          {/* Batches */}
+          <Route
+            path="batches"
+            element={
+              <RequirePermission moduleKey="inventory">
+                <SuspenseWrapper>
+                  <BatchListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="batches/new"
+            element={
+              <RequirePermission moduleKey="inventory">
+                <SuspenseWrapper>
+                  <CreateBatchPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="batches/:uuid/edit"
+            element={
+              <RequirePermission moduleKey="inventory">
+                <SuspenseWrapper>
+                  <EditBatchPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="batches/:uuid"
+            element={
+              <RequirePermission moduleKey="inventory">
+                <SuspenseWrapper>
+                  <BatchDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+
           {/* Delivery Notes */}
           <Route
             path="delivery-notes"
@@ -1154,6 +1212,28 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
+
+          {/* Withholding Certificates */}
+          <Route
+            path="withholding-certificates"
+            element={
+              <RequirePermission permission="withholding.view">
+                <SuspenseWrapper>
+                  <WithholdingCertificatesList />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="withholding-certificates/:id"
+            element={
+              <RequirePermission permission="withholding.view">
+                <SuspenseWrapper>
+                  <WithholdingCertificateDetail />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
         </Route>
 
         {/* Reports */}
@@ -1399,6 +1479,16 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
+          <Route
+            path="units"
+            element={
+              <RequirePermission permission="uom.view">
+                <SuspenseWrapper>
+                  <UnitsSettingsPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
 
           {/* Import Wizard */}
           <Route
@@ -1489,26 +1579,6 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
-          <Route
-            path="ingredients/new"
-            element={
-              <RequirePermission permission="settings.manage">
-                <SuspenseWrapper>
-                  <IngredientFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
-            }
-          />
-          <Route
-            path="ingredients/:id"
-            element={
-              <RequirePermission permission="settings.manage">
-                <SuspenseWrapper>
-                  <IngredientFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
-            }
-          />
 
           <Route
             path="certifications"
@@ -1516,26 +1586,6 @@ export function AppRoutes() {
               <RequirePermission permission="settings.manage">
                 <SuspenseWrapper>
                   <CertificationListPage />
-                </SuspenseWrapper>
-              </RequirePermission>
-            }
-          />
-          <Route
-            path="certifications/new"
-            element={
-              <RequirePermission permission="settings.manage">
-                <SuspenseWrapper>
-                  <CertificationFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
-            }
-          />
-          <Route
-            path="certifications/:id"
-            element={
-              <RequirePermission permission="settings.manage">
-                <SuspenseWrapper>
-                  <CertificationFormPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -1551,26 +1601,6 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
-          <Route
-            path="health-claims/new"
-            element={
-              <RequirePermission permission="settings.manage">
-                <SuspenseWrapper>
-                  <HealthClaimFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
-            }
-          />
-          <Route
-            path="health-claims/:id"
-            element={
-              <RequirePermission permission="settings.manage">
-                <SuspenseWrapper>
-                  <HealthClaimFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
-            }
-          />
 
           <Route
             path="key-components"
@@ -1582,22 +1612,17 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
+        </Route>
+
+        {/* POS Module - Administrative Pages (Inside Layout) */}
+        <Route path="pos">
+          {/* Terminals - Admin page for managing POS terminals */}
           <Route
-            path="key-components/new"
+            path="terminals"
             element={
-              <RequirePermission permission="settings.manage">
+              <RequirePermission module="pos">
                 <SuspenseWrapper>
-                  <KeyComponentFormPage />
-                </SuspenseWrapper>
-              </RequirePermission>
-            }
-          />
-          <Route
-            path="key-components/:id"
-            element={
-              <RequirePermission permission="settings.manage">
-                <SuspenseWrapper>
-                  <KeyComponentFormPage />
+                  <POSTerminalsPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -1614,6 +1639,32 @@ export function AppRoutes() {
         {/* Catch-all redirect */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>
+
+      {/* POS Module - Fullscreen Transaction Interface (Outside Layout) */}
+      <Route
+        path="/pos/transactions"
+        element={
+          <RequireAuth>
+            <RequirePermission module="pos">
+              <SuspenseWrapper>
+                <POSTransactionsPage />
+              </SuspenseWrapper>
+            </RequirePermission>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/pos/shifts"
+        element={
+          <RequireAuth>
+            <RequirePermission module="pos">
+              <SuspenseWrapper>
+                <POSShiftsPage />
+              </SuspenseWrapper>
+            </RequirePermission>
+          </RequireAuth>
+        }
+      />
     </Routes>
   )
 }
