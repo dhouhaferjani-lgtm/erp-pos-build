@@ -1,7 +1,9 @@
 import { useState } from 'react'
-import { POSPage } from '@/features/pos'
-import { AdvancedPaymentsModal, type PaymentData } from '@/features/pos/organisms'
-import type { Product, CartItem } from '@/features/pos'
+// Import directly from the NEW feature-rich POS (191 tests)
+import { POSPage } from '@/features/pos/pages/POSPage/POSPage'
+import { AdvancedPaymentsModal, type PaymentData } from '@/features/pos/organisms/AdvancedPaymentsModal/AdvancedPaymentsModal'
+import type { Product } from '@/features/pos/molecules/ProductCard/ProductCard'
+import type { CartItem } from '@/features/pos/molecules/CartLineItem/CartLineItem'
 
 // Mock product data for demo
 const mockProducts: Product[] = [
