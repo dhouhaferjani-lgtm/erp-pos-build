@@ -1,0 +1,155 @@
+import { useTranslation } from 'react-i18next'
+import { Edit2, Trash2, Power, PowerOff } from 'lucide-react'
+import { TerminalStatusBadge } from './TerminalStatusBadge'
+import type { Terminal } from '../hooks/useTerminals'
+
+interface TerminalListProps {
+  terminals: Terminal[]
+  isLoading?: boolean
+  onEdit: (terminal: Terminal) => void
+  onDelete: (terminal: Terminal) => void
+  onActivate: (terminal: Terminal) => void
+  onDeactivate: (terminal: Terminal) => void
+}
+
+/**
+ * Table component to display list of terminals with actions
+ */
+export function TerminalList({
+  terminals,
+  isLoading = false,
+  onEdit,
+  onDelete,
+  onActivate,
+  onDeactivate,
+}: TerminalListProps) {
+  const { t } = useTranslation()
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-gray-500">{t('common.loading')}</div>
+      </div>
+    )
+  }
+
+  if (terminals.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-gray-900 text-lg font-medium">
+          {t('pos.terminal.noTerminals')}
+        </div>
+        <p className="mt-1 text-gray-500">
+          {t('pos.terminal.noTerminalsDescription')}
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200">
+        <thead className="bg-gray-50">
+          <tr>
+            <th
+              scope="col"
+              className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider"
+            >
+              {t('pos.terminal.code')}
+            </th>
+            <th
+              scope="col"
+              className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider"
+            >
+              {t('pos.terminal.name')}
+            </th>
+            <th
+              scope="col"
+              className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider"
+            >
+              {t('pos.terminal.location')}
+            </th>
+            <th
+              scope="col"
+              className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider"
+            >
+              {t('pos.terminal.status')}
+            </th>
+            <th
+              scope="col"
+              className="px-6 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wider"
+            >
+              {t('common.actions')}
+            </th>
+          </tr>
+        </thead>
+        <tbody className="bg-white divide-y divide-gray-200">
+          {terminals.map((terminal) => (
+            <tr key={terminal.id} className="hover:bg-gray-50">
+              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                {terminal.code}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap">
+                <div className="text-sm font-medium text-gray-900">
+                  {terminal.name}
+                </div>
+                {terminal.description && (
+                  <div className="text-sm text-gray-500">
+                    {terminal.description}
+                  </div>
+                )}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                {terminal.location?.name || '-'}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap">
+                <TerminalStatusBadge isActive={terminal.is_active} />
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-end text-sm font-medium">
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { onEdit(terminal) }}
+                    className="text-blue-600 hover:text-blue-900"
+                    title={t('common.edit')}
+                  >
+                    <Edit2 className="h-4 w-4" />
+                  </button>
+
+                  {terminal.is_active ? (
+                    <button
+                      type="button"
+                      onClick={() => { onDeactivate(terminal) }}
+                      className="text-orange-600 hover:text-orange-900"
+                      title={t('pos.terminal.deactivate')}
+                    >
+                      <PowerOff className="h-4 w-4" />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => { onActivate(terminal) }}
+                      className="text-green-600 hover:text-green-900"
+                      title={t('pos.terminal.activate')}
+                    >
+                      <Power className="h-4 w-4" />
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => { onDelete(terminal) }}
+                    className="text-red-600 hover:text-red-900"
+                    title={t('common.delete')}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
