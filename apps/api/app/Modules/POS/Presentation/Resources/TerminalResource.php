@@ -1,0 +1,43 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\POS\Presentation\Resources;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+/**
+ * @mixin \App\Modules\POS\Domain\Terminal
+ */
+final class TerminalResource extends JsonResource
+{
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(Request $request): array
+    {
+        return [
+            'id' => $this->id,
+            'code' => $this->code,
+            'name' => $this->name,
+            'description' => $this->description,
+            'location_id' => $this->location_id,
+            'location' => $this->whenLoaded('location', function () {
+                return [
+                    'id' => $this->location->id,
+                    'name' => $this->location->name,
+                    'code' => $this->location->code,
+                ];
+            }),
+            'is_active' => $this->is_active,
+            'activated_at' => $this->activated_at?->toISOString(),
+            'deactivated_at' => $this->deactivated_at?->toISOString(),
+            'deactivation_reason' => $this->deactivation_reason,
+            'current_sequence' => $this->current_sequence,
+            'current_year' => $this->current_year,
+            'created_at' => $this->created_at->toISOString(),
+            'updated_at' => $this->updated_at->toISOString(),
+        ];
+    }
+}

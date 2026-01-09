@@ -1,0 +1,162 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\POS\Domain\Services;
+
+use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Exceptions\ShiftAlreadyOpenException;
+use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
+use App\Modules\POS\Domain\Shift;
+use App\Modules\POS\Domain\Terminal;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Service for managing POS shift lifecycle.
+ *
+ * Handles opening and closing of cashier work sessions with cash drawer tracking.
+ * Enforces business rules: only one open shift per terminal at a time.
+ */
+final class ShiftManagementService
+{
+    public function __construct(
+        private readonly CashDrawerService $cashDrawerService
+    ) {}
+
+    /**
+     * Open a new shift with opening balance
+     *
+     * Business Rules:
+     * - Only one open shift per terminal at a time (enforced by database unique index)
+     * - Shift number is sequential and never resets
+     * - Creates OPENING cash drawer operation
+     *
+     * @param  Terminal  $terminal  The terminal to open shift on
+     * @param  User  $cashier  The cashier opening the shift
+     * @param  string  $openingCash  Opening cash amount (decimal string)
+     *
+     * @throws ShiftAlreadyOpenException If terminal already has an open shift
+     */
+    public function openShift(
+        Terminal $terminal,
+        User $cashier,
+        string $openingCash
+    ): Shift {
+        // Check for existing open shift
+        $existingOpenShift = Shift::where('terminal_id', $terminal->id)
+            ->where('status', 'OPEN')
+            ->first();
+
+        if ($existingOpenShift) {
+            throw ShiftAlreadyOpenException::forTerminal($terminal->id);
+        }
+
+        return DB::transaction(function () use ($terminal, $cashier, $openingCash) {
+            // Get next shift number
+            $lastShift = Shift::where('terminal_id', $terminal->id)
+                ->orderByDesc('shift_number')
+                ->first();
+
+            $shiftNumber = $lastShift ? $lastShift->shift_number + 1 : 1;
+
+            // Create shift
+            $shift = Shift::create([
+                'terminal_id' => $terminal->id,
+                'cashier_id' => $cashier->id,
+                'shift_number' => $shiftNumber,
+                'opening_cash' => $openingCash,
+                'status' => 'OPEN',
+                'opened_at' => now(),
+            ]);
+
+            // Record opening cash drawer operation
+            $this->cashDrawerService->recordOpening($shift, $openingCash, $cashier);
+
+            return $shift->fresh();
+        });
+    }
+
+    /**
+     * Close current shift with cash count
+     *
+     * Business Rules:
+     * - Shift must be in OPEN status
+     * - Calculates expected cash from opening + sales - payouts + deposits
+     * - Calculates variance (actual - expected)
+     * - Creates CLOSING cash drawer operation
+     *
+     * @param  Shift  $shift  The shift to close
+     * @param  string  $actualCash  Counted cash amount (decimal string)
+     * @param  User  $closedBy  User closing the shift
+     *
+     * @throws ShiftNotOpenException If shift is not in OPEN status
+     */
+    public function closeShift(
+        Shift $shift,
+        string $actualCash,
+        User $closedBy
+    ): Shift {
+        if (! $shift->isOpen()) {
+            throw ShiftNotOpenException::forShift($shift->id);
+        }
+
+        return DB::transaction(function () use ($shift, $actualCash, $closedBy) {
+            // Calculate expected cash
+            $expectedCash = $this->cashDrawerService->calculateExpectedCash($shift);
+
+            // Calculate variance
+            $variance = bcsub($actualCash, $expectedCash, 2);
+
+            // Update shift
+            $shift->update([
+                'status' => 'CLOSED',
+                'expected_cash' => $expectedCash,
+                'actual_cash' => $actualCash,
+                'variance' => $variance,
+                'closed_at' => now(),
+                'closed_by' => $closedBy->id,
+            ]);
+
+            // Record closing cash drawer operation
+            $this->cashDrawerService->recordClosing($shift, $actualCash, $closedBy);
+
+            return $shift->fresh();
+        });
+    }
+
+    /**
+     * Get current open shift for terminal
+     *
+     * @param  Terminal  $terminal  The terminal to check
+     * @return Shift|null The open shift or null if none
+     */
+    public function getCurrentShift(Terminal $terminal): ?Shift
+    {
+        return Shift::where('terminal_id', $terminal->id)
+            ->where('status', 'OPEN')
+            ->first();
+    }
+
+    /**
+     * Check if terminal has an open shift
+     *
+     * @param  Terminal  $terminal  The terminal to check
+     * @return bool True if terminal has an open shift
+     */
+    public function hasOpenShift(Terminal $terminal): bool
+    {
+        return $this->getCurrentShift($terminal) !== null;
+    }
+
+    /**
+     * Get shift by ID with validation
+     *
+     * @param  string  $shiftId  The shift ID
+     *
+     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException
+     */
+    public function getShiftById(string $shiftId): Shift
+    {
+        return Shift::findOrFail($shiftId);
+    }
+}
