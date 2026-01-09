@@ -103,6 +103,17 @@ class PermissionSeeder extends Seeder
             'payments.refund',
             'payments.reverse',
 
+            // Treasury - Withholding Certificates
+            'withholding.view',
+            'withholding.create',
+            'withholding.issue',
+            'withholding.void',
+            'withholding.submit',
+            'withholding.delete',
+
+            // Taxation - Withholding Rules (Admin)
+            'taxation.withholding_rules.manage',
+
             // Inventory
             'inventory.view',
             'inventory.adjust',
@@ -128,6 +139,22 @@ class PermissionSeeder extends Seeder
             'pricing.sell_below_cost',
             'pricing.view_cost_prices',
             'pricing.manage_pricing_rules',
+
+            // Units of Measure (UOM)
+            'uom.view',
+            'uom.create',
+            'uom.edit',
+            'uom.delete',
+
+            // POS (Point of Sale)
+            'pos.view',              // View POS screens
+            'pos.operate',           // Operate cash register
+            'pos.manage_terminals',  // Create/edit terminals
+            'pos.open_shift',        // Open shift
+            'pos.close_shift',       // Close shift
+            'pos.cash_drawer',       // Deposits and payouts
+            'pos.reports',           // Generate X/Z reports
+            'pos.admin',             // Full POS administration
         ];
 
         // Create all permissions for 'sanctum' guard (API authentication)
@@ -160,6 +187,8 @@ class PermissionSeeder extends Seeder
             'inventory.view',
             'reports.view',
             'pricing.view',
+            // POS Management
+            'pos.view', 'pos.operate', 'pos.manage_terminals', 'pos.open_shift', 'pos.close_shift', 'pos.cash_drawer', 'pos.reports',
         ]);
 
         // 3. Accountant
@@ -173,6 +202,7 @@ class PermissionSeeder extends Seeder
             'repositories.view', 'repositories.manage',
             'instruments.view', 'instruments.create', 'instruments.transfer', 'instruments.clear',
             'payments.view', 'payments.create', 'payments.refund', 'payments.reverse',
+            'withholding.view', 'withholding.create', 'withholding.issue', 'withholding.void', 'withholding.submit', 'withholding.delete',
             'accounts.view', 'accounts.manage',
             'journal.view', 'journal.create', 'journal.post',
             'ledger.view',
@@ -209,6 +239,19 @@ class PermissionSeeder extends Seeder
             'vehicles.view', 'vehicles.create',
             'quotes.view',
             'payments.view',
+        ]);
+
+        // 7. Cashier (POS Operator)
+        $cashier = Role::firstOrCreate(['name' => 'Cashier', 'guard_name' => 'sanctum']);
+        $cashier->syncPermissions([
+            'products.view',
+            'partners.view', 'partners.create',
+            'pos.view',
+            'pos.operate',
+            'pos.open_shift',
+            'pos.close_shift',
+            'pos.cash_drawer',
+            'payments.view', 'payments.create',
         ]);
 
         $this->command->info('Permissions and roles seeded successfully!');
