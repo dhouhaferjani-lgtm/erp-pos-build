@@ -153,13 +153,13 @@ const FraudAlertsPage = lazy(() => import('../features/compliance/pages/FraudAle
 
 // Parapharmacy module
 const IngredientListPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.IngredientListPage })))
-// const IngredientFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.IngredientFormPage })))
+const IngredientFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.IngredientFormPage })))
 const CertificationListPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.CertificationListPage })))
-// const CertificationFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.CertificationFormPage })))
+const CertificationFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.CertificationFormPage })))
 const HealthClaimListPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.HealthClaimListPage })))
-// const HealthClaimFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.HealthClaimFormPage })))
+const HealthClaimFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.HealthClaimFormPage })))
 const KeyComponentListPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.KeyComponentListPage })))
-// const KeyComponentFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.KeyComponentFormPage })))
+const KeyComponentFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.KeyComponentFormPage })))
 
 // POS module
 const POSTerminalsPage = lazy(() => import('../pages/POS/Terminals').then((m) => ({ default: m.TerminalsPage })))
@@ -1579,6 +1579,26 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
+          <Route
+            path="ingredients/new"
+            element={
+              <RequirePermission permission="settings.manage">
+                <SuspenseWrapper>
+                  <IngredientFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="ingredients/:id"
+            element={
+              <RequirePermission permission="settings.manage">
+                <SuspenseWrapper>
+                  <IngredientFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
 
           <Route
             path="certifications"
@@ -1586,6 +1606,26 @@ export function AppRoutes() {
               <RequirePermission permission="settings.manage">
                 <SuspenseWrapper>
                   <CertificationListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="certifications/new"
+            element={
+              <RequirePermission permission="settings.manage">
+                <SuspenseWrapper>
+                  <CertificationFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="certifications/:id"
+            element={
+              <RequirePermission permission="settings.manage">
+                <SuspenseWrapper>
+                  <CertificationFormPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -1601,6 +1641,26 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
+          <Route
+            path="health-claims/new"
+            element={
+              <RequirePermission permission="settings.manage">
+                <SuspenseWrapper>
+                  <HealthClaimFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="health-claims/:id"
+            element={
+              <RequirePermission permission="settings.manage">
+                <SuspenseWrapper>
+                  <HealthClaimFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
 
           <Route
             path="key-components"
@@ -1608,6 +1668,26 @@ export function AppRoutes() {
               <RequirePermission permission="settings.manage">
                 <SuspenseWrapper>
                   <KeyComponentListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="key-components/new"
+            element={
+              <RequirePermission permission="settings.manage">
+                <SuspenseWrapper>
+                  <KeyComponentFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="key-components/:id"
+            element={
+              <RequirePermission permission="settings.manage">
+                <SuspenseWrapper>
+                  <KeyComponentFormPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -1641,6 +1721,16 @@ export function AppRoutes() {
       </Route>
 
       {/* POS Module - Fullscreen Transaction Interface (Outside Layout) */}
+      <Route
+        path="/pos/demo"
+        element={
+          <RequireAuth>
+            <SuspenseWrapper>
+              <POSTransactionsPage />
+            </SuspenseWrapper>
+          </RequireAuth>
+        }
+      />
       <Route
         path="/pos/transactions"
         element={
