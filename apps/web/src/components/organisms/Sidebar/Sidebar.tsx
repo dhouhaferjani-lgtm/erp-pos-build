@@ -39,11 +39,18 @@ import {
   Award,
   ListChecks,
   Layers3,
+  FileCheck,
+  Store,
+  Monitor,
+  History,
+  PanelLeftClose,
+  PanelLeft,
 } from 'lucide-react'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useCompanyConfig } from '../../../contexts'
 
 const STORAGE_KEY = 'autoerp-sidebar-expanded'
+const COLLAPSED_STORAGE_KEY = 'autoerp-sidebar-collapsed'
 
 /**
  * Maps sidebar navigation keys to backend module names
@@ -108,6 +115,7 @@ const navigation: NavModule[] = [
     children: [
       { key: 'products', href: '/inventory/products', icon: Package },
       { key: 'categories', href: '/inventory/categories', icon: FolderTree },
+      { key: 'batches', href: '/inventory/batches', icon: Pill },
       { key: 'stockLevels', href: '/inventory/stock', icon: Layers },
       { key: 'stockMovements', href: '/inventory/movements', icon: ArrowLeftRight },
       { key: 'counting', href: '/inventory/counting', icon: ClipboardCheck },
@@ -133,6 +141,7 @@ const navigation: NavModule[] = [
     icon: CreditCard,
     children: [
       { key: 'payments', href: '/treasury/payments', icon: Wallet },
+      { key: 'withholdingCertificates', href: '/treasury/withholding-certificates', icon: FileCheck, module: 'withholding' },
       { key: 'expenses', href: '/expenses', icon: Receipt },
       { key: 'expenseCategories', href: '/expenses/categories', icon: FolderTree },
       { key: 'instruments', href: '/treasury/instruments', icon: CreditCard },
@@ -168,6 +177,17 @@ const navigation: NavModule[] = [
     icon: BarChart3,
   },
   {
+    key: 'pos',
+    icon: Store,
+    module: 'pos',
+    children: [
+      { key: 'terminals', href: '/pos/terminals', icon: Monitor, module: 'pos' },
+      { key: 'demo', href: '/pos/demo', icon: Store, module: 'pos' }, // NEW: Touch-optimized POS
+      { key: 'transactions', href: '/pos/transactions', icon: Receipt, module: 'pos' },
+      { key: 'shifts', href: '/pos/shifts', icon: History, module: 'pos' },
+    ],
+  },
+  {
     key: 'parapharmacy',
     icon: Pill,
     module: 'settings',
@@ -195,6 +215,21 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const location = useLocation()
   const { canAccessModule } = usePermissions()
   const { hasModule } = useCompanyConfig()
+
+  // Collapsed state with localStorage persistence
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem(COLLAPSED_STORAGE_KEY)
+      return stored === 'true'
+    } catch {
+      return false
+    }
+  })
+
+  // Persist collapsed state to localStorage
+  useEffect(() => {
+    localStorage.setItem(COLLAPSED_STORAGE_KEY, String(isCollapsed))
+  }, [isCollapsed])
 
   /**
    * Check if a module should be visible based on vertical configuration
@@ -335,24 +370,45 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
 
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 start-0 z-50 flex w-64 flex-col bg-white border-e border-gray-200 transition-transform duration-300 lg:static lg:translate-x-0 rtl:lg:-translate-x-0 ${
+        className={`fixed inset-y-0 start-0 z-50 flex flex-col bg-white border-e border-gray-200 transition-all duration-300 lg:static lg:translate-x-0 rtl:lg:-translate-x-0 ${
+          isCollapsed ? 'w-16' : 'w-64'
+        } ${
           isOpen ? 'translate-x-0 rtl:-translate-x-0' : '-translate-x-full rtl:translate-x-full'
         }`}
       >
         {/* Logo */}
-        <div className="flex h-16 items-center justify-between px-6 border-b border-gray-200">
-          <span className="text-xl font-bold text-gray-900">{t('appName')}</span>
-          {/* Mobile close button */}
-          {onClose && (
+        <div className={`flex h-16 items-center border-b border-gray-200 ${
+          isCollapsed ? 'justify-center px-2' : 'justify-between px-6'
+        }`}>
+          {!isCollapsed && (
+            <span className="text-xl font-bold text-gray-900">{t('appName')}</span>
+          )}
+          <div className="flex items-center gap-2">
+            {/* Collapse/Expand toggle (desktop only) */}
             <button
               type="button"
-              onClick={onClose}
-              className="rounded-lg p-1 text-gray-500 hover:bg-gray-100 lg:hidden"
-              aria-label={t('actions.close')}
+              onClick={() => { setIsCollapsed(!isCollapsed) }}
+              className="hidden lg:block rounded-lg p-1 text-gray-500 hover:bg-gray-100"
+              aria-label={isCollapsed ? t('actions.expand') : t('actions.collapse')}
             >
-              <X className="h-5 w-5" />
+              {isCollapsed ? (
+                <PanelLeft className="h-5 w-5" />
+              ) : (
+                <PanelLeftClose className="h-5 w-5" />
+              )}
             </button>
-          )}
+            {/* Mobile close button */}
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg p-1 text-gray-500 hover:bg-gray-100 lg:hidden"
+                aria-label={t('actions.close')}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Navigation */}
@@ -375,10 +431,11 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                         isActive
                           ? 'bg-blue-50 text-blue-700'
                           : 'text-gray-700 hover:bg-gray-100'
-                      }`}
+                      } ${isCollapsed ? 'justify-center' : ''}`}
+                      title={isCollapsed ? t(`navigation.${module.key}`) : undefined}
                     >
                       <Icon className="h-5 w-5 flex-shrink-0" />
-                      {t(`navigation.${module.key}`)}
+                      {!isCollapsed && t(`navigation.${module.key}`)}
                     </Link>
                   </li>
                 )
@@ -394,21 +451,26 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                       isActive
                         ? 'bg-blue-50 text-blue-700'
                         : 'text-gray-700 hover:bg-gray-100'
-                    }`}
+                    } ${isCollapsed ? 'justify-center' : ''}`}
                     aria-expanded={isExpanded}
                     aria-label={`${t(`navigation.${module.key}`)} - ${isExpanded ? t('actions.collapse') : t('actions.expand')}`}
+                    title={isCollapsed ? t(`navigation.${module.key}`) : undefined}
                   >
                     <Icon className="h-5 w-5 flex-shrink-0" />
-                    <span className="flex-1 text-start">{t(`navigation.${module.key}`)}</span>
-                    {isExpanded ? (
-                      <ChevronDown className="h-4 w-4 flex-shrink-0" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4 flex-shrink-0 rtl:rotate-180" />
+                    {!isCollapsed && (
+                      <>
+                        <span className="flex-1 text-start">{t(`navigation.${module.key}`)}</span>
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4 flex-shrink-0" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 flex-shrink-0 rtl:rotate-180" />
+                        )}
+                      </>
                     )}
                   </button>
 
                   {/* Children */}
-                  {isExpanded && module.children && (
+                  {isExpanded && !isCollapsed && module.children && (
                     <ul className="mt-1 space-y-1 ps-4">
                       {module.children.map((child) => {
                         const ChildIcon = child.icon
