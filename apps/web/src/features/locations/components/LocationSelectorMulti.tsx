@@ -76,7 +76,7 @@ export function LocationSelectorMulti({
 
   // Fetch locations
   const { data: locationsResponse, isLoading } = useLocations()
-  const locations = locationsResponse?.data ?? []
+  const locations = locationsResponse ?? []
 
   // Filter active locations and by search query
   const filteredLocations = useMemo(() => {

@@ -1,12 +1,11 @@
-import { api } from '@/lib/api'
-import type { LocationsResponse, Location } from '../types'
+import { apiGet } from '@/lib/api'
+import type { Location } from '../types'
 
 /**
  * Get all locations for the current company
  */
-export async function getLocations(): Promise<LocationsResponse> {
-  const response = await api.get<LocationsResponse>('/locations')
-  return response.data
+export async function getLocations(): Promise<Location[]> {
+  return apiGet<Location[]>('/locations')
 }
 
 /**

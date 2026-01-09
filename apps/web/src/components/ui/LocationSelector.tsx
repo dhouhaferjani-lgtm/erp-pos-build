@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Search, X, ChevronDown, MapPin } from 'lucide-react'
 import { api } from '../../lib/api'
+import { getLocations } from '../../features/locations/api/locations'
 
 interface Location {
   id: string
@@ -11,10 +12,6 @@ interface Location {
   address?: string
   is_default: boolean
   is_active: boolean
-}
-
-interface LocationsResponse {
-  data: Location[]
 }
 
 interface LocationSelectorProps {
@@ -42,18 +39,10 @@ export function LocationSelector({
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Fetch locations with search
-  const { data: locationsData, isLoading } = useQuery({
-    queryKey: ['locations-search', searchQuery],
-    queryFn: async () => {
-      const params = new URLSearchParams()
-      if (searchQuery) {
-        params.append('search', searchQuery)
-      }
-      const query = params.toString()
-      const response = await api.get<LocationsResponse>(`/locations${query ? `?${query}` : ''}`)
-      return response.data
-    },
+  // Fetch all locations
+  const { data: allLocations, isLoading } = useQuery({
+    queryKey: ['locations'],
+    queryFn: getLocations,
     enabled: isOpen,
     staleTime: 30000,
   })
@@ -69,7 +58,16 @@ export function LocationSelector({
     staleTime: 60000,
   })
 
-  const locations = locationsData?.data ?? []
+  // Filter locations by search query
+  const locations = (allLocations ?? []).filter((location) => {
+    if (!searchQuery) return true
+    const query = searchQuery.toLowerCase()
+    return (
+      location.name.toLowerCase().includes(query) ||
+      location.code.toLowerCase().includes(query)
+    )
+  })
+
   const selectedLocation = selectedLocationData
 
   // Close dropdown when clicking outside

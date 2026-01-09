@@ -8,6 +8,7 @@ import { SearchInput } from '../../components/ui/SearchInput'
 import { FilterTabs } from '../../components/ui/FilterTabs'
 import { LocationSelector } from '../location/LocationSelector'
 import { useLocation } from '../../hooks/useLocation'
+import { getLocations } from '../locations/api/locations'
 
 interface StockLevel {
   id: string
@@ -67,10 +68,7 @@ export function StockLevelsPage() {
   // Fetch all locations for transfer
   const { data: locationsData } = useQuery({
     queryKey: ['locations'],
-    queryFn: async () => {
-      const response = await api.get<{ data: Array<{ id: string; name: string; code: string }> }>('/locations')
-      return response.data
-    },
+    queryFn: getLocations,
   })
 
   const { data, isLoading, error } = useQuery({
@@ -237,9 +235,9 @@ export function StockLevelsPage() {
 
   // Filter out the current location from transfer destinations
   const transferLocations = useMemo(() => {
-    if (!selectedStock || !locationsData?.data) return []
-    return locationsData.data.filter(loc => loc.id !== selectedStock.location_id)
-  }, [selectedStock, locationsData?.data])
+    if (!selectedStock || !locationsData) return []
+    return locationsData.filter(loc => loc.id !== selectedStock.location_id)
+  }, [selectedStock, locationsData])
 
   return (
     <div className="space-y-6">

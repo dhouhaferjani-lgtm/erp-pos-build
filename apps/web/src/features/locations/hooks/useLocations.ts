@@ -1,6 +1,6 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import { getLocations, getLocation } from '../api/locations'
-import type { LocationsResponse, Location } from '../types'
+import type { Location } from '../types'
 
 /**
  * Query key factory for locations
@@ -16,7 +16,7 @@ export const locationKeys = {
 /**
  * Hook to fetch list of locations
  */
-export function useLocations(): UseQueryResult<LocationsResponse> {
+export function useLocations(): UseQueryResult<Location[]> {
   return useQuery({
     queryKey: locationKeys.list(),
     queryFn: () => getLocations(),
