@@ -14,9 +14,11 @@ export function DashboardLayout() {
       <div className="flex flex-1 flex-col overflow-hidden lg:ps-0">
         <EmailVerificationBanner />
         <TopBar onMenuClick={() => { setSidebarOpen(true) }} />
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <main className="flex flex-1 flex-col overflow-y-auto p-4 sm:p-6">
           <Breadcrumb />
-          <Outlet />
+          <div className="flex flex-1 flex-col">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

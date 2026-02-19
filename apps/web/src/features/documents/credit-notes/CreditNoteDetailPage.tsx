@@ -3,14 +3,16 @@ import { Link, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Calendar, Building2, FileText, Check, Printer, Send, Download, Eye, Car, MinusCircle, Lock } from 'lucide-react'
+import { ArrowLeft, Calendar, Building2, FileText, Lock } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { formatCurrency } from '../../../lib/format'
+import { Button } from '../../../components/atoms/Button/Button'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { Modal } from '../../../components/organisms'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
 import { DocumentTotals } from '../components/DocumentTotals'
 import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail } from '../hooks'
+import { DocumentActionBar } from '../components/DocumentActionBar'
 import { useCompany } from '../../../hooks/useCompany'
 import type { Document } from '../../../types/document'
 
@@ -112,8 +114,6 @@ export function CreditNoteDetailPage() {
     )
   }
 
-  const isDraft = creditNote.status === 'draft'
-  const isConfirmed = creditNote.status === 'confirmed'
   const isPosted = creditNote.status === 'posted'
 
   return (
@@ -148,67 +148,24 @@ export function CreditNoteDetailPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {isDraft && (
-              <button
-                onClick={() => setConfirmAction('confirm')}
-                disabled={confirmMutation.isPending}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-              >
-                <Check className="w-4 h-4" />
-                {t('documents.confirm')}
-              </button>
-            )}
-
-            {isConfirmed && (
-              <button
-                onClick={() => setConfirmAction('post')}
-                disabled={postMutation.isPending}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
-              >
-                <Lock className="w-4 h-4" />
-                {t('invoices.post')}
-              </button>
-            )}
-
-            <div className="flex items-center gap-1 border-l pl-2">
-              <button
-                onClick={() => handlePreviewPdf(creditNote.id)}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md"
-                title={t('common:preview')}
-              >
-                <Eye className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => handleDownloadPdf(creditNote.id, creditNote.document_number)}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md"
-                title={t('common:download')}
-              >
-                <Download className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => handlePrintPdf(creditNote.id)}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md"
-                title={t('common:print')}
-              >
-                <Printer className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => {
-                  setEmailForm({
-                    ...emailForm,
-                    recipientEmail: creditNote.partner_email || '',
-                    subject: `${t('creditNotes.emailSubject')} ${creditNote.document_number}`,
-                  })
-                  setShowEmailModal(true)
-                }}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md"
-                title={t('common:send')}
-              >
-                <Send className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
+          <DocumentActionBar
+            document={creditNote}
+            basePath="/sales/credit-notes"
+            isActionPending={confirmMutation.isPending || postMutation.isPending}
+            onConfirm={() => setConfirmAction('confirm')}
+            onPost={() => setConfirmAction('post')}
+            onDownloadPdf={() => handleDownloadPdf(creditNote.id, creditNote.document_number)}
+            onPreviewPdf={() => handlePreviewPdf(creditNote.id)}
+            onPrintPdf={() => handlePrintPdf(creditNote.id)}
+            onSendEmail={() => {
+              setEmailForm({
+                ...emailForm,
+                recipientEmail: creditNote.partner_email || '',
+                subject: `${t('creditNotes.emailSubject')} ${creditNote.document_number}`,
+              })
+              setShowEmailModal(true)
+            }}
+          />
         </div>
       </div>
 
@@ -398,19 +355,19 @@ export function CreditNoteDetailPage() {
             />
           </div>
           <div className="flex justify-end gap-3">
-            <button
+            <Button
+              variant="secondary"
               onClick={() => setShowEmailModal(false)}
-              className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               {t('common:cancel')}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="primary"
               onClick={handleSendEmail}
               disabled={sendEmailMutation.isPending || !emailForm.recipientEmail}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
             >
               {sendEmailMutation.isPending ? t('common.sending') : t('common:send')}
-            </button>
+            </Button>
           </div>
         </div>
       </Modal>

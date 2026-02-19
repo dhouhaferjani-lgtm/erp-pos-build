@@ -5,18 +5,21 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useForm, Controller } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ArrowLeft, AlertCircle, Receipt } from 'lucide-react'
+import { ArrowLeft, Receipt } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
+import { useCompany } from '@/hooks/useCompany'
 import { PartnerSearchSelect } from '@/components/ui/PartnerSearchSelect'
 import { InvoiceSearchSelect } from '@/components/ui/InvoiceSearchSelect'
 import { DocumentLineEditor, type DocumentLine } from '@/components/documents/DocumentLineEditor'
+import { Button } from '@/components/atoms/Button/Button'
+import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
 import type { Invoice } from '@mecanospex/shared/types/generated'
 
 const creditNoteSchema = z.object({
@@ -44,6 +47,7 @@ export function CreateCreditNotePage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
+  const { currentCompany } = useCompany()
 
   // Mode states
   const [creditMode, setCreditMode] = useState<CreditMode>('invoice')
@@ -243,7 +247,7 @@ export function CreateCreditNotePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="flex min-h-full flex-col bg-gray-50">
       {/* Header */}
       <div className="border-b border-gray-200 bg-white">
         <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
@@ -267,57 +271,71 @@ export function CreateCreditNotePage() {
       </div>
 
       {/* Main Content */}
-      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
-        <form onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="space-y-6">
+      <div className="mx-auto flex flex-1 flex-col max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+        <form onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="flex flex-1 flex-col gap-6">
           {/* Mode Selection */}
           <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h2 className="text-lg font-medium text-gray-900 mb-4">
+            <h2 id="credit-mode-label" className="text-lg font-medium text-gray-900 mb-4">
               {t('sales:creditNotes.form.creditMode')}
             </h2>
-            <div className="flex gap-4">
-              <button
-                type="button"
-                onClick={() => { setCreditMode('invoice'); }}
-                className={`flex-1 rounded-lg border-2 p-4 text-start transition-all ${
+            <div role="radiogroup" aria-labelledby="credit-mode-label" className="flex gap-4">
+              <label
+                className={`flex-1 rounded-lg border-2 p-4 cursor-pointer transition-all ${
                   creditMode === 'invoice'
                     ? 'border-blue-500 bg-blue-50'
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
+                <input
+                  type="radio"
+                  name="creditMode"
+                  value="invoice"
+                  checked={creditMode === 'invoice'}
+                  onChange={() => { setCreditMode('invoice'); }}
+                  className="sr-only"
+                  aria-describedby="invoice-mode-desc"
+                />
                 <div className="flex items-center gap-3">
-                  <Receipt className={`h-5 w-5 ${creditMode === 'invoice' ? 'text-blue-600' : 'text-gray-400'}`} />
+                  <Receipt className={`h-5 w-5 ${creditMode === 'invoice' ? 'text-blue-600' : 'text-gray-400'}`} aria-hidden="true" />
                   <div>
                     <p className="font-medium text-gray-900">
                       {t('sales:creditNotes.form.fromInvoice')}
                     </p>
-                    <p className="text-sm text-gray-500">
+                    <p id="invoice-mode-desc" className="text-sm text-gray-500">
                       {t('sales:creditNotes.form.fromInvoiceDesc', 'Credit an existing invoice')}
                     </p>
                   </div>
                 </div>
-              </button>
+              </label>
 
-              <button
-                type="button"
-                onClick={() => { setCreditMode('customer'); }}
-                className={`flex-1 rounded-lg border-2 p-4 text-start transition-all ${
+              <label
+                className={`flex-1 rounded-lg border-2 p-4 cursor-pointer transition-all ${
                   creditMode === 'customer'
                     ? 'border-blue-500 bg-blue-50'
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
+                <input
+                  type="radio"
+                  name="creditMode"
+                  value="customer"
+                  checked={creditMode === 'customer'}
+                  onChange={() => { setCreditMode('customer'); }}
+                  className="sr-only"
+                  aria-describedby="customer-mode-desc"
+                />
                 <div className="flex items-center gap-3">
-                  <Receipt className={`h-5 w-5 ${creditMode === 'customer' ? 'text-blue-600' : 'text-gray-400'}`} />
+                  <Receipt className={`h-5 w-5 ${creditMode === 'customer' ? 'text-blue-600' : 'text-gray-400'}`} aria-hidden="true" />
                   <div>
                     <p className="font-medium text-gray-900">
                       {t('sales:creditNotes.form.fromCustomer')}
                     </p>
-                    <p className="text-sm text-gray-500">
+                    <p id="customer-mode-desc" className="text-sm text-gray-500">
                       {t('sales:creditNotes.form.fromCustomerDesc', 'Create without source invoice')}
                     </p>
                   </div>
                 </div>
-              </button>
+              </label>
             </div>
           </div>
 
@@ -368,26 +386,32 @@ export function CreateCreditNotePage() {
 
               {/* Issue Date */}
               <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  {t('sales:documents.date')} <span className="text-red-500">*</span>
+                <label htmlFor="issue_date" className="block text-sm font-medium text-gray-700">
+                  {t('sales:documents.date')} <span className="text-red-500" aria-label="required">*</span>
                 </label>
                 <input
+                  id="issue_date"
                   type="date"
                   {...register('issue_date')}
+                  aria-required="true"
+                  aria-invalid={errors.issue_date ? 'true' : 'false'}
+                  aria-describedby={errors.issue_date ? 'issue_date-error' : undefined}
                   className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
                 {errors.issue_date && (
-                  <p className="mt-1 text-sm text-red-600">{errors.issue_date.message}</p>
+                  <p id="issue_date-error" className="mt-1 text-sm text-red-600" role="alert">{errors.issue_date.message}</p>
                 )}
               </div>
 
               {/* Reason */}
               <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  {t('sales:creditNotes.reason.title')} <span className="text-red-500">*</span>
+                <label htmlFor="reason" className="block text-sm font-medium text-gray-700">
+                  {t('sales:creditNotes.reason.title')} <span className="text-red-500" aria-label="required">*</span>
                 </label>
                 <select
+                  id="reason"
                   {...register('reason')}
+                  aria-required="true"
                   className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   <option value="return">{t('sales:creditNotes.reason.return')}</option>
@@ -417,67 +441,84 @@ export function CreateCreditNotePage() {
           {/* Line Mode Selection (invoice mode only) */}
           {creditMode === 'invoice' && selectedInvoice && (
             <div className="rounded-lg border border-gray-200 bg-white p-6">
-              <h2 className="text-lg font-medium text-gray-900 mb-4">
+              <h2 id="line-mode-label" className="text-lg font-medium text-gray-900 mb-4">
                 {t('sales:creditNotes.form.lineSelection')}
               </h2>
-              <div className="flex gap-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLineMode('all')
-                    // Select all lines
-                    const allLineIds = new Set(lines.map(l => l.id))
-                    setSelectedLineIds(allLineIds)
-                  }}
-                  className={`flex-1 rounded-lg border-2 p-4 text-start transition-all ${
+              <div role="radiogroup" aria-labelledby="line-mode-label" className="flex gap-4">
+                <label
+                  className={`flex-1 rounded-lg border-2 p-4 cursor-pointer transition-all ${
                     lineMode === 'all'
                       ? 'border-blue-500 bg-blue-50'
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
+                  <input
+                    type="radio"
+                    name="lineMode"
+                    value="all"
+                    checked={lineMode === 'all'}
+                    onChange={() => {
+                      setLineMode('all')
+                      // Select all lines
+                      const allLineIds = new Set(lines.map(l => l.id))
+                      setSelectedLineIds(allLineIds)
+                    }}
+                    className="sr-only"
+                    aria-describedby="line-mode-all-desc"
+                  />
                   <p className="font-medium text-gray-900">
                     {t('sales:creditNotes.form.creditAll')}
                   </p>
-                  <p className="text-sm text-gray-500">
+                  <p id="line-mode-all-desc" className="text-sm text-gray-500">
                     {t('sales:creditNotes.form.creditAllDesc', 'Credit all lines from invoice')}
                   </p>
-                </button>
+                </label>
 
-                <button
-                  type="button"
-                  onClick={() => { setLineMode('partial'); }}
-                  className={`flex-1 rounded-lg border-2 p-4 text-start transition-all ${
+                <label
+                  className={`flex-1 rounded-lg border-2 p-4 cursor-pointer transition-all ${
                     lineMode === 'partial'
                       ? 'border-blue-500 bg-blue-50'
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
+                  <input
+                    type="radio"
+                    name="lineMode"
+                    value="partial"
+                    checked={lineMode === 'partial'}
+                    onChange={() => { setLineMode('partial'); }}
+                    className="sr-only"
+                    aria-describedby="line-mode-partial-desc"
+                  />
                   <p className="font-medium text-gray-900">
                     {t('sales:creditNotes.form.creditPartial')}
                   </p>
-                  <p className="text-sm text-gray-500">
+                  <p id="line-mode-partial-desc" className="text-sm text-gray-500">
                     {t('sales:creditNotes.form.creditPartialDesc', 'Select specific lines and quantities')}
                   </p>
-                </button>
+                </label>
               </div>
 
               {/* Partial Line Selection */}
               {lineMode === 'partial' && lines.length > 0 && (
                 <div className="mt-6">
-                  <table className="min-w-full divide-y divide-gray-200">
+                  <table className="min-w-full divide-y divide-gray-200" aria-label="Invoice line items for credit note">
+                    <caption className="sr-only">{t('sales:creditNotes.form.selectLinesTable', 'Select invoice lines to credit')}</caption>
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="w-12 px-3 py-3"></th>
-                        <th className="px-3 py-3 text-start text-xs font-medium uppercase text-gray-500">
+                        <th scope="col" className="w-12 px-3 py-3">
+                          <span className="sr-only">{t('common:actions.select', 'Select')}</span>
+                        </th>
+                        <th scope="col" className="px-3 py-3 text-start text-xs font-medium uppercase text-gray-500">
                           {t('sales:lineItems.product')}
                         </th>
-                        <th className="px-3 py-3 text-end text-xs font-medium uppercase text-gray-500">
+                        <th scope="col" className="px-3 py-3 text-end text-xs font-medium uppercase text-gray-500">
                           {t('sales:lineItems.quantity')}
                         </th>
-                        <th className="px-3 py-3 text-end text-xs font-medium uppercase text-gray-500">
+                        <th scope="col" className="px-3 py-3 text-end text-xs font-medium uppercase text-gray-500">
                           {t('sales:lineItems.price')}
                         </th>
-                        <th className="px-3 py-3 text-end text-xs font-medium uppercase text-gray-500">
+                        <th scope="col" className="px-3 py-3 text-end text-xs font-medium uppercase text-gray-500">
                           {t('sales:lineItems.total')}
                         </th>
                       </tr>
@@ -554,23 +595,24 @@ export function CreateCreditNotePage() {
           )}
 
           {/* Actions */}
-          <div className="flex justify-end gap-3">
-            <Link
-              to="/sales/credit-notes"
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          <StickyFormFooter>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => navigate('/sales/credit-notes')}
             >
               {t('common:actions.cancel')}
-            </Link>
-            <button
+            </Button>
+            <Button
               type="submit"
+              variant="primary"
               disabled={createMutation.isPending}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
               {createMutation.isPending
                 ? t('common:status.creating')
                 : t('sales:creditNotes.form.create')}
-            </button>
-          </div>
+            </Button>
+          </StickyFormFooter>
         </form>
       </div>
     </div>

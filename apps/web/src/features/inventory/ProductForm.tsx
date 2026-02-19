@@ -6,8 +6,10 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Plus, X, Image } from 'lucide-react'
 import { api, apiPost, apiPatch } from '../../lib/api'
 import { CategorySelect } from '../../components/catalog/CategorySelect'
+import { StickyFormFooter } from '../../components/molecules/StickyFormFooter/StickyFormFooter'
 import { ProductImageSection, ParapharmacyMetadataFields } from '../products/components'
 import { useCompanyConfig } from '../../contexts/CompanyConfigContext'
+import { useProductConfig } from '../../contexts/ProductConfigContext'
 
 type ProductType = 'part' | 'service' | 'consumable'
 
@@ -73,6 +75,7 @@ export function ProductForm() {
   const isEditing = id.length > 0
   const { config } = useCompanyConfig()
   const isParapharmacy = config?.vertical === 'parapharmacy'
+  const { isOtospex } = useProductConfig()
 
   const [oemInput, setOemInput] = useState('')
 
@@ -221,7 +224,7 @@ export function ProductForm() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-h-full flex-col gap-6">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Link
@@ -237,7 +240,7 @@ export function ProductForm() {
       </div>
 
       {/* Form */}
-      <form onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="space-y-6">
+      <form onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="flex flex-1 flex-col gap-6">
         {/* Basic Information */}
         <div className="rounded-lg border border-gray-200 bg-white p-6">
           <h2 className="mb-4 text-lg font-semibold text-gray-900">Basic Information</h2>
@@ -417,96 +420,98 @@ export function ProductForm() {
           </div>
         </div>
 
-        {/* Automotive Information */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">Automotive Information</h2>
+        {/* Automotive Information - Otospex only */}
+        {isOtospex && (
+          <div className="rounded-lg border border-gray-200 bg-white p-6">
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">Automotive Information</h2>
 
-          {/* OEM Numbers */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              OEM Numbers
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={oemInput}
-                onChange={(e) => { setOemInput(e.target.value) }}
-                onKeyDown={handleOemKeyDown}
-                placeholder="Enter OEM number"
-                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-              <button
-                type="button"
-                onClick={handleAddOem}
-                className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                <Plus className="h-4 w-4" />
-                Add
-              </button>
+            {/* OEM Numbers */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                OEM Numbers
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={oemInput}
+                  onChange={(e) => { setOemInput(e.target.value) }}
+                  onKeyDown={handleOemKeyDown}
+                  placeholder="Enter OEM number"
+                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddOem}
+                  className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add
+                </button>
+              </div>
+              {oemNumbers.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {oemNumbers.map((oem, index) => (
+                    <span
+                      key={index}
+                      className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2.5 py-1 text-sm font-mono text-gray-700"
+                    >
+                      {oem}
+                      <button
+                        type="button"
+                        onClick={() => { handleRemoveOem(index) }}
+                        className="text-gray-400 hover:text-gray-600"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
-            {oemNumbers.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {oemNumbers.map((oem, index) => (
-                  <span
-                    key={index}
-                    className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2.5 py-1 text-sm font-mono text-gray-700"
-                  >
-                    {oem}
+
+            {/* Cross References */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Cross References
+              </label>
+              <div className="space-y-2">
+                {crossRefFields.map((field, index) => (
+                  <div key={field.id} className="flex gap-2">
+                    <input
+                      type="text"
+                      // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+                      {...register(`cross_references.${index}.brand` as const)}
+                      placeholder="Brand"
+                      className="flex-1 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <input
+                      type="text"
+                      // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+                      {...register(`cross_references.${index}.reference` as const)}
+                      placeholder="Reference"
+                      className="flex-1 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
                     <button
                       type="button"
-                      onClick={() => { handleRemoveOem(index) }}
-                      className="text-gray-400 hover:text-gray-600"
+                      onClick={() => { removeCrossRef(index) }}
+                      className="inline-flex items-center rounded-lg border border-gray-300 bg-white p-2 text-gray-400 hover:bg-gray-50 hover:text-gray-600"
                     >
-                      <X className="h-3.5 w-3.5" />
+                      <X className="h-4 w-4" />
                     </button>
-                  </span>
+                  </div>
                 ))}
               </div>
-            )}
-          </div>
-
-          {/* Cross References */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Cross References
-            </label>
-            <div className="space-y-2">
-              {crossRefFields.map((field, index) => (
-                <div key={field.id} className="flex gap-2">
-                  <input
-                    type="text"
-                    // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
-                    {...register(`cross_references.${index}.brand` as const)}
-                    placeholder="Brand"
-                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                  <input
-                    type="text"
-                    // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
-                    {...register(`cross_references.${index}.reference` as const)}
-                    placeholder="Reference"
-                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => { removeCrossRef(index) }}
-                    className="inline-flex items-center rounded-lg border border-gray-300 bg-white p-2 text-gray-400 hover:bg-gray-50 hover:text-gray-600"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
+              <button
+                type="button"
+                onClick={() => { appendCrossRef({ brand: '', reference: '' }) }}
+                className="mt-2 inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
+              >
+                <Plus className="h-4 w-4" />
+                Add Cross Reference
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => { appendCrossRef({ brand: '', reference: '' }) }}
-              className="mt-2 inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
-            >
-              <Plus className="h-4 w-4" />
-              Add Cross Reference
-            </button>
           </div>
-        </div>
+        )}
 
         {/* Parapharmacy Metadata - Only for parapharmacy vertical */}
         {isParapharmacy && (
@@ -529,7 +534,7 @@ export function ProductForm() {
         )}
 
         {/* Form Actions */}
-        <div className="flex items-center justify-end gap-4">
+        <StickyFormFooter>
           <Link
             to="/inventory/products"
             className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
@@ -543,7 +548,7 @@ export function ProductForm() {
           >
             {isSubmitting ? t('status.saving') : t('actions.save')}
           </button>
-        </div>
+        </StickyFormFooter>
       </form>
     </div>
   )

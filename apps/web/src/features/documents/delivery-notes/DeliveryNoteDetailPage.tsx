@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Edit, Calendar, Building2, FileText, Check, Printer, Send, Download, Eye, Car, Truck, RotateCcw } from 'lucide-react'
+import { ArrowLeft, Calendar, Building2, FileText, Car, Truck } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { formatCurrency } from '../../../lib/format'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
@@ -11,6 +11,7 @@ import { Modal } from '../../../components/organisms'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
 import { CreateReturnNoteForm } from '../components/CreateReturnNoteForm'
 import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail } from '../hooks'
+import { DocumentActionBar } from '../components/DocumentActionBar'
 import { useCompany } from '../../../hooks/useCompany'
 import type { Document } from '../../../types/document'
 
@@ -19,6 +20,7 @@ type ConfirmAction = 'confirm' | null
 export function DeliveryNoteDetailPage() {
   const { t } = useTranslation(['sales', 'common'])
   const { id = '' } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { currentCompany } = useCompany()
 
@@ -99,9 +101,6 @@ export function DeliveryNoteDetailPage() {
     )
   }
 
-  const isDraft = deliveryNote.status === 'draft'
-  const isConfirmed = deliveryNote.status === 'confirmed'
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
@@ -126,75 +125,25 @@ export function DeliveryNoteDetailPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {isDraft && (
-              <>
-                <Link
-                  to={`/inventory/delivery-notes/${id}/edit`}
-                  className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                >
-                  <Edit className="w-4 h-4" />
-                  {t('common:edit')}
-                </Link>
-                <button
-                  onClick={() => setConfirmAction('confirm')}
-                  disabled={confirmMutation.isPending}
-                  className="inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-                >
-                  <Check className="w-4 h-4" />
-                  {t('documents.confirm')}
-                </button>
-              </>
-            )}
-
-            {isConfirmed && (
-              <button
-                onClick={() => setShowReturnNoteForm(true)}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-              >
-                <RotateCcw className="w-4 h-4" />
-                {t('returnNotes.create')}
-              </button>
-            )}
-
-            <div className="flex items-center gap-1 border-l pl-2">
-              <button
-                onClick={() => handlePreviewPdf(deliveryNote.id)}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md"
-                title={t('common:preview')}
-              >
-                <Eye className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => handleDownloadPdf(deliveryNote.id, deliveryNote.document_number)}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md"
-                title={t('common:download')}
-              >
-                <Download className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => handlePrintPdf(deliveryNote.id)}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md"
-                title={t('common:print')}
-              >
-                <Printer className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => {
-                  setEmailForm({
-                    ...emailForm,
-                    recipientEmail: deliveryNote.partner_email || '',
-                    subject: `${t('deliveryNotes.emailSubject')} ${deliveryNote.document_number}`,
-                  })
-                  setShowEmailModal(true)
-                }}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md"
-                title={t('common:send')}
-              >
-                <Send className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
+          <DocumentActionBar
+            document={deliveryNote}
+            basePath="/inventory/delivery-notes"
+            isActionPending={confirmMutation.isPending}
+            onConfirm={() => setConfirmAction('confirm')}
+            onCreateReturnNote={() => setShowReturnNoteForm(true)}
+            onRecordPayment={() => navigate(`/treasury/payments/new?delivery_note=${deliveryNote.id}`)}
+            onDownloadPdf={() => handleDownloadPdf(deliveryNote.id, deliveryNote.document_number)}
+            onPreviewPdf={() => handlePreviewPdf(deliveryNote.id)}
+            onPrintPdf={() => handlePrintPdf(deliveryNote.id)}
+            onSendEmail={() => {
+              setEmailForm({
+                ...emailForm,
+                recipientEmail: deliveryNote.partner_email || '',
+                subject: `${t('deliveryNotes.emailSubject')} ${deliveryNote.document_number}`,
+              })
+              setShowEmailModal(true)
+            }}
+          />
         </div>
       </div>
 

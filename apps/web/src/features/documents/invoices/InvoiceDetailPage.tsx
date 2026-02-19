@@ -1,19 +1,21 @@
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Edit, Calendar, Building2, FileText, Check, Printer, Send, Download, Eye, Car, CreditCard, MinusCircle, Lock } from 'lucide-react'
+import { ArrowLeft, Calendar, Building2, FileText, Car, CreditCard, Lock } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { formatCurrency } from '../../../lib/format'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
-import { RecordPaymentModal } from '../../../components/organisms'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
 import { DocumentAttachments } from '../components/DocumentAttachments'
 import { DocumentTotals } from '../components/DocumentTotals'
 import { CreateCreditNoteForm, CreditNoteList } from '../components'
 import { DeliveryConfirmationModal } from '../components/DeliveryConfirmationModal'
+import { PaymentStatusBadge } from '../components/PaymentStatusBadge'
+import { PaymentHistorySection, OutstandingAmountSection } from '../components'
 import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail, useCreditNotes } from '../hooks'
+import { DocumentActionBar } from '../components/DocumentActionBar'
 import { useCompany } from '../../../hooks/useCompany'
 import type { Document } from '../../../types/document'
 
@@ -23,11 +25,11 @@ type ActiveTab = 'related' | 'attachments' | 'creditNotes' | 'payments'
 export function InvoiceDetailPage() {
   const { t } = useTranslation(['sales', 'common'])
   const { id = '' } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { currentCompany } = useCompany()
 
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
-  const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showCreditNoteForm, setShowCreditNoteForm] = useState(false)
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [showDeliveryConfirmationModal, setShowDeliveryConfirmationModal] = useState(false)
@@ -163,12 +165,6 @@ export function InvoiceDetailPage() {
     })
   }
 
-  const handlePaymentRecorded = () => {
-    setShowPaymentModal(false)
-    void queryClient.invalidateQueries({ queryKey: ['document', 'invoice', id] })
-    void queryClient.invalidateQueries({ queryKey: ['documents'] })
-  }
-
   const handleCreditNoteCreated = () => {
     setShowCreditNoteForm(false)
     void queryClient.invalidateQueries({ queryKey: ['document', 'invoice', id] })
@@ -197,15 +193,18 @@ export function InvoiceDetailPage() {
     )
   }
 
-  const canEdit = invoice.status === 'draft'
-  const canConfirm = invoice.status === 'draft'
-  const canPost = invoice.status === 'confirmed'
-  const canRecordPayment = invoice.status === 'posted' && parseFloat(invoice.balance_due || '0') > 0
-  const canCreateCreditNote = invoice.status === 'posted'
   const isPosted = invoice.status === 'posted'
 
-  const balanceDue = parseFloat(invoice.balance_due || invoice.total)
-  const isPaid = balanceDue === 0
+  // Use computed outstanding_amount (source of truth) for display
+  const outstandingAmount = parseFloat(invoice.outstanding_amount || invoice.balance_due || '0')
+  const isPaid = invoice.payment_status === 'paid' || outstandingAmount === 0
+
+  // Calculate amounts for OutstandingAmountSection
+  const total = parseFloat(invoice.total || '0')
+  const amountPaid = parseFloat(invoice.amount_paid || '0')
+  // Credit notes applied = payments.allocations with credit_note_type
+  // For now, calculate from total - outstanding - payments
+  const creditNotesApplied = Math.max(0, total - outstandingAmount - amountPaid)
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -234,17 +233,13 @@ export function InvoiceDetailPage() {
               }`}>
                 {t(`documents.statuses.${invoice.status}`)}
               </span>
-              {isPosted && (
+              {isPosted && invoice.payment_status && (
                 <>
-                  {isPaid ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800">
-                      <Check className="h-4 w-4" />
-                      {t('invoices.paid')}
-                    </span>
-                  ) : (
+                  <PaymentStatusBadge status={invoice.payment_status as any} />
+                  {!isPaid && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-3 py-1 text-sm font-medium text-orange-800">
                       <CreditCard className="h-4 w-4" />
-                      {t('invoices.balanceDue')}: {formatCurrency(balanceDue, { currency: currentCompany?.currency ?? 'EUR' })}
+                      {t('sales:invoices.outstandingAmount')}: {formatCurrency(outstandingAmount, { currency: currentCompany?.currency ?? 'EUR' })}
                     </span>
                   )}
                   <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-800">
@@ -256,95 +251,22 @@ export function InvoiceDetailPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {canEdit && (
-              <Link
-                to={`/sales/invoices/${invoice.id}/edit`}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-              >
-                <Edit className="h-4 w-4" />
-                {t('common:edit')}
-              </Link>
-            )}
-
-            {/* PDF Actions */}
-            <button
-              onClick={handleDownloadPdf}
-              disabled={downloadPdfMutation.isPending}
-              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-            >
-              <Download className="h-4 w-4" />
-              {t('common:download')}
-            </button>
-
-            <button
-              onClick={handlePreviewPdf}
-              disabled={previewPdfMutation.isPending}
-              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-            >
-              <Eye className="h-4 w-4" />
-              {t('common:preview')}
-            </button>
-
-            <button
-              onClick={handlePrintPdf}
-              disabled={printPdfMutation.isPending}
-              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-            >
-              <Printer className="h-4 w-4" />
-              {t('common:print')}
-            </button>
-
-            <button
-              onClick={() => setShowEmailModal(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-            >
-              <Send className="h-4 w-4" />
-              {t('common:send')}
-            </button>
-
-            {canRecordPayment && (
-              <button
-                onClick={() => setShowPaymentModal(true)}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700"
-              >
-                <CreditCard className="h-4 w-4" />
-                {t('invoices.recordPayment')}
-              </button>
-            )}
-
-            {canCreateCreditNote && (
-              <button
-                onClick={() => setShowCreditNoteForm(true)}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700"
-              >
-                <MinusCircle className="h-4 w-4" />
-                {t('invoices.createCreditNote')}
-              </button>
-            )}
-
-            {canConfirm && (
-              <button
-                onClick={() => setConfirmAction('confirm')}
-                disabled={isActionPending}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-              >
-                <Check className="h-4 w-4" />
-                {t('documents.confirm')}
-              </button>
-            )}
-
-            {canPost && (
-              <button
-                onClick={() => setConfirmAction('post')}
-                disabled={isActionPending}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
-              >
-                <Lock className="h-4 w-4" />
-                {t('invoices.post')}
-              </button>
-            )}
-          </div>
+          <DocumentActionBar
+            document={invoice}
+            basePath="/sales/invoices"
+            isActionPending={isActionPending}
+            onConfirm={() => setConfirmAction('confirm')}
+            onPost={() => setConfirmAction('post')}
+            onRecordPayment={() => navigate(`/treasury/payments/new?invoice=${invoice.id}`)}
+            onCreateCreditNote={() => setShowCreditNoteForm(true)}
+            onDownloadPdf={handleDownloadPdf}
+            onPreviewPdf={handlePreviewPdf}
+            onPrintPdf={handlePrintPdf}
+            onSendEmail={() => setShowEmailModal(true)}
+            isDownloading={downloadPdfMutation.isPending}
+            isPreviewing={previewPdfMutation.isPending}
+            isPrinting={printPdfMutation.isPending}
+          />
         </div>
       </div>
 
@@ -466,7 +388,7 @@ export function InvoiceDetailPage() {
                 documentType="invoice"
                 currency={currentCompany?.currency ?? 'EUR'}
                 showBalanceDue={isPosted}
-                balanceDue={balanceDue}
+                balanceDue={outstandingAmount}
               />
             </div>
           </div>
@@ -531,31 +453,24 @@ export function InvoiceDetailPage() {
             <CreditNoteList creditNotes={creditNotes} invoiceId={invoice.id} />
           )}
           {activeTab === 'payments' && isPosted && (
-            <div className="bg-white shadow sm:rounded-lg p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">{t('invoices.paymentHistory')}</h3>
-              {invoice.allocations && invoice.allocations.length > 0 ? (
-                <div className="space-y-4">
-                  {invoice.allocations.map((allocation) => (
-                    <div key={allocation.id} className="flex justify-between items-center border-b border-gray-200 pb-4">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">
-                          {allocation.payment?.paymentMethod?.name || t('common.payment')}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {new Date(allocation.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-medium text-gray-900">
-                          {formatCurrency(parseFloat(allocation.amount), { currency: currentCompany?.currency ?? 'EUR' })}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">{t('invoices.noPayments')}</p>
-              )}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <PaymentHistorySection
+                  documentId={invoice.id}
+                  currency={currentCompany?.currency ?? 'EUR'}
+                />
+              </div>
+              <div>
+                <OutstandingAmountSection
+                  total={total}
+                  amountPaid={amountPaid}
+                  creditNotesApplied={creditNotesApplied}
+                  outstandingAmount={outstandingAmount}
+                  paymentStatus={invoice.payment_status as any}
+                  currency={currentCompany?.currency ?? 'EUR'}
+                  onRecordPayment={canRecordPayment ? () => setShowPaymentModal(true) : undefined}
+                />
+              </div>
             </div>
           )}
         </div>
@@ -582,15 +497,6 @@ export function InvoiceDetailPage() {
         isLoading={postMutation.isPending}
       />
 
-      {/* Payment Modal */}
-      {showPaymentModal && (
-        <RecordPaymentModal
-          isOpen={showPaymentModal}
-          onClose={() => setShowPaymentModal(false)}
-          invoiceId={invoice.id}
-          onSuccess={handlePaymentRecorded}
-        />
-      )}
 
       {/* Delivery Confirmation Modal */}
       <DeliveryConfirmationModal

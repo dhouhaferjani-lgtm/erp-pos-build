@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { api, apiPost, apiPatch } from '../../lib/api'
 import { DocumentLineEditor, type DocumentLine } from '../../components/documents/DocumentLineEditor'
 import { PurchaseOrderAdditionalCosts } from './components/PurchaseOrderAdditionalCosts'
+import { StickyFormFooter } from '../../components/molecules/StickyFormFooter/StickyFormFooter'
 import { AddPartnerModal } from '../../components/organisms'
 import { PartnerSearchSelect } from '../../components/ui/PartnerSearchSelect'
 import { useCompany } from '../../hooks/useCompany'
@@ -297,7 +298,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-h-full flex-col gap-6">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Link
@@ -313,7 +314,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
       </div>
 
       {/* Form */}
-      <form onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="space-y-6">
+      <form onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="flex flex-1 flex-col gap-6">
         <div className="rounded-lg border border-gray-200 bg-white p-6">
           <div className="grid gap-6 sm:grid-cols-2">
             {/* Type - hidden if type is set from context */}
@@ -483,10 +484,10 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
         )}
 
         {/* Form Actions */}
-        <div className="flex items-center justify-end gap-4">
+        <StickyFormFooter>
           {/* Auto-save indicator (only for new documents) */}
           {!isEditing && (
-            <div className="flex items-center gap-2 text-sm text-gray-500">
+            <div className="mr-auto flex items-center gap-2 text-sm text-gray-500">
               {isSaving ? (
                 <>
                   <svg className="h-4 w-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -521,7 +522,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
           >
             {(isSubmitting || createMutation.isPending || updateMutation.isPending) ? t('status.saving') : t('actions.save')}
           </button>
-        </div>
+        </StickyFormFooter>
       </form>
 
       {/* Add Partner Modal */}

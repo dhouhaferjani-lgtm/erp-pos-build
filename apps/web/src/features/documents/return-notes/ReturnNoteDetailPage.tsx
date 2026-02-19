@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Calendar, Building2, FileText, Check, Printer, Send, Download, Eye, Car, RotateCcw } from 'lucide-react'
+import { ArrowLeft, Calendar, Building2, FileText, Car, RotateCcw } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { formatCurrency } from '../../../lib/format'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
@@ -11,6 +11,7 @@ import { Modal } from '../../../components/organisms'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
 import { ReturnNoteMetadata } from '../components'
 import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail } from '../hooks'
+import { DocumentActionBar } from '../components/DocumentActionBar'
 import { useCompany } from '../../../hooks/useCompany'
 import type { Document } from '../../../types/document'
 
@@ -98,8 +99,6 @@ export function ReturnNoteDetailPage() {
     )
   }
 
-  const isDraft = returnNote.status === 'draft'
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
@@ -124,56 +123,23 @@ export function ReturnNoteDetailPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {isDraft && (
-              <button
-                onClick={() => setConfirmAction('confirm')}
-                disabled={confirmMutation.isPending}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-              >
-                <Check className="w-4 h-4" />
-                {t('documents.confirm')}
-              </button>
-            )}
-
-            <div className="flex items-center gap-1 border-l pl-2">
-              <button
-                onClick={() => handlePreviewPdf(returnNote.id)}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md"
-                title={t('common:preview')}
-              >
-                <Eye className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => handleDownloadPdf(returnNote.id, returnNote.document_number)}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md"
-                title={t('common:download')}
-              >
-                <Download className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => handlePrintPdf(returnNote.id)}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md"
-                title={t('common:print')}
-              >
-                <Printer className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => {
-                  setEmailForm({
-                    ...emailForm,
-                    recipientEmail: returnNote.partner_email || '',
-                    subject: `${t('returnNotes.emailSubject')} ${returnNote.document_number}`,
-                  })
-                  setShowEmailModal(true)
-                }}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md"
-                title={t('common:send')}
-              >
-                <Send className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
+          <DocumentActionBar
+            document={returnNote}
+            basePath="/inventory/return-notes"
+            isActionPending={confirmMutation.isPending}
+            onConfirm={() => setConfirmAction('confirm')}
+            onDownloadPdf={() => handleDownloadPdf(returnNote.id, returnNote.document_number)}
+            onPreviewPdf={() => handlePreviewPdf(returnNote.id)}
+            onPrintPdf={() => handlePrintPdf(returnNote.id)}
+            onSendEmail={() => {
+              setEmailForm({
+                ...emailForm,
+                recipientEmail: returnNote.partner_email || '',
+                subject: `${t('returnNotes.emailSubject')} ${returnNote.document_number}`,
+              })
+              setShowEmailModal(true)
+            }}
+          />
         </div>
       </div>
 

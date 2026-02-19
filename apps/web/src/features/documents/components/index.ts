@@ -8,9 +8,12 @@ export { DocumentHeader, type DocumentHeaderProps, type QuoteExpiryInfo } from '
 export { DocumentLines, type DocumentLinesProps } from './DocumentLines'
 export { DocumentTotals, type DocumentTotalsProps } from './DocumentTotals'
 export { DocumentActions, type DocumentActionsProps } from './DocumentActions'
+export { DocumentActionBar, type DocumentActionBarProps } from './DocumentActionBar'
 export { DocumentPartnerInfo, type DocumentPartnerInfoProps } from './DocumentPartnerInfo'
 export { DocumentInfo, type DocumentInfoProps } from './DocumentInfo'
 export { DocumentPaymentHistory, type DocumentPaymentHistoryProps } from './DocumentPaymentHistory'
+export { PaymentHistorySection, type PaymentHistorySectionProps } from './PaymentHistorySection'
+export { OutstandingAmountSection, type OutstandingAmountSectionProps } from './OutstandingAmountSection'
 
 // Credit Note Components
 export { CreateCreditNoteForm } from './CreateCreditNoteForm'
@@ -26,3 +29,7 @@ export { DocumentLineEditor, type DocumentLine } from './DocumentLineEditor'
 export { DeliveryNoteConsolidation } from './DeliveryNoteConsolidation'
 export { DocumentAttachments } from './DocumentAttachments'
 export { RelatedDocumentsTab } from './RelatedDocumentsTab'
+
+// Status Badge Components
+export { PaymentStatusBadge } from './PaymentStatusBadge'
+export { FulfillmentStatusBadge } from './FulfillmentStatusBadge'

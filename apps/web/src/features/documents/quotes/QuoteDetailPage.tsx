@@ -3,7 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Edit, Calendar, Building2, FileText, Check, ArrowRight, Printer, Send, Download, Eye, Car, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Calendar, Building2, FileText, Car, AlertTriangle } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { formatCurrency } from '../../../lib/format'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
@@ -11,6 +11,7 @@ import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
 import { DocumentTotals } from '../components/DocumentTotals'
 import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail } from '../hooks'
 import { useRelatedDocuments } from '../hooks/useRelatedDocuments'
+import { DocumentActionBar } from '../components/DocumentActionBar'
 import { useCompany } from '../../../hooks/useCompany'
 import type { Document } from '../../../types/document'
 
@@ -181,11 +182,6 @@ export function QuoteDetailPage() {
     )
   }
 
-  const canEdit = quote.status === 'draft'
-  const canConfirm = quote.status === 'draft'
-  // Only allow conversion if confirmed and no sales orders exist yet
-  const canConvert = quote.status === 'confirmed' && (relatedDocs?.descendants.length === 0 || !relatedDocs)
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
@@ -229,75 +225,20 @@ export function QuoteDetailPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {canEdit && (
-              <Link
-                to={`/sales/quotes/${quote.id}/edit`}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-              >
-                <Edit className="h-4 w-4" />
-                {t('common:edit')}
-              </Link>
-            )}
-
-            {/* PDF Actions */}
-            <button
-              onClick={handleDownloadPdf}
-              disabled={downloadPdfMutation.isPending}
-              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-            >
-              <Download className="h-4 w-4" />
-              {t('common:download')}
-            </button>
-
-            <button
-              onClick={handlePreviewPdf}
-              disabled={previewPdfMutation.isPending}
-              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-            >
-              <Eye className="h-4 w-4" />
-              {t('common:preview')}
-            </button>
-
-            <button
-              onClick={handlePrintPdf}
-              disabled={printPdfMutation.isPending}
-              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-            >
-              <Printer className="h-4 w-4" />
-              {t('common:print')}
-            </button>
-
-            <button
-              onClick={() => setShowEmailModal(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-            >
-              <Send className="h-4 w-4" />
-              {t('common:send')}
-            </button>
-
-            {canConfirm && (
-              <button
-                onClick={() => setConfirmAction('confirm')}
-                disabled={isActionPending}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-              >
-                <Check className="h-4 w-4" />
-                {t('documents.confirm')}
-              </button>
-            )}
-
-            {canConvert && (
-              <button
-                onClick={() => setConfirmAction('convert')}
-                disabled={isActionPending}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
-              >
-                <ArrowRight className="h-4 w-4" />
-                {t('quotes.convertToOrder')}
-              </button>
-            )}
-          </div>
+          <DocumentActionBar
+            document={quote}
+            basePath="/sales/quotes"
+            isActionPending={isActionPending}
+            onConfirm={() => setConfirmAction('confirm')}
+            onConvert={(!relatedDocs || relatedDocs.descendants.length === 0) ? () => setConfirmAction('convert') : undefined}
+            onDownloadPdf={handleDownloadPdf}
+            onPreviewPdf={handlePreviewPdf}
+            onPrintPdf={handlePrintPdf}
+            onSendEmail={() => setShowEmailModal(true)}
+            isDownloading={downloadPdfMutation.isPending}
+            isPreviewing={previewPdfMutation.isPending}
+            isPrinting={printPdfMutation.isPending}
+          />
         </div>
       </div>
 
