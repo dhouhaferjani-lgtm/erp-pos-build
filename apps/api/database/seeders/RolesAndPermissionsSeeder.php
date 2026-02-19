@@ -45,6 +45,15 @@ class RolesAndPermissionsSeeder extends Seeder
             'products.delete',
             'products.import',
 
+            // Composite Items / Catalog
+            'composite-items.view',
+            'composite-items.create',
+            'composite-items.update',
+            'composite-items.delete',
+            'composite-items.manage-recipes',
+            'modifier-groups.view',
+            'modifier-groups.manage',
+
             // Vehicle Management
             'vehicles.view',
             'vehicles.create',
@@ -154,9 +163,33 @@ class RolesAndPermissionsSeeder extends Seeder
             'roles.view',
             'roles.manage',
 
+            // POS
+            'pos.manage_terminals',
+            'pos.operate_terminal',
+            'pos.manage_shifts',
+            'pos.view_reports',
+            'pos.void_receipts',
+            'pos.view_receipts',
+
+            // Batch/Expiry Management
+            'batches.view',
+            'batches.create',
+            'batches.update',
+            'batches.delete',
+            'batches.recall',
+            'batches.write-off',
+            'batches.traceability',
+
+            // Withholding Certificates
+            'withholding.view',
+            'withholding.create',
+            'withholding.update',
+            'withholding.delete',
+
             // System
             'settings.view',
             'settings.update',
+            'settings.manage',
             'audit.view',
             'imports.manage',
         ];
@@ -173,7 +206,7 @@ class RolesAndPermissionsSeeder extends Seeder
      */
     private function createRoles(): void
     {
-        // Admin - Full access
+        // Admin - Full access (includes all POS permissions)
         $admin = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'sanctum']);
         $admin->syncPermissions(Permission::all());
         $this->command->info('Created role: admin (all permissions)');
@@ -203,7 +236,12 @@ class RolesAndPermissionsSeeder extends Seeder
             'reports.financial', 'reports.operational',
             'work-orders.view', 'work-orders.create', 'work-orders.update', 'work-orders.complete',
             'users.view',
-            'settings.view',
+            'pos.manage_terminals', 'pos.operate_terminal', 'pos.manage_shifts',
+            'pos.view_reports', 'pos.void_receipts', 'pos.view_receipts',
+            'batches.view', 'batches.create', 'batches.update', 'batches.delete',
+            'batches.recall', 'batches.write-off', 'batches.traceability',
+            'withholding.view',
+            'settings.view', 'settings.manage',
         ]);
         $this->command->info('Created role: manager');
 
@@ -224,6 +262,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'payments.view', 'payments.create',
             'instruments.view', 'instruments.create',
             'work-orders.view',
+            'pos.operate_terminal', 'pos.view_receipts',
+            'batches.view',
         ]);
         $this->command->info('Created role: cashier');
 
@@ -301,6 +341,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'journal.view', 'journal.create', 'journal.post',
             'accounts.view', 'accounts.manage',
             'reports.financial',
+            'withholding.view', 'withholding.create', 'withholding.update',
             'audit.view',
         ]);
         $this->command->info('Created role: accountant');

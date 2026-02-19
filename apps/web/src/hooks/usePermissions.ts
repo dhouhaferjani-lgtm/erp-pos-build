@@ -26,6 +26,11 @@ export const PERMISSIONS = {
   'repositories.view': ['admin', 'treasury', 'accountant', 'manager'],
   'repositories.manage': ['admin', 'accountant'],
 
+  // Withholding Certificates
+  'withholding.view': ['admin', 'accountant', 'manager'],
+  'withholding.create': ['admin', 'accountant'],
+  'withholding.edit': ['admin', 'accountant'],
+
   // Reports
   'reports.view': ['admin', 'manager', 'accountant'],
 
@@ -39,6 +44,7 @@ export const PERMISSIONS = {
   // Settings
   'settings.view': ['admin', 'manager'],
   'settings.edit': ['admin'],
+  'settings.manage': ['admin', 'manager'],
 
   // Dashboard (everyone can view)
   'dashboard.view': ['admin', 'sales', 'purchases', 'inventory', 'treasury', 'accountant', 'manager', 'user'],
@@ -56,6 +62,29 @@ export const PERMISSIONS = {
   'services.view': ['admin', 'sales', 'manager'],
   'services.create': ['admin', 'sales', 'manager'],
   'services.edit': ['admin', 'sales', 'manager'],
+
+  // Units of Measure (UOM)
+  'uom.view': ['admin', 'manager', 'inventory'],
+  'uom.create': ['admin', 'manager'],
+  'uom.edit': ['admin', 'manager'],
+  'uom.delete': ['admin', 'manager'],
+
+  // POS
+  'pos.manage_terminals': ['admin', 'manager'],
+  'pos.operate_terminal': ['admin', 'manager', 'cashier'],
+  'pos.manage_shifts': ['admin', 'manager'],
+  'pos.view_reports': ['admin', 'manager'],
+  'pos.void_receipts': ['admin', 'manager'],
+  'pos.view_receipts': ['admin', 'manager', 'cashier'],
+
+  // Catalog (Composite Items & Modifiers)
+  'composite-items.view': ['admin', 'manager'],
+  'composite-items.create': ['admin', 'manager'],
+  'composite-items.update': ['admin', 'manager'],
+  'composite-items.delete': ['admin'],
+  'composite-items.manage-recipes': ['admin', 'manager'],
+  'modifier-groups.view': ['admin', 'manager'],
+  'modifier-groups.manage': ['admin', 'manager'],
 } as const
 
 export type Permission = keyof typeof PERMISSIONS
@@ -74,6 +103,11 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   pricing: ['pricing.view'],
   accounts: ['accounts.view'],
   settings: ['settings.view'],
+  uom: ['uom.view'],
+  pos: ['pos.operate_terminal', 'pos.manage_terminals', 'pos.view_receipts'],
+  withholding: ['withholding.view'],
+  'composite-items': ['composite-items.view'],
+  'modifier-groups': ['modifier-groups.view'],
 }
 
 /**
