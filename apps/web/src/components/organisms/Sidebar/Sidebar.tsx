@@ -45,6 +45,8 @@ import {
   History,
   PanelLeftClose,
   PanelLeft,
+  UtensilsCrossed,
+  Combine,
 } from 'lucide-react'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useCompanyConfig } from '../../../contexts'
@@ -63,6 +65,7 @@ const COLLAPSED_STORAGE_KEY = 'autoerp-sidebar-collapsed'
  */
 const MODULE_NAME_MAP: Record<string, string> = {
   vehicles: 'Vehicle',
+  'composite-items': 'CompositeItems',
   // services: removed - now a core module available to all verticals
   // Core modules (always visible): dashboard, sales, purchases, inventory, treasury, finance, pricing, reports, settings
   // These don't need mapping as they're not filtered by vertical
@@ -181,10 +184,11 @@ const navigation: NavModule[] = [
     icon: Store,
     module: 'pos',
     children: [
+      { key: 'openPos', href: '/pos/transactions', icon: Store, module: 'pos' },
       { key: 'terminals', href: '/pos/terminals', icon: Monitor, module: 'pos' },
-      { key: 'demo', href: '/pos/demo', icon: Store, module: 'pos' }, // NEW: Touch-optimized POS
-      { key: 'transactions', href: '/pos/transactions', icon: Receipt, module: 'pos' },
-      { key: 'shifts', href: '/pos/shifts', icon: History, module: 'pos' },
+      { key: 'shiftHistory', href: '/pos/shift-history', icon: History, module: 'pos' },
+      { key: 'zReports', href: '/pos/z-reports', icon: FileCheck, module: 'pos' },
+      { key: 'receipts', href: '/pos/receipts', icon: Receipt, module: 'pos' },
     ],
   },
   {
@@ -196,6 +200,15 @@ const navigation: NavModule[] = [
       { key: 'certifications', href: '/parapharmacy/certifications', icon: Award, module: 'settings' },
       { key: 'healthClaims', href: '/parapharmacy/health-claims', icon: ListChecks, module: 'settings' },
       { key: 'keyComponents', href: '/parapharmacy/key-components', icon: Package, module: 'settings' },
+    ],
+  },
+  {
+    key: 'catalog',
+    icon: UtensilsCrossed,
+    module: 'composite-items',
+    children: [
+      { key: 'compositeItems', href: '/catalog/composite-items', icon: Combine, module: 'composite-items' },
+      { key: 'modifierGroups', href: '/catalog/modifier-groups', icon: Layers, module: 'modifier-groups' },
     ],
   },
   {
@@ -370,25 +383,25 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
 
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 start-0 z-50 flex flex-col bg-white border-e border-gray-200 transition-all duration-300 lg:static lg:translate-x-0 rtl:lg:-translate-x-0 ${
+        className={`fixed inset-y-0 start-0 z-50 flex flex-col bg-gray-900 transition-all duration-300 lg:static lg:translate-x-0 rtl:lg:-translate-x-0 ${
           isCollapsed ? 'w-16' : 'w-64'
         } ${
           isOpen ? 'translate-x-0 rtl:-translate-x-0' : '-translate-x-full rtl:translate-x-full'
         }`}
       >
         {/* Logo */}
-        <div className={`flex h-16 items-center border-b border-gray-200 ${
+        <div className={`flex h-16 items-center border-b border-gray-800 ${
           isCollapsed ? 'justify-center px-2' : 'justify-between px-6'
         }`}>
           {!isCollapsed && (
-            <span className="text-xl font-bold text-gray-900">{t('appName')}</span>
+            <span className="text-xl font-bold text-white">{t('appName')}</span>
           )}
           <div className="flex items-center gap-2">
             {/* Collapse/Expand toggle (desktop only) */}
             <button
               type="button"
               onClick={() => { setIsCollapsed(!isCollapsed) }}
-              className="hidden lg:block rounded-lg p-1 text-gray-500 hover:bg-gray-100"
+              className="hidden lg:block rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-200"
               aria-label={isCollapsed ? t('actions.expand') : t('actions.collapse')}
             >
               {isCollapsed ? (
@@ -402,7 +415,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-lg p-1 text-gray-500 hover:bg-gray-100 lg:hidden"
+                className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-200 lg:hidden"
                 aria-label={t('actions.close')}
               >
                 <X className="h-5 w-5" />
@@ -429,8 +442,8 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                       onClick={onClose}
                       className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                         isActive
-                          ? 'bg-blue-50 text-blue-700'
-                          : 'text-gray-700 hover:bg-gray-100'
+                          ? 'bg-blue-600/20 text-white'
+                          : 'text-gray-300 hover:bg-gray-800 hover:text-white'
                       } ${isCollapsed ? 'justify-center' : ''}`}
                       title={isCollapsed ? t(`navigation.${module.key}`) : undefined}
                     >
@@ -449,8 +462,8 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                     onClick={() => { toggleModule(module.key) }}
                     className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                       isActive
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-gray-700 hover:bg-gray-100'
+                        ? 'bg-blue-600/20 text-white'
+                        : 'text-gray-300 hover:bg-gray-800 hover:text-white'
                     } ${isCollapsed ? 'justify-center' : ''}`}
                     aria-expanded={isExpanded}
                     aria-label={`${t(`navigation.${module.key}`)} - ${isExpanded ? t('actions.collapse') : t('actions.expand')}`}
@@ -483,8 +496,8 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                               onClick={onClose}
                               className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
                                 isChildActive
-                                  ? 'bg-blue-50 text-blue-700 font-medium'
-                                  : 'text-gray-600 hover:bg-gray-100'
+                                  ? 'bg-blue-600/20 text-white font-medium'
+                                  : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
                               }`}
                             >
                               <ChildIcon className="h-4 w-4 flex-shrink-0" />

@@ -77,6 +77,7 @@ return [
             'Treasury',
             'Accounting',
             'Tables',
+            'CompositeItems',
         ],
     ],
 
@@ -102,6 +103,7 @@ return [
             'Inventory',
             'Treasury',
             'Accounting',
+            'CompositeItems',
         ],
     ],
 
