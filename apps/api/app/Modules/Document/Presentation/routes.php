@@ -14,6 +14,7 @@ use App\Modules\Document\Presentation\Controllers\InvoiceController;
 use App\Modules\Document\Presentation\Controllers\PurchaseOrderController;
 use App\Modules\Document\Presentation\Controllers\QuoteController;
 use App\Modules\Document\Presentation\Controllers\RefundController;
+use App\Modules\Document\Presentation\Controllers\ReportsController;
 use App\Modules\Document\Presentation\Controllers\ReturnNoteController;
 use App\Modules\Document\Presentation\Controllers\SalesOrderController;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
@@ -311,6 +312,16 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:documents.view')
         ->name('documents.tax-breakdown');
 
+    // Payment History
+    Route::get('/documents/{document}/payments', [DocumentController::class, 'payments'])
+        ->middleware('can:documents.view')
+        ->name('documents.payments');
+
+    // Credit Note Allocations
+    Route::get('/documents/{document}/credit-allocations', [DocumentController::class, 'creditAllocations'])
+        ->middleware('can:documents.view')
+        ->name('documents.credit-allocations');
+
     // PDF Generation
     Route::get('/documents/{document}/pdf', [DocumentPdfController::class, 'download'])
         ->middleware('can:documents.view')
@@ -328,4 +339,17 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/documents/{document}/email/queue', [DocumentEmailController::class, 'queue'])
         ->middleware('can:documents.view')
         ->name('documents.email.queue');
+
+    // Financial Reports
+    Route::get('/reports/aged-receivables', [ReportsController::class, 'agedReceivables'])
+        ->middleware('can:reports.view')
+        ->name('reports.aged-receivables');
+
+    Route::get('/reports/customer-statement/{partnerId}', [ReportsController::class, 'customerStatement'])
+        ->middleware('can:reports.view')
+        ->name('reports.customer-statement');
+
+    Route::get('/reports/overdue-summary', [ReportsController::class, 'overdueSummary'])
+        ->middleware('can:reports.view')
+        ->name('reports.overdue-summary');
 });

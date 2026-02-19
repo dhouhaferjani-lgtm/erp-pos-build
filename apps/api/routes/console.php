@@ -24,3 +24,8 @@ Schedule::command('fraud:detect')
 Schedule::job(\App\Modules\Inventory\Application\Jobs\ExpireReservationsJob::class)
     ->everyFifteenMinutes()
     ->withoutOverlapping();
+
+// Schedule: Check for expired batches daily at 1:30 AM
+Schedule::job(\App\Modules\BatchExpiry\Jobs\DailyExpiryCheck::class)
+    ->dailyAt('01:30')
+    ->withoutOverlapping();

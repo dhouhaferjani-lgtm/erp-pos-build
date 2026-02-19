@@ -110,7 +110,7 @@
 
 ## Fork Strategy
 
-### Automotive ERP (mecanospex)
+### Automotive ERP (AutoERP)
 - Keep: Vehicle module, Workshop module
 - Enhance: Parts catalog integration, VIN decoding
 - Remove: Generic inventory features not needed

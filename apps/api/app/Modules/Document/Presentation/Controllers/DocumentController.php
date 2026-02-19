@@ -275,4 +275,115 @@ class DocumentController extends Controller
             ],
         ]);
     }
+
+    /**
+     * Get payment history for a document
+     *
+     * Returns all payment allocations for this document, including payment details
+     * like payment method, date, reference, and amount allocated.
+     *
+     * GET /api/v1/documents/{id}/payments
+     */
+    public function payments(string $id): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+
+        $document = Document::forCompany($companyId)->findOrFail($id);
+
+        $allocations = $document->allocations()
+            ->with(['payment.partner', 'payment.paymentMethod'])
+            ->orderByDesc('created_at')
+            ->get();
+
+        // Also fetch credit note allocations
+        $creditAllocations = $document->creditNoteAllocations()
+            ->with(['creditNote', 'allocatedBy'])
+            ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json([
+            'data' => [
+                'document_id' => $document->id,
+                'document_number' => $document->document_number,
+                'total' => $document->total,
+                'balance_due' => $document->balance_due,
+                'payment_status' => $document->getPaymentStatus()->value,
+                'outstanding_amount' => $document->getOutstandingAmount(),
+                'payment_allocations' => $allocations->map(fn ($allocation) => [
+                    'id' => $allocation->id,
+                    'payment_id' => $allocation->payment_id,
+                    'payment_reference' => $allocation->payment->reference,
+                    'payment_date' => $allocation->payment->payment_date->toDateString(),
+                    'payment_method' => $allocation->payment->paymentMethod?->name,
+                    'amount' => $allocation->amount,
+                    'created_at' => $allocation->created_at?->toIso8601String(),
+                ])->toArray(),
+                'credit_note_allocations' => $creditAllocations->map(fn ($allocation) => [
+                    'id' => $allocation->id,
+                    'credit_note_id' => $allocation->credit_note_id,
+                    'credit_note_number' => $allocation->creditNote->document_number,
+                    'amount' => $allocation->amount,
+                    'allocated_by' => $allocation->allocatedBy ? [
+                        'id' => $allocation->allocatedBy->id,
+                        'name' => $allocation->allocatedBy->name,
+                        'email' => $allocation->allocatedBy->email,
+                    ] : null,
+                    'created_at' => $allocation->created_at?->toIso8601String(),
+                ])->toArray(),
+            ],
+        ]);
+    }
+
+    /**
+     * Get credit note allocations for a document
+     *
+     * Returns all credit note allocations that reduce this invoice's balance.
+     *
+     * GET /api/v1/documents/{id}/credit-allocations
+     */
+    public function creditAllocations(string $id): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+
+        $document = Document::forCompany($companyId)->findOrFail($id);
+
+        if ($document->type !== DocumentType::Invoice) {
+            return response()->json([
+                'error' => [
+                    'code' => 'INVALID_DOCUMENT_TYPE',
+                    'message' => 'Only invoices can have credit note allocations',
+                ],
+            ], 400);
+        }
+
+        $allocations = $document->creditNoteAllocations()
+            ->with(['creditNote', 'allocatedBy'])
+            ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json([
+            'data' => [
+                'document_id' => $document->id,
+                'document_number' => $document->document_number,
+                'total' => $document->total,
+                'balance_due' => $document->balance_due,
+                'payment_status' => $document->getPaymentStatus()->value,
+                'outstanding_amount' => $document->getOutstandingAmount(),
+                'allocations' => $allocations->map(fn ($allocation) => [
+                    'id' => $allocation->id,
+                    'credit_note_id' => $allocation->credit_note_id,
+                    'credit_note_number' => $allocation->creditNote->document_number,
+                    'credit_note_date' => $allocation->creditNote->document_date->toDateString(),
+                    'credit_note_reason' => $allocation->creditNote->credit_note_reason?->value,
+                    'amount' => $allocation->amount,
+                    'allocated_by' => $allocation->allocatedBy ? [
+                        'id' => $allocation->allocatedBy->id,
+                        'name' => $allocation->allocatedBy->name,
+                        'email' => $allocation->allocatedBy->email,
+                    ] : null,
+                    'created_at' => $allocation->created_at?->toIso8601String(),
+                ])->toArray(),
+            ],
+        ]);
+    }
 }

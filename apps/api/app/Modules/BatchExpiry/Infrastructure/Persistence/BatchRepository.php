@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
 
 class BatchRepository implements BatchRepositoryInterface
 {
-    public function findById(int $id): ?Batch
+    public function findById(string $id): ?Batch
     {
         return Batch::find($id);
     }
@@ -21,7 +21,7 @@ class BatchRepository implements BatchRepositoryInterface
         return Batch::where('uuid', $uuid)->first();
     }
 
-    public function findByBatchNumber(int $companyId, int $productId, string $batchNumber): ?Batch
+    public function findByBatchNumber(string $companyId, string $productId, string $batchNumber): ?Batch
     {
         return Batch::where('company_id', $companyId)
             ->where('product_id', $productId)
@@ -29,7 +29,7 @@ class BatchRepository implements BatchRepositoryInterface
             ->first();
     }
 
-    public function getByProduct(int $productId, bool $activeOnly = true): Collection
+    public function getByProduct(string $productId, bool $activeOnly = true): Collection
     {
         $query = Batch::where('product_id', $productId);
 
@@ -41,7 +41,7 @@ class BatchRepository implements BatchRepositoryInterface
         return $query->orderBy('expiry_date', 'asc')->get();
     }
 
-    public function getByCompany(int $companyId, array $filters = []): Collection
+    public function getByCompany(string $companyId, array $filters = []): Collection
     {
         $query = Batch::where('company_id', $companyId);
 
@@ -91,17 +91,17 @@ class BatchRepository implements BatchRepositoryInterface
         return $batch->update(['is_active' => false]);
     }
 
-    public function markAsExpired(int $batchId): bool
+    public function markAsExpired(string $batchId): bool
     {
-        return Batch::where('id', $batchId)->update(['is_expired' => true]);
+        return Batch::where('id', $batchId)->update(['is_expired' => true]) > 0;
     }
 
-    public function recall(int $batchId, string $reason): bool
+    public function recall(string $batchId, string $reason): bool
     {
         return Batch::where('id', $batchId)->update([
             'is_recalled' => true,
             'recall_reason' => $reason,
             'recalled_at' => now(),
-        ]);
+        ]) > 0;
     }
 }

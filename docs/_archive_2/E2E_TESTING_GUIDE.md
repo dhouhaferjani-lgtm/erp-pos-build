@@ -20,7 +20,7 @@ This testing guide validates the complete business cycle from sales/purchase doc
 
 ```bash
 # Ensure dev environment is running
-cd /Users/houssamr/Projects/mecanospex
+cd .
 pnpm dev
 
 # Backend API should be running at http://localhost:8000

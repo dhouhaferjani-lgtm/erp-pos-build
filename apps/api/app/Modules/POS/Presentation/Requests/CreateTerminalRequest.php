@@ -19,7 +19,7 @@ final class CreateTerminalRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'code' => ['nullable', 'string', 'max:20', 'regex:/^[A-Z0-9]+$/'],
+            'code' => ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9\-]+$/'],
             'name' => ['required', 'string', 'max:100'],
             'location_id' => ['required', 'uuid', 'exists:locations,id'],
             'description' => ['nullable', 'string', 'max:500'],
@@ -32,7 +32,7 @@ final class CreateTerminalRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'code.regex' => 'Terminal code must contain only uppercase letters and numbers.',
+            'code.regex' => 'Terminal code must contain only letters, numbers, and hyphens.',
             'location_id.exists' => 'The selected location does not exist.',
         ];
     }

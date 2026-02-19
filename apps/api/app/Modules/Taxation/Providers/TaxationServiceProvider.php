@@ -5,15 +5,18 @@ declare(strict_types=1);
 namespace App\Modules\Taxation\Providers;
 
 use App\Modules\Taxation\Application\Services\CertificatePDFService;
+use App\Modules\Taxation\Application\Services\SalesWithholdingTrackingService;
 use App\Modules\Taxation\Application\Services\TEJExportService;
 use App\Modules\Taxation\Application\Services\WithholdingCertificateService;
 use App\Modules\Taxation\Application\Services\WithholdingHashChainService;
+use App\Modules\Taxation\Domain\Repositories\SalesWithholdingTrackingRepositoryInterface;
 use App\Modules\Taxation\Domain\Repositories\WithholdingCertificateRepositoryInterface;
 use App\Modules\Taxation\Domain\Repositories\WithholdingTaxRuleRepositoryInterface;
 use App\Modules\Taxation\Domain\Services\StampDutyService;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Taxation\Domain\Services\TaxResolutionService;
 use App\Modules\Taxation\Domain\Services\WithholdingCalculationService;
+use App\Modules\Taxation\Infrastructure\Repositories\EloquentSalesWithholdingTrackingRepository;
 use App\Modules\Taxation\Infrastructure\Repositories\EloquentWithholdingCertificateRepository;
 use App\Modules\Taxation\Infrastructure\Repositories\EloquentWithholdingTaxRuleRepository;
 use Illuminate\Support\ServiceProvider;
@@ -38,10 +41,16 @@ class TaxationServiceProvider extends ServiceProvider
             EloquentWithholdingCertificateRepository::class
         );
 
+        $this->app->bind(
+            SalesWithholdingTrackingRepositoryInterface::class,
+            EloquentSalesWithholdingTrackingRepository::class
+        );
+
         // Register withholding tax services as singletons
         $this->app->singleton(WithholdingCalculationService::class);
         $this->app->singleton(WithholdingHashChainService::class);
         $this->app->singleton(WithholdingCertificateService::class);
+        $this->app->singleton(SalesWithholdingTrackingService::class);
         $this->app->singleton(TEJExportService::class);
         $this->app->singleton(CertificatePDFService::class);
     }

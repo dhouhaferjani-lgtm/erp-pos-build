@@ -1,37 +1,131 @@
 @import "tailwindcss";
 
-/* AutoERP Design System - Base Styles */
+/* ============================================================
+   AutoERP Design System — Theme Layer
+   ============================================================
+   All visual colors flow from CSS custom properties.
+   To swap palettes, change only the :root block below.
+   ============================================================ */
 
 :root {
-  /* Primary brand colors */
-  --color-primary-50: #eff6ff;
-  --color-primary-100: #dbeafe;
-  --color-primary-200: #bfdbfe;
-  --color-primary-300: #93c5fd;
-  --color-primary-400: #60a5fa;
-  --color-primary-500: #3b82f6;
-  --color-primary-600: #2563eb;
-  --color-primary-700: #1d4ed8;
-  --color-primary-800: #1e40af;
-  --color-primary-900: #1e3a8a;
-  --color-primary-950: #172554;
+  /* === THEME: Deep Ocean === */
+  /* Primary scale (action blue) */
+  --theme-primary-50:  #EFF6FC;
+  --theme-primary-100: #D9EAF7;
+  --theme-primary-200: #B3D5EF;
+  --theme-primary-300: #8DC0E7;
+  --theme-primary-400: #4DA0D5;
+  --theme-primary-500: #1E7EC3;
+  --theme-primary-600: #1A6FB5;
+  --theme-primary-700: #155B96;
+  --theme-primary-800: #104878;
+  --theme-primary-900: #0C355A;
+  --theme-primary-950: #0F2B3C;
+
+  /* Secondary scale (copper accent) */
+  --theme-secondary-50:  #FDF5EF;
+  --theme-secondary-100: #FAEADB;
+  --theme-secondary-200: #F3D0B3;
+  --theme-secondary-300: #ECAF82;
+  --theme-secondary-400: #D98E55;
+  --theme-secondary-500: #C2703E;
+  --theme-secondary-600: #A85C32;
+  --theme-secondary-700: #8B4A2A;
+  --theme-secondary-800: #6E3A22;
+  --theme-secondary-900: #5A301D;
+  --theme-secondary-950: #3A1E12;
+
+  /* Neutral scale (cool navy-tinted grays) */
+  --theme-neutral-50:  #F8FAFB;
+  --theme-neutral-100: #F1F4F7;
+  --theme-neutral-200: #E2E7ED;
+  --theme-neutral-300: #D8DEE4;
+  --theme-neutral-400: #9AA5B4;
+  --theme-neutral-500: #6B7A8D;
+  --theme-neutral-600: #4A5B6D;
+  --theme-neutral-700: #344150;
+  --theme-neutral-800: #1E2D3A;
+  --theme-neutral-900: #0F2B3C;
+  --theme-neutral-950: #091C28;
 
   /* Semantic colors */
-  --color-success: #10b981;
-  --color-warning: #f59e0b;
-  --color-error: #ef4444;
-  --color-info: #3b82f6;
+  --theme-success: #1B7F4E;
+  --theme-warning: #D97706;
+  --theme-error:   #C53030;
+  --theme-info:    var(--theme-primary-600);
+}
+
+/* ============================================================
+   Tailwind @theme bridge
+   Maps Tailwind utility classes to read from theme variables.
+   Existing `bg-blue-600` / `text-gray-900` code automatically
+   picks up the active theme palette.
+   ============================================================ */
+@theme {
+  /* Remap blue-* → theme primary (existing code works) */
+  --color-blue-50:  var(--theme-primary-50);
+  --color-blue-100: var(--theme-primary-100);
+  --color-blue-200: var(--theme-primary-200);
+  --color-blue-300: var(--theme-primary-300);
+  --color-blue-400: var(--theme-primary-400);
+  --color-blue-500: var(--theme-primary-500);
+  --color-blue-600: var(--theme-primary-600);
+  --color-blue-700: var(--theme-primary-700);
+  --color-blue-800: var(--theme-primary-800);
+  --color-blue-900: var(--theme-primary-900);
+  --color-blue-950: var(--theme-primary-950);
+
+  /* Semantic primary-* utilities (new code uses these) */
+  --color-primary-50:  var(--theme-primary-50);
+  --color-primary-100: var(--theme-primary-100);
+  --color-primary-200: var(--theme-primary-200);
+  --color-primary-300: var(--theme-primary-300);
+  --color-primary-400: var(--theme-primary-400);
+  --color-primary-500: var(--theme-primary-500);
+  --color-primary-600: var(--theme-primary-600);
+  --color-primary-700: var(--theme-primary-700);
+  --color-primary-800: var(--theme-primary-800);
+  --color-primary-900: var(--theme-primary-900);
+  --color-primary-950: var(--theme-primary-950);
+
+  /* Semantic secondary-* utilities (copper accent) */
+  --color-secondary-50:  var(--theme-secondary-50);
+  --color-secondary-100: var(--theme-secondary-100);
+  --color-secondary-200: var(--theme-secondary-200);
+  --color-secondary-300: var(--theme-secondary-300);
+  --color-secondary-400: var(--theme-secondary-400);
+  --color-secondary-500: var(--theme-secondary-500);
+  --color-secondary-600: var(--theme-secondary-600);
+  --color-secondary-700: var(--theme-secondary-700);
+  --color-secondary-800: var(--theme-secondary-800);
+  --color-secondary-900: var(--theme-secondary-900);
+  --color-secondary-950: var(--theme-secondary-950);
+
+  /* Remap gray-* → theme neutrals (cool navy tint) */
+  --color-gray-50:  var(--theme-neutral-50);
+  --color-gray-100: var(--theme-neutral-100);
+  --color-gray-200: var(--theme-neutral-200);
+  --color-gray-300: var(--theme-neutral-300);
+  --color-gray-400: var(--theme-neutral-400);
+  --color-gray-500: var(--theme-neutral-500);
+  --color-gray-600: var(--theme-neutral-600);
+  --color-gray-700: var(--theme-neutral-700);
+  --color-gray-800: var(--theme-neutral-800);
+  --color-gray-900: var(--theme-neutral-900);
+  --color-gray-950: var(--theme-neutral-950);
 }
 
 /* Typography */
 body {
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  letter-spacing: -0.011em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 /* Focus styles for accessibility */
 *:focus-visible {
-  outline: 2px solid var(--color-primary-500);
+  outline: 2px solid var(--theme-primary-500);
   outline-offset: 2px;
 }

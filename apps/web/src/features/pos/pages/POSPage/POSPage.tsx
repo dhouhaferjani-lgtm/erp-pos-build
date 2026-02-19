@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import { ProductGrid, TransactionCart, Calculator, PaymentPanel } from '../../organisms'
+import { ProductGrid, TransactionCart, Calculator } from '../../organisms'
 import { POSLayout } from '../../layouts'
 import type { Product } from '../../molecules'
 import type { Customer } from '../../organisms/TransactionCart'
@@ -18,7 +18,6 @@ export interface POSPageProps {
   isLoading?: boolean
   className?: string
   terminalCode?: string
-  shiftId?: string
 }
 
 export function POSPage({
@@ -32,7 +31,6 @@ export function POSPage({
   isLoading = false,
   className,
   terminalCode,
-  shiftId,
 }: POSPageProps) {
   const navigate = useNavigate()
   const [cartItems, setCartItems] = useState<CartItem[]>([])
@@ -98,7 +96,8 @@ export function POSPage({
         )
       } else {
         // Add new item
-        const unitPrice = parseFloat(product.price)
+        const priceValue = product.sale_price || '0'
+        const unitPrice = parseFloat(priceValue)
         return [
           ...prev,
           {
@@ -107,10 +106,10 @@ export function POSPage({
               id: product.id,
               name: product.name,
               sku: product.sku,
-              price: product.price,
+              price: priceValue,
             },
             quantity: 1,
-            unit_price: product.price,
+            unit_price: priceValue,
             line_total: unitPrice.toFixed(3),
             tax_amount: '0.000',
           },
@@ -166,7 +165,6 @@ export function POSPage({
       <POSLayout
         onExitPOS={handleExitPOS}
         terminalCode={terminalCode}
-        shiftId={shiftId}
       >
         <div className="flex h-full items-center justify-center">
           <div className="text-center">
@@ -181,7 +179,6 @@ export function POSPage({
     <POSLayout
       onExitPOS={handleExitPOS}
       terminalCode={terminalCode}
-      shiftId={shiftId}
     >
       <div
         className={cn(
@@ -194,7 +191,7 @@ export function POSPage({
         {/* Product Grid - 60% wide on desktop, 50% tall on narrow screens */}
         <div
           className={cn(
-            'overflow-hidden',
+            'overflow-y-auto overflow-x-hidden',
             isNarrowScreen ? 'h-1/2' : 'flex-[3]'
           )}
         >
@@ -225,6 +222,7 @@ export function POSPage({
             selectedCustomer={selectedCustomer}
             onChangeCustomer={onChangeCustomer}
             touchOptimized={touchOptimized}
+            terminalCode={terminalCode}
           />
         </div>
 
@@ -235,16 +233,6 @@ export function POSPage({
           touchOptimized={touchOptimized}
         />
       </div>
-
-      {/* Fixed Payment Panel - Responsive positioning */}
-      <PaymentPanel
-        items={cartItems}
-        onQuickCheckout={handleQuickCheckout}
-        onAdvancedPayments={handleAdvancedPayments}
-        onOpenCalculator={() => setIsCalculatorOpen(true)}
-        touchOptimized={touchOptimized}
-        isNarrowScreen={isNarrowScreen}
-      />
     </POSLayout>
   )
 }

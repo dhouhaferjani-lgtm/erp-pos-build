@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Application\Services;
 
+use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -21,6 +22,7 @@ final class GoodsReceiptService
     public function __construct(
         private readonly WeightedAverageCostService $wacService,
         private readonly LandedCostService $landedCostService,
+        private readonly BatchStockService $batchStockService,
     ) {}
 
     /**
@@ -28,11 +30,12 @@ final class GoodsReceiptService
      *
      * @param  Document  $purchaseOrder  The confirmed purchase order
      * @param  array<string, string>  $receivedQuantities  Map of line_id => quantity to receive
+     * @param  array<string, array{batch_number: string, expiry_date: string, manufacturing_date?: string}>  $batchData  Optional batch data per line_id
      * @return Document The updated purchase order
      *
      * @throws \DomainException If PO is not in valid state for receiving
      */
-    public function receiveGoods(Document $purchaseOrder, array $receivedQuantities): Document
+    public function receiveGoods(Document $purchaseOrder, array $receivedQuantities, array $batchData = []): Document
     {
         if ($purchaseOrder->type !== DocumentType::PurchaseOrder) {
             throw new \DomainException('Only purchase orders can receive goods');
@@ -42,7 +45,7 @@ final class GoodsReceiptService
             throw new \DomainException('Purchase order must be confirmed before receiving goods');
         }
 
-        return DB::transaction(function () use ($purchaseOrder, $receivedQuantities): Document {
+        return DB::transaction(function () use ($purchaseOrder, $receivedQuantities, $batchData): Document {
             // Get the default location for this company
             $location = $purchaseOrder->location ?? $this->getDefaultLocation($purchaseOrder);
 
@@ -94,6 +97,28 @@ final class GoodsReceiptService
                     referenceType: 'Document',
                     referenceId: $purchaseOrder->id
                 );
+
+                // Receive batch stock if batch data is provided for this line
+                if (isset($batchData[$line->id]) && ($product->requires_batch_tracking ?? false)) {
+                    $lineBatch = $batchData[$line->id];
+                    $batch = $this->batchStockService->findOrCreateBatch(
+                        companyId: $purchaseOrder->company_id,
+                        tenantId: $purchaseOrder->tenant_id,
+                        productId: (string) $product->id,
+                        batchNumber: $lineBatch['batch_number'],
+                        expiryDate: $lineBatch['expiry_date'],
+                        manufacturingDate: $lineBatch['manufacturing_date'] ?? null,
+                    );
+
+                    $this->batchStockService->receiveBatchStock(
+                        tenantId: $purchaseOrder->tenant_id,
+                        batchId: (int) $batch->id,
+                        locationId: (string) $location->id,
+                        quantity: $qtyToReceive,
+                    );
+
+                    $line->batch_id = $batch->id;
+                }
 
                 // Update line's received quantity
                 $line->quantity_received = (float) bcadd($alreadyReceived, $qtyToReceive, 4);

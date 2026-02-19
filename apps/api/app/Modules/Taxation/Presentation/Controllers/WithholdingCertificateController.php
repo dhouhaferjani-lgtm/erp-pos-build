@@ -18,7 +18,6 @@ use App\Modules\Taxation\Presentation\Requests\VoidCertificateRequest;
 use App\Modules\Taxation\Presentation\Resources\WithholdingCertificateResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Withholding Certificate Controller
@@ -203,7 +202,7 @@ class WithholdingCertificateController extends Controller
     /**
      * Download certificate as PDF.
      */
-    public function downloadPDF(string $id): StreamedResponse
+    public function downloadPDF(string $id): \Illuminate\Http\Response
     {
         $certificate = $this->certificateRepository->findById($id);
 
@@ -211,15 +210,7 @@ class WithholdingCertificateController extends Controller
             abort(404, 'Certificate not found');
         }
 
-        $html = $this->pdfService->generateHTML($certificate);
-        $filename = $this->pdfService->generateFilename($certificate);
-
-        // For now, download as HTML (TODO: integrate PDF library)
-        return response()->streamDownload(function () use ($html) {
-            echo $html;
-        }, str_replace('.pdf', '.html', $filename), [
-            'Content-Type' => 'text/html',
-        ]);
+        return $this->pdfService->streamPDF($certificate);
     }
 
     /**

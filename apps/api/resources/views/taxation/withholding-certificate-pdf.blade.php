@@ -273,6 +273,18 @@
     </div>
     @endif
 
+    @if(isset($qrCode))
+    <div style="text-align: center; margin-top: 30px; padding: 20px; background-color: #f9f9f9; border: 1px solid #ddd;">
+        <strong style="display: block; margin-bottom: 10px; font-size: 12pt;">
+            Verification QR Code / QR Code de vérification
+        </strong>
+        <img src="data:image/png;base64,{{ $qrCode }}" alt="QR Code" style="width: 200px; height: 200px;" />
+        <p style="margin-top: 10px; font-size: 9pt; color: #666;">
+            Scan to verify certificate authenticity / Scanner pour vérifier l'authenticité
+        </p>
+    </div>
+    @endif
+
     <div class="signature-section">
         <div class="signature-block">
             <div>Prepared By / Préparé par</div>

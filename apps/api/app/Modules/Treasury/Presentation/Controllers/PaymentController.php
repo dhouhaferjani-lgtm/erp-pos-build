@@ -10,6 +10,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Events\InvoicePaid;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Taxation\Application\Services\WithholdingCertificateService;
 use App\Modules\Treasury\Application\Services\PaymentAllocationService;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
@@ -29,6 +30,7 @@ class PaymentController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly GeneralLedgerService $glService,
         private readonly PaymentAllocationService $allocationService,
+        private readonly WithholdingCertificateService $withholdingService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -100,6 +102,9 @@ class PaymentController extends Controller
             'allocations' => ['nullable', 'array'],
             'allocations.*.document_id' => ['required_with:allocations', 'uuid', 'exists:documents,id'],
             'allocations.*.amount' => ['required_with:allocations', 'numeric', 'min:0.01'],
+            'withholding_enabled' => ['nullable', 'boolean'],
+            'withholding_rate' => ['nullable', 'numeric', 'min:0', 'max:1'],
+            'withholding_override_reason' => ['nullable', 'string', 'max:500'],
         ]);
 
         /** @var numeric-string $paymentAmount */
@@ -186,6 +191,37 @@ class PaymentController extends Controller
                 paymentMethodId: $validated['payment_method_id'],
                 recordedAt: now()->toIso8601String(),
             ));
+
+            // Create withholding certificate if enabled and document allocated
+            if (
+                ($validated['withholding_enabled'] ?? false)
+                && !empty($adjustedAllocations)
+            ) {
+                // Get the first document for withholding certificate
+                $firstAllocation = $adjustedAllocations[0];
+                /** @var Document $document */
+                $document = Document::findOrFail($firstAllocation['document_id']);
+
+                try {
+                    $certificateData = $this->withholdingService->createFromPayment(
+                        $payment,
+                        $document,
+                        $validated['withholding_rate'] ?? null,
+                        $validated['withholding_override_reason'] ?? null
+                    );
+
+                    // Link certificate to payment
+                    $payment->withholding_certificate_id = $certificateData->id;
+                    $payment->save();
+                } catch (\DomainException $e) {
+                    // Log error but don't fail the payment
+                    // Withholding certificate can be created manually later
+                    logger()->warning('Failed to create withholding certificate for payment', [
+                        'payment_id' => $payment->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
 
             // Calculate total allocated for GL entry
             /** @var numeric-string $totalAllocatedForGL */

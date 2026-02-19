@@ -1,6 +1,8 @@
 {
   "ingredients": "Ingredients",
   "ingredientsDescription": "Manage active ingredients database for parapharmacy products",
+  "noIngredients": "No ingredients yet",
+  "noIngredientsDescription": "Get started by adding your first active ingredient to the database",
   "addIngredient": "Add Ingredient",
   "editIngredient": "Edit Ingredient",
   "confirmDeleteIngredient": "Delete Ingredient?",
@@ -14,6 +16,8 @@
 
   "certifications": "Certifications",
   "certificationsDescription": "Manage product certifications and compliance badges",
+  "noCertifications": "No certifications yet",
+  "noCertificationsDescription": "Get started by adding your first product certification",
   "addCertification": "Add Certification",
   "editCertification": "Edit Certification",
   "confirmDeleteCertification": "Delete Certification?",
@@ -27,6 +31,8 @@
 
   "healthClaims": "Health Claims",
   "healthClaimsDescription": "Manage approved health claims for parapharmacy products",
+  "noHealthClaims": "No health claims yet",
+  "noHealthClaimsDescription": "Get started by adding your first approved health claim",
   "addHealthClaim": "Add Health Claim",
   "editHealthClaim": "Edit Health Claim",
   "confirmDeleteHealthClaim": "Delete Health Claim?",
@@ -40,6 +46,8 @@
 
   "keyComponents": "Key Components",
   "keyComponentsDescription": "Manage non-active product components (capsules, binders, etc.)",
+  "noKeyComponents": "No key components yet",
+  "noKeyComponentsDescription": "Get started by adding your first key component",
   "addKeyComponent": "Add Key Component",
   "editKeyComponent": "Edit Key Component",
   "confirmDeleteKeyComponent": "Delete Key Component?",

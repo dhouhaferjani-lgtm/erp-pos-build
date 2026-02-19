@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { POSButton } from '../../atoms'
 import { X } from 'lucide-react'
@@ -18,6 +19,7 @@ export function Calculator({
   touchOptimized = false,
   className,
 }: CalculatorProps) {
+  const { t } = useTranslation(['pos'])
   const [display, setDisplay] = useState('0')
   const [previousValue, setPreviousValue] = useState<number | null>(null)
   const [operation, setOperation] = useState<Operation>(null)
@@ -71,7 +73,7 @@ export function Calculator({
           break
         case '÷':
           if (current === 0) {
-            setDisplay('Error')
+            setDisplay(t('pos:calculator.error'))
             setPreviousValue(null)
             setOperation(null)
             setShouldResetDisplay(true)
@@ -132,7 +134,7 @@ export function Calculator({
   }
 
   const handleBackspace = () => {
-    if (display.length === 1 || display === 'Error') {
+    if (display.length === 1 || display === t('pos:calculator.error')) {
       setDisplay('0')
     } else {
       setDisplay((prev) => prev.slice(0, -1))
@@ -173,12 +175,12 @@ export function Calculator({
               touchOptimized ? 'text-2xl' : 'text-xl'
             )}
           >
-            Calculator
+            {t('pos:calculator.title')}
           </h3>
           <button
             onClick={onClose}
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            aria-label="Close calculator"
+            aria-label={t('pos:calculator.close')}
           >
             <X className="w-5 h-5 text-gray-600" />
           </button>

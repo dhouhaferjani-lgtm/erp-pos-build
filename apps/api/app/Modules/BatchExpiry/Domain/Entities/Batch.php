@@ -16,6 +16,16 @@ class Batch extends Model
 
     protected $table = 'product_batches';
 
+    /**
+     * Only auto-generate UUIDs for the `uuid` column, not the bigint `id` PK.
+     *
+     * @return array<int, string>
+     */
+    public function uniqueIds(): array
+    {
+        return ['uuid'];
+    }
+
     protected $fillable = [
         'uuid',
         'tenant_id',
@@ -45,6 +55,11 @@ class Batch extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(\App\Modules\Product\Domain\Product::class);
+    }
+
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(\App\Modules\Company\Domain\Company::class);
     }
 
     public function batchStock(): HasMany

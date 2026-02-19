@@ -1,0 +1,56 @@
+{
+  "title": "Unités de mesure",
+  "addUnit": "Ajouter une unité",
+  "editUnit": "Modifier l'unité",
+  "unitCreated": "Unité créée avec succès",
+  "unitUpdated": "Unité mise à jour avec succès",
+  "unitDeleted": "Unité désactivée avec succès",
+
+  "category": "Catégorie",
+  "code": "Code",
+  "codeHelp": "Identifiant unique (par ex. 'cs', 'gal')",
+  "name": "Nom",
+  "symbol": "Symbole",
+  "symbolHelp": "Symbole d'affichage (par ex. 'cs', 'gal')",
+  "conversionFactor": "Facteur de conversion",
+  "conversionFactorHelp": "Combien d'unités de base équivalent à 1 de cette unité",
+  "decimalPlaces": "Décimales",
+  "roundingMethod": "Méthode d'arrondi",
+  "isBaseUnit": "Unité de base",
+  "isSystem": "Unité système",
+  "isActive": "Active",
+
+  "categories": {
+    "weight": "Poids",
+    "volume": "Volume",
+    "length": "Longueur",
+    "pieces": "Pièces",
+    "time": "Temps"
+  },
+
+  "roundingMethods": {
+    "half_up": "Arrondi au plus proche",
+    "floor": "Arrondi inférieur",
+    "ceil": "Arrondi supérieur"
+  },
+
+  "errors": {
+    "systemUnit": "Les unités système ne peuvent pas être modifiées",
+    "unitInUse": "L'unité est utilisée et ne peut pas être supprimée",
+    "incompatibleUnits": "Impossible de convertir entre des unités incompatibles"
+  },
+
+  "noUnits": "Aucune unité trouvée",
+  "systemUnitInfo": "Les unités système sont disponibles pour tous les locataires et ne peuvent pas être modifiées",
+  "selectUnit": "Sélectionner une unité",
+
+  "conversionCalculator": "Calculateur de conversion d'unités",
+  "conversionCalculatorHelp": "Convertir des quantités entre unités compatibles",
+  "quantity": "Quantité",
+  "fromUnit": "De l'unité",
+  "toUnit": "Vers l'unité",
+  "swapUnits": "Échanger les unités",
+  "result": "Résultat",
+  "convert": "Convertir",
+  "conversionFactorDisplay": "Facteur de conversion"
+}

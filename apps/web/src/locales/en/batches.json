@@ -1,0 +1,118 @@
+{
+  "title": "Product Batches",
+  "batchCount": "{{count}} batch",
+  "batchCount_other": "{{count}} batches",
+  "daysRemaining": "days",
+
+  "expiryStatus": {
+    "ok": "OK",
+    "approaching": "Approaching",
+    "warning": "Warning",
+    "critical": "Critical",
+    "expired": "Expired"
+  },
+
+  "fields": {
+    "batchNumber": "Batch Number",
+    "product": "Product",
+    "expiryDate": "Expiry Date",
+    "manufacturingDate": "Manufacturing Date",
+    "status": "Status",
+    "quantity": "Quantity",
+    "availableQuantity": "Available",
+    "reservedQuantity": "Reserved",
+    "location": "Location",
+    "notes": "Notes",
+    "recallReason": "Recall Reason"
+  },
+
+  "actions": {
+    "addBatch": "Add Batch",
+    "createBatch": "Create Batch",
+    "editBatch": "Edit Batch",
+    "deleteBatch": "Delete Batch",
+    "recallBatch": "Recall Batch",
+    "viewDetails": "View Details",
+    "selectBatch": "Select Batch"
+  },
+
+  "status": {
+    "active": "Active",
+    "inactive": "Inactive",
+    "recalled": "Recalled"
+  },
+
+  "search": {
+    "placeholder": "Search batch numbers..."
+  },
+
+  "empty": {
+    "title": "No batches found",
+    "description": "Get started by creating your first batch."
+  },
+
+  "detail": {
+    "title": "Batch Details",
+    "stockByLocation": "Stock by Location",
+    "movementHistory": "Movement History",
+    "productInfo": "Product Information"
+  },
+
+  "form": {
+    "createTitle": "Create New Batch",
+    "editTitle": "Edit Batch",
+    "recallTitle": "Recall Batch",
+    "createBatchDescription": "Add a new batch to track expiry dates and manage inventory",
+    "batchInformation": "Batch Information",
+    "fillInBatchDetails": "Fill in the details for the new batch",
+    "updateBatchDetails": "Update the batch information below",
+    "productCannotBeChanged": "Product cannot be changed after batch creation",
+    "cannotEditRecalled": "Cannot Edit Recalled Batch",
+    "recalledBatchExplanation": "This batch has been recalled and cannot be edited. Recalled batches are read-only for audit purposes.",
+    "cannotEditInactive": "Cannot Edit Inactive Batch",
+    "inactiveBatchExplanation": "This batch is inactive and cannot be edited. Please activate the batch to make changes.",
+    "selectProduct": "Select a product",
+    "enterBatchNumber": "Enter batch number",
+    "selectExpiryDate": "Select expiry date",
+    "selectManufacturingDate": "Select manufacturing date (optional)",
+    "enterNotes": "Enter notes (optional)",
+    "enterRecallReason": "Enter reason for recall",
+    "confirmRecall": "Are you sure you want to recall this batch?",
+    "confirmDelete": "Are you sure you want to delete this batch?"
+  },
+
+  "validation": {
+    "batchNumberRequired": "Batch number is required",
+    "productRequired": "Product is required",
+    "expiryDateRequired": "Expiry date is required",
+    "expiryDateFuture": "Expiry date must be in the future",
+    "manufacturingDatePast": "Manufacturing date cannot be in the future",
+    "recallReasonRequired": "Recall reason is required"
+  },
+
+  "messages": {
+    "createSuccess": "Batch created successfully",
+    "updateSuccess": "Batch updated successfully",
+    "deleteSuccess": "Batch deleted successfully",
+    "recallSuccess": "Batch recalled successfully",
+    "loadError": "Failed to load batch details"
+  },
+
+  "pos": {
+    "selectBatchTitle": "Select Batch",
+    "fefoSuggestion": "FEFO Suggestion",
+    "fefoDescription": "System suggests using earliest expiring batches first",
+    "insufficientStock": "Insufficient stock in selected batches",
+    "noBatchesAvailable": "No batches available for this product",
+    "quantityToAllocate": "Quantity to allocate",
+    "totalAllocated": "Total allocated",
+    "remaining": "Remaining"
+  },
+
+  "reports": {
+    "expiringProducts": "Expiring Products",
+    "expiringDescription": "Products with batches expiring soon",
+    "daysThreshold": "Within {{days}} days",
+    "noBatchesExpiring": "No batches expiring within the selected period"
+  }
+}

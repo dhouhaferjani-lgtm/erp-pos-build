@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Domain\Services;
 
+use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -40,6 +41,7 @@ final class DeliveryNoteService
         private readonly StockReservationService $stockReservationService,
         private readonly WeightedAverageCostService $wacService,
         private readonly TaxCalculationService $taxCalculationService,
+        private readonly BatchStockService $batchStockService,
     ) {}
 
     /**
@@ -63,6 +65,12 @@ final class DeliveryNoteService
         if (! $deliveryNote->isDraft()) {
             throw new \DomainException(
                 'Only draft delivery notes can be confirmed. Current status: '.$deliveryNote->status->value
+            );
+        }
+
+        if ($deliveryNote->location_id === null) {
+            throw new \DomainException(
+                'Delivery note must have a location before confirmation. Document: '.$deliveryNote->document_number
             );
         }
 
@@ -110,6 +118,13 @@ final class DeliveryNoteService
 
         // Issue stock for all product lines
         $this->issueStock($deliveryNote);
+
+        // Set quantity_delivered on each line to match quantity (full delivery)
+        foreach ($deliveryNote->lines as $line) {
+            $line->update([
+                'quantity_delivered' => $line->quantity,
+            ]);
+        }
 
         // Update delivery note with fiscal chain data and seal it
         $deliveryNote->update([
@@ -229,6 +244,16 @@ final class DeliveryNoteService
                 referenceType: 'Document',
                 referenceId: $deliveryNote->id
             );
+
+            // Deduct batch-level stock if this line has a batch assigned
+            if ($line->batch_id !== null) {
+                $this->batchStockService->issueBatchStock(
+                    tenantId: $deliveryNote->tenant_id,
+                    batchId: (int) $line->batch_id,
+                    locationId: (string) $location->id,
+                    quantity: (string) $line->quantity,
+                );
+            }
         }
     }
 }

@@ -567,20 +567,31 @@ export function RecordPaymentModal({
                           htmlFor={`amount-${line.id}`}
                           required
                         >
-                          <div className="relative">
-                            <span className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-500">
-                              $
-                            </span>
-                            <Input
-                              id={`amount-${line.id}`}
-                              type="number"
-                              step="0.01"
-                              min="0.01"
-                              value={line.amount}
-                              onChange={e => { updatePaymentLine(line.id, 'amount', e.target.value); }}
-                              className="ps-8"
-                              placeholder="0.00"
-                            />
+                          <div className="space-y-2">
+                            <div className="relative">
+                              <span className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-500">
+                                $
+                              </span>
+                              <Input
+                                id={`amount-${line.id}`}
+                                type="number"
+                                step="0.01"
+                                min="0.01"
+                                value={line.amount}
+                                onChange={e => { updatePaymentLine(line.id, 'amount', e.target.value); }}
+                                className="ps-8"
+                                placeholder="0.00"
+                              />
+                            </div>
+                            {index === 0 && remaining > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => { updatePaymentLine(line.id, 'amount', remaining.toFixed(2)); }}
+                                className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                              >
+                                {t('treasury:unifiedPayment.payFullAmount')} ({formatAmount(remaining)})
+                              </button>
+                            )}
                           </div>
                         </FormField>
 

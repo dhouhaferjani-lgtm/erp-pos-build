@@ -1,8 +1,12 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
-import { CartLineItem, type CartItem } from '../../molecules'
+import { CartLineItem, type CartItem, TransactionDiscountInput } from '../../molecules'
 import { POSButton } from '../../atoms'
-import { ShoppingCart, Trash2, User, UserPlus } from 'lucide-react'
+import { ShoppingCart, Trash2, User, UserPlus, Tag } from 'lucide-react'
+import { PaymentPanel } from '../PaymentPanel/PaymentPanel'
+import { Modal } from '@/components/organisms/Modal/Modal'
+import { useDiscountPermissions } from '../../hooks/useDiscountPermissions'
 
 export interface Customer {
   id: string
@@ -22,6 +26,12 @@ export interface TransactionCartProps {
   onClearCart?: () => void
   touchOptimized?: boolean
   className?: string
+  terminalCode?: string
+  transactionDiscount?: {
+    amount: string
+    reason?: string
+  }
+  onUpdateTransactionDiscount?: (discount?: { amount: string; reason?: string }) => void
 }
 
 export function TransactionCart({
@@ -36,10 +46,24 @@ export function TransactionCart({
   onClearCart,
   touchOptimized = false,
   className,
+  terminalCode,
+  transactionDiscount,
+  onUpdateTransactionDiscount,
 }: TransactionCartProps) {
+  const { t } = useTranslation(['pos', 'common'])
+  const { permissions } = useDiscountPermissions(terminalCode)
+  const [showTransactionDiscountModal, setShowTransactionDiscountModal] = useState(false)
+
   // Calculate item count for header badge
   const itemCount = useMemo(() => {
     return items.reduce((sum, item) => sum + item.quantity, 0)
+  }, [items])
+
+  // Calculate subtotal for discount validation
+  const subtotal = useMemo(() => {
+    return items
+      .reduce((sum, item) => sum + parseFloat(item.line_total), 0)
+      .toFixed(3)
   }, [items])
 
   const isEmpty = items.length === 0
@@ -62,7 +86,7 @@ export function TransactionCart({
               touchOptimized ? 'text-2xl' : 'text-xl'
             )}
           >
-            Cart
+            {t('pos:cart.title')}
           </h2>
           {!isEmpty && (
             <span
@@ -71,7 +95,7 @@ export function TransactionCart({
                 touchOptimized ? 'text-base' : 'text-sm'
               )}
             >
-              {itemCount} {itemCount === 1 ? 'item' : 'items'}
+              {itemCount} {itemCount === 1 ? t('pos:cart.item') : t('pos:cart.items')}
             </span>
           )}
         </div>
@@ -82,9 +106,9 @@ export function TransactionCart({
             size="sm"
             onClick={onClearCart}
             icon={<Trash2 className="w-4 h-4" />}
-            aria-label="Clear cart"
+            aria-label={t('pos:cart.clear')}
           >
-            Clear
+            {t('pos:cart.clear')}
           </POSButton>
         )}
       </div>
@@ -110,7 +134,7 @@ export function TransactionCart({
                   selectedCustomer ? 'text-gray-900' : 'text-gray-500'
                 )}
               >
-                {selectedCustomer ? selectedCustomer.name : 'Walk-in Customer'}
+                {selectedCustomer ? selectedCustomer.name : t('pos:cart.walkInCustomer')}
               </div>
               {selectedCustomer?.phone && (
                 <div className="text-sm text-gray-500">
@@ -125,22 +149,22 @@ export function TransactionCart({
               variant="secondary"
               size="sm"
               onClick={onChangeCustomer}
-              aria-label="Change customer"
+              aria-label={t('pos:cart.change')}
             >
-              Change
+              {t('pos:cart.change')}
             </POSButton>
           )}
         </div>
       </div>
 
-      {/* Cart Items - Add bottom padding for fixed PaymentPanel */}
-      <div className="flex-1 overflow-y-auto pb-[200px] space-y-3">
+      {/* Cart Items - Scrollable area */}
+      <div className="flex-1 overflow-y-auto space-y-3 mb-4">
         {isEmpty ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <ShoppingCart className="w-16 h-16 text-gray-300 mb-4" />
-            <p className="text-gray-500 text-lg font-medium">Cart is empty</p>
+            <p className="text-gray-500 text-lg font-medium">{t('pos:cart.empty')}</p>
             <p className="text-gray-400 text-sm mt-2">
-              Add products to get started
+              {t('pos:cart.addProducts')}
             </p>
           </div>
         ) : (
@@ -155,6 +179,101 @@ export function TransactionCart({
           ))
         )}
       </div>
+
+      {/* Transaction Discount Section */}
+      {!isEmpty && permissions?.canApplyTransactionDiscounts && onUpdateTransactionDiscount && (
+        <div className="border-t border-gray-200 pt-3 pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Tag className="w-4 h-4 text-gray-600" />
+              <span className="text-sm font-medium text-gray-700">
+                {t('pos:cart.transactionDiscount')}
+              </span>
+            </div>
+            {transactionDiscount && parseFloat(transactionDiscount.amount) > 0 ? (
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <div className="text-red-600 font-semibold">
+                    -{parseFloat(transactionDiscount.amount).toFixed(3)} TND
+                  </div>
+                  {transactionDiscount.reason && (
+                    <div className="text-xs text-gray-500 italic">
+                      {transactionDiscount.reason}
+                    </div>
+                  )}
+                </div>
+                <POSButton
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setShowTransactionDiscountModal(true)
+                  }}
+                  aria-label={t('pos:cart.editDiscount')}
+                >
+                  {t('common:edit')}
+                </POSButton>
+              </div>
+            ) : (
+              <POSButton
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setShowTransactionDiscountModal(true)
+                }}
+                icon={<Tag className="w-4 h-4" />}
+              >
+                {t('pos:cart.addDiscount')}
+              </POSButton>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Payment Panel - Fixed at bottom of cart section */}
+      {!isEmpty && (
+        <div className="border-t border-gray-200 pt-4">
+          <PaymentPanel
+            items={items}
+            onQuickCheckout={onQuickCheckout}
+            onAdvancedPayments={onAdvancedPayments}
+            onOpenCalculator={onOpenCalculator}
+            touchOptimized={touchOptimized}
+            inline={true}
+            transactionDiscountAmount={transactionDiscount?.amount}
+          />
+        </div>
+      )}
+
+      {/* Transaction Discount Modal */}
+      {showTransactionDiscountModal && permissions && onUpdateTransactionDiscount && (
+        <Modal
+          isOpen={showTransactionDiscountModal}
+          onClose={() => {
+            setShowTransactionDiscountModal(false)
+          }}
+          title={t('pos:cart.transactionDiscount')}
+          size="md"
+        >
+          <div className="p-4">
+            <TransactionDiscountInput
+              currentAmount={transactionDiscount?.amount}
+              currentReason={transactionDiscount?.reason}
+              subtotal={subtotal}
+              effectiveLimit={permissions.effectiveLimit}
+              requiresReason={permissions.requiresReason}
+              onApply={(amount, reason) => {
+                onUpdateTransactionDiscount({ amount, reason })
+                setShowTransactionDiscountModal(false)
+              }}
+              onClear={() => {
+                onUpdateTransactionDiscount(undefined)
+                setShowTransactionDiscountModal(false)
+              }}
+              touchOptimized={touchOptimized}
+            />
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

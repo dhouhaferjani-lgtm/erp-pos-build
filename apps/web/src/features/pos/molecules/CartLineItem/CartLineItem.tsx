@@ -1,7 +1,10 @@
 import { cn } from '@/lib/utils'
 import { POSButton } from '../../atoms'
-import { Plus, Minus, Trash2 } from 'lucide-react'
+import { Plus, Minus, Trash2, Tag } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { tokens, textColors } from '@/lib/designTokens'
+import { formatCurrency } from '@/lib/decimal'
 
 export interface CartItem {
   id: string
@@ -15,14 +18,21 @@ export interface CartItem {
   unit_price: string
   line_total: string
   tax_amount?: string
+  // Discount fields
+  discount_type?: 'percentage' | 'fixed' | null
+  discount_percent?: string
+  discount_amount?: string
+  discount_reason?: string
 }
 
 export interface CartLineItemProps {
   item: CartItem
   onUpdateQuantity: (productId: string, newQuantity: number) => void
   onRemove: (productId: string) => void
+  onEditDiscount?: (productId: string) => void
   touchOptimized?: boolean
   showTax?: boolean
+  showDiscount?: boolean
   disabled?: boolean
   className?: string
 }
@@ -31,13 +41,19 @@ export function CartLineItem({
   item,
   onUpdateQuantity,
   onRemove,
+  onEditDiscount,
   touchOptimized = false,
   showTax = false,
+  showDiscount = false,
   disabled = false,
   className,
 }: CartLineItemProps) {
+  const { t } = useTranslation('pos')
   const [touchStart, setTouchStart] = useState<number>(0)
   const [showDelete, setShowDelete] = useState(false)
+
+  // Check if item has discount
+  const hasDiscount = item.discount_type && (item.discount_percent || item.discount_amount)
 
   const handleIncrement = () => {
     onUpdateQuantity(item.product.id, item.quantity + 1)
@@ -108,6 +124,8 @@ export function CartLineItem({
         >
           {item.product.sku}
         </p>
+
+        {/* Price and Quantity */}
         <div className="flex items-center gap-2 mt-1">
           <span
             className={cn(
@@ -128,6 +146,39 @@ export function CartLineItem({
             </span>
           )}
         </div>
+
+        {/* Discount Badge and Info */}
+        {showDiscount && hasDiscount && (
+          <div className="mt-2 space-y-1">
+            <div className="flex items-center gap-2">
+              <span className={cn(tokens.badge.yellow, 'text-xs flex items-center gap-1')}>
+                <Tag className="w-3 h-3" />
+                {t('cart.discount')}:{' '}
+                {item.discount_type === 'percentage'
+                  ? `-${item.discount_percent}%`
+                  : `-${formatCurrency(item.discount_amount || '0', false)} TND`}
+              </span>
+              {onEditDiscount && (
+                <button
+                  onClick={() => onEditDiscount(item.product.id)}
+                  className={cn(
+                    'text-xs',
+                    textColors.brand,
+                    'hover:underline'
+                  )}
+                  disabled={disabled}
+                >
+                  {t('cart.editDiscount')}
+                </button>
+              )}
+            </div>
+            {item.discount_reason && (
+              <p className={cn('text-xs', textColors.tertiary, 'italic')}>
+                {item.discount_reason}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Quantity Controls */}

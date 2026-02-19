@@ -160,11 +160,18 @@
     "healthClaims": "Allégations santé",
     "keyComponents": "Composants clés",
     "pos": "Point de vente",
+    "openPos": "Ouvrir la caisse",
     "terminals": "Terminaux",
     "transactions": "Transactions",
     "shifts": "Caisses",
+    "shiftHistory": "Historique des postes",
+    "zReports": "Rapports Z",
+    "receipts": "Tickets",
     "settings": "Paramètres",
-    "locations": "Emplacements"
+    "locations": "Emplacements",
+    "catalog": "Catalogue",
+    "compositeItems": "Articles composés",
+    "modifierGroups": "Groupes de modificateurs"
   },
   "fields": {
     "totalReceivable": "Total à recevoir",
@@ -239,7 +246,7 @@
     "item": "élément",
     "items": "éléments"
   },
-  "filters": "Filtres",
+  "filtersLabel": "Filtres",
   "clearAll": "Tout effacer",
   "activeFilters": "{{count}} filtre(s) actif(s)",
   "remove": "Retirer",
@@ -256,6 +263,7 @@
   "error": "Erreur",
   "details": "Détails",
   "cancel": "Annuler",
+  "retry": "Réessayer",
   "save": "Enregistrer",
   "saving": "Enregistrement...",
   "creating": "Création...",

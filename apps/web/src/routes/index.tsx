@@ -151,6 +151,12 @@ const ExpenseCategoryPage = lazy(() => import('../features/expenses/pages/Expens
 const FraudSettingsPage = lazy(() => import('../features/compliance/pages/FraudSettingsPage').then((m) => ({ default: m.FraudSettingsPage })))
 const FraudAlertsPage = lazy(() => import('../features/compliance/pages/FraudAlertsPage').then((m) => ({ default: m.FraudAlertsPage })))
 
+// Catalog module (Composite Items & Modifiers)
+const CompositeItemListPage = lazy(() => import('../features/catalog').then((m) => ({ default: m.CompositeItemListPage })))
+const CompositeItemFormPage = lazy(() => import('../features/catalog').then((m) => ({ default: m.CompositeItemFormPage })))
+const ModifierGroupListPage = lazy(() => import('../features/catalog').then((m) => ({ default: m.ModifierGroupListPage })))
+const ModifierGroupFormPage = lazy(() => import('../features/catalog').then((m) => ({ default: m.ModifierGroupFormPage })))
+
 // Parapharmacy module
 const IngredientListPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.IngredientListPage })))
 const IngredientFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.IngredientFormPage })))
@@ -165,6 +171,9 @@ const KeyComponentFormPage = lazy(() => import('../features/parapharmacy/pages')
 const POSTerminalsPage = lazy(() => import('../pages/POS/Terminals').then((m) => ({ default: m.TerminalsPage })))
 const POSTransactionsPage = lazy(() => import('../pages/POS/POSDemo').then((m) => ({ default: m.POSDemo })))
 const POSShiftsPage = lazy(() => import('../pages/POS/ShiftDemo').then((m) => ({ default: m.ShiftDemo })))
+const ShiftHistoryPage = lazy(() => import('../features/pos/pages/ShiftHistoryPage/ShiftHistoryPage').then((m) => ({ default: m.ShiftHistoryPage })))
+const ZReportListPage = lazy(() => import('../features/pos/pages/ZReportListPage/ZReportListPage').then((m) => ({ default: m.ZReportListPage })))
+const ReceiptSearchPage = lazy(() => import('../features/pos/pages/ReceiptSearchPage/ReceiptSearchPage').then((m) => ({ default: m.ReceiptSearchPage })))
 
 function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   return (
@@ -1567,6 +1576,70 @@ export function AppRoutes() {
           />
         </Route>
 
+        {/* Catalog Module (Composite Items & Modifiers) */}
+        <Route path="catalog">
+          <Route
+            path="composite-items"
+            element={
+              <RequirePermission permission="composite-items.view">
+                <SuspenseWrapper>
+                  <CompositeItemListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="composite-items/new"
+            element={
+              <RequirePermission permission="composite-items.create">
+                <SuspenseWrapper>
+                  <CompositeItemFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="composite-items/:id/edit"
+            element={
+              <RequirePermission permission="composite-items.view">
+                <SuspenseWrapper>
+                  <CompositeItemFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="modifier-groups"
+            element={
+              <RequirePermission permission="modifier-groups.view">
+                <SuspenseWrapper>
+                  <ModifierGroupListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="modifier-groups/new"
+            element={
+              <RequirePermission permission="modifier-groups.manage">
+                <SuspenseWrapper>
+                  <ModifierGroupFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="modifier-groups/:id/edit"
+            element={
+              <RequirePermission permission="modifier-groups.manage">
+                <SuspenseWrapper>
+                  <ModifierGroupFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+        </Route>
+
         {/* Parapharmacy Module */}
         <Route path="parapharmacy">
           <Route
@@ -1700,9 +1773,42 @@ export function AppRoutes() {
           <Route
             path="terminals"
             element={
-              <RequirePermission module="pos">
+              <RequirePermission permission="pos.manage_terminals">
                 <SuspenseWrapper>
                   <POSTerminalsPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          {/* Shift History */}
+          <Route
+            path="shift-history"
+            element={
+              <RequirePermission permission="pos.manage_shifts">
+                <SuspenseWrapper>
+                  <ShiftHistoryPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          {/* Z-Reports */}
+          <Route
+            path="z-reports"
+            element={
+              <RequirePermission permission="pos.view_reports">
+                <SuspenseWrapper>
+                  <ZReportListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          {/* Receipt Search */}
+          <Route
+            path="receipts"
+            element={
+              <RequirePermission permission="pos.view_receipts">
+                <SuspenseWrapper>
+                  <ReceiptSearchPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -1722,20 +1828,10 @@ export function AppRoutes() {
 
       {/* POS Module - Fullscreen Transaction Interface (Outside Layout) */}
       <Route
-        path="/pos/demo"
-        element={
-          <RequireAuth>
-            <SuspenseWrapper>
-              <POSTransactionsPage />
-            </SuspenseWrapper>
-          </RequireAuth>
-        }
-      />
-      <Route
         path="/pos/transactions"
         element={
           <RequireAuth>
-            <RequirePermission module="pos">
+            <RequirePermission permission="pos.operate_terminal">
               <SuspenseWrapper>
                 <POSTransactionsPage />
               </SuspenseWrapper>
@@ -1743,11 +1839,13 @@ export function AppRoutes() {
           </RequireAuth>
         }
       />
+      {/* Legacy redirect for /pos/demo */}
+      <Route path="/pos/demo" element={<Navigate to="/pos/transactions" replace />} />
       <Route
         path="/pos/shifts"
         element={
           <RequireAuth>
-            <RequirePermission module="pos">
+            <RequirePermission permission="pos.manage_shifts">
               <SuspenseWrapper>
                 <POSShiftsPage />
               </SuspenseWrapper>

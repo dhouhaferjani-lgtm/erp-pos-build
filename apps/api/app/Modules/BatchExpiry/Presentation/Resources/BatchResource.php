@@ -30,12 +30,7 @@ class BatchResource extends JsonResource
             'recall_reason' => $this->recall_reason,
             'recalled_at' => $this->recalled_at?->toIso8601String(),
             'notes' => $this->notes,
-            'expiry_status' => [
-                'value' => $this->expiryStatus()->value,
-                'label' => $this->expiryStatus()->label(),
-                'color' => $this->expiryStatus()->color(),
-                'can_sell' => $this->expiryStatus()->canSell(),
-            ],
+            'expiry_status' => strtoupper($this->expiryStatus()->value),
             'can_be_sold' => $this->canBeSold(),
             'total_quantity' => $this->total_quantity ?? 0,
             'available_quantity' => $this->available_quantity ?? 0,

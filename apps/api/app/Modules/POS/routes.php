@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\POS\Presentation\Controllers\CashDrawerController;
+use App\Modules\POS\Presentation\Controllers\DiscountController;
+use App\Modules\POS\Presentation\Controllers\ReceiptController;
 use App\Modules\POS\Presentation\Controllers\ReportController;
 use App\Modules\POS\Presentation\Controllers\ShiftController;
 use App\Modules\POS\Presentation\Controllers\TerminalController;
@@ -17,6 +19,7 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function () {
     // Terminal Management
     Route::get('/pos/terminals', [TerminalController::class, 'index']);
+    Route::post('/pos/terminals/web', [TerminalController::class, 'getOrCreateWebTerminal']);
     Route::post('/pos/terminals', [TerminalController::class, 'store']);
     Route::get('/pos/terminals/{id}', [TerminalController::class, 'show']);
     Route::patch('/pos/terminals/{id}', [TerminalController::class, 'update']);
@@ -43,4 +46,19 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/pos/reports/z/{zNumber}', [ReportController::class, 'showZReport']);
     Route::get('/pos/reports/z', [ReportController::class, 'listZReports']);
     Route::post('/pos/reports/z/verify-chain', [ReportController::class, 'verifyZReportChain']);
+
+    // Receipts (collection routes BEFORE parameterized)
+    Route::get('/pos/receipts', [ReceiptController::class, 'index']);
+    Route::post('/pos/receipts', [ReceiptController::class, 'store']);
+    Route::get('/pos/receipts/{id}', [ReceiptController::class, 'show']);
+    Route::post('/pos/receipts/{id}/void', [ReceiptController::class, 'void']);
+    Route::post('/pos/receipts/{id}/payments', [ReceiptController::class, 'storePayments']);
+    Route::get('/pos/receipts/{id}/pdf', [ReceiptController::class, 'streamPdf']);
+    Route::get('/pos/receipts/{id}/pdf/download', [ReceiptController::class, 'downloadPdf']);
+
+    // Shift receipts (transaction history)
+    Route::get('/pos/shifts/{id}/receipts', [ShiftController::class, 'receipts']);
+
+    // Discount Permissions
+    Route::get('/pos/discount-permissions', [DiscountController::class, 'getPermissions']);
 });

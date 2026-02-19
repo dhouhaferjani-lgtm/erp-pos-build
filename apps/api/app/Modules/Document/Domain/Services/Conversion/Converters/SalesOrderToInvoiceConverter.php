@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Document\Domain\Services\Conversion\Converters;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DeliveryStatus;
@@ -55,7 +57,8 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
 
     public function __construct(
         protected readonly DocumentNumberingService $numberingService,
-        private readonly GeneralLedgerService $glService
+        private readonly GeneralLedgerService $glService,
+        private readonly FEFOInventoryService $fefoService,
     ) {}
 
     public function sourceType(): DocumentType
@@ -444,12 +447,29 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
             'order_number' => $order->document_number,
         ]);
 
+        // Get location_id from order, or fallback to company's default location
+        $locationId = $order->location_id;
+
+        if ($locationId === null) {
+            // Get company's default location
+            $defaultLocation = Location::where('company_id', $order->company_id)
+                ->where('is_default', true)
+                ->first();
+
+            if ($defaultLocation === null) {
+                throw new \DomainException('No default location found for company');
+            }
+
+            $locationId = $defaultLocation->id;
+        }
+
         // Create delivery note document in DRAFT status
         // User must explicitly confirm via modal before posting invoice
         $delivery = Document::create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $order->tenant_id,
             'company_id' => $order->company_id,
+            'location_id' => $locationId,
             'type' => DocumentType::DeliveryNote,
             'status' => DocumentStatus::Draft, // Draft - requires explicit confirmation
             'document_number' => $this->numberingService->generateNumber($order->tenant_id, $order->company_id, DocumentType::DeliveryNote),
@@ -469,9 +489,11 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
             ],
         ]);
 
-        // Copy lines (only physical products)
+        // Copy lines (only physical products), with FEFO splitting for batch-tracked products
+        $dnLineNumber = 0;
         foreach ($order->lines as $line) {
             // Skip non-physical products
+            $product = null;
             if ($line->product_id !== null) {
                 $product = Product::find($line->product_id);
                 if ($product !== null && ! $product->isPhysical()) {
@@ -479,23 +501,91 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
                 }
             }
 
-            // Create delivery note line linked to source order line
-            DocumentLine::create([
-                'id' => Str::uuid()->toString(),
-                'document_id' => $delivery->id,
-                'line_number' => $line->line_number,
-                'product_id' => $line->product_id,
-                'product_code' => $line->product_code,
-                'description' => $line->description,
-                'quantity' => $line->quantity,
-                'unit_price' => $line->unit_price,
-                'discount_percent' => $line->discount_percent,
-                'discount_amount' => $line->discount_amount,
-                'tax_rate' => $line->tax_rate,
-                'line_total' => $line->line_total ?? '0.00',
-                'notes' => $line->notes,
-                'source_line_id' => $line->id,
-            ]);
+            // Check if product requires batch tracking
+            $requiresBatch = $product !== null
+                && ($product->requires_batch_tracking ?? false)
+                && $locationId !== null;
+
+            if ($requiresBatch) {
+                // FEFO: split into multiple DN lines (one per batch)
+                $result = $this->fefoService->suggestBatchesForSale(
+                    (string) $line->product_id,
+                    (string) $locationId,
+                    (float) $line->quantity,
+                );
+
+                if ($result->fullyFulfilled) {
+                    foreach ($result->suggestions as $suggestion) {
+                        $dnLineNumber++;
+                        /** @var numeric-string $batchQty */
+                        $batchQty = (string) $suggestion->quantity;
+                        /** @var numeric-string $unitPrice */
+                        $unitPrice = (string) $line->unit_price;
+                        $lineTotal = bcmul($batchQty, $unitPrice, 2);
+
+                        DocumentLine::create([
+                            'id' => Str::uuid()->toString(),
+                            'document_id' => $delivery->id,
+                            'line_number' => $dnLineNumber,
+                            'product_id' => $line->product_id,
+                            'product_code' => $line->product_code,
+                            'description' => $line->description,
+                            'quantity' => $batchQty,
+                            'unit_price' => $line->unit_price,
+                            'discount_percent' => $line->discount_percent,
+                            'discount_amount' => null,
+                            'tax_rate' => $line->tax_rate,
+                            'line_total' => $lineTotal,
+                            'notes' => $line->notes,
+                            'source_line_id' => $line->id,
+                            'batch_id' => $suggestion->batch->id,
+                        ]);
+                    }
+                } else {
+                    // Fallback: create single line without batch (insufficient batch stock)
+                    $dnLineNumber++;
+                    DocumentLine::create([
+                        'id' => Str::uuid()->toString(),
+                        'document_id' => $delivery->id,
+                        'line_number' => $dnLineNumber,
+                        'product_id' => $line->product_id,
+                        'product_code' => $line->product_code,
+                        'description' => $line->description,
+                        'quantity' => $line->quantity,
+                        'unit_price' => $line->unit_price,
+                        'discount_percent' => $line->discount_percent,
+                        'discount_amount' => $line->discount_amount,
+                        'tax_rate' => $line->tax_rate,
+                        'line_total' => $line->line_total ?? '0.00',
+                        'notes' => $line->notes,
+                        'source_line_id' => $line->id,
+                    ]);
+
+                    Log::warning('FEFO allocation failed for auto-created DN, falling back to non-batch line', [
+                        'product_id' => $line->product_id,
+                        'quantity' => $line->quantity,
+                        'shortfall' => $result->shortfall,
+                    ]);
+                }
+            } else {
+                $dnLineNumber++;
+                DocumentLine::create([
+                    'id' => Str::uuid()->toString(),
+                    'document_id' => $delivery->id,
+                    'line_number' => $dnLineNumber,
+                    'product_id' => $line->product_id,
+                    'product_code' => $line->product_code,
+                    'description' => $line->description,
+                    'quantity' => $line->quantity,
+                    'unit_price' => $line->unit_price,
+                    'discount_percent' => $line->discount_percent,
+                    'discount_amount' => $line->discount_amount,
+                    'tax_rate' => $line->tax_rate,
+                    'line_total' => $line->line_total ?? '0.00',
+                    'notes' => $line->notes,
+                    'source_line_id' => $line->id,
+                ]);
+            }
 
             // Update order line's quantity_delivered
             $line->update([

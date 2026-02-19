@@ -228,6 +228,13 @@
     "invoice": "Facture",
     "balance": "Solde",
     "total": "Total",
+    "noPayments": "Aucun paiement enregistré pour le moment",
+    "paymentHistory": "Historique des paiements",
+    "recordPayment": "Enregistrer un paiement",
+    "outstandingAmount": "Montant restant dû",
+    "fiscallySealed": "Scellé fiscalement",
+    "postTitle": "Comptabiliser la facture",
+    "postMessage": "Êtes-vous sûr de vouloir comptabiliser cette facture ? Cela va finaliser le document et créer les écritures comptables. Cette action ne peut pas être annulée.",
     "deliveryConfirmation": {
       "title": "Confirmer les livraisons avant comptabilisation",
       "description": "Les bons de livraison suivants ont été créés automatiquement lors de la conversion du devis en facture. Ils doivent être confirmés avant de pouvoir comptabiliser la facture.",
@@ -502,6 +509,36 @@
         "line": "Ligne personnalisée"
       }
     }
+  },
+  "invoices": {
+    "paymentStatus": {
+      "unpaid": "Impayée",
+      "partially_paid": "Partiellement Payée",
+      "in_payment": "En Paiement",
+      "paid": "Payée",
+      "overpaid": "Surpayée"
+    },
+    "paymentHistory": {
+      "noPayments": "Aucun paiement enregistré",
+      "allocated": "Alloué",
+      "totalPaid": "Total Payé"
+    },
+    "outstandingAmount": {
+      "title": "Montant Restant Dû",
+      "invoiceTotal": "Total Facture",
+      "paymentsReceived": "Paiements Reçus",
+      "creditNotesApplied": "Avoirs Appliqués",
+      "outstanding": "RESTANT DÛ",
+      "recordPayment": "Enregistrer un Paiement",
+      "overpaidWarning": "Cette facture a été surpayée. Le client a un crédit."
+    },
+    "balanceDue": "Solde Dû"
+  },
+  "fulfillment": {
+    "fulfilled": "Livré",
+    "partiallyFulfilled": "Partiellement Livré",
+    "notFulfilled": "Non Livré",
+    "notApplicable": "N/A"
   },
   "pos": {
     "title": "Point de vente",

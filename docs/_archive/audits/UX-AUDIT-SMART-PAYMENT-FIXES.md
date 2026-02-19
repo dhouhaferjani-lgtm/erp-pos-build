@@ -21,7 +21,7 @@ The Smart Payment feature had critical UX gaps preventing users from understandi
 **Solution Implemented:**
 
 #### 1. Added Payment Status Logic
-**File:** `/Users/houssamr/Projects/mecanospex/apps/web/src/features/documents/DocumentListPage.tsx`
+**File:** `./apps/web/src/features/documents/DocumentListPage.tsx`
 
 - Added `balance_due` field to Document interface
 - Implemented `getPaymentStatus()` function that determines:
@@ -37,7 +37,7 @@ The Smart Payment feature had critical UX gaps preventing users from understandi
 - Status badges use proper translation keys
 
 #### 3. Translation Keys Added
-**File:** `/Users/houssamr/Projects/mecanospex/apps/web/src/locales/en/sales.json`
+**File:** `./apps/web/src/locales/en/sales.json`
 
 ```json
 "statuses": {
@@ -64,7 +64,7 @@ The Smart Payment feature had critical UX gaps preventing users from understandi
 **Solution Implemented:**
 
 #### 1. Enhanced Totals Section
-**File:** `/Users/houssamr/Projects/mecanospex/apps/web/src/features/documents/DocumentDetailPage.tsx`
+**File:** `./apps/web/src/features/documents/DocumentDetailPage.tsx`
 
 Added to totals card for posted invoices:
 - **Balance Due row** with color-coded amount:
@@ -96,7 +96,7 @@ Added to totals card for posted invoices:
 **Solution Implemented:**
 
 #### 1. Success Screen with Allocation Details
-**File:** `/Users/houssamr/Projects/mecanospex/apps/web/src/components/organisms/RecordPaymentModal/RecordPaymentModal.tsx`
+**File:** `./apps/web/src/components/organisms/RecordPaymentModal/RecordPaymentModal.tsx`
 
 Completely redesigned payment success flow:
 
@@ -127,7 +127,7 @@ Completely redesigned payment success flow:
 - User must click "Close" after viewing allocation (no auto-dismiss)
 
 #### 3. Translation Keys Added
-**File:** `/Users/houssamr/Projects/mecanospex/apps/web/src/locales/en/treasury.json`
+**File:** `./apps/web/src/locales/en/treasury.json`
 
 ```json
 "recordPayment": "Record Payment",
@@ -162,7 +162,7 @@ Completely redesigned payment success flow:
 **Solution Implemented:**
 
 #### 1. Added Fallback Display
-**File:** `/Users/houssamr/Projects/mecanospex/apps/web/src/features/treasury/PaymentListPage.tsx`
+**File:** `./apps/web/src/features/treasury/PaymentListPage.tsx`
 
 Changed:
 ```tsx
@@ -228,34 +228,34 @@ All user-facing text now uses translation keys (no hardcoded strings):
 ## Files Modified
 
 ### Frontend (React/TypeScript)
-1. `/Users/houssamr/Projects/mecanospex/apps/web/src/features/documents/DocumentListPage.tsx`
+1. `./apps/web/src/features/documents/DocumentListPage.tsx`
    - Added payment status indicators
    - Added balance due column
    - Implemented status color coding
 
-2. `/Users/houssamr/Projects/mecanospex/apps/web/src/features/documents/DocumentDetailPage.tsx`
+2. `./apps/web/src/features/documents/DocumentDetailPage.tsx`
    - Added balance due display
    - Added payment status badge
    - Color-coded payment status
 
-3. `/Users/houssamr/Projects/mecanospex/apps/web/src/features/treasury/PaymentListPage.tsx`
+3. `./apps/web/src/features/treasury/PaymentListPage.tsx`
    - Fixed missing partner name display
 
-4. `/Users/houssamr/Projects/mecanospex/apps/web/src/components/organisms/RecordPaymentModal/RecordPaymentModal.tsx`
+4. `./apps/web/src/components/organisms/RecordPaymentModal/RecordPaymentModal.tsx`
    - Completely redesigned success flow
    - Added allocation result fetching
    - Implemented comprehensive allocation summary display
    - Added excess amount handling display
 
 ### Localization
-5. `/Users/houssamr/Projects/mecanospex/apps/web/src/locales/en/sales.json`
+5. `./apps/web/src/locales/en/sales.json`
    - Added payment status translations
 
-6. `/Users/houssamr/Projects/mecanospex/apps/web/src/locales/en/treasury.json`
+6. `./apps/web/src/locales/en/treasury.json`
    - Added payment recording translations
    - Added allocation summary translations
 
-7. `/Users/houssamr/Projects/mecanospex/apps/web/src/locales/en/common.json`
+7. `./apps/web/src/locales/en/common.json`
    - Added status translations
 
 ---

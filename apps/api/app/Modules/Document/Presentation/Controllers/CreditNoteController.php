@@ -81,57 +81,108 @@ class CreditNoteController extends Controller
     }
 
     /**
-     * Create a credit note from an invoice.
+     * Create a credit note.
+     *
+     * Supports two modes:
+     * 1. Invoice-linked: References a source invoice (partial or full credit)
+     * 2. Standalone: Direct credit to customer (no invoice reference)
      *
      * POST /api/v1/credit-notes
      *
-     * Request body:
+     * Invoice-linked mode (amount-based):
      * {
      *   "source_invoice_id": "uuid",
      *   "amount": "1200.00",
-     *   "reason": "return|price_adjustment|billing_error|damaged_goods|service_issue|other",
-     *   "notes": "Optional description"
+     *   "reason": "return",
+     *   "notes": "Optional"
+     * }
+     *
+     * Invoice-linked mode (line-based):
+     * {
+     *   "source_invoice_id": "uuid",
+     *   "lines": [{"line_id": "uuid", "quantity": 2}],
+     *   "reason": "return",
+     *   "notes": "Optional"
+     * }
+     *
+     * Standalone mode (customer-based):
+     * {
+     *   "partner_id": "uuid",
+     *   "lines": [
+     *     {
+     *       "product_id": "uuid",
+     *       "description": "Compensation for mistake",
+     *       "quantity": 1,
+     *       "unit_price": "100.00",
+     *       "tax_rate": "19.00"
+     *     }
+     *   ],
+     *   "reason": "service_issue",
+     *   "notes": "Compensation"
      * }
      */
     public function store(Request $request): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
 
-        // Determine if this is amount-based or line-based credit note
+        // Determine credit note mode
+        $hasSourceInvoice = $request->filled('source_invoice_id');
         $isLineBased = $request->has('lines') && is_array($request->input('lines'));
 
         $rules = [
-            'source_invoice_id' => ['required', 'string', 'exists:documents,id'],
             'reason' => ['required', new Enum(CreditNoteReason::class)],
             'notes' => ['nullable', 'string', 'max:1000'],
         ];
 
-        // Amount-based validation
-        if (! $isLineBased) {
-            $rules['amount'] = ['required', 'string', 'regex:/^\d+(\.\d{1,4})?$/'];
+        if ($hasSourceInvoice) {
+            // Invoice-linked mode
+            $rules['source_invoice_id'] = ['required', 'string', 'exists:documents,id'];
+
+            if (! $isLineBased) {
+                // Amount-based
+                $rules['amount'] = ['required', 'string', 'regex:/^\d+(\.\d{1,4})?$/'];
+            } else {
+                // Line-based (partial)
+                $rules['lines'] = ['required', 'array', 'min:1'];
+                $rules['lines.*.line_id'] = ['required', 'string', 'exists:document_lines,id'];
+                $rules['lines.*.quantity'] = ['required', 'numeric', 'gt:0'];
+            }
         } else {
-            // Line-based validation
+            // Standalone mode (customer-based)
+            $rules['partner_id'] = ['required', 'string', 'exists:partners,id'];
             $rules['lines'] = ['required', 'array', 'min:1'];
-            $rules['lines.*.line_id'] = ['required', 'string', 'exists:document_lines,id'];
+            $rules['lines.*.product_id'] = ['nullable', 'string', 'exists:products,id'];
+            $rules['lines.*.description'] = ['required', 'string', 'max:500'];
             $rules['lines.*.quantity'] = ['required', 'numeric', 'gt:0'];
+            $rules['lines.*.unit_price'] = ['required', 'string', 'regex:/^\d+(\.\d{1,4})?$/'];
+            $rules['lines.*.tax_rate'] = ['required', 'numeric', 'min:0', 'max:100'];
         }
 
         $validated = $request->validate($rules);
 
         try {
-            if ($isLineBased) {
-                // Line-based credit note
-                $creditNote = $this->creditNoteService->createLineBasedCreditNote(
-                    sourceInvoiceId: $validated['source_invoice_id'],
-                    lines: $validated['lines'],
-                    reason: CreditNoteReason::from($validated['reason']),
-                    notes: $validated['notes'] ?? null
-                );
+            if ($hasSourceInvoice) {
+                // Invoice-linked credit note
+                if ($isLineBased) {
+                    $creditNote = $this->creditNoteService->createLineBasedCreditNote(
+                        sourceInvoiceId: $validated['source_invoice_id'],
+                        lines: $validated['lines'],
+                        reason: CreditNoteReason::from($validated['reason']),
+                        notes: $validated['notes'] ?? null
+                    );
+                } else {
+                    $creditNote = $this->creditNoteService->createCreditNote(
+                        sourceInvoiceId: $validated['source_invoice_id'],
+                        amount: $validated['amount'],
+                        reason: CreditNoteReason::from($validated['reason']),
+                        notes: $validated['notes'] ?? null
+                    );
+                }
             } else {
-                // Amount-based credit note
-                $creditNote = $this->creditNoteService->createCreditNote(
-                    sourceInvoiceId: $validated['source_invoice_id'],
-                    amount: $validated['amount'],
+                // Standalone credit note (customer-based)
+                $creditNote = $this->creditNoteService->createStandaloneCreditNote(
+                    partnerId: $validated['partner_id'],
+                    lines: $validated['lines'],
                     reason: CreditNoteReason::from($validated['reason']),
                     notes: $validated['notes'] ?? null
                 );
@@ -286,6 +337,16 @@ class CreditNoteController extends Controller
 
         try {
             $postedCreditNote = $this->postingService->post($creditNote);
+
+            // Allocate the credit note to reduce invoice balance (only for invoice-linked credit notes)
+            // Standalone credit notes (without source_document_id) are NOT allocated
+            if ($postedCreditNote->source_document_id !== null) {
+                $userId = auth()->id();
+                $this->creditNoteService->allocateCreditNote(
+                    $postedCreditNote,
+                    $userId !== null ? (string) $userId : null
+                );
+            }
 
             return response()->json([
                 'data' => DocumentData::fromModel($postedCreditNote),

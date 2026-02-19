@@ -40,6 +40,9 @@ final class DocumentData extends Data
         public ?string $tax_amount,
         public ?string $total,
         public ?string $balance_due,
+        public ?string $outstanding_amount,
+        public ?string $payment_status,
+        public ?string $fulfillment_status,
         public ?string $amount_paid,
         public ?string $amount_residual,
         public ?string $notes,
@@ -128,6 +131,11 @@ final class DocumentData extends Data
         $balanceDue = $document->balance_due !== null ? (float) $document->balance_due : $total;
         $amountPaid = $total - $balanceDue;
 
+        // Get computed outstanding amount, payment status, and fulfillment status (SOURCE OF TRUTH for single document views)
+        $outstandingAmount = $document->getOutstandingAmount();
+        $paymentStatus = $document->getPaymentStatus()->value;
+        $fulfillmentStatus = $document->getFulfillmentStatus()->value;
+
         return new self(
             id: $document->id,
             tenant_id: $document->tenant_id,
@@ -151,6 +159,9 @@ final class DocumentData extends Data
             tax_amount: $document->tax_amount !== null ? number_format((float) $document->tax_amount, 2, '.', '') : null,
             total: $document->total !== null ? number_format($total, 2, '.', '') : null,
             balance_due: number_format($balanceDue, 2, '.', ''),
+            outstanding_amount: $outstandingAmount,
+            payment_status: $paymentStatus,
+            fulfillment_status: $fulfillmentStatus,
             amount_paid: number_format($amountPaid, 2, '.', ''),
             amount_residual: number_format($balanceDue, 2, '.', ''),
             notes: $document->notes,

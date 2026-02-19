@@ -1,4 +1,44 @@
 {
+  "title": "Paramètres",
+  "description": "Gérer les paramètres et la configuration de votre application",
+  "sections": {
+    "users": {
+      "title": "Utilisateurs et accès",
+      "description": "Gérer les comptes utilisateurs et les permissions d'accès"
+    },
+    "roles": {
+      "title": "Rôles et permissions",
+      "description": "Configurer les rôles utilisateur et les ensembles de permissions"
+    },
+    "company": {
+      "title": "Informations de l'entreprise",
+      "description": "Mettre à jour les détails de l'entreprise et les informations commerciales"
+    },
+    "tax": {
+      "title": "Paramètres fiscaux",
+      "description": "Configurer les taux de taxe et les paramètres de l'exercice fiscal"
+    },
+    "inventory": {
+      "title": "Paramètres d'inventaire",
+      "description": "Configurer le suivi des stocks et la gestion des inventaires"
+    },
+    "units": {
+      "title": "Unités de mesure",
+      "description": "Gérer les unités de mesure et les conversions"
+    },
+    "import": {
+      "title": "Importation de données",
+      "description": "Importer des produits, des clients et d'autres données"
+    },
+    "openingBalances": {
+      "title": "Soldes d'ouverture",
+      "description": "Configurer les soldes initiaux des comptes et des inventaires"
+    },
+    "pos": {
+      "title": "Point de vente",
+      "description": "Gérer les terminaux POS, les paramètres de tickets et les caisses"
+    }
+  },
   "tax": {
     "title": "Paramètres fiscaux",
     "description": "Configurez les taux de taxe et les paramètres de l'exercice fiscal pour votre entreprise",

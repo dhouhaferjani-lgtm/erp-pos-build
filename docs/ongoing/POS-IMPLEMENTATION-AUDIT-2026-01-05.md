@@ -717,7 +717,7 @@ const { config } = useCompanyConfig()
 ```
 
 **Documentation Reference:**
-From `/Users/houssamr/Projects/mecanospex/CLAUDE.md`:
+From `CLAUDE.md`:
 > Phase 1: StandardPOS for all verticals
 > Phase 2: Specialized variants (RestaurantPOS, PharmacyPOS, WorkshopPOS)
 

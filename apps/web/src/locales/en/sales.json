@@ -228,6 +228,13 @@
     "invoice": "Invoice",
     "balance": "Balance",
     "total": "Total",
+    "noPayments": "No payments recorded yet",
+    "paymentHistory": "Payment History",
+    "recordPayment": "Record Payment",
+    "outstandingAmount": "Outstanding Amount",
+    "fiscallySealed": "Fiscally Sealed",
+    "postTitle": "Post Invoice",
+    "postMessage": "Are you sure you want to post this invoice? This will finalize the document and create accounting entries. This action cannot be undone.",
     "deliveryConfirmation": {
       "title": "Confirm Deliveries Before Posting",
       "description": "The following delivery notes were auto-created when converting the sales order to an invoice. They must be confirmed before you can post the invoice.",
@@ -506,6 +513,36 @@
         "line": "Line Override"
       }
     }
+  },
+  "invoices": {
+    "paymentStatus": {
+      "unpaid": "Unpaid",
+      "partially_paid": "Partially Paid",
+      "in_payment": "In Payment",
+      "paid": "Paid",
+      "overpaid": "Overpaid"
+    },
+    "paymentHistory": {
+      "noPayments": "No payments recorded yet",
+      "allocated": "Allocated",
+      "totalPaid": "Total Paid"
+    },
+    "outstandingAmount": {
+      "title": "Outstanding Amount",
+      "invoiceTotal": "Invoice Total",
+      "paymentsReceived": "Payments Received",
+      "creditNotesApplied": "Credit Notes Applied",
+      "outstanding": "OUTSTANDING",
+      "recordPayment": "Record Payment",
+      "overpaidWarning": "This invoice has been overpaid. The customer has a credit balance."
+    },
+    "balanceDue": "Balance Due"
+  },
+  "fulfillment": {
+    "fulfilled": "Fulfilled",
+    "partiallyFulfilled": "Partially Fulfilled",
+    "notFulfilled": "Not Fulfilled",
+    "notApplicable": "N/A"
   },
   "pos": {
     "title": "Point of Sale",

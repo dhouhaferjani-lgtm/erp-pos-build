@@ -3,12 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TranslationEditor, Translation } from '../components/TranslationEditor';
+import { Button } from '@/components/atoms/Button/Button';
+import { Input } from '@/components/atoms/Input/Input';
+import { Spinner } from '@/components/atoms/Spinner/Spinner';
+import { TranslationEditor, type Translation } from '../components';
 import {
   fetchCertification,
   createCertification,
@@ -120,7 +118,7 @@ export function CertificationFormPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        {t('common:loading')}
+        <Spinner size="lg" />
       </div>
     );
   }
@@ -146,16 +144,21 @@ export function CertificationFormPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('parapharmacy:basicInformation')}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+          <div className="border-b border-gray-200 px-6 py-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              {t('parapharmacy:basicInformation')}
+            </h2>
+          </div>
+          <div className="px-6 py-4 space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="type">
-                  {t('parapharmacy:type')} <span className="text-destructive">*</span>
-                </Label>
+                <label
+                  htmlFor="type"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  {t('parapharmacy:type')} <span className="text-red-600">*</span>
+                </label>
                 <Input
                   id="type"
                   value={type}
@@ -163,15 +166,18 @@ export function CertificationFormPage() {
                   required
                   placeholder="organic, vegan, halal, fair-trade"
                 />
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-gray-500 mt-1">
                   {t('parapharmacy:typeHelp')}
                 </p>
               </div>
 
               <div>
-                <Label htmlFor="slug">
-                  {t('parapharmacy:slug')} <span className="text-destructive">*</span>
-                </Label>
+                <label
+                  htmlFor="slug"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  {t('parapharmacy:slug')} <span className="text-red-600">*</span>
+                </label>
                 <Input
                   id="slug"
                   value={slug}
@@ -179,7 +185,7 @@ export function CertificationFormPage() {
                   required
                   placeholder="ecocert-organic"
                 />
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-gray-500 mt-1">
                   {t('parapharmacy:slugHelp')}
                 </p>
               </div>
@@ -187,7 +193,12 @@ export function CertificationFormPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="certifying_body">{t('parapharmacy:certifyingBody')}</Label>
+                <label
+                  htmlFor="certifying_body"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  {t('parapharmacy:certifyingBody')}
+                </label>
                 <Input
                   id="certifying_body"
                   value={certifyingBody}
@@ -197,9 +208,12 @@ export function CertificationFormPage() {
               </div>
 
               <div>
-                <Label htmlFor="display_order">
-                  {t('parapharmacy:displayOrder')} <span className="text-destructive">*</span>
-                </Label>
+                <label
+                  htmlFor="display_order"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  {t('parapharmacy:displayOrder')} <span className="text-red-600">*</span>
+                </label>
                 <Input
                   id="display_order"
                   type="number"
@@ -208,7 +222,7 @@ export function CertificationFormPage() {
                   required
                   min="0"
                 />
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-gray-500 mt-1">
                   {t('parapharmacy:displayOrderHelp')}
                 </p>
               </div>
@@ -216,7 +230,12 @@ export function CertificationFormPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="logo_url">{t('parapharmacy:logoUrl')}</Label>
+                <label
+                  htmlFor="logo_url"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  {t('parapharmacy:logoUrl')}
+                </label>
                 <Input
                   id="logo_url"
                   type="url"
@@ -227,7 +246,12 @@ export function CertificationFormPage() {
               </div>
 
               <div>
-                <Label htmlFor="verification_url">{t('parapharmacy:verificationUrl')}</Label>
+                <label
+                  htmlFor="verification_url"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  {t('parapharmacy:verificationUrl')}
+                </label>
                 <Input
                   id="verification_url"
                   type="url"
@@ -239,23 +263,27 @@ export function CertificationFormPage() {
             </div>
 
             <div className="flex items-center space-x-2">
-              <Checkbox
+              <input
+                type="checkbox"
                 id="is_active"
                 checked={isActive}
-                onCheckedChange={(checked) => setIsActive(checked as boolean)}
+                onChange={(e) => setIsActive(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              <Label htmlFor="is_active" className="font-normal">
+              <label htmlFor="is_active" className="text-sm text-gray-700">
                 {t('parapharmacy:isActive')}
-              </Label>
+              </label>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('parapharmacy:translations')}</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+          <div className="border-b border-gray-200 px-6 py-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              {t('parapharmacy:translations')}
+            </h2>
+          </div>
+          <div className="px-6 py-4">
             <TranslationEditor
               translations={translations}
               onChange={setTranslations}
@@ -273,13 +301,13 @@ export function CertificationFormPage() {
                 },
               ]}
             />
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         <div className="flex justify-end gap-4">
           <Button
             type="button"
-            variant="outline"
+            variant="secondary"
             onClick={() => navigate('/parapharmacy/certifications')}
           >
             {t('common:cancel')}

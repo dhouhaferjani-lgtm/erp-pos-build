@@ -2,8 +2,8 @@
 
 **Report Date:** January 2, 2026
 **Verified By:** Claude Code Agent
-**Project:** AutoERP (Mecanospex)
-**Working Directory:** `/Users/houssamr/Projects/mecanospex/apps/api`
+**Project:** AutoERP
+**Working Directory:** `apps/api`
 
 ---
 

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
+use App\Modules\Taxation\Presentation\Controllers\SalesWithholdingTrackingController;
 use App\Modules\Taxation\Presentation\Controllers\StampDutyRuleController;
 use App\Modules\Taxation\Presentation\Controllers\TaxConfigurationController;
 use App\Modules\Taxation\Presentation\Controllers\WithholdingCertificateController;
@@ -57,4 +58,18 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         Route::get('/{id}/download-tej-xml', [WithholdingCertificateController::class, 'downloadTEJXML']);
         Route::delete('/{id}', [WithholdingCertificateController::class, 'destroy']);
     });
+
+    // Sales Withholding Tracking (when customers withhold from our sales invoices)
+    Route::prefix('sales-withholding')->group(function (): void {
+        Route::get('/', [SalesWithholdingTrackingController::class, 'index'])
+            ->middleware('can:invoices.view');
+        Route::get('/{id}', [SalesWithholdingTrackingController::class, 'show'])
+            ->middleware('can:invoices.view');
+        Route::patch('/{id}/certificate-received', [SalesWithholdingTrackingController::class, 'markCertificateReceived'])
+            ->middleware('can:invoices.update');
+    });
+
+    // Record withholding on document
+    Route::post('/documents/{documentId}/record-withholding', [SalesWithholdingTrackingController::class, 'recordWithholding'])
+        ->middleware('can:invoices.update');
 });

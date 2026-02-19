@@ -158,7 +158,7 @@ When you discover the codebase differs from these conventions:
 - ✅ Return DTOs, not raw models
 
 ### Frontend
-- ✅ Import types from `@mecanospex/shared/types/generated`
+- ✅ Import types from `@autoerp/shared/types/generated`
 - ✅ Use `apiGet/apiPost` helpers (they auto-unwrap)
 - ✅ Wrap routes with `<RequirePermission>`
 - ✅ Use translation keys for all user-facing text

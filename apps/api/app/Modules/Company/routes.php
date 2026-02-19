@@ -32,4 +32,8 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 
     Route::put('companies/{companyId}/reservation-settings', [CompanyController::class, 'updateReservationSettings'])
         ->name('companies.reservation-settings.update');
+
+    // POS settings (read-only for now)
+    Route::get('companies/{companyId}/pos-settings', [CompanyController::class, 'getPOSSettings'])
+        ->name('companies.pos-settings.show');
 });

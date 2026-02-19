@@ -1,5 +1,4 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
-import type { App.Shared.Application.DTOs.PaginationData } from '@shared/types';
 
 export interface HealthClaimTranslation {
   id?: string;
@@ -33,7 +32,12 @@ export interface UpdateHealthClaimInput {
 export interface HealthClaimsListResponse {
   data: App.Modules.Product.Application.DTOs.HealthClaimData[];
   meta: {
-    pagination: App.Shared.Application.DTOs.PaginationData;
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+    from: number | null;
+    to: number | null;
   };
 }
 

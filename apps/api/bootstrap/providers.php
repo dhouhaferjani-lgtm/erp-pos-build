@@ -24,4 +24,8 @@ return [
     App\Modules\Billing\Providers\BillingServiceProvider::class,
     App\Modules\Expense\Providers\ExpenseServiceProvider::class,
     App\Modules\Taxation\Providers\TaxationServiceProvider::class,
+    App\Modules\POS\Providers\POSServiceProvider::class,
+    App\Modules\Uom\Infrastructure\Providers\UomServiceProvider::class,
+    App\Modules\Loyalty\Providers\LoyaltyServiceProvider::class,
+    App\Modules\Catalog\Providers\CatalogServiceProvider::class,
 ];

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Settings, Users, Shield, Building2, Upload, Calculator, Package, ChevronRight, Receipt } from 'lucide-react'
+import { Settings, Users, Shield, Building2, Upload, Calculator, Package, ChevronRight, Receipt, Ruler, Store } from 'lucide-react'
 
 interface SettingsSection {
   titleKey: string
@@ -47,6 +47,13 @@ const sections: SettingsSection[] = [
     color: 'bg-teal-100 text-teal-600',
   },
   {
+    titleKey: 'settings.sections.units.title',
+    descriptionKey: 'settings.sections.units.description',
+    icon: <Ruler className="h-6 w-6" />,
+    href: '/settings/units',
+    color: 'bg-cyan-100 text-cyan-600',
+  },
+  {
     titleKey: 'settings.sections.import.title',
     descriptionKey: 'settings.sections.import.description',
     icon: <Upload className="h-6 w-6" />,
@@ -59,6 +66,13 @@ const sections: SettingsSection[] = [
     icon: <Calculator className="h-6 w-6" />,
     href: '/settings/opening-balances',
     color: 'bg-indigo-100 text-indigo-600',
+  },
+  {
+    titleKey: 'settings.sections.pos.title',
+    descriptionKey: 'settings.sections.pos.description',
+    icon: <Store className="h-6 w-6" />,
+    href: '/pos/terminals',
+    color: 'bg-emerald-100 text-emerald-600',
   },
 ]
 

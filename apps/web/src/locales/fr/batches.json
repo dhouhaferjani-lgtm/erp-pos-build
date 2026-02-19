@@ -1,0 +1,118 @@
+{
+  "title": "Lots de Produits",
+  "batchCount": "{{count}} lot",
+  "batchCount_other": "{{count}} lots",
+  "daysRemaining": "jours",
+
+  "expiryStatus": {
+    "ok": "OK",
+    "approaching": "Proche",
+    "warning": "Attention",
+    "critical": "Critique",
+    "expired": "Expiré"
+  },
+
+  "fields": {
+    "batchNumber": "Numéro de Lot",
+    "product": "Produit",
+    "expiryDate": "Date d'Expiration",
+    "manufacturingDate": "Date de Fabrication",
+    "status": "Statut",
+    "quantity": "Quantité",
+    "availableQuantity": "Disponible",
+    "reservedQuantity": "Réservé",
+    "location": "Emplacement",
+    "notes": "Notes",
+    "recallReason": "Raison du Rappel"
+  },
+
+  "actions": {
+    "addBatch": "Ajouter un Lot",
+    "createBatch": "Créer un Lot",
+    "editBatch": "Modifier le Lot",
+    "deleteBatch": "Supprimer le Lot",
+    "recallBatch": "Rappeler le Lot",
+    "viewDetails": "Voir les Détails",
+    "selectBatch": "Sélectionner le Lot"
+  },
+
+  "status": {
+    "active": "Actif",
+    "inactive": "Inactif",
+    "recalled": "Rappelé"
+  },
+
+  "search": {
+    "placeholder": "Rechercher des numéros de lot..."
+  },
+
+  "empty": {
+    "title": "Aucun lot trouvé",
+    "description": "Commencez par créer votre premier lot."
+  },
+
+  "detail": {
+    "title": "Détails du Lot",
+    "stockByLocation": "Stock par Emplacement",
+    "movementHistory": "Historique des Mouvements",
+    "productInfo": "Informations sur le Produit"
+  },
+
+  "form": {
+    "createTitle": "Créer un Nouveau Lot",
+    "editTitle": "Modifier le Lot",
+    "recallTitle": "Rappeler le Lot",
+    "createBatchDescription": "Ajouter un nouveau lot pour suivre les dates d'expiration et gérer l'inventaire",
+    "batchInformation": "Informations sur le Lot",
+    "fillInBatchDetails": "Remplissez les détails du nouveau lot",
+    "updateBatchDetails": "Mettez à jour les informations du lot ci-dessous",
+    "productCannotBeChanged": "Le produit ne peut pas être modifié après la création du lot",
+    "cannotEditRecalled": "Impossible de Modifier un Lot Rappelé",
+    "recalledBatchExplanation": "Ce lot a été rappelé et ne peut pas être modifié. Les lots rappelés sont en lecture seule à des fins d'audit.",
+    "cannotEditInactive": "Impossible de Modifier un Lot Inactif",
+    "inactiveBatchExplanation": "Ce lot est inactif et ne peut pas être modifié. Veuillez activer le lot pour effectuer des modifications.",
+    "selectProduct": "Sélectionner un produit",
+    "enterBatchNumber": "Entrer le numéro de lot",
+    "selectExpiryDate": "Sélectionner la date d'expiration",
+    "selectManufacturingDate": "Sélectionner la date de fabrication (optionnel)",
+    "enterNotes": "Entrer des notes (optionnel)",
+    "enterRecallReason": "Entrer la raison du rappel",
+    "confirmRecall": "Êtes-vous sûr de vouloir rappeler ce lot ?",
+    "confirmDelete": "Êtes-vous sûr de vouloir supprimer ce lot ?"
+  },
+
+  "validation": {
+    "batchNumberRequired": "Le numéro de lot est requis",
+    "productRequired": "Le produit est requis",
+    "expiryDateRequired": "La date d'expiration est requise",
+    "expiryDateFuture": "La date d'expiration doit être dans le futur",
+    "manufacturingDatePast": "La date de fabrication ne peut pas être dans le futur",
+    "recallReasonRequired": "La raison du rappel est requise"
+  },
+
+  "messages": {
+    "createSuccess": "Lot créé avec succès",
+    "updateSuccess": "Lot mis à jour avec succès",
+    "deleteSuccess": "Lot supprimé avec succès",
+    "recallSuccess": "Lot rappelé avec succès",
+    "loadError": "Échec du chargement des détails du lot"
+  },
+
+  "pos": {
+    "selectBatchTitle": "Sélectionner un Lot",
+    "fefoSuggestion": "Suggestion FEFO",
+    "fefoDescription": "Le système suggère d'utiliser d'abord les lots expirant le plus tôt",
+    "insufficientStock": "Stock insuffisant dans les lots sélectionnés",
+    "noBatchesAvailable": "Aucun lot disponible pour ce produit",
+    "quantityToAllocate": "Quantité à allouer",
+    "totalAllocated": "Total alloué",
+    "remaining": "Restant"
+  },
+
+  "reports": {
+    "expiringProducts": "Produits Expirant",
+    "expiringDescription": "Produits avec des lots expirant bientôt",
+    "daysThreshold": "Dans {{days}} jours",
+    "noBatchesExpiring": "Aucun lot expirant dans la période sélectionnée"
+  }
+}

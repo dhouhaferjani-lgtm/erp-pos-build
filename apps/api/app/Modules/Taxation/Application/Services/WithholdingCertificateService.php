@@ -4,18 +4,21 @@ declare(strict_types=1);
 
 namespace App\Modules\Taxation\Application\Services;
 
+use App\Modules\Document\Domain\Document;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Application\DTOs\CreateWithholdingCertificateData;
 use App\Modules\Taxation\Application\DTOs\WithholdingCertificateData;
-use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
 use App\Modules\Taxation\Domain\Enums\CertificateStatus;
+use App\Modules\Taxation\Domain\Enums\WithholdingDirection;
 use App\Modules\Taxation\Domain\Events\WithholdingCertificateCreated;
 use App\Modules\Taxation\Domain\Events\WithholdingCertificateIssued;
 use App\Modules\Taxation\Domain\Events\WithholdingCertificateVoided;
 use App\Modules\Taxation\Domain\Events\WithholdingSubmittedToTEJ;
 use App\Modules\Taxation\Domain\Repositories\WithholdingCertificateRepositoryInterface;
 use App\Modules\Taxation\Domain\Services\WithholdingCalculationService;
+use App\Modules\Treasury\Domain\Payment;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Withholding Certificate Service
@@ -100,6 +103,82 @@ class WithholdingCertificateService
     }
 
     /**
+     * Create a withholding certificate from a payment.
+     *
+     * Simplified method for payment integration - creates a draft certificate
+     * linked to a payment and document.
+     *
+     * @return WithholdingCertificateData The created certificate data
+     */
+    public function createFromPayment(
+        Payment $payment,
+        Document $document,
+        ?float $overrideRate = null,
+        ?string $overrideReason = null
+    ): WithholdingCertificateData {
+        return DB::transaction(function () use ($payment, $document, $overrideRate, $overrideReason) {
+            $partner = $document->partner;
+
+            // Calculate withholding using calculation service
+            if ($overrideRate !== null) {
+                $calculation = $this->calculationService->calculateWithOverride(
+                    $document->total ?? '0.00',
+                    $document->currency,
+                    $overrideRate,
+                    $overrideReason ?? 'Manual override',
+                    null
+                );
+            } else {
+                $calculation = $this->calculationService->calculateForPayment(
+                    $partner,
+                    $document->total ?? '0.00',
+                    $document->currency,
+                    $partner->country_code ?? 'TN',
+                    $document->company_id,
+                    null
+                );
+
+                // If no rule matched, return without creating certificate
+                if (!$calculation) {
+                    throw new \DomainException('No applicable withholding rule found for this payment');
+                }
+            }
+
+            // Generate certificate number
+            $year = now()->year;
+            $certificateNumber = $this->certificateRepository->generateCertificateNumber(
+                $payment->company_id,
+                $year
+            );
+
+            // Create draft certificate
+            $certificate = $this->certificateRepository->create([
+                'tenant_id' => $payment->tenant_id,
+                'company_id' => $payment->company_id,
+                'certificate_number' => $certificateNumber,
+                'year' => $year,
+                'direction' => WithholdingDirection::PURCHASE,
+                'partner_id' => $document->partner_id,
+                'document_id' => $document->id,
+                'payment_id' => $payment->id,
+                'currency' => $payment->currency,
+                'gross_amount' => $document->total ?? '0.00',
+                'withholding_rate' => $calculation->withholdingRate,
+                'withholding_amount' => $calculation->withholdingAmount,
+                'net_amount' => $calculation->netAmount,
+                'withholding_rule_id' => $calculation->ruleId,
+                'override_reason' => $overrideReason,
+                'status' => CertificateStatus::DRAFT,
+            ]);
+
+            // Dispatch event
+            event(new WithholdingCertificateCreated($certificate));
+
+            return WithholdingCertificateData::fromEntity($certificate);
+        });
+    }
+
+    /**
      * Issue a certificate (finalize it with hash chain).
      */
     public function issue(string $certificateId, string $userId): WithholdingCertificateData
@@ -121,22 +200,29 @@ class WithholdingCertificateService
                 $certificate->direction
             );
 
+            $chainSequence = ($lastCertificate?->chain_sequence ?? 0) + 1;
+            $issuedAt = now();
+
+            // Temporarily set issued_at for hash calculation
+            $certificate->issued_at = $issuedAt;
+            $certificate->chain_sequence = $chainSequence;
+
             $hash = $this->hashChainService->calculateHash(
                 $certificate,
                 $lastCertificate?->hash
             );
 
-            $chainSequence = ($lastCertificate?->chain_sequence ?? 0) + 1;
-
-            // Update certificate
-            $certificate = $this->certificateRepository->update($certificateId, [
+            // Update certificate directly (bypass repository's draft-only check)
+            $certificate->update([
                 'status' => CertificateStatus::ISSUED,
                 'hash' => $hash,
                 'previous_hash' => $lastCertificate?->hash,
                 'chain_sequence' => $chainSequence,
-                'issued_at' => now(),
+                'issued_at' => $issuedAt,
                 'issued_by' => $userId,
             ]);
+
+            $certificate = $certificate->fresh();
 
             // Dispatch event
             event(new WithholdingCertificateIssued($certificate, $userId));
@@ -161,10 +247,12 @@ class WithholdingCertificateService
                 throw new \DomainException('Certificate cannot be voided in current status');
             }
 
-            // Update certificate
-            $certificate = $this->certificateRepository->update($certificateId, [
+            // Update certificate directly (bypass repository's draft-only check)
+            $certificate->update([
                 'status' => CertificateStatus::VOIDED,
             ]);
+
+            $certificate = $certificate->fresh();
 
             // Dispatch event
             event(new WithholdingCertificateVoided($certificate, $reason, $userId));
@@ -189,12 +277,14 @@ class WithholdingCertificateService
                 throw new \DomainException('Certificate cannot be submitted in current status');
             }
 
-            // Update certificate
-            $certificate = $this->certificateRepository->update($certificateId, [
+            // Update certificate directly (bypass repository's draft-only check)
+            $certificate->update([
                 'status' => CertificateStatus::SUBMITTED,
                 'tej_reference' => $tejReference,
                 'tej_submitted_at' => now(),
             ]);
+
+            $certificate = $certificate->fresh();
 
             // Dispatch event
             event(new WithholdingSubmittedToTEJ($certificate, $tejReference, $userId));

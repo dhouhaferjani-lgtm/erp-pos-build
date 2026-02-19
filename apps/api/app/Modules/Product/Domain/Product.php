@@ -15,6 +15,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Modules\Uom\Domain\Entities\Unit;
+use App\Shared\Contracts\SellableContract;
 
 /**
  * @property string $id
@@ -42,11 +44,13 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property string $company_id
  * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property string|null $unit_id
  * @property-read Tenant $tenant
  * @property-read Company $company
+ * @property-read Unit|null $unitOfMeasure
  * @property-read ParapharmacyProductMetadata|null $parapharmacyMetadata
  */
-class Product extends Model
+class Product extends Model implements SellableContract
 {
     use HasFactory;
     use HasUuids;
@@ -132,6 +136,45 @@ class Product extends Model
     {
         return $this->belongsTo(Category::class);
     }
+
+    // -- SellableContract implementation --
+
+    public function getSellableId(): string
+    {
+        return $this->id;
+    }
+
+    public function getSellableType(): string
+    {
+        return 'product';
+    }
+
+    public function getSellableName(): string
+    {
+        return $this->name;
+    }
+
+    public function getSellableBasePrice(): string
+    {
+        return (string) ($this->sale_price ?? '0');
+    }
+
+    public function getSellableUnit(): ?string
+    {
+        return $this->unit;
+    }
+
+    public function isStockTracked(): bool
+    {
+        return $this->is_physical;
+    }
+
+    public function isAvailable(): bool
+    {
+        return $this->is_active;
+    }
+
+    // -- Domain Methods --
 
     public function isPart(): bool
     {
@@ -230,6 +273,16 @@ class Product extends Model
     public function primaryImage(): HasOne
     {
         return $this->hasOne(ProductImage::class)->where('is_primary', true);
+    }
+
+    /**
+     * Get the unit of measure for this product.
+     *
+     * @return BelongsTo<Unit, $this>
+     */
+    public function unitOfMeasure(): BelongsTo
+    {
+        return $this->belongsTo(Unit::class, 'unit_id');
     }
 
     /**

@@ -57,7 +57,14 @@ class CashDrawerOperation extends Model
     /**
      * @var bool
      */
-    public $timestamps = false;
+    public $timestamps = true;
+
+    /**
+     * Disable updated_at since this is an immutable audit record
+     *
+     * @var null
+     */
+    public const UPDATED_AT = null;
 
     /**
      * @return array<string, string>

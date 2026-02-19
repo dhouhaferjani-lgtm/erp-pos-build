@@ -166,10 +166,10 @@ class Shift extends Model
     public function getDurationSeconds(): ?int
     {
         if ($this->closed_at === null) {
-            return $this->opened_at->diffInSeconds(now());
+            return (int) $this->opened_at->diffInSeconds(now());
         }
 
-        return $this->opened_at->diffInSeconds($this->closed_at);
+        return (int) $this->opened_at->diffInSeconds($this->closed_at);
     }
 
     /**

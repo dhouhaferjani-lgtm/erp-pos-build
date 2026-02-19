@@ -1,0 +1,45 @@
+{
+  "agedReceivables": {
+    "title": "Créances Âgées",
+    "description": "Suivre les factures impayées par période d'ancienneté",
+    "asOfDate": "À la Date",
+    "totalOutstanding": "Total Impayé",
+    "current": "Actuel",
+    "days1To30": "1-30 Jours",
+    "days31To60": "31-60 Jours",
+    "days61To90": "61-90 Jours",
+    "daysOver90": "Plus de 90 Jours",
+    "byPartner": "Répartition par Partenaire",
+    "partner": "Partenaire",
+    "total": "Total",
+    "invoiceCount": "Factures"
+  },
+  "customerStatement": {
+    "title": "Relevé Client",
+    "description": "Historique détaillé des transactions pour un client",
+    "selectCustomer": "Sélectionner Client",
+    "dateRange": "Plage de Dates",
+    "fromDate": "Date de Début",
+    "toDate": "Date de Fin",
+    "openingBalance": "Solde d'Ouverture",
+    "closingBalance": "Solde de Clôture",
+    "date": "Date",
+    "type": "Type",
+    "documentNumber": "Document N°",
+    "description": "Description",
+    "debit": "Débit",
+    "credit": "Crédit",
+    "balance": "Solde"
+  },
+  "overdueSummary": {
+    "title": "Résumé des Impayés",
+    "description": "Aperçu rapide des factures en retard",
+    "totalOverdue": "Total en Retard",
+    "invoiceCount": "Factures en Retard",
+    "bySeverity": "Par Sévérité",
+    "critical": "Critique (90+ jours)",
+    "high": "Élevé (60-89 jours)",
+    "medium": "Moyen (30-59 jours)",
+    "low": "Faible (1-29 jours)"
+  }
+}

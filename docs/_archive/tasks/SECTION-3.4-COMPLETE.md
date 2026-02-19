@@ -81,7 +81,7 @@ Complete super admin dashboard implementation with tenant management, audit logg
 
 **SuperAdminSeeder** (`database/seeders/SuperAdminSeeder.php`)
 - Creates default super admin
-- Email: superadmin@mecanospex.com
+- Email: superadmin@autoerp.com
 - Password: superadmin123 (hashed)
 - Integrated into DatabaseSeeder
 

@@ -1,0 +1,249 @@
+{
+  "advancedPayments": {
+    "title": "Paiements Avancés",
+    "paymentMethods": "Méthodes de Paiement",
+    "paymentDistribution": "Répartition des Paiements",
+    "useRemaining": "Utiliser le Reste",
+    "discount": "Remise (Optionnel)",
+    "discountComingSoon": "Fonctionnalité de remise bientôt disponible",
+    "overpaymentDetected": "Surpaiement Détecté",
+    "excess": "Excédent",
+    "giveChange": "Rendre la monnaie au client",
+    "addToCredit": "Ajouter au crédit du compte client",
+    "cartSummary": "Récapitulatif du Panier",
+    "subtotal": "Sous-total",
+    "tax": "Taxe",
+    "total": "Total",
+    "totalPaid": "Total Payé",
+    "remaining": "Reste",
+    "completeTransaction": "Finaliser la Transaction",
+    "processing": "Traitement en cours...",
+    "loadingMethods": "Chargement des méthodes de paiement...",
+    "selectRepository": "Caisse / Coffre / Compte Bancaire",
+    "selectRepositoryPlaceholder": "Sélectionnez où le paiement sera stocké...",
+    "amount": "Montant",
+    "repositoryType": {
+      "cash_register": "Caisse Enregistreuse",
+      "safe": "Coffre-Fort",
+      "bank_account": "Compte Bancaire",
+      "virtual": "Virtuel"
+    }
+  },
+  "payment": {
+    "success": "Paiement Réussi!",
+    "transactionComplete": "Transaction Terminée",
+    "receiptNumber": "Reçu #{{number}}",
+    "newTransaction": "Nouvelle Transaction",
+    "error": "Échec du traitement du paiement",
+    "changeDue": "Monnaie à rendre: {{amount}}",
+    "cashPayment": "Paiement Espèces",
+    "splitCardPayment": "Paiement Fractionné / Carte",
+    "processingQuickCheckout": "Traitement du paiement espèces..."
+  },
+  "receipt": {
+    "print": "Imprimer le Ticket",
+    "download": "Télécharger le Ticket",
+    "reprint": "Réimprimer",
+    "printing": "Impression en cours...",
+    "printSuccess": "Ticket prêt pour l'impression",
+    "printError": "Échec de l'impression du ticket",
+    "downloadSuccess": "Ticket téléchargé avec succès",
+    "downloadError": "Échec du téléchargement du ticket",
+    "popupBlocked": "Popup bloquée - téléchargement en cours",
+    "autoPrint": "Imprimer automatiquement les tickets"
+  },
+  "shift": {
+    "receiptNumber": "Reçu #",
+    "time": "Heure",
+    "total": "Total",
+    "actions": "Actions"
+  },
+  "cart": {
+    "title": "Panier",
+    "item": "article",
+    "items": "articles",
+    "clear": "Vider",
+    "walkInCustomer": "Client de passage",
+    "change": "Modifier",
+    "empty": "Le panier est vide",
+    "addProducts": "Ajoutez des produits pour commencer",
+    "discount": "Remise",
+    "editDiscount": "Modifier la Remise",
+    "applyDiscount": "Appliquer la Remise",
+    "clearDiscount": "Supprimer la Remise",
+    "discountType": "Type de Remise",
+    "percentage": "Pourcentage",
+    "fixed": "Montant Fixe",
+    "presets": "Presets Rapides",
+    "maxAllowed": "Maximum Autorisé",
+    "reason": "Raison",
+    "reasonRequired": "Raison requise pour les remises supérieures à 10%",
+    "reasonPlaceholder": "Entrez la raison de la remise...",
+    "preview": "Aperçu",
+    "originalTotal": "Original",
+    "discountedTotal": "Après Remise",
+    "transactionDiscount": "Remise sur Commande",
+    "discountAmount": "Montant de la Remise",
+    "addDiscount": "Ajouter une Remise",
+    "currentDiscount": "Actuel"
+  },
+  "products": {
+    "searchPlaceholder": "Rechercher des produits...",
+    "loading": "Chargement des produits...",
+    "empty": "Aucun produit disponible",
+    "notFound": "Aucun produit trouvé",
+    "tryAdjusting": "Essayez d'ajuster votre recherche ou vos filtres",
+    "product": "produit",
+    "productPlural": "produits",
+    "allCategories": "Tout",
+    "clearSearch": "Effacer la recherche"
+  },
+  "calculator": {
+    "title": "Calculatrice",
+    "close": "Fermer la calculatrice",
+    "error": "Erreur"
+  },
+  "productInfo": {
+    "title": "Informations Produit",
+    "tabs": {
+      "details": "Détails",
+      "stock": "Niveaux de Stock",
+      "parapharmacy": "Informations Produit"
+    },
+    "fields": {
+      "sku": "Référence",
+      "category": "Catégorie",
+      "price": "Prix",
+      "priceWithTax": "Prix TTC",
+      "taxRate": "Taux TVA",
+      "stock": "Stock",
+      "available": "Disponible",
+      "reserved": "Réservé",
+      "total": "Total",
+      "location": "Emplacement"
+    }
+  },
+  "terminal": {
+    "selectTitle": "Sélectionner un Terminal",
+    "selectDescription": "Choisissez un terminal pour démarrer votre session POS",
+    "code": "Code",
+    "location": "Emplacement",
+    "noTerminals": "Aucun terminal actif trouvé",
+    "noTerminalsDescription": "Demandez à votre administrateur de configurer les terminaux POS.",
+    "loadingTerminals": "Chargement des terminaux...",
+    "lastUsed": "Dernier utilisé"
+  },
+  "demo": {
+    "noLocation": "Aucun emplacement sélectionné",
+    "noLocationDescription": "Veuillez sélectionner un emplacement dans la barre supérieure pour utiliser la caisse.",
+    "loading": {
+      "terminal": "Configuration du terminal...",
+      "shift": "Vérification du poste en cours...",
+      "products": "Chargement des produits..."
+    },
+    "errors": {
+      "terminalCreation": "Échec de la configuration du terminal de caisse",
+      "unknown": "Une erreur inattendue s'est produite",
+      "loadingShift": "Erreur lors du chargement du poste",
+      "loadingProducts": "Erreur lors du chargement des produits",
+      "noShiftOrTerminal": "Aucun poste ou terminal actif",
+      "noCashMethod": "Aucune méthode de paiement espèces configurée",
+      "noCashRegister": "Aucune caisse enregistreuse configurée",
+      "quickCheckoutFailed": "Échec du paiement rapide"
+    },
+    "warnings": {
+      "mustOpenShift": "Vous devez ouvrir un poste pour continuer"
+    },
+    "toasts": {
+      "transactionCompleted": "Transaction terminée - Ticket #{{number}}"
+    }
+  },
+  "shiftHistory": {
+    "title": "Historique des Postes",
+    "description": "Parcourir les postes passés et leurs détails",
+    "shiftNumber": "Poste #",
+    "terminal": "Terminal",
+    "cashier": "Caissier",
+    "openedAt": "Ouvert le",
+    "closedAt": "Fermé le",
+    "duration": "Durée",
+    "openingCash": "Fond de caisse",
+    "expectedCash": "Espèces attendues",
+    "actualCash": "Espèces réelles",
+    "variance": "Écart",
+    "status": "Statut",
+    "open": "Ouvert",
+    "closed": "Fermé",
+    "noShifts": "Aucun poste trouvé",
+    "noShiftsDescription": "Aucun poste ne correspond à vos filtres actuels.",
+    "noReceipts": "Aucun ticket dans ce poste",
+    "filters": {
+      "terminal": "Terminal",
+      "status": "Statut",
+      "allTerminals": "Tous les terminaux",
+      "allStatuses": "Tous les statuts",
+      "dateRange": "Période",
+      "from": "Du",
+      "to": "Au"
+    }
+  },
+  "zReports": {
+    "title": "Rapports Z",
+    "description": "Consulter les rapports fiscaux de fin de journée",
+    "zNumber": "Z #",
+    "date": "Date",
+    "shift": "Poste",
+    "generatedBy": "Généré par",
+    "totalSales": "Ventes totales",
+    "taxCollected": "Taxes collectées",
+    "receiptCount": "Tickets",
+    "verifyChain": "Vérifier la chaîne",
+    "chainValid": "La chaîne de hachage est valide",
+    "chainInvalid": "Erreur d'intégrité de la chaîne de hachage détectée",
+    "verifying": "Vérification...",
+    "selectTerminal": "Sélectionnez un terminal pour voir les rapports Z",
+    "noReports": "Aucun rapport Z trouvé",
+    "noReportsDescription": "Aucun rapport Z n'existe encore pour ce terminal."
+  },
+  "receiptSearch": {
+    "title": "Tickets",
+    "description": "Rechercher et gérer les tickets de caisse",
+    "receiptNumber": "Ticket #",
+    "terminal": "Terminal",
+    "cashier": "Caissier",
+    "date": "Date",
+    "total": "Total",
+    "status": "Statut",
+    "active": "Actif",
+    "voided": "Annulé",
+    "searchPlaceholder": "Rechercher par numéro de ticket...",
+    "noReceipts": "Aucun ticket trouvé",
+    "noReceiptsDescription": "Aucun ticket ne correspond à vos filtres actuels.",
+    "void": "Annuler",
+    "voidReceipt": "Annuler le Ticket",
+    "voidConfirm": "Êtes-vous sûr de vouloir annuler ce ticket ? Cette action inversera les mouvements de stock et créera des écritures comptables d'annulation.",
+    "voidReason": "Raison de l'annulation",
+    "voidReasonPlaceholder": "Entrez la raison...",
+    "voidSuccess": "Ticket annulé avec succès",
+    "voidError": "Échec de l'annulation du ticket",
+    "filters": {
+      "terminal": "Terminal",
+      "status": "Statut",
+      "allTerminals": "Tous les terminaux",
+      "allStatuses": "Tous les statuts",
+      "dateRange": "Période",
+      "from": "Du",
+      "to": "Au"
+    }
+  },
+  "errors": {
+    "discountExceedsLimit": "La remise dépasse le maximum autorisé ({{limit}}%)",
+    "discountNotAllowed": "Vous n'avez pas la permission d'appliquer des remises",
+    "reasonRequired": "Une raison est requise pour les remises supérieures à 10%",
+    "amountRequired": "Le montant de la remise est requis",
+    "discountExceedsSubtotal": "La remise ne peut pas dépasser le sous-total",
+    "receiptCreationFailed": "Échec de la création du ticket",
+    "paymentProcessingFailed": "Échec du traitement du paiement",
+    "invalidPaymentData": "Données de paiement invalides - veuillez vérifier tous les champs"
+  }
+}

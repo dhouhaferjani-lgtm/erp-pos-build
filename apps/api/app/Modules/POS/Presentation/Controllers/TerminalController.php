@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Presentation\Requests\CreateTerminalRequest;
 use App\Modules\POS\Presentation\Requests\UpdateTerminalRequest;
@@ -77,10 +79,13 @@ final class TerminalController extends Controller
             $data['code'] = $this->generateTerminalCode();
         }
 
+        $company = $this->companyContext->requireCompany();
+
         $terminal = Terminal::create([
-            'tenant_id' => $this->companyContext->getTenantId(),
-            'company_id' => $this->companyContext->getCompanyId(),
+            'tenant_id' => $company->tenant_id,
+            'company_id' => $company->id,
             'location_id' => $data['location_id'],
+            'type' => TerminalType::Physical,
             'code' => $data['code'],
             'name' => $data['name'],
             'description' => $data['description'] ?? null,
@@ -183,6 +188,56 @@ final class TerminalController extends Controller
         return response()->json([
             'data' => TerminalResource::make($terminal->load('location')),
         ]);
+    }
+
+    /**
+     * Get or create the web terminal for a given location.
+     *
+     * POST /api/v1/pos/terminals/web
+     */
+    public function getOrCreateWebTerminal(Request $request): JsonResponse
+    {
+        $request->validate([
+            'location_id' => ['required', 'uuid', 'exists:locations,id'],
+        ]);
+
+        $company = $this->companyContext->requireCompany();
+        $locationId = $request->input('location_id');
+
+        // Look up existing active web terminal for (company, location)
+        $terminal = Terminal::forCompany($company->id)
+            ->forLocation($locationId)
+            ->web()
+            ->first();
+
+        if ($terminal) {
+            return response()->json([
+                'data' => TerminalResource::make($terminal->load('location')),
+            ]);
+        }
+
+        // Create a new web terminal
+        /** @var Location $location */
+        $location = Location::findOrFail($locationId);
+        $locationCode = $location->code ?? 'MAIN';
+
+        $terminal = Terminal::create([
+            'tenant_id' => $company->tenant_id,
+            'company_id' => $company->id,
+            'location_id' => $locationId,
+            'type' => TerminalType::Web,
+            'code' => 'WEB-' . strtoupper($locationCode),
+            'name' => 'Web POS - ' . $location->name,
+            'genesis_seed' => bin2hex(random_bytes(32)),
+            'current_sequence' => 0,
+            'current_year' => (int) now()->format('Y'),
+            'is_active' => true,
+            'activated_at' => now(),
+        ]);
+
+        return response()->json([
+            'data' => TerminalResource::make($terminal->load('location')),
+        ], 201);
     }
 
     /**

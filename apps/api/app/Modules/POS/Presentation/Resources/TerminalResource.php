@@ -19,6 +19,7 @@ final class TerminalResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'type' => $this->type?->value ?? 'physical',
             'code' => $this->code,
             'name' => $this->name,
             'description' => $this->description,

@@ -10,7 +10,7 @@ class UpdateBatchRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true; // TODO: Add proper authorization
+        return $this->user()?->can('batches.update') ?? false;
     }
 
     public function rules(): array

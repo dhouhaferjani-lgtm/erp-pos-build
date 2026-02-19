@@ -18,7 +18,7 @@ Successfully verified the complete end-to-end invoice and credit note GL posting
 ## 1. Integration Test Report Review
 
 ### Report Read
-✅ Read `/Users/houssamr/Projects/mecanospex/docs/P1-A-MILESTONE-5-INTEGRATION-TEST-REPORT.md`
+✅ Read `./docs/P1-A-MILESTONE-5-INTEGRATION-TEST-REPORT.md`
 
 ### Key Findings from Report
 - **6 integration tests** created by Agent 7A
@@ -83,7 +83,7 @@ php artisan test tests/Feature/Accounting/
 
 ### Code Review: InvoicePostedListener
 
-**File**: `/Users/houssamr/Projects/mecanospex/apps/api/app/Modules/Accounting/Listeners/InvoicePostedListener.php`
+**File**: `./apps/api/app/Modules/Accounting/Listeners/InvoicePostedListener.php`
 
 ```php
 public function handle(InvoicePosted $event): void
@@ -144,7 +144,7 @@ php artisan test --filter=InvoicePostedListenerTest
 ## 4. Manual E2E Scenario Results
 
 ### Test Command Created
-Created `/Users/houssamr/Projects/mecanospex/apps/api/app/Console/Commands/TestE2EGLPosting.php`
+Created `./apps/api/app/Console/Commands/TestE2EGLPosting.php`
 
 ### Execution
 ```bash

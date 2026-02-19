@@ -52,13 +52,16 @@ class ProductController extends Controller
         $filterConfig = $this->getFilterConfig();
         $filters = $this->getFilterParams($request, $filterConfig);
 
-        // Get per_page parameter
-        $perPage = min((int) $request->input('per_page', 25), 100);
+        // Get per_page parameter (allow up to 2000 for POS systems)
+        $perPage = min((int) $request->input('per_page', 25), 2000);
 
         // Build query with conditional vertical-specific metadata loading
         $with = ['category', 'primaryImage'];
         if ($company->tenant->vertical === Vertical::Parapharmacy) {
-            $with[] = 'parapharmacyMetadata';
+            $with[] = 'parapharmacyMetadata.ingredients';
+            $with[] = 'parapharmacyMetadata.keyComponents';
+            $with[] = 'parapharmacyMetadata.healthClaims';
+            $with[] = 'parapharmacyMetadata.certifications';
         }
 
         $query = Product::query()
@@ -192,7 +195,12 @@ class ProductController extends Controller
 
         // Conditionally load vertical-specific metadata
         if ($company->tenant->vertical === Vertical::Parapharmacy) {
-            $productModel->load('parapharmacyMetadata');
+            $productModel->load([
+                'parapharmacyMetadata.ingredients',
+                'parapharmacyMetadata.keyComponents',
+                'parapharmacyMetadata.healthClaims',
+                'parapharmacyMetadata.certifications',
+            ]);
         }
 
         return response()->json([
@@ -236,7 +244,12 @@ class ProductController extends Controller
 
         // Load metadata for response if Parapharmacy vertical
         if ($company->tenant->vertical === Vertical::Parapharmacy) {
-            $product->load('parapharmacyMetadata');
+            $product->load([
+                'parapharmacyMetadata.ingredients',
+                'parapharmacyMetadata.keyComponents',
+                'parapharmacyMetadata.healthClaims',
+                'parapharmacyMetadata.certifications',
+            ]);
         }
 
         return response()->json([
@@ -300,7 +313,12 @@ class ProductController extends Controller
 
         // Load metadata for response if Parapharmacy vertical
         if ($company->tenant->vertical === Vertical::Parapharmacy) {
-            $freshProduct->load('parapharmacyMetadata');
+            $freshProduct->load([
+                'parapharmacyMetadata.ingredients',
+                'parapharmacyMetadata.keyComponents',
+                'parapharmacyMetadata.healthClaims',
+                'parapharmacyMetadata.certifications',
+            ]);
         }
 
         return response()->json([

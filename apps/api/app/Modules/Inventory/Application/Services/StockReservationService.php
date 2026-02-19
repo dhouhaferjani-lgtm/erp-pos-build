@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Application\Services;
 
+use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
+use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
@@ -12,6 +14,8 @@ use App\Modules\Inventory\Domain\Events\ReservationExpired;
 use App\Modules\Inventory\Domain\Events\ReservationReleased;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockReservation;
+use App\Modules\Product\Domain\Product;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -34,14 +38,20 @@ use Illuminate\Support\Str;
  */
 class StockReservationService
 {
+    public function __construct(
+        private FEFOInventoryService $fefoService
+    ) {}
+
     /**
      * Reserve stock for a source (sales order, cart, etc.).
      *
      * This method:
      * - Validates sufficient available stock
      * - Creates the reservation record
-     * - Updates the stock level reserved field
+     * - Updates the stock level reserved field (or batch stock if batch_id provided)
      * - Dispatches ReservationCreated event
+     *
+     * @param  int|null  $batchId  Optional batch ID for batch-specific reservation
      *
      * @throws \RuntimeException If insufficient stock available
      */
@@ -55,6 +65,7 @@ class StockReservationService
         ?string $sourceLineId = null,
         ?int $priority = 0,
         ?string $notes = null,
+        ?int $batchId = null,
     ): StockReservation {
         return DB::transaction(function () use (
             $company,
@@ -65,21 +76,39 @@ class StockReservationService
             $sourceId,
             $sourceLineId,
             $priority,
-            $notes
+            $notes,
+            $batchId
         ): StockReservation {
-            // Lock stock level to prevent concurrent reservations
-            $stockLevel = StockLevel::where('product_id', $productId)
-                ->where('location_id', $locationId)
-                ->where('company_id', $company->id)
-                ->lockForUpdate()
-                ->firstOrFail();
+            // If batch_id provided, validate batch stock instead of aggregate stock
+            if ($batchId !== null) {
+                // Lock batch stock to prevent concurrent reservations
+                $batchStock = BatchStock::where('batch_id', $batchId)
+                    ->where('location_id', $locationId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-            // Validate sufficient available stock
-            $available = bcsub((string) $stockLevel->quantity, (string) $stockLevel->reserved, 4);
-            if (bccomp($available, $quantity, 4) < 0) {
-                throw new \RuntimeException(
-                    "Insufficient stock. Available: {$available}, Requested: {$quantity}"
-                );
+                // Validate sufficient available stock in this batch
+                $available = bcsub((string) $batchStock->quantity, (string) $batchStock->reserved_quantity, 4);
+                if (bccomp($available, $quantity, 4) < 0) {
+                    throw new \RuntimeException(
+                        "Insufficient batch stock. Available: {$available}, Requested: {$quantity}"
+                    );
+                }
+            } else {
+                // Lock aggregate stock level to prevent concurrent reservations
+                $stockLevel = StockLevel::where('product_id', $productId)
+                    ->where('location_id', $locationId)
+                    ->where('company_id', $company->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                // Validate sufficient available stock
+                $available = bcsub((string) $stockLevel->quantity, (string) $stockLevel->reserved, 4);
+                if (bccomp($available, $quantity, 4) < 0) {
+                    throw new \RuntimeException(
+                        "Insufficient stock. Available: {$available}, Requested: {$quantity}"
+                    );
+                }
             }
 
             // Get reservation settings from company
@@ -94,6 +123,7 @@ class StockReservationService
                 'company_id' => $company->id,
                 'product_id' => $productId,
                 'location_id' => $locationId,
+                'batch_id' => $batchId,
                 'quantity' => $quantity,
                 'source_type' => $sourceType,
                 'source_id' => $sourceId,
@@ -104,8 +134,14 @@ class StockReservationService
                 'created_by' => auth()->id(),
             ]);
 
-            // Update stock level reserved field
-            $stockLevel->increment('reserved', $quantity);
+            // Update reserved quantities
+            if ($batchId !== null) {
+                // Update batch stock reserved quantity
+                $batchStock->increment('reserved_quantity', $quantity);
+            } else {
+                // Update aggregate stock level reserved field
+                $stockLevel->increment('reserved', $quantity);
+            }
 
             // Dispatch event after transaction commits
             DB::afterCommit(function () use ($reservation, $company): void {
@@ -134,7 +170,7 @@ class StockReservationService
      *
      * This method:
      * - Marks the reservation as released
-     * - Updates the stock level reserved field
+     * - Updates the stock level reserved field (or batch stock if batch-specific)
      * - Dispatches ReservationReleased event
      */
     public function release(
@@ -147,12 +183,6 @@ class StockReservationService
         }
 
         DB::transaction(function () use ($reservation, $reason, $releasedBy): void {
-            // Lock stock level
-            $stockLevel = StockLevel::where('product_id', $reservation->product_id)
-                ->where('location_id', $reservation->location_id)
-                ->lockForUpdate()
-                ->firstOrFail();
-
             // Update reservation
             $reservation->update([
                 'released_at' => now(),
@@ -160,8 +190,24 @@ class StockReservationService
                 'release_reason' => $reason,
             ]);
 
-            // Update stock level
-            $stockLevel->decrement('reserved', $reservation->quantity);
+            // Update reserved quantities
+            if ($reservation->batch_id !== null) {
+                // Lock and update batch stock
+                $batchStock = BatchStock::where('batch_id', $reservation->batch_id)
+                    ->where('location_id', $reservation->location_id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                $batchStock->decrement('reserved_quantity', $reservation->quantity);
+            } else {
+                // Lock and update aggregate stock level
+                $stockLevel = StockLevel::where('product_id', $reservation->product_id)
+                    ->where('location_id', $reservation->location_id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                $stockLevel->decrement('reserved', $reservation->quantity);
+            }
 
             // Dispatch event after transaction commits
             DB::afterCommit(function () use ($reservation, $reason, $releasedBy): void {
@@ -223,12 +269,6 @@ class StockReservationService
         $count = 0;
         foreach ($expiredReservations as $reservation) {
             DB::transaction(function () use ($reservation): void {
-                // Lock stock level
-                $stockLevel = StockLevel::where('product_id', $reservation->product_id)
-                    ->where('location_id', $reservation->location_id)
-                    ->lockForUpdate()
-                    ->firstOrFail();
-
                 // Update reservation
                 $reservation->update([
                     'expired_at' => now(),
@@ -236,8 +276,24 @@ class StockReservationService
                     'release_reason' => ReleaseReason::Expired,
                 ]);
 
-                // Update stock level
-                $stockLevel->decrement('reserved', $reservation->quantity);
+                // Update reserved quantities
+                if ($reservation->batch_id !== null) {
+                    // Lock and update batch stock
+                    $batchStock = BatchStock::where('batch_id', $reservation->batch_id)
+                        ->where('location_id', $reservation->location_id)
+                        ->lockForUpdate()
+                        ->firstOrFail();
+
+                    $batchStock->decrement('reserved_quantity', $reservation->quantity);
+                } else {
+                    // Lock and update aggregate stock level
+                    $stockLevel = StockLevel::where('product_id', $reservation->product_id)
+                        ->where('location_id', $reservation->location_id)
+                        ->lockForUpdate()
+                        ->firstOrFail();
+
+                    $stockLevel->decrement('reserved', $reservation->quantity);
+                }
 
                 // Dispatch event after transaction commits
                 DB::afterCommit(function () use ($reservation): void {
@@ -279,5 +335,84 @@ class StockReservationService
         }
 
         return $count;
+    }
+
+    /**
+     * Reserve stock using FEFO (First-Expired-First-Out) batch selection.
+     *
+     * This method:
+     * - Checks if product requires batch tracking
+     * - Uses FEFO service to select batches
+     * - Creates one reservation per batch
+     * - Updates batch stock reserved quantities
+     *
+     * @return Collection<int, StockReservation> Collection of created reservations
+     *
+     * @throws \RuntimeException If insufficient stock available
+     */
+    public function reserveWithFEFO(
+        Company $company,
+        string $productId,
+        string $locationId,
+        string $quantity,
+        ReservationSource $sourceType,
+        string $sourceId,
+        ?string $sourceLineId = null,
+        ?int $priority = 0,
+        ?string $notes = null,
+    ): Collection {
+        // Check if product requires batch tracking
+        $product = Product::findOrFail($productId);
+
+        if (! $product->requires_batch_tracking) {
+            // Product doesn't require batch tracking, create single aggregate reservation
+            return collect([
+                $this->reserve(
+                    company: $company,
+                    productId: $productId,
+                    locationId: $locationId,
+                    quantity: $quantity,
+                    sourceType: $sourceType,
+                    sourceId: $sourceId,
+                    sourceLineId: $sourceLineId,
+                    priority: $priority,
+                    notes: $notes,
+                ),
+            ]);
+        }
+
+        // Use FEFO to select batches
+        $result = $this->fefoService->suggestBatchesForSale(
+            productId: (int) $product->id,
+            locationId: (int) $locationId,
+            quantity: (float) $quantity,
+        );
+
+        if (! $result->fullyFulfilled) {
+            throw new \RuntimeException(
+                "Insufficient batch stock. Requested: {$quantity}, Shortfall: {$result->shortfall}"
+            );
+        }
+
+        // Create one reservation per batch
+        $reservations = collect();
+        foreach ($result->suggestions as $suggestion) {
+            $reservation = $this->reserve(
+                company: $company,
+                productId: $productId,
+                locationId: $locationId,
+                quantity: (string) $suggestion->quantity,
+                sourceType: $sourceType,
+                sourceId: $sourceId,
+                sourceLineId: $sourceLineId,
+                priority: $priority,
+                notes: $notes,
+                batchId: $suggestion->batch->id,
+            );
+
+            $reservations->push($reservation);
+        }
+
+        return $reservations;
     }
 }

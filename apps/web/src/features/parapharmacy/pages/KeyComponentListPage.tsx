@@ -1,66 +1,51 @@
-import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Edit, Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { fetchKeyComponents, deleteKeyComponent } from '../api/keyComponentApi';
-import { toast } from 'sonner';
-import { OffsetPagination } from '@/components/ui/OffsetPagination';
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
+import { Plus, Edit, Trash2 } from 'lucide-react'
+import { Button } from '@/components/atoms/Button/Button'
+import { Badge } from '@/components/atoms/Badge/Badge'
+import { Spinner } from '@/components/atoms/Spinner/Spinner'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { OffsetPagination } from '@/components/ui/OffsetPagination'
+import { EmptyState } from '@/components/molecules/EmptyState/EmptyState'
+import { fetchKeyComponents, deleteKeyComponent } from '../api/keyComponentApi'
+import { toast } from 'sonner'
 
 export function KeyComponentListPage() {
-  const { t } = useTranslation(['common', 'parapharmacy']);
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const { t } = useTranslation(['common', 'parapharmacy'])
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [page, setPage] = useState(1)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['parapharmacy', 'key-components', page],
     queryFn: () => fetchKeyComponents({ page, per_page: 25 }),
-  });
+  })
 
   const deleteMutation = useMutation({
     mutationFn: deleteKeyComponent,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['parapharmacy', 'key-components'] });
-      toast.success(t('parapharmacy:keyComponentDeleted'));
-      setDeleteId(null);
+      queryClient.invalidateQueries({ queryKey: ['parapharmacy', 'key-components'] })
+      toast.success(t('parapharmacy:keyComponentDeleted'))
+      setDeleteId(null)
     },
     onError: (error: any) => {
       const message =
         error?.response?.data?.error?.message ||
-        t('parapharmacy:deleteKeyComponentError');
-      toast.error(message);
-      setDeleteId(null);
+        t('parapharmacy:deleteKeyComponentError')
+      toast.error(message)
+      setDeleteId(null)
     },
-  });
+  })
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        {t('common:loading')}
+        <Spinner size="lg" />
       </div>
-    );
+    )
   }
 
   return (
@@ -68,7 +53,7 @@ export function KeyComponentListPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">{t('parapharmacy:keyComponents')}</h1>
-          <p className="text-muted-foreground">
+          <p className="text-gray-600">
             {t('parapharmacy:keyComponentsDescription')}
           </p>
         </div>
@@ -78,98 +63,110 @@ export function KeyComponentListPage() {
         </Button>
       </div>
 
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('parapharmacy:name')}</TableHead>
-              <TableHead>{t('parapharmacy:slug')}</TableHead>
-              <TableHead>{t('parapharmacy:allergen')}</TableHead>
-              <TableHead className="text-end">{t('common:actions')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data?.data.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground">
-                  {t('common:noData')}
-                </TableCell>
-              </TableRow>
-            )}
-            {data?.data.map((keyComponent) => (
-              <TableRow key={keyComponent.id}>
-                <TableCell className="font-medium">{keyComponent.name}</TableCell>
-                <TableCell>
-                  <code className="text-xs bg-muted px-2 py-1 rounded">
-                    {keyComponent.slug}
-                  </code>
-                </TableCell>
-                <TableCell>
-                  {keyComponent.is_allergen ? (
-                    <Badge variant="destructive">
-                      {t('parapharmacy:allergen')}
-                    </Badge>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </TableCell>
-                <TableCell className="text-end">
-                  <div className="flex items-center justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        navigate(`/parapharmacy/key-components/${keyComponent.id}`)
-                      }
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDeleteId(keyComponent.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      <div className="rounded-lg border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('parapharmacy:name')}
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('parapharmacy:slug')}
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('parapharmacy:allergen')}
+                </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('common:actions')}
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {data?.data?.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-6 py-12">
+                    <EmptyState
+                      title={t('parapharmacy:noKeyComponents')}
+                      description={t('parapharmacy:noKeyComponentsDescription')}
+                      action={{
+                        label: t('parapharmacy:addKeyComponent'),
+                        onClick: () => navigate('/parapharmacy/key-components/new'),
+                        icon: Plus,
+                      }}
+                    />
+                  </td>
+                </tr>
+              ) : (
+                data?.data?.map((keyComponent) => (
+                  <tr key={keyComponent.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                      {keyComponent.name}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      <code className="text-xs bg-gray-100 px-2 py-1 rounded">
+                        {keyComponent.slug}
+                      </code>
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      {keyComponent.is_allergen ? (
+                        <Badge variant="danger">
+                          {t('parapharmacy:allergen')}
+                        </Badge>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            navigate(`/parapharmacy/key-components/${keyComponent.id}`)
+                          }
+                          aria-label={t('common:edit')}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDeleteId(keyComponent.id)}
+                          aria-label={t('common:delete')}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {data?.meta.pagination && (
+      {data?.meta && (
         <OffsetPagination
           currentPage={page}
           totalPages={Math.ceil(
-            data.meta.pagination.total / data.meta.pagination.per_page
+            data.meta.total / data.meta.per_page
           )}
           onPageChange={setPage}
         />
       )}
 
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t('parapharmacy:confirmDeleteKeyComponent')}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('parapharmacy:confirmDeleteKeyComponentDescription')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteId && deleteMutation.mutate(deleteId)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {t('common:delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        isOpen={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
+        title={t('parapharmacy:confirmDeleteKeyComponent')}
+        message={t('parapharmacy:confirmDeleteKeyComponentDescription')}
+        confirmText={t('common:delete')}
+        confirmVariant="danger"
+        isLoading={deleteMutation.isPending}
+      />
     </div>
-  );
+  )
 }

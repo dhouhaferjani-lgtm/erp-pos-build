@@ -56,11 +56,11 @@
 ## Repository Structure
 
 ```
-mecanospex/
+apps/erp/
 ├── apps/
 │   ├── api/                    # Laravel backend
 │   │   ├── app/
-│   │   │   ├── Modules/        # Domain modules (22 total)
+│   │   │   ├── Modules/        # Domain modules (28 total)
 │   │   │   ├── Shared/         # Shared infrastructure
 │   │   │   └── Http/           # Controllers, middleware
 │   │   ├── database/
@@ -74,7 +74,7 @@ mecanospex/
 │   │
 │   ├── web/                    # React frontend
 │   │   ├── src/
-│   │   │   ├── features/       # Feature modules (22 total)
+│   │   │   ├── features/       # Feature modules (28 total)
 │   │   │   ├── components/     # Shared components
 │   │   │   ├── hooks/          # Global hooks
 │   │   │   ├── stores/         # Zustand stores
@@ -148,7 +148,7 @@ Module/
 │   ├── DTOs/                 # Data transfer objects
 │   └── Services/             # Application orchestration
 ├── Infrastructure/
-│   └── Providers/            # Service providers
+│   └── Repositories/         # Eloquent implementations
 ├── Presentation/
 │   ├── Controllers/          # HTTP handlers (thin)
 │   ├── Requests/             # Validation
@@ -219,7 +219,7 @@ Write tests FIRST, then implementation. All tests must pass before committing.
 ```bash
 # Clone and install
 git clone <repo>
-cd mecanospex
+cd apps/erp
 pnpm install
 
 # Backend setup
@@ -254,7 +254,7 @@ pnpm dev  # From root - starts all services
 ### Module Development
 
 - **[Module Architecture Guide](./modules/architecture.md)** ⭐ NEW - Module structure, boundaries, cross-module communication
-- **[Module Reference](./modules/README.md)** - Detailed documentation for all 22 backend modules
+- **[Module Reference](./modules/README.md)** - Detailed documentation for all 28 backend modules
 
 ### API & Testing
 

@@ -1,66 +1,51 @@
-import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Edit, Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { fetchCertifications, deleteCertification } from '../api/certificationApi';
-import { toast } from 'sonner';
-import { OffsetPagination } from '@/components/ui/OffsetPagination';
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
+import { Plus, Edit, Trash2 } from 'lucide-react'
+import { Button } from '@/components/atoms/Button/Button'
+import { Badge } from '@/components/atoms/Badge/Badge'
+import { Spinner } from '@/components/atoms/Spinner/Spinner'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { OffsetPagination } from '@/components/ui/OffsetPagination'
+import { EmptyState } from '@/components/molecules/EmptyState/EmptyState'
+import { fetchCertifications, deleteCertification } from '../api/certificationApi'
+import { toast } from 'sonner'
 
 export function CertificationListPage() {
-  const { t } = useTranslation(['common', 'parapharmacy']);
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const { t } = useTranslation(['common', 'parapharmacy'])
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [page, setPage] = useState(1)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['parapharmacy', 'certifications', page],
     queryFn: () => fetchCertifications({ page, per_page: 25 }),
-  });
+  })
 
   const deleteMutation = useMutation({
     mutationFn: deleteCertification,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['parapharmacy', 'certifications'] });
-      toast.success(t('parapharmacy:certificationDeleted'));
-      setDeleteId(null);
+      queryClient.invalidateQueries({ queryKey: ['parapharmacy', 'certifications'] })
+      toast.success(t('parapharmacy:certificationDeleted'))
+      setDeleteId(null)
     },
     onError: (error: any) => {
       const message =
         error?.response?.data?.error?.message ||
-        t('parapharmacy:deleteCertificationError');
-      toast.error(message);
-      setDeleteId(null);
+        t('parapharmacy:deleteCertificationError')
+      toast.error(message)
+      setDeleteId(null)
     },
-  });
+  })
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        {t('common:loading')}
+        <Spinner size="lg" />
       </div>
-    );
+    )
   }
 
   return (
@@ -68,7 +53,7 @@ export function CertificationListPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">{t('parapharmacy:certifications')}</h1>
-          <p className="text-muted-foreground">
+          <p className="text-gray-600">
             {t('parapharmacy:certificationsDescription')}
           </p>
         </div>
@@ -78,104 +63,124 @@ export function CertificationListPage() {
         </Button>
       </div>
 
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('parapharmacy:name')}</TableHead>
-              <TableHead>{t('parapharmacy:type')}</TableHead>
-              <TableHead>{t('parapharmacy:certifyingBody')}</TableHead>
-              <TableHead>{t('parapharmacy:status')}</TableHead>
-              <TableHead>{t('parapharmacy:displayOrder')}</TableHead>
-              <TableHead className="text-end">{t('common:actions')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data?.data.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  {t('common:noData')}
-                </TableCell>
-              </TableRow>
-            )}
-            {data?.data.map((certification) => (
-              <TableRow key={certification.id}>
-                <TableCell className="font-medium">{certification.name}</TableCell>
-                <TableCell>
-                  <code className="text-xs bg-muted px-2 py-1 rounded">
-                    {certification.type}
-                  </code>
-                </TableCell>
-                <TableCell>{certification.certifying_body || '—'}</TableCell>
-                <TableCell>
-                  {certification.is_active ? (
-                    <Badge variant="default">
-                      {t('parapharmacy:active')}
-                    </Badge>
-                  ) : (
-                    <Badge variant="secondary">
-                      {t('parapharmacy:inactive')}
-                    </Badge>
-                  )}
-                </TableCell>
-                <TableCell>{certification.display_order}</TableCell>
-                <TableCell className="text-end">
-                  <div className="flex items-center justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        navigate(`/parapharmacy/certifications/${certification.id}`)
-                      }
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDeleteId(certification.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      <div className="rounded-lg border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('parapharmacy:name')}
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('parapharmacy:type')}
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('parapharmacy:certifyingBody')}
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('parapharmacy:status')}
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('parapharmacy:displayOrder')}
+                </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('common:actions')}
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {data?.data?.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-12">
+                    <EmptyState
+                      title={t('parapharmacy:noCertifications')}
+                      description={t('parapharmacy:noCertificationsDescription')}
+                      action={{
+                        label: t('parapharmacy:addCertification'),
+                        onClick: () => navigate('/parapharmacy/certifications/new'),
+                        icon: Plus,
+                      }}
+                    />
+                  </td>
+                </tr>
+              ) : (
+                data?.data?.map((certification) => (
+                  <tr key={certification.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                      {certification.name}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      <code className="text-xs bg-gray-100 px-2 py-1 rounded">
+                        {certification.type}
+                      </code>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      {certification.certifying_body || '—'}
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      {certification.is_active ? (
+                        <Badge variant="success">
+                          {t('parapharmacy:active')}
+                        </Badge>
+                      ) : (
+                        <Badge variant="default">
+                          {t('parapharmacy:inactive')}
+                        </Badge>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      {certification.display_order}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            navigate(`/parapharmacy/certifications/${certification.id}`)
+                          }
+                          aria-label={t('common:edit')}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDeleteId(certification.id)}
+                          aria-label={t('common:delete')}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {data?.meta.pagination && (
+      {data?.meta && (
         <OffsetPagination
           currentPage={page}
           totalPages={Math.ceil(
-            data.meta.pagination.total / data.meta.pagination.per_page
+            data.meta.total / data.meta.per_page
           )}
           onPageChange={setPage}
         />
       )}
 
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t('parapharmacy:confirmDeleteCertification')}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('parapharmacy:confirmDeleteCertificationDescription')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteId && deleteMutation.mutate(deleteId)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {t('common:delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        isOpen={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
+        title={t('parapharmacy:confirmDeleteCertification')}
+        message={t('parapharmacy:confirmDeleteCertificationDescription')}
+        confirmText={t('common:delete')}
+        confirmVariant="danger"
+        isLoading={deleteMutation.isPending}
+      />
     </div>
-  );
+  )
 }

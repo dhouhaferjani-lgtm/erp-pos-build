@@ -6,6 +6,7 @@ namespace App\Modules\POS\Domain;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -25,7 +26,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string $tenant_id
  * @property string $company_id
  * @property string $location_id
- * @property string $code Terminal code (e.g., POS01, POS02)
+ * @property TerminalType $type Terminal type (web or physical)
+ * @property string $code Terminal code (e.g., POS01, WEB-MAIN)
  * @property string $name Terminal display name
  * @property string|null $description
  * @property string $genesis_seed 256-bit hex string for hash chain initialization
@@ -38,6 +40,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $deactivation_reason
  * @property string|null $hardware_identifier MAC address, serial number, etc.
  * @property string|null $pos_software_version Tauri app version
+ * @property float $max_discount_percent Maximum allowed discount percentage (0-100)
+ * @property bool $allow_line_discounts Whether line-level discounts are allowed
+ * @property bool $allow_transaction_discounts Whether transaction-level discounts are allowed
  * @property \Illuminate\Support\Carbon $created_at
  * @property \Illuminate\Support\Carbon $updated_at
  * @property \Illuminate\Support\Carbon|null $deleted_at
@@ -51,6 +56,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @method static Builder<static> forLocation(string $locationId)
  * @method static Builder<static> active()
  * @method static Builder<static> byCode(string $code)
+ * @method static Builder<static> web()
+ * @method static Builder<static> physical()
  */
 class Terminal extends Model
 {
@@ -69,6 +76,7 @@ class Terminal extends Model
         'tenant_id',
         'company_id',
         'location_id',
+        'type',
         'code',
         'name',
         'description',
@@ -82,6 +90,9 @@ class Terminal extends Model
         'deactivation_reason',
         'hardware_identifier',
         'pos_software_version',
+        'max_discount_percent',
+        'allow_line_discounts',
+        'allow_transaction_discounts',
     ];
 
     /**
@@ -90,11 +101,15 @@ class Terminal extends Model
     protected function casts(): array
     {
         return [
+            'type' => TerminalType::class,
             'current_sequence' => 'integer',
             'current_year' => 'integer',
             'is_active' => 'boolean',
             'activated_at' => 'datetime',
             'deactivated_at' => 'datetime',
+            'max_discount_percent' => 'float',
+            'allow_line_discounts' => 'boolean',
+            'allow_transaction_discounts' => 'boolean',
         ];
     }
 
@@ -215,5 +230,35 @@ class Terminal extends Model
     public function scopeByCode(Builder $query, string $code): Builder
     {
         return $query->where('code', $code);
+    }
+
+    /**
+     * Scope to filter web terminals only
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWeb(Builder $query): Builder
+    {
+        return $query->where('type', TerminalType::Web);
+    }
+
+    /**
+     * Scope to filter physical terminals only
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopePhysical(Builder $query): Builder
+    {
+        return $query->where('type', TerminalType::Physical);
+    }
+
+    /**
+     * Check if this is a web terminal
+     */
+    public function isWeb(): bool
+    {
+        return $this->type === TerminalType::Web;
     }
 }

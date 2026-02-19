@@ -170,3 +170,30 @@ export interface CertificateFilters {
   date_to?: string;
   cursor?: string;
 }
+
+export interface CreateWithholdingRuleRequest {
+  country_code: string;
+  code: string;
+  name: string;
+  description?: string;
+  transaction_type?: TransactionType;
+  partner_tax_status?: string;
+  min_amount?: string;
+  rate: number;
+  effective_from: string;
+  effective_to?: string;
+  is_active?: boolean;
+}
+
+export interface UpdateWithholdingRuleRequest {
+  code?: string;
+  name?: string;
+  description?: string;
+  transaction_type?: TransactionType;
+  partner_tax_status?: string;
+  min_amount?: string;
+  rate?: number;
+  effective_from?: string;
+  effective_to?: string;
+  is_active?: boolean;
+}

@@ -69,6 +69,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property int $delivery_note_next_number Next delivery note number
  * @property string $receipt_prefix Prefix for receipt numbers
  * @property int $receipt_next_number Next receipt number
+ * @property bool $auto_print_receipts Whether to auto-print receipts after transaction
+ * @property string|null $receipt_logo Path to receipt logo (can differ from main logo)
+ * @property string|null $receipt_footer Custom footer text for receipts
  * @property VerificationTier $verification_tier Verification tier
  * @property VerificationStatus $verification_status Verification status
  * @property Carbon|null $verification_submitted_at When verification was submitted
@@ -216,6 +219,9 @@ class Company extends Model
         'delivery_note_next_number',
         'receipt_prefix',
         'receipt_next_number',
+        'auto_print_receipts',
+        'receipt_logo',
+        'receipt_footer',
         'verification_tier',
         'verification_status',
         'verification_submitted_at',
@@ -255,6 +261,7 @@ class Company extends Model
             'purchase_order_next_number' => 'integer',
             'delivery_note_next_number' => 'integer',
             'receipt_next_number' => 'integer',
+            'auto_print_receipts' => 'boolean',
             'verification_tier' => VerificationTier::class,
             'verification_status' => VerificationStatus::class,
             'verification_submitted_at' => 'datetime',

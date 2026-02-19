@@ -8,6 +8,7 @@ export interface Location {
 
 export interface Terminal {
   id: string
+  type: 'web' | 'physical'
   code: string
   name: string
   description: string | null
@@ -90,4 +91,12 @@ export async function deactivateTerminal(
   data?: DeactivateTerminalInput
 ): Promise<Terminal> {
   return apiPatch<Terminal>(`/pos/terminals/${id}/deactivate`, data)
+}
+
+/**
+ * Get or create the web terminal for a given location.
+ * Returns the existing web terminal if one exists, otherwise creates one.
+ */
+export async function getOrCreateWebTerminal(locationId: string): Promise<Terminal> {
+  return apiPost<Terminal>('/pos/terminals/web', { location_id: locationId })
 }

@@ -7,7 +7,13 @@
     "title": "Withholding Preview",
     "calculating": "Calculating withholding...",
     "noRuleFound": "No withholding rule found",
-    "suggestedRate": "Suggested rate: {{rate}}%"
+    "noRuleFoundHelp": "You can manually specify a withholding rate using the override option below.",
+    "suggestedRate": "Suggested rate: {{rate}}%",
+    "amountBreakdown": "Amount Breakdown",
+    "applyWithholding": "Apply Withholding",
+    "manualOverride": "Manual Override",
+    "manualRate": "Manual Rate (%)",
+    "overrideReasonPlaceholder": "Enter reason for manual rate override..."
   },
 
   "form": {
@@ -106,20 +112,83 @@
 
   "rules": {
     "title": "Withholding Tax Rules",
+    "subtitle": "Manage withholding tax rules for automatic calculation",
     "noRules": "No withholding rules found",
+    "addRule": "Add New Rule",
+    "createRule": "Create Withholding Rule",
+    "editRule": "Edit Withholding Rule",
+    "countryFilter": "Country",
     "code": "Code",
     "name": "Name",
+    "namePlaceholder": "e.g., Professional Services Withholding",
     "rate": "Rate",
+    "ratePercentage": "Rate (%)",
     "effectiveFrom": "Effective From",
     "effectiveTo": "Effective To",
+    "effectiveToHelp": "Leave empty for indefinite validity",
     "isActive": "Active",
     "isGlobal": "Global",
     "companySpecific": "Company Specific",
+    "basicInfo": "Basic Information",
     "conditions": "Conditions",
+    "validityPeriod": "Validity Period",
     "transactionType": "Transaction Type",
+    "partnerRegime": "Partner Tax Regime",
     "partnerTaxStatus": "Partner Tax Status",
     "minAmount": "Minimum Amount",
-    "description": "Description"
+    "minAmountHelp": "Rule applies only if amount exceeds this threshold",
+    "description": "Description",
+    "descriptionPlaceholder": "Optional description of when this rule applies",
+    "infoTitle": "About Withholding Rules",
+    "infoText": "Withholding rules determine the automatic tax withholding rate based on transaction type, partner regime, and amount thresholds. Rules are applied in order of specificity.",
+    "confirmDelete": "Are you sure you want to delete the rule \"{{name}}\"?"
+  },
+
+  "taxStatuses": {
+    "registered": "VAT Registered",
+    "nonRegistered": "Non-Registered",
+    "exempt": "Exempt"
+  },
+
+  "taxRegimes": {
+    "corporate": "Corporate (Books)",
+    "individual": "Individual (Forfait)",
+    "exempt": "Exempt",
+    "non_resident": "Non-Resident"
+  },
+
+  "countries": {
+    "tunisia": "Tunisia",
+    "france": "France",
+    "morocco": "Morocco",
+    "algeria": "Algeria"
+  },
+
+  "salesWithholding": {
+    "title": "Sales Withholding Tracking",
+    "subtitle": "Track tax withholding by customers on payments to us",
+    "noRecords": "No withholding records found",
+    "invoiceNumber": "Invoice",
+    "customer": "Customer",
+    "invoiceAmount": "Invoice Amount",
+    "withheldAmount": "Withheld Amount",
+    "expectedReceivable": "Expected Receivable",
+    "certificateStatus": "Certificate Status",
+    "certificateReceived": "Certificate Received",
+    "certificatePending": "Pending Certificate",
+    "received": "Received",
+    "pending": "Pending",
+    "viewDetails": "View Details",
+    "infoTitle": "About Sales Withholding",
+    "infoText": "This tracks when customers withhold tax from payments they make to you. You should follow up to receive the withholding certificate from the customer.",
+    "howItWorks": {
+      "title": "How It Works",
+      "step1": "You issue an invoice to a customer (e.g., 1,000 TND)",
+      "step2": "Customer withholds tax (e.g., 1.5% = 15 TND)",
+      "step3": "You receive reduced payment (e.g., 985 TND)",
+      "step4": "Record the withholding in the system",
+      "step5": "Follow up to get the withholding certificate from customer"
+    }
   },
 
   "messages": {
@@ -134,7 +203,15 @@
     "confirmIssue": "Are you sure you want to issue this certificate? This action cannot be undone.",
     "confirmVoid": "Are you sure you want to void this certificate?",
     "confirmDelete": "Are you sure you want to delete this draft certificate?",
-    "voidReasonRequired": "Please provide a reason for voiding this certificate"
+    "voidReasonRequired": "Please provide a reason for voiding this certificate",
+    "ruleCreated": "Withholding rule created successfully",
+    "ruleUpdated": "Withholding rule updated successfully",
+    "ruleDeleted": "Withholding rule deleted successfully",
+    "ruleDeactivated": "Withholding rule deactivated successfully",
+    "ruleCreationFailed": "Failed to create withholding rule",
+    "ruleUpdateFailed": "Failed to update withholding rule",
+    "ruleDeletionFailed": "Failed to delete withholding rule",
+    "ruleDeactivationFailed": "Failed to deactivate withholding rule"
   },
 
   "validation": {

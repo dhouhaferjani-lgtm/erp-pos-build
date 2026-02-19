@@ -3,19 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TranslationEditor, Translation } from '../components/TranslationEditor';
+import { Button } from '@/components/atoms/Button/Button';
+import { Input } from '@/components/atoms/Input/Input';
+import { Select } from '@/components/atoms/Select/Select';
+import { Spinner } from '@/components/atoms/Spinner/Spinner';
+import { TranslationEditor, type Translation } from '../components';
 import {
   fetchHealthClaim,
   createHealthClaim,
@@ -43,7 +35,7 @@ export function HealthClaimFormPage() {
   const [countryRestrictions, setCountryRestrictions] = useState('');
   const [requiresDisclaimer, setRequiresDisclaimer] = useState(false);
   const [translations, setTranslations] = useState<Translation[]>([
-    { locale: 'en', claim: '', disclaimer_text: '' },
+    { locale: 'en', name: '', claim: '', disclaimer_text: '' },
   ]);
 
   const { data: healthClaim, isLoading } = useQuery({
@@ -67,6 +59,7 @@ export function HealthClaimFormPage() {
       setTranslations([
         {
           locale: 'en',
+          name: '',
           claim: healthClaim.claim,
           disclaimer_text: healthClaim.disclaimer_text || '',
         },
@@ -135,7 +128,7 @@ export function HealthClaimFormPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        {t('common:loading')}
+        <Spinner size="lg" />
       </div>
     );
   }
@@ -161,43 +154,53 @@ export function HealthClaimFormPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('parapharmacy:basicInformation')}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+          <div className="border-b border-gray-200 px-6 py-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              {t('parapharmacy:basicInformation')}
+            </h2>
+          </div>
+          <div className="px-6 py-4 space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="claim_type">
-                  {t('parapharmacy:claimType')} <span className="text-destructive">*</span>
-                </Label>
-                <Select
-                  value={claimType}
-                  onValueChange={(
-                    value: 'function' | 'reduction_of_disease_risk' | 'development_and_health'
-                  ) => setClaimType(value)}
+                <label
+                  htmlFor="claim_type"
+                  className="block text-sm font-medium text-gray-700 mb-1"
                 >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="function">
-                      {t('parapharmacy:claimType.function')}
-                    </SelectItem>
-                    <SelectItem value="reduction_of_disease_risk">
-                      {t('parapharmacy:claimType.reduction_of_disease_risk')}
-                    </SelectItem>
-                    <SelectItem value="development_and_health">
-                      {t('parapharmacy:claimType.development_and_health')}
-                    </SelectItem>
-                  </SelectContent>
+                  {t('parapharmacy:claimType')} <span className="text-red-600">*</span>
+                </label>
+                <Select
+                  id="claim_type"
+                  value={claimType}
+                  onChange={(e) =>
+                    setClaimType(
+                      e.target.value as
+                        | 'function'
+                        | 'reduction_of_disease_risk'
+                        | 'development_and_health'
+                    )
+                  }
+                  required
+                >
+                  <option value="function">
+                    {t('parapharmacy:claimType.function')}
+                  </option>
+                  <option value="reduction_of_disease_risk">
+                    {t('parapharmacy:claimType.reduction_of_disease_risk')}
+                  </option>
+                  <option value="development_and_health">
+                    {t('parapharmacy:claimType.development_and_health')}
+                  </option>
                 </Select>
               </div>
 
               <div>
-                <Label htmlFor="slug">
-                  {t('parapharmacy:slug')} <span className="text-destructive">*</span>
-                </Label>
+                <label
+                  htmlFor="slug"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  {t('parapharmacy:slug')} <span className="text-red-600">*</span>
+                </label>
                 <Input
                   id="slug"
                   value={slug}
@@ -210,35 +213,40 @@ export function HealthClaimFormPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="regulatory_status">
-                  {t('parapharmacy:regulatoryStatus')}{' '}
-                  <span className="text-destructive">*</span>
-                </Label>
-                <Select
-                  value={regulatoryStatus}
-                  onValueChange={(value: 'approved' | 'pending' | 'rejected') =>
-                    setRegulatoryStatus(value)
-                  }
+                <label
+                  htmlFor="regulatory_status"
+                  className="block text-sm font-medium text-gray-700 mb-1"
                 >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="approved">
-                      {t('parapharmacy:regulatoryStatus.approved')}
-                    </SelectItem>
-                    <SelectItem value="pending">
-                      {t('parapharmacy:regulatoryStatus.pending')}
-                    </SelectItem>
-                    <SelectItem value="rejected">
-                      {t('parapharmacy:regulatoryStatus.rejected')}
-                    </SelectItem>
-                  </SelectContent>
+                  {t('parapharmacy:regulatoryStatus')}{' '}
+                  <span className="text-red-600">*</span>
+                </label>
+                <Select
+                  id="regulatory_status"
+                  value={regulatoryStatus}
+                  onChange={(e) =>
+                    setRegulatoryStatus(e.target.value as 'approved' | 'pending' | 'rejected')
+                  }
+                  required
+                >
+                  <option value="approved">
+                    {t('parapharmacy:regulatoryStatus.approved')}
+                  </option>
+                  <option value="pending">
+                    {t('parapharmacy:regulatoryStatus.pending')}
+                  </option>
+                  <option value="rejected">
+                    {t('parapharmacy:regulatoryStatus.rejected')}
+                  </option>
                 </Select>
               </div>
 
               <div>
-                <Label htmlFor="efsa_reference">{t('parapharmacy:efsaReference')}</Label>
+                <label
+                  htmlFor="efsa_reference"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  {t('parapharmacy:efsaReference')}
+                </label>
                 <Input
                   id="efsa_reference"
                   value={efsaReference}
@@ -250,7 +258,12 @@ export function HealthClaimFormPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="fda_reference">{t('parapharmacy:fdaReference')}</Label>
+                <label
+                  htmlFor="fda_reference"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  {t('parapharmacy:fdaReference')}
+                </label>
                 <Input
                   id="fda_reference"
                   value={fdaReference}
@@ -260,39 +273,46 @@ export function HealthClaimFormPage() {
               </div>
 
               <div>
-                <Label htmlFor="country_restrictions">
+                <label
+                  htmlFor="country_restrictions"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   {t('parapharmacy:countryRestrictions')}
-                </Label>
+                </label>
                 <Input
                   id="country_restrictions"
                   value={countryRestrictions}
                   onChange={(e) => setCountryRestrictions(e.target.value)}
                   placeholder="FR, DE, IT (comma-separated)"
                 />
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-gray-500 mt-1">
                   {t('parapharmacy:countryRestrictionsHelp')}
                 </p>
               </div>
             </div>
 
             <div className="flex items-center space-x-2">
-              <Checkbox
+              <input
+                type="checkbox"
                 id="requires_disclaimer"
                 checked={requiresDisclaimer}
-                onCheckedChange={(checked) => setRequiresDisclaimer(checked as boolean)}
+                onChange={(e) => setRequiresDisclaimer(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              <Label htmlFor="requires_disclaimer" className="font-normal">
+              <label htmlFor="requires_disclaimer" className="text-sm text-gray-700">
                 {t('parapharmacy:requiresDisclaimer')}
-              </Label>
+              </label>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('parapharmacy:translations')}</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+          <div className="border-b border-gray-200 px-6 py-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              {t('parapharmacy:translations')}
+            </h2>
+          </div>
+          <div className="px-6 py-4">
             <TranslationEditor
               translations={translations}
               onChange={setTranslations}
@@ -311,13 +331,13 @@ export function HealthClaimFormPage() {
                 },
               ]}
             />
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         <div className="flex justify-end gap-4">
           <Button
             type="button"
-            variant="outline"
+            variant="secondary"
             onClick={() => navigate('/parapharmacy/health-claims')}
           >
             {t('common:cancel')}

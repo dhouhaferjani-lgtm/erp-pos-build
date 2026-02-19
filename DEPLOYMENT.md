@@ -156,7 +156,7 @@ These two settings are CRITICAL for proper routing!
 When you deploy with `AUTO_SEED=true`, the following will be created:
 
 1. **Super Admin**
-   - Email: `superadmin@mecanospex.com`
+   - Email: `superadmin@autoerp.com`
    - Password: (check `SuperAdminSeeder.php`)
 
 2. **Demo Tenant & Company**

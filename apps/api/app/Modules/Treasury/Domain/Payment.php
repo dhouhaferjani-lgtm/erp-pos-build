@@ -7,6 +7,7 @@ namespace App\Modules\Treasury\Domain;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
@@ -49,6 +50,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Payment extends Model
 {
     use HasUuids;
+    use \Illuminate\Database\Eloquent\Factories\HasFactory;
 
     protected $table = 'payments';
 
@@ -57,6 +59,7 @@ class Payment extends Model
         'company_id',
         'partner_id',
         'payment_method_id',
+        'withholding_certificate_id',
         'instrument_id',
         'repository_id',
         'amount',
@@ -145,6 +148,14 @@ class Payment extends Model
     public function allocations(): HasMany
     {
         return $this->hasMany(PaymentAllocation::class);
+    }
+
+    /**
+     * @return BelongsTo<WithholdingCertificate, $this>
+     */
+    public function withholdingCertificate(): BelongsTo
+    {
+        return $this->belongsTo(WithholdingCertificate::class, 'withholding_certificate_id');
     }
 
     /**
@@ -274,5 +285,13 @@ class Payment extends Model
     public function isSupplierPayment(): bool
     {
         return $this->payment_type === PaymentType::SupplierPayment;
+    }
+
+    /**
+     * Create a new factory instance for the model.
+     */
+    protected static function newFactory(): \Illuminate\Database\Eloquent\Factories\Factory
+    {
+        return \Database\Factories\PaymentFactory::new();
     }
 }

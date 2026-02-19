@@ -3,12 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TranslationEditor, Translation } from '../components/TranslationEditor';
+import { Button } from '@/components/atoms/Button/Button';
+import { Input } from '@/components/atoms/Input/Input';
+import { Spinner } from '@/components/atoms/Spinner/Spinner';
+import { TranslationEditor, type Translation } from '../components';
 import {
   fetchKeyComponent,
   createKeyComponent,
@@ -105,7 +103,7 @@ export function KeyComponentFormPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        {t('common:loading')}
+        <Spinner size="lg" />
       </div>
     );
   }
@@ -131,15 +129,20 @@ export function KeyComponentFormPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('parapharmacy:basicInformation')}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+          <div className="border-b border-gray-200 px-6 py-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              {t('parapharmacy:basicInformation')}
+            </h2>
+          </div>
+          <div className="px-6 py-4 space-y-4">
             <div>
-              <Label htmlFor="slug">
-                {t('parapharmacy:slug')} <span className="text-destructive">*</span>
-              </Label>
+              <label
+                htmlFor="slug"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                {t('parapharmacy:slug')} <span className="text-red-600">*</span>
+              </label>
               <Input
                 id="slug"
                 value={slug}
@@ -147,29 +150,33 @@ export function KeyComponentFormPage() {
                 required
                 placeholder="gelatin-capsule"
               />
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-xs text-gray-500 mt-1">
                 {t('parapharmacy:slugHelp')}
               </p>
             </div>
 
             <div className="flex items-center space-x-2">
-              <Checkbox
+              <input
+                type="checkbox"
                 id="is_allergen"
                 checked={isAllergen}
-                onCheckedChange={(checked) => setIsAllergen(checked as boolean)}
+                onChange={(e) => setIsAllergen(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              <Label htmlFor="is_allergen" className="font-normal">
+              <label htmlFor="is_allergen" className="text-sm text-gray-700">
                 {t('parapharmacy:isAllergen')}
-              </Label>
+              </label>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('parapharmacy:translations')}</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+          <div className="border-b border-gray-200 px-6 py-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              {t('parapharmacy:translations')}
+            </h2>
+          </div>
+          <div className="px-6 py-4">
             <TranslationEditor
               translations={translations}
               onChange={setTranslations}
@@ -187,13 +194,13 @@ export function KeyComponentFormPage() {
                 },
               ]}
             />
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         <div className="flex justify-end gap-4">
           <Button
             type="button"
-            variant="outline"
+            variant="secondary"
             onClick={() => navigate('/parapharmacy/key-components')}
           >
             {t('common:cancel')}

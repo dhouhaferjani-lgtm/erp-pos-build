@@ -46,7 +46,7 @@ Request → auth:sanctum → SetPermissionsTeam → RequireModule → Permission
 ## RequireModule Middleware
 
 ### Location
-`/Users/houssamr/Projects/mecanospex/apps/api/app/Http/Middleware/RequireModule.php`
+`apps/api/app/Http/Middleware/RequireModule.php`
 
 ### Registration
 ```php

@@ -1,4 +1,44 @@
 {
+  "title": "Settings",
+  "description": "Manage your application settings and configuration",
+  "sections": {
+    "users": {
+      "title": "Users & Access",
+      "description": "Manage user accounts and access permissions"
+    },
+    "roles": {
+      "title": "Roles & Permissions",
+      "description": "Configure user roles and permission sets"
+    },
+    "company": {
+      "title": "Company Information",
+      "description": "Update company details and business information"
+    },
+    "tax": {
+      "title": "Tax Settings",
+      "description": "Configure tax rates and fiscal year settings"
+    },
+    "inventory": {
+      "title": "Inventory Settings",
+      "description": "Configure stock tracking and inventory management"
+    },
+    "units": {
+      "title": "Units of Measure",
+      "description": "Manage measurement units and conversions"
+    },
+    "import": {
+      "title": "Data Import",
+      "description": "Import products, customers, and other data"
+    },
+    "openingBalances": {
+      "title": "Opening Balances",
+      "description": "Set up initial account and inventory balances"
+    },
+    "pos": {
+      "title": "Point of Sale",
+      "description": "Manage POS terminals, receipt settings, and cash drawers"
+    }
+  },
   "tax": {
     "title": "Tax Settings",
     "description": "Configure tax rates and fiscal year settings for your company",

@@ -48,11 +48,11 @@ final class ShiftResource extends JsonResource
                     'email' => $this->cashier->email,
                 ];
             }),
-            'closed_by_user' => $this->whenLoaded('closedByUser', function () {
-                return $this->closedByUser ? [
-                    'id' => $this->closedByUser->id,
-                    'name' => $this->closedByUser->name,
-                    'email' => $this->closedByUser->email,
+            'closed_by_user' => $this->whenLoaded('closedBy', function () {
+                return $this->closedBy ? [
+                    'id' => $this->closedBy->id,
+                    'name' => $this->closedBy->name,
+                    'email' => $this->closedBy->email,
                 ] : null;
             }),
         ];

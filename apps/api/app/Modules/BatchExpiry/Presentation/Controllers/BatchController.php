@@ -5,28 +5,75 @@ declare(strict_types=1);
 namespace App\Modules\BatchExpiry\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\BatchExpiry\Application\Services\BatchStockService;
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Repositories\BatchRepositoryInterface;
+use App\Modules\BatchExpiry\Domain\Services\BatchWriteOffService;
 use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
 use App\Modules\BatchExpiry\Presentation\Requests\CreateBatchRequest;
+use App\Modules\BatchExpiry\Presentation\Requests\TransferBatchStockRequest;
 use App\Modules\BatchExpiry\Presentation\Requests\UpdateBatchRequest;
+use App\Modules\BatchExpiry\Presentation\Requests\WriteOffBatchRequest;
 use App\Modules\BatchExpiry\Presentation\Resources\BatchResource;
+use App\Modules\Company\Services\CompanyContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Str;
 
 class BatchController extends Controller
 {
     public function __construct(
         private readonly BatchRepositoryInterface $batchRepository,
-        private readonly FEFOInventoryService $fefoService
+        private readonly FEFOInventoryService $fefoService,
+        private readonly CompanyContext $companyContext,
+        private readonly BatchStockService $batchStockService,
+        private readonly BatchWriteOffService $batchWriteOffService,
     ) {}
+
+    /**
+     * Find a batch by UUID and verify it belongs to the current company.
+     */
+    private function findBatchOrFail(string $uuid): Batch|JsonResponse
+    {
+        if (! Str::isUuid($uuid)) {
+            return response()->json([
+                'error' => [
+                    'code' => 'BATCH_NOT_FOUND',
+                    'message' => 'Batch not found',
+                ],
+            ], 404);
+        }
+
+        $batch = $this->batchRepository->findByUuid($uuid);
+
+        if (! $batch) {
+            return response()->json([
+                'error' => [
+                    'code' => 'BATCH_NOT_FOUND',
+                    'message' => 'Batch not found',
+                ],
+            ], 404);
+        }
+
+        if ($batch->company_id !== $this->companyContext->requireCompanyId()) {
+            return response()->json([
+                'error' => [
+                    'code' => 'BATCH_NOT_FOUND',
+                    'message' => 'Batch not found',
+                ],
+            ], 404);
+        }
+
+        return $batch;
+    }
 
     /**
      * List batches with filters.
      */
     public function index(Request $request): AnonymousResourceCollection
     {
-        $companyId = $request->user()->company_id;
+        $companyId = $this->companyContext->requireCompanyId();
 
         $filters = [
             'product_id' => $request->input('product_id'),
@@ -48,21 +95,15 @@ class BatchController extends Controller
      */
     public function show(string $uuid): JsonResponse
     {
-        $batch = $this->batchRepository->findByUuid($uuid);
-
-        if (! $batch) {
-            return response()->json([
-                'error' => [
-                    'code' => 'BATCH_NOT_FOUND',
-                    'message' => 'Batch not found',
-                ],
-            ], 404);
+        $result = $this->findBatchOrFail($uuid);
+        if ($result instanceof JsonResponse) {
+            return $result;
         }
 
-        $batch->load(['product', 'batchStock.location']);
+        $result->load(['product', 'batchStock.location']);
 
         return response()->json([
-            'data' => new BatchResource($batch),
+            'data' => new BatchResource($result),
         ]);
     }
 
@@ -71,15 +112,16 @@ class BatchController extends Controller
      */
     public function store(CreateBatchRequest $request): JsonResponse
     {
-        $user = $request->user();
+        $company = $this->companyContext->requireCompany();
+        $companyId = $company->id;
 
         $data = $request->validated();
-        $data['tenant_id'] = $user->tenant_id;
-        $data['company_id'] = $user->company_id;
+        $data['tenant_id'] = $company->tenant_id;
+        $data['company_id'] = $companyId;
 
         // Check for duplicate batch number
         $existing = $this->batchRepository->findByBatchNumber(
-            $user->company_id,
+            $companyId,
             $data['product_id'],
             $data['batch_number']
         );
@@ -106,22 +148,16 @@ class BatchController extends Controller
      */
     public function update(UpdateBatchRequest $request, string $uuid): JsonResponse
     {
-        $batch = $this->batchRepository->findByUuid($uuid);
-
-        if (! $batch) {
-            return response()->json([
-                'error' => [
-                    'code' => 'BATCH_NOT_FOUND',
-                    'message' => 'Batch not found',
-                ],
-            ], 404);
+        $result = $this->findBatchOrFail($uuid);
+        if ($result instanceof JsonResponse) {
+            return $result;
         }
 
-        $this->batchRepository->update($batch, $request->validated());
-        $batch->refresh()->load(['product', 'batchStock']);
+        $this->batchRepository->update($result, $request->validated());
+        $result->refresh()->load(['product', 'batchStock']);
 
         return response()->json([
-            'data' => new BatchResource($batch),
+            'data' => new BatchResource($result),
         ]);
     }
 
@@ -130,18 +166,12 @@ class BatchController extends Controller
      */
     public function destroy(string $uuid): JsonResponse
     {
-        $batch = $this->batchRepository->findByUuid($uuid);
-
-        if (! $batch) {
-            return response()->json([
-                'error' => [
-                    'code' => 'BATCH_NOT_FOUND',
-                    'message' => 'Batch not found',
-                ],
-            ], 404);
+        $result = $this->findBatchOrFail($uuid);
+        if ($result instanceof JsonResponse) {
+            return $result;
         }
 
-        $this->batchRepository->delete($batch);
+        $this->batchRepository->delete($result);
 
         return response()->json([
             'data' => ['message' => 'Batch deactivated successfully'],
@@ -157,22 +187,16 @@ class BatchController extends Controller
             'reason' => ['required', 'string', 'max:255'],
         ]);
 
-        $batch = $this->batchRepository->findByUuid($uuid);
-
-        if (! $batch) {
-            return response()->json([
-                'error' => [
-                    'code' => 'BATCH_NOT_FOUND',
-                    'message' => 'Batch not found',
-                ],
-            ], 404);
+        $result = $this->findBatchOrFail($uuid);
+        if ($result instanceof JsonResponse) {
+            return $result;
         }
 
-        $batch->recall($request->input('reason'));
-        $batch->refresh()->load(['product', 'batchStock']);
+        $result->recall($request->input('reason'));
+        $result->refresh()->load(['product', 'batchStock']);
 
         return response()->json([
-            'data' => new BatchResource($batch),
+            'data' => new BatchResource($result),
         ]);
     }
 
@@ -181,9 +205,9 @@ class BatchController extends Controller
      */
     public function expiring(Request $request): JsonResponse
     {
-        $companyId = $request->user()->company_id;
-        $daysThreshold = $request->input('days', 30);
-        $locationId = $request->input('location_id');
+        $companyId = $this->companyContext->requireCompanyId();
+        $daysThreshold = (int) $request->input('days', 30);
+        $locationId = $request->input('location_id') !== null ? (string) $request->input('location_id') : null;
 
         $batches = $this->fefoService->getExpiringProducts($companyId, $daysThreshold, $locationId);
 
@@ -197,18 +221,12 @@ class BatchController extends Controller
      */
     public function stock(string $uuid): JsonResponse
     {
-        $batch = $this->batchRepository->findByUuid($uuid);
-
-        if (! $batch) {
-            return response()->json([
-                'error' => [
-                    'code' => 'BATCH_NOT_FOUND',
-                    'message' => 'Batch not found',
-                ],
-            ], 404);
+        $result = $this->findBatchOrFail($uuid);
+        if ($result instanceof JsonResponse) {
+            return $result;
         }
 
-        $stockLevels = $this->fefoService->getBatchStockByLocation($batch->id);
+        $stockLevels = $this->fefoService->getBatchStockByLocation((string) $result->id);
 
         return response()->json([
             'data' => $stockLevels->map(fn ($stock) => [
@@ -225,15 +243,15 @@ class BatchController extends Controller
      * Get available batches for POS (FEFO ordered).
      * This endpoint is used by POS to get batch suggestions for sale.
      */
-    public function posAvailableBatches(Request $request, int $productId): JsonResponse
+    public function posAvailableBatches(Request $request, string $productId): JsonResponse
     {
         $request->validate([
             'location_id' => ['required', 'exists:locations,id'],
             'quantity' => ['required', 'numeric', 'min:0.0001'],
         ]);
 
-        $locationId = $request->input('location_id');
-        $quantity = $request->input('quantity');
+        $locationId = (string) $request->input('location_id');
+        $quantity = (float) $request->input('quantity');
 
         $result = $this->fefoService->suggestBatchesForSale(
             $productId,
@@ -249,12 +267,89 @@ class BatchController extends Controller
     /**
      * Get batch stock for a specific product.
      */
-    public function productBatchStock(int $productId): JsonResponse
+    public function productBatchStock(string $productId): JsonResponse
     {
         $batches = $this->batchRepository->getByProduct($productId, activeOnly: true);
 
         return response()->json([
             'data' => BatchResource::collection($batches),
+        ]);
+    }
+
+    /**
+     * Transfer batch stock between locations.
+     *
+     * POST /api/v1/batches/{uuid}/transfer
+     */
+    public function transfer(TransferBatchStockRequest $request, string $uuid): JsonResponse
+    {
+        $result = $this->findBatchOrFail($uuid);
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+
+        $company = $this->companyContext->requireCompany();
+
+        try {
+            $this->batchStockService->transferBatchStock(
+                tenantId: $company->tenant_id,
+                batchId: (int) $result->id,
+                fromLocationId: (string) $request->input('from_location_id'),
+                toLocationId: (string) $request->input('to_location_id'),
+                quantity: (string) $request->input('quantity'),
+                reference: "Batch transfer: {$result->batch_number}",
+                userId: (string) auth()->id(),
+            );
+        } catch (\DomainException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'TRANSFER_FAILED',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        }
+
+        $result->refresh()->load(['product', 'batchStock.location']);
+
+        return response()->json([
+            'data' => new BatchResource($result),
+        ]);
+    }
+
+    /**
+     * Write off batch stock (expiry, damage, etc.) with GL entries.
+     *
+     * POST /api/v1/batches/{uuid}/write-off
+     */
+    public function writeOff(WriteOffBatchRequest $request, string $uuid): JsonResponse
+    {
+        $result = $this->findBatchOrFail($uuid);
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+
+        try {
+            $this->batchWriteOffService->writeOff(
+                batch: $result,
+                locationId: (string) $request->input('location_id'),
+                quantity: (string) $request->input('quantity'),
+                reason: (string) $request->input('reason'),
+                userId: (string) auth()->id(),
+                notes: $request->input('notes'),
+            );
+        } catch (\DomainException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'WRITE_OFF_FAILED',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        }
+
+        $result->refresh()->load(['product', 'batchStock.location']);
+
+        return response()->json([
+            'data' => new BatchResource($result),
         ]);
     }
 }

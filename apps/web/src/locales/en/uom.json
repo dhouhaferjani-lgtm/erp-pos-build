@@ -1,0 +1,56 @@
+{
+  "title": "Units of Measure",
+  "addUnit": "Add Unit",
+  "editUnit": "Edit Unit",
+  "unitCreated": "Unit created successfully",
+  "unitUpdated": "Unit updated successfully",
+  "unitDeleted": "Unit deactivated successfully",
+
+  "category": "Category",
+  "code": "Code",
+  "codeHelp": "Unique identifier (e.g., 'tbsp', 'gal')",
+  "name": "Name",
+  "symbol": "Symbol",
+  "symbolHelp": "Display symbol (e.g., 'tbsp', 'gal')",
+  "conversionFactor": "Conversion Factor",
+  "conversionFactorHelp": "How many base units equal 1 of this unit",
+  "decimalPlaces": "Decimal Places",
+  "roundingMethod": "Rounding Method",
+  "isBaseUnit": "Base Unit",
+  "isSystem": "System Unit",
+  "isActive": "Active",
+
+  "categories": {
+    "weight": "Weight",
+    "volume": "Volume",
+    "length": "Length",
+    "pieces": "Pieces",
+    "time": "Time"
+  },
+
+  "roundingMethods": {
+    "half_up": "Half Up",
+    "floor": "Floor",
+    "ceil": "Ceiling"
+  },
+
+  "errors": {
+    "systemUnit": "System units cannot be modified",
+    "unitInUse": "Unit is in use and cannot be deleted",
+    "incompatibleUnits": "Cannot convert between incompatible units"
+  },
+
+  "noUnits": "No units found",
+  "systemUnitInfo": "System units are available to all tenants and cannot be modified",
+  "selectUnit": "Select a unit",
+
+  "conversionCalculator": "Unit Conversion Calculator",
+  "conversionCalculatorHelp": "Convert quantities between compatible units",
+  "quantity": "Quantity",
+  "fromUnit": "From Unit",
+  "toUnit": "To Unit",
+  "swapUnits": "Swap units",
+  "result": "Result",
+  "convert": "Convert",
+  "conversionFactorDisplay": "Conversion factor"
+}

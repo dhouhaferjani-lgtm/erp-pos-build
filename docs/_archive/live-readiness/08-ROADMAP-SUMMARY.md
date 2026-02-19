@@ -269,7 +269,7 @@ Phase 3 (Operational):
 
 ## Fork Strategy
 
-### Automotive ERP (mecanospex)
+### Automotive ERP (AutoERP)
 
 **Keep**:
 - Vehicle module

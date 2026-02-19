@@ -62,14 +62,14 @@ class ParapharmacyProductMetadataData extends Data
             product_id: $metadata->product_id,
             category: $metadata->category,
             dosage_form: $metadata->dosage_form,
-            ingredients: $metadata->ingredients->isNotEmpty()
+            ingredients: $metadata->ingredients?->isNotEmpty()
                 ? ProductIngredientData::collection(
                     $metadata->ingredients->map(function ($ingredient) {
                         return ProductIngredientData::fromPivot($ingredient, $ingredient->pivot);
                     })
                 )
                 : null,
-            key_components: $metadata->keyComponents->isNotEmpty()
+            key_components: $metadata->keyComponents?->isNotEmpty()
                 ? ProductKeyComponentData::collection(
                     $metadata->keyComponents->map(function ($component) {
                         return ProductKeyComponentData::fromPivot($component, $component->pivot);
@@ -83,14 +83,14 @@ class ParapharmacyProductMetadataData extends Data
             age_restriction: $metadata->age_restriction,
             requires_consultation: $metadata->requires_consultation,
             regulatory_code: $metadata->regulatory_code,
-            health_claims: $metadata->healthClaims->isNotEmpty()
+            health_claims: $metadata->healthClaims?->isNotEmpty()
                 ? ProductHealthClaimData::collection(
                     $metadata->healthClaims->map(function ($healthClaim) {
                         return ProductHealthClaimData::fromPivot($healthClaim, $healthClaim->pivot);
                     })
                 )
                 : null,
-            certifications: $metadata->certifications->isNotEmpty()
+            certifications: $metadata->certifications?->isNotEmpty()
                 ? ProductCertificationData::collection(
                     $metadata->certifications->map(function ($certification) {
                         return ProductCertificationData::fromPivot($certification, $certification->pivot);

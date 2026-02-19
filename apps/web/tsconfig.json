@@ -46,6 +46,7 @@
       "@/types/*": ["src/types/*"],
       "@autoerp/shared/*": ["../../packages/shared/*"]
     },
+    "typeRoots": ["../../packages/shared/types", "./node_modules/@types"],
 
     /* JSX */
     "jsx": "react-jsx"

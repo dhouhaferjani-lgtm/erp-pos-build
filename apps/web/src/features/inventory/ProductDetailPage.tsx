@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Edit, Trash2, Package, DollarSign, Barcode, Tag, Clock } from 'lucide-react'
 import { api, apiDelete } from '../../lib/api'
 import { useCompanyStore } from '../../stores/companyStore'
+import { useProductConfig } from '../../contexts/ProductConfigContext'
 import { formatCurrency } from '../../lib/format'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import {
@@ -53,6 +54,7 @@ const typeColors: Record<ProductType, string> = {
 export function ProductDetailPage() {
   const { t } = useTranslation(['inventory', 'common', 'products'])
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+  const { isOtospex } = useProductConfig()
 
   // Get company currency with fallback
   const companyCurrency = currentCompany?.currency ?? 'EUR'
@@ -293,7 +295,7 @@ export function ProductDetailPage() {
           </div>
 
           {/* Secondary Sections - Below the fold */}
-          {(product.oem_numbers?.length || product.cross_references?.length) ? (
+          {isOtospex && (product.oem_numbers?.length || product.cross_references?.length) ? (
             <div className="grid gap-6 lg:grid-cols-3">
               {/* Automotive Info */}
               <div className="lg:col-span-2">

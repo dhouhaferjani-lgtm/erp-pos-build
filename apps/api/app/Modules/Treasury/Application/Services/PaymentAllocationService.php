@@ -101,13 +101,10 @@ class PaymentAllocationService
                 $allocationAmount = $allocation['amount'];
                 $totalAllocated = bcadd($totalAllocated, $allocationAmount, 4);
 
-                // Update document balance_due
-                /** @var numeric-string $currentBalance */
-                $currentBalance = $document->balance_due ?? $document->total;
-                $newBalanceDue = bcsub($currentBalance, $allocationAmount, 2);
-                $document->balance_due = $newBalanceDue;
+                // Note: balance_due is automatically updated by PostgreSQL trigger
+                // when PaymentAllocation is created. See migration: add_balance_due_cache_trigger.php
 
-                // If there's a tolerance write-off, apply it and zero out the balance
+                // If there's a tolerance write-off, apply it
                 /** @var numeric-string|null $toleranceWriteoff */
                 $toleranceWriteoff = $allocation['tolerance_writeoff'] ?? null;
                 if ($toleranceWriteoff !== null && bccomp($toleranceWriteoff, '0', 4) > 0) {
@@ -126,12 +123,13 @@ class PaymentAllocationService
                         date: $payment->payment_date,
                         description: "Payment tolerance write-off for payment {$payment->reference}"
                     );
-
-                    // Tolerance write-off means invoice is fully settled
-                    $document->balance_due = '0.00';
                 }
 
+                // Refresh document to get trigger-updated balance_due
+                $document->refresh();
+
                 // Update document status to Paid if fully paid
+                // (balance_due was just updated by trigger)
                 if (bccomp($document->balance_due, '0.00', 2) === 0) {
                     $document->status = DocumentStatus::Paid;
                 }

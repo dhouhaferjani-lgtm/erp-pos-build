@@ -1,5 +1,4 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
-import type { App.Shared.Application.DTOs.PaginationData } from '@shared/types';
 
 export interface KeyComponentTranslation {
   id?: string;
@@ -23,7 +22,12 @@ export interface UpdateKeyComponentInput {
 export interface KeyComponentsListResponse {
   data: App.Modules.Product.Application.DTOs.KeyComponentData[];
   meta: {
-    pagination: App.Shared.Application.DTOs.PaginationData;
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+    from: number | null;
+    to: number | null;
   };
 }
 

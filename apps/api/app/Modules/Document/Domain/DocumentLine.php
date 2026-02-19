@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Domain;
 
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
@@ -16,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $document_id
  * @property string|null $location_id
  * @property string|null $product_id
+ * @property int|null $batch_id
  * @property string|null $product_code
  * @property string|null $service_id
  * @property int $line_number
@@ -37,6 +39,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property-read Document $document
  * @property-read \App\Modules\Company\Domain\Location|null $location
  * @property-read Product|null $product
+ * @property-read Batch|null $batch
  * @property-read Service|null $service
  * @property-read DocumentLine|null $sourceLine
  */
@@ -56,6 +59,7 @@ class DocumentLine extends Model
         'document_id',
         'location_id',
         'product_id',
+        'batch_id',
         'product_code',
         'service_id',
         'line_number',
@@ -108,6 +112,14 @@ class DocumentLine extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    /**
+     * @return BelongsTo<Batch, $this>
+     */
+    public function batch(): BelongsTo
+    {
+        return $this->belongsTo(Batch::class);
     }
 
     /**

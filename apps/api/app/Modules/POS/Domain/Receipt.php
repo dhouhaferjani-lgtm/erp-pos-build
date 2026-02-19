@@ -41,7 +41,9 @@ use Illuminate\Support\Carbon;
  * @property string $cashier_name Snapshot for audit trail
  * @property numeric-string $subtotal Net amount before tax
  * @property numeric-string $tax_amount Total VAT/tax
- * @property numeric-string $total Gross total (subtotal + tax)
+ * @property numeric-string $discount_amount Transaction-level discount
+ * @property string|null $discount_reason Reason for transaction discount
+ * @property numeric-string $total Gross total ((subtotal - discount) + tax)
  * @property string $currency
  * @property string|null $consumption_mode SUR_PLACE, A_EMPORTER
  * @property string|null $customer_name
@@ -105,6 +107,8 @@ class Receipt extends Model
         'cashier_name',
         'subtotal',
         'tax_amount',
+        'discount_amount',
+        'discount_reason',
         'total',
         'currency',
         'consumption_mode',
@@ -131,6 +135,7 @@ class Receipt extends Model
             'posted_at' => 'datetime',
             'subtotal' => 'decimal:2',
             'tax_amount' => 'decimal:2',
+            'discount_amount' => 'decimal:2',
             'total' => 'decimal:2',
             'is_voided' => 'boolean',
             'voided_at' => 'datetime',

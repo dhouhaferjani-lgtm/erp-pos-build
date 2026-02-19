@@ -33,6 +33,8 @@ use Spatie\Permission\Traits\HasRoles;
  * @property string|null $locale Preferred locale
  * @property string|null $timezone Preferred timezone
  * @property array<string, mixed> $preferences User preferences
+ * @property bool $can_discount Whether cashier can apply discounts
+ * @property float|null $max_discount_percent Maximum discount percentage (NULL = no individual limit)
  * @property Carbon|null $email_verified_at
  * @property Carbon|null $last_login_at
  * @property string|null $last_login_ip
@@ -78,6 +80,8 @@ class User extends Authenticatable
         'locale',
         'timezone',
         'preferences',
+        'can_discount',
+        'max_discount_percent',
         'email_verified_at',
         'last_login_at',
         'last_login_ip',
@@ -103,6 +107,8 @@ class User extends Authenticatable
         return [
             'status' => UserStatus::class,
             'preferences' => 'array',
+            'can_discount' => 'boolean',
+            'max_discount_percent' => 'float',
             'email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
             'password' => 'hashed',

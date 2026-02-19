@@ -61,11 +61,11 @@ const { t } = useTranslation();
 ## Project Structure
 
 ```
-mecanospex/
+apps/erp/
 ├── apps/
 │   ├── api/                    # Laravel 12 backend
 │   │   ├── app/
-│   │   │   ├── Modules/        # 22 domain modules
+│   │   │   ├── Modules/        # 28 domain modules
 │   │   │   ├── Shared/         # Shared infrastructure
 │   │   │   └── Http/           # Legacy controllers
 │   │   ├── database/migrations/

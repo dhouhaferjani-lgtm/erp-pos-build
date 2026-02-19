@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { POSButton } from '../../atoms'
 import { type CartItem } from '../../molecules'
-import { Calculator } from 'lucide-react'
+import { Calculator, Banknote, CreditCard } from 'lucide-react'
 
 export interface PaymentPanelProps {
   items: CartItem[]
@@ -12,7 +12,9 @@ export interface PaymentPanelProps {
   onOpenCalculator?: () => void
   touchOptimized?: boolean
   isNarrowScreen?: boolean
+  inline?: boolean
   className?: string
+  transactionDiscountAmount?: string
 }
 
 /**
@@ -34,50 +36,60 @@ export function PaymentPanel({
   onOpenCalculator,
   touchOptimized = false,
   isNarrowScreen = false,
+  inline = false,
   className,
+  transactionDiscountAmount = '0',
 }: PaymentPanelProps) {
-  const { t } = useTranslation(['common'])
+  const { t } = useTranslation(['common', 'pos'])
 
   // Calculate totals
-  const { subtotal, tax, total } = useMemo(() => {
+  const { subtotal, discount, tax, total } = useMemo(() => {
     const subtotal = items.reduce(
       (sum, item) => sum + parseFloat(item.line_total),
       0
     )
+    const discount = parseFloat(transactionDiscountAmount || '0')
+    const subtotalAfterDiscount = subtotal - discount
     const tax = items.reduce(
       (sum, item) => sum + parseFloat(item.tax_amount || '0'),
       0
     )
-    const total = subtotal + tax
+    const total = subtotalAfterDiscount + tax
 
     return {
       subtotal: subtotal.toFixed(3),
+      discount: discount.toFixed(3),
       tax: tax.toFixed(3),
       total: total.toFixed(3),
     }
-  }, [items])
+  }, [items, transactionDiscountAmount])
 
   const isEmpty = items.length === 0
 
-  return (
-    <div
-      className={cn(
+  // Different container styling for inline vs floating
+  const containerClasses = inline
+    ? cn('w-full', className) // Inline mode: full width of parent (cart)
+    : cn(
         'fixed z-40',
         isNarrowScreen
           ? 'bottom-0 left-0 right-0 w-full'
           : 'bottom-4 end-4 w-96',
         className
-      )}
-    >
-      <div
-        className={cn(
-          'bg-white border-2 border-gray-300 shadow-2xl',
-          isNarrowScreen ? 'rounded-t-lg' : 'rounded-lg'
-        )}
-      >
+      ) // Floating mode: fixed positioning
+
+  const innerClasses = inline
+    ? '' // Inline mode: no special wrapper
+    : cn(
+        'bg-white border-2 border-gray-300 shadow-2xl',
+        isNarrowScreen ? 'rounded-t-lg' : 'rounded-lg'
+      ) // Floating mode: card styling
+
+  return (
+    <div className={containerClasses}>
+      <div className={innerClasses}>
         {/* Totals Summary */}
         {!isEmpty && (
-          <div className={cn('space-y-2 border-b border-gray-200', isNarrowScreen ? 'p-3' : 'p-4')}>
+          <div className={cn('space-y-2', inline ? 'mb-4' : 'border-b border-gray-200', isNarrowScreen ? 'p-3' : inline ? '' : 'p-4')}>
             <div className="flex justify-between">
               <span
                 className={cn(
@@ -96,6 +108,27 @@ export function PaymentPanel({
                 {subtotal}
               </span>
             </div>
+
+            {parseFloat(discount) > 0 && (
+              <div className="flex justify-between">
+                <span
+                  className={cn(
+                    'text-gray-600',
+                    touchOptimized ? 'text-lg' : 'text-base'
+                  )}
+                >
+                  {t('common:pos.discount')}
+                </span>
+                <span
+                  className={cn(
+                    'font-medium text-red-600',
+                    touchOptimized ? 'text-lg' : 'text-base'
+                  )}
+                >
+                  -{discount}
+                </span>
+              </div>
+            )}
 
             <div className="flex justify-between">
               <span
@@ -140,7 +173,7 @@ export function PaymentPanel({
         )}
 
         {/* Action Buttons */}
-        <div className={cn('space-y-3', isNarrowScreen ? 'p-3' : 'p-4')}>
+        <div className={cn('space-y-3', isNarrowScreen ? 'p-3' : inline ? '' : 'p-4')}>
           <POSButton
             variant="success"
             size="lg"
@@ -148,8 +181,9 @@ export function PaymentPanel({
             disabled={isEmpty}
             fullWidth
             touchOptimized={touchOptimized}
+            icon={<Banknote className="h-5 w-5" />}
           >
-            {t('common:pos.quickCheckout')}
+            {t('pos:payment.cashPayment')}
           </POSButton>
 
           <div className="flex gap-3">
@@ -160,8 +194,9 @@ export function PaymentPanel({
               disabled={isEmpty}
               fullWidth
               touchOptimized={touchOptimized}
+              icon={<CreditCard className="h-5 w-5" />}
             >
-              {t('common:pos.advancedPayments')}
+              {t('pos:payment.splitCardPayment')}
             </POSButton>
 
             {onOpenCalculator && (

@@ -167,6 +167,7 @@
     "balanceDue": "Solde dû",
     "totalEntered": "Total saisi",
     "remaining": "Restant",
+    "payFullAmount": "Payer le Montant Total",
     "paymentLines": "Lignes de paiement",
     "confirmed": "confirmé(s)",
     "paymentLine": "Paiement #{{number}}",

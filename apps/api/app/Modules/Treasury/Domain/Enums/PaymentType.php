@@ -21,6 +21,9 @@ enum PaymentType: string
     // Supplier payment (we pay them)
     case SupplierPayment = 'supplier_payment';
 
+    // POS receipt payment (direct to revenue, no AR)
+    case POS = 'pos';
+
     public function label(): string
     {
         return match ($this) {
@@ -29,6 +32,7 @@ enum PaymentType: string
             self::Refund => 'Refund',
             self::CreditApplication => 'Credit Application',
             self::SupplierPayment => 'Supplier Payment',
+            self::POS => 'POS Payment',
         };
     }
 
@@ -74,6 +78,7 @@ enum PaymentType: string
         return match ($this) {
             self::DocumentPayment => true,
             self::Advance => true,
+            self::POS => true,
             self::CreditApplication => false, // No money moves, just accounting
             self::Refund => false,
             self::SupplierPayment => false,

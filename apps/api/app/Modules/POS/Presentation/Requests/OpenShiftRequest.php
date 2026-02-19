@@ -27,8 +27,8 @@ final class OpenShiftRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'terminal_id' => ['required', 'string', 'uuid', 'exists:pos_terminals,id'],
-            'opening_cash' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'terminal_code' => ['required', 'string', 'max:50', 'exists:pos_terminals,code'],
+            'opening_cash' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
         ];
     }
 
@@ -40,12 +40,12 @@ final class OpenShiftRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'terminal_id.required' => 'Terminal ID is required',
-            'terminal_id.exists' => 'Terminal does not exist',
+            'terminal_code.required' => 'Terminal code is required',
+            'terminal_code.exists' => 'Terminal does not exist',
             'opening_cash.required' => 'Opening cash amount is required',
             'opening_cash.numeric' => 'Opening cash must be a valid number',
             'opening_cash.min' => 'Opening cash cannot be negative',
-            'opening_cash.regex' => 'Opening cash must have at most 2 decimal places',
+            'opening_cash.regex' => 'Opening cash must have at most 3 decimal places',
         ];
     }
 }

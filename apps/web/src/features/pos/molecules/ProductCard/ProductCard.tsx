@@ -6,7 +6,7 @@ export interface Product {
   id: string
   name: string
   sku: string
-  price: string
+  sale_price: string | null
   stock_quantity: number
   image_url?: string
   category?: string
@@ -154,7 +154,7 @@ export function ProductCard({
               touchOptimized ? 'text-xl' : 'text-lg'
             )}
           >
-            {product.price} TND
+            {product.sale_price ? `${product.sale_price} TND` : 'N/A'}
           </span>
 
           <StockBadge

@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Modules\Taxation\Application\Services;
 
 use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Endroid\QrCode\QrCode;
+use Endroid\QrCode\Writer\PngWriter;
 
 /**
  * Certificate PDF Service
@@ -24,12 +27,14 @@ class CertificatePDFService
         $company = $certificate->company;
         $partner = $certificate->partner;
         $payment = $certificate->payment;
+        $qrCode = $this->generateQRCode($certificate);
 
         return view('taxation.withholding-certificate-pdf', [
             'certificate' => $certificate,
             'company' => $company,
             'partner' => $partner,
             'payment' => $payment,
+            'qrCode' => $qrCode,
         ])->render();
     }
 
@@ -101,10 +106,47 @@ class CertificatePDFService
     }
 
     /**
-     * Save PDF to storage and return path.
+     * Generate QR code for certificate verification.
      *
-     * Note: This is a placeholder. Actual PDF generation would require
-     * a library like dompdf, mpdf, or similar.
+     * QR code contains certificate ID, number, hash, and verification URL.
+     */
+    public function generateQRCode(WithholdingCertificate $certificate): string
+    {
+        $verificationData = [
+            'certificate_number' => $certificate->certificate_number,
+            'year' => $certificate->year,
+            'hash' => $certificate->hash,
+            'chain_sequence' => $certificate->chain_sequence,
+            'issued_at' => $certificate->issued_at?->format('Y-m-d'),
+        ];
+
+        $data = json_encode($verificationData);
+
+        $qrCode = new QrCode($data);
+        $writer = new PngWriter();
+        $result = $writer->write($qrCode);
+
+        return base64_encode($result->getString());
+    }
+
+    /**
+     * Generate PDF and return the PDF object.
+     *
+     * @return \Barryvdh\DomPDF\PDF
+     */
+    public function generatePDF(WithholdingCertificate $certificate): \Barryvdh\DomPDF\PDF
+    {
+        $html = $this->generateHTML($certificate);
+
+        return Pdf::loadHTML($html)
+            ->setPaper('a4', 'portrait')
+            ->setOption('defaultFont', 'Arial')
+            ->setOption('isRemoteEnabled', false)
+            ->setOption('isHtml5ParserEnabled', true);
+    }
+
+    /**
+     * Save PDF to storage and return path.
      */
     public function savePDF(WithholdingCertificate $certificate): string
     {
@@ -117,11 +159,32 @@ class CertificatePDFService
         $filename = $this->generateFilename($certificate);
         $filepath = $directory.'/'.$filename;
 
-        // TODO: Implement actual PDF generation
-        // For now, just save HTML
-        $html = $this->generateHTML($certificate);
-        file_put_contents($filepath.'.html', $html);
+        $pdf = $this->generatePDF($certificate);
+        $pdf->save($filepath);
 
         return $filepath;
+    }
+
+    /**
+     * Stream PDF to browser for download.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function streamPDF(WithholdingCertificate $certificate): \Illuminate\Http\Response
+    {
+        $filename = $this->generateFilename($certificate);
+        $pdf = $this->generatePDF($certificate);
+
+        return $pdf->download($filename);
+    }
+
+    /**
+     * Get PDF content as string.
+     */
+    public function getPDFContent(WithholdingCertificate $certificate): string
+    {
+        $pdf = $this->generatePDF($certificate);
+
+        return $pdf->output();
     }
 }

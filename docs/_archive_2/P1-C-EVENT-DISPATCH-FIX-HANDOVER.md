@@ -454,11 +454,11 @@ Laravel's `Event::fake()` is transaction-aware:
 
 ### Services Updated (2 files)
 
-1. `/Users/houssamr/Projects/mecanospex/apps/api/app/Modules/Inventory/Application/Services/WeightedAverageCostService.php`
+1. `./apps/api/app/Modules/Inventory/Application/Services/WeightedAverageCostService.php`
    - Modified 3 methods: `recordPurchase()`, `recordSale()`, `recordReturn()`
    - Wrapped 5 event dispatches in `DB::afterCommit()`
 
-2. `/Users/houssamr/Projects/mecanospex/apps/api/app/Modules/Inventory/Application/Services/InventoryCountingService.php`
+2. `./apps/api/app/Modules/Inventory/Application/Services/InventoryCountingService.php`
    - Modified 1 method: `finalize()`
    - Wrapped 1 event dispatch in `DB::afterCommit()`
 

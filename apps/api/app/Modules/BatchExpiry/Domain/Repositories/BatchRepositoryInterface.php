@@ -9,15 +9,15 @@ use Illuminate\Support\Collection;
 
 interface BatchRepositoryInterface
 {
-    public function findById(int $id): ?Batch;
+    public function findById(string $id): ?Batch;
 
     public function findByUuid(string $uuid): ?Batch;
 
-    public function findByBatchNumber(int $companyId, int $productId, string $batchNumber): ?Batch;
+    public function findByBatchNumber(string $companyId, string $productId, string $batchNumber): ?Batch;
 
-    public function getByProduct(int $productId, bool $activeOnly = true): Collection;
+    public function getByProduct(string $productId, bool $activeOnly = true): Collection;
 
-    public function getByCompany(int $companyId, array $filters = []): Collection;
+    public function getByCompany(string $companyId, array $filters = []): Collection;
 
     public function create(array $data): Batch;
 
@@ -25,7 +25,7 @@ interface BatchRepositoryInterface
 
     public function delete(Batch $batch): bool;
 
-    public function markAsExpired(int $batchId): bool;
+    public function markAsExpired(string $batchId): bool;
 
-    public function recall(int $batchId, string $reason): bool;
+    public function recall(string $batchId, string $reason): bool;
 }

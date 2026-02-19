@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Domain;
 
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
@@ -21,6 +22,7 @@ class StockReservation extends Model
         'company_id',
         'product_id',
         'location_id',
+        'batch_id',
         'quantity',
         'source_type',
         'source_id',
@@ -37,6 +39,7 @@ class StockReservation extends Model
     ];
 
     protected $casts = [
+        'batch_id' => 'integer',
         'quantity' => 'decimal:4',
         'source_type' => ReservationSource::class,
         'release_reason' => ReleaseReason::class,
@@ -76,6 +79,12 @@ class StockReservation extends Model
     public function releasedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'released_by');
+    }
+
+    /** @return BelongsTo<Batch, $this> */
+    public function batch(): BelongsTo
+    {
+        return $this->belongsTo(Batch::class);
     }
 
     // Scopes

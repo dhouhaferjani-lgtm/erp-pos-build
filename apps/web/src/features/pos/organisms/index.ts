@@ -3,3 +3,4 @@ export { TransactionCart, type TransactionCartProps, type Customer } from './Tra
 export { Calculator, type CalculatorProps } from './Calculator'
 export { PaymentPanel, type PaymentPanelProps } from './PaymentPanel'
 export { AdvancedPaymentsModal, type AdvancedPaymentsModalProps, type PaymentData } from './AdvancedPaymentsModal'
+export { ProductInfoModal, type ProductInfoModalProps, type ProductDetailResponse, type StockLevel } from './ProductInfoModal'

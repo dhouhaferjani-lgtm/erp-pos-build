@@ -55,6 +55,9 @@ discount_amount: string | null;
 tax_amount: string | null;
 total: string | null;
 balance_due: string | null;
+outstanding_amount: string | null;
+payment_status: string | null;
+fulfillment_status: string | null;
 amount_paid: string | null;
 amount_residual: string | null;
 notes: string | null;
@@ -92,6 +95,8 @@ export type DocumentStatus = 'draft' | 'confirmed' | 'posted' | 'paid' | 'receiv
 export type DocumentType = 'quote' | 'sales_order' | 'purchase_order' | 'invoice' | 'credit_note' | 'delivery_note' | 'return_note' | 'expense';
 export type FiscalCategory = 'NON_FISCAL' | 'FISCAL_RECEIPT' | 'TAX_INVOICE' | 'CREDIT_NOTE' | 'DELIVERY_NOTE' | 'RETURN_NOTE';
 export type FiscalStatus = 'DRAFT' | 'SEALED' | 'VOIDED';
+export type FulfillmentStatus = 'not_fulfilled' | 'partially_fulfilled' | 'fulfilled' | 'not_applicable';
+export type PaymentStatus = 'unpaid' | 'partially_paid' | 'in_payment' | 'paid' | 'overpaid';
 export type RefundMethod = 'original_payment' | 'store_credit' | 'exchange' | 'none';
 export type ReturnCondition = 'unopened' | 'used' | 'damaged' | 'unusable';
 export type ReturnReason = 'defective' | 'wrong_item' | 'customer_regret' | 'damaged_in_transit' | 'warranty' | 'exchange' | 'other';
@@ -173,6 +178,179 @@ export type MovementReason = 'goods_receipt' | 'customer_return' | 'adjustment_p
 export type MovementType = 'receipt' | 'issue' | 'transfer_in' | 'transfer_out' | 'adjustment' | 'opening';
 export type ReleaseReason = 'delivered' | 'cancelled' | 'expired' | 'manual_release' | 'converted' | 'order_modified' | 'insufficient_stock';
 export type ReservationSource = 'sales_order' | 'ecommerce_cart' | 'marketplace_order' | 'manual_hold' | 'customer_return_pending' | 'quality_check' | 'transfer_pending';
+}
+declare namespace App.Modules.Loyalty.Application.DTOs {
+export type EarningConditionsData = {
+min_purchase_amount: string | null;
+max_purchase_amount: string | null;
+min_quantity: number | null;
+max_quantity: number | null;
+product_ids: Array<any> | null;
+category_ids: Array<any> | null;
+tier_ids: Array<any> | null;
+company_ids: Array<any> | null;
+time_start: string | null;
+time_end: string | null;
+day_of_week: Array<any> | null;
+first_purchase: boolean | null;
+new_customer: boolean | null;
+custom: Array<any> | null;
+};
+export type EarningRuleData = {
+id: string;
+program_id: string;
+name: string;
+rule_type: App.Modules.Loyalty.Domain.Enums.EarningRuleType;
+priority: number;
+is_active: boolean;
+conditions: App.Modules.Loyalty.Application.DTOs.EarningConditionsData;
+reward_value: string;
+reward_type: string;
+start_date: string | null;
+end_date: string | null;
+max_earn_per_transaction: string | null;
+max_earn_per_day: string | null;
+created_at: string;
+updated_at: string | null;
+};
+export type EnrollmentData = {
+id: string;
+program_id: string;
+member_id: string;
+current_balance: string;
+lifetime_earned: string;
+lifetime_redeemed: string;
+current_tier_id: string | null;
+tier_qualified_at: string | null;
+status: string;
+enrolled_at: string;
+last_transaction_at: string | null;
+created_at: string;
+updated_at: string | null;
+};
+export type LoyaltyMemberData = {
+id: string;
+tenant_id: string;
+customer_id: string | null;
+phone: string;
+email: string | null;
+first_name: string | null;
+last_name: string | null;
+date_of_birth: string | null;
+status: string;
+enrollment_date: string;
+external_id: string | null;
+created_at: string;
+updated_at: string | null;
+};
+export type LoyaltyProgramData = {
+id: string;
+tenant_id: string;
+company_ids: Array<any> | null;
+name: string;
+program_type: App.Modules.Loyalty.Domain.Enums.ProgramType;
+status: App.Modules.Loyalty.Domain.Enums.ProgramStatus;
+currency: string | null;
+start_date: string | null;
+end_date: string | null;
+terms_and_conditions: string | null;
+metadata: Array<any> | null;
+created_at: string;
+updated_at: string | null;
+};
+export type QualifyingItemsData = {
+product_ids: Array<any> | null;
+category_ids: Array<any> | null;
+excluded_product_ids: Array<any> | null;
+excluded_category_ids: Array<any> | null;
+min_price: string | null;
+max_price: string | null;
+all_products: boolean | null;
+};
+export type RewardData = {
+id: string;
+program_id: string;
+name: string;
+description: string | null;
+reward_type: App.Modules.Loyalty.Domain.Enums.RewardType;
+points_cost: string;
+reward_value: string | null;
+qualifying_items: App.Modules.Loyalty.Application.DTOs.QualifyingItemsData | null;
+max_discount: string | null;
+min_order_value: string | null;
+tier_ids: Array<any> | null;
+is_active: boolean;
+quantity_available: number | null;
+quantity_per_member: number | null;
+start_date: string | null;
+end_date: string | null;
+created_at: string;
+updated_at: string | null;
+};
+export type StampCardData = {
+id: string;
+program_id: string;
+name: string;
+stamps_required: number;
+stamps_per_item: number;
+qualifying_items: App.Modules.Loyalty.Application.DTOs.QualifyingItemsData;
+reward_id: string;
+max_active_cards: number | null;
+expiry_days: number | null;
+created_at: string;
+updated_at: string | null;
+};
+export type TierBenefitsData = {
+discount_percent: string | null;
+free_shipping: Array<any> | null;
+priority_support: Array<any> | null;
+exclusive_rewards: Array<any> | null;
+bonus_points_multiplier: string | null;
+birthday_bonus: Array<any> | null;
+extended_expiry_days: number | null;
+welcome_bonus: string | null;
+custom_benefits: Array<any> | null;
+};
+export type TierData = {
+id: string;
+program_id: string;
+name: string;
+level: number;
+icon: string | null;
+color: string | null;
+qualification_type: App.Modules.Loyalty.Domain.Enums.QualificationType;
+qualification_threshold: string;
+qualification_period_months: number | null;
+earning_multiplier: string;
+benefits: App.Modules.Loyalty.Application.DTOs.TierBenefitsData | null;
+created_at: string;
+updated_at: string | null;
+};
+export type TransactionData = {
+id: string;
+enrollment_id: string;
+transaction_type: App.Modules.Loyalty.Domain.Enums.TransactionType;
+amount: string;
+balance_before: string;
+balance_after: string;
+order_id: string | null;
+order_line_id: string | null;
+reward_id: string | null;
+earning_rule_id: string | null;
+description: string | null;
+metadata: Array<any> | null;
+created_by: string | null;
+created_at: string;
+expires_at: string | null;
+};
+}
+declare namespace App.Modules.Loyalty.Domain.Enums {
+export type EarningRuleType = 'spend' | 'item' | 'category' | 'quantity' | 'visit' | 'threshold' | 'time';
+export type ProgramStatus = 'draft' | 'active' | 'paused' | 'archived';
+export type ProgramType = 'points' | 'stamps' | 'visits' | 'cashback' | 'hybrid';
+export type QualificationType = 'spend' | 'points_earned' | 'visits' | 'manual';
+export type RewardType = 'free_item' | 'discount_amount' | 'discount_percent' | 'choice' | 'credit' | 'external';
+export type TransactionType = 'earn' | 'redeem' | 'adjust' | 'expire' | 'transfer_in' | 'transfer_out' | 'bonus' | 'refund';
 }
 declare namespace App.Modules.Partner.Application.DTOs {
 export type PartnerData = {
@@ -390,6 +568,42 @@ export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'reversed';
 export type PaymentType = 'document_payment' | 'advance' | 'refund' | 'credit_application' | 'supplier_payment';
 export type ReconciliationStatus = 'draft' | 'completed' | 'cancelled';
 export type RepositoryType = 'cash_register' | 'safe' | 'bank_account' | 'virtual';
+}
+declare namespace App.Modules.Uom.Application.DTOs {
+export type ConversionResultData = {
+originalQuantity: string;
+originalUnit: App.Modules.Uom.Application.DTOs.UnitData;
+convertedQuantity: string;
+convertedUnit: App.Modules.Uom.Application.DTOs.UnitData;
+conversionFactor: string;
+};
+export type UnitCategoryData = {
+id: string;
+code: string;
+name: string;
+description: string | null;
+baseUnitId: string | null;
+isSystem: boolean;
+isActive: boolean;
+units: Array<any>;
+};
+export type UnitData = {
+id: string;
+categoryId: string;
+code: string;
+name: string;
+symbol: string;
+conversionFactor: string;
+decimalPlaces: number;
+roundingMethod: string;
+isBaseUnit: boolean;
+isSystem: boolean;
+isActive: boolean;
+category: App.Modules.Uom.Application.DTOs.UnitCategoryData | null;
+};
+}
+declare namespace App.Modules.Uom.Domain.Enums {
+export type RoundingMethod = 'half_up' | 'floor' | 'ceil';
 }
 declare namespace App.Shared.Application.DTOs {
 export type PaginationData = {

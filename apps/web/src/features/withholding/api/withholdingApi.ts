@@ -1,10 +1,12 @@
-import { apiGet, apiPost, apiDelete } from '@/lib/api';
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 import type {
   WithholdingPreviewRequest,
   WithholdingPreviewResponse,
   WithholdingCertificate,
   WithholdingRule,
   CreateWithholdingCertificateRequest,
+  CreateWithholdingRuleRequest,
+  UpdateWithholdingRuleRequest,
   VoidCertificateRequest,
   SubmitToTEJRequest,
   CertificateFilters,
@@ -152,4 +154,37 @@ export async function fetchWithholdingRules(
  */
 export async function fetchWithholdingRule(id: string): Promise<WithholdingRule> {
   return apiGet<WithholdingRule>(`/withholding/rules/${id}`);
+}
+
+/**
+ * Create a new withholding rule
+ */
+export async function createWithholdingRule(
+  request: CreateWithholdingRuleRequest
+): Promise<WithholdingRule> {
+  return apiPost<WithholdingRule>('/withholding/rules', request);
+}
+
+/**
+ * Update an existing withholding rule
+ */
+export async function updateWithholdingRule(
+  id: string,
+  request: UpdateWithholdingRuleRequest
+): Promise<WithholdingRule> {
+  return apiPatch<WithholdingRule>(`/withholding/rules/${id}`, request);
+}
+
+/**
+ * Delete a withholding rule
+ */
+export async function deleteWithholdingRule(id: string): Promise<void> {
+  return apiDelete(`/withholding/rules/${id}`);
+}
+
+/**
+ * Deactivate a withholding rule
+ */
+export async function deactivateWithholdingRule(id: string): Promise<WithholdingRule> {
+  return apiPost<WithholdingRule>(`/withholding/rules/${id}/deactivate`);
 }

@@ -87,7 +87,7 @@ A comprehensive verification audit revealed that the Document module refactoring
 - ❌ Router still imports DocumentDetailPage for all types
 - ❌ Subdirectories (quotes/, invoices/, etc.) don't exist
 
-**Evidence File:** `/Users/houssamr/Projects/mecanospex/docs/readinessformodules/DOCUMENT_MODULE_VERIFICATION_AUDIT.md` (to be created)
+**Evidence File:** `./docs/readinessformodules/DOCUMENT_MODULE_VERIFICATION_AUDIT.md` (to be created)
 
 ---
 

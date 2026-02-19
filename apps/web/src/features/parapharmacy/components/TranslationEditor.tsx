@@ -1,10 +1,8 @@
-import { useTranslation } from 'react-i18next';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Trash2, Plus } from 'lucide-react';
+import { useTranslation } from 'react-i18next'
+import { Button } from '@/components/atoms/Button/Button'
+import { Input } from '@/components/atoms/Input/Input'
+import { Textarea } from '@/components/atoms/Textarea/Textarea'
+import { Trash2, Plus } from 'lucide-react'
 
 export interface Translation {
   id?: string;
@@ -84,11 +82,11 @@ export function TranslationEditor({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <Label className="text-base font-semibold">
+        <label className="text-base font-semibold text-gray-900">
           {t('parapharmacy:translations')}
-        </Label>
+        </label>
         {canAddMore && (
-          <Button type="button" variant="outline" size="sm" onClick={addTranslation}>
+          <Button type="button" variant="secondary" size="sm" onClick={addTranslation}>
             <Plus className="h-4 w-4 mr-2" />
             {t('parapharmacy:addTranslation')}
           </Button>
@@ -96,13 +94,13 @@ export function TranslationEditor({
       </div>
 
       {translations.length === 0 && (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
+        <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+          <div className="px-6 py-8 text-center text-gray-500">
             {t('parapharmacy:noTranslations')}
             <br />
             <Button
               type="button"
-              variant="outline"
+              variant="secondary"
               size="sm"
               className="mt-4"
               onClick={addTranslation}
@@ -110,25 +108,25 @@ export function TranslationEditor({
               <Plus className="h-4 w-4 mr-2" />
               {t('parapharmacy:addFirstTranslation')}
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {translations.map((translation, index) => {
-        const locale = availableLocales.find((l) => l.code === translation.locale);
+        const locale = availableLocales.find((l) => l.code === translation.locale)
 
         return (
-          <Card key={index}>
-            <CardHeader className="pb-3">
+          <div key={index} className="rounded-lg border border-gray-200 bg-white shadow-sm">
+            <div className="border-b border-gray-200 px-6 py-4">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium">
+                <h3 className="text-sm font-medium text-gray-900">
                   {locale?.name || translation.locale}
                   {translation.locale === 'en' && (
-                    <span className="ml-2 text-xs text-muted-foreground">
+                    <span className="ml-2 text-xs text-gray-500">
                       ({t('parapharmacy:required')})
                     </span>
                   )}
-                </CardTitle>
+                </h3>
                 {translation.locale !== 'en' && (
                   <Button
                     type="button"
@@ -140,19 +138,22 @@ export function TranslationEditor({
                   </Button>
                 )}
               </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
+            </div>
+            <div className="px-6 py-4 space-y-3">
               <input type="hidden" value={translation.locale} />
               {translation.id && <input type="hidden" value={translation.id} />}
 
               {fields.map((field) => (
                 <div key={field.name}>
-                  <Label htmlFor={`translation-${index}-${field.name}`}>
+                  <label
+                    htmlFor={`translation-${index}-${field.name}`}
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
                     {field.label}
                     {field.required && translation.locale === 'en' && (
-                      <span className="text-destructive ml-1">*</span>
+                      <span className="text-red-600 ml-1">*</span>
                     )}
-                  </Label>
+                  </label>
                   {field.multiline ? (
                     <Textarea
                       id={`translation-${index}-${field.name}`}
@@ -175,10 +176,10 @@ export function TranslationEditor({
                   )}
                 </div>
               ))}
-            </CardContent>
-          </Card>
-        );
+            </div>
+          </div>
+        )
       })}
     </div>
-  );
+  )
 }

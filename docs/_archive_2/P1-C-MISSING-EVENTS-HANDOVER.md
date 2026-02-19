@@ -509,32 +509,32 @@ php artisan test --filter=Treasury
 ### Files Created (7 files)
 
 **Event Classes:**
-1. `/Users/houssamr/Projects/mecanospex/apps/api/app/Modules/Accounting/Domain/Events/JournalEntryCreated.php` (71 lines)
-2. `/Users/houssamr/Projects/mecanospex/apps/api/app/Modules/Inventory/Domain/Events/StockMovementRecorded.php` (66 lines)
-3. `/Users/houssamr/Projects/mecanospex/apps/api/app/Modules/Inventory/Domain/Events/InventoryCountingCompleted.php` (60 lines)
-4. `/Users/houssamr/Projects/mecanospex/apps/api/app/Modules/Treasury/Domain/Events/PaymentAllocated.php` (64 lines)
+1. `./apps/api/app/Modules/Accounting/Domain/Events/JournalEntryCreated.php` (71 lines)
+2. `./apps/api/app/Modules/Inventory/Domain/Events/StockMovementRecorded.php` (66 lines)
+3. `./apps/api/app/Modules/Inventory/Domain/Events/InventoryCountingCompleted.php` (60 lines)
+4. `./apps/api/app/Modules/Treasury/Domain/Events/PaymentAllocated.php` (64 lines)
 
 **Test Files:**
-5. `/Users/houssamr/Projects/mecanospex/apps/api/tests/Feature/Accounting/AccountingEventsTest.php` (186 lines, 7 tests)
-6. `/Users/houssamr/Projects/mecanospex/apps/api/tests/Feature/Inventory/InventoryEventsTest.php` (340 lines, 9 tests)
-7. `/Users/houssamr/Projects/mecanospex/apps/api/tests/Feature/Treasury/TreasuryEventsTest.php` (441 lines, 9 tests)
+5. `./apps/api/tests/Feature/Accounting/AccountingEventsTest.php` (186 lines, 7 tests)
+6. `./apps/api/tests/Feature/Inventory/InventoryEventsTest.php` (340 lines, 9 tests)
+7. `./apps/api/tests/Feature/Treasury/TreasuryEventsTest.php` (441 lines, 9 tests)
 
 ### Files Modified (3 files)
 
-1. `/Users/houssamr/Projects/mecanospex/apps/api/app/Modules/Accounting/Application/Services/AccountingService.php`
+1. `./apps/api/app/Modules/Accounting/Application/Services/AccountingService.php`
    - Added: JournalEntryCreated event import
    - Added: Event dispatch in createInvoiceGLEntries()
    - Added: Event dispatch in createCreditNoteGLEntries()
    - Added: dispatchJournalEntryCreatedEvent() helper method
 
-2. `/Users/houssamr/Projects/mecanospex/apps/api/app/Modules/Inventory/Application/Services/WeightedAverageCostService.php`
+2. `./apps/api/app/Modules/Inventory/Application/Services/WeightedAverageCostService.php`
    - Added: StockMovementRecorded event import
    - Added: Event dispatch in recordPurchase()
    - Added: Event dispatch in recordSale()
    - Added: Event dispatch in recordReturn()
    - Added: dispatchStockMovementEvent() helper method
 
-3. `/Users/houssamr/Projects/mecanospex/apps/api/app/Modules/Treasury/Application/Services/PaymentAllocationService.php`
+3. `./apps/api/app/Modules/Treasury/Application/Services/PaymentAllocationService.php`
    - Added: PaymentAllocated event import
    - Added: Event dispatch in applyAllocation()
    - Modified: Transaction return to include total_allocated
@@ -665,7 +665,7 @@ The following are **intentionally excluded** from P1-C scope:
 ### 1. Run All Event Tests
 
 ```bash
-cd /Users/houssamr/Projects/mecanospex/apps/api
+cd ./apps/api
 
 # Run all domain event tests
 php artisan test --filter=EventsTest

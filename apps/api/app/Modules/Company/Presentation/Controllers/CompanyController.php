@@ -276,6 +276,27 @@ class CompanyController extends Controller
     }
 
     /**
+     * Get POS settings for the company.
+     */
+    public function getPOSSettings(string $companyId): JsonResponse
+    {
+        /** @var User $user */
+        $user = auth()->user();
+
+        $company = Company::where('tenant_id', $user->tenant_id)
+            ->where('id', $companyId)
+            ->firstOrFail();
+
+        return response()->json([
+            'data' => [
+                'auto_print_receipts' => $company->auto_print_receipts,
+                'receipt_logo' => $company->receipt_logo,
+                'receipt_footer' => $company->receipt_footer,
+            ],
+        ]);
+    }
+
+    /**
      * Format company data for response.
      *
      * @return array<string, mixed>

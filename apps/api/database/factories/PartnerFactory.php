@@ -29,7 +29,8 @@ class PartnerFactory extends Factory
 
         return [
             'id' => Str::uuid()->toString(),
-            'company_id' => null, // Will be set by seeder
+            'tenant_id' => null, // Will be set by relationships
+            'company_id' => null, // Will be set by seeder or relationships
             'type' => $this->faker->randomElement(['customer', 'supplier', 'both']),
             'code' => strtoupper(Str::random(3)).$this->faker->unique()->numberBetween(100, 999),
             'name' => $fullName,
@@ -39,6 +40,8 @@ class PartnerFactory extends Factory
             'country_code' => 'FR',
             'notes' => $this->faker->optional(0.3)->paragraph(),
             'is_active' => $this->faker->boolean(95),
+            'tax_status' => \App\Modules\Taxation\Domain\Enums\PartnerTaxStatus::REGISTERED,
+            'withholding_exempt' => false,
         ];
     }
 

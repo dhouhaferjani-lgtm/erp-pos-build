@@ -189,6 +189,7 @@
     "balanceDue": "Balance Due",
     "totalEntered": "Total Entered",
     "remaining": "Remaining",
+    "payFullAmount": "Pay Full Amount",
     "paymentLines": "Payment Lines",
     "confirmed": "confirmed",
     "paymentLine": "Payment #{{number}}",

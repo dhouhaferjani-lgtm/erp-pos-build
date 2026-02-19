@@ -63,7 +63,7 @@ This comprehensive audit analyzes the AutoERP codebase to determine readiness fo
 
 ### Root Structure
 ```
-/Users/houssamr/Projects/mecanospex/
+./
 ├── apps/
 │   ├── api/          # Laravel backend (main app location)
 │   └── web/          # React frontend

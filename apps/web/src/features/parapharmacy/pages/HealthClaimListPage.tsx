@@ -1,66 +1,51 @@
-import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Edit, Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { fetchHealthClaims, deleteHealthClaim } from '../api/healthClaimApi';
-import { toast } from 'sonner';
-import { OffsetPagination } from '@/components/ui/OffsetPagination';
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
+import { Plus, Edit, Trash2 } from 'lucide-react'
+import { Button } from '@/components/atoms/Button/Button'
+import { Badge } from '@/components/atoms/Badge/Badge'
+import { Spinner } from '@/components/atoms/Spinner/Spinner'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { OffsetPagination } from '@/components/ui/OffsetPagination'
+import { EmptyState } from '@/components/molecules/EmptyState/EmptyState'
+import { fetchHealthClaims, deleteHealthClaim } from '../api/healthClaimApi'
+import { toast } from 'sonner'
 
 export function HealthClaimListPage() {
-  const { t } = useTranslation(['common', 'parapharmacy']);
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const { t } = useTranslation(['common', 'parapharmacy'])
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [page, setPage] = useState(1)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['parapharmacy', 'health-claims', page],
     queryFn: () => fetchHealthClaims({ page, per_page: 25 }),
-  });
+  })
 
   const deleteMutation = useMutation({
     mutationFn: deleteHealthClaim,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['parapharmacy', 'health-claims'] });
-      toast.success(t('parapharmacy:healthClaimDeleted'));
-      setDeleteId(null);
+      queryClient.invalidateQueries({ queryKey: ['parapharmacy', 'health-claims'] })
+      toast.success(t('parapharmacy:healthClaimDeleted'))
+      setDeleteId(null)
     },
     onError: (error: any) => {
       const message =
         error?.response?.data?.error?.message ||
-        t('parapharmacy:deleteHealthClaimError');
-      toast.error(message);
-      setDeleteId(null);
+        t('parapharmacy:deleteHealthClaimError')
+      toast.error(message)
+      setDeleteId(null)
     },
-  });
+  })
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        {t('common:loading')}
+        <Spinner size="lg" />
       </div>
-    );
+    )
   }
 
   return (
@@ -68,7 +53,7 @@ export function HealthClaimListPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">{t('parapharmacy:healthClaims')}</h1>
-          <p className="text-muted-foreground">
+          <p className="text-gray-600">
             {t('parapharmacy:healthClaimsDescription')}
           </p>
         </div>
@@ -78,114 +63,128 @@ export function HealthClaimListPage() {
         </Button>
       </div>
 
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('parapharmacy:claim')}</TableHead>
-              <TableHead>{t('parapharmacy:claimType')}</TableHead>
-              <TableHead>{t('parapharmacy:regulatoryStatus')}</TableHead>
-              <TableHead>{t('parapharmacy:disclaimer')}</TableHead>
-              <TableHead className="text-end">{t('common:actions')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data?.data.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground">
-                  {t('common:noData')}
-                </TableCell>
-              </TableRow>
-            )}
-            {data?.data.map((healthClaim) => (
-              <TableRow key={healthClaim.id}>
-                <TableCell className="font-medium max-w-md truncate">
-                  {healthClaim.claim}
-                </TableCell>
-                <TableCell>
-                  <code className="text-xs bg-muted px-2 py-1 rounded">
-                    {healthClaim.claim_type}
-                  </code>
-                </TableCell>
-                <TableCell>
-                  <Badge
-                    variant={
-                      healthClaim.regulatory_status === 'approved'
-                        ? 'default'
-                        : healthClaim.regulatory_status === 'pending'
-                        ? 'secondary'
-                        : 'destructive'
-                    }
-                  >
-                    {t(`parapharmacy:regulatoryStatus.${healthClaim.regulatory_status}`)}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  {healthClaim.requires_disclaimer ? (
-                    <Badge variant="outline">
-                      {t('parapharmacy:required')}
-                    </Badge>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </TableCell>
-                <TableCell className="text-end">
-                  <div className="flex items-center justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        navigate(`/parapharmacy/health-claims/${healthClaim.id}`)
-                      }
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDeleteId(healthClaim.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      <div className="rounded-lg border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('parapharmacy:claim')}
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('parapharmacy:claimType')}
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('parapharmacy:regulatoryStatus')}
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('parapharmacy:disclaimer')}
+                </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('common:actions')}
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {data?.data?.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12">
+                    <EmptyState
+                      title={t('parapharmacy:noHealthClaims')}
+                      description={t('parapharmacy:noHealthClaimsDescription')}
+                      action={{
+                        label: t('parapharmacy:addHealthClaim'),
+                        onClick: () => navigate('/parapharmacy/health-claims/new'),
+                        icon: Plus,
+                      }}
+                    />
+                  </td>
+                </tr>
+              ) : (
+                data?.data?.map((healthClaim) => (
+                  <tr key={healthClaim.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 text-sm font-medium text-gray-900 max-w-md truncate">
+                      {healthClaim.claim}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      <code className="text-xs bg-gray-100 px-2 py-1 rounded">
+                        {healthClaim.claim_type}
+                      </code>
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      <Badge
+                        variant={
+                          healthClaim.regulatory_status === 'approved'
+                            ? 'success'
+                            : healthClaim.regulatory_status === 'pending'
+                            ? 'warning'
+                            : 'danger'
+                        }
+                      >
+                        {t(
+                          `parapharmacy:regulatoryStatus.${healthClaim.regulatory_status}`
+                        )}
+                      </Badge>
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      {healthClaim.requires_disclaimer ? (
+                        <Badge variant="info">
+                          {t('parapharmacy:required')}
+                        </Badge>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            navigate(`/parapharmacy/health-claims/${healthClaim.id}`)
+                          }
+                          aria-label={t('common:edit')}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDeleteId(healthClaim.id)}
+                          aria-label={t('common:delete')}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {data?.meta.pagination && (
+      {data?.meta && (
         <OffsetPagination
           currentPage={page}
           totalPages={Math.ceil(
-            data.meta.pagination.total / data.meta.pagination.per_page
+            data.meta.total / data.meta.per_page
           )}
           onPageChange={setPage}
         />
       )}
 
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t('parapharmacy:confirmDeleteHealthClaim')}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('parapharmacy:confirmDeleteHealthClaimDescription')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteId && deleteMutation.mutate(deleteId)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {t('common:delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        isOpen={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
+        title={t('parapharmacy:confirmDeleteHealthClaim')}
+        message={t('parapharmacy:confirmDeleteHealthClaimDescription')}
+        confirmText={t('common:delete')}
+        confirmVariant="danger"
+        isLoading={deleteMutation.isPending}
+      />
     </div>
-  );
+  )
 }

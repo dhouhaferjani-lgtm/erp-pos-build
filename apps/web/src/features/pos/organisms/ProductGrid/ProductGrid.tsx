@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { ProductCard, type Product } from '../../molecules'
 import { POSButton } from '../../atoms'
@@ -29,6 +30,7 @@ export function ProductGrid({
   touchOptimized = false,
   className,
 }: ProductGridProps) {
+  const { t } = useTranslation(['pos'])
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
 
@@ -39,7 +41,7 @@ export function ProductGrid({
         .map((p) => p.category)
         .filter((c): c is string => c !== undefined)
     )
-    return ['All', ...Array.from(uniqueCategories)]
+    return [t('pos:products.allCategories'), ...Array.from(uniqueCategories)]
   }, [products])
 
   // Filter products
@@ -47,7 +49,7 @@ export function ProductGrid({
     let filtered = products
 
     // Filter by category
-    if (selectedCategory && selectedCategory !== 'All') {
+    if (selectedCategory && selectedCategory !== t('pos:products.allCategories')) {
       filtered = filtered.filter((p) => p.category === selectedCategory)
     }
 
@@ -69,7 +71,7 @@ export function ProductGrid({
   }
 
   const handleCategorySelect = (category: string) => {
-    setSelectedCategory(category === 'All' ? null : category)
+    setSelectedCategory(category === t('pos:products.allCategories') ? null : category)
   }
 
   // Loading state
@@ -78,7 +80,7 @@ export function ProductGrid({
       <div className={cn('flex items-center justify-center py-12', className)}>
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading products...</p>
+          <p className="text-gray-600">{t('pos:products.loading')}</p>
         </div>
       </div>
     )
@@ -90,7 +92,7 @@ export function ProductGrid({
       <div className={cn('flex items-center justify-center py-12', className)}>
         <div className="text-center">
           <Package className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-600 text-lg">No products available</p>
+          <p className="text-gray-600 text-lg">{t('pos:products.empty')}</p>
         </div>
       </div>
     )
@@ -108,7 +110,7 @@ export function ProductGrid({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search products..."
+              placeholder={t('pos:products.searchPlaceholder')}
               className={cn(
                 'w-full ps-10 pe-10 py-3 rounded-lg border border-gray-300',
                 'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500',
@@ -119,7 +121,7 @@ export function ProductGrid({
               <button
                 onClick={handleClearSearch}
                 className="absolute end-3 top-1/2 -translate-y-1/2"
-                aria-label="Clear search"
+                aria-label={t('pos:products.clearSearch')}
               >
                 <X className="w-5 h-5 text-gray-400 hover:text-gray-600" />
               </button>
@@ -151,7 +153,7 @@ export function ProductGrid({
         {/* Product Count */}
         {showProductCount && (
           <div className="text-sm text-gray-600">
-            {filteredProducts.length} {filteredProducts.length === 1 ? 'product' : 'products'}
+            {filteredProducts.length} {filteredProducts.length === 1 ? t('pos:products.product') : t('pos:products.productPlural')}
           </div>
         )}
       </div>
@@ -161,9 +163,9 @@ export function ProductGrid({
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
             <Package className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 text-lg">No products found</p>
+            <p className="text-gray-600 text-lg">{t('pos:products.notFound')}</p>
             <p className="text-gray-500 text-sm mt-2">
-              Try adjusting your search or filters
+              {t('pos:products.tryAdjusting')}
             </p>
           </div>
         </div>

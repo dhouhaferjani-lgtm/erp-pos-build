@@ -13,6 +13,12 @@ import enPricing from '../locales/en/pricing.json'
 import enFinance from '../locales/en/finance.json'
 import enImport from '../locales/en/import.json'
 import enSettings from '../locales/en/settings.json'
+import enUom from '../locales/en/uom.json'
+import enProducts from '../locales/en/products.json'
+import enParapharmacy from '../locales/en/parapharmacy.json'
+import enBatches from '../locales/en/batches.json'
+import enPos from '../locales/en/pos.json'
+import enCatalog from '../locales/en/catalog.json'
 
 import frCommon from '../locales/fr/common.json'
 import frAuth from '../locales/fr/auth.json'
@@ -24,6 +30,12 @@ import frPricing from '../locales/fr/pricing.json'
 import frFinance from '../locales/fr/finance.json'
 import frImport from '../locales/fr/import.json'
 import frSettings from '../locales/fr/settings.json'
+import frUom from '../locales/fr/uom.json'
+import frProducts from '../locales/fr/products.json'
+import frParapharmacy from '../locales/fr/parapharmacy.json'
+import frBatches from '../locales/fr/batches.json'
+import frPos from '../locales/fr/pos.json'
+import frCatalog from '../locales/fr/catalog.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -45,6 +57,12 @@ const resources = {
     finance: enFinance,
     import: enImport,
     settings: enSettings,
+    uom: enUom,
+    products: enProducts,
+    parapharmacy: enParapharmacy,
+    batches: enBatches,
+    pos: enPos,
+    catalog: enCatalog,
   },
   fr: {
     common: frCommon,
@@ -57,6 +75,12 @@ const resources = {
     finance: frFinance,
     import: frImport,
     settings: frSettings,
+    uom: frUom,
+    products: frProducts,
+    parapharmacy: frParapharmacy,
+    batches: frBatches,
+    pos: frPos,
+    catalog: frCatalog,
   },
   ar: {
     // Arabic falls back to English - translations to be added later
@@ -70,6 +94,12 @@ const resources = {
     finance: enFinance,
     import: enImport,
     settings: enSettings, // Fallback to English
+    uom: enUom,
+    products: enProducts,
+    parapharmacy: enParapharmacy,
+    batches: enBatches,
+    pos: enPos,
+    catalog: enCatalog,
   },
 }
 
@@ -80,7 +110,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

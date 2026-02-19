@@ -9,7 +9,7 @@ This document contains all testing credentials and data for manual testing of Au
 | Web App | http://localhost:5173 | React frontend |
 | API | http://localhost:8001 | Laravel backend |
 
-> **Note:** Port 8000 may be used by another application. The mecanospex API runs on port 8001.
+> **Note:** Port 8000 may be used by another application. The AutoERP API runs on port 8001.
 
 ## Test User Accounts
 

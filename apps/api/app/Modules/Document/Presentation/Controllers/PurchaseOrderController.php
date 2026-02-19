@@ -492,9 +492,16 @@ class PurchaseOrderController extends Controller
             /** @var array<string, string>|null $quantities */
             $quantities = $request->input('quantities');
 
+            /** @var array<string, array{batch_number: string, expiry_date: string, manufacturing_date?: string}>|null $batches */
+            $batches = $request->input('batches');
+
             if (is_array($quantities) && count($quantities) > 0) {
-                // Partial receipt with specified quantities
-                $updatedDocument = $this->goodsReceiptService->receiveGoods($documentModel, $quantities);
+                // Partial receipt with specified quantities (and optional batch data)
+                $updatedDocument = $this->goodsReceiptService->receiveGoods(
+                    $documentModel,
+                    $quantities,
+                    is_array($batches) ? $batches : [],
+                );
             } else {
                 // Receive all remaining quantities
                 $updatedDocument = $this->goodsReceiptService->receiveAll($documentModel);

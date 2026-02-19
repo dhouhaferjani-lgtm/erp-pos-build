@@ -27,7 +27,7 @@ class WithholdingHashChainService
     public function calculateHash(WithholdingCertificate $certificate, ?string $previousHash): string
     {
         $data = $this->serializeForHashing($certificate);
-        $payload = ($previousHash ?? '') . '|' . $data;
+        $payload = ($previousHash ?? '').'|'.$data;
 
         return hash('sha256', $payload);
     }

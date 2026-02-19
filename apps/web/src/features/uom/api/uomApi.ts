@@ -1,0 +1,101 @@
+import { apiGet, apiPost, apiPut, apiDelete } from '../../../lib/api'
+
+/**
+ * Import generated types from backend DTOs
+ */
+import type {
+  App_Modules_Uom_Application_DTOs_UnitCategoryData,
+  App_Modules_Uom_Application_DTOs_UnitData,
+  App_Modules_Uom_Application_DTOs_ConversionResultData,
+} from '@mecanospex/shared/types/generated'
+
+// Type aliases for cleaner usage
+export type UnitCategory = App_Modules_Uom_Application_DTOs_UnitCategoryData
+export type Unit = App_Modules_Uom_Application_DTOs_UnitData
+export type ConversionResult = App_Modules_Uom_Application_DTOs_ConversionResultData
+
+/**
+ * Create Unit Input
+ */
+export interface CreateUnitInput {
+  categoryId: string
+  code: string
+  name: string
+  symbol: string
+  conversionFactor: string
+  decimalPlaces?: number
+  roundingMethod?: 'half_up' | 'floor' | 'ceil'
+}
+
+/**
+ * Fetch all categories with their units
+ */
+export async function fetchCategories(): Promise<UnitCategory[]> {
+  return apiGet<UnitCategory[]>('/uom/categories')
+}
+
+/**
+ * Fetch all units (optionally filtered by category)
+ */
+export async function fetchUnits(categoryId?: string): Promise<Unit[]> {
+  const params = categoryId ? `?category_id=${categoryId}` : ''
+  return apiGet<Unit[]>(`/uom/units${params}`)
+}
+
+/**
+ * Fetch a single unit
+ */
+export async function fetchUnit(id: string): Promise<Unit> {
+  return apiGet<Unit>(`/uom/units/${id}`)
+}
+
+/**
+ * Create a custom unit
+ */
+export async function createUnit(input: CreateUnitInput): Promise<Unit> {
+  return apiPost<Unit>('/uom/units', {
+    category_id: input.categoryId,
+    code: input.code,
+    name: input.name,
+    symbol: input.symbol,
+    conversion_factor: input.conversionFactor,
+    decimal_places: input.decimalPlaces,
+    rounding_method: input.roundingMethod,
+  })
+}
+
+/**
+ * Update a custom unit
+ */
+export async function updateUnit(id: string, input: Partial<CreateUnitInput>): Promise<Unit> {
+  return apiPut<Unit>(`/uom/units/${id}`, {
+    code: input.code,
+    name: input.name,
+    symbol: input.symbol,
+    conversion_factor: input.conversionFactor,
+    decimal_places: input.decimalPlaces,
+    rounding_method: input.roundingMethod,
+  })
+}
+
+/**
+ * Deactivate a unit
+ */
+export async function deleteUnit(id: string): Promise<void> {
+  return apiDelete(`/uom/units/${id}`)
+}
+
+/**
+ * Convert quantity between units
+ */
+export async function convertUnits(
+  quantity: number,
+  fromUnitId: string,
+  toUnitId: string
+): Promise<ConversionResult> {
+  return apiPost<ConversionResult>('/uom/convert', {
+    quantity,
+    from_unit_id: fromUnitId,
+    to_unit_id: toUnitId,
+  })
+}

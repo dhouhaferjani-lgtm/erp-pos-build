@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Domain\Services\Conversion\Converters;
 
+use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DeliveryStatus;
@@ -49,7 +50,8 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
     use CopiesDocumentData;
 
     public function __construct(
-        protected readonly DocumentNumberingService $numberingService
+        protected readonly DocumentNumberingService $numberingService,
+        private readonly FEFOInventoryService $fefoService,
     ) {}
 
     public function sourceType(): DocumentType
@@ -243,6 +245,8 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
      */
     private function copyLinesForFullDelivery(Document $source, Document $destination): void
     {
+        $lineNumber = 0;
+
         foreach ($source->lines as $line) {
             // Skip non-physical products
             if ($line->product_id !== null) {
@@ -250,25 +254,81 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
                 if ($product !== null && ! $product->isPhysical()) {
                     continue;
                 }
+            } else {
+                $product = null;
             }
 
-            // Create delivery note line linked to source
-            DocumentLine::create([
-                'id' => Str::uuid()->toString(),
-                'document_id' => $destination->id,
-                'line_number' => $line->line_number,
-                'product_id' => $line->product_id,
-                'product_code' => $line->product_code,
-                'description' => $line->description,
-                'quantity' => $line->quantity,
-                'unit_price' => $line->unit_price,
-                'discount_percent' => $line->discount_percent,
-                'discount_amount' => $line->discount_amount,
-                'tax_rate' => $line->tax_rate,
-                'line_total' => $line->line_total ?? '0.00',
-                'notes' => $line->notes,
-                'source_line_id' => $line->id,
-            ]);
+            // Check if product requires batch tracking and DN has a location
+            $requiresBatch = $product !== null
+                && ($product->requires_batch_tracking ?? false)
+                && $destination->location_id !== null;
+
+            if ($requiresBatch) {
+                // FEFO: split into multiple DN lines (one per batch)
+                $result = $this->fefoService->suggestBatchesForSale(
+                    (string) $line->product_id,
+                    (string) $destination->location_id,
+                    (float) $line->quantity,
+                );
+
+                if (! $result->fullyFulfilled) {
+                    throw new \DomainException(
+                        "Insufficient batch stock for product '{$product->name}'. " .
+                        "Required: {$line->quantity}, Available from non-expired batches: " .
+                        number_format($result->getSuggestedQuantity(), 4) .
+                        '. Shortfall: ' . number_format($result->shortfall, 4)
+                    );
+                }
+
+                foreach ($result->suggestions as $suggestion) {
+                    $lineNumber++;
+                    /** @var numeric-string $batchQty */
+                    $batchQty = (string) $suggestion->quantity;
+
+                    // Calculate proportional line total
+                    /** @var numeric-string $unitPrice */
+                    $unitPrice = (string) $line->unit_price;
+                    $lineTotal = bcmul($batchQty, $unitPrice, 2);
+
+                    DocumentLine::create([
+                        'id' => Str::uuid()->toString(),
+                        'document_id' => $destination->id,
+                        'line_number' => $lineNumber,
+                        'product_id' => $line->product_id,
+                        'product_code' => $line->product_code,
+                        'description' => $line->description,
+                        'quantity' => $batchQty,
+                        'unit_price' => $line->unit_price,
+                        'discount_percent' => $line->discount_percent,
+                        'discount_amount' => null, // Fixed discount not prorated per batch
+                        'tax_rate' => $line->tax_rate,
+                        'line_total' => $lineTotal,
+                        'notes' => $line->notes,
+                        'source_line_id' => $line->id,
+                        'batch_id' => $suggestion->batch->id,
+                    ]);
+                }
+            } else {
+                $lineNumber++;
+
+                // Non-batch: create single DN line as before
+                DocumentLine::create([
+                    'id' => Str::uuid()->toString(),
+                    'document_id' => $destination->id,
+                    'line_number' => $lineNumber,
+                    'product_id' => $line->product_id,
+                    'product_code' => $line->product_code,
+                    'description' => $line->description,
+                    'quantity' => $line->quantity,
+                    'unit_price' => $line->unit_price,
+                    'discount_percent' => $line->discount_percent,
+                    'discount_amount' => $line->discount_amount,
+                    'tax_rate' => $line->tax_rate,
+                    'line_total' => $line->line_total ?? '0.00',
+                    'notes' => $line->notes,
+                    'source_line_id' => $line->id,
+                ]);
+            }
 
             // Update source line's quantity_delivered to full quantity
             $line->update([
@@ -301,47 +361,104 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
                 continue;
             }
 
-            $lineNumber++;
+            // Check if product requires batch tracking
+            $product = $line->product_id !== null ? Product::find($line->product_id) : null;
+            $requiresBatch = $product !== null
+                && ($product->requires_batch_tracking ?? false)
+                && $destination->location_id !== null;
 
-            // Calculate line total based on partial quantity
-            /** @var numeric-string $unitPrice */
-            $unitPrice = (string) $line->unit_price;
-            $lineTotal = bcmul($qtyToDeliver, $unitPrice, 2);
+            if ($requiresBatch) {
+                // FEFO: split into multiple DN lines (one per batch)
+                $result = $this->fefoService->suggestBatchesForSale(
+                    (string) $line->product_id,
+                    (string) $destination->location_id,
+                    (float) $qtyToDeliver,
+                );
 
-            // Apply discount if any
-            if ($line->discount_percent !== null && $line->discount_percent !== '0.00') {
-                /** @var numeric-string $discountPercent */
-                $discountPercent = (string) $line->discount_percent;
-                $discount = bcmul($lineTotal, bcdiv($discountPercent, '100', 4), 2);
-                $lineTotal = bcsub($lineTotal, $discount, 2);
-            } elseif ($line->discount_amount !== null && $line->discount_amount !== '0.00') {
-                // For fixed discount, prorate based on quantity ratio
-                /** @var numeric-string $lineQty */
-                $lineQty = (string) $line->quantity;
-                /** @var numeric-string $discountAmt */
-                $discountAmt = (string) $line->discount_amount;
-                $qtyRatio = bcdiv($qtyToDeliver, $lineQty, 4);
-                $proratedDiscount = bcmul($discountAmt, $qtyRatio, 2);
-                $lineTotal = bcsub($lineTotal, $proratedDiscount, 2);
+                if (! $result->fullyFulfilled) {
+                    throw new \DomainException(
+                        "Insufficient batch stock for product '{$product->name}'. " .
+                        "Required: {$qtyToDeliver}, Available: " .
+                        number_format($result->getSuggestedQuantity(), 4)
+                    );
+                }
+
+                foreach ($result->suggestions as $suggestion) {
+                    $lineNumber++;
+                    /** @var numeric-string $batchQty */
+                    $batchQty = (string) $suggestion->quantity;
+
+                    /** @var numeric-string $unitPrice */
+                    $unitPrice = (string) $line->unit_price;
+                    $lineTotal = bcmul($batchQty, $unitPrice, 2);
+
+                    // Apply discount if any
+                    if ($line->discount_percent !== null && $line->discount_percent !== '0.00') {
+                        /** @var numeric-string $discountPercent */
+                        $discountPercent = (string) $line->discount_percent;
+                        $discount = bcmul($lineTotal, bcdiv($discountPercent, '100', 4), 2);
+                        $lineTotal = bcsub($lineTotal, $discount, 2);
+                    }
+
+                    DocumentLine::create([
+                        'id' => Str::uuid()->toString(),
+                        'document_id' => $destination->id,
+                        'line_number' => $lineNumber,
+                        'product_id' => $line->product_id,
+                        'product_code' => $line->product_code,
+                        'description' => $line->description,
+                        'quantity' => $batchQty,
+                        'unit_price' => $line->unit_price,
+                        'discount_percent' => $line->discount_percent,
+                        'discount_amount' => null,
+                        'tax_rate' => $line->tax_rate,
+                        'line_total' => $lineTotal,
+                        'notes' => $line->notes,
+                        'source_line_id' => $line->id,
+                        'batch_id' => $suggestion->batch->id,
+                    ]);
+                }
+            } else {
+                $lineNumber++;
+
+                // Calculate line total based on partial quantity
+                /** @var numeric-string $unitPrice */
+                $unitPrice = (string) $line->unit_price;
+                $lineTotal = bcmul($qtyToDeliver, $unitPrice, 2);
+
+                // Apply discount if any
+                if ($line->discount_percent !== null && $line->discount_percent !== '0.00') {
+                    /** @var numeric-string $discountPercent */
+                    $discountPercent = (string) $line->discount_percent;
+                    $discount = bcmul($lineTotal, bcdiv($discountPercent, '100', 4), 2);
+                    $lineTotal = bcsub($lineTotal, $discount, 2);
+                } elseif ($line->discount_amount !== null && $line->discount_amount !== '0.00') {
+                    /** @var numeric-string $lineQty */
+                    $lineQty = (string) $line->quantity;
+                    /** @var numeric-string $discountAmt */
+                    $discountAmt = (string) $line->discount_amount;
+                    $qtyRatio = bcdiv($qtyToDeliver, $lineQty, 4);
+                    $proratedDiscount = bcmul($discountAmt, $qtyRatio, 2);
+                    $lineTotal = bcsub($lineTotal, $proratedDiscount, 2);
+                }
+
+                DocumentLine::create([
+                    'id' => Str::uuid()->toString(),
+                    'document_id' => $destination->id,
+                    'line_number' => $lineNumber,
+                    'product_id' => $line->product_id,
+                    'product_code' => $line->product_code,
+                    'description' => $line->description,
+                    'quantity' => $qtyToDeliver,
+                    'unit_price' => $line->unit_price,
+                    'discount_percent' => $line->discount_percent,
+                    'discount_amount' => $line->discount_amount,
+                    'tax_rate' => $line->tax_rate,
+                    'line_total' => $lineTotal,
+                    'notes' => $line->notes,
+                    'source_line_id' => $line->id,
+                ]);
             }
-
-            // Create delivery note line linked to source
-            DocumentLine::create([
-                'id' => Str::uuid()->toString(),
-                'document_id' => $destination->id,
-                'line_number' => $lineNumber,
-                'product_id' => $line->product_id,
-                'product_code' => $line->product_code,
-                'description' => $line->description,
-                'quantity' => $qtyToDeliver,
-                'unit_price' => $line->unit_price,
-                'discount_percent' => $line->discount_percent,
-                'discount_amount' => $line->discount_amount,
-                'tax_rate' => $line->tax_rate,
-                'line_total' => $lineTotal,
-                'notes' => $line->notes,
-                'source_line_id' => $line->id,
-            ]);
 
             // Update source line's quantity_delivered
             /** @var numeric-string $currentDelivered */

@@ -17,8 +17,8 @@ class FEFOInventoryService
      * Implements FEFO (First-Expired-First-Out) logic.
      */
     public function suggestBatchesForSale(
-        int $productId,
-        int $locationId,
+        string $productId,
+        string $locationId,
         float $quantity,
         bool $includeExpired = false
     ): BatchSuggestionResultDTO {
@@ -68,9 +68,9 @@ class FEFOInventoryService
      * Get products expiring within threshold.
      */
     public function getExpiringProducts(
-        int $companyId,
+        string $companyId,
         int $daysThreshold = 30,
-        ?int $locationId = null
+        ?string $locationId = null
     ): Collection {
         $query = Batch::query()
             ->where('company_id', $companyId)
@@ -95,7 +95,7 @@ class FEFOInventoryService
     /**
      * Get all expired batches with remaining stock.
      */
-    public function getExpiredBatchesWithStock(int $companyId, ?int $locationId = null): Collection
+    public function getExpiredBatchesWithStock(string $companyId, ?string $locationId = null): Collection
     {
         $query = Batch::query()
             ->where('company_id', $companyId)
@@ -115,7 +115,7 @@ class FEFOInventoryService
     /**
      * Get batch stock allocation for a specific batch.
      */
-    public function getBatchStockByLocation(int $batchId): Collection
+    public function getBatchStockByLocation(string $batchId): Collection
     {
         return BatchStock::query()
             ->where('batch_id', $batchId)
@@ -126,7 +126,7 @@ class FEFOInventoryService
     /**
      * Check if a product requires batch tracking.
      */
-    public function productRequiresBatchTracking(int $productId): bool
+    public function productRequiresBatchTracking(string $productId): bool
     {
         return \App\Modules\Product\Domain\Product::query()
             ->where('id', $productId)
@@ -136,7 +136,7 @@ class FEFOInventoryService
     /**
      * Get total available quantity for a product across all batches.
      */
-    public function getTotalAvailableQuantity(int $productId, ?int $locationId = null): float
+    public function getTotalAvailableQuantity(string $productId, ?string $locationId = null): float
     {
         $query = BatchStock::query()
             ->join('product_batches', 'inventory_batch_stock.batch_id', '=', 'product_batches.id')
@@ -149,6 +149,6 @@ class FEFOInventoryService
             $query->where('inventory_batch_stock.location_id', $locationId);
         }
 
-        return $query->sum('inventory_batch_stock.available_quantity') ?? 0;
+        return (float) $query->sum('inventory_batch_stock.available_quantity');
     }
 }

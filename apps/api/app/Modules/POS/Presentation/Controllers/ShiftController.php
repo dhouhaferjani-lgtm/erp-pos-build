@@ -9,6 +9,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Domain\Exceptions\ShiftAlreadyOpenException;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Services\ShiftManagementService;
+use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Presentation\Requests\CloseShiftRequest;
@@ -40,17 +41,9 @@ final class ShiftController extends Controller
      */
     public function open(OpenShiftRequest $request): JsonResponse
     {
-        $terminal = Terminal::findOrFail($request->validated('terminal_id'));
-
-        // Verify terminal belongs to current company
-        if ($terminal->company_id !== $this->companyContext->getCompanyId()) {
-            return response()->json([
-                'error' => [
-                    'code' => 'FORBIDDEN',
-                    'message' => 'Terminal does not belong to your company',
-                ],
-            ], 403);
-        }
+        $terminal = Terminal::byCode($request->validated('terminal_code'))
+            ->where('company_id', $this->companyContext->getCompanyId())
+            ->firstOrFail();
 
         try {
             $shift = $this->shiftManagementService->openShift(
@@ -114,21 +107,13 @@ final class ShiftController extends Controller
     /**
      * Get current open shift for terminal
      *
-     * GET /api/v1/pos/shifts/current/{terminalId}
+     * GET /api/v1/pos/shifts/current/{terminalCode}
      */
-    public function current(string $terminalId): JsonResponse
+    public function current(string $terminalCode): JsonResponse
     {
-        $terminal = Terminal::findOrFail($terminalId);
-
-        // Verify terminal belongs to current company
-        if ($terminal->company_id !== $this->companyContext->getCompanyId()) {
-            return response()->json([
-                'error' => [
-                    'code' => 'FORBIDDEN',
-                    'message' => 'Terminal does not belong to your company',
-                ],
-            ], 403);
-        }
+        $terminal = Terminal::byCode($terminalCode)
+            ->where('company_id', $this->companyContext->getCompanyId())
+            ->firstOrFail();
 
         $shift = $this->shiftManagementService->getCurrentShift($terminal);
 
@@ -150,7 +135,7 @@ final class ShiftController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        $shift = Shift::with(['terminal', 'cashier', 'closedByUser'])
+        $shift = Shift::with(['terminal', 'cashier', 'closedBy'])
             ->findOrFail($id);
 
         // Verify shift belongs to current company
@@ -179,7 +164,7 @@ final class ShiftController extends Controller
             ->whereHas('terminal', function ($q) {
                 $q->where('company_id', $this->companyContext->getCompanyId());
             })
-            ->with(['terminal', 'cashier', 'closedByUser']);
+            ->with(['terminal', 'cashier', 'closedBy']);
 
         // Filter by terminal
         if ($request->filled('terminal_id')) {
@@ -214,6 +199,46 @@ final class ShiftController extends Controller
                 'last_page' => $shifts->lastPage(),
                 'per_page' => $shifts->perPage(),
                 'total' => $shifts->total(),
+            ],
+        ]);
+    }
+
+    /**
+     * List receipts for a shift (transaction history)
+     *
+     * GET /api/v1/pos/shifts/{id}/receipts
+     */
+    public function receipts(string $id, Request $request): JsonResponse
+    {
+        $shift = Shift::with('terminal')->findOrFail($id);
+
+        // Verify shift belongs to current company
+        if ($shift->terminal->company_id !== $this->companyContext->getCompanyId()) {
+            return response()->json([
+                'error' => [
+                    'code' => 'FORBIDDEN',
+                    'message' => 'Shift does not belong to your company',
+                ],
+            ], 403);
+        }
+
+        $receipts = Receipt::where('terminal_id', $shift->terminal_id)
+            ->where('cashier_id', $shift->cashier_id)
+            ->where('posted_at', '>=', $shift->opened_at)
+            ->when($shift->closed_at, function ($query) use ($shift) {
+                $query->where('posted_at', '<=', $shift->closed_at);
+            })
+            ->with(['lines.product', 'payments', 'vatDetails'])
+            ->orderByDesc('posted_at')
+            ->paginate($request->input('per_page', 20));
+
+        return response()->json([
+            'data' => $receipts->items(),
+            'meta' => [
+                'current_page' => $receipts->currentPage(),
+                'last_page' => $receipts->lastPage(),
+                'per_page' => $receipts->perPage(),
+                'total' => $receipts->total(),
             ],
         ]);
     }

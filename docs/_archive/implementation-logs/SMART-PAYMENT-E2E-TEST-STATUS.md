@@ -1,7 +1,7 @@
 # Smart Payment E2E Tests - Status Report
 
 **Date:** 2025-12-10 (Updated after rewrite)
-**Test File:** `/Users/houssamr/Projects/mecanospex/apps/web/e2e/smart-payment.spec.ts`
+**Test File:** `./apps/web/e2e/smart-payment.spec.ts`
 **Status:** 0/7 Passing (Tests rewritten, new issues discovered)
 
 ---

@@ -804,6 +804,76 @@ final class GeneralLedgerService
     }
 
     /**
+     * Create journal entry for POS payment.
+     *
+     * POS payments are DIRECT TO REVENUE (no AR account).
+     * Debit: Cash/Bank Account (from payment repository's GL account)
+     * Credit: Revenue Account (ProductRevenue system purpose)
+     *
+     * @param  \App\Modules\Treasury\Domain\Payment  $payment
+     * @param  \App\Modules\POS\Domain\Receipt  $receipt
+     * @param  \App\Modules\Treasury\Domain\PaymentRepository  $repository
+     */
+    public function createPOSPaymentEntry(
+        \App\Modules\Treasury\Domain\Payment $payment,
+        \App\Modules\POS\Domain\Receipt $receipt,
+        \App\Modules\Treasury\Domain\PaymentRepository $repository
+    ): JournalEntry {
+        if ($repository->gl_account_id === null) {
+            throw new \InvalidArgumentException(
+                "Payment repository '{$repository->name}' does not have a GL account configured"
+            );
+        }
+
+        $entry = DB::transaction(function () use ($payment, $receipt, $repository): JournalEntry {
+            $companyId = $payment->company_id;
+
+            // Get revenue account by system purpose
+            $revenueAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::ProductRevenue);
+
+            $entryNumber = $this->generateEntryNumber($companyId);
+
+            // Get tenant_id from payment
+            $entry = JournalEntry::create([
+                'tenant_id' => $payment->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => $receipt->posted_at,
+                'description' => "POS Receipt {$receipt->receipt_number}",
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'pos_receipt',
+                'source_id' => $receipt->id,
+            ]);
+
+            // Debit: Cash/Bank Account (from payment repository)
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $repository->gl_account_id,
+                'partner_id' => null,
+                'debit' => $payment->amount,
+                'credit' => '0.00',
+                'description' => "POS payment via {$repository->name}",
+                'line_order' => 0,
+            ]);
+
+            // Credit: Revenue Account
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $revenueAccount->id,
+                'partner_id' => null,
+                'debit' => '0.00',
+                'credit' => $payment->amount,
+                'description' => 'POS sales revenue',
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+
+        return $entry;
+    }
+
+    /**
      * Create journal entry from a posted expense.
      *
      * Expenses are typically non-fiscal operational documents.
@@ -872,6 +942,71 @@ final class GeneralLedgerService
         });
 
         return $entry;
+    }
+
+    /**
+     * Create journal entry for inventory write-off (expired/damaged batch stock).
+     *
+     * Debit: Cost of Goods Sold (write-off expense)
+     * Credit: Inventory (asset reduction)
+     */
+    public function createInventoryWriteOffEntry(
+        string $companyId,
+        string $batchNumber,
+        string $productId,
+        string $amount,
+        \App\Modules\Inventory\Domain\Enums\MovementReason $reason,
+        string $movementId,
+    ): ?JournalEntry {
+        if (bccomp($amount, '0.00', self::SCALE) <= 0) {
+            return null;
+        }
+
+        $cogsAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CostOfGoodsSold);
+        $inventoryAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::Inventory);
+
+        return DB::transaction(function () use (
+            $companyId, $batchNumber, $amount, $reason, $movementId,
+            $cogsAccount, $inventoryAccount
+        ): JournalEntry {
+            $entryNumber = $this->generateEntryNumber($companyId);
+            $company = \App\Modules\Company\Domain\Company::findOrFail($companyId);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $company->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => now()->toDateString(),
+                'description' => "Batch write-off ({$reason->label()}): {$batchNumber}",
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'batch_write_off',
+                'source_id' => $movementId,
+            ]);
+
+            // Debit: COGS (write-off expense increases)
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $cogsAccount->id,
+                'partner_id' => null,
+                'debit' => $amount,
+                'credit' => '0.00',
+                'description' => "Batch write-off: {$batchNumber}",
+                'line_order' => 0,
+            ]);
+
+            // Credit: Inventory (asset decreases)
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $inventoryAccount->id,
+                'partner_id' => null,
+                'debit' => '0.00',
+                'credit' => $amount,
+                'description' => 'Inventory reduction from write-off',
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
     }
 
     /**

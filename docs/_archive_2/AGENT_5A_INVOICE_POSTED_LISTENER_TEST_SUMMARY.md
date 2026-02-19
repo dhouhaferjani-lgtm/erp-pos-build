@@ -14,7 +14,7 @@ Successfully created comprehensive test suite for the `InvoicePosted` event list
 
 ## Test File Created
 
-**Location**: `/Users/houssamr/Projects/mecanospex/apps/api/tests/Feature/Accounting/InvoicePostedListenerTest.php`
+**Location**: `./apps/api/tests/Feature/Accounting/InvoicePostedListenerTest.php`
 
 **File Size**: 700+ lines of comprehensive TDD tests
 

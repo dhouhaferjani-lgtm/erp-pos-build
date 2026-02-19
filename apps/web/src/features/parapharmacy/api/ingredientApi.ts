@@ -1,8 +1,4 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
-import type {
-  App.Modules.Product.Application.DTOs.IngredientData,
-  App.Shared.Application.DTOs.PaginationData,
-} from '@shared/types';
 
 export interface IngredientTranslation {
   id?: string;
@@ -34,7 +30,12 @@ export interface UpdateIngredientInput {
 export interface IngredientsListResponse {
   data: App.Modules.Product.Application.DTOs.IngredientData[];
   meta: {
-    pagination: App.Shared.Application.DTOs.PaginationData;
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+    from: number | null;
+    to: number | null;
   };
 }
 

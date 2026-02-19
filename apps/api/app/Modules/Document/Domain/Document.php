@@ -12,7 +12,10 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Document\Domain\Enums\FulfillmentStatus;
+use App\Modules\Document\Domain\Enums\PaymentStatus;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use Illuminate\Database\Eloquent\Builder;
@@ -71,6 +74,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property-read Collection<int, DocumentLine> $lines
  * @property-read Collection<int, DocumentAdditionalCost> $additionalCosts
  * @property-read Collection<int, PaymentAllocation> $allocations
+ * @property-read Collection<int, CreditNoteAllocation> $creditNoteAllocations
  * @property-read Collection<int, Document> $creditNotes
  * @property-read Collection<int, Document> $childDocuments
  *
@@ -82,6 +86,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Document extends Model
 {
     use HasUuids;
+    use \Illuminate\Database\Eloquent\Factories\HasFactory;
     use SoftDeletes;
 
     /**
@@ -264,12 +269,44 @@ class Document extends Model
     }
 
     /**
+     * Get all credit note allocations for this document
+     *
+     * For invoices: credit notes allocated AGAINST this invoice (reduces balance)
+     * For credit notes: allocations OF this credit note TO invoices
+     *
+     * @return HasMany<CreditNoteAllocation, $this>
+     */
+    public function creditNoteAllocations(): HasMany
+    {
+        // If this is an invoice, get credit notes allocated against it
+        if ($this->type === DocumentType::Invoice) {
+            return $this->hasMany(CreditNoteAllocation::class, 'invoice_id');
+        }
+
+        // If this is a credit note, get its allocations to invoices
+        if ($this->type === DocumentType::CreditNote) {
+            return $this->hasMany(CreditNoteAllocation::class, 'credit_note_id');
+        }
+
+        // Other document types have no credit note allocations
+        return $this->hasMany(CreditNoteAllocation::class, 'invoice_id')->whereRaw('1 = 0');
+    }
+
+    /**
      * @return HasMany<Document, $this>
      */
     public function creditNotes(): HasMany
     {
         return $this->hasMany(Document::class, 'source_document_id')
             ->where('type', DocumentType::CreditNote);
+    }
+
+    /**
+     * @return HasMany<WithholdingCertificate, $this>
+     */
+    public function withholdingCertificates(): HasMany
+    {
+        return $this->hasMany(WithholdingCertificate::class, 'document_id');
     }
 
     /**
@@ -555,5 +592,156 @@ class Document extends Model
         }
 
         return DeliveryStatus::NotDelivered;
+    }
+
+    /**
+     * Get the outstanding amount for this document.
+     *
+     * This is the SOURCE OF TRUTH - computed from allocations.
+     * The balance_due column is a CACHED value maintained by PostgreSQL trigger.
+     *
+     * Formula: Outstanding = Total - SUM(Payment Allocations) - SUM(Credit Note Allocations)
+     *
+     * @return numeric-string The outstanding amount (can be negative if overpaid)
+     */
+    public function getOutstandingAmount(): string
+    {
+        // Only invoices have payment tracking
+        if ($this->type !== DocumentType::Invoice) {
+            return '0.00';
+        }
+
+        $total = $this->total ?? '0.00';
+
+        // Sum all payment allocations
+        /** @var numeric-string $paid */
+        $paid = (string) ($this->allocations()->sum('amount') ?? '0.00');
+
+        // Sum all credit note allocations
+        /** @var numeric-string $credited */
+        $credited = (string) ($this->creditNoteAllocations()->sum('amount') ?? '0.00');
+
+        // Calculate: Total - Paid - Credited
+        $outstanding = bcsub(bcsub($total, $paid, 2), $credited, 2);
+
+        return $outstanding;
+    }
+
+    /**
+     * Get the payment status for this invoice.
+     *
+     * This is COMPUTED from the outstanding amount, not stored.
+     * Uses getOutstandingAmount() as the source of truth.
+     */
+    public function getPaymentStatus(): PaymentStatus
+    {
+        // Only invoices have payment status
+        if ($this->type !== DocumentType::Invoice) {
+            return PaymentStatus::Unpaid;
+        }
+
+        $outstanding = $this->getOutstandingAmount();
+        $total = $this->total ?? '0.00';
+
+        // Check if any payments are pending bank reconciliation
+        $hasPendingPayments = $this->allocations()
+            ->whereHas('payment', fn ($q) => $q->where('status', '!=', 'reconciled'))
+            ->exists();
+
+        return match (true) {
+            // Overpaid: outstanding is negative
+            bccomp($outstanding, '0', 2) < 0 => PaymentStatus::Overpaid,
+
+            // Paid: outstanding is zero
+            bccomp($outstanding, '0', 2) === 0 => PaymentStatus::Paid,
+
+            // In Payment: no payments yet but some are pending reconciliation
+            bccomp($outstanding, $total, 2) === 0 && $hasPendingPayments => PaymentStatus::InPayment,
+
+            // Unpaid: outstanding equals total (no payments)
+            bccomp($outstanding, $total, 2) === 0 => PaymentStatus::Unpaid,
+
+            // Partially Paid: 0 < outstanding < total
+            default => PaymentStatus::PartiallyPaid,
+        };
+    }
+
+    /**
+     * Get the fulfillment status for this sales document.
+     *
+     * Tracks delivery/shipment status based on delivery notes.
+     * Only applicable to invoices and sales orders.
+     *
+     * @return \App\Modules\Document\Domain\Enums\FulfillmentStatus
+     */
+    public function getFulfillmentStatus(): Enums\FulfillmentStatus
+    {
+        // Only sales documents have fulfillment tracking
+        if (! in_array($this->type, [DocumentType::Invoice, DocumentType::SalesOrder], true)) {
+            return Enums\FulfillmentStatus::NotApplicable;
+        }
+
+        // Get all delivery notes linked to this document
+        $deliveryNotes = $this->childDocuments()
+            ->where('type', DocumentType::DeliveryNote)
+            ->whereIn('status', ['confirmed', 'posted'])
+            ->get();
+
+        // If no delivery notes exist, check if document has physical products
+        if ($deliveryNotes->isEmpty()) {
+            // Check if any lines require physical delivery (not services)
+            $hasPhysicalProducts = $this->lines()
+                ->whereHas('product', fn ($q) => $q->where('type', '!=', 'service'))
+                ->exists();
+
+            return $hasPhysicalProducts
+                ? Enums\FulfillmentStatus::NotFulfilled
+                : Enums\FulfillmentStatus::NotApplicable;
+        }
+
+        // Calculate total ordered quantity vs delivered quantity for each product
+        $orderLines = $this->lines;
+        $totalOrdered = '0.0000';
+        $totalDelivered = '0.0000';
+
+        foreach ($orderLines as $orderLine) {
+            /** @var numeric-string $orderedQty */
+            $orderedQty = $orderLine->quantity ?? '0.0000';
+            $totalOrdered = bcadd($totalOrdered, $orderedQty, 4);
+
+            // Sum delivered quantity for this product from all delivery notes
+            /** @var numeric-string $deliveredQty */
+            $deliveredQty = '0.0000';
+            foreach ($deliveryNotes as $deliveryNote) {
+                $deliveredLine = $deliveryNote->lines()
+                    ->where('product_id', $orderLine->product_id)
+                    ->first();
+
+                if ($deliveredLine !== null) {
+                    /** @var numeric-string $lineQty */
+                    $lineQty = $deliveredLine->quantity ?? '0.0000';
+                    $deliveredQty = bcadd($deliveredQty, $lineQty, 4);
+                }
+            }
+
+            $totalDelivered = bcadd($totalDelivered, $deliveredQty, 4);
+        }
+
+        // Determine fulfillment status
+        return match (true) {
+            // Nothing ordered or all delivered
+            bccomp($totalOrdered, '0', 4) === 0 => Enums\FulfillmentStatus::NotApplicable,
+            bccomp($totalDelivered, $totalOrdered, 4) >= 0 => Enums\FulfillmentStatus::Fulfilled,
+            bccomp($totalDelivered, '0', 4) === 0 => Enums\FulfillmentStatus::NotFulfilled,
+            default => Enums\FulfillmentStatus::PartiallyFulfilled,
+        };
+    }
+
+    /**
+     * Create a new factory instance for the model.
+     */
+    protected static function newFactory(): \Illuminate\Database\Eloquent\Factories\Factory
+    {
+        return \Database\Factories\DocumentFactory::new();
     }
 }

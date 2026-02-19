@@ -3,12 +3,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Plus } from 'lucide-react'
+import { ArrowLeft, Plus, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPost, getErrorMessage } from '../../lib/api'
 import { AddPartnerModal, AddRepositoryModal } from '../../components/organisms'
 import { PaymentAllocationForm } from './components'
 import type { OpenInvoice } from '../../types/treasury'
+import { useWithholdingPreview } from '../withholding'
+import type { TransactionType } from '../withholding/types'
 
 interface PaymentMethod {
   id: string
@@ -66,17 +68,26 @@ interface PaymentFormData {
   payment_date: string
   reference: string
   notes: string
+  withholding_enabled?: boolean
+  withholding_rate?: string
+  withholding_transaction_type?: string
+  withholding_override_reason?: string
 }
 
 export function PaymentForm() {
-  const { t } = useTranslation(['treasury', 'common', 'sales'])
+  const { t } = useTranslation(['treasury', 'common', 'sales', 'withholding'])
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const invoiceId = searchParams.get('invoice')
+  const purchaseOrderId = searchParams.get('purchase_order')
+  const deliveryNoteId = searchParams.get('delivery_note')
   const [showPartnerModal, setShowPartnerModal] = useState(false)
   const [showRepositoryModal, setShowRepositoryModal] = useState(false)
   const [createdPaymentId, setCreatedPaymentId] = useState<string | null>(null)
+  const [withholdingEnabled, setWithholdingEnabled] = useState(false)
+  const [withholdingTransactionType, setWithholdingTransactionType] = useState<TransactionType | ''>('')
+  const [withholdingRate, setWithholdingRate] = useState('')
 
   const {
     register,
@@ -112,7 +123,29 @@ export function PaymentForm() {
     enabled: !!invoiceId,
   })
 
-  // Pre-fill form when invoice data is loaded
+  // Fetch purchase order data if purchase order ID is provided
+  const { data: purchaseOrderData } = useQuery({
+    queryKey: ['purchase-order', purchaseOrderId],
+    queryFn: async () => {
+      if (!purchaseOrderId) return null
+      const response = await api.get<{ data: Invoice }>(`/purchase-orders/${purchaseOrderId}`)
+      return response.data.data
+    },
+    enabled: !!purchaseOrderId,
+  })
+
+  // Fetch delivery note data if delivery note ID is provided
+  const { data: deliveryNoteData } = useQuery({
+    queryKey: ['delivery-note', deliveryNoteId],
+    queryFn: async () => {
+      if (!deliveryNoteId) return null
+      const response = await api.get<{ data: Invoice }>(`/documents/${deliveryNoteId}`)
+      return response.data.data
+    },
+    enabled: !!deliveryNoteId,
+  })
+
+  // Pre-fill form when document data is loaded
   useEffect(() => {
     if (invoiceData) {
       const amountResidual = invoiceData.amount_residual ?? parseFloat(invoiceData.total)
@@ -124,8 +157,32 @@ export function PaymentForm() {
         reference: invoiceData.document_number,
         notes: t('treasury:payments.form.paymentForInvoice', { invoiceNumber: invoiceData.document_number }),
       })
+    } else if (purchaseOrderData) {
+      reset({
+        amount: purchaseOrderData.total,
+        payment_method_id: '',
+        partner_id: purchaseOrderData.partner_id,
+        payment_date: new Date().toISOString().split('T')[0],
+        reference: purchaseOrderData.document_number,
+        notes: t('treasury:payments.form.paymentForPurchaseOrder', {
+          defaultValue: 'Payment for Purchase Order {{poNumber}}',
+          poNumber: purchaseOrderData.document_number
+        }),
+      })
+    } else if (deliveryNoteData) {
+      reset({
+        amount: deliveryNoteData.total || '',
+        payment_method_id: '',
+        partner_id: deliveryNoteData.partner_id,
+        payment_date: new Date().toISOString().split('T')[0],
+        reference: deliveryNoteData.document_number,
+        notes: t('treasury:payments.form.paymentForDeliveryNote', {
+          defaultValue: 'Payment for Delivery Note {{dnNumber}}',
+          dnNumber: deliveryNoteData.document_number
+        }),
+      })
     }
-  }, [invoiceData, reset])
+  }, [invoiceData, purchaseOrderData, deliveryNoteData, reset, t])
 
   // Fetch payment methods
   const { data: paymentMethodsData } = useQuery({
@@ -175,6 +232,29 @@ export function PaymentForm() {
 
   const openInvoices: OpenInvoice[] = openInvoicesData ?? []
 
+  // Withholding preview - check if withholding should be applied
+  const withholdingPreviewMutation = useWithholdingPreview()
+
+  useEffect(() => {
+    if (selectedPartnerId && paymentAmount && parseFloat(paymentAmount) > 0) {
+      withholdingPreviewMutation.mutate({
+        partner_id: selectedPartnerId,
+        amount: paymentAmount,
+        currency: 'TND', // TODO: Get from company settings
+        transaction_type: withholdingTransactionType || undefined,
+      })
+    }
+  }, [selectedPartnerId, paymentAmount, withholdingTransactionType])
+
+  const withholdingPreview = withholdingPreviewMutation.data
+
+  // Update withholding rate when preview changes
+  useEffect(() => {
+    if (withholdingPreview?.calculation && !withholdingRate) {
+      setWithholdingRate(withholdingPreview.calculation.rate_percentage.toString())
+    }
+  }, [withholdingPreview])
+
   const createMutation = useMutation({
     mutationFn: (data: PaymentFormData) => {
       // Prepare allocations array
@@ -218,11 +298,17 @@ export function PaymentForm() {
         ...data,
         amount: parseFloat(data.amount),
         allocations: allocations.length > 0 ? allocations : undefined,
+        withholding_enabled: withholdingEnabled,
+        withholding_rate: withholdingEnabled && withholdingRate ? parseFloat(withholdingRate) : undefined,
+        withholding_transaction_type: withholdingEnabled && withholdingTransactionType ? withholdingTransactionType : undefined,
+        withholding_override_reason: data.withholding_override_reason,
       })
     },
     onSuccess: (payment) => {
       void queryClient.invalidateQueries({ queryKey: ['payments'] })
       void queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] })
+      void queryClient.invalidateQueries({ queryKey: ['purchase-order', purchaseOrderId] })
+      void queryClient.invalidateQueries({ queryKey: ['delivery-note', deliveryNoteId] })
       void queryClient.invalidateQueries({ queryKey: ['invoices'] })
       void queryClient.invalidateQueries({ queryKey: ['open-invoices'] })
       toast.success(t('treasury:payments.messages.created'))
@@ -230,8 +316,8 @@ export function PaymentForm() {
       // Store payment ID for potential manual allocation adjustment
       setCreatedPaymentId(payment.id)
 
-      // If no open invoices or single invoice payment, navigate immediately
-      if (openInvoices.length === 0 || invoiceId) {
+      // If no open invoices or single document payment, navigate immediately
+      if (openInvoices.length === 0 || invoiceId || purchaseOrderId || deliveryNoteId) {
         handleNavigateAway()
       }
       // Otherwise, user can optionally apply smart allocation below
@@ -245,6 +331,10 @@ export function PaymentForm() {
   const handleNavigateAway = () => {
     if (invoiceId) {
       void navigate(`/sales/invoices/${invoiceId}`)
+    } else if (purchaseOrderId) {
+      void navigate(`/purchases/orders/${purchaseOrderId}`)
+    } else if (deliveryNoteId) {
+      void navigate(`/inventory/delivery-notes/${deliveryNoteId}`)
     } else {
       void navigate('/treasury/payments')
     }
@@ -470,6 +560,160 @@ export function PaymentForm() {
             </div>
           </div>
         </div>
+
+        {/* Withholding Tax Section */}
+        {withholdingPreview?.should_withhold && !withholdingEnabled && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm text-blue-900">
+                  {t('withholding:form.recommendedAlert')}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => { setWithholdingEnabled(true) }}
+                  className="mt-2 inline-flex items-center rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+                >
+                  {t('withholding:form.enable')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {withholdingEnabled && (
+          <div className="rounded-lg border border-gray-200 bg-white p-6">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {t('withholding:title')}
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setWithholdingEnabled(false)
+                  setWithholdingRate('')
+                  setWithholdingTransactionType('')
+                }}
+                className="mt-1 text-sm text-gray-600 hover:text-gray-900"
+              >
+                {t('common:disable')}
+              </button>
+            </div>
+
+            <div className="grid gap-6 sm:grid-cols-2">
+              {/* Transaction Type */}
+              <div>
+                <label
+                  htmlFor="transaction_type"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  {t('withholding:form.transactionType')}
+                </label>
+                <select
+                  id="transaction_type"
+                  value={withholdingTransactionType}
+                  onChange={(e) => { setWithholdingTransactionType(e.target.value as TransactionType) }}
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="">{t('common:select')}</option>
+                  <option value="services">{t('withholding:transactionTypes.services')}</option>
+                  <option value="goods">{t('withholding:transactionTypes.goods')}</option>
+                  <option value="rental">{t('withholding:transactionTypes.rental')}</option>
+                  <option value="rental_hotel">{t('withholding:transactionTypes.rental_hotel')}</option>
+                  <option value="commission">{t('withholding:transactionTypes.commission')}</option>
+                  <option value="export_services">{t('withholding:transactionTypes.export_services')}</option>
+                </select>
+              </div>
+
+              {/* Withholding Rate */}
+              <div>
+                <label
+                  htmlFor="withholding_rate"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  {t('withholding:form.rate')}
+                </label>
+                <div className="relative mt-1">
+                  <input
+                    type="number"
+                    step="0.01"
+                    id="withholding_rate"
+                    value={withholdingRate}
+                    onChange={(e) => { setWithholdingRate(e.target.value) }}
+                    className="block w-full rounded-lg border border-gray-300 pe-8 ps-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="0.00"
+                  />
+                  <span className="absolute end-3 top-1/2 -translate-y-1/2 text-gray-500">
+                    %
+                  </span>
+                </div>
+                {withholdingPreview?.calculation && (
+                  <p className="mt-1 text-sm text-gray-600">
+                    {t('withholding:preview.suggestedRate', { rate: withholdingPreview.calculation.rate_percentage })}
+                  </p>
+                )}
+              </div>
+
+              {/* Override Reason (if rate differs from suggested) */}
+              {withholdingRate &&
+                withholdingPreview?.calculation &&
+                parseFloat(withholdingRate) !== withholdingPreview.calculation.rate_percentage && (
+                  <div className="sm:col-span-2">
+                    <label
+                      htmlFor="withholding_override_reason"
+                      className="block text-sm font-medium text-gray-700"
+                    >
+                      {t('withholding:form.overrideReason')} *
+                    </label>
+                    <textarea
+                      id="withholding_override_reason"
+                      rows={2}
+                      {...register('withholding_override_reason', {
+                        required: t('withholding:form.overrideReasonRequired'),
+                      })}
+                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      placeholder={t('withholding:form.overrideReason')}
+                    />
+                    {errors.withholding_override_reason && (
+                      <p className="mt-1 text-sm text-red-600">
+                        {errors.withholding_override_reason.message}
+                      </p>
+                    )}
+                  </div>
+                )}
+            </div>
+
+            {/* Calculation Preview */}
+            {withholdingPreview?.calculation && withholdingRate && (
+              <div className="mt-6 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <h4 className="mb-3 text-sm font-semibold text-gray-900">
+                  {t('withholding:form.calculation')}
+                </h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">{t('withholding:form.grossAmount')}</span>
+                    <span className="font-mono font-semibold text-gray-900">
+                      {parseFloat(paymentAmount || '0').toFixed(3)} TND
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">{t('withholding:form.withholdingAmount')}</span>
+                    <span className="font-mono font-semibold text-red-600">
+                      - {(parseFloat(paymentAmount || '0') * parseFloat(withholdingRate) / 100).toFixed(3)} TND
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-t border-gray-300 pt-2 text-sm">
+                    <span className="font-semibold text-gray-900">{t('withholding:form.netPayment')}</span>
+                    <span className="font-mono text-lg font-bold text-gray-900">
+                      {(parseFloat(paymentAmount || '0') * (1 - parseFloat(withholdingRate) / 100)).toFixed(3)} TND
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Smart Payment Allocation Section */}
         {createdPaymentId && openInvoices.length > 0 && !invoiceId && (

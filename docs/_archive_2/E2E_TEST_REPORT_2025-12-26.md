@@ -542,7 +542,7 @@ DB::transaction(function () use ($invoice) {
 9. `09-create-credit-note-form.png` - Credit note creation form
 10. `10-credit-note-error-422.png` - 422 error on credit note submission
 
-All screenshots saved to: `/Users/houssamr/Projects/mecanospex/.playwright-mcp/`
+All screenshots saved to: `./.playwright-mcp/`
 
 ### Console Errors Captured
 

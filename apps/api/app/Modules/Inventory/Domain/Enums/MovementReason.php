@@ -23,6 +23,7 @@ enum MovementReason: string
     case Expiry = 'expiry';
     case WriteOff = 'write_off';
     case Consumption = 'consumption';
+    case POSSale = 'pos_sale';
 
     public function getMovementType(): string
     {
@@ -45,6 +46,7 @@ enum MovementReason: string
             self::Damage => true,
             self::Expiry => true,
             self::WriteOff => true,
+            self::POSSale => true,
             default => false,
         };
     }
@@ -61,6 +63,7 @@ enum MovementReason: string
             self::WriteOff => true,
             self::AdjustmentPositive => true,
             self::AdjustmentNegative => true,
+            self::POSSale => true,
             default => false,
         };
     }
@@ -82,6 +85,7 @@ enum MovementReason: string
             self::Expiry => 'Expired Stock',
             self::WriteOff => 'Stock Write-Off',
             self::Consumption => 'Internal Consumption',
+            self::POSSale => 'POS Sale',
         };
     }
 }

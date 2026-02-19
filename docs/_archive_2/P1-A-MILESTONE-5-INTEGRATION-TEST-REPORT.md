@@ -18,7 +18,7 @@ Successfully created and verified comprehensive integration tests for the comple
 ## Integration Tests Created
 
 ### File Created
-- **Path**: `/Users/houssamr/Projects/mecanospex/apps/api/tests/Feature/Accounting/InvoiceAndCreditNoteGLIntegrationTest.php`
+- **Path**: `./apps/api/tests/Feature/Accounting/InvoiceAndCreditNoteGLIntegrationTest.php`
 - **Lines of Code**: 862 lines
 - **Test Count**: 6 comprehensive integration tests
 - **Assertions**: 73 assertions
@@ -129,7 +129,7 @@ public function handle(InvoicePosted $event): void
 ```
 
 ### Files Modified
-1. **`/Users/houssamr/Projects/mecanospex/apps/api/app/Modules/Accounting/Listeners/InvoicePostedListener.php`**
+1. **`./apps/api/app/Modules/Accounting/Listeners/InvoicePostedListener.php`**
    - Added `DocumentType` import
    - Added type check for CreditNote vs Invoice
    - Routes to correct GL creation method
@@ -330,13 +330,13 @@ VAT: €190 - €190 = €0 ✅
 ## Files Created/Modified
 
 ### Created
-1. **`/Users/houssamr/Projects/mecanospex/apps/api/tests/Feature/Accounting/InvoiceAndCreditNoteGLIntegrationTest.php`**
+1. **`./apps/api/tests/Feature/Accounting/InvoiceAndCreditNoteGLIntegrationTest.php`**
    - Comprehensive integration test suite
    - 862 lines, 6 tests, 73 assertions
    - Full E2E flow verification
 
 ### Modified
-1. **`/Users/houssamr/Projects/mecanospex/apps/api/app/Modules/Accounting/Listeners/InvoicePostedListener.php`**
+1. **`./apps/api/app/Modules/Accounting/Listeners/InvoicePostedListener.php`**
    - Added DocumentType check
    - Routes to correct GL creation method
    - Critical fix for credit note handling

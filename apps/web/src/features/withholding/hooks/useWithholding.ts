@@ -164,3 +164,82 @@ export function useWithholdingRule(id: string) {
     enabled: !!id,
   });
 }
+
+/**
+ * Create withholding rule
+ */
+export function useCreateWithholdingRule() {
+  const queryClient = useQueryClient();
+  const { t } = useTranslation('withholding');
+
+  return useMutation({
+    mutationFn: withholdingApi.createWithholdingRule,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['withholding-rules'] });
+      toast.success(t('messages.ruleCreated'));
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || t('messages.ruleCreationFailed'));
+    },
+  });
+}
+
+/**
+ * Update withholding rule
+ */
+export function useUpdateWithholdingRule() {
+  const queryClient = useQueryClient();
+  const { t } = useTranslation('withholding');
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) =>
+      withholdingApi.updateWithholdingRule(id, data),
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['withholding-rule', id] });
+      queryClient.invalidateQueries({ queryKey: ['withholding-rules'] });
+      toast.success(t('messages.ruleUpdated'));
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || t('messages.ruleUpdateFailed'));
+    },
+  });
+}
+
+/**
+ * Delete withholding rule
+ */
+export function useDeleteWithholdingRule() {
+  const queryClient = useQueryClient();
+  const { t } = useTranslation('withholding');
+
+  return useMutation({
+    mutationFn: withholdingApi.deleteWithholdingRule,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['withholding-rules'] });
+      toast.success(t('messages.ruleDeleted'));
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || t('messages.ruleDeletionFailed'));
+    },
+  });
+}
+
+/**
+ * Deactivate withholding rule
+ */
+export function useDeactivateWithholdingRule() {
+  const queryClient = useQueryClient();
+  const { t } = useTranslation('withholding');
+
+  return useMutation({
+    mutationFn: withholdingApi.deactivateWithholdingRule,
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ['withholding-rule', id] });
+      queryClient.invalidateQueries({ queryKey: ['withholding-rules'] });
+      toast.success(t('messages.ruleDeactivated'));
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || t('messages.ruleDeactivationFailed'));
+    },
+  });
+}

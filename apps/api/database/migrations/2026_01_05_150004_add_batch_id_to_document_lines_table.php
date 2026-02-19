@@ -10,21 +10,20 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // TODO: Re-enable when batch expiry module is fully implemented and tested
-        // Schema::table('document_lines', function (Blueprint $table) {
-        //     $table->foreignId('batch_id')->nullable()->after('product_id')
-        //         ->constrained('product_batches')->nullOnDelete();
+        Schema::table('document_lines', function (Blueprint $table) {
+            $table->foreignId('batch_id')->nullable()->after('product_id')
+                ->constrained('product_batches')->nullOnDelete();
 
-        //     $table->index('batch_id', 'idx_document_lines_batch');
-        // });
+            $table->index('batch_id', 'idx_document_lines_batch');
+        });
     }
 
     public function down(): void
     {
-        // Schema::table('document_lines', function (Blueprint $table) {
-        //     $table->dropForeign(['batch_id']);
-        //     $table->dropIndex('idx_document_lines_batch');
-        //     $table->dropColumn('batch_id');
-        // });
+        Schema::table('document_lines', function (Blueprint $table) {
+            $table->dropForeign(['batch_id']);
+            $table->dropIndex('idx_document_lines_batch');
+            $table->dropColumn('batch_id');
+        });
     }
 };

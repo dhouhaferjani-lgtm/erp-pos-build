@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Domain\Services;
 
+use App\Modules\BatchExpiry\Domain\Entities\BatchMovement;
+use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Exceptions\InsufficientStockException;
@@ -20,6 +22,7 @@ final class StockAdjustmentService
      * Receive stock into a location (e.g., from purchase order).
      *
      * @param  numeric-string  $quantity
+     * @param  int|null  $batchId  Optional batch ID for batch-tracked products
      */
     public function receive(
         string $productId,
@@ -27,8 +30,9 @@ final class StockAdjustmentService
         string $quantity,
         string $reference,
         string $userId,
+        ?int $batchId = null,
     ): StockMovement {
-        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId): StockMovement {
+        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId): StockMovement {
             $stockLevel = $this->getOrCreateStockLevel($productId, $locationId);
 
             /** @var numeric-string $quantityBefore */
@@ -37,7 +41,7 @@ final class StockAdjustmentService
 
             $stockLevel->update(['quantity' => $quantityAfter]);
 
-            return $this->recordMovement(
+            $movement = $this->recordMovement(
                 tenantId: $stockLevel->tenant_id,
                 productId: $productId,
                 locationId: $locationId,
@@ -48,6 +52,19 @@ final class StockAdjustmentService
                 reference: $reference,
                 userId: $userId,
             );
+
+            // Record batch movement if batch ID provided
+            if ($batchId !== null) {
+                $this->recordBatchMovement(
+                    tenantId: $stockLevel->tenant_id,
+                    batchId: $batchId,
+                    locationId: $locationId,
+                    movementId: $movement->id,
+                    quantity: $quantity,
+                );
+            }
+
+            return $movement;
         });
     }
 
@@ -55,6 +72,7 @@ final class StockAdjustmentService
      * Issue stock from a location (e.g., for sales order).
      *
      * @param  numeric-string  $quantity
+     * @param  int|null  $batchId  Optional batch ID for batch-tracked products
      *
      * @throws InsufficientStockException
      */
@@ -64,8 +82,9 @@ final class StockAdjustmentService
         string $quantity,
         string $reference,
         string $userId,
+        ?int $batchId = null,
     ): StockMovement {
-        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId): StockMovement {
+        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId): StockMovement {
             $stockLevel = $this->lockStockLevel($productId, $locationId);
 
             /** @var numeric-string $available */
@@ -86,7 +105,7 @@ final class StockAdjustmentService
 
             $stockLevel->update(['quantity' => $quantityAfter]);
 
-            return $this->recordMovement(
+            $movement = $this->recordMovement(
                 tenantId: $stockLevel->tenant_id,
                 productId: $productId,
                 locationId: $locationId,
@@ -97,6 +116,19 @@ final class StockAdjustmentService
                 reference: $reference,
                 userId: $userId,
             );
+
+            // Record batch movement if batch ID provided (negative quantity for issue)
+            if ($batchId !== null) {
+                $this->recordBatchMovement(
+                    tenantId: $stockLevel->tenant_id,
+                    batchId: $batchId,
+                    locationId: $locationId,
+                    movementId: $movement->id,
+                    quantity: '-'.$quantity,  // Negative for issue
+                );
+            }
+
+            return $movement;
         });
     }
 
@@ -340,5 +372,45 @@ final class StockAdjustmentService
             'reference' => $reference,
             'user_id' => $userId,
         ]);
+    }
+
+    /**
+     * Record a batch-level stock movement and update batch stock.
+     *
+     * @param  numeric-string  $quantity
+     */
+    private function recordBatchMovement(
+        string $tenantId,
+        int $batchId,
+        string $locationId,
+        string $movementId,
+        string $quantity,
+    ): void {
+        // Create batch movement record
+        BatchMovement::create([
+            'tenant_id' => $tenantId,
+            'batch_id' => $batchId,
+            'movement_id' => $movementId,
+            'quantity' => $quantity,
+        ]);
+
+        // Update batch stock level
+        $batchStock = BatchStock::firstOrCreate(
+            [
+                'batch_id' => $batchId,
+                'location_id' => $locationId,
+            ],
+            [
+                'tenant_id' => $tenantId,
+                'quantity' => '0.0000',
+                'reserved_quantity' => '0.0000',
+            ]
+        );
+
+        /** @var numeric-string $currentQuantity */
+        $currentQuantity = $batchStock->quantity;
+        $newQuantity = bcadd($currentQuantity, $quantity, 4);
+
+        $batchStock->update(['quantity' => $newQuantity]);
     }
 }

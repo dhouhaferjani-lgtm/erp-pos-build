@@ -11,6 +11,7 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\Enums\CertificateStatus;
 use App\Modules\Taxation\Domain\Enums\WithholdingDirection;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Payment;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -152,6 +153,14 @@ class WithholdingCertificate extends Model
     public function issuer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'issued_by');
+    }
+
+    /**
+     * @return BelongsTo<Payment, $this>
+     */
+    public function payment(): BelongsTo
+    {
+        return $this->belongsTo(Payment::class, 'payment_id');
     }
 
     /**

@@ -1,0 +1,45 @@
+{
+  "agedReceivables": {
+    "title": "Aged Receivables",
+    "description": "Track outstanding invoices by aging period",
+    "asOfDate": "As of Date",
+    "totalOutstanding": "Total Outstanding",
+    "current": "Current",
+    "days1To30": "1-30 Days",
+    "days31To60": "31-60 Days",
+    "days61To90": "61-90 Days",
+    "daysOver90": "Over 90 Days",
+    "byPartner": "Breakdown by Partner",
+    "partner": "Partner",
+    "total": "Total",
+    "invoiceCount": "Invoices"
+  },
+  "customerStatement": {
+    "title": "Customer Statement",
+    "description": "Detailed transaction history for a customer",
+    "selectCustomer": "Select Customer",
+    "dateRange": "Date Range",
+    "fromDate": "From Date",
+    "toDate": "To Date",
+    "openingBalance": "Opening Balance",
+    "closingBalance": "Closing Balance",
+    "date": "Date",
+    "type": "Type",
+    "documentNumber": "Document #",
+    "description": "Description",
+    "debit": "Debit",
+    "credit": "Credit",
+    "balance": "Balance"
+  },
+  "overdueSummary": {
+    "title": "Overdue Summary",
+    "description": "Quick overview of overdue invoices",
+    "totalOverdue": "Total Overdue",
+    "invoiceCount": "Overdue Invoices",
+    "bySeverity": "By Severity",
+    "critical": "Critical (90+ days)",
+    "high": "High (60-89 days)",
+    "medium": "Medium (30-59 days)",
+    "low": "Low (1-29 days)"
+  }
+}

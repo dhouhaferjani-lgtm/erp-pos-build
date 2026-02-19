@@ -81,6 +81,7 @@ function getDocumentTypeFromPath(pathname: string): DocumentType | undefined {
 }
 
 type StatusFilter = 'all' | 'draft' | 'confirmed' | 'posted' | 'received' | 'cancelled'
+type PaymentStatusFilter = 'all' | 'unpaid' | 'partially_paid' | 'paid' | 'overdue'
 
 interface DocumentListPageProps {
   documentType?: DocumentType
@@ -92,6 +93,7 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<PaymentStatusFilter>('all')
 
   // Get company currency with fallback
   const companyCurrency = currentCompany?.currency ?? 'EUR'
@@ -124,7 +126,42 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
     enabled: apiEndpoint !== '/documents',
   })
 
-  const documents = data?.data ?? []
+  // Apply payment status filter (client-side for now)
+  const documents = useMemo(() => {
+    const allDocs = data?.data ?? []
+
+    // Only filter by payment status for invoices
+    if (effectiveType !== 'invoice' || paymentStatusFilter === 'all') {
+      return allDocs
+    }
+
+    return allDocs.filter((doc) => {
+      // Only filter posted invoices
+      if (doc.status !== 'posted') return true
+
+      const balanceDue = parseFloat(doc.balance_due ?? doc.total ?? '0')
+      const total = parseFloat(doc.total ?? '0')
+
+      switch (paymentStatusFilter) {
+        case 'paid':
+          return balanceDue === 0
+        case 'unpaid':
+          return balanceDue === total && balanceDue > 0
+        case 'partially_paid':
+          return balanceDue > 0 && balanceDue < total
+        case 'overdue':
+          if (!doc.due_date) return false
+          const dueDate = new Date(doc.due_date)
+          const today = new Date()
+          today.setHours(0, 0, 0, 0)
+          dueDate.setHours(0, 0, 0, 0)
+          return dueDate < today && balanceDue > 0
+        default:
+          return true
+      }
+    })
+  }, [data?.data, effectiveType, paymentStatusFilter])
+
   const total = data?.meta?.total ?? documents.length
 
   // Format currency using company settings
@@ -152,6 +189,19 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
     tabs.push({ value: 'cancelled' as StatusFilter, label: t('status.cancelled') })
     return tabs
   }, [t, total, effectiveType])
+
+  // Payment status filter tabs (only for invoices)
+  const paymentFilterTabs = useMemo(() => {
+    if (effectiveType !== 'invoice') return []
+
+    return [
+      { value: 'all' as PaymentStatusFilter, label: t('filters.all') },
+      { value: 'unpaid' as PaymentStatusFilter, label: t('sales:invoices.paymentStatus.unpaid') },
+      { value: 'partially_paid' as PaymentStatusFilter, label: t('sales:invoices.paymentStatus.partially_paid') },
+      { value: 'paid' as PaymentStatusFilter, label: t('sales:invoices.paymentStatus.paid') },
+      { value: 'overdue' as PaymentStatusFilter, label: t('sales:documents.statuses.overdue') },
+    ]
+  }, [t, effectiveType])
 
 
   // Helper function to determine payment status for invoices
@@ -226,14 +276,30 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <FilterTabs tabs={filterTabs} value={statusFilter} onChange={setStatusFilter} />
-        <SearchInput
-          value={searchQuery}
-          onChange={setSearchQuery}
-          placeholder={`${t('actions.search')} ${pageTitle.toLowerCase()}...`}
-          className="w-full sm:w-72"
-        />
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <FilterTabs tabs={filterTabs} value={statusFilter} onChange={setStatusFilter} />
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder={`${t('actions.search')} ${pageTitle.toLowerCase()}...`}
+            className="w-full sm:w-72"
+          />
+        </div>
+
+        {/* Payment Status Filter (Invoices only) */}
+        {effectiveType === 'invoice' && paymentFilterTabs.length > 0 && (
+          <div className="border-t border-gray-200 pt-4">
+            <label className="text-sm font-medium text-gray-700 mb-2 block">
+              {t('sales:documents.paymentStatus')}
+            </label>
+            <FilterTabs
+              tabs={paymentFilterTabs}
+              value={paymentStatusFilter}
+              onChange={setPaymentStatusFilter}
+            />
+          </div>
+        )}
       </div>
 
       {/* Content */}

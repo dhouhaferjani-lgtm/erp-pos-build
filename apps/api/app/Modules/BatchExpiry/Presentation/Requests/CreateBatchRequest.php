@@ -10,14 +10,13 @@ class CreateBatchRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true; // TODO: Add proper authorization
+        return $this->user()?->can('batches.create') ?? false;
     }
 
     public function rules(): array
     {
         return [
             'product_id' => ['required', 'exists:products,id'],
-            'product_variant_id' => ['nullable', 'exists:product_variants,id'],
             'batch_number' => ['required', 'string', 'max:100'],
             'manufacturing_date' => ['nullable', 'date', 'before_or_equal:today'],
             'expiry_date' => ['required', 'date', 'after:today'],

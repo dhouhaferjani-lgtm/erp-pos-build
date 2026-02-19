@@ -14,7 +14,7 @@ php artisan typescript:transform
 packages/shared/types/generated.ts
     ↓
 Frontend: apps/web/src/**/*.tsx
-         (imports from @mecanospex/shared/types/generated)
+         (imports from @autoerp/shared/types/generated)
 ```
 
 ## Backend DTO Definition
@@ -102,7 +102,7 @@ declare namespace App.Modules.Product.Application.DTOs {
 ### Pattern 1: Direct Import
 
 ```typescript
-import type { Invoice } from '@mecanospex/shared/types/generated'
+import type { Invoice } from '@autoerp/shared/types/generated'
 
 const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
 ```
@@ -111,7 +111,7 @@ const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
 
 ```typescript
 // apps/web/src/types/document.ts
-import type { App } from '@mecanospex/shared/types/generated'
+import type { App } from '@autoerp/shared/types/generated'
 
 export type Document = App.Modules.Document.Application.DTOs.DocumentData & {
   issue_date?: string  // Add computed properties
@@ -124,7 +124,7 @@ export type Document = App.Modules.Document.Application.DTOs.DocumentData & {
 import type {
   App_Modules_Document_Domain_Enums_DocumentStatus as DocumentStatus,
   App_Modules_Document_Domain_Enums_DocumentType as DocumentType,
-} from '@mecanospex/shared/types/generated'
+} from '@autoerp/shared/types/generated'
 
 export interface Expense {
   type: DocumentType
@@ -180,5 +180,5 @@ export interface Expense {
 - [ ] DTO class has `#[TypeScript]` attribute
 - [ ] DTO extends `Spatie\LaravelData\Data`
 - [ ] Run `php artisan typescript:transform` after changes
-- [ ] Import from `@mecanospex/shared/types/generated`
+- [ ] Import from `@autoerp/shared/types/generated`
 - [ ] Never manually edit `generated.ts`

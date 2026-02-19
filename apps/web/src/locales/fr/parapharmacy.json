@@ -1,6 +1,8 @@
 {
   "ingredients": "Ingrédients",
   "ingredientsDescription": "Gérer la base de données des ingrédients actifs pour les produits parapharmaceutiques",
+  "noIngredients": "Aucun ingrédient",
+  "noIngredientsDescription": "Commencez par ajouter votre premier ingrédient actif à la base de données",
   "addIngredient": "Ajouter un ingrédient",
   "editIngredient": "Modifier l'ingrédient",
   "confirmDeleteIngredient": "Supprimer l'ingrédient ?",
@@ -14,6 +16,8 @@
 
   "certifications": "Certifications",
   "certificationsDescription": "Gérer les certifications de produits et les badges de conformité",
+  "noCertifications": "Aucune certification",
+  "noCertificationsDescription": "Commencez par ajouter votre première certification de produit",
   "addCertification": "Ajouter une certification",
   "editCertification": "Modifier la certification",
   "confirmDeleteCertification": "Supprimer la certification ?",
@@ -27,6 +31,8 @@
 
   "healthClaims": "Allégations santé",
   "healthClaimsDescription": "Gérer les allégations santé approuvées pour les produits parapharmaceutiques",
+  "noHealthClaims": "Aucune allégation santé",
+  "noHealthClaimsDescription": "Commencez par ajouter votre première allégation santé approuvée",
   "addHealthClaim": "Ajouter une allégation santé",
   "editHealthClaim": "Modifier l'allégation santé",
   "confirmDeleteHealthClaim": "Supprimer l'allégation santé ?",
@@ -40,6 +46,8 @@
 
   "keyComponents": "Composants clés",
   "keyComponentsDescription": "Gérer les composants non actifs des produits (capsules, liants, etc.)",
+  "noKeyComponents": "Aucun composant clé",
+  "noKeyComponentsDescription": "Commencez par ajouter votre premier composant clé",
   "addKeyComponent": "Ajouter un composant clé",
   "editKeyComponent": "Modifier le composant clé",
   "confirmDeleteKeyComponent": "Supprimer le composant clé ?",
