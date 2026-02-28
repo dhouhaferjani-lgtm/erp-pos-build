@@ -28,4 +28,5 @@ return [
     App\Modules\Uom\Infrastructure\Providers\UomServiceProvider::class,
     App\Modules\Loyalty\Providers\LoyaltyServiceProvider::class,
     App\Modules\Catalog\Providers\CatalogServiceProvider::class,
+    App\Modules\Menu\Providers\MenuServiceProvider::class,
 ];

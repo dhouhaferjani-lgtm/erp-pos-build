@@ -19,6 +19,7 @@ import enParapharmacy from '../locales/en/parapharmacy.json'
 import enBatches from '../locales/en/batches.json'
 import enPos from '../locales/en/pos.json'
 import enCatalog from '../locales/en/catalog.json'
+import enMenu from '../locales/en/menu.json'
 
 import frCommon from '../locales/fr/common.json'
 import frAuth from '../locales/fr/auth.json'
@@ -36,6 +37,7 @@ import frParapharmacy from '../locales/fr/parapharmacy.json'
 import frBatches from '../locales/fr/batches.json'
 import frPos from '../locales/fr/pos.json'
 import frCatalog from '../locales/fr/catalog.json'
+import frMenu from '../locales/fr/menu.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -63,6 +65,7 @@ const resources = {
     batches: enBatches,
     pos: enPos,
     catalog: enCatalog,
+    menu: enMenu,
   },
   fr: {
     common: frCommon,
@@ -81,6 +84,7 @@ const resources = {
     batches: frBatches,
     pos: frPos,
     catalog: frCatalog,
+    menu: frMenu,
   },
   ar: {
     // Arabic falls back to English - translations to be added later
@@ -100,6 +104,7 @@ const resources = {
     batches: enBatches,
     pos: enPos,
     catalog: enCatalog,
+    menu: enMenu,
   },
 }
 
@@ -110,7 +115,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

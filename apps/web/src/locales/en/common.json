@@ -232,7 +232,8 @@
     "locations": "Locations",
     "catalog": "Catalog",
     "compositeItems": "Composite Items",
-    "modifierGroups": "Modifier Groups"
+    "modifierGroups": "Modifier Groups",
+    "menus": "Menus"
   },
   "locations": {
     "title": "Location Management",

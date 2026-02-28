@@ -157,6 +157,10 @@ const CompositeItemFormPage = lazy(() => import('../features/catalog').then((m) 
 const ModifierGroupListPage = lazy(() => import('../features/catalog').then((m) => ({ default: m.ModifierGroupListPage })))
 const ModifierGroupFormPage = lazy(() => import('../features/catalog').then((m) => ({ default: m.ModifierGroupFormPage })))
 
+// Menu module
+const MenuListPage = lazy(() => import('../features/menu').then((m) => ({ default: m.MenuListPage })))
+const MenuFormPage = lazy(() => import('../features/menu').then((m) => ({ default: m.MenuFormPage })))
+
 // Parapharmacy module
 const IngredientListPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.IngredientListPage })))
 const IngredientFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.IngredientFormPage })))
@@ -1634,6 +1638,36 @@ export function AppRoutes() {
               <RequirePermission permission="modifier-groups.manage">
                 <SuspenseWrapper>
                   <ModifierGroupFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="menus"
+            element={
+              <RequirePermission permission="composite-items.view">
+                <SuspenseWrapper>
+                  <MenuListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="menus/new"
+            element={
+              <RequirePermission permission="composite-items.create">
+                <SuspenseWrapper>
+                  <MenuFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="menus/:id/edit"
+            element={
+              <RequirePermission permission="composite-items.view">
+                <SuspenseWrapper>
+                  <MenuFormPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

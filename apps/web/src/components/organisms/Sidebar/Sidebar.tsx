@@ -209,6 +209,7 @@ const navigation: NavModule[] = [
     children: [
       { key: 'compositeItems', href: '/catalog/composite-items', icon: Combine, module: 'composite-items' },
       { key: 'modifierGroups', href: '/catalog/modifier-groups', icon: Layers, module: 'modifier-groups' },
+      { key: 'menus', href: '/catalog/menus', icon: BookOpen, module: 'composite-items' },
     ],
   },
   {

@@ -171,7 +171,8 @@
     "locations": "Emplacements",
     "catalog": "Catalogue",
     "compositeItems": "Articles composés",
-    "modifierGroups": "Groupes de modificateurs"
+    "modifierGroups": "Groupes de modificateurs",
+    "menus": "Menus"
   },
   "fields": {
     "totalReceivable": "Total à recevoir",
