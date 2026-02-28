@@ -1,11 +1,12 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
-import { useAuthStore } from '../../stores/authStore'
+import { clearAllAppState } from '../../lib/clearAppState'
 
 /**
  * useLogout hook for logging out users
  */
 export function useLogout() {
-  const logout = useAuthStore((state) => state.logout)
+  const queryClient = useQueryClient()
 
   const handleLogout = async () => {
     try {
@@ -13,7 +14,7 @@ export function useLogout() {
     } catch {
       // Logout locally even if API call fails
     } finally {
-      logout()
+      clearAllAppState(queryClient)
       window.location.href = '/login'
     }
   }

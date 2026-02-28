@@ -112,7 +112,10 @@ export const useLocationStore = create<LocationStore>()(
         return locations.find((l) => l.isDefault) ?? (locations.length > 0 ? locations[0] : null)
       },
 
-      reset: () => set(initialState),
+      reset: () => {
+        set(initialState)
+        localStorage.removeItem('autoerp-location')
+      },
 
       resetForCompanyChange: () => {
         // When company changes, reset location selection but keep loading state

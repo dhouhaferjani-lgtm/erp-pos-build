@@ -1,9 +1,10 @@
 import { useEffect, type ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useAuthStore } from '../../stores/authStore'
+import { clearAllAppState } from '../../lib/clearAppState'
 
 interface MeResponseUser {
   id: string
@@ -38,7 +39,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const user = useAuthStore((state) => state.user)
   const setUser = useAuthStore((state) => state.setUser)
   const setLoading = useAuthStore((state) => state.setLoading)
-  const logout = useAuthStore((state) => state.logout)
+  const queryClient = useQueryClient()
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['auth', 'me'],
@@ -67,10 +68,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
       setUser(userData)
     } else if (isError) {
-      // Session is invalid or expired, clear auth state
-      logout()
+      // Session is invalid or expired, clear all app state
+      clearAllAppState(queryClient)
     }
-  }, [data, isLoading, isError, setUser, setLoading, logout])
+  }, [data, isLoading, isError, setUser, setLoading, queryClient])
 
   // Show loading only while checking session
   if (isLoading && !user) {

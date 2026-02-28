@@ -1,6 +1,7 @@
 import axios, { type AxiosError, type AxiosInstance, type AxiosResponse } from 'axios'
-import { useAuthStore } from '../stores/authStore'
 import { useCompanyStore } from '../stores/companyStore'
+import { clearAllAppState } from './clearAppState'
+import { queryClient } from './queryClient'
 
 /**
  * API Response Format (per CLAUDE.md)
@@ -133,10 +134,9 @@ function createApiClient(): AxiosInstance {
         if (response.status === 401) {
           const url = error.config?.url ?? ''
           if (!url.includes('/auth/me')) {
-            // For other endpoints, clear auth state and let caller handle
+            // For other endpoints, clear all state when session expires
             console.warn('Unauthorized request:', url)
-            // Clear user state when session expires
-            useAuthStore.getState().logout()
+            clearAllAppState(queryClient)
           }
         }
 

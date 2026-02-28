@@ -123,7 +123,10 @@ export const useCompanyStore = create<CompanyStore>()(
         return companies.find((c) => c.id === currentCompanyId) ?? null
       },
 
-      reset: () => set(initialState),
+      reset: () => {
+        set(initialState)
+        localStorage.removeItem('autoerp-company-selection')
+      },
     }),
     {
       name: 'autoerp-company',
