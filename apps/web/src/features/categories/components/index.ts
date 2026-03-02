@@ -5,3 +5,4 @@
 
 export { CategoryForm } from './CategoryForm'
 export { CategoryTreeView } from './CategoryTreeView'
+export { CategorySelector } from './CategorySelector'

@@ -46,7 +46,7 @@ final class EarnPointsOnReceiptCompleted implements ShouldQueue
             ->get();
 
         // Build transaction data from receipt
-        $receipt = Receipt::with('lines')->find($event->receiptId);
+        $receipt = Receipt::with('lines.product')->find($event->receiptId);
         if ($receipt === null) {
             return;
         }
@@ -55,7 +55,7 @@ final class EarnPointsOnReceiptCompleted implements ShouldQueue
         foreach ($receipt->lines as $line) {
             $items[] = [
                 'product_id' => $line->product_id,
-                'category_id' => null,
+                'category_id' => $line->product->category_id ?? null,
                 'quantity' => $line->quantity,
                 'price' => (float) $line->unit_price,
             ];

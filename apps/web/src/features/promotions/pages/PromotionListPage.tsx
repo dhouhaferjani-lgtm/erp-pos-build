@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Tag, Pause, Play, Archive, Trash2 } from 'lucide-react'
-import { Button, Input } from '@/components/atoms'
-import { tokens } from '@/lib/designTokens'
+import { Button, Input, Select } from '@/components/atoms'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+
 import {
   usePromotions,
   useActivatePromotion,
@@ -21,16 +22,23 @@ const STATUS_COLORS: Record<string, string> = {
   archived: 'bg-gray-200 text-gray-500',
 }
 
+type ConfirmAction = {
+  type: 'delete'
+  promotion: PromotionData
+}
+
 export function PromotionListPage() {
   const { t } = useTranslation(['promotions', 'common'])
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
 
-  const { data, isLoading } = usePromotions({
-    search: search || undefined,
-    status: statusFilter || undefined,
-  })
+  const listParams = {
+    ...(search ? { search } : {}),
+    ...(statusFilter ? { status: statusFilter } : {}),
+  }
+  const { data, isLoading } = usePromotions(listParams)
   const activateMutation = useActivatePromotion()
   const pauseMutation = usePausePromotion()
   const archiveMutation = useArchivePromotion()
@@ -50,11 +58,16 @@ export function PromotionListPage() {
         archiveMutation.mutate(promotion.id)
         break
       case 'delete':
-        if (window.confirm(t('promotions:actions.confirmDelete'))) {
-          deleteMutation.mutate(promotion.id)
-        }
+        setConfirmAction({ type: 'delete', promotion })
         break
     }
+  }
+
+  const handleConfirm = () => {
+    if (!confirmAction) return
+    deleteMutation.mutate(confirmAction.promotion.id, {
+      onSettled: () => setConfirmAction(null),
+    })
   }
 
   return (
@@ -62,10 +75,10 @@ export function PromotionListPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>
+          <h1 className="text-2xl font-bold text-gray-900">
             {t('promotions:title')}
           </h1>
-          <p className="text-sm mt-1" style={{ color: tokens.colors.text.secondary }}>
+          <p className="text-sm mt-1 text-gray-500">
             {t('promotions:subtitle')}
           </p>
         </div>
@@ -83,10 +96,10 @@ export function PromotionListPage() {
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-xs"
         />
-        <select
+        <Select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+          className="w-auto"
         >
           <option value="">{t('common:all')}</option>
           <option value="draft">{t('promotions:statuses.draft')}</option>
@@ -94,7 +107,7 @@ export function PromotionListPage() {
           <option value="paused">{t('promotions:statuses.paused')}</option>
           <option value="expired">{t('promotions:statuses.expired')}</option>
           <option value="archived">{t('promotions:statuses.archived')}</option>
-        </select>
+        </Select>
       </div>
 
       {/* Table */}
@@ -209,6 +222,16 @@ export function PromotionListPage() {
           </table>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmAction !== null}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={handleConfirm}
+        title={t('promotions:deletePromotion')}
+        message={t('promotions:actions.confirmDelete')}
+        variant="danger"
+        isLoading={deleteMutation.isPending}
+      />
     </div>
   )
 }

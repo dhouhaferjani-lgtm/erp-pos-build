@@ -33,6 +33,11 @@
     "minimumQuantity": "Minimum Quantity",
     "minimumAmount": "Minimum Amount"
   },
+  "helpers": {
+    "categoryIds": "Select the categories this promotion applies to",
+    "qualifyingProducts": "Select the products that qualify for this promotion",
+    "comboProducts": "Select the products that must be purchased together"
+  },
   "types": {
     "happy_hour": "Happy Hour",
     "buy_x_get_y": "Buy X Get Y",
@@ -65,7 +70,10 @@
     "confirmActivate": "Are you sure you want to activate this promotion?",
     "confirmPause": "Are you sure you want to pause this promotion?",
     "confirmArchive": "Are you sure you want to archive this promotion?",
-    "confirmDelete": "Are you sure you want to delete this promotion?"
+    "confirmDelete": "Are you sure you want to delete this promotion?",
+    "activated": "Promotion activated",
+    "paused": "Promotion paused",
+    "archived": "Promotion archived"
   },
   "schedule": {
     "title": "Schedule",

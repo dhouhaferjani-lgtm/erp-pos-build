@@ -104,7 +104,7 @@ class ListPartnersTest extends TestCase
 
     public function test_list_is_paginated(): void
     {
-        for ($i = 1; $i <= 25; $i++) {
+        for ($i = 1; $i <= 30; $i++) {
             Partner::create([
                 'tenant_id' => $this->tenant->id,
                 'company_id' => $this->company->id,
@@ -117,10 +117,10 @@ class ListPartnersTest extends TestCase
             ->getJson('/api/v1/partners');
 
         $response->assertOk()
-            ->assertJsonPath('meta.total', 25)
-            ->assertJsonPath('meta.per_page', 15);
+            ->assertJsonPath('meta.total', 30)
+            ->assertJsonPath('meta.per_page', 25);
 
-        $this->assertCount(15, $response->json('data'));
+        $this->assertCount(25, $response->json('data'));
     }
 
     public function test_can_filter_by_type(): void

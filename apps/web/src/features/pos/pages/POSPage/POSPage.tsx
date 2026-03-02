@@ -23,6 +23,8 @@ export interface POSPageProps {
   transactionDiscount?: { amount: string; reason?: string }
   onTransactionDiscountChange?: (discount: { amount: string; reason?: string } | undefined) => void
   onEditLineDiscount?: (productId: string, discount: { type: 'percentage' | 'fixed'; value: string; reason?: string } | undefined) => void
+  loyaltyMember?: import('../../api/loyaltyApi').LoyaltyMember | null
+  loyaltyEnrollment?: import('../../api/loyaltyApi').LoyaltyEnrollment | null
 }
 
 export function POSPage({
@@ -39,6 +41,8 @@ export function POSPage({
   transactionDiscount,
   onTransactionDiscountChange,
   onEditLineDiscount: externalEditLineDiscount,
+  loyaltyMember,
+  loyaltyEnrollment,
 }: POSPageProps) {
   const { t } = useTranslation(['common'])
   const navigate = useNavigate()
@@ -305,6 +309,8 @@ export function POSPage({
             terminalCode={terminalCode}
             transactionDiscount={transactionDiscount}
             onUpdateTransactionDiscount={onTransactionDiscountChange}
+            loyaltyMember={loyaltyMember}
+            loyaltyEnrollment={loyaltyEnrollment}
           />
         </div>
 

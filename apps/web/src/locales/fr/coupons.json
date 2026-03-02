@@ -26,6 +26,10 @@
     "qualifyingProducts": "Produits qualifiants",
     "qualifyingCategories": "Cat\u00e9gories qualifiantes"
   },
+  "helpers": {
+    "qualifyingProducts": "Laisser vide pour appliquer \u00e0 tous les produits",
+    "qualifyingCategories": "Laisser vide pour appliquer \u00e0 toutes les cat\u00e9gories"
+  },
   "types": {
     "standard": "Standard",
     "single_use": "Usage unique",
@@ -46,14 +50,17 @@
     "reactivate": "R\u00e9activer",
     "confirmRevoke": "\u00cates-vous s\u00fbr de vouloir r\u00e9voquer ce coupon ?",
     "confirmReactivate": "\u00cates-vous s\u00fbr de vouloir r\u00e9activer ce coupon ?",
-    "confirmDelete": "\u00cates-vous s\u00fbr de vouloir supprimer ce coupon ?"
+    "confirmDelete": "\u00cates-vous s\u00fbr de vouloir supprimer ce coupon ?",
+    "revoked": "Coupon r\u00e9voqu\u00e9",
+    "reactivated": "Coupon r\u00e9activ\u00e9"
   },
   "sections": {
     "basicInfo": "Informations de base",
     "discountConfig": "Configuration de la remise",
     "usageLimits": "Limites d'utilisation",
     "schedule": "Calendrier",
-    "stacking": "R\u00e8gles de cumul"
+    "stacking": "R\u00e8gles de cumul",
+    "targeting": "Ciblage"
   },
   "placeholders": {
     "code": "ex: BIENVENUE10",

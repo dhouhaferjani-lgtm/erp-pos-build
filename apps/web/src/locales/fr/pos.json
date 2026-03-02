@@ -27,7 +27,22 @@
       "safe": "Coffre-Fort",
       "bank_account": "Compte Bancaire",
       "virtual": "Virtuel"
-    }
+    },
+    "addPayment": "Ajouter un paiement",
+    "payRemaining": "Payer le Reste",
+    "removeLine": "Supprimer",
+    "selectMethodPlaceholder": "Choisir un moyen de paiement...",
+    "reference": "Référence",
+    "referencePlaceholder": "N° chèque, référence transaction...",
+    "cardLastFour": "4 derniers chiffres",
+    "paymentMethod": "Moyen de paiement",
+    "totalDue": "Montant Dû",
+    "totalEntered": "Montant Saisi",
+    "paymentLineNumber": "Paiement #{{number}}",
+    "tapToSelect": "Sélectionnez un moyen de paiement",
+    "addPaymentButton": "Ajouter le Paiement",
+    "addedPayments": "Paiements Ajoutés",
+    "noPaymentsAdded": "Aucun paiement ajouté"
   },
   "payment": {
     "success": "Paiement Réussi!",
@@ -277,6 +292,38 @@
       "payoutFailed": "Échec de l'enregistrement du retrait",
       "xReportGenerated": "Rapport X généré",
       "xReportFailed": "Échec de la génération du rapport X"
+    }
+  },
+  "cashTendered": {
+    "title": "Paiement Espèces",
+    "amountDue": "Montant Dû",
+    "tenderedAmount": "Montant Reçu",
+    "changeDue": "Monnaie à Rendre",
+    "exactAmount": "Montant Exact",
+    "confirm": "Confirmer le Paiement",
+    "processing": "Traitement..."
+  },
+  "loyalty": {
+    "memberBadge": {
+      "points": "pts",
+      "stamps": "tampons"
+    },
+    "rewards": {
+      "title": "Récompenses Fidélité",
+      "redeem": "Échanger",
+      "redeemSuccess": "Récompense échangée avec succès",
+      "redeemFailed": "Échec de l'échange de la récompense",
+      "insufficientBalance": "Points insuffisants",
+      "noRewards": "Aucune récompense disponible"
+    },
+    "earning": {
+      "preview": "Vous gagnerez {{points}} points",
+      "earned": "+{{points}} points de fidélité gagnés"
+    },
+    "lookup": {
+      "searching": "Recherche du membre fidélité...",
+      "notFound": "Aucun programme de fidélité trouvé",
+      "enroll": "Inscrire au programme fidélité"
     }
   }
 }

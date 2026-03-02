@@ -38,7 +38,7 @@ class LoyaltyMemberData extends Data
             first_name: $member->first_name,
             last_name: $member->last_name,
             date_of_birth: $member->date_of_birth?->toDateString(),
-            status: $member->status,
+            status: $member->status->value,
             enrollment_date: $member->enrollment_date->toIso8601String(),
             external_id: $member->external_id,
             created_at: $member->created_at?->toIso8601String() ?? '',

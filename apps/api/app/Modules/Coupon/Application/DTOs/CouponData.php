@@ -52,7 +52,7 @@ class CouponData extends Data
             use_count: $coupon->use_count,
             max_uses_per_customer: $coupon->max_uses_per_customer,
             discount_type: $coupon->discount_type,
-            discount_value: $coupon->discount_value,
+            discount_value: (string) $coupon->discount_value,
             max_discount_amount: $coupon->max_discount_amount,
             minimum_order_amount: $coupon->minimum_order_amount,
             qualifying_product_ids: $coupon->qualifying_product_ids,

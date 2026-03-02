@@ -22,6 +22,9 @@ class PartnerData extends Data
         public ?string $country_code,
         public ?string $vat_number,
         public ?string $notes,
+        public ?string $receivable_balance,
+        public ?string $credit_balance,
+        public ?string $payable_balance,
         public string $created_at,
         public ?string $updated_at,
     ) {}
@@ -38,6 +41,9 @@ class PartnerData extends Data
             country_code: $partner->country_code,
             vat_number: $partner->vat_number,
             notes: $partner->notes,
+            receivable_balance: $partner->receivable_balance,
+            credit_balance: $partner->credit_balance,
+            payable_balance: $partner->payable_balance,
             created_at: $partner->created_at?->toIso8601String() ?? '',
             updated_at: $partner->updated_at?->toIso8601String(),
         );

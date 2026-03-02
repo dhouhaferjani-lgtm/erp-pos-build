@@ -9,8 +9,8 @@ import type { CartItem } from '../../molecules'
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, opts?: Record<string, string>) => {
-      if (opts?.defaultValue) return opts.defaultValue
-      if (opts?.number) return `${key.replace(/\{\{.*\}\}/, '')}${opts.number}`
+      if (opts && opts['defaultValue']) return opts['defaultValue']
+      if (opts && opts['number']) return `${key.replace(/\{\{.*\}\}/, '')}${opts['number']}`
       return key
     },
   }),
@@ -57,7 +57,7 @@ vi.mock('../../components/ReceiptPrintButton', () => ({
 const mockPaymentMethods = [
   {
     id: 'cash',
-    code: 'cash',
+    code: 'CASH',
     name: 'Cash',
     is_physical: true,
     has_maturity: false,
@@ -74,7 +74,7 @@ const mockPaymentMethods = [
   },
   {
     id: 'card',
-    code: 'card',
+    code: 'CARD',
     name: 'Card',
     is_physical: false,
     has_maturity: false,
@@ -91,7 +91,7 @@ const mockPaymentMethods = [
   },
   {
     id: 'check',
-    code: 'check',
+    code: 'CHECK',
     name: 'Check',
     is_physical: false,
     has_maturity: true,
@@ -108,7 +108,7 @@ const mockPaymentMethods = [
   },
   {
     id: 'bank_transfer',
-    code: 'transfer',
+    code: 'TRANSFER',
     name: 'Bank Transfer',
     is_physical: false,
     has_maturity: false,
@@ -197,6 +197,28 @@ const mockCartItems: CartItem[] = [
   },
 ]
 
+/** Helper: tap a payment method button by name, fill the config panel, and click "Add Payment" */
+async function addPaymentViaButton(
+  user: ReturnType<typeof userEvent.setup>,
+  methodName: string,
+  amount?: string
+) {
+  // Tap the method button
+  const methodButton = screen.getByRole('button', { name: new RegExp(methodName, 'i') })
+  await user.click(methodButton)
+
+  // Optionally change amount (it's pre-filled with remaining)
+  if (amount !== undefined) {
+    const amountInput = screen.getByPlaceholderText('0.00')
+    await user.clear(amountInput)
+    await user.type(amountInput, amount)
+  }
+
+  // Click "Add Payment"
+  const addButton = screen.getByRole('button', { name: /advancedPayments\.addPaymentButton/i })
+  await user.click(addButton)
+}
+
 describe('AdvancedPaymentsModal', () => {
   it('does not render when isOpen is false', () => {
     const { container } = renderWithClient(
@@ -221,13 +243,12 @@ describe('AdvancedPaymentsModal', () => {
       />
     )
 
-    // Title uses i18n key: t('advancedPayments.title')
     await waitFor(() => {
       expect(screen.getByText('advancedPayments.title')).toBeInTheDocument()
     })
   })
 
-  it('displays cart summary with correct totals', async () => {
+  it('displays payment method buttons in a grid', async () => {
     renderWithClient(
       <AdvancedPaymentsModal
         isOpen={true}
@@ -237,40 +258,16 @@ describe('AdvancedPaymentsModal', () => {
       />
     )
 
-    // Wait for data to load
     await waitFor(() => {
-      expect(screen.getByText('advancedPayments.cartSummary')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Cash/i })).toBeInTheDocument()
     })
 
-    // Totals rendered as toFixed(2) + " EUR" (from useCurrency mock)
-    // Subtotal: 100.00 EUR, Tax: 19.00 EUR, Total: 119.00 EUR
-    expect(screen.getByText('100.00 EUR')).toBeInTheDocument()
-    expect(screen.getByText('19.00 EUR')).toBeInTheDocument()
-    // 119.00 EUR appears for both total and remaining, so use getAllByText
-    const totalTexts = screen.getAllByText('119.00 EUR')
-    expect(totalTexts.length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByRole('button', { name: /Card/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Check/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Bank Transfer/i })).toBeInTheDocument()
   })
 
-  it('displays all payment methods', async () => {
-    renderWithClient(
-      <AdvancedPaymentsModal
-        isOpen={true}
-        onClose={vi.fn()}
-        cartItems={mockCartItems}
-        onComplete={vi.fn()}
-      />
-    )
-
-    // Payment method names come from the mock data, not i18n
-    await waitFor(() => {
-      expect(screen.getByText('Cash')).toBeInTheDocument()
-    })
-    expect(screen.getByText('Card')).toBeInTheDocument()
-    expect(screen.getByText('Check')).toBeInTheDocument()
-    expect(screen.getByText('Bank Transfer')).toBeInTheDocument()
-  })
-
-  it('selects payment method when clicked', async () => {
+  it('shows configuration panel when a method button is tapped', async () => {
     const user = userEvent.setup()
 
     renderWithClient(
@@ -283,17 +280,22 @@ describe('AdvancedPaymentsModal', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /cash/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Cash/i })).toBeInTheDocument()
     })
 
-    const cashButton = screen.getByRole('button', { name: /cash/i })
-    await user.click(cashButton)
+    // Tap Cash button
+    await user.click(screen.getByRole('button', { name: /Cash/i }))
 
-    // After selection, payment distribution section should appear (i18n key)
-    expect(screen.getByText('advancedPayments.paymentDistribution')).toBeInTheDocument()
+    // Config panel should appear with amount input pre-filled
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('0.00')).toBeInTheDocument()
+    })
+
+    // "Add Payment" button should appear
+    expect(screen.getByRole('button', { name: /advancedPayments\.addPaymentButton/i })).toBeInTheDocument()
   })
 
-  it('allows entering payment amount for selected method', async () => {
+  it('pre-fills amount with remaining balance when tapping a method', async () => {
     const user = userEvent.setup()
 
     renderWithClient(
@@ -306,20 +308,17 @@ describe('AdvancedPaymentsModal', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /cash/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Cash/i })).toBeInTheDocument()
     })
 
-    const cashButton = screen.getByRole('button', { name: /cash/i })
-    await user.click(cashButton)
+    await user.click(screen.getByRole('button', { name: /Cash/i }))
 
-    // The input placeholder is hardcoded as "0.000" in the component
-    const paymentInput = screen.getByPlaceholderText('0.000')
-    await user.type(paymentInput, '119.000')
-
-    expect(paymentInput).toHaveValue(119)
+    const amountInput = screen.getByPlaceholderText('0.00') as HTMLInputElement
+    // Total is 119.00 (100 + 19 tax)
+    expect(amountInput.value).toBe('119.00')
   })
 
-  it('calculates remaining amount correctly', async () => {
+  it('adds payment to the list and resets config panel', async () => {
     const user = userEvent.setup()
 
     renderWithClient(
@@ -332,18 +331,43 @@ describe('AdvancedPaymentsModal', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /cash/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Cash/i })).toBeInTheDocument()
     })
 
-    const cashButton = screen.getByRole('button', { name: /cash/i })
-    await user.click(cashButton)
+    await addPaymentViaButton(user, 'Cash')
 
-    const paymentInput = screen.getByPlaceholderText('0.000')
-    await user.type(paymentInput, '50')
-
-    // Remaining should be 119 - 50 = 69, displayed as "69.00 EUR"
+    // Payment should appear in the "Added Payments" list
     await waitFor(() => {
-      expect(screen.getByText('69.00 EUR')).toBeInTheDocument()
+      expect(screen.getByText('advancedPayments.addedPayments')).toBeInTheDocument()
+    })
+    // 119.00 appears in both the list and the balance bar
+    const matches = screen.getAllByText('119.00 EUR')
+    expect(matches.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('calculates remaining amount correctly with split payments', async () => {
+    const user = userEvent.setup()
+
+    renderWithClient(
+      <AdvancedPaymentsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        cartItems={mockCartItems}
+        onComplete={vi.fn()}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Cash/i })).toBeInTheDocument()
+    })
+
+    // Add Cash for 50
+    await addPaymentViaButton(user, 'Cash', '50')
+
+    // Remaining should be 69.00
+    await waitFor(() => {
+      const matches = screen.getAllByText('69.00 EUR')
+      expect(matches.length).toBeGreaterThanOrEqual(1)
     })
   })
 
@@ -360,16 +384,12 @@ describe('AdvancedPaymentsModal', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /cash/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Cash/i })).toBeInTheDocument()
     })
 
-    const cashButton = screen.getByRole('button', { name: /cash/i })
-    await user.click(cashButton)
+    // Add Cash for the full amount (auto-filled)
+    await addPaymentViaButton(user, 'Cash')
 
-    const paymentInput = screen.getByPlaceholderText('0.000')
-    await user.type(paymentInput, '119')
-
-    // Button text uses i18n key: t('advancedPayments.completeTransaction')
     const completeButton = screen.getByRole('button', { name: /advancedPayments\.completeTransaction/i })
     expect(completeButton).not.toBeDisabled()
   })
@@ -387,14 +407,11 @@ describe('AdvancedPaymentsModal', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /cash/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Cash/i })).toBeInTheDocument()
     })
 
-    const cashButton = screen.getByRole('button', { name: /cash/i })
-    await user.click(cashButton)
-
-    const paymentInput = screen.getByPlaceholderText('0.000')
-    await user.type(paymentInput, '50')
+    // Add Cash for partial amount
+    await addPaymentViaButton(user, 'Cash', '50')
 
     const completeButton = screen.getByRole('button', { name: /advancedPayments\.completeTransaction/i })
     expect(completeButton).toBeDisabled()
@@ -413,16 +430,12 @@ describe('AdvancedPaymentsModal', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /cash/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Cash/i })).toBeInTheDocument()
     })
 
-    const cashButton = screen.getByRole('button', { name: /cash/i })
-    await user.click(cashButton)
+    // Add Cash for more than total
+    await addPaymentViaButton(user, 'Cash', '150')
 
-    const paymentInput = screen.getByPlaceholderText('0.000')
-    await user.type(paymentInput, '150')
-
-    // Overpayment text uses i18n keys
     await waitFor(() => {
       expect(screen.getByText('advancedPayments.overpaymentDetected')).toBeInTheDocument()
     })
@@ -442,26 +455,16 @@ describe('AdvancedPaymentsModal', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /cash/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Cash/i })).toBeInTheDocument()
     })
 
-    // Select cash
-    const cashButton = screen.getByRole('button', { name: /cash/i })
-    await user.click(cashButton)
+    // Add Cash for 50
+    await addPaymentViaButton(user, 'Cash', '50')
 
-    // Select card
-    const cardButton = screen.getByRole('button', { name: /card/i })
-    await user.click(cardButton)
+    // Add Card for 69 (remaining)
+    await addPaymentViaButton(user, 'Card')
 
-    // Both payment inputs should be visible
-    const inputs = screen.getAllByPlaceholderText('0.000')
-    expect(inputs).toHaveLength(2)
-
-    // Enter amounts
-    await user.type(inputs[0], '50')
-    await user.type(inputs[1], '69')
-
-    // Complete button should be enabled
+    // Complete button should be enabled (50 + 69 = 119)
     const completeButton = screen.getByRole('button', { name: /advancedPayments\.completeTransaction/i })
     expect(completeButton).not.toBeDisabled()
   })
@@ -480,17 +483,12 @@ describe('AdvancedPaymentsModal', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /cash/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Cash/i })).toBeInTheDocument()
     })
 
-    // Select and enter payment
-    const cashButton = screen.getByRole('button', { name: /cash/i })
-    await user.click(cashButton)
+    // Add Cash for the full amount
+    await addPaymentViaButton(user, 'Cash')
 
-    const paymentInput = screen.getByPlaceholderText('0.000')
-    await user.type(paymentInput, '119')
-
-    // Complete transaction
     const completeButton = screen.getByRole('button', { name: /advancedPayments\.completeTransaction/i })
     await user.click(completeButton)
 
@@ -525,7 +523,7 @@ describe('AdvancedPaymentsModal', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
-  it('allows using "Use Remaining" button to auto-fill payment', async () => {
+  it('allows deleting a payment from the added list', async () => {
     const user = userEvent.setup()
 
     renderWithClient(
@@ -538,23 +536,28 @@ describe('AdvancedPaymentsModal', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /cash/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Cash/i })).toBeInTheDocument()
     })
 
-    // Select cash
-    const cashButton = screen.getByRole('button', { name: /cash/i })
-    await user.click(cashButton)
+    // Add Cash for the full amount
+    await addPaymentViaButton(user, 'Cash')
 
-    // Click "Use Remaining" — button text is i18n key
-    const useRemainingButton = screen.getByRole('button', { name: /advancedPayments\.useRemaining/i })
-    await user.click(useRemainingButton)
+    // Should have the payment in the list
+    await waitFor(() => {
+      expect(screen.getByText('advancedPayments.addedPayments')).toBeInTheDocument()
+    })
 
-    // Input should have the full amount (119.00 as toFixed(2))
-    const paymentInput = screen.getByPlaceholderText('0.000')
-    expect(paymentInput).toHaveValue(119)
+    // Click delete button
+    const deleteButton = screen.getByLabelText('advancedPayments.removeLine')
+    await user.click(deleteButton)
+
+    // List should be gone
+    expect(screen.queryByText('advancedPayments.addedPayments')).not.toBeInTheDocument()
   })
 
-  it('displays cart items in mini cart', async () => {
+  it('uses Pay Remaining button to fill amount', async () => {
+    const user = userEvent.setup()
+
     renderWithClient(
       <AdvancedPaymentsModal
         isOpen={true}
@@ -565,16 +568,49 @@ describe('AdvancedPaymentsModal', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('advancedPayments.cartSummary')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Cash/i })).toBeInTheDocument()
     })
 
-    // Check product name is displayed
-    expect(screen.getByText('Product 1')).toBeInTheDocument()
+    // Add Cash for 50 first
+    await addPaymentViaButton(user, 'Cash', '50')
 
-    // Check quantity
-    expect(screen.getByText('×2')).toBeInTheDocument()
+    // Tap Card to open config panel
+    await user.click(screen.getByRole('button', { name: /Card/i }))
 
-    // Check line total — item.line_total is "100.000", displayed as "{line_total} {currency}"
-    expect(screen.getByText('100.000 EUR')).toBeInTheDocument()
+    // Clear the amount that was pre-filled
+    const amountInput = screen.getByPlaceholderText('0.00')
+    await user.clear(amountInput)
+
+    // Click "Pay Remaining"
+    const payRemainingButton = screen.getByRole('button', { name: /advancedPayments\.payRemaining/i })
+    await user.click(payRemainingButton)
+
+    // Input should have remaining amount (69.00)
+    expect(amountInput).toHaveValue(69)
+  })
+
+  it('shows card-specific fields for card payment method', async () => {
+    const user = userEvent.setup()
+
+    renderWithClient(
+      <AdvancedPaymentsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        cartItems={mockCartItems}
+        onComplete={vi.fn()}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Card/i })).toBeInTheDocument()
+    })
+
+    // Tap Card button
+    await user.click(screen.getByRole('button', { name: /Card/i }))
+
+    // Should show card last 4 field
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('0000')).toBeInTheDocument()
+    })
   })
 })

@@ -64,12 +64,14 @@ final class ReceiptPaymentService
 
             // Calculate total paid
             $totalPaid = '0.000';
-            foreach ($payments as $payment) {
+            foreach ($payments as &$payment) {
+                $payment['amount'] = number_format((float) $payment['amount'], self::SCALE, '.', '');
                 if (bccomp($payment['amount'], '0', self::SCALE) <= 0) {
                     throw new \InvalidArgumentException('Payment amount must be greater than zero');
                 }
                 $totalPaid = bcadd($totalPaid, $payment['amount'], self::SCALE);
             }
+            unset($payment);
 
             // Validate minimum payment
             if (bccomp($totalPaid, $receipt->total, self::SCALE) < 0) {
@@ -91,7 +93,9 @@ final class ReceiptPaymentService
 
                 if ($repository->gl_account_id === null) {
                     throw new \RuntimeException(
-                        "Payment repository '{$repository->name}' does not have a GL account configured"
+                        "Payment repository '{$repository->name}' ({$repository->code}) does not have a GL account configured. "
+                        .'Please assign a GL account to this repository in Treasury settings, or run: '
+                        .'php artisan migrate (to backfill from chart of accounts).'
                     );
                 }
 

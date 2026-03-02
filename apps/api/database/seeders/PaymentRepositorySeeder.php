@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
@@ -50,16 +53,43 @@ class PaymentRepositorySeeder extends Seeder
     {
         $repositories = $this->getRepositoriesForCountry($company->country_code);
 
+        // Look up GL accounts by purpose for linking
+        $cashAccount = Account::findByPurpose($company->id, SystemAccountPurpose::Cash);
+        $bankAccount = Account::findByPurpose($company->id, SystemAccountPurpose::Bank);
+
+        if ($cashAccount === null || $bankAccount === null) {
+            $this->command?->warn(
+                "GL accounts not found for {$company->name}. Payment repositories will be created without GL links. "
+                .'Run ChartOfAccountsSeeder first, then re-run this seeder.'
+            );
+        }
+
         foreach ($repositories as $repo) {
+            $glAccountId = $this->resolveGlAccountId($repo['type'], $cashAccount, $bankAccount);
+
             PaymentRepository::create([
                 'id' => Str::uuid()->toString(),
                 'tenant_id' => $tenant->id,
                 'company_id' => $company->id,
+                'gl_account_id' => $glAccountId,
                 ...$repo,
             ]);
         }
 
         $this->command?->info('Created '.count($repositories).' payment repositories for '.$company->name);
+    }
+
+    /**
+     * Resolve the GL account ID based on repository type.
+     */
+    private function resolveGlAccountId(string $type, ?Account $cashAccount, ?Account $bankAccount): ?string
+    {
+        $repositoryType = RepositoryType::from($type);
+
+        return match ($repositoryType) {
+            RepositoryType::CashRegister, RepositoryType::Safe => $cashAccount?->id,
+            RepositoryType::BankAccount, RepositoryType::Virtual => $bankAccount?->id,
+        };
     }
 
     /**

@@ -66,10 +66,10 @@ final class CouponValidationService
         }
 
         // Calculate discount amount
-        /** @var numeric-string $rawDiscountValue */
-        $rawDiscountValue = $coupon->discount_value;
+        /** @var numeric-string $rawDiscount */
+        $rawDiscount = (string) $coupon->discount_value;
         /** @var numeric-string $discountValue */
-        $discountValue = bcadd($rawDiscountValue, '0', 4);
+        $discountValue = bcadd($rawDiscount, '0', 4);
 
         $discountType = DiscountType::tryFrom($coupon->discount_type);
         if ($discountType === null) {

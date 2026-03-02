@@ -8,6 +8,7 @@ import { AdvancedPaymentsModal, type PaymentData } from '@/features/pos/organism
 import { ProductInfoModal } from '@/features/pos/organisms/ProductInfoModal'
 import { OpenShiftModal } from '@/features/pos/components/OpenShiftModal'
 import { CheckoutSuccessDialog } from '@/features/pos/components/CheckoutSuccessDialog'
+import { CashTenderedModal } from '@/features/pos/components/CashTenderedModal'
 import type { Product } from '@/features/pos/molecules/ProductCard/ProductCard'
 import type { CartItem } from '@/features/pos/molecules/CartLineItem/CartLineItem'
 import { usePOSProducts } from '@/features/pos/hooks/usePOSProducts'
@@ -16,6 +17,7 @@ import { createReceipt, processReceiptPayments } from '@/features/pos/api/receip
 import { fetchPaymentMethods } from '@/features/pos/api/paymentMethodApi'
 import { fetchPaymentRepositories } from '@/features/pos/api/paymentRepositoryApi'
 import { getOrCreateWebTerminal } from '@/features/pos/api/terminalApi'
+import { lookupMember, earnPoints, type LoyaltyMember, type LoyaltyEnrollment } from '@/features/pos/api/loyaltyApi'
 import { PartnerSearchSelect } from '@/components/ui/PartnerSearchSelect'
 import { isApiError, getErrorMessage } from '@/lib/api'
 import { useLocation } from '@/hooks/useLocation'
@@ -67,12 +69,24 @@ export function POSTransactions() {
     receiptId: string
     receiptNumber: string
     total: string
+    changeDue?: number
   } | null>(null)
+  const [cashTenderedState, setCashTenderedState] = useState<{
+    receiptId: string
+    receiptNumber: string
+    total: string
+    cashMethodId: string
+    cashRegisterId: string
+    items: CartItem[]
+  } | null>(null)
+  const [isCashPaymentProcessing, setIsCashPaymentProcessing] = useState(false)
   const [cartVersion, setCartVersion] = useState(0)
   const [transactionDiscount, setTransactionDiscount] = useState<{
     amount: string
     reason?: string
   } | undefined>(undefined)
+  const [loyaltyMember, setLoyaltyMember] = useState<LoyaltyMember | null>(null)
+  const [loyaltyEnrollment, setLoyaltyEnrollment] = useState<LoyaltyEnrollment | null>(null)
 
   // Auto-resolve web terminal for the active location
   const webTerminalMutation = useMutation({
@@ -261,7 +275,7 @@ export function POSTransactions() {
   }
 
   /**
-   * Quick Checkout - one-tap cash payment (no modal)
+   * Quick Checkout - creates receipt then opens cash tendered modal
    */
   const handleQuickCheckout = async (items: CartItem[]) => {
     // Find default cash payment method
@@ -270,7 +284,6 @@ export function POSTransactions() {
     )
     if (!cashMethod) {
       toast.error(t('pos:transactions.errors.noCashMethod'))
-      // Fall back to advanced payments
       setCurrentCartItems(items)
       setIsAdvancedPaymentsOpen(true)
       return
@@ -282,42 +295,90 @@ export function POSTransactions() {
     )
     if (!cashRegister) {
       toast.error(t('pos:transactions.errors.noCashRegister'))
-      // Fall back to advanced payments
       setCurrentCartItems(items)
       setIsAdvancedPaymentsOpen(true)
       return
     }
 
-    // Calculate total from items, accounting for transaction discount
-    let total = items.reduce((sum, item) => sum + parseFloat(item.line_total), 0)
-    if (transactionDiscount?.amount) {
-      total = Math.max(0, total - parseFloat(transactionDiscount.amount))
-    }
-
     setIsQuickCheckoutPending(true)
     try {
-      const result = await createReceiptAndPay(items, {
-        methods: [{
-          methodId: cashMethod.id,
-          amount: Number(total.toFixed(3)),
-          repositoryId: cashRegister.id,
+      // Step 1: Create receipt to get the authoritative backend total
+      const payload = buildReceiptPayload(items)
+      const receipt = await createReceipt(payload)
+
+      // Step 2: Open cash tendered modal with backend-computed total
+      setCashTenderedState({
+        receiptId: receipt.id,
+        receiptNumber: receipt.receipt_number,
+        total: receipt.total,
+        cashMethodId: cashMethod.id,
+        cashRegisterId: cashRegister.id,
+        items,
+      })
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, t('pos:transactions.errors.quickCheckoutFailed')))
+    } finally {
+      setIsQuickCheckoutPending(false)
+    }
+  }
+
+  /**
+   * Handle cash tendered confirmation — process payment with the tendered amount
+   */
+  const handleCashTenderedConfirm = async (tenderedAmount: number) => {
+    if (!cashTenderedState) return
+
+    const { receiptId, receiptNumber, total, cashMethodId, cashRegisterId, items } = cashTenderedState
+
+    setIsCashPaymentProcessing(true)
+    try {
+      const paymentResult = await processReceiptPayments(receiptId, {
+        payments: [{
+          payment_method_id: cashMethodId,
+          amount: tenderedAmount,
+          repository_id: cashRegisterId,
         }],
+        customer_id: selectedCustomer?.id,
       })
 
-      toast.success(t('pos:transactions.toasts.transactionCompleted', { number: result.receiptNumber }))
+      toast.success(t('pos:transactions.toasts.transactionCompleted', { number: receiptNumber }))
 
       // Invalidate shift data
       void queryClient.invalidateQueries({ queryKey: ['pos', 'shift'] })
 
-      // Show success dialog and clear cart
-      setQuickCheckoutResult(result)
+      // Earn loyalty points if member is enrolled
+      if (loyaltyEnrollment) {
+        void earnPoints(
+          loyaltyEnrollment.id,
+          receiptId,
+          total,
+          items.map((item) => ({
+            product_id: item.product.id,
+            quantity: item.quantity,
+            price: parseFloat(item.unit_price),
+          })),
+        ).catch(() => {
+          // Loyalty earning failure should not disrupt checkout flow
+        })
+      }
+
+      const changeDue = parseFloat(paymentResult.change_due)
+
+      // Close cash tendered modal and show success
+      setCashTenderedState(null)
+      setQuickCheckoutResult({
+        receiptId,
+        receiptNumber,
+        total,
+        changeDue: changeDue > 0 ? changeDue : undefined,
+      })
       setCurrentCartItems([])
       setTransactionDiscount(undefined)
       setCartVersion((v) => v + 1)
     } catch (err) {
       toast.error(extractApiErrorMessage(err, t('pos:transactions.errors.quickCheckoutFailed')))
     } finally {
-      setIsQuickCheckoutPending(false)
+      setIsCashPaymentProcessing(false)
     }
   }
 
@@ -330,6 +391,22 @@ export function POSTransactions() {
 
     // Invalidate shift data
     void queryClient.invalidateQueries({ queryKey: ['pos', 'shift'] })
+
+    // Earn loyalty points if member is enrolled
+    if (loyaltyEnrollment) {
+      void earnPoints(
+        loyaltyEnrollment.id,
+        result.receiptId,
+        result.total,
+        currentCartItems.map((item) => ({
+          product_id: item.product.id,
+          quantity: item.quantity,
+          price: parseFloat(item.unit_price),
+        })),
+      ).catch(() => {
+        // Loyalty earning failure should not disrupt checkout flow
+      })
+    }
 
     // DON'T close modal — let the success screen show inside it.
     // The modal's "New Transaction" button calls onClose() after the user has seen the receipt.
@@ -400,6 +477,8 @@ export function POSTransactions() {
         terminalCode={terminalCode}
         transactionDiscount={transactionDiscount}
         onTransactionDiscountChange={setTransactionDiscount}
+        loyaltyMember={loyaltyMember}
+        loyaltyEnrollment={loyaltyEnrollment}
       />
 
       {/* Advanced Payments Modal */}
@@ -411,7 +490,19 @@ export function POSTransactions() {
         cartItems={currentCartItems}
         onComplete={handleCompletePayment}
         touchOptimized={false}
+        loyaltyEnrollmentId={loyaltyEnrollment?.id}
       />
+
+      {/* Cash Tendered Modal */}
+      {cashTenderedState && (
+        <CashTenderedModal
+          isOpen={!!cashTenderedState}
+          onClose={() => setCashTenderedState(null)}
+          onConfirm={handleCashTenderedConfirm}
+          total={cashTenderedState.total}
+          isProcessing={isCashPaymentProcessing}
+        />
+      )}
 
       {/* Quick Checkout Success Dialog */}
       {quickCheckoutResult && (
@@ -420,6 +511,7 @@ export function POSTransactions() {
           onClose={() => setQuickCheckoutResult(null)}
           receiptNumber={quickCheckoutResult.receiptNumber}
           total={quickCheckoutResult.total}
+          changeDue={quickCheckoutResult.changeDue}
           receiptId={quickCheckoutResult.receiptId}
         />
       )}
@@ -455,6 +547,8 @@ export function POSTransactions() {
                   onClick={() => {
                     setSelectedCustomer(null)
                     setCustomerSearchId('')
+                    setLoyaltyMember(null)
+                    setLoyaltyEnrollment(null)
                     setShowCustomerSearch(false)
                   }}
                   className="flex-1 px-4 py-2 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
@@ -476,6 +570,18 @@ export function POSTransactions() {
                             phone: partner.phone,
                           })
                           setShowCustomerSearch(false)
+                          // Look up loyalty enrollment
+                          if (partner.phone) {
+                            void lookupMember(partner.phone).then((result) => {
+                              if (result) {
+                                setLoyaltyMember(result.member)
+                                setLoyaltyEnrollment(result.enrollments[0] ?? null)
+                              } else {
+                                setLoyaltyMember(null)
+                                setLoyaltyEnrollment(null)
+                              }
+                            })
+                          }
                         }
                       )
                     })

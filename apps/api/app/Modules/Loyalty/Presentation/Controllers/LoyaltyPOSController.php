@@ -120,7 +120,7 @@ class LoyaltyPOSController extends Controller
 
         $company = $this->companyContext->requireCompany();
         $enrollment = Enrollment::where('id', $enrollmentId)
-            ->whereHas('member', fn ($q) => $q->where('tenant_id', $company->tenant_id))
+            ->whereHas('member', fn (\Illuminate\Database\Eloquent\Builder $q) => $q->whereRaw('tenant_id = ?', [$company->tenant_id]))
             ->with('program.rewards')
             ->firstOrFail();
 

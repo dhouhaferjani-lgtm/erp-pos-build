@@ -8,6 +8,9 @@ import { PaymentPanel } from '../PaymentPanel/PaymentPanel'
 import { Modal } from '@/components/organisms/Modal/Modal'
 import { useDiscountPermissions } from '../../hooks/useDiscountPermissions'
 import { useCurrency } from '@/hooks/useCurrency'
+import { LoyaltyMemberBadge } from '../../components/LoyaltyMemberBadge'
+import { EarnPointsPreview } from '../../components/EarnPointsPreview'
+import type { LoyaltyMember, LoyaltyEnrollment } from '../../api/loyaltyApi'
 
 export interface Customer {
   id: string
@@ -34,6 +37,8 @@ export interface TransactionCartProps {
     reason?: string
   }
   onUpdateTransactionDiscount?: (discount?: { amount: string; reason?: string }) => void
+  loyaltyMember?: LoyaltyMember | null
+  loyaltyEnrollment?: LoyaltyEnrollment | null
 }
 
 export function TransactionCart({
@@ -52,6 +57,8 @@ export function TransactionCart({
   terminalCode,
   transactionDiscount,
   onUpdateTransactionDiscount,
+  loyaltyMember,
+  loyaltyEnrollment,
 }: TransactionCartProps) {
   const { t } = useTranslation(['pos', 'common'])
   const { currency, toFixed: toFixedCurrency } = useCurrency()
@@ -160,6 +167,27 @@ export function TransactionCart({
           )}
         </div>
       </div>
+
+      {/* Loyalty Section */}
+      {loyaltyMember && loyaltyEnrollment && (
+        <div className="mb-4 space-y-2">
+          <LoyaltyMemberBadge
+            member={loyaltyMember}
+            enrollment={loyaltyEnrollment}
+          />
+          {!isEmpty && (
+            <EarnPointsPreview
+              enrollmentId={loyaltyEnrollment.id}
+              cartTotal={subtotal}
+              cartItems={items.map((item) => ({
+                product_id: item.product.id,
+                quantity: item.quantity,
+                price: parseFloat(item.unit_price),
+              }))}
+            />
+          )}
+        </div>
+      )}
 
       {/* Cart Items - Scrollable area */}
       <div className="flex-1 overflow-y-auto space-y-3 mb-4">

@@ -1,0 +1,6 @@
+{
+  "searchPlaceholder": "Rechercher des catégories...",
+  "selectedCategories": "Catégories sélectionnées ({{count}})",
+  "noCategories": "Aucune catégorie disponible",
+  "noCategoriesFound": "Aucune catégorie trouvée"
+}

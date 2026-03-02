@@ -35,4 +35,9 @@ final class CouponInvalidException extends \DomainException
     {
         return new self("Coupon code '{$code}' has been revoked.");
     }
+
+    public static function noQualifyingItems(string $code): self
+    {
+        return new self("No items in the cart qualify for coupon '{$code}'.");
+    }
 }

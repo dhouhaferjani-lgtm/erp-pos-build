@@ -1,14 +1,16 @@
 import { useState, useMemo } from 'react'
-import { Link, useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Calendar, Building2, FileText, Car, AlertTriangle } from 'lucide-react'
+import { Calendar, Building2, FileText, Car } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { formatCurrency } from '../../../lib/format'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
 import { DocumentTotals } from '../components/DocumentTotals'
+import { DocumentHeader } from '../components/DocumentHeader'
+import type { QuoteExpiryInfo } from '../components/DocumentHeader'
 import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail } from '../hooks'
 import { useRelatedDocuments } from '../hooks/useRelatedDocuments'
 import { DocumentActionBar } from '../components/DocumentActionBar'
@@ -16,12 +18,6 @@ import { useCompany } from '../../../hooks/useCompany'
 import type { Document } from '../../../types/document'
 
 type ConfirmAction = 'confirm' | 'convert' | null
-
-interface QuoteExpiryInfo {
-  status: 'valid' | 'expired' | 'expiring_soon'
-  message: string
-  days?: number
-}
 
 export function QuoteDetailPage() {
   const { t } = useTranslation(['sales', 'common'])
@@ -52,7 +48,7 @@ export function QuoteDetailPage() {
   // Fetch related documents to check if already converted
   const { data: relatedDocs } = useRelatedDocuments(id)
 
-  // Calculate quote expiry status
+  // Calculate quote expiry status (maps to DocumentHeader's QuoteExpiryInfo)
   const quoteExpiryInfo = useMemo((): QuoteExpiryInfo | null => {
     if (!quote || quote.status === 'cancelled') {
       return null
@@ -70,11 +66,11 @@ export function QuoteDetailPage() {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
 
     if (diffDays < 0) {
-      return { status: 'expired', message: 'expired' }
+      return { status: 'expired', days: 0, message: 'expired' }
     } else if (diffDays <= 7) {
-      return { status: 'expiring_soon', message: 'expiresIn', days: diffDays }
+      return { status: 'warning', days: diffDays, message: 'expiresIn' }
     } else {
-      return { status: 'valid', message: 'valid' }
+      return null
     }
   }, [quote])
 
@@ -186,60 +182,27 @@ export function QuoteDetailPage() {
     <div className="py-6">
       {/* Header */}
       <div className="mb-6">
-        <Link
-          to="/sales/quotes"
-          className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-4"
-        >
-          <ArrowLeft className="h-4 w-4 mr-1" />
-          {t('quotes.backToList')}
-        </Link>
-
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">{quote.document_number}</h1>
-            <div className="mt-2 flex items-center gap-2">
-              <span className="inline-flex items-center rounded-full bg-yellow-100 px-3 py-1 text-sm font-medium text-yellow-800">
-                {t('documents.types.quote')}
-              </span>
-              <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${
-                quote.status === 'draft' ? 'bg-gray-100 text-gray-800' :
-                quote.status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
-                'bg-red-100 text-red-800'
-              }`}>
-                {t(`documents.statuses.${quote.status}`)}
-              </span>
-              {quoteExpiryInfo && (
-                <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium ${
-                  quoteExpiryInfo.status === 'expired'
-                    ? 'bg-red-100 text-red-800'
-                    : quoteExpiryInfo.status === 'expiring_soon'
-                    ? 'bg-orange-100 text-orange-800'
-                    : 'bg-green-100 text-green-800'
-                }`}>
-                  {quoteExpiryInfo.status === 'expired' && <AlertTriangle className="h-4 w-4" />}
-                  {quoteExpiryInfo.message === 'expiresIn'
-                    ? t('quotes.expiry.expiresIn', { days: quoteExpiryInfo.days })
-                    : t(`quotes.expiry.${quoteExpiryInfo.message}`)}
-                </span>
-              )}
-            </div>
-          </div>
-
-          <DocumentActionBar
-            document={quote}
-            basePath="/sales/quotes"
-            isActionPending={isActionPending}
-            onConfirm={() => setConfirmAction('confirm')}
-            onConvert={(!relatedDocs || relatedDocs.descendants.length === 0) ? () => setConfirmAction('convert') : undefined}
-            onDownloadPdf={handleDownloadPdf}
-            onPreviewPdf={handlePreviewPdf}
-            onPrintPdf={handlePrintPdf}
-            onSendEmail={() => setShowEmailModal(true)}
-            isDownloading={downloadPdfMutation.isPending}
-            isPreviewing={previewPdfMutation.isPending}
-            isPrinting={printPdfMutation.isPending}
-          />
-        </div>
+        <DocumentHeader
+          document={quote}
+          backPath="/sales/quotes"
+          quoteExpiryInfo={quoteExpiryInfo}
+          actions={
+            <DocumentActionBar
+              document={quote}
+              basePath="/sales/quotes"
+              isActionPending={isActionPending}
+              onConfirm={() => setConfirmAction('confirm')}
+              {...((!relatedDocs || relatedDocs.descendants.length === 0) ? { onConvert: () => setConfirmAction('convert') } : {})}
+              onDownloadPdf={handleDownloadPdf}
+              onPreviewPdf={handlePreviewPdf}
+              onPrintPdf={handlePrintPdf}
+              onSendEmail={() => setShowEmailModal(true)}
+              isDownloading={downloadPdfMutation.isPending}
+              isPreviewing={previewPdfMutation.isPending}
+              isPrinting={printPdfMutation.isPending}
+            />
+          }
+        />
       </div>
 
       {/* Main Content */}

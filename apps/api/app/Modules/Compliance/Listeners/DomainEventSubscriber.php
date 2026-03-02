@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Events\CompanyUpdated;
 use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Document\Domain\Events\DeliveryNoteConfirmed;
 use App\Modules\Document\Domain\Events\DocumentConverted;
+use App\Modules\Document\Domain\Events\DocumentFullyPaid;
 use App\Modules\Document\Domain\Events\DraftDocumentCreated;
 use App\Modules\Document\Domain\Events\DraftLineAdded;
 use App\Modules\Document\Domain\Events\DraftLineModified;
@@ -102,6 +103,27 @@ final class DomainEventSubscriber
             eventType: $event->getEventName(),
             payload: [
                 'document_number' => $event->documentNumber,
+                'partner_id' => $event->partnerId,
+                'total_paid' => $event->totalPaid,
+                'paid_at' => $event->paidAt,
+            ]
+        );
+    }
+
+    /**
+     * Handle DocumentFullyPaid events (versioned successor to InvoicePaid).
+     */
+    public function handleDocumentFullyPaid(DocumentFullyPaid $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Document',
+            aggregateId: $event->documentId,
+            eventType: $event->getEventName(),
+            payload: [
+                'document_number' => $event->documentNumber,
+                'document_type' => $event->documentType,
                 'partner_id' => $event->partnerId,
                 'total_paid' => $event->totalPaid,
                 'paid_at' => $event->paidAt,
@@ -474,6 +496,7 @@ final class DomainEventSubscriber
             InvoicePosted::class => 'handleInvoicePosted',
             InvoiceCancelled::class => 'handleInvoiceCancelled',
             InvoicePaid::class => 'handleInvoicePaid',
+            DocumentFullyPaid::class => 'handleDocumentFullyPaid',
             DeliveryNoteConfirmed::class => 'handleDeliveryNoteConfirmed',
             PaymentRecorded::class => 'handlePaymentRecorded',
             DocumentConverted::class => 'handleDocumentConverted',

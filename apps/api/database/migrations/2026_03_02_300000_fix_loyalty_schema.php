@@ -19,6 +19,10 @@ return new class extends Migration
         Schema::table('loyalty_enrollments', function (Blueprint $table) {
             $table->timestamp('tier_changed_at')->nullable()->after('tier_qualified_at');
         });
+
+        Schema::table('loyalty_members', function (Blueprint $table) {
+            $table->softDeletesTz();
+        });
     }
 
     public function down(): void
@@ -29,6 +33,10 @@ return new class extends Migration
 
         Schema::table('loyalty_enrollments', function (Blueprint $table) {
             $table->dropColumn('tier_changed_at');
+        });
+
+        Schema::table('loyalty_members', function (Blueprint $table) {
+            $table->dropSoftDeletesTz();
         });
     }
 };

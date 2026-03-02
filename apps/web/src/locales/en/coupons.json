@@ -26,6 +26,10 @@
     "qualifyingProducts": "Qualifying Products",
     "qualifyingCategories": "Qualifying Categories"
   },
+  "helpers": {
+    "qualifyingProducts": "Leave empty to apply to all products",
+    "qualifyingCategories": "Leave empty to apply to all categories"
+  },
   "types": {
     "standard": "Standard",
     "single_use": "Single Use",
@@ -46,14 +50,17 @@
     "reactivate": "Reactivate",
     "confirmRevoke": "Are you sure you want to revoke this coupon?",
     "confirmReactivate": "Are you sure you want to reactivate this coupon?",
-    "confirmDelete": "Are you sure you want to delete this coupon?"
+    "confirmDelete": "Are you sure you want to delete this coupon?",
+    "revoked": "Coupon revoked",
+    "reactivated": "Coupon reactivated"
   },
   "sections": {
     "basicInfo": "Basic Information",
     "discountConfig": "Discount Configuration",
     "usageLimits": "Usage Limits",
     "schedule": "Schedule",
-    "stacking": "Stacking Rules"
+    "stacking": "Stacking Rules",
+    "targeting": "Targeting"
   },
   "placeholders": {
     "code": "e.g. WELCOME10",

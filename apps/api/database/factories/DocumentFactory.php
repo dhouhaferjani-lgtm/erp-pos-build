@@ -96,6 +96,28 @@ class DocumentFactory extends Factory
     }
 
     /**
+     * Indicate that the document is a purchase order.
+     */
+    public function purchaseOrder(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'type' => DocumentType::PurchaseOrder,
+            'document_number' => 'PO-'.$this->faker->unique()->numberBetween(1000, 9999),
+        ]);
+    }
+
+    /**
+     * Indicate that the document is confirmed.
+     */
+    public function confirmed(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'status' => DocumentStatus::Confirmed,
+            'confirmed_at' => now(),
+        ]);
+    }
+
+    /**
      * Indicate that the document is posted.
      */
     public function posted(): static

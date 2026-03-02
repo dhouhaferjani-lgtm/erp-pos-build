@@ -1,4 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
+import i18n from '@/lib/i18n'
+import { getErrorMessage } from '@/lib/api'
 import {
   listCoupons,
   getCoupon,
@@ -35,6 +38,9 @@ export function useCreateCoupon() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: COUPONS_KEY })
     },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error))
+    },
   })
 }
 
@@ -44,6 +50,9 @@ export function useUpdateCoupon() {
     mutationFn: ({ id, data }: { id: string; data: UpdateCouponData }) => updateCoupon(id, data),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: COUPONS_KEY })
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }
@@ -55,12 +64,18 @@ export function useDeleteCoupon() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: COUPONS_KEY })
     },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error))
+    },
   })
 }
 
 export function useValidateCoupon() {
   return useMutation({
     mutationFn: (data: ValidateCouponRequest) => validateCoupon(data),
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error))
+    },
   })
 }
 
@@ -70,6 +85,10 @@ export function useRevokeCoupon() {
     mutationFn: (id: string) => revokeCoupon(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: COUPONS_KEY })
+      toast.success(i18n.t('coupons:actions.revoked'))
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }
@@ -80,6 +99,10 @@ export function useReactivateCoupon() {
     mutationFn: (id: string) => reactivateCoupon(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: COUPONS_KEY })
+      toast.success(i18n.t('coupons:actions.reactivated'))
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }

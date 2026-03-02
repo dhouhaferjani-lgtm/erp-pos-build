@@ -104,13 +104,19 @@ function createApiClient(): AxiosInstance {
     xsrfHeaderName: 'X-XSRF-TOKEN', // Header name expected by Sanctum
   })
 
-  // Request interceptor for company context (no auth token - using cookies)
+  // Request interceptor for company context and language (no auth token - using cookies)
   client.interceptors.request.use(
     (config) => {
       // Add company context header for multi-company support
       const companyId = useCompanyStore.getState().currentCompanyId
       if (companyId) {
         config.headers['X-Company-Id'] = companyId
+      }
+
+      // Send user's chosen language so backend can localize responses (e.g. receipt PDFs)
+      const lang = localStorage.getItem('autoerp-language')
+      if (lang) {
+        config.headers['Accept-Language'] = lang
       }
 
       return config

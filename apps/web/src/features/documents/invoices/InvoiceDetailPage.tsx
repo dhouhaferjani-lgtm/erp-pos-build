@@ -1,15 +1,17 @@
 import { useState } from 'react'
-import { Link, useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Calendar, Building2, FileText, Car, CreditCard, Lock } from 'lucide-react'
+import { Calendar, Building2, FileText, Car, Lock } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { formatCurrency } from '../../../lib/format'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
 import { DocumentAttachments } from '../components/DocumentAttachments'
 import { DocumentTotals } from '../components/DocumentTotals'
+import { DocumentHeader } from '../components/DocumentHeader'
+import { DocumentOutstandingCallout } from '../components/DocumentOutstandingCallout'
 import { CreateCreditNoteForm, CreditNoteList } from '../components'
 import { DeliveryConfirmationModal } from '../components/DeliveryConfirmationModal'
 import { PaymentStatusBadge } from '../components/PaymentStatusBadge'
@@ -222,66 +224,46 @@ export function InvoiceDetailPage() {
     <div className="py-6">
       {/* Header */}
       <div className="mb-6">
-        <Link
-          to="/sales/invoices"
-          className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-4"
+        <DocumentHeader
+          document={invoice}
+          backPath="/sales/invoices"
+          actions={
+            <DocumentActionBar
+              document={invoice}
+              basePath="/sales/invoices"
+              isActionPending={isActionPending}
+              onConfirm={() => setConfirmAction('confirm')}
+              onPost={() => setConfirmAction('post')}
+              onCreateCreditNote={() => setShowCreditNoteForm(true)}
+              onDownloadPdf={handleDownloadPdf}
+              onPreviewPdf={handlePreviewPdf}
+              onPrintPdf={handlePrintPdf}
+              onSendEmail={() => setShowEmailModal(true)}
+              isDownloading={downloadPdfMutation.isPending}
+              isPreviewing={previewPdfMutation.isPending}
+              isPrinting={printPdfMutation.isPending}
+            />
+          }
+          financialCallout={
+            !isPaid && outstandingAmount > 0 ? (
+              <DocumentOutstandingCallout
+                amount={outstandingAmount}
+                currency={currentCompany?.currency ?? 'EUR'}
+                {...(canRecordPayment ? { onRecordPayment: () => setShowPaymentModal(true) } : {})}
+              />
+            ) : undefined
+          }
         >
-          <ArrowLeft className="h-4 w-4 mr-1" />
-          {t('invoices.backToList')}
-        </Link>
-
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">{invoice.document_number}</h1>
-            <div className="mt-2 flex items-center gap-2">
-              <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800">
-                {t('documents.types.invoice')}
-              </span>
-              <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${
-                invoice.status === 'draft' ? 'bg-gray-100 text-gray-800' :
-                invoice.status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
-                invoice.status === 'posted' ? 'bg-green-100 text-green-800' :
-                'bg-red-100 text-red-800'
-              }`}>
-                {t(`documents.statuses.${invoice.status}`)}
-              </span>
-              {isConfirmedOrPosted && invoice.payment_status && (
-                <>
-                  <PaymentStatusBadge status={invoice.payment_status as any} />
-                  {!isPaid && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-3 py-1 text-sm font-medium text-orange-800">
-                      <CreditCard className="h-4 w-4" />
-                      {t('sales:invoices.outstandingAmount')}: {formatCurrency(outstandingAmount, { currency: currentCompany?.currency ?? 'EUR' })}
-                    </span>
-                  )}
-                  {isPosted && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-800">
-                      <Lock className="h-4 w-4" />
-                      {t('invoices.fiscallySealed')}
-                    </span>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-
-          <DocumentActionBar
-            document={invoice}
-            basePath="/sales/invoices"
-            isActionPending={isActionPending}
-            onConfirm={() => setConfirmAction('confirm')}
-            onPost={() => setConfirmAction('post')}
-            onRecordPayment={canRecordPayment ? () => setShowPaymentModal(true) : undefined}
-            onCreateCreditNote={() => setShowCreditNoteForm(true)}
-            onDownloadPdf={handleDownloadPdf}
-            onPreviewPdf={handlePreviewPdf}
-            onPrintPdf={handlePrintPdf}
-            onSendEmail={() => setShowEmailModal(true)}
-            isDownloading={downloadPdfMutation.isPending}
-            isPreviewing={previewPdfMutation.isPending}
-            isPrinting={printPdfMutation.isPending}
-          />
-        </div>
+          {isConfirmedOrPosted && invoice.payment_status && (
+            <PaymentStatusBadge status={invoice.payment_status as 'unpaid' | 'partially_paid' | 'in_payment' | 'paid' | 'overpaid'} />
+          )}
+          {isPosted && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-800">
+              <Lock className="h-3 w-3" />
+              {t('invoices.fiscallySealed')}
+            </span>
+          )}
+        </DocumentHeader>
       </div>
 
       {/* Main Content */}

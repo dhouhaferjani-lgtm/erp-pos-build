@@ -60,7 +60,7 @@ class PromotionData extends Data
             time_until: $promotion->time_until,
             conditions: $promotion->conditions ?? [],
             discount_type: $promotion->discount_type->value,
-            discount_value: $promotion->discount_value,
+            discount_value: (string) $promotion->discount_value,
             max_discount_amount: $promotion->max_discount_amount,
             applies_to: $promotion->applies_to->value,
             usage_limit: $promotion->usage_limit,

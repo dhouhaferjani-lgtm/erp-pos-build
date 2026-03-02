@@ -122,7 +122,9 @@ export async function printReceipt(receiptId: string): Promise<Blob> {
   const response = await fetch(`/api/v1/pos/receipts/${receiptId}/pdf`, {
     headers: {
       Authorization: `Bearer ${localStorage.getItem('token')}`,
+      'Accept-Language': localStorage.getItem('autoerp-language') ?? 'en',
     },
+    credentials: 'include',
   })
 
   if (!response.ok) {
@@ -139,7 +141,9 @@ export async function downloadReceipt(receiptId: string): Promise<void> {
   const response = await fetch(`/api/v1/pos/receipts/${receiptId}/pdf/download`, {
     headers: {
       Authorization: `Bearer ${localStorage.getItem('token')}`,
+      'Accept-Language': localStorage.getItem('autoerp-language') ?? 'en',
     },
+    credentials: 'include',
   })
 
   if (!response.ok) {

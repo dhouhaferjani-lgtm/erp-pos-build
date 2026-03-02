@@ -27,7 +27,22 @@
       "safe": "Safe",
       "bank_account": "Bank Account",
       "virtual": "Virtual"
-    }
+    },
+    "addPayment": "Add a payment",
+    "payRemaining": "Pay Remaining",
+    "removeLine": "Remove",
+    "selectMethodPlaceholder": "Select payment method...",
+    "reference": "Reference",
+    "referencePlaceholder": "Check number, transaction ID...",
+    "cardLastFour": "Card Last 4",
+    "paymentMethod": "Payment Method",
+    "totalDue": "Total Due",
+    "totalEntered": "Total Entered",
+    "paymentLineNumber": "Payment #{{number}}",
+    "tapToSelect": "Tap a payment method",
+    "addPaymentButton": "Add Payment",
+    "addedPayments": "Added Payments",
+    "noPaymentsAdded": "No payments added yet"
   },
   "payment": {
     "success": "Payment Successful!",
@@ -257,6 +272,38 @@
       "payoutFailed": "Failed to record payout",
       "xReportGenerated": "X-Report generated",
       "xReportFailed": "Failed to generate X-Report"
+    }
+  },
+  "cashTendered": {
+    "title": "Cash Payment",
+    "amountDue": "Amount Due",
+    "tenderedAmount": "Amount Received",
+    "changeDue": "Change Due",
+    "exactAmount": "Exact",
+    "confirm": "Confirm Payment",
+    "processing": "Processing..."
+  },
+  "loyalty": {
+    "memberBadge": {
+      "points": "pts",
+      "stamps": "stamps"
+    },
+    "rewards": {
+      "title": "Loyalty Rewards",
+      "redeem": "Redeem",
+      "redeemSuccess": "Reward redeemed successfully",
+      "redeemFailed": "Failed to redeem reward",
+      "insufficientBalance": "Not enough points",
+      "noRewards": "No rewards available"
+    },
+    "earning": {
+      "preview": "You will earn {{points}} points",
+      "earned": "+{{points}} loyalty points earned"
+    },
+    "lookup": {
+      "searching": "Looking up loyalty member...",
+      "notFound": "No loyalty program found",
+      "enroll": "Enroll in loyalty"
     }
   }
 }

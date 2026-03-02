@@ -1,4 +1,3 @@
-import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { CheckCircle } from 'lucide-react'
 import { Modal } from '@/components/organisms/Modal'
@@ -13,7 +12,9 @@ export interface CheckoutSuccessDialogProps {
   receiptId: string | null
   receiptNumber?: string
   total?: string
+  changeDue?: number
   autoPrint?: boolean
+  loyaltyPointsEarned?: number
 }
 
 /**
@@ -28,7 +29,9 @@ export function CheckoutSuccessDialog({
   receiptId,
   receiptNumber,
   total,
+  changeDue,
   autoPrint = false,
+  loyaltyPointsEarned,
 }: CheckoutSuccessDialogProps) {
   const { t } = useTranslation(['pos', 'common'])
 
@@ -49,12 +52,24 @@ export function CheckoutSuccessDialog({
         <div className="space-y-2">
           {receiptNumber && (
             <p className={cn('text-lg font-medium', textColors.primary)}>
-              {t('pos:receipt.number')}: {receiptNumber}
+              {t('pos:payment.receiptNumber', { number: receiptNumber })}
             </p>
           )}
           {total && (
             <p className="text-lg font-semibold text-blue-600">
               {t('pos:advancedPayments.total')}: {total}
+            </p>
+          )}
+          {changeDue != null && changeDue > 0 && (
+            <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+              <p className="text-lg font-bold text-green-700">
+                {t('pos:payment.changeDue', { amount: changeDue.toFixed(2) })}
+              </p>
+            </div>
+          )}
+          {loyaltyPointsEarned != null && loyaltyPointsEarned > 0 && (
+            <p className="text-sm font-medium text-amber-600">
+              {t('pos:loyalty.earning.earned', { points: loyaltyPointsEarned })}
             </p>
           )}
         </div>

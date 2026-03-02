@@ -1,4 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
+import i18n from '@/lib/i18n'
+import { getErrorMessage } from '@/lib/api'
 import {
   listPromotions,
   getPromotion,
@@ -35,6 +38,9 @@ export function useCreatePromotion() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: PROMOTIONS_KEY })
     },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error))
+    },
   })
 }
 
@@ -44,6 +50,9 @@ export function useUpdatePromotion() {
     mutationFn: ({ id, data }: { id: string; data: UpdatePromotionData }) => updatePromotion(id, data),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: PROMOTIONS_KEY })
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }
@@ -55,6 +64,9 @@ export function useDeletePromotion() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: PROMOTIONS_KEY })
     },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error))
+    },
   })
 }
 
@@ -64,6 +76,10 @@ export function useActivatePromotion() {
     mutationFn: (id: string) => activatePromotion(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: PROMOTIONS_KEY })
+      toast.success(i18n.t('promotions:actions.activated'))
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }
@@ -74,6 +90,10 @@ export function usePausePromotion() {
     mutationFn: (id: string) => pausePromotion(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: PROMOTIONS_KEY })
+      toast.success(i18n.t('promotions:actions.paused'))
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }
@@ -84,6 +104,10 @@ export function useArchivePromotion() {
     mutationFn: (id: string) => archivePromotion(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: PROMOTIONS_KEY })
+      toast.success(i18n.t('promotions:actions.archived'))
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error))
     },
   })
 }

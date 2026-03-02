@@ -60,6 +60,8 @@
         "expiringSoon": "Exemption certificate is expiring soon"
       }
     },
+    "balance": "Balance",
+    "hasBalance": "Has outstanding balance",
     "empty": {
       "title": "No partners yet",
       "description": "Get started by adding your first partner."
@@ -190,7 +192,12 @@
     "convertToDelivery": "Convert to Delivery Note",
     "fullyDelivered": "Fully Delivered",
     "fullyInvoiced": "Fully Invoiced",
-    "alreadyDelivered": "Delivery note already exists for this order"
+    "alreadyDelivered": "Delivery note already exists for this order",
+    "deliveryStatus": {
+      "not_delivered": "Not Delivered",
+      "partially_delivered": "Partially Delivered",
+      "fully_delivered": "Fully Delivered"
+    }
   },
   "purchaseOrders": {
     "title": "Purchase Orders",

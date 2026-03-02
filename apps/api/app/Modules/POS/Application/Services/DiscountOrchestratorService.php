@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\POS\Application\Services;
 
 use App\Modules\Coupon\Domain\Contracts\CouponValidatorContract;
+use App\Modules\POS\Domain\Enums\DiscountSource;
 use App\Modules\POS\Domain\Services\DiscountStackingService;
 use App\Modules\POS\Domain\ValueObjects\DiscountBreakdown;
 use App\Modules\POS\Domain\ValueObjects\DiscountLine;
@@ -52,7 +53,7 @@ final class DiscountOrchestratorService
         // 1. Manual discount (cashier-applied)
         if ($manualDiscountAmount !== null && bccomp($manualDiscountAmount, '0', 2) > 0) {
             $candidates[] = new DiscountLine(
-                source: 'manual',
+                source: DiscountSource::Manual->value,
                 stackingGroup: 'manual',
                 isExclusive: false,
                 priority: 100,
@@ -67,7 +68,7 @@ final class DiscountOrchestratorService
         try {
             $promotionDiscounts = $this->promotionEvaluator->evaluateCart($cart);
             foreach ($promotionDiscounts as $promoDiscount) {
-                $candidates[] = $this->fromPromotionDiscount($promoDiscount, 'promotion');
+                $candidates[] = $this->fromPromotionDiscount($promoDiscount, DiscountSource::Promotion->value);
             }
         } catch (\Throwable) {
             // Promotion evaluation failure should not block checkout
@@ -82,7 +83,7 @@ final class DiscountOrchestratorService
                     $customerId,
                 );
                 if ($couponDiscount !== null) {
-                    $candidates[] = $this->fromPromotionDiscount($couponDiscount, 'coupon');
+                    $candidates[] = $this->fromPromotionDiscount($couponDiscount, DiscountSource::Coupon->value);
                 }
             } catch (\Throwable) {
                 // Invalid coupon should not block checkout
@@ -92,7 +93,7 @@ final class DiscountOrchestratorService
         // 4. Loyalty reward redemption
         if ($loyaltyDiscountAmount !== null && bccomp($loyaltyDiscountAmount, '0', 2) > 0) {
             $candidates[] = new DiscountLine(
-                source: 'loyalty',
+                source: DiscountSource::Loyalty->value,
                 stackingGroup: 'loyalty',
                 isExclusive: false,
                 priority: 50,

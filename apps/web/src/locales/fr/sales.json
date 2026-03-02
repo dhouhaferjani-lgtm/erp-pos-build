@@ -60,6 +60,8 @@
         "expiringSoon": "Le certificat d'exonération expire bientôt"
       }
     },
+    "balance": "Solde",
+    "hasBalance": "Avec solde en cours",
     "empty": {
       "title": "Aucun partenaire",
       "description": "Commencez par ajouter votre premier partenaire."
@@ -190,7 +192,12 @@
     "convertToDelivery": "Convertir en bon de livraison",
     "fullyDelivered": "Entièrement livré",
     "fullyInvoiced": "Entièrement facturé",
-    "alreadyDelivered": "Un bon de livraison existe déjà pour cette commande"
+    "alreadyDelivered": "Un bon de livraison existe déjà pour cette commande",
+    "deliveryStatus": {
+      "not_delivered": "Non livré",
+      "partially_delivered": "Partiellement livré",
+      "fully_delivered": "Entièrement livré"
+    }
   },
   "purchaseOrders": {
     "title": "Bons d'achat",

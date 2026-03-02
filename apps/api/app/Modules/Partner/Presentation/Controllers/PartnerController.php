@@ -7,16 +7,20 @@ namespace App\Modules\Partner\Presentation\Controllers;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Application\DTOs\PartnerData;
+use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Partner\Presentation\Requests\CreatePartnerRequest;
 use App\Modules\Partner\Presentation\Requests\UpdatePartnerRequest;
+use App\Support\Traits\FiltersAndSorts;
 use App\Support\Traits\PaginatesResults;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 
 class PartnerController extends Controller
 {
+    use FiltersAndSorts;
     use PaginatesResults;
 
     public function __construct(
@@ -24,55 +28,94 @@ class PartnerController extends Controller
     ) {}
 
     /**
-     * List all partners for the current company.
+     * List all partners for the current company with sorting, filtering, and aggregates.
      */
     public function index(Request $request): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
-        $params = $this->getPaginationParams($request);
+
+        $allowedSortColumns = ['name', 'created_at', 'receivable_balance', 'payable_balance', 'net_balance'];
+        $sortParams = $this->getSortParams($request, $allowedSortColumns, 'name', 'asc');
+
+        /** @var array<string, array{type: string, column?: string, columns?: array<string>, operator?: string, callback?: callable}> $filterConfig */
+        $filterConfig = [
+            'type' => [
+                'type' => 'computed',
+                'callback' => static function (Builder $query, string $value): void {
+                    if ($value === 'customer') {
+                        $query->whereIn('type', [PartnerType::Customer, PartnerType::Both]);
+                    } elseif ($value === 'supplier') {
+                        $query->whereIn('type', [PartnerType::Supplier, PartnerType::Both]);
+                    } else {
+                        $query->whereRaw('type = ?', [$value]);
+                    }
+                },
+            ],
+            'is_active' => [
+                'type' => 'boolean',
+                'column' => 'is_active',
+            ],
+            'search' => [
+                'type' => 'text',
+                'columns' => ['name', 'email', 'vat_number'],
+            ],
+            'has_balance' => [
+                'type' => 'computed',
+                'callback' => static function (Builder $query, string $value): void {
+                    if (filter_var($value, FILTER_VALIDATE_BOOLEAN)) {
+                        $query->where(static function (Builder $q): void {
+                            $q->whereRaw('(receivable_balance - credit_balance) != 0')
+                                ->orWhereRaw('payable_balance != 0');
+                        });
+                    }
+                },
+            ],
+            'balance_min' => [
+                'type' => 'range',
+                'column' => 'receivable_balance',
+                'operator' => '>=',
+            ],
+            'balance_max' => [
+                'type' => 'range',
+                'column' => 'receivable_balance',
+                'operator' => '<=',
+            ],
+        ];
+
+        $filters = $this->getFilterParams($request, $filterConfig);
+
+        $perPage = min((int) $request->input('per_page', 25), 100);
 
         $query = Partner::query()
-            ->where('company_id', $companyId);
+            ->where('company_id', $companyId)
+            ->selectRaw('*, (receivable_balance - credit_balance) AS net_balance');
 
-        // Filter by type - use scope methods to include 'both' type partners
-        if ($request->has('type')) {
-            $type = $request->input('type');
-            if ($type === 'customer') {
-                $query->customers();
-            } elseif ($type === 'supplier') {
-                $query->suppliers();
-            } else {
-                // For 'both' or any other value, filter by exact match
-                $query->where('type', $type);
-            }
-        }
+        $this->applyFilters($query, $filters, $filterConfig);
+        $this->applySorting($query, $sortParams);
 
-        // Filter by active status
-        if ($request->has('is_active')) {
-            $query->where('is_active', (bool) $request->input('is_active'));
-        }
+        /** @var array<string, array{type: string, column?: string, expression?: string, filter?: array<string, mixed>}> $aggregateConfig */
+        $aggregateConfig = [
+            'total_partners' => ['type' => 'count'],
+            'total_active' => [
+                'type' => 'count',
+                'filter' => ['is_active' => true],
+            ],
+            'total_receivable' => [
+                'type' => 'sum',
+                'column' => 'receivable_balance',
+            ],
+            'total_payable' => [
+                'type' => 'sum',
+                'column' => 'payable_balance',
+            ],
+        ];
 
-        // Search by name, email, or VAT number (case-insensitive)
-        // Use LOWER() for database-agnostic case-insensitive search (works on both PostgreSQL and SQLite)
-        if ($request->has('search')) {
-            $search = mb_strtolower($request->input('search'));
-            // Escape LIKE special characters to prevent LIKE pattern injection
-            $search = addcslashes($search, '%_\\');
-            $query->where(function ($q) use ($search) {
-                $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])
-                    ->orWhereRaw('LOWER(email) LIKE ?', ["%{$search}%"])
-                    ->orWhereRaw('LOWER(vat_number) LIKE ?', ["%{$search}%"]);
-            });
-        }
+        $aggregates = $this->calculateAggregates($query, $aggregateConfig);
 
-        // Order by name for consistent pagination
-        $query->orderBy('name');
-
-        // Use cursor pagination
-        $paginator = $query->cursorPaginate($params['per_page'], ['*'], 'cursor', $params['cursor']);
+        $paginator = $query->paginate($perPage);
 
         return response()->json(
-            $this->formatPaginatedResponse($paginator, PartnerData::class)
+            $this->formatOffsetPaginatedResponse($paginator, PartnerData::class, $aggregates)
         );
     }
 

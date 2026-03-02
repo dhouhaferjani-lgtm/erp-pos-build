@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Ticket, Ban, RefreshCw, Trash2 } from 'lucide-react'
-import { Button, Input } from '@/components/atoms'
-import { tokens } from '@/lib/designTokens'
+import { Button, Input, Select } from '@/components/atoms'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+
 import { useCoupons, useRevokeCoupon, useReactivateCoupon, useDeleteCoupon } from '../hooks/useCoupons'
 import type { CouponData } from '../api/couponApi'
 
@@ -14,51 +15,86 @@ const STATUS_COLORS: Record<string, string> = {
   revoked: 'bg-orange-100 text-orange-700',
 }
 
+type ConfirmAction = {
+  type: 'revoke' | 'reactivate' | 'delete'
+  coupon: CouponData
+}
+
 export function CouponListPage() {
   const { t } = useTranslation(['coupons', 'common'])
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
 
-  const { data, isLoading } = useCoupons({
-    search: search || undefined,
-    status: statusFilter || undefined,
-  })
+  const listParams = {
+    ...(search ? { search } : {}),
+    ...(statusFilter ? { status: statusFilter } : {}),
+  }
+  const { data, isLoading } = useCoupons(listParams)
   const revokeMutation = useRevokeCoupon()
   const reactivateMutation = useReactivateCoupon()
   const deleteMutation = useDeleteCoupon()
 
   const coupons = data?.data ?? []
 
-  const handleAction = (action: string, coupon: CouponData) => {
-    switch (action) {
+  const handleAction = (action: 'revoke' | 'reactivate' | 'delete', coupon: CouponData) => {
+    setConfirmAction({ type: action, coupon })
+  }
+
+  const handleConfirm = () => {
+    if (!confirmAction) return
+    const { type, coupon } = confirmAction
+    const onSettled = () => setConfirmAction(null)
+
+    switch (type) {
       case 'revoke':
-        if (window.confirm(t('coupons:actions.confirmRevoke'))) {
-          revokeMutation.mutate(coupon.id)
-        }
+        revokeMutation.mutate(coupon.id, { onSettled })
         break
       case 'reactivate':
-        if (window.confirm(t('coupons:actions.confirmReactivate'))) {
-          reactivateMutation.mutate(coupon.id)
-        }
+        reactivateMutation.mutate(coupon.id, { onSettled })
         break
       case 'delete':
-        if (window.confirm(t('coupons:actions.confirmDelete'))) {
-          deleteMutation.mutate(coupon.id)
-        }
+        deleteMutation.mutate(coupon.id, { onSettled })
         break
     }
   }
+
+  const getConfirmDialogProps = () => {
+    if (!confirmAction) return { title: '', message: '', variant: 'warning' as const }
+    switch (confirmAction.type) {
+      case 'revoke':
+        return {
+          title: t('coupons:actions.revoke'),
+          message: t('coupons:actions.confirmRevoke'),
+          variant: 'warning' as const,
+        }
+      case 'reactivate':
+        return {
+          title: t('coupons:actions.reactivate'),
+          message: t('coupons:actions.confirmReactivate'),
+          variant: 'info' as const,
+        }
+      case 'delete':
+        return {
+          title: t('coupons:deleteCoupon'),
+          message: t('coupons:actions.confirmDelete'),
+          variant: 'danger' as const,
+        }
+    }
+  }
+
+  const isActionPending = revokeMutation.isPending || reactivateMutation.isPending || deleteMutation.isPending
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>
+          <h1 className="text-2xl font-bold text-gray-900">
             {t('coupons:title')}
           </h1>
-          <p className="text-sm mt-1" style={{ color: tokens.colors.text.secondary }}>
+          <p className="text-sm mt-1 text-gray-500">
             {t('coupons:subtitle')}
           </p>
         </div>
@@ -76,17 +112,17 @@ export function CouponListPage() {
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-xs"
         />
-        <select
+        <Select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+          className="w-auto"
         >
           <option value="">{t('common:all')}</option>
           <option value="active">{t('coupons:statuses.active')}</option>
           <option value="exhausted">{t('coupons:statuses.exhausted')}</option>
           <option value="expired">{t('coupons:statuses.expired')}</option>
           <option value="revoked">{t('coupons:statuses.revoked')}</option>
-        </select>
+        </Select>
       </div>
 
       {/* Table */}
@@ -193,6 +229,14 @@ export function CouponListPage() {
           </table>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmAction !== null}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={handleConfirm}
+        isLoading={isActionPending}
+        {...getConfirmDialogProps()}
+      />
     </div>
   )
 }

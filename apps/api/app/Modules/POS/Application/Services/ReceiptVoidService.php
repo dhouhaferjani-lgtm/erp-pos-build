@@ -90,6 +90,9 @@ final class ReceiptVoidService
      *
      * Creates a Receipt (inbound) StockMovement to add stock back.
      */
+    /**
+     * @param numeric-string $quantity
+     */
     private function reverseStockMovement(
         string $tenantId,
         string $companyId,
@@ -182,7 +185,7 @@ final class ReceiptVoidService
         $cashAmount = '0.00';
         foreach ($receipt->payments as $payment) {
             if ($payment->payment_type === 'CASH') {
-                $cashAmount = bcadd($cashAmount, $payment->amount, 2);
+                $cashAmount = bcadd($cashAmount, (string) $payment->amount, 2);
             }
         }
 

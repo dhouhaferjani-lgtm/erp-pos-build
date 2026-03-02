@@ -33,6 +33,11 @@
     "minimumQuantity": "Quantité minimum",
     "minimumAmount": "Montant minimum"
   },
+  "helpers": {
+    "categoryIds": "Sélectionnez les catégories auxquelles cette promotion s'applique",
+    "qualifyingProducts": "Sélectionnez les produits éligibles à cette promotion",
+    "comboProducts": "Sélectionnez les produits à acheter ensemble"
+  },
   "types": {
     "happy_hour": "Happy Hour",
     "buy_x_get_y": "Achetez X obtenez Y",
@@ -65,7 +70,10 @@
     "confirmActivate": "Voulez-vous vraiment activer cette promotion ?",
     "confirmPause": "Voulez-vous vraiment mettre en pause cette promotion ?",
     "confirmArchive": "Voulez-vous vraiment archiver cette promotion ?",
-    "confirmDelete": "Voulez-vous vraiment supprimer cette promotion ?"
+    "confirmDelete": "Voulez-vous vraiment supprimer cette promotion ?",
+    "activated": "Promotion activée",
+    "paused": "Promotion mise en pause",
+    "archived": "Promotion archivée"
   },
   "schedule": {
     "title": "Planification",

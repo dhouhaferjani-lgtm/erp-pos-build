@@ -3,6 +3,11 @@
  *
  * Displays document title, number, status badge, dates, and customer/partner info.
  * Reusable across all document types (quote, invoice, sales_order, etc.)
+ *
+ * Two-zone layout:
+ *   Row 1: Back link
+ *   Row 2: Identity (number + badges + children) | Actions (right-aligned)
+ *   Row 3: Financial callout strip (optional, full-width)
  */
 
 import { Link } from 'react-router-dom'
@@ -50,8 +55,12 @@ export interface DocumentHeaderProps {
   backPath: string
   /** Optional quote expiry info for quote documents */
   quoteExpiryInfo?: QuoteExpiryInfo | null
-  /** Optional children for additional badges/content */
+  /** Optional children for additional badges/content in the identity row */
   children?: React.ReactNode
+  /** Optional action buttons rendered right-aligned in the identity row */
+  actions?: React.ReactNode
+  /** Optional full-width strip below the identity row (e.g. outstanding balance) */
+  financialCallout?: React.ReactNode
 }
 
 /**
@@ -73,6 +82,8 @@ export function DocumentHeader({
   backPath,
   quoteExpiryInfo,
   children,
+  actions,
+  financialCallout,
 }: DocumentHeaderProps) {
   const { t } = useTranslation(['sales', 'common'])
 
@@ -89,15 +100,18 @@ export function DocumentHeader({
   const sourceDocumentPath = getSourceDocumentPath(document.source_document_type ?? null)
 
   return (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-4">
-        <Link
-          to={backPath}
-          className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          {t('actions.back')}
-        </Link>
+    <div className="space-y-4">
+      {/* Back link */}
+      <Link
+        to={backPath}
+        className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        {t('actions.back')}
+      </Link>
+
+      {/* Row: identity + actions */}
+      <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-bold text-gray-900">
@@ -184,7 +198,11 @@ export function DocumentHeader({
             {children}
           </div>
         </div>
+        {actions && <div className="flex-shrink-0">{actions}</div>}
       </div>
+
+      {/* Financial callout strip (conditional) */}
+      {financialCallout}
     </div>
   )
 }

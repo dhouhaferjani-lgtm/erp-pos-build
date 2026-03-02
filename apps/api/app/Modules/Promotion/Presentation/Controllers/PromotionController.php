@@ -14,6 +14,7 @@ use App\Modules\Promotion\Presentation\Requests\UpdatePromotionRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 
 class PromotionController extends Controller
@@ -25,7 +26,7 @@ class PromotionController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $this->authorize('promotions.view');
+        Gate::authorize('promotions.view');
         $companyId = $this->companyContext->requireCompanyId();
 
         $query = Promotion::query()
@@ -65,7 +66,7 @@ class PromotionController extends Controller
 
     public function show(string $id): JsonResponse
     {
-        $this->authorize('promotions.view');
+        Gate::authorize('promotions.view');
         $companyId = $this->companyContext->requireCompanyId();
 
         if (! Str::isUuid($id)) {

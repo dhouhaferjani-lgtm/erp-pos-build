@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ __('Receipt') }} - {{ $receipt->receipt_number }}</title>
+    <title>{{ __('pos.receipt') }} - {{ $receipt->receipt_number }}</title>
     <style>
         * {
             margin: 0;
@@ -246,10 +246,10 @@
                     {{ $company->address_postal_code }} {{ $company->address_city }}<br>
                 @endif
                 @if($company->tax_id)
-                    {{ __('Tax ID') }}: {{ $company->tax_id }}<br>
+                    {{ __('pos.tax_id') }}: {{ $company->tax_id }}<br>
                 @endif
                 @if($company->phone)
-                    {{ __('Tel') }}: {{ $company->phone }}<br>
+                    {{ __('pos.tel') }}: {{ $company->phone }}<br>
                 @endif
             </div>
         </div>
@@ -257,24 +257,24 @@
         {{-- Receipt Info Section --}}
         <div class="receipt-info">
             <div>
-                <span class="label">{{ __('Receipt No.') }}:</span>
+                <span class="label">{{ __('pos.receipt_no') }}:</span>
                 <span class="value">{{ $receipt->receipt_number }}</span>
             </div>
             <div>
-                <span class="label">{{ __('Date/Time') }}:</span>
+                <span class="label">{{ __('pos.date_time') }}:</span>
                 <span class="value">{{ $formatDateTime($receipt->posted_at) }}</span>
             </div>
             <div>
-                <span class="label">{{ __('Terminal') }}:</span>
+                <span class="label">{{ __('pos.terminal') }}:</span>
                 <span class="value">{{ $terminal->code }}</span>
             </div>
             <div>
-                <span class="label">{{ __('Cashier') }}:</span>
+                <span class="label">{{ __('pos.cashier') }}:</span>
                 <span class="value">{{ $receipt->cashier_name }}</span>
             </div>
             @if($receipt->customer_name)
                 <div>
-                    <span class="label">{{ __('Customer') }}:</span>
+                    <span class="label">{{ __('pos.customer') }}:</span>
                     <span class="value">{{ $receipt->customer_name }}</span>
                 </div>
             @endif
@@ -289,7 +289,7 @@
                         <span class="item-qty-price">
                             {{ $formatNumber($line->quantity, 0) }} x {{ $formatMoney($line->unit_price) }}
                             @if($line->hasDiscount())
-                                <br>{{ __('Discount') }}: -{{ $formatMoney($line->discount_amount) }}
+                                <br>{{ __('pos.discount') }}: -{{ $formatMoney($line->discount_amount) }}
                             @endif
                         </span>
                         <span class="item-total">{{ $formatMoney($line->line_total) }}</span>
@@ -304,15 +304,15 @@
         {{-- Totals Section --}}
         <div class="totals">
             <div class="total-line">
-                <span>{{ __('Subtotal') }}:</span>
+                <span>{{ __('pos.subtotal') }}:</span>
                 <span>{{ $formatMoney($receipt->subtotal) }}</span>
             </div>
             <div class="total-line">
-                <span>{{ __('Tax') }}:</span>
+                <span>{{ __('pos.tax') }}:</span>
                 <span>{{ $formatMoney($receipt->tax_amount) }}</span>
             </div>
             <div class="total-line grand-total">
-                <span>{{ __('TOTAL') }}:</span>
+                <span>{{ __('pos.total') }}:</span>
                 <span>{{ $formatMoney($receipt->total) }}</span>
             </div>
         </div>
@@ -320,11 +320,11 @@
         {{-- VAT Breakdown --}}
         @if($vatDetails->isNotEmpty())
             <div class="vat-breakdown">
-                <h4>{{ __('VAT Breakdown') }}</h4>
+                <h4>{{ __('pos.vat_breakdown') }}</h4>
                 @foreach($vatDetails as $vat)
                     <div class="vat-line">
-                        <span>{{ __('VAT') }} {{ $formatNumber($vat->tax_rate, 2) }}%:</span>
-                        <span>{{ $formatMoney($vat->vat_amount) }} ({{ __('Base') }}: {{ $formatMoney($vat->net_amount) }})</span>
+                        <span>{{ __('pos.vat') }} {{ $formatNumber($vat->tax_rate, 2) }}%:</span>
+                        <span>{{ $formatMoney($vat->vat_amount) }} ({{ __('pos.base') }}: {{ $formatMoney($vat->net_amount) }})</span>
                     </div>
                 @endforeach
             </div>
@@ -332,7 +332,7 @@
 
         {{-- Payment Methods --}}
         <div class="payments">
-            <h4>{{ __('Payment Methods') }}</h4>
+            <h4>{{ __('pos.payment_methods') }}</h4>
             @foreach($payments as $payment)
                 <div>
                     <div class="payment-line">
@@ -340,17 +340,17 @@
                         <span>{{ $formatMoney($payment->amount) }}</span>
                     </div>
                     @if($payment->isCard())
-                        <div class="payment-detail">{{ __('Card') }}: {{ $payment->getMaskedCardNumber() }}</div>
+                        <div class="payment-detail">{{ __('pos.card') }}: {{ $payment->getMaskedCardNumber() }}</div>
                     @endif
                     @if($payment->isVoucher())
-                        <div class="payment-detail">{{ __('Voucher') }}: {{ $payment->voucher_serial }}</div>
+                        <div class="payment-detail">{{ __('pos.voucher') }}: {{ $payment->voucher_serial }}</div>
                     @endif
                 </div>
             @endforeach
             @if((float)$changeGiven > 0)
                 <div class="divider"></div>
                 <div class="payment-line bold">
-                    <span>{{ __('Change Given') }}:</span>
+                    <span>{{ __('pos.change_given') }}:</span>
                     <span>{{ $formatMoney($changeGiven) }}</span>
                 </div>
             @endif
@@ -358,18 +358,18 @@
 
         {{-- Fiscal Section (CRITICAL for compliance) --}}
         <div class="fiscal">
-            <h4>{{ __('Fiscal Information') }}</h4>
+            <h4>{{ __('pos.fiscal_information') }}</h4>
             <div class="fiscal-line">
-                <strong>{{ __('Chain Sequence') }}:</strong> #{{ $receipt->chain_sequence }}
+                <strong>{{ __('pos.chain_sequence') }}:</strong> #{{ $receipt->chain_sequence }}
             </div>
             <div class="fiscal-line">
-                <strong>{{ __('Fiscal Hash') }}:</strong><br>
+                <strong>{{ __('pos.fiscal_hash') }}:</strong><br>
                 {{ substr($receipt->fiscal_hash, 0, 32) }}<br>
                 {{ substr($receipt->fiscal_hash, 32) }}
             </div>
             @if(!$receipt->isFirstInChain())
                 <div class="fiscal-line">
-                    <strong>{{ __('Previous Hash') }}:</strong><br>
+                    <strong>{{ __('pos.previous_hash') }}:</strong><br>
                     {{ substr($receipt->previous_hash, 0, 32) }}<br>
                     {{ substr($receipt->previous_hash, 32) }}
                 </div>
@@ -378,12 +378,12 @@
 
         {{-- Footer Section --}}
         <div class="footer">
-            <div class="thank-you">{{ __('Thank You!') }}</div>
+            <div class="thank-you">{{ __('pos.thank_you') }}</div>
             @if($company->receipt_footer ?? null)
                 <div class="custom-footer">{{ $company->receipt_footer }}</div>
             @endif
             <div style="margin-top: 8px; font-size: 7pt;">
-                {{ __('Powered by AutoERP') }}
+                {{ __('pos.powered_by') }}
             </div>
         </div>
     </div>

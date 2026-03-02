@@ -1,11 +1,15 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useForm } from 'react-hook-form'
+import { useForm, Controller, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Button, Input } from '@/components/atoms'
-import { tokens } from '@/lib/designTokens'
+import { ArrowLeft } from 'lucide-react'
+import { Button, Input, FormField, Select } from '@/components/atoms'
+import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
+import { ProductSelector } from '@/features/products/components/ProductSelector'
+import { CategorySelector } from '@/features/categories/components/CategorySelector'
+
 import { useCoupon, useCreateCoupon, useUpdateCoupon } from '../hooks/useCoupons'
 import type { CreateCouponData } from '../api/couponApi'
 
@@ -24,6 +28,8 @@ const couponSchema = z.object({
   stacking_group: z.string().optional(),
   starts_at: z.string().optional().nullable(),
   expires_at: z.string().optional().nullable(),
+  qualifying_product_ids: z.array(z.string()).nullable().optional(),
+  qualifying_category_ids: z.array(z.number().int().positive()).nullable().optional(),
 })
 
 type CouponFormValues = z.infer<typeof couponSchema>
@@ -39,7 +45,7 @@ export function CouponFormPage() {
   const updateMutation = useUpdateCoupon()
 
   const form = useForm<CouponFormValues>({
-    resolver: zodResolver(couponSchema),
+    resolver: zodResolver(couponSchema) as Resolver<CouponFormValues>,
     defaultValues: {
       name: '',
       code: '',
@@ -55,6 +61,8 @@ export function CouponFormPage() {
       stacking_group: 'coupons',
       starts_at: null,
       expires_at: null,
+      qualifying_product_ids: null,
+      qualifying_category_ids: null,
     },
   })
 
@@ -75,19 +83,34 @@ export function CouponFormPage() {
         stacking_group: existingCoupon.stacking_group,
         starts_at: existingCoupon.starts_at?.slice(0, 16) ?? null,
         expires_at: existingCoupon.expires_at?.slice(0, 16) ?? null,
+        qualifying_product_ids: existingCoupon.qualifying_product_ids ?? null,
+        qualifying_category_ids: existingCoupon.qualifying_category_ids
+          ? existingCoupon.qualifying_category_ids.map(Number)
+          : null,
       })
     }
   }, [existingCoupon, form])
 
   const onSubmit = (values: CouponFormValues) => {
     const payload: CreateCouponData = {
-      ...values,
+      name: values.name,
+      code: values.code,
+      type: values.type,
+      discount_type: values.discount_type,
+      discount_value: values.discount_value,
       max_discount_amount: values.max_discount_amount || null,
       minimum_order_amount: values.minimum_order_amount || null,
+      ...(values.is_single_use != null ? { is_single_use: values.is_single_use } : {}),
       max_uses: values.max_uses ?? null,
       max_uses_per_customer: values.max_uses_per_customer ?? null,
+      ...(values.is_exclusive != null ? { is_exclusive: values.is_exclusive } : {}),
+      ...(values.stacking_group ? { stacking_group: values.stacking_group } : {}),
       starts_at: values.starts_at || null,
       expires_at: values.expires_at || null,
+      qualifying_product_ids: values.qualifying_product_ids?.length ? values.qualifying_product_ids : null,
+      qualifying_category_ids: values.qualifying_category_ids?.length
+        ? values.qualifying_category_ids.map(String)
+        : null,
     }
 
     if (isEditing && id) {
@@ -110,149 +133,127 @@ export function CouponFormPage() {
 
   return (
     <div className="max-w-2xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <button
+          type="button"
+          onClick={() => navigate('/pos/coupons')}
+          className="p-2 rounded-lg hover:bg-gray-100"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <h1 className="text-2xl font-bold text-gray-900">
           {isEditing ? t('coupons:editCoupon') : t('coupons:createCoupon')}
         </h1>
       </div>
 
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 pb-24">
         {/* Basic Info */}
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold" style={{ color: tokens.colors.text.primary }}>
+          <h2 className="text-lg font-semibold text-gray-900">
             {t('coupons:sections.basicInfo')}
           </h2>
 
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {t('coupons:fields.name')}
-              </label>
+            <FormField
+              label={t('coupons:fields.name')}
+              error={form.formState.errors.name?.message}
+            >
               <Input {...form.register('name')} />
-              {form.formState.errors.name && (
-                <p className="text-sm text-red-600 mt-1">{form.formState.errors.name.message}</p>
-              )}
-            </div>
+            </FormField>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {t('coupons:fields.code')}
-              </label>
+            <FormField
+              label={t('coupons:fields.code')}
+              helperText={t('coupons:placeholders.codeHint')}
+              error={form.formState.errors.code?.message}
+            >
               <Input
                 {...form.register('code')}
                 placeholder={t('coupons:placeholders.code')}
                 className="font-mono uppercase"
               />
-              <p className="text-xs text-gray-500 mt-1">{t('coupons:placeholders.codeHint')}</p>
-              {form.formState.errors.code && (
-                <p className="text-sm text-red-600 mt-1">{form.formState.errors.code.message}</p>
-              )}
-            </div>
+            </FormField>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              {t('coupons:fields.type')}
-            </label>
-            <select
-              {...form.register('type')}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-            >
+          <FormField label={t('coupons:fields.type')}>
+            <Select {...form.register('type')}>
               <option value="standard">{t('coupons:types.standard')}</option>
               <option value="single_use">{t('coupons:types.single_use')}</option>
               <option value="customer_specific">{t('coupons:types.customer_specific')}</option>
-            </select>
-          </div>
+            </Select>
+          </FormField>
         </section>
 
         {/* Discount Config */}
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold" style={{ color: tokens.colors.text.primary }}>
+          <h2 className="text-lg font-semibold text-gray-900">
             {t('coupons:sections.discountConfig')}
           </h2>
 
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {t('coupons:fields.discountType')}
-              </label>
-              <select
-                {...form.register('discount_type')}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              >
+            <FormField label={t('coupons:fields.discountType')}>
+              <Select {...form.register('discount_type')}>
                 <option value="percentage">{t('coupons:discountTypes.percentage')}</option>
                 <option value="fixed">{t('coupons:discountTypes.fixed')}</option>
-              </select>
-            </div>
+              </Select>
+            </FormField>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {t('coupons:fields.discountValue')}
-              </label>
+            <FormField
+              label={t('coupons:fields.discountValue')}
+              error={form.formState.errors.discount_value?.message}
+            >
               <Input
                 {...form.register('discount_value')}
                 type="number"
                 step="0.01"
                 min="0"
               />
-            </div>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {t('coupons:fields.maxDiscountAmount')}
-              </label>
+            <FormField label={t('coupons:fields.maxDiscountAmount')}>
               <Input
                 {...form.register('max_discount_amount')}
                 type="number"
                 step="0.01"
                 min="0"
               />
-            </div>
+            </FormField>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {t('coupons:fields.minimumOrderAmount')}
-              </label>
+            <FormField label={t('coupons:fields.minimumOrderAmount')}>
               <Input
                 {...form.register('minimum_order_amount')}
                 type="number"
                 step="0.01"
                 min="0"
               />
-            </div>
+            </FormField>
           </div>
         </section>
 
         {/* Usage Limits */}
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold" style={{ color: tokens.colors.text.primary }}>
+          <h2 className="text-lg font-semibold text-gray-900">
             {t('coupons:sections.usageLimits')}
           </h2>
 
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {t('coupons:fields.maxUses')}
-              </label>
+            <FormField label={t('coupons:fields.maxUses')}>
               <Input
                 {...form.register('max_uses')}
                 type="number"
                 min="1"
               />
-            </div>
+            </FormField>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {t('coupons:fields.maxUsesPerCustomer')}
-              </label>
+            <FormField label={t('coupons:fields.maxUsesPerCustomer')}>
               <Input
                 {...form.register('max_uses_per_customer')}
                 type="number"
                 min="1"
               />
-            </div>
+            </FormField>
           </div>
 
           <div className="flex items-center gap-2">
@@ -265,42 +266,66 @@ export function CouponFormPage() {
           </div>
         </section>
 
+        {/* Targeting */}
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold text-gray-900">
+            {t('coupons:sections.targeting')}
+          </h2>
+
+          <Controller
+            name="qualifying_product_ids"
+            control={form.control}
+            render={({ field }) => (
+              <ProductSelector
+                value={field.value ?? []}
+                onChange={field.onChange}
+                label={t('coupons:fields.qualifyingProducts')}
+                helperText={t('coupons:helpers.qualifyingProducts')}
+              />
+            )}
+          />
+
+          <Controller
+            name="qualifying_category_ids"
+            control={form.control}
+            render={({ field }) => (
+              <CategorySelector
+                value={field.value ?? []}
+                onChange={field.onChange}
+                label={t('coupons:fields.qualifyingCategories')}
+                helperText={t('coupons:helpers.qualifyingCategories')}
+              />
+            )}
+          />
+        </section>
+
         {/* Schedule */}
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold" style={{ color: tokens.colors.text.primary }}>
+          <h2 className="text-lg font-semibold text-gray-900">
             {t('coupons:sections.schedule')}
           </h2>
 
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {t('coupons:fields.startsAt')}
-              </label>
+            <FormField label={t('coupons:fields.startsAt')}>
               <Input {...form.register('starts_at')} type="datetime-local" />
-            </div>
+            </FormField>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {t('coupons:fields.expiresAt')}
-              </label>
+            <FormField label={t('coupons:fields.expiresAt')}>
               <Input {...form.register('expires_at')} type="datetime-local" />
-            </div>
+            </FormField>
           </div>
         </section>
 
         {/* Stacking */}
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold" style={{ color: tokens.colors.text.primary }}>
+          <h2 className="text-lg font-semibold text-gray-900">
             {t('coupons:sections.stacking')}
           </h2>
 
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {t('coupons:fields.stackingGroup')}
-              </label>
+            <FormField label={t('coupons:fields.stackingGroup')}>
               <Input {...form.register('stacking_group')} />
-            </div>
+            </FormField>
           </div>
 
           <div className="flex items-center gap-2">
@@ -313,11 +338,8 @@ export function CouponFormPage() {
           </div>
         </section>
 
-        {/* Actions */}
-        <div className="flex items-center gap-3 pt-4 border-t">
-          <Button type="submit" disabled={isSaving}>
-            {isSaving ? t('common:saving') : isEditing ? t('common:save') : t('coupons:createCoupon')}
-          </Button>
+        {/* Submit */}
+        <StickyFormFooter>
           <Button
             type="button"
             variant="secondary"
@@ -325,7 +347,10 @@ export function CouponFormPage() {
           >
             {t('common:cancel')}
           </Button>
-        </div>
+          <Button type="submit" disabled={isSaving}>
+            {isSaving ? t('common:saving') : isEditing ? t('common:save') : t('coupons:createCoupon')}
+          </Button>
+        </StickyFormFooter>
       </form>
     </div>
   )

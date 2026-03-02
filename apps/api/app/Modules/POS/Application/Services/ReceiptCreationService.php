@@ -201,6 +201,17 @@ final class ReceiptCreationService
                 $vatAggregates[$rateKey]['gross_amount'] = bcadd($vatAggregates[$rateKey]['gross_amount'], $lineTotal, self::SCALE);
             }
 
+            // 4a-fix. Recalculate VAT aggregates from aggregated net_amount
+            // to satisfy DB constraint: vat_amount = round(net_amount * tax_rate / 100, 2)
+            // Per-line rounding then summing causes drift vs computing from aggregate.
+            $totalTax = '0.00';
+            foreach ($vatAggregates as &$vatData) {
+                $vatData['vat_amount'] = $this->roundVat($vatData['net_amount'], $vatData['tax_rate']);
+                $vatData['gross_amount'] = bcadd($vatData['net_amount'], $vatData['vat_amount'], self::SCALE);
+                $totalTax = bcadd($totalTax, $vatData['vat_amount'], self::SCALE);
+            }
+            unset($vatData);
+
             // 4b. Validate and apply transaction-level discount
             $validatedTransactionDiscount = '0.00';
             $discountReason = null;
@@ -491,6 +502,18 @@ final class ReceiptCreationService
             'user_id' => $cashierId,
             'is_historical' => false,
         ]);
+    }
+
+    /**
+     * Round VAT amount to match PostgreSQL: round((net_amount * tax_rate / 100)::numeric, 2).
+     *
+     * Uses PHP round() which matches PostgreSQL round() (half away from zero).
+     */
+    private function roundVat(string $netAmount, string $taxRate): string
+    {
+        $raw = (float) $netAmount * (float) $taxRate / 100.0;
+
+        return number_format(round($raw, 2), 2, '.', '');
     }
 
     /**

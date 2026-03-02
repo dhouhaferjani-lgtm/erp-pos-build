@@ -23,7 +23,8 @@ use DateTimeInterface;
 final class AccountingService implements AccountingServiceInterface
 {
     public function __construct(
-        private readonly GeneralLedgerHashService $hashService
+        private readonly GeneralLedgerHashService $hashService,
+        private readonly PartnerBalanceService $partnerBalanceService,
     ) {}
 
     /**
@@ -189,6 +190,12 @@ final class AccountingService implements AccountingServiceInterface
 
         $this->dispatchJournalEntryCreatedEvent($entry, 'invoice');
 
+        // Refresh cached partner balance after GL entry creation
+        $this->partnerBalanceService->refreshPartnerBalance(
+            $invoice->company_id,
+            $invoice->partner_id
+        );
+
         return $entry->id;
     }
 
@@ -298,6 +305,12 @@ final class AccountingService implements AccountingServiceInterface
         }
 
         $this->dispatchJournalEntryCreatedEvent($entry, 'credit_note');
+
+        // Refresh cached partner balance after GL entry creation
+        $this->partnerBalanceService->refreshPartnerBalance(
+            $creditNote->company_id,
+            $creditNote->partner_id
+        );
 
         return $entry->id;
     }

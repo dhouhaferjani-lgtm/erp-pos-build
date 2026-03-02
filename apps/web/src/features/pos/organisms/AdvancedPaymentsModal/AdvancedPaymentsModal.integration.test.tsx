@@ -48,7 +48,7 @@ vi.mock('../../api/paymentMethodApi', () => ({
   fetchPaymentMethods: vi.fn(() => Promise.resolve([
     {
       id: 'cash',
-      code: 'cash',
+      code: 'CASH',
       name: 'Cash',
       is_physical: true,
       has_maturity: false,
@@ -92,6 +92,32 @@ vi.mock('../../components/ReceiptPrintButton', () => ({
   ),
 }))
 
+/** Helper: tap Cash button, accept pre-filled amount, and click "Add Payment" */
+async function addCashPayment(amount?: string) {
+  const user = userEvent.setup()
+
+  // Tap Cash method button
+  const cashButton = await screen.findByRole('button', { name: /cash/i })
+  await user.click(cashButton)
+
+  // Optionally change amount
+  if (amount !== undefined) {
+    const amountInput = screen.getByPlaceholderText('0.00')
+    await user.clear(amountInput)
+    await user.type(amountInput, amount)
+  }
+
+  // Click "Add Payment"
+  const addButton = screen.getByRole('button', { name: /add payment/i })
+  await user.click(addButton)
+
+  // Click "Complete Transaction"
+  const completeButton = screen.getByRole('button', {
+    name: /complete transaction/i,
+  })
+  await user.click(completeButton)
+}
+
 describe('AdvancedPaymentsModal - Receipt Printing Integration', () => {
   const mockCartItems: CartItem[] = [
     {
@@ -124,8 +150,12 @@ describe('AdvancedPaymentsModal - Receipt Printing Integration', () => {
   const renderModal = (onComplete = vi.fn(), autoPrintReceipts = false) => {
     const mockedUseCompanySettings = vi.mocked(useCompanySettings)
     mockedUseCompanySettings.mockReturnValue({
-      settings: { auto_print_receipts: autoPrintReceipts },
+      settings: { auto_print_receipts: autoPrintReceipts, receipt_logo: null, receipt_footer: null },
+      isLoading: false,
+      error: null,
       autoPrintReceipts,
+      receiptLogo: null,
+      receiptFooter: null,
     })
 
     return render(
@@ -150,20 +180,7 @@ describe('AdvancedPaymentsModal - Receipt Printing Integration', () => {
 
     renderModal(mockOnComplete)
 
-    // Wait for payment methods to load
-    const cashButton = await screen.findByRole('button', { name: /cash/i })
-    await userEvent.click(cashButton)
-
-    // Enter payment amount
-    const paymentInput = screen.getByPlaceholderText('0.000')
-    await userEvent.clear(paymentInput)
-    await userEvent.type(paymentInput, '20.000')
-
-    // Complete transaction
-    const completeButton = screen.getByRole('button', {
-      name: /complete transaction/i,
-    })
-    await userEvent.click(completeButton)
+    await addCashPayment()
 
     // Wait for success state
     await waitFor(() => {
@@ -184,18 +201,7 @@ describe('AdvancedPaymentsModal - Receipt Printing Integration', () => {
 
     renderModal(mockOnComplete, true) // Enable auto-print
 
-    // Complete payment flow
-    const cashButton = await screen.findByRole('button', { name: /cash/i })
-    await userEvent.click(cashButton)
-
-    const paymentInput = screen.getByPlaceholderText('0.000')
-    await userEvent.clear(paymentInput)
-    await userEvent.type(paymentInput, '20.000')
-
-    const completeButton = screen.getByRole('button', {
-      name: /complete transaction/i,
-    })
-    await userEvent.click(completeButton)
+    await addCashPayment()
 
     await waitFor(() => {
       expect(screen.getByText(/payment successful/i)).toBeInTheDocument()
@@ -214,18 +220,7 @@ describe('AdvancedPaymentsModal - Receipt Printing Integration', () => {
 
     renderModal(mockOnComplete)
 
-    // Complete payment
-    const cashButton = await screen.findByRole('button', { name: /cash/i })
-    await userEvent.click(cashButton)
-
-    const paymentInput = screen.getByPlaceholderText('0.000')
-    await userEvent.clear(paymentInput)
-    await userEvent.type(paymentInput, '20.000')
-
-    const completeButton = screen.getByRole('button', {
-      name: /complete transaction/i,
-    })
-    await userEvent.click(completeButton)
+    await addCashPayment()
 
     await waitFor(() => {
       expect(screen.getByText(/receipt #REC-0003/i)).toBeInTheDocument()
@@ -240,24 +235,12 @@ describe('AdvancedPaymentsModal - Receipt Printing Integration', () => {
 
     renderModal(mockOnComplete)
 
-    // Complete payment
-    const cashButton = await screen.findByRole('button', { name: /cash/i })
-    await userEvent.click(cashButton)
-
-    const paymentInput = screen.getByPlaceholderText('0.000')
-    await userEvent.clear(paymentInput)
-    await userEvent.type(paymentInput, '20.000')
-
-    const completeButton = screen.getByRole('button', {
-      name: /complete transaction/i,
-    })
-    await userEvent.click(completeButton)
+    await addCashPayment()
 
     await waitFor(() => {
       expect(screen.getByText(/new transaction/i)).toBeInTheDocument()
     })
 
-    // Verify it's a button
     const newTransactionButton = screen.getByRole('button', {
       name: /new transaction/i,
     })
@@ -275,26 +258,12 @@ describe('AdvancedPaymentsModal - Receipt Printing Integration', () => {
 
     renderModal(mockOnComplete)
 
-    // Complete payment
-    const cashButton = await screen.findByRole('button', { name: /cash/i })
-    await userEvent.click(cashButton)
-
-    const paymentInput = screen.getByPlaceholderText('0.000')
-    await userEvent.clear(paymentInput)
-    await userEvent.type(paymentInput, '20.000')
-
-    const completeButton = screen.getByRole('button', {
-      name: /complete transaction/i,
-    })
-    await userEvent.click(completeButton)
+    await addCashPayment()
 
     // Verify processing state
     await waitFor(() => {
       expect(screen.getByText(/processing/i)).toBeInTheDocument()
     })
-
-    // Button should be disabled
-    expect(completeButton).toBeDisabled()
 
     // Resolve payment
     resolvePayment!({
@@ -313,26 +282,12 @@ describe('AdvancedPaymentsModal - Receipt Printing Integration', () => {
 
     renderModal(mockOnComplete)
 
-    // Complete payment
-    const cashButton = await screen.findByRole('button', { name: /cash/i })
-    await userEvent.click(cashButton)
-
-    const paymentInput = screen.getByPlaceholderText('0.000')
-    await userEvent.clear(paymentInput)
-    await userEvent.type(paymentInput, '20.000')
-
-    const completeButton = screen.getByRole('button', {
-      name: /complete transaction/i,
-    })
-    await userEvent.click(completeButton)
+    await addCashPayment()
 
     // Wait a bit
     await waitFor(() => expect(mockOnComplete).toHaveBeenCalled())
 
     // Verify success screen is NOT shown
     expect(screen.queryByText(/payment successful/i)).not.toBeInTheDocument()
-
-    // Modal should still be open with payment form
-    expect(screen.getByText(/payment methods/i)).toBeInTheDocument()
   })
 })

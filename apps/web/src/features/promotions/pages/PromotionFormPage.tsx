@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
-import { Input, Textarea, FormField, Button } from '@/components/atoms'
+import { Input, Textarea, FormField, Button, Select } from '@/components/atoms'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
-import { tokens } from '@/lib/designTokens'
+import { ProductSelector } from '@/features/products/components/ProductSelector'
+import { CategorySelector } from '@/features/categories/components/CategorySelector'
+
 import { usePromotion, useCreatePromotion, useUpdatePromotion } from '../hooks/usePromotions'
 import type { CreatePromotionData, UpdatePromotionData } from '../api/promotionApi'
 
@@ -45,6 +47,9 @@ export function PromotionFormPage() {
   const [minQty, setMinQty] = useState('')
   const [minAmount, setMinAmount] = useState('')
   const [triggerQty, setTriggerQty] = useState('')
+  const [categoryIds, setCategoryIds] = useState<number[]>([])
+  const [qualifyingProductIds, setQualifyingProductIds] = useState<string[]>([])
+  const [comboProductIds, setComboProductIds] = useState<string[]>([])
 
   // Populate form when editing
   useEffect(() => {
@@ -68,9 +73,12 @@ export function PromotionFormPage() {
       setUsageLimit(p.usage_limit !== null ? String(p.usage_limit) : '')
 
       const conditions = p.conditions as Record<string, unknown>
-      setMinQty(conditions.min_qty ? String(conditions.min_qty) : '')
-      setMinAmount(conditions.min_amount ? String(conditions.min_amount) : '')
-      setTriggerQty(conditions.trigger_qty ? String(conditions.trigger_qty) : '')
+      setMinQty(conditions['min_qty'] ? String(conditions['min_qty']) : '')
+      setMinAmount(conditions['min_amount'] ? String(conditions['min_amount']) : '')
+      setTriggerQty(conditions['trigger_qty'] ? String(conditions['trigger_qty']) : '')
+      setCategoryIds(Array.isArray(conditions['category_ids']) ? conditions['category_ids'] as number[] : [])
+      setQualifyingProductIds(Array.isArray(conditions['qualifying_product_ids']) ? conditions['qualifying_product_ids'] as string[] : [])
+      setComboProductIds(Array.isArray(conditions['combo_product_ids']) ? conditions['combo_product_ids'] as string[] : [])
     }
   }, [existingPromotion])
 
@@ -78,13 +86,22 @@ export function PromotionFormPage() {
     e.preventDefault()
 
     const conditions: Record<string, unknown> = {}
-    if (minQty) conditions.min_qty = parseInt(minQty, 10)
-    if (minAmount) conditions.min_amount = minAmount
-    if (triggerQty) conditions.trigger_qty = parseInt(triggerQty, 10)
+    if (minQty) conditions['min_qty'] = parseInt(minQty, 10)
+    if (minAmount) conditions['min_amount'] = minAmount
+    if (triggerQty) conditions['trigger_qty'] = parseInt(triggerQty, 10)
+    if (type === 'category_discount' && categoryIds.length > 0) {
+      conditions['category_ids'] = categoryIds
+    }
+    if (type === 'combo_discount' && comboProductIds.length > 0) {
+      conditions['combo_product_ids'] = comboProductIds
+    }
+    if (['buy_x_get_y', 'volume_discount'].includes(type) && qualifyingProductIds.length > 0) {
+      conditions['qualifying_product_ids'] = qualifyingProductIds
+    }
 
     const payload: CreatePromotionData = {
       name,
-      description: description || undefined,
+      ...(description ? { description } : {}),
       type,
       priority,
       is_exclusive: isExclusive,
@@ -137,7 +154,7 @@ export function PromotionFormPage() {
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <h1 className="text-2xl font-bold" style={{ color: tokens.colors.text.primary }}>
+        <h1 className="text-2xl font-bold text-gray-900">
           {isEditing ? t('promotions:editPromotion') : t('promotions:createPromotion')}
         </h1>
       </div>
@@ -156,10 +173,9 @@ export function PromotionFormPage() {
 
         <div className="grid grid-cols-2 gap-4">
           <FormField label={t('promotions:fields.type')} required>
-            <select
+            <Select
               value={type}
               onChange={(e) => setType(e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
               required
             >
               {PROMOTION_TYPES.map((pt) => (
@@ -167,7 +183,7 @@ export function PromotionFormPage() {
                   {t(`promotions:types.${pt}`)}
                 </option>
               ))}
-            </select>
+            </Select>
           </FormField>
 
           <FormField label={t('promotions:fields.priority')}>
@@ -187,10 +203,9 @@ export function PromotionFormPage() {
 
         <div className="grid grid-cols-3 gap-4">
           <FormField label={t('promotions:fields.discountType')} required>
-            <select
+            <Select
               value={discountType}
               onChange={(e) => setDiscountType(e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
               required
             >
               {DISCOUNT_TYPES.map((dt) => (
@@ -198,7 +213,7 @@ export function PromotionFormPage() {
                   {t(`promotions:discountTypes.${dt}`)}
                 </option>
               ))}
-            </select>
+            </Select>
           </FormField>
 
           <FormField label={t('promotions:fields.discountValue')} required>
@@ -224,10 +239,9 @@ export function PromotionFormPage() {
         </div>
 
         <FormField label={t('promotions:fields.appliesTo')} required>
-          <select
+          <Select
             value={appliesTo}
             onChange={(e) => setAppliesTo(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
             required
           >
             {APPLIES_TO_OPTIONS.map((opt) => (
@@ -235,7 +249,7 @@ export function PromotionFormPage() {
                 {t(`promotions:appliesTo.${opt}`)}
               </option>
             ))}
-          </select>
+          </Select>
         </FormField>
       </section>
 
@@ -276,6 +290,33 @@ export function PromotionFormPage() {
             </FormField>
           )}
         </div>
+
+        {type === 'category_discount' && (
+          <CategorySelector
+            value={categoryIds}
+            onChange={setCategoryIds}
+            label={t('promotions:fields.categoryIds')}
+            helperText={t('promotions:helpers.categoryIds')}
+          />
+        )}
+
+        {type === 'combo_discount' && (
+          <ProductSelector
+            value={comboProductIds}
+            onChange={setComboProductIds}
+            label={t('promotions:fields.comboProducts')}
+            helperText={t('promotions:helpers.comboProducts')}
+          />
+        )}
+
+        {['buy_x_get_y', 'volume_discount'].includes(type) && (
+          <ProductSelector
+            value={qualifyingProductIds}
+            onChange={setQualifyingProductIds}
+            label={t('promotions:fields.qualifyingProducts')}
+            helperText={t('promotions:helpers.qualifyingProducts')}
+          />
+        )}
       </section>
 
       {/* Schedule */}

@@ -1,15 +1,17 @@
 import { useState } from 'react'
-import { Link, useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Calendar, Building2, FileText, Car, Truck, CreditCard } from 'lucide-react'
+import { Calendar, Building2, FileText, Car, Truck } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { formatCurrency } from '../../../lib/format'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
 import { DocumentAttachments } from '../components/DocumentAttachments'
 import { DocumentTotals } from '../components/DocumentTotals'
+import { DocumentHeader } from '../components/DocumentHeader'
+import { DocumentOutstandingCallout } from '../components/DocumentOutstandingCallout'
 import { PaymentStatusBadge } from '../components/PaymentStatusBadge'
 import { PaymentHistorySection, OutstandingAmountSection } from '../components'
 import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail } from '../hooks'
@@ -202,65 +204,46 @@ export function SalesOrderDetailPage() {
     <div className="py-6">
       {/* Header */}
       <div className="mb-6">
-        <Link
-          to="/sales/orders"
-          className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-4"
+        <DocumentHeader
+          document={order}
+          backPath="/sales/orders"
+          actions={
+            <DocumentActionBar
+              document={order}
+              basePath="/sales/orders"
+              isActionPending={isActionPending}
+              onConfirm={() => setConfirmAction('confirm')}
+              onConvert={() => setConfirmAction('convertToInvoice')}
+              onConvertToDelivery={() => setConfirmAction('convertToDelivery')}
+              onDownloadPdf={handleDownloadPdf}
+              onPreviewPdf={handlePreviewPdf}
+              onPrintPdf={handlePrintPdf}
+              onSendEmail={() => setShowEmailModal(true)}
+              isDownloading={downloadPdfMutation.isPending}
+              isPreviewing={previewPdfMutation.isPending}
+              isPrinting={printPdfMutation.isPending}
+            />
+          }
+          financialCallout={
+            !isPaid && outstandingAmount > 0 ? (
+              <DocumentOutstandingCallout
+                amount={outstandingAmount}
+                currency={currentCompany?.currency ?? 'EUR'}
+                {...(canRecordPayment ? { onRecordPayment: () => setShowPaymentModal(true) } : {})}
+              />
+            ) : undefined
+          }
         >
-          <ArrowLeft className="h-4 w-4 mr-1" />
-          {t('orders.backToList')}
-        </Link>
-
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">{order.document_number}</h1>
-            <div className="mt-2 flex items-center gap-2">
-              <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800">
-                {t('documents.types.sales_order')}
-              </span>
-              <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${
-                order.status === 'draft' ? 'bg-gray-100 text-gray-800' :
-                order.status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
-                'bg-red-100 text-red-800'
-              }`}>
-                {t(`documents.statuses.${order.status}`)}
-              </span>
-              {order.status === 'confirmed' && (
-                <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium ${deliveryStatusColors[deliveryStatus as keyof typeof deliveryStatusColors]}`}>
-                  <Truck className="h-4 w-4" />
-                  {t(`orders.deliveryStatus.${deliveryStatus}`)}
-                </span>
-              )}
-              {order.status === 'confirmed' && order.payment_status && (
-                <>
-                  <PaymentStatusBadge status={order.payment_status as any} />
-                  {!isPaid && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-3 py-1 text-sm font-medium text-orange-800">
-                      <CreditCard className="h-4 w-4" />
-                      {t('documents.amountDue')}: {formatCurrency(outstandingAmount, { currency: currentCompany?.currency ?? 'EUR' })}
-                    </span>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-
-          <DocumentActionBar
-            document={order}
-            basePath="/sales/orders"
-            isActionPending={isActionPending}
-            onConfirm={() => setConfirmAction('confirm')}
-            onConvert={() => setConfirmAction('convertToInvoice')}
-            onConvertToDelivery={() => setConfirmAction('convertToDelivery')}
-            onRecordPayment={canRecordPayment ? () => setShowPaymentModal(true) : undefined}
-            onDownloadPdf={handleDownloadPdf}
-            onPreviewPdf={handlePreviewPdf}
-            onPrintPdf={handlePrintPdf}
-            onSendEmail={() => setShowEmailModal(true)}
-            isDownloading={downloadPdfMutation.isPending}
-            isPreviewing={previewPdfMutation.isPending}
-            isPrinting={printPdfMutation.isPending}
-          />
-        </div>
+          {order.status === 'confirmed' && (
+            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${deliveryStatusColors[deliveryStatus as keyof typeof deliveryStatusColors]}`}>
+              <Truck className="h-3 w-3" />
+              {t(`orders.deliveryStatus.${deliveryStatus}`)}
+            </span>
+          )}
+          {order.status === 'confirmed' && order.payment_status && (
+            <PaymentStatusBadge status={order.payment_status as 'unpaid' | 'partially_paid' | 'in_payment' | 'paid' | 'overpaid'} />
+          )}
+        </DocumentHeader>
       </div>
 
       {/* Main Content */}
