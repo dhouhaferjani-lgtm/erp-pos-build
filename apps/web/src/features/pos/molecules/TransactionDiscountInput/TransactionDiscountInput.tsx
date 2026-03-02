@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { POSButton } from '../../atoms'
 import { textColors, borderColors, tokens } from '@/lib/designTokens'
 import { bcmul, bcdiv, bccomp, bcsub } from '@/lib/decimal'
+import { useCurrency } from '@/hooks/useCurrency'
 
 export interface TransactionDiscountInputProps {
   currentAmount?: string
@@ -51,6 +52,7 @@ export function TransactionDiscountInput({
   touchOptimized = false,
 }: TransactionDiscountInputProps) {
   const { t } = useTranslation(['pos'])
+  const { currency } = useCurrency()
   const [amount, setAmount] = useState(currentAmount)
   const [reason, setReason] = useState(currentReason)
   const [error, setError] = useState<string | null>(null)
@@ -141,7 +143,7 @@ export function TransactionDiscountInput({
             )}
           />
           <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-            <span className={cn(textColors.tertiary, touchOptimized && 'text-lg')}>TND</span>
+            <span className={cn(textColors.tertiary, touchOptimized && 'text-lg')}>{currency}</span>
           </div>
         </div>
         <p className="text-xs text-gray-500 mt-1">
@@ -204,21 +206,21 @@ export function TransactionDiscountInput({
                 {t('pos:cart.originalTotal')}:
               </span>
               <span className={cn(textColors.tertiary, 'text-sm line-through')}>
-                {subtotal} TND
+                {subtotal} {currency}
               </span>
             </div>
             <div className="flex justify-between">
               <span className={cn(textColors.secondary, 'text-sm')}>
                 {t('pos:cart.discount')}:
               </span>
-              <span className="text-red-600 text-sm font-medium">-{amount} TND</span>
+              <span className="text-red-600 text-sm font-medium">-{amount} {currency}</span>
             </div>
             <div className="flex justify-between pt-1 border-t border-blue-200">
               <span className={cn(textColors.brand, 'font-bold')}>
                 {t('pos:cart.discountedTotal')}:
               </span>
               <span className={cn(textColors.brand, 'font-bold text-lg')}>
-                {preview} TND
+                {preview} {currency}
               </span>
             </div>
           </div>

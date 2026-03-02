@@ -54,6 +54,18 @@ class RolesAndPermissionsSeeder extends Seeder
             'modifier-groups.view',
             'modifier-groups.manage',
 
+            // Menu Management
+            'menus.view',
+            'menus.manage',
+
+            // Promotions
+            'promotions.view',
+            'promotions.manage',
+
+            // Coupons
+            'coupons.view',
+            'coupons.manage',
+
             // Vehicle Management
             'vehicles.view',
             'vehicles.create',
@@ -186,6 +198,10 @@ class RolesAndPermissionsSeeder extends Seeder
             'withholding.update',
             'withholding.delete',
 
+            // Loyalty
+            'loyalty.view',
+            'loyalty.manage',
+
             // System
             'settings.view',
             'settings.update',
@@ -242,6 +258,12 @@ class RolesAndPermissionsSeeder extends Seeder
             'batches.recall', 'batches.write-off', 'batches.traceability',
             'withholding.view',
             'settings.view', 'settings.manage',
+            'composite-items.view', 'composite-items.create', 'composite-items.update', 'composite-items.delete', 'composite-items.manage-recipes',
+            'modifier-groups.view', 'modifier-groups.manage',
+            'menus.view', 'menus.manage',
+            'promotions.view', 'promotions.manage',
+            'coupons.view', 'coupons.manage',
+            'loyalty.view', 'loyalty.manage',
         ]);
         $this->command->info('Created role: manager');
 
@@ -264,6 +286,9 @@ class RolesAndPermissionsSeeder extends Seeder
             'work-orders.view',
             'pos.operate_terminal', 'pos.view_receipts',
             'batches.view',
+            'composite-items.view',
+            'modifier-groups.view',
+            'menus.view',
         ]);
         $this->command->info('Created role: cashier');
 
@@ -291,6 +316,12 @@ class RolesAndPermissionsSeeder extends Seeder
             'reports.operational',
             'work-orders.view',
             'settings.view',
+            'composite-items.view',
+            'modifier-groups.view',
+            'menus.view',
+            'promotions.view',
+            'coupons.view',
+            'loyalty.view',
         ]);
         $this->command->info('Created role: viewer');
 

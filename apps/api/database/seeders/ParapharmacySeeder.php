@@ -969,8 +969,8 @@ class ParapharmacySeeder extends Seeder
         $vatRate = match ($category) {
             ParapharmacyCategory::Supplement,
             ParapharmacyCategory::BabyCare,
-            ParapharmacyCategory::MedicalDevice => 0.055, // 5.5% essential products
-            default => 0.20, // 20% standard rate
+            ParapharmacyCategory::MedicalDevice => 5.50, // 5.5% essential products
+            default => 20.00, // 20% standard rate
         };
 
         return [$retailPrice, $cost, $vatRate];

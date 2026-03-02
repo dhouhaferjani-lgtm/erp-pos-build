@@ -134,6 +134,8 @@ final class DeliveryNoteService
             'fiscal_hash' => $fiscalHash,
             'previous_hash' => $previousHash,
             'chain_sequence' => $chainSequence,
+            'confirmed_at' => $confirmedAt,
+            'confirmed_by' => auth()->id(),
         ]);
 
         // Calculate and snapshot taxes for immutable audit trail

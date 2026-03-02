@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Plus, Trash2, GripVertical } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2 } from 'lucide-react'
 import { StickyFormFooter } from '../../../components/molecules/StickyFormFooter/StickyFormFooter'
 import { useMenu, useCreateMenu, useUpdateMenu, useCreateMenuCategory, useDeleteMenuCategory } from '../hooks/useMenus'
+import { MenuCategoryItemManager } from '../components/MenuCategoryItemManager'
 import { Input, Textarea, FormField, Button } from '@/components/atoms'
 import { tokens } from '@/lib/designTokens'
 import type { CreateMenuData, UpdateMenuData, MenuCategoryData } from '../types/menu'
@@ -246,26 +247,17 @@ export function MenuFormPage() {
             {categories.length > 0 && (
               <div className="space-y-3 mb-4">
                 {categories.map((category) => (
-                  <div
-                    key={category.id}
-                    className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 p-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <GripVertical className="h-4 w-4 text-gray-400" />
-                      <div>
-                        <span className="text-sm font-medium text-gray-900">{category.name}</span>
-                        <span className="ml-2 text-xs text-gray-500">
-                          ({category.items?.length ?? 0} {t('menu:items')})
-                        </span>
-                      </div>
+                  <div key={category.id} className="space-y-1">
+                    <div className="flex items-center justify-end">
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCategory(category.id)}
+                        className="text-gray-400 hover:text-red-500 p-1"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteCategory(category.id)}
-                      className="text-gray-400 hover:text-red-500"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    <MenuCategoryItemManager category={category} />
                   </div>
                 ))}
               </div>

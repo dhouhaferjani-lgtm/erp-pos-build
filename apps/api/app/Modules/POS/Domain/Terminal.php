@@ -10,7 +10,9 @@ use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Database\Factories\TerminalFactory;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -61,6 +63,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 class Terminal extends Model
 {
+    /** @use HasFactory<TerminalFactory> */
+    use HasFactory;
     use HasUuids;
     use SoftDeletes;
 
@@ -68,6 +72,11 @@ class Terminal extends Model
      * @var string
      */
     protected $table = 'pos_terminals';
+
+    protected static function newFactory(): TerminalFactory
+    {
+        return TerminalFactory::new();
+    }
 
     /**
      * @var list<string>

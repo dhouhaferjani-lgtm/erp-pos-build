@@ -9,7 +9,9 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use Illuminate\Database\Eloquent\Builder;
+use Database\Factories\PaymentRepositoryFactory;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -41,9 +43,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class PaymentRepository extends Model
 {
+    /** @use HasFactory<PaymentRepositoryFactory> */
+    use HasFactory;
     use HasUuids;
 
     protected $table = 'payment_repositories';
+
+    protected static function newFactory(): PaymentRepositoryFactory
+    {
+        return PaymentRepositoryFactory::new();
+    }
 
     protected $fillable = [
         'tenant_id',
@@ -61,6 +70,7 @@ class PaymentRepository extends Model
         'location_id',
         'responsible_user_id',
         'account_id',
+        'gl_account_id',
         'is_active',
     ];
 

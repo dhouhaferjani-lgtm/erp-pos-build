@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Company\Domain\Events;
 
-use App\Shared\Domain\DomainEvent;
+use App\Shared\Domain\Events\DomainEvent;
 
 /**
  * CompanyUpdated Event
@@ -35,5 +35,10 @@ class CompanyUpdated extends DomainEvent
     public function getAggregateId(): string
     {
         return $this->companyId;
+    }
+
+    public function getEventName(): string
+    {
+        return 'company.updated';
     }
 }

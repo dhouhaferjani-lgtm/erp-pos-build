@@ -12,6 +12,7 @@ use App\Modules\POS\Presentation\Requests\RecordDepositRequest;
 use App\Modules\POS\Presentation\Requests\RecordPayoutRequest;
 use App\Modules\POS\Presentation\Resources\CashDrawerOperationResource;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Gate;
 
 /**
  * Controller for cash drawer operations.
@@ -36,6 +37,8 @@ final class CashDrawerController extends Controller
      */
     public function deposit(RecordDepositRequest $request): JsonResponse
     {
+        Gate::authorize('pos.operate_terminal');
+
         $shift = Shift::findOrFail($request->validated('shift_id'));
 
         // Verify shift belongs to current company
@@ -77,6 +80,8 @@ final class CashDrawerController extends Controller
      */
     public function payout(RecordPayoutRequest $request): JsonResponse
     {
+        Gate::authorize('pos.operate_terminal');
+
         $shift = Shift::findOrFail($request->validated('shift_id'));
 
         // Verify shift belongs to current company
@@ -118,6 +123,8 @@ final class CashDrawerController extends Controller
      */
     public function operations(string $shiftId): JsonResponse
     {
+        Gate::authorize('pos.operate_terminal');
+
         $shift = Shift::findOrFail($shiftId);
 
         // Verify shift belongs to current company
@@ -144,6 +151,8 @@ final class CashDrawerController extends Controller
      */
     public function balance(string $shiftId): JsonResponse
     {
+        Gate::authorize('pos.operate_terminal');
+
         $shift = Shift::findOrFail($shiftId);
 
         // Verify shift belongs to current company
@@ -169,7 +178,7 @@ final class CashDrawerController extends Controller
             'data' => [
                 'shift_id' => $shift->id,
                 'shift_number' => $shift->shift_number,
-                'status' => $shift->status,
+                'status' => $shift->status->value,
                 'expected_cash' => $expectedCash,
                 'breakdown' => [
                     'opening' => $openingAmount,

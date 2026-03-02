@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { tokens, textColors } from '@/lib/designTokens'
 import { formatCurrency } from '@/lib/decimal'
+import { useCurrency } from '@/hooks/useCurrency'
 
 export interface CartItem {
   id: string
@@ -49,6 +50,7 @@ export function CartLineItem({
   className,
 }: CartLineItemProps) {
   const { t } = useTranslation('pos')
+  const { currency } = useCurrency()
   const [touchStart, setTouchStart] = useState<number>(0)
   const [showDelete, setShowDelete] = useState(false)
 
@@ -133,7 +135,7 @@ export function CartLineItem({
               touchOptimized ? 'text-base' : 'text-sm'
             )}
           >
-            {item.unit_price} TND × {item.quantity}
+            {item.unit_price} {currency} × {item.quantity}
           </span>
           {showTax && item.tax_amount && (
             <span
@@ -142,7 +144,7 @@ export function CartLineItem({
                 touchOptimized ? 'text-sm' : 'text-xs'
               )}
             >
-              (Tax: {item.tax_amount} TND)
+              (Tax: {item.tax_amount} {currency})
             </span>
           )}
         </div>
@@ -156,7 +158,7 @@ export function CartLineItem({
                 {t('cart.discount')}:{' '}
                 {item.discount_type === 'percentage'
                   ? `-${item.discount_percent}%`
-                  : `-${formatCurrency(item.discount_amount || '0', false)} TND`}
+                  : `-${formatCurrency(item.discount_amount || '0', false, currency)} ${currency}`}
               </span>
               {onEditDiscount && (
                 <button
@@ -221,7 +223,7 @@ export function CartLineItem({
             touchOptimized ? 'text-xl' : 'text-lg'
           )}
         >
-          {item.line_total} TND
+          {item.line_total} {currency}
         </span>
 
         {/* Remove Button */}

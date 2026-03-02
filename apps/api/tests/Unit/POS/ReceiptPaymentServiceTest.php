@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Tests\Unit\POS;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\ReceiptPaymentService;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptPayment;
+use App\Modules\POS\Domain\Terminal;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -46,9 +48,7 @@ final class ReceiptPaymentServiceTest extends TestCase
         // Arrange
         $this->setupTestData();
 
-        $receipt = Receipt::factory()->create([
-            'company_id' => $this->company->id,
-            'tenant_id' => $this->tenant->id,
+        $receipt = $this->createReceipt([
             'total' => '100.00',
         ]);
 
@@ -83,7 +83,7 @@ final class ReceiptPaymentServiceTest extends TestCase
 
         $this->assertCount(1, $result['receipt_payments']);
         $this->assertCount(1, $result['treasury_payments']);
-        $this->assertEquals('0.00', $result['change_due']);
+        $this->assertEquals('0.000', $result['change_due']);
 
         // Verify database records
         $this->assertDatabaseHas('pos_receipt_payments', [
@@ -107,9 +107,7 @@ final class ReceiptPaymentServiceTest extends TestCase
         // Arrange
         $this->setupTestData();
 
-        $receipt = Receipt::factory()->create([
-            'company_id' => $this->company->id,
-            'tenant_id' => $this->tenant->id,
+        $receipt = $this->createReceipt([
             'total' => '150.00',
         ]);
 
@@ -151,7 +149,7 @@ final class ReceiptPaymentServiceTest extends TestCase
         // Assert
         $this->assertCount(2, $result['receipt_payments']);
         $this->assertCount(2, $result['treasury_payments']);
-        $this->assertEquals('0.00', $result['change_due']);
+        $this->assertEquals('0.000', $result['change_due']);
 
         // Verify both payments created
         $this->assertDatabaseCount('pos_receipt_payments', 2);
@@ -164,9 +162,7 @@ final class ReceiptPaymentServiceTest extends TestCase
         // Arrange
         $this->setupTestData();
 
-        $receipt = Receipt::factory()->create([
-            'company_id' => $this->company->id,
-            'tenant_id' => $this->tenant->id,
+        $receipt = $this->createReceipt([
             'total' => '95.50',
         ]);
 
@@ -194,7 +190,7 @@ final class ReceiptPaymentServiceTest extends TestCase
         );
 
         // Assert
-        $this->assertEquals('4.50', $result['change_due']);
+        $this->assertEquals('4.500', $result['change_due']);
     }
 
     public function test_underpayment_throws_exception(): void
@@ -202,9 +198,7 @@ final class ReceiptPaymentServiceTest extends TestCase
         // Arrange
         $this->setupTestData();
 
-        $receipt = Receipt::factory()->create([
-            'company_id' => $this->company->id,
-            'tenant_id' => $this->tenant->id,
+        $receipt = $this->createReceipt([
             'total' => '100.00',
         ]);
 
@@ -226,7 +220,7 @@ final class ReceiptPaymentServiceTest extends TestCase
 
         // Act & Assert
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Total paid (50.00) is less than receipt total (100.00)');
+        $this->expectExceptionMessage('Total paid (50.000) is less than receipt total (100.00)');
 
         $this->service->processReceiptPayments(
             receiptId: $receipt->id,
@@ -240,15 +234,14 @@ final class ReceiptPaymentServiceTest extends TestCase
         // Arrange
         $this->setupTestData();
 
-        $receipt = Receipt::factory()->create([
-            'company_id' => $this->company->id,
-            'tenant_id' => $this->tenant->id,
+        $receipt = $this->createReceipt([
             'total' => '100.00',
         ]);
 
         // Create existing payment
         ReceiptPayment::factory()->create([
             'receipt_id' => $receipt->id,
+            'payment_method_id' => $this->paymentMethod->id,
         ]);
 
         $repository = PaymentRepository::factory()->create([
@@ -283,9 +276,7 @@ final class ReceiptPaymentServiceTest extends TestCase
         // Arrange
         $this->setupTestData();
 
-        $receipt = Receipt::factory()->create([
-            'company_id' => $this->company->id,
-            'tenant_id' => $this->tenant->id,
+        $receipt = $this->createReceipt([
             'total' => '100.00',
         ]);
 
@@ -321,9 +312,7 @@ final class ReceiptPaymentServiceTest extends TestCase
         // Arrange
         $this->setupTestData();
 
-        $receipt = Receipt::factory()->create([
-            'company_id' => $this->company->id,
-            'tenant_id' => $this->tenant->id,
+        $receipt = $this->createReceipt([
             'total' => '100.00',
         ]);
 
@@ -366,9 +355,7 @@ final class ReceiptPaymentServiceTest extends TestCase
         // Arrange
         $this->setupTestData();
 
-        $receipt = Receipt::factory()->create([
-            'company_id' => $this->company->id,
-            'tenant_id' => $this->tenant->id,
+        $receipt = $this->createReceipt([
             'total' => '100.00',
         ]);
 
@@ -446,14 +433,14 @@ final class ReceiptPaymentServiceTest extends TestCase
     {
         $change = $this->service->calculateChange('105.50', '100.00');
 
-        $this->assertEquals('5.50', $change);
+        $this->assertEquals('5.500', $change);
     }
 
     public function test_calculate_change_returns_zero_for_exact_payment(): void
     {
         $change = $this->service->calculateChange('100.00', '100.00');
 
-        $this->assertEquals('0.00', $change);
+        $this->assertEquals('0.000', $change);
     }
 
     // Helper method to set up test data
@@ -469,6 +456,7 @@ final class ReceiptPaymentServiceTest extends TestCase
         ]);
 
         $this->cashAccount = \App\Modules\Accounting\Domain\Account::factory()->create([
+            'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => '531',
             'name' => 'Cash',
@@ -476,6 +464,7 @@ final class ReceiptPaymentServiceTest extends TestCase
         ]);
 
         $this->bankAccount = \App\Modules\Accounting\Domain\Account::factory()->create([
+            'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => '512',
             'name' => 'Bank',
@@ -483,6 +472,7 @@ final class ReceiptPaymentServiceTest extends TestCase
         ]);
 
         $this->revenueAccount = \App\Modules\Accounting\Domain\Account::factory()->create([
+            'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => '707',
             'name' => 'Sales Revenue',
@@ -500,5 +490,31 @@ final class ReceiptPaymentServiceTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'name' => 'Credit Card',
         ]);
+
+        $this->location = Location::factory()->create([
+            'company_id' => $this->company->id,
+        ]);
+
+        $this->terminal = Terminal::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $this->location->id,
+        ]);
+    }
+
+    /**
+     * Create a receipt with all required FK fields.
+     *
+     * @param array<string, mixed> $overrides
+     */
+    private function createReceipt(array $overrides = []): Receipt
+    {
+        return Receipt::factory()->create(array_merge([
+            'company_id' => $this->company->id,
+            'tenant_id' => $this->tenant->id,
+            'location_id' => $this->location->id,
+            'terminal_id' => $this->terminal->id,
+            'cashier_id' => $this->user->id,
+        ], $overrides));
     }
 }

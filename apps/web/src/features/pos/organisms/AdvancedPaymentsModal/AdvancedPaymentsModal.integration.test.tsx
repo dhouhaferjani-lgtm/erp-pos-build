@@ -19,6 +19,70 @@ vi.mock('../../hooks', () => ({
   })),
 }))
 
+// Import the mocked module for use in tests
+import { useCompanySettings } from '../../hooks'
+
+// Mock useCurrency
+vi.mock('@/hooks/useCurrency', () => ({
+  useCurrency: () => ({
+    currency: 'EUR',
+    locale: 'fr-FR',
+    decimals: 2,
+    symbol: '\u20ac',
+    format: (value: string | number) => {
+      const num = typeof value === 'string' ? parseFloat(value) : value
+      return `${num.toFixed(2)} EUR`
+    },
+    toFixed: (value: number) => value.toFixed(2),
+  }),
+  getDecimals: () => 2,
+  getLocale: () => 'fr-FR',
+  formatAmount: (value: string | number, currency: string) => {
+    const num = typeof value === 'string' ? parseFloat(value) : value
+    return `${num.toFixed(2)} ${currency}`
+  },
+}))
+
+// Mock payment APIs
+vi.mock('../../api/paymentMethodApi', () => ({
+  fetchPaymentMethods: vi.fn(() => Promise.resolve([
+    {
+      id: 'cash',
+      code: 'cash',
+      name: 'Cash',
+      is_physical: true,
+      has_maturity: false,
+      requires_third_party: false,
+      is_push: false,
+      has_deducted_fees: false,
+      is_restricted: false,
+      fee_type: null,
+      fee_fixed: '0',
+      fee_percent: '0',
+      restriction_type: null,
+      is_active: true,
+      position: 1,
+    },
+  ])),
+}))
+
+vi.mock('../../api/paymentRepositoryApi', () => ({
+  fetchPaymentRepositories: vi.fn(() => Promise.resolve([
+    {
+      id: 'repo-cash',
+      code: 'CR1',
+      name: 'Main Register',
+      type: 'cash_register',
+      bank_name: null,
+      account_number: null,
+      iban: null,
+      bic: null,
+      balance: '1000.00',
+      is_active: true,
+    },
+  ])),
+}))
+
 vi.mock('../../components/ReceiptPrintButton', () => ({
   ReceiptPrintButton: ({ receiptId, autoPrint }: { receiptId: string; autoPrint: boolean }) => (
     <div data-testid="receipt-print-button">
@@ -58,8 +122,8 @@ describe('AdvancedPaymentsModal - Receipt Printing Integration', () => {
   })
 
   const renderModal = (onComplete = vi.fn(), autoPrintReceipts = false) => {
-    const { useCompanySettings } = require('../../hooks')
-    useCompanySettings.mockReturnValue({
+    const mockedUseCompanySettings = vi.mocked(useCompanySettings)
+    mockedUseCompanySettings.mockReturnValue({
       settings: { auto_print_receipts: autoPrintReceipts },
       autoPrintReceipts,
     })
@@ -86,8 +150,8 @@ describe('AdvancedPaymentsModal - Receipt Printing Integration', () => {
 
     renderModal(mockOnComplete)
 
-    // Select payment method
-    const cashButton = screen.getByRole('button', { name: /cash/i })
+    // Wait for payment methods to load
+    const cashButton = await screen.findByRole('button', { name: /cash/i })
     await userEvent.click(cashButton)
 
     // Enter payment amount
@@ -121,7 +185,7 @@ describe('AdvancedPaymentsModal - Receipt Printing Integration', () => {
     renderModal(mockOnComplete, true) // Enable auto-print
 
     // Complete payment flow
-    const cashButton = screen.getByRole('button', { name: /cash/i })
+    const cashButton = await screen.findByRole('button', { name: /cash/i })
     await userEvent.click(cashButton)
 
     const paymentInput = screen.getByPlaceholderText('0.000')
@@ -151,7 +215,7 @@ describe('AdvancedPaymentsModal - Receipt Printing Integration', () => {
     renderModal(mockOnComplete)
 
     // Complete payment
-    const cashButton = screen.getByRole('button', { name: /cash/i })
+    const cashButton = await screen.findByRole('button', { name: /cash/i })
     await userEvent.click(cashButton)
 
     const paymentInput = screen.getByPlaceholderText('0.000')
@@ -177,7 +241,7 @@ describe('AdvancedPaymentsModal - Receipt Printing Integration', () => {
     renderModal(mockOnComplete)
 
     // Complete payment
-    const cashButton = screen.getByRole('button', { name: /cash/i })
+    const cashButton = await screen.findByRole('button', { name: /cash/i })
     await userEvent.click(cashButton)
 
     const paymentInput = screen.getByPlaceholderText('0.000')
@@ -212,7 +276,7 @@ describe('AdvancedPaymentsModal - Receipt Printing Integration', () => {
     renderModal(mockOnComplete)
 
     // Complete payment
-    const cashButton = screen.getByRole('button', { name: /cash/i })
+    const cashButton = await screen.findByRole('button', { name: /cash/i })
     await userEvent.click(cashButton)
 
     const paymentInput = screen.getByPlaceholderText('0.000')
@@ -250,7 +314,7 @@ describe('AdvancedPaymentsModal - Receipt Printing Integration', () => {
     renderModal(mockOnComplete)
 
     // Complete payment
-    const cashButton = screen.getByRole('button', { name: /cash/i })
+    const cashButton = await screen.findByRole('button', { name: /cash/i })
     await userEvent.click(cashButton)
 
     const paymentInput = screen.getByPlaceholderText('0.000')

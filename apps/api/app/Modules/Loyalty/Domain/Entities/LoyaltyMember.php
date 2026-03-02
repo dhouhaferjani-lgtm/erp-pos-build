@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Loyalty\Domain\Entities;
 
+use App\Modules\Loyalty\Domain\Enums\MemberStatus;
 use App\Modules\Partner\Domain\Partner;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -20,7 +21,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $first_name
  * @property string|null $last_name
  * @property \Illuminate\Support\Carbon|null $date_of_birth
- * @property string $status
+ * @property MemberStatus $status
  * @property \Illuminate\Support\Carbon $enrollment_date
  * @property string|null $external_id
  * @property \Illuminate\Support\Carbon|null $created_at
@@ -53,6 +54,7 @@ class LoyaltyMember extends Model
     {
         return [
             'date_of_birth' => 'date',
+            'status' => MemberStatus::class,
             'enrollment_date' => 'datetime',
         ];
     }

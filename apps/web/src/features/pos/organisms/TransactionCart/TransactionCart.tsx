@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
-import { CartLineItem, type CartItem, TransactionDiscountInput } from '../../molecules'
+import { CartLineItem, type CartItem, TransactionDiscountInput, DiscountInput } from '../../molecules'
 import { POSButton } from '../../atoms'
 import { ShoppingCart, Trash2, User, UserPlus, Tag } from 'lucide-react'
 import { PaymentPanel } from '../PaymentPanel/PaymentPanel'
 import { Modal } from '@/components/organisms/Modal/Modal'
 import { useDiscountPermissions } from '../../hooks/useDiscountPermissions'
+import { useCurrency } from '@/hooks/useCurrency'
 
 export interface Customer {
   id: string
@@ -18,6 +19,7 @@ export interface TransactionCartProps {
   items: CartItem[]
   onUpdateQuantity: (productId: string, newQuantity: number) => void
   onRemoveItem: (productId: string) => void
+  onEditLineDiscount?: (productId: string, discount: { type: 'percentage' | 'fixed'; value: string; reason?: string } | undefined) => void
   onQuickCheckout: () => void
   onAdvancedPayments: () => void
   onOpenCalculator?: () => void
@@ -38,6 +40,7 @@ export function TransactionCart({
   items,
   onUpdateQuantity,
   onRemoveItem,
+  onEditLineDiscount,
   onQuickCheckout,
   onAdvancedPayments,
   onOpenCalculator,
@@ -51,8 +54,10 @@ export function TransactionCart({
   onUpdateTransactionDiscount,
 }: TransactionCartProps) {
   const { t } = useTranslation(['pos', 'common'])
+  const { currency, toFixed: toFixedCurrency } = useCurrency()
   const { permissions } = useDiscountPermissions(terminalCode)
   const [showTransactionDiscountModal, setShowTransactionDiscountModal] = useState(false)
+  const [editingLineDiscountProductId, setEditingLineDiscountProductId] = useState<string | null>(null)
 
   // Calculate item count for header badge
   const itemCount = useMemo(() => {
@@ -61,10 +66,9 @@ export function TransactionCart({
 
   // Calculate subtotal for discount validation
   const subtotal = useMemo(() => {
-    return items
-      .reduce((sum, item) => sum + parseFloat(item.line_total), 0)
-      .toFixed(3)
-  }, [items])
+    return toFixedCurrency(items
+      .reduce((sum, item) => sum + parseFloat(item.line_total), 0))
+  }, [items, toFixedCurrency])
 
   const isEmpty = items.length === 0
 
@@ -174,6 +178,12 @@ export function TransactionCart({
               item={item}
               onUpdateQuantity={onUpdateQuantity}
               onRemove={onRemoveItem}
+              {...(permissions?.canApplyLineDiscounts ? {
+                showDiscount: true as const,
+                onEditDiscount: (productId: string) => {
+                  setEditingLineDiscountProductId(productId)
+                },
+              } : {})}
               touchOptimized={touchOptimized}
             />
           ))
@@ -194,7 +204,7 @@ export function TransactionCart({
               <div className="flex items-center gap-3">
                 <div className="text-right">
                   <div className="text-red-600 font-semibold">
-                    -{parseFloat(transactionDiscount.amount).toFixed(3)} TND
+                    -{toFixedCurrency(parseFloat(transactionDiscount.amount))} {currency}
                   </div>
                   {transactionDiscount.reason && (
                     <div className="text-xs text-gray-500 italic">
@@ -243,6 +253,50 @@ export function TransactionCart({
           />
         </div>
       )}
+
+      {/* Line Discount Modal */}
+      {editingLineDiscountProductId && permissions && onEditLineDiscount && (() => {
+        const editingItem = items.find((i) => i.product.id === editingLineDiscountProductId)
+        if (!editingItem) return null
+        const grossLineTotal = toFixedCurrency(parseFloat(editingItem.unit_price) * editingItem.quantity)
+        return (
+          <Modal
+            isOpen={!!editingLineDiscountProductId}
+            onClose={() => setEditingLineDiscountProductId(null)}
+            title={`${t('pos:cart.discount')} — ${editingItem.product.name}`}
+            size="md"
+          >
+            <div className="p-4">
+              <DiscountInput
+                lineTotal={grossLineTotal}
+                {...(editingItem.discount_type != null ? {
+                  currentDiscount: {
+                    type: editingItem.discount_type as 'percentage' | 'fixed' | null,
+                    ...(editingItem.discount_percent != null ? { percent: editingItem.discount_percent } : {}),
+                    ...(editingItem.discount_amount != null ? { amount: editingItem.discount_amount } : {}),
+                    ...(editingItem.discount_reason != null ? { reason: editingItem.discount_reason } : {}),
+                  },
+                } : {})}
+                effectiveLimit={permissions.effectiveLimit}
+                requiresReason={permissions.requiresReason}
+                onApplyDiscount={(discount) => {
+                  onEditLineDiscount(editingLineDiscountProductId, {
+                    type: discount.type,
+                    value: discount.type === 'percentage' ? (discount.percent ?? '0') : (discount.amount ?? '0'),
+                    ...(discount.reason != null ? { reason: discount.reason } : {}),
+                  })
+                  setEditingLineDiscountProductId(null)
+                }}
+                onClearDiscount={() => {
+                  onEditLineDiscount(editingLineDiscountProductId, undefined)
+                  setEditingLineDiscountProductId(null)
+                }}
+                touchOptimized={touchOptimized}
+              />
+            </div>
+          </Modal>
+        )
+      })()}
 
       {/* Transaction Discount Modal */}
       {showTransactionDiscountModal && permissions && onUpdateTransactionDiscount && (

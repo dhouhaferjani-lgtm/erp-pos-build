@@ -61,6 +61,13 @@ export async function openShift(data: OpenShiftData): Promise<CurrentShift> {
 }
 
 /**
+ * Close a shift with actual cash count
+ */
+export async function closeShift(shiftId: string, actualCash: string): Promise<CurrentShift> {
+  return apiPost<CurrentShift>(`/pos/shifts/${shiftId}/close`, { actual_cash: actualCash })
+}
+
+/**
  * Generate X-report for current shift (mid-shift report, doesn't close shift)
  */
 export async function generateXReport(data: XReportData): Promise<void> {

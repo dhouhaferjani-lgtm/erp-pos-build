@@ -116,6 +116,8 @@ class ReceiptPdfGenerationTest extends TestCase
             'device_type' => 'tablet',
             'genesis_seed' => bin2hex(random_bytes(32)), // Required for receipt hash chain
             'is_active' => true,
+            'current_year' => 2026,
+            'current_sequence' => 0,
         ]);
 
         // Create cashier
@@ -126,6 +128,7 @@ class ReceiptPdfGenerationTest extends TestCase
 
         // Create payment method
         $paymentMethod = PaymentMethod::factory()->create([
+            'tenant_id' => $tenant->id,
             'company_id' => $company->id,
             'name' => 'Cash',
             'code' => 'CASH',

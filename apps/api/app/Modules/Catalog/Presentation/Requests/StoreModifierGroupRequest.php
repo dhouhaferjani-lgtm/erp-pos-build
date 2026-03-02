@@ -14,7 +14,7 @@ class StoreModifierGroupRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        return $this->user()?->can('modifier-groups.manage') ?? false;
     }
 
     /**

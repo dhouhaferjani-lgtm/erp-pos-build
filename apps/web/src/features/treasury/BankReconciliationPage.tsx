@@ -233,7 +233,7 @@ function ReconciliationDetail({
         setMatchingPaymentId(null)
       },
       onError: () => {
-        toast.error(t('error.generic'))
+        toast.error(t('errorMessages.generic'))
       },
     })
   }
@@ -246,7 +246,7 @@ function ReconciliationDetail({
           toast.success(t('reconciliation.messages.itemUnmatched'))
         },
         onError: () => {
-          toast.error(t('error.generic'))
+          toast.error(t('errorMessages.generic'))
         },
       }
     )
@@ -260,7 +260,7 @@ function ReconciliationDetail({
         onClose()
       },
       onError: () => {
-        toast.error(t('error.generic'))
+        toast.error(t('errorMessages.generic'))
       },
     })
   }
@@ -273,7 +273,7 @@ function ReconciliationDetail({
         onClose()
       },
       onError: () => {
-        toast.error(t('error.generic'))
+        toast.error(t('errorMessages.generic'))
       },
     })
   }
@@ -289,7 +289,7 @@ function ReconciliationDetail({
   if (error || !reconciliation) {
     return (
       <div className="rounded-lg bg-red-50 p-4 text-red-700">
-        {t('error.generic')}
+        {t('errorMessages.generic')}
       </div>
     )
   }
@@ -558,7 +558,7 @@ export function BankReconciliationPage() {
         setSearchParams({ id: result.id })
       },
       onError: () => {
-        toast.error(t('error.generic'))
+        toast.error(t('errorMessages.generic'))
       },
     })
   }
@@ -641,7 +641,7 @@ export function BankReconciliationPage() {
           </div>
         ) : error ? (
           <div className="rounded-lg bg-red-50 p-4 text-red-700">
-            {t('error.generic')}
+            {t('errorMessages.generic')}
           </div>
         ) : reconciliations?.length === 0 ? (
           <div className="rounded-lg bg-white p-12 text-center shadow-sm">

@@ -3,6 +3,8 @@
  * Supports country-specific formatting (Tunisia, France, etc.)
  */
 
+import { getDecimals, getLocale } from '../hooks/useCurrency'
+
 export interface CurrencyFormatOptions {
   currency?: string
   locale?: string
@@ -12,7 +14,9 @@ export interface CurrencyFormatOptions {
 
 /**
  * Format a number as currency
- * Defaults to USD/en-US but can be customized per country
+ * Defaults to EUR/fr-FR but can be customized per country.
+ * When no fraction digit options are provided, uses per-currency defaults
+ * (e.g. TND=3, EUR=2).
  */
 export function formatCurrency(
   amount: string | number,
@@ -24,12 +28,11 @@ export function formatCurrency(
     return '0.00'
   }
 
-  const {
-    currency = 'USD',
-    locale = 'en-US',
-    minimumFractionDigits = 2,
-    maximumFractionDigits = 2,
-  } = options || {}
+  const currency = options?.currency ?? 'EUR'
+  const defaultDecimals = getDecimals(currency)
+  const locale = options?.locale ?? getLocale(currency)
+  const minimumFractionDigits = options?.minimumFractionDigits ?? defaultDecimals
+  const maximumFractionDigits = options?.maximumFractionDigits ?? defaultDecimals
 
   return new Intl.NumberFormat(locale, {
     style: 'currency',
@@ -45,7 +48,6 @@ export function formatCurrency(
 export function formatTND(amount: string | number): string {
   return formatCurrency(amount, {
     currency: 'TND',
-    locale: 'fr-TN',
   })
 }
 
@@ -55,7 +57,6 @@ export function formatTND(amount: string | number): string {
 export function formatEUR(amount: string | number): string {
   return formatCurrency(amount, {
     currency: 'EUR',
-    locale: 'fr-FR',
   })
 }
 

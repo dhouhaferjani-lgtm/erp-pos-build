@@ -5,6 +5,27 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ProductInfoModal, type ProductDetailResponse, type StockLevel } from './ProductInfoModal'
 import * as api from '@/lib/api'
 
+// Mock useCurrency
+vi.mock('@/hooks/useCurrency', () => ({
+  useCurrency: () => ({
+    currency: 'EUR',
+    locale: 'fr-FR',
+    decimals: 2,
+    format: (value: string | number) => {
+      const num = typeof value === 'string' ? parseFloat(value) : value
+      return `${num.toFixed(2)} EUR`
+    },
+    toFixed: (value: number) => value.toFixed(2),
+  }),
+  getDecimals: (currency: string) => currency === 'TND' || currency === 'LYD' ? 3 : 2,
+  getLocale: (_currency: string) => 'fr-FR',
+  formatAmount: (value: string | number, currency: string) => {
+    const num = typeof value === 'string' ? parseFloat(value) : value
+    const decimals = currency === 'TND' || currency === 'LYD' ? 3 : 2
+    return `${num.toFixed(decimals)} ${currency}`
+  },
+}))
+
 // Mock i18next
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -97,25 +118,43 @@ const mockProductWithParapharmacy: ProductDetailResponse = {
 
 const mockStockLevels: StockLevel[] = [
   {
+    id: 'stock-1',
     location_id: 'loc-1',
     location_name: 'Main Warehouse',
-    available: 50,
-    reserved: 10,
-    total: 60,
+    quantity: '60',
+    available: '50',
+    reserved: '10',
+    incoming: '0',
+    projected_available: '50',
+    min_quantity: null,
+    max_quantity: null,
+    is_below_minimum: false,
   },
   {
+    id: 'stock-2',
     location_id: 'loc-2',
     location_name: 'Retail Store',
-    available: 5,
-    reserved: 2,
-    total: 7,
+    quantity: '7',
+    available: '5',
+    reserved: '2',
+    incoming: '0',
+    projected_available: '5',
+    min_quantity: null,
+    max_quantity: null,
+    is_below_minimum: false,
   },
   {
+    id: 'stock-3',
     location_id: 'loc-3',
     location_name: 'Distribution Center',
-    available: 0,
-    reserved: 0,
-    total: 0,
+    quantity: '0',
+    available: '0',
+    reserved: '0',
+    incoming: '0',
+    projected_available: '0',
+    min_quantity: null,
+    max_quantity: null,
+    is_below_minimum: false,
   },
 ]
 
@@ -194,7 +233,7 @@ describe('ProductInfoModal', () => {
       expect(screen.getByText('Test Product')).toBeInTheDocument()
       expect(screen.getByText('TEST-001')).toBeInTheDocument()
       expect(screen.getByText('Test Category')).toBeInTheDocument()
-      expect(screen.getByText('29.99 TND')).toBeInTheDocument()
+      expect(screen.getByText('29.99 EUR')).toBeInTheDocument()
       expect(screen.getByText('19%')).toBeInTheDocument()
       expect(screen.getByText('Test product description')).toBeInTheDocument()
     })
@@ -264,7 +303,7 @@ describe('ProductInfoModal', () => {
     const user = userEvent.setup()
     vi.mocked(api.apiGet)
       .mockResolvedValueOnce(mockProduct) // Product details
-      .mockResolvedValueOnce(mockStockLevels) // Stock levels
+      .mockResolvedValueOnce({ locations: mockStockLevels, totals: { quantity: '67', reserved: '12', available: '55', incoming: '0', projected_available: '55' } }) // Stock levels
 
     renderWithClient(
       <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
@@ -402,7 +441,7 @@ describe('ProductInfoModal', () => {
     const user = userEvent.setup()
     vi.mocked(api.apiGet)
       .mockResolvedValueOnce(mockProduct)
-      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ locations: [], totals: { quantity: '0', reserved: '0', available: '0', incoming: '0', projected_available: '0' } })
 
     renderWithClient(
       <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
@@ -424,7 +463,7 @@ describe('ProductInfoModal', () => {
     const user = userEvent.setup()
     vi.mocked(api.apiGet)
       .mockResolvedValueOnce(mockProduct)
-      .mockResolvedValueOnce(mockStockLevels)
+      .mockResolvedValueOnce({ locations: mockStockLevels, totals: { quantity: '67', reserved: '12', available: '55', incoming: '0', projected_available: '55' } })
 
     renderWithClient(
       <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
@@ -448,7 +487,7 @@ describe('ProductInfoModal', () => {
     const user = userEvent.setup()
     vi.mocked(api.apiGet)
       .mockResolvedValueOnce(mockProduct)
-      .mockResolvedValueOnce(mockStockLevels)
+      .mockResolvedValueOnce({ locations: mockStockLevels, totals: { quantity: '67', reserved: '12', available: '55', incoming: '0', projected_available: '55' } })
 
     renderWithClient(
       <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />

@@ -161,6 +161,12 @@ const ModifierGroupFormPage = lazy(() => import('../features/catalog').then((m) 
 const MenuListPage = lazy(() => import('../features/menu').then((m) => ({ default: m.MenuListPage })))
 const MenuFormPage = lazy(() => import('../features/menu').then((m) => ({ default: m.MenuFormPage })))
 
+// Promotions module
+const PromotionListPage = lazy(() => import('../features/promotions').then((m) => ({ default: m.PromotionListPage })))
+const PromotionFormPage = lazy(() => import('../features/promotions').then((m) => ({ default: m.PromotionFormPage })))
+const CouponListPage = lazy(() => import('../features/coupons').then((m) => ({ default: m.CouponListPage })))
+const CouponFormPage = lazy(() => import('../features/coupons').then((m) => ({ default: m.CouponFormPage })))
+
 // Parapharmacy module
 const IngredientListPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.IngredientListPage })))
 const IngredientFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.IngredientFormPage })))
@@ -173,8 +179,8 @@ const KeyComponentFormPage = lazy(() => import('../features/parapharmacy/pages')
 
 // POS module
 const POSTerminalsPage = lazy(() => import('../pages/POS/Terminals').then((m) => ({ default: m.TerminalsPage })))
-const POSTransactionsPage = lazy(() => import('../pages/POS/POSDemo').then((m) => ({ default: m.POSDemo })))
-const POSShiftsPage = lazy(() => import('../pages/POS/ShiftDemo').then((m) => ({ default: m.ShiftDemo })))
+const POSTransactionsPage = lazy(() => import('../pages/POS/POSTransactions').then((m) => ({ default: m.POSTransactions })))
+const POSShiftsPage = lazy(() => import('../pages/POS/POSShiftsDashboard').then((m) => ({ default: m.POSShiftsDashboard })))
 const ShiftHistoryPage = lazy(() => import('../features/pos/pages/ShiftHistoryPage/ShiftHistoryPage').then((m) => ({ default: m.ShiftHistoryPage })))
 const ZReportListPage = lazy(() => import('../features/pos/pages/ZReportListPage/ZReportListPage').then((m) => ({ default: m.ZReportListPage })))
 const ReceiptSearchPage = lazy(() => import('../features/pos/pages/ReceiptSearchPage/ReceiptSearchPage').then((m) => ({ default: m.ReceiptSearchPage })))
@@ -1843,6 +1849,68 @@ export function AppRoutes() {
               <RequirePermission permission="pos.view_receipts">
                 <SuspenseWrapper>
                   <ReceiptSearchPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          {/* Promotions */}
+          <Route
+            path="promotions"
+            element={
+              <RequirePermission permission="promotions.view">
+                <SuspenseWrapper>
+                  <PromotionListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="promotions/new"
+            element={
+              <RequirePermission permission="promotions.manage">
+                <SuspenseWrapper>
+                  <PromotionFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="promotions/:id/edit"
+            element={
+              <RequirePermission permission="promotions.manage">
+                <SuspenseWrapper>
+                  <PromotionFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          {/* Coupons */}
+          <Route
+            path="coupons"
+            element={
+              <RequirePermission permission="coupons.view">
+                <SuspenseWrapper>
+                  <CouponListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="coupons/new"
+            element={
+              <RequirePermission permission="coupons.manage">
+                <SuspenseWrapper>
+                  <CouponFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="coupons/:id/edit"
+            element={
+              <RequirePermission permission="coupons.manage">
+                <SuspenseWrapper>
+                  <CouponFormPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

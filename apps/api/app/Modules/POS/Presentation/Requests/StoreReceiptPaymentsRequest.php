@@ -31,7 +31,7 @@ final class StoreReceiptPaymentsRequest extends FormRequest
         return [
             'payments' => ['required', 'array', 'min:1'],
             'payments.*.payment_method_id' => ['required', 'uuid', 'exists:payment_methods,id'],
-            'payments.*.amount' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'payments.*.amount' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
             'payments.*.repository_id' => ['required', 'uuid', 'exists:payment_repositories,id'],
             'payments.*.card_last_four' => ['nullable', 'string', 'size:4', 'regex:/^\d{4}$/'],
             'payments.*.transaction_reference' => ['nullable', 'string', 'max:100'],
@@ -56,7 +56,7 @@ final class StoreReceiptPaymentsRequest extends FormRequest
             'payments.*.amount.required' => 'Payment amount is required',
             'payments.*.amount.numeric' => 'Payment amount must be a valid number',
             'payments.*.amount.min' => 'Payment amount must be greater than zero',
-            'payments.*.amount.regex' => 'Payment amount must have at most 2 decimal places',
+            'payments.*.amount.regex' => 'Payment amount must have at most 3 decimal places',
             'payments.*.repository_id.required' => 'Payment repository ID is required',
             'payments.*.repository_id.exists' => 'Payment repository does not exist',
             'payments.*.card_last_four.size' => 'Card last four digits must be exactly 4 digits',

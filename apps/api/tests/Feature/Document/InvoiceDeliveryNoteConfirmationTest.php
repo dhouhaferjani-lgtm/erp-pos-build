@@ -98,6 +98,14 @@ class InvoiceDeliveryNoteConfirmationTest extends TestCase
         $seeder = new FranceChartOfAccountsSeeder;
         $seeder->run($this->company->id, $this->tenant->id);
 
+        $location = \App\Modules\Company\Domain\Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'Main Warehouse',
+            'type' => \App\Modules\Company\Domain\Enums\LocationType::Warehouse,
+            'is_default' => true,
+            'is_active' => true,
+        ]);
+
         $this->partner = Partner::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -115,6 +123,16 @@ class InvoiceDeliveryNoteConfirmationTest extends TestCase
             'is_physical' => true,
             'unit_price' => '100.00',
             'cost_price' => '60.00',
+        ]);
+
+        // Create stock level so delivery note confirmation can issue stock
+        \App\Modules\Inventory\Domain\StockLevel::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'location_id' => $location->id,
+            'quantity' => '100.00',
+            'reserved' => '0.00',
         ]);
     }
 
@@ -370,10 +388,15 @@ class InvoiceDeliveryNoteConfirmationTest extends TestCase
 
         // Manually create a second draft DN linked to the same order
         // (simulating partial delivery scenario)
+        $defaultLocation = \App\Modules\Company\Domain\Location::where('company_id', $this->company->id)
+            ->where('is_default', true)
+            ->first();
+
         $dn2 = Document::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'partner_id' => $this->partner->id,
+            'location_id' => $defaultLocation->id,
             'type' => DocumentType::DeliveryNote,
             'status' => DocumentStatus::Draft,
             'document_number' => 'DN-2025-0002',
@@ -400,6 +423,13 @@ class InvoiceDeliveryNoteConfirmationTest extends TestCase
         $invoiceResponse = $this->actingAs($this->user)
             ->postJson("/api/v1/orders/{$order->id}/convert-to-invoice");
         $invoiceId = $invoiceResponse->json('data.id');
+
+        // Add the manually-created DN to the order's delivery_note_ids payload
+        // so the controller can find it (it uses payload, not source_document_id)
+        $order->refresh();
+        $payload = $order->payload ?? [];
+        $payload['delivery_note_ids'] = array_merge($payload['delivery_note_ids'] ?? [], [$dn2->id]);
+        $order->update(['payload' => $payload]);
 
         // Confirm invoice
         $this->actingAs($this->user)

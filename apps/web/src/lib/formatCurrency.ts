@@ -1,10 +1,14 @@
+import { getDecimals } from '../hooks/useCurrency'
+
 /**
  * Format currency based on locale and currency code
  *
  * This utility handles locale-specific currency formatting:
- * - For English: "TND 1,234.56"
- * - For French: "1 234,56 TND"
- * - For Arabic: "١٬٢٣٤٫٥٦ د.ت" (Arabic numerals + Arabic currency symbol)
+ * - For English: "TND 1,234.560"
+ * - For French: "1 234,560 TND"
+ * - For Arabic: "١٬٢٣٤٫٥٦٠ د.ت" (Arabic numerals + Arabic currency symbol)
+ *
+ * Decimal places are determined by the currency (TND=3, EUR=2, etc.).
  *
  * @param amount - The numeric amount to format
  * @param currencyCode - ISO 4217 currency code (e.g., "TND", "EUR", "USD")
@@ -22,22 +26,21 @@ export function formatCurrency(
     return '0.00'
   }
 
+  const decimals = getDecimals(currencyCode)
+
   try {
-    // Use Intl.NumberFormat for locale-aware formatting
     const formatter = new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: currencyCode,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
     })
 
     return formatter.format(numericAmount)
   } catch (error) {
-    // Fallback if currency code is not recognized
     console.warn(`Failed to format currency ${currencyCode} with locale ${locale}:`, error)
 
-    // Simple fallback formatting
-    const formatted = numericAmount.toFixed(2)
+    const formatted = numericAmount.toFixed(decimals)
     return `${currencyCode} ${formatted}`
   }
 }
@@ -61,14 +64,16 @@ export function formatCurrencyCompact(
     return '0.00'
   }
 
+  const decimals = getDecimals(currencyCode)
+
   try {
     const formatter = new Intl.NumberFormat(locale, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
     })
 
     return formatter.format(numericAmount)
   } catch (error) {
-    return numericAmount.toFixed(2)
+    return numericAmount.toFixed(decimals)
   }
 }

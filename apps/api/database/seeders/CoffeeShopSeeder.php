@@ -296,7 +296,7 @@ class CoffeeShopSeeder extends Seeder
                 'type' => ProductType::Part,
                 'purchase_price' => $data['cost'],
                 'sale_price' => $data['price'],
-                'tax_rate' => 0.07, // 7% Tunisia VAT on food items
+                'tax_rate' => 7.00, // 7% Tunisia VAT on food items
                 'is_active' => true,
                 'is_physical' => true,
             ]);
@@ -367,7 +367,7 @@ class CoffeeShopSeeder extends Seeder
                 'vertical_type' => VerticalType::Fnb,
                 'base_price' => $data['price'],
                 'production_type' => ProductionType::MadeToOrder,
-                'tax_rate' => '0.07',
+                'tax_rate' => '7.00',
                 'is_active' => true,
                 'is_available' => true,
                 'display_order' => $order++,

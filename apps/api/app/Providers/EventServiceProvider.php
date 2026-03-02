@@ -9,6 +9,8 @@ use App\Modules\Company\Domain\Events\CompanyCreated;
 use App\Modules\Company\Listeners\CreateFiscalYearsForNewCompany;
 use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Import\Infrastructure\Listeners\BroadcastImportEventsListener;
+use App\Modules\Loyalty\Application\Listeners\EarnPointsOnReceiptCompleted;
+use App\Modules\POS\Domain\Events\ReceiptCompleted;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 
 class EventServiceProvider extends ServiceProvider
@@ -24,6 +26,9 @@ class EventServiceProvider extends ServiceProvider
         ],
         InvoicePosted::class => [
             InvoicePostedListener::class,
+        ],
+        ReceiptCompleted::class => [
+            EarnPointsOnReceiptCompleted::class,
         ],
     ];
 

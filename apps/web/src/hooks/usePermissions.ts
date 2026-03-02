@@ -85,6 +85,14 @@ export const PERMISSIONS = {
   'composite-items.manage-recipes': ['admin', 'manager'],
   'modifier-groups.view': ['admin', 'manager'],
   'modifier-groups.manage': ['admin', 'manager'],
+
+  // Promotions
+  'promotions.view': ['admin', 'manager'],
+  'promotions.manage': ['admin', 'manager'],
+
+  // Coupons
+  'coupons.view': ['admin', 'manager'],
+  'coupons.manage': ['admin', 'manager'],
 } as const
 
 export type Permission = keyof typeof PERMISSIONS
@@ -108,6 +116,8 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   withholding: ['withholding.view'],
   'composite-items': ['composite-items.view'],
   'modifier-groups': ['modifier-groups.view'],
+  promotions: ['promotions.view'],
+  coupons: ['coupons.view'],
 }
 
 /**

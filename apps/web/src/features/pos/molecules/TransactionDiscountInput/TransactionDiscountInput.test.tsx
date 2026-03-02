@@ -2,6 +2,27 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { TransactionDiscountInput } from './TransactionDiscountInput'
 
+// Mock useCurrency
+vi.mock('@/hooks/useCurrency', () => ({
+  useCurrency: () => ({
+    currency: 'EUR',
+    locale: 'fr-FR',
+    decimals: 2,
+    format: (value: string | number) => {
+      const num = typeof value === 'string' ? parseFloat(value) : value
+      return `${num.toFixed(2)} EUR`
+    },
+    toFixed: (value: number) => value.toFixed(2),
+  }),
+  getDecimals: (currency: string) => currency === 'TND' || currency === 'LYD' ? 3 : 2,
+  getLocale: (_currency: string) => 'fr-FR',
+  formatAmount: (value: string | number, currency: string) => {
+    const num = typeof value === 'string' ? parseFloat(value) : value
+    const decimals = currency === 'TND' || currency === 'LYD' ? 3 : 2
+    return `${num.toFixed(decimals)} ${currency}`
+  },
+}))
+
 // Mock i18n
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -49,10 +70,10 @@ describe('TransactionDiscountInput', () => {
   it('validates discount amount is required', () => {
     render(<TransactionDiscountInput {...defaultProps} />)
 
-    const applyButton = screen.getByText('Apply Discount')
-    fireEvent.click(applyButton)
-
-    expect(screen.getByText('Discount amount is required')).toBeInTheDocument()
+    // When amount is empty, the Apply button is disabled, preventing submission
+    // This effectively enforces the "amount required" validation at the UI level
+    const applyButton = screen.getByRole('button', { name: /Apply Discount/i })
+    expect(applyButton).toBeDisabled()
     expect(defaultProps.onApply).not.toHaveBeenCalled()
   })
 
@@ -116,9 +137,9 @@ describe('TransactionDiscountInput', () => {
     fireEvent.change(amountInput, { target: { value: '10.000' } })
 
     expect(screen.getByText('Preview:')).toBeInTheDocument()
-    expect(screen.getByText(/100.000 TND/)).toBeInTheDocument() // Original
-    expect(screen.getByText(/-10.000 TND/)).toBeInTheDocument() // Discount
-    expect(screen.getByText(/90.000 TND/)).toBeInTheDocument() // After discount
+    expect(screen.getByText(/100.000 EUR/)).toBeInTheDocument() // Original
+    expect(screen.getByText(/-10.000 EUR/)).toBeInTheDocument() // Discount
+    expect(screen.getByText(/90.000 EUR/)).toBeInTheDocument() // After discount
   })
 
   it('calls onApply with correct values', () => {
@@ -163,7 +184,7 @@ describe('TransactionDiscountInput', () => {
   it('disables apply button when amount is zero', () => {
     render(<TransactionDiscountInput {...defaultProps} />)
 
-    const applyButton = screen.getByText('Apply Discount') as HTMLButtonElement
+    const applyButton = screen.getByRole('button', { name: /Apply Discount/i })
 
     expect(applyButton).toBeDisabled()
   })
@@ -198,17 +219,19 @@ describe('TransactionDiscountInput', () => {
   it('clears error when user modifies input', () => {
     render(<TransactionDiscountInput {...defaultProps} />)
 
-    // First, trigger an error
-    const applyButton = screen.getByText('Apply Discount')
+    // First, enter a value that exceeds subtotal to trigger an error
+    const amountInput = screen.getByLabelText('Discount Amount') as HTMLInputElement
+    fireEvent.change(amountInput, { target: { value: '150.000' } })
+
+    const applyButton = screen.getByRole('button', { name: /Apply Discount/i })
     fireEvent.click(applyButton)
 
-    expect(screen.getByText('Discount amount is required')).toBeInTheDocument()
+    expect(screen.getByText('Discount cannot exceed subtotal')).toBeInTheDocument()
 
-    // Now change input
-    const amountInput = screen.getByLabelText('Discount Amount') as HTMLInputElement
+    // Now change input to a valid value
     fireEvent.change(amountInput, { target: { value: '5.000' } })
 
     // Error should be gone
-    expect(screen.queryByText('Discount amount is required')).not.toBeInTheDocument()
+    expect(screen.queryByText('Discount cannot exceed subtotal')).not.toBeInTheDocument()
   })
 })

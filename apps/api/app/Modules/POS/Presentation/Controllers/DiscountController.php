@@ -6,9 +6,13 @@ namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\POS\Application\Services\DiscountOrchestratorService;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\Promotion\Domain\ValueObjects\CartContext;
+use App\Modules\Promotion\Domain\ValueObjects\CartItemContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 /**
  * Controller for POS Discount Permissions.
@@ -21,6 +25,7 @@ final class DiscountController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly DiscountOrchestratorService $orchestrator,
     ) {}
 
     /**
@@ -33,6 +38,7 @@ final class DiscountController extends Controller
      */
     public function getPermissions(Request $request): JsonResponse
     {
+        /** @var \App\Modules\Identity\Domain\User|null $user */
         $user = $request->user();
         if ($user === null) {
             return response()->json([
@@ -53,7 +59,17 @@ final class DiscountController extends Controller
             ], 422);
         }
 
-        $terminal = Terminal::forCompany($this->companyContext->getCompanyId())
+        $companyId = $this->companyContext->getCompanyId();
+        if ($companyId === null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'COMPANY_REQUIRED',
+                    'message' => 'Company context is required',
+                ],
+            ], 422);
+        }
+
+        $terminal = Terminal::forCompany($companyId)
             ->byCode($terminalCode)
             ->first();
 
@@ -86,6 +102,82 @@ final class DiscountController extends Controller
                 'requiresReason' => $effectiveLimit > 10.00,
                 'effectiveLimit' => $effectiveLimit,
             ],
+        ]);
+    }
+
+    /**
+     * Preview all discount sources for a cart without persisting.
+     *
+     * POST /api/v1/pos/cart/preview-discounts
+     */
+    public function previewDiscounts(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.product_id' => ['required', 'string'],
+            'items.*.category_id' => ['nullable', 'string'],
+            'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'items.*.unit_price' => ['required', 'numeric', 'gte:0'],
+            'items.*.line_total' => ['required', 'numeric', 'gte:0'],
+            'subtotal' => ['required', 'numeric', 'gt:0'],
+            'manual_discount_amount' => ['nullable', 'numeric', 'gte:0'],
+            'manual_discount_reason' => ['nullable', 'string', 'max:255'],
+            'coupon_code' => ['nullable', 'string'],
+            'customer_id' => ['nullable', 'string'],
+            'loyalty_discount_amount' => ['nullable', 'numeric', 'gte:0'],
+            'loyalty_reward_id' => ['nullable', 'string'],
+        ]);
+
+        $company = $this->companyContext->requireCompany();
+
+        $items = [];
+        foreach ($validated['items'] as $item) {
+            /** @var numeric-string $unitPrice */
+            $unitPrice = (string) $item['unit_price'];
+            /** @var numeric-string $lineTotal */
+            $lineTotal = (string) $item['line_total'];
+            $items[] = new CartItemContext(
+                productId: $item['product_id'],
+                categoryId: $item['category_id'] ?? null,
+                quantity: (int) $item['quantity'],
+                unitPrice: $unitPrice,
+                lineTotal: $lineTotal,
+            );
+        }
+
+        /** @var numeric-string $subtotal */
+        $subtotal = (string) $validated['subtotal'];
+
+        $cart = new CartContext(
+            tenantId: $company->tenant_id,
+            companyId: $company->id,
+            items: $items,
+            subtotal: $subtotal,
+            appliedAt: Carbon::now()->toIso8601String(),
+        );
+
+        /** @var numeric-string|null $manualAmount */
+        $manualAmount = isset($validated['manual_discount_amount'])
+            ? (string) $validated['manual_discount_amount']
+            : null;
+
+        /** @var numeric-string|null $loyaltyAmount */
+        $loyaltyAmount = isset($validated['loyalty_discount_amount'])
+            ? (string) $validated['loyalty_discount_amount']
+            : null;
+
+        $breakdown = $this->orchestrator->resolve(
+            cart: $cart,
+            manualDiscountAmount: $manualAmount,
+            manualDiscountReason: $validated['manual_discount_reason'] ?? null,
+            couponCode: $validated['coupon_code'] ?? null,
+            customerId: $validated['customer_id'] ?? null,
+            loyaltyDiscountAmount: $loyaltyAmount,
+            loyaltyRewardId: $validated['loyalty_reward_id'] ?? null,
+        );
+
+        return response()->json([
+            'data' => $breakdown->toArray(),
         ]);
     }
 

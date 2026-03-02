@@ -20,6 +20,8 @@ import enBatches from '../locales/en/batches.json'
 import enPos from '../locales/en/pos.json'
 import enCatalog from '../locales/en/catalog.json'
 import enMenu from '../locales/en/menu.json'
+import enPromotions from '../locales/en/promotions.json'
+import enCoupons from '../locales/en/coupons.json'
 
 import frCommon from '../locales/fr/common.json'
 import frAuth from '../locales/fr/auth.json'
@@ -38,6 +40,8 @@ import frBatches from '../locales/fr/batches.json'
 import frPos from '../locales/fr/pos.json'
 import frCatalog from '../locales/fr/catalog.json'
 import frMenu from '../locales/fr/menu.json'
+import frPromotions from '../locales/fr/promotions.json'
+import frCoupons from '../locales/fr/coupons.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -66,6 +70,8 @@ const resources = {
     pos: enPos,
     catalog: enCatalog,
     menu: enMenu,
+    promotions: enPromotions,
+    coupons: enCoupons,
   },
   fr: {
     common: frCommon,
@@ -85,6 +91,8 @@ const resources = {
     pos: frPos,
     catalog: frCatalog,
     menu: frMenu,
+    promotions: frPromotions,
+    coupons: frCoupons,
   },
   ar: {
     // Arabic falls back to English - translations to be added later
@@ -105,6 +113,8 @@ const resources = {
     pos: enPos,
     catalog: enCatalog,
     menu: enMenu,
+    promotions: enPromotions,
+    coupons: enCoupons,
   },
 }
 
@@ -115,7 +125,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

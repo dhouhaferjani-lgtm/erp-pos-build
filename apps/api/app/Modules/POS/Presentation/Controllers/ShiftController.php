@@ -17,6 +17,7 @@ use App\Modules\POS\Presentation\Requests\OpenShiftRequest;
 use App\Modules\POS\Presentation\Resources\ShiftResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 
 /**
  * Controller for POS shift management.
@@ -41,6 +42,8 @@ final class ShiftController extends Controller
      */
     public function open(OpenShiftRequest $request): JsonResponse
     {
+        Gate::authorize('pos.manage_shifts');
+
         $terminal = Terminal::byCode($request->validated('terminal_code'))
             ->where('company_id', $this->companyContext->getCompanyId())
             ->firstOrFail();
@@ -72,6 +75,8 @@ final class ShiftController extends Controller
      */
     public function close(string $id, CloseShiftRequest $request): JsonResponse
     {
+        Gate::authorize('pos.manage_shifts');
+
         $shift = Shift::findOrFail($id);
 
         // Verify shift belongs to current company
@@ -111,6 +116,8 @@ final class ShiftController extends Controller
      */
     public function current(string $terminalCode): JsonResponse
     {
+        Gate::authorize('pos.operate_terminal');
+
         $terminal = Terminal::byCode($terminalCode)
             ->where('company_id', $this->companyContext->getCompanyId())
             ->firstOrFail();
@@ -135,6 +142,8 @@ final class ShiftController extends Controller
      */
     public function show(string $id): JsonResponse
     {
+        Gate::authorize('pos.operate_terminal');
+
         $shift = Shift::with(['terminal', 'cashier', 'closedBy'])
             ->findOrFail($id);
 
@@ -160,6 +169,8 @@ final class ShiftController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
+        Gate::authorize('pos.operate_terminal');
+
         $query = Shift::query()
             ->whereHas('terminal', function ($q) {
                 $q->where('company_id', $this->companyContext->getCompanyId());
@@ -210,6 +221,8 @@ final class ShiftController extends Controller
      */
     public function receipts(string $id, Request $request): JsonResponse
     {
+        Gate::authorize('pos.operate_terminal');
+
         $shift = Shift::with('terminal')->findOrFail($id);
 
         // Verify shift belongs to current company

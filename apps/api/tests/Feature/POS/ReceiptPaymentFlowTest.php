@@ -7,15 +7,19 @@ namespace Tests\Feature\POS;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptPayment;
+use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /**
@@ -34,6 +38,8 @@ final class ReceiptPaymentFlowTest extends TestCase
     private Account $revenueAccount;
     private PaymentMethod $paymentMethod;
     private PaymentRepository $repository;
+    private Location $location;
+    private Terminal $terminal;
 
     protected function setUp(): void
     {
@@ -46,9 +52,7 @@ final class ReceiptPaymentFlowTest extends TestCase
     public function test_complete_receipt_payment_flow_with_single_payment(): void
     {
         // Arrange: Create a receipt
-        $receipt = Receipt::factory()->create([
-            'company_id' => $this->company->id,
-            'tenant_id' => $this->tenant->id,
+        $receipt = $this->createReceipt([
             'total' => '150.75',
             'subtotal' => '150.75',
             'tax_amount' => '0.00',
@@ -80,7 +84,7 @@ final class ReceiptPaymentFlowTest extends TestCase
         ]);
 
         $data = $response->json('data');
-        $this->assertEquals('0.00', $data['change_due']);
+        $this->assertEquals('0.000', $data['change_due']);
         $this->assertCount(1, $data['receipt_payments']);
         $this->assertCount(1, $data['treasury_payments']);
 
@@ -141,9 +145,7 @@ final class ReceiptPaymentFlowTest extends TestCase
     public function test_complete_receipt_payment_flow_with_split_payment(): void
     {
         // Arrange: Create a receipt
-        $receipt = Receipt::factory()->create([
-            'company_id' => $this->company->id,
-            'tenant_id' => $this->tenant->id,
+        $receipt = $this->createReceipt([
             'total' => '200.00',
             'subtotal' => '200.00',
             'tax_amount' => '0.00',
@@ -157,6 +159,7 @@ final class ReceiptPaymentFlowTest extends TestCase
         ]);
 
         $bankAccount = Account::factory()->create([
+            'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => '512',
             'name' => 'Bank',
@@ -192,7 +195,7 @@ final class ReceiptPaymentFlowTest extends TestCase
         // Assert: Response
         $response->assertStatus(201);
         $data = $response->json('data');
-        $this->assertEquals('0.00', $data['change_due']);
+        $this->assertEquals('0.000', $data['change_due']);
         $this->assertCount(2, $data['receipt_payments']);
         $this->assertCount(2, $data['treasury_payments']);
 
@@ -215,9 +218,7 @@ final class ReceiptPaymentFlowTest extends TestCase
     public function test_overpayment_returns_correct_change(): void
     {
         // Arrange
-        $receipt = Receipt::factory()->create([
-            'company_id' => $this->company->id,
-            'tenant_id' => $this->tenant->id,
+        $receipt = $this->createReceipt([
             'total' => '95.50',
             'currency' => 'EUR',
         ]);
@@ -238,15 +239,13 @@ final class ReceiptPaymentFlowTest extends TestCase
         // Assert
         $response->assertStatus(201);
         $data = $response->json('data');
-        $this->assertEquals('4.50', $data['change_due']);
+        $this->assertEquals('4.500', $data['change_due']);
     }
 
     public function test_underpayment_returns_validation_error(): void
     {
         // Arrange
-        $receipt = Receipt::factory()->create([
-            'company_id' => $this->company->id,
-            'tenant_id' => $this->tenant->id,
+        $receipt = $this->createReceipt([
             'total' => '100.00',
             'currency' => 'EUR',
         ]);
@@ -271,9 +270,7 @@ final class ReceiptPaymentFlowTest extends TestCase
     public function test_payment_with_invalid_payment_method_returns_validation_error(): void
     {
         // Arrange
-        $receipt = Receipt::factory()->create([
-            'company_id' => $this->company->id,
-            'tenant_id' => $this->tenant->id,
+        $receipt = $this->createReceipt([
             'total' => '100.00',
         ]);
 
@@ -292,15 +289,13 @@ final class ReceiptPaymentFlowTest extends TestCase
 
         // Assert
         $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['payments.0.payment_method_id']);
+        $response->assertJsonValidationErrors(['payments.0.payment_method_id'], 'error.errors');
     }
 
     public function test_payment_without_payments_array_returns_validation_error(): void
     {
         // Arrange
-        $receipt = Receipt::factory()->create([
-            'company_id' => $this->company->id,
-            'tenant_id' => $this->tenant->id,
+        $receipt = $this->createReceipt([
             'total' => '100.00',
         ]);
 
@@ -311,15 +306,13 @@ final class ReceiptPaymentFlowTest extends TestCase
 
         // Assert
         $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['payments']);
+        $response->assertJsonValidationErrors(['payments'], 'error.errors');
     }
 
     public function test_payment_with_zero_amount_returns_validation_error(): void
     {
         // Arrange
-        $receipt = Receipt::factory()->create([
-            'company_id' => $this->company->id,
-            'tenant_id' => $this->tenant->id,
+        $receipt = $this->createReceipt([
             'total' => '100.00',
         ]);
 
@@ -338,7 +331,7 @@ final class ReceiptPaymentFlowTest extends TestCase
 
         // Assert
         $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['payments.0.amount']);
+        $response->assertJsonValidationErrors(['payments.0.amount'], 'error.errors');
     }
 
     private function setupTestData(): void
@@ -356,9 +349,16 @@ final class ReceiptPaymentFlowTest extends TestCase
         \App\Modules\Company\Domain\UserCompanyMembership::create([
             'user_id' => $this->user->id,
             'company_id' => $this->company->id,
+            'role' => 'admin',
         ]);
 
+        // Create and assign POS permission
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
+        Permission::findOrCreate('pos.operate_terminal', 'sanctum');
+        $this->user->givePermissionTo('pos.operate_terminal');
+
         $this->cashAccount = Account::factory()->create([
+            'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => '531',
             'name' => 'Cash',
@@ -366,6 +366,7 @@ final class ReceiptPaymentFlowTest extends TestCase
         ]);
 
         $this->revenueAccount = Account::factory()->create([
+            'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => '707',
             'name' => 'Sales Revenue',
@@ -383,5 +384,31 @@ final class ReceiptPaymentFlowTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'gl_account_id' => $this->cashAccount->id,
         ]);
+
+        $this->location = Location::factory()->create([
+            'company_id' => $this->company->id,
+        ]);
+
+        $this->terminal = Terminal::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $this->location->id,
+        ]);
+    }
+
+    /**
+     * Create a receipt with all required FK fields.
+     *
+     * @param array<string, mixed> $overrides
+     */
+    private function createReceipt(array $overrides = []): Receipt
+    {
+        return Receipt::factory()->create(array_merge([
+            'company_id' => $this->company->id,
+            'tenant_id' => $this->tenant->id,
+            'location_id' => $this->location->id,
+            'terminal_id' => $this->terminal->id,
+            'cashier_id' => $this->user->id,
+        ], $overrides));
     }
 }

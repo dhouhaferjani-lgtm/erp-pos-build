@@ -15,7 +15,7 @@ import {
   type UpdateTerminalInput,
 } from '@/features/pos/hooks/useTerminals'
 import { getLocations } from '@/features/locations/api/locations'
-import { toast } from 'react-hot-toast'
+import { toast } from 'sonner'
 
 /**
  * POS Terminals Management Page
@@ -26,6 +26,9 @@ export function TerminalsPage() {
   const { t } = useTranslation()
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingTerminal, setEditingTerminal] = useState<Terminal | undefined>()
+  const [deleteTarget, setDeleteTarget] = useState<Terminal | null>(null)
+  const [deactivateTarget, setDeactivateTarget] = useState<Terminal | null>(null)
+  const [deactivateReason, setDeactivateReason] = useState('')
 
   // Fetch terminals and locations
   const { data: terminals = [], isLoading: terminalsLoading } = useTerminals()
@@ -82,21 +85,20 @@ export function TerminalsPage() {
     }
   }
 
-  // Handle delete
-  const handleDelete = async (terminal: Terminal) => {
-    if (
-      !window.confirm(
-        t('common.confirmDelete', { resource: `${terminal.name} (${terminal.code})` })
-      )
-    ) {
-      return
-    }
+  // Handle delete - show confirmation modal
+  const handleDelete = (terminal: Terminal) => {
+    setDeleteTarget(terminal)
+  }
 
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
     try {
-      await deleteTerminal.mutateAsync(terminal.id)
+      await deleteTerminal.mutateAsync(deleteTarget.id)
       toast.success(t('pos.messages.terminalDeleted'))
     } catch (_err) {
       toast.error(t('common.errorDeleting', { resource: t('pos.terminal.terminal') }))
+    } finally {
+      setDeleteTarget(null)
     }
   }
 
@@ -110,19 +112,25 @@ export function TerminalsPage() {
     }
   }
 
-  // Handle deactivate
-  const handleDeactivate = async (terminal: Terminal) => {
-    const reason = window.prompt(t('pos.terminal.deactivationReasonPrompt'))
-    if (reason === null) return // User cancelled
+  // Handle deactivate - show reason input modal
+  const handleDeactivate = (terminal: Terminal) => {
+    setDeactivateTarget(terminal)
+    setDeactivateReason('')
+  }
 
+  const confirmDeactivate = async () => {
+    if (!deactivateTarget) return
     try {
       await deactivateTerminal.mutateAsync({
-        id: terminal.id,
-        data: reason ? { reason } : undefined,
+        id: deactivateTarget.id,
+        data: deactivateReason ? { reason: deactivateReason } : undefined,
       })
       toast.success(t('pos.messages.terminalDeactivated'))
     } catch (_err) {
       toast.error(t('common.error'))
+    } finally {
+      setDeactivateTarget(null)
+      setDeactivateReason('')
     }
   }
 
@@ -201,6 +209,73 @@ export function TerminalsPage() {
                   onCancel={handleCloseForm}
                 />
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              {t('common.confirmDeleteTitle')}
+            </h3>
+            <p className="text-gray-600 mb-6">
+              {t('common.confirmDelete', { resource: `${deleteTarget.name} (${deleteTarget.code})` })}
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                {t('common.actions.cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmDelete()}
+                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700"
+              >
+                {t('common.actions.delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Deactivate Reason Modal */}
+      {deactivateTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              {t('pos.terminal.deactivateTerminal')}
+            </h3>
+            <p className="text-gray-600 mb-4">
+              {t('pos.terminal.deactivationReasonPrompt')}
+            </p>
+            <input
+              type="text"
+              value={deactivateReason}
+              onChange={(e) => setDeactivateReason(e.target.value)}
+              placeholder={t('pos.terminal.deactivationReasonPlaceholder')}
+              className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-6"
+            />
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => { setDeactivateTarget(null); setDeactivateReason('') }}
+                className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                {t('common.actions.cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmDeactivate()}
+                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700"
+              >
+                {t('pos.terminal.deactivate')}
+              </button>
             </div>
           </div>
         </div>

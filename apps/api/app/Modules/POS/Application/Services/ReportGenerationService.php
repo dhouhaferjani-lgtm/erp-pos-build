@@ -192,44 +192,39 @@ final class ReportGenerationService
                 continue;
             }
 
-            if ($receipt->is_refund) {
-                $refundsCount++;
-                $refundsAmount = bcadd($refundsAmount, $receipt->total_amount, 2);
-            } else {
-                $salesCount++;
-                $grossSales = bcadd($grossSales, $receipt->total_amount, 2);
-                $taxAmount = bcadd($taxAmount, $receipt->tax_amount, 2);
-                $netSales = bcadd($netSales, $receipt->net_amount, 2);
+            $salesCount++;
+            $grossSales = bcadd($grossSales, $receipt->total, 2);
+            $taxAmount = bcadd($taxAmount, $receipt->tax_amount, 2);
+            $netSales = bcadd($netSales, $receipt->subtotal, 2);
 
-                // Aggregate VAT breakdown
-                foreach ($receipt->vatDetails as $vatDetail) {
-                    $rate = (string) $vatDetail->tax_rate;
-                    if (! isset($vatBreakdown[$rate])) {
-                        $vatBreakdown[$rate] = [
-                            'tax_rate' => $vatDetail->tax_rate,
-                            'net_amount' => '0.00',
-                            'vat_amount' => '0.00',
-                            'gross_amount' => '0.00',
-                        ];
-                    }
-                    $vatBreakdown[$rate]['net_amount'] = bcadd($vatBreakdown[$rate]['net_amount'], $vatDetail->net_amount, 2);
-                    $vatBreakdown[$rate]['vat_amount'] = bcadd($vatBreakdown[$rate]['vat_amount'], $vatDetail->vat_amount, 2);
-                    $vatBreakdown[$rate]['gross_amount'] = bcadd($vatBreakdown[$rate]['gross_amount'], $vatDetail->gross_amount, 2);
+            // Aggregate VAT breakdown
+            foreach ($receipt->vatDetails as $vatDetail) {
+                $rate = (string) $vatDetail->tax_rate;
+                if (! isset($vatBreakdown[$rate])) {
+                    $vatBreakdown[$rate] = [
+                        'tax_rate' => $vatDetail->tax_rate,
+                        'net_amount' => '0.00',
+                        'vat_amount' => '0.00',
+                        'gross_amount' => '0.00',
+                    ];
                 }
+                $vatBreakdown[$rate]['net_amount'] = bcadd($vatBreakdown[$rate]['net_amount'], $vatDetail->net_amount, 2);
+                $vatBreakdown[$rate]['vat_amount'] = bcadd($vatBreakdown[$rate]['vat_amount'], $vatDetail->vat_amount, 2);
+                $vatBreakdown[$rate]['gross_amount'] = bcadd($vatBreakdown[$rate]['gross_amount'], $vatDetail->gross_amount, 2);
+            }
 
-                // Aggregate payment methods
-                foreach ($receipt->payments as $payment) {
-                    $method = $payment->payment_type;
-                    if (! isset($paymentMethods[$method])) {
-                        $paymentMethods[$method] = [
-                            'payment_type' => $payment->payment_type,
-                            'total_amount' => '0.00',
-                            'transaction_count' => 0,
-                        ];
-                    }
-                    $paymentMethods[$method]['total_amount'] = bcadd($paymentMethods[$method]['total_amount'], $payment->amount, 2);
-                    $paymentMethods[$method]['transaction_count']++;
+            // Aggregate payment methods
+            foreach ($receipt->payments as $payment) {
+                $method = $payment->payment_type;
+                if (! isset($paymentMethods[$method])) {
+                    $paymentMethods[$method] = [
+                        'payment_type' => $payment->payment_type,
+                        'total_amount' => '0.00',
+                        'transaction_count' => 0,
+                    ];
                 }
+                $paymentMethods[$method]['total_amount'] = bcadd($paymentMethods[$method]['total_amount'], $payment->amount, 2);
+                $paymentMethods[$method]['transaction_count']++;
             }
         }
 

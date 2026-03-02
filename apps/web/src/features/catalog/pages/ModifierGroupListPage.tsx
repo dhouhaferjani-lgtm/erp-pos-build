@@ -3,10 +3,12 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { Plus, Search } from 'lucide-react'
 import { useModifierGroups } from '../hooks/useModifierGroups'
+import { useCompanyVerticalLabels } from '../hooks/useVerticalLabels'
 import type { ModifierGroupData } from '../types/compositeItem'
 
 export function ModifierGroupListPage() {
   const { t } = useTranslation(['catalog', 'common'])
+  const getLabel = useCompanyVerticalLabels()
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
 
@@ -17,7 +19,7 @@ export function ModifierGroupListPage() {
   return (
     <div className="space-y-6">
       <div className="sm:flex sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900">{t('catalog:modifierGroups')}</h1>
+        <h1 className="text-2xl font-semibold text-gray-900">{getLabel('modifierGroups')}</h1>
         <Link
           to="/catalog/modifier-groups/new"
           className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500"

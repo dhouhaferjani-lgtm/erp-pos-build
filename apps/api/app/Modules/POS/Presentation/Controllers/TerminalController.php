@@ -14,6 +14,7 @@ use App\Modules\POS\Presentation\Requests\UpdateTerminalRequest;
 use App\Modules\POS\Presentation\Resources\TerminalResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 
 /**
@@ -39,6 +40,8 @@ final class TerminalController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
+        Gate::authorize('pos.manage_terminals');
+
         $terminals = Terminal::forCompany($this->companyContext->getCompanyId())
             ->with(['location'])
             ->orderBy('created_at', 'desc')
@@ -56,6 +59,8 @@ final class TerminalController extends Controller
      */
     public function show(string $id): JsonResponse
     {
+        Gate::authorize('pos.manage_terminals');
+
         $terminal = Terminal::forCompany($this->companyContext->getCompanyId())
             ->with(['location'])
             ->findOrFail($id);
@@ -72,6 +77,8 @@ final class TerminalController extends Controller
      */
     public function store(CreateTerminalRequest $request): JsonResponse
     {
+        Gate::authorize('pos.manage_terminals');
+
         $data = $request->validated();
 
         // Auto-generate code if not provided
@@ -89,8 +96,8 @@ final class TerminalController extends Controller
             'code' => $data['code'],
             'name' => $data['name'],
             'description' => $data['description'] ?? null,
-            'genesis_seed' => Str::random(64), // Auto-generate 256-bit seed
-            'current_sequence' => 0,
+            'genesis_seed' => bin2hex(random_bytes(32)),
+            'current_sequence' => 1,
             'current_year' => (int) now()->format('Y'),
             'is_active' => true,
             'activated_at' => now(),
@@ -108,6 +115,8 @@ final class TerminalController extends Controller
      */
     public function update(string $id, UpdateTerminalRequest $request): JsonResponse
     {
+        Gate::authorize('pos.manage_terminals');
+
         $terminal = Terminal::forCompany($this->companyContext->getCompanyId())
             ->findOrFail($id);
 
@@ -125,6 +134,8 @@ final class TerminalController extends Controller
      */
     public function destroy(string $id): JsonResponse
     {
+        Gate::authorize('pos.manage_terminals');
+
         $terminal = Terminal::forCompany($this->companyContext->getCompanyId())
             ->findOrFail($id);
 
@@ -150,6 +161,8 @@ final class TerminalController extends Controller
      */
     public function activate(string $id): JsonResponse
     {
+        Gate::authorize('pos.manage_terminals');
+
         $terminal = Terminal::forCompany($this->companyContext->getCompanyId())
             ->findOrFail($id);
 
@@ -172,6 +185,8 @@ final class TerminalController extends Controller
      */
     public function deactivate(string $id, Request $request): JsonResponse
     {
+        Gate::authorize('pos.manage_terminals');
+
         $request->validate([
             'reason' => 'nullable|string|max:255',
         ]);
@@ -197,6 +212,8 @@ final class TerminalController extends Controller
      */
     public function getOrCreateWebTerminal(Request $request): JsonResponse
     {
+        Gate::authorize('pos.operate_terminal');
+
         $request->validate([
             'location_id' => ['required', 'uuid', 'exists:locations,id'],
         ]);
@@ -229,7 +246,7 @@ final class TerminalController extends Controller
             'code' => 'WEB-' . strtoupper($locationCode),
             'name' => 'Web POS - ' . $location->name,
             'genesis_seed' => bin2hex(random_bytes(32)),
-            'current_sequence' => 0,
+            'current_sequence' => 1,
             'current_year' => (int) now()->format('Y'),
             'is_active' => true,
             'activated_at' => now(),

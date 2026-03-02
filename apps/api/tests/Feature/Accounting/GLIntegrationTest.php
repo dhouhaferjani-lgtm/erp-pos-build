@@ -256,7 +256,7 @@ class GLIntegrationTest extends TestCase
         $journalEntry->refresh();
 
         $this->assertEquals(JournalEntryStatus::Posted, $journalEntry->status);
-        $this->assertNotNull($journalEntry->hash);
+        $this->assertNotNull($journalEntry->fiscal_hash);
         $this->assertNotNull($journalEntry->posted_at);
         $this->assertEquals($this->user->id, $journalEntry->posted_by);
     }

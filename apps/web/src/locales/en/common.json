@@ -46,6 +46,7 @@
     "loading": "Loading...",
     "noData": "No data available",
     "confirmDelete": "Are you sure you want to delete {{resource}}?",
+    "confirmDeleteTitle": "Confirm Deletion",
     "errorCreating": "Error creating {{resource}}",
     "errorUpdating": "Error updating {{resource}}",
     "errorDeleting": "Error deleting {{resource}}",
@@ -64,7 +65,7 @@
     "minAmount": "Minimum amount is {{amount}}",
     "terminalCodeFormat": "Terminal code must contain only uppercase letters and numbers"
   },
-  "error": {
+  "errorMessages": {
     "generic": "An error occurred. Please try again."
   },
   "status": {
@@ -80,7 +81,6 @@
     "current": "Current",
     "unknown": "Unknown",
     "inactive": "Inactive",
-    "unknown": "Unknown",
     "draft": "Draft",
     "confirmed": "Confirmed",
     "posted": "Posted",
@@ -89,8 +89,6 @@
     "completed": "Completed",
     "failed": "Failed",
     "refunded": "Refunded",
-    "current": "Current",
-    "overdue": "Overdue",
     "tryDifferentSearch": "Try a different search term.",
     "noDocuments": "No documents",
     "noDocumentsDescription": "No documents have been created for this customer yet.",
@@ -233,7 +231,9 @@
     "catalog": "Catalog",
     "compositeItems": "Composite Items",
     "modifierGroups": "Modifier Groups",
-    "menus": "Menus"
+    "menus": "Menus",
+    "promotions": "Promotions",
+    "coupons": "Coupons"
   },
   "locations": {
     "title": "Location Management",
@@ -1030,6 +1030,9 @@
       "noTerminalsDescription": "Get started by registering your first terminal.",
       "pageDescription": "Manage POS terminals and their configurations",
       "deactivationReasonPrompt": "Reason for deactivation (optional):",
+      "deactivateTerminal": "Deactivate Terminal",
+      "deactivationReasonPlaceholder": "Enter reason...",
+      "deactivate": "Deactivate",
       "namePlaceholder": "e.g. Main Counter Terminal",
       "descriptionPlaceholder": "Optional description for this terminal"
     },

@@ -1,5 +1,6 @@
 import { InputHTMLAttributes, ChangeEvent } from 'react'
 import { cn } from '@/lib/utils'
+import { useCurrency } from '@/hooks/useCurrency'
 
 export interface MoneyInputProps
   extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'type'> {
@@ -15,14 +16,18 @@ export function MoneyInput({
   label,
   value,
   onChange,
-  currency = 'TND',
+  currency: currencyProp,
   touchOptimized = false,
   error,
-  placeholder = '0.000',
+  placeholder: placeholderProp,
   disabled,
   className,
   ...props
 }: MoneyInputProps) {
+  const { currency: companyCurrency, decimals } = useCurrency()
+  const currency = currencyProp ?? companyCurrency
+  const placeholder = placeholderProp ?? `0.${'0'.repeat(decimals)}`
+
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     const inputValue = e.target.value
 
@@ -44,11 +49,11 @@ export function MoneyInput({
       return
     }
 
-    // Limit decimal places to 3
+    // Limit decimal places based on currency
     if (inputValue.includes('.')) {
       const [integer, decimal] = inputValue.split('.')
-      if (decimal && decimal.length > 3) {
-        onChange(`${integer}.${decimal.slice(0, 3)}`)
+      if (decimal && decimal.length > decimals) {
+        onChange(`${integer}.${decimal.slice(0, decimals)}`)
         return
       }
     }

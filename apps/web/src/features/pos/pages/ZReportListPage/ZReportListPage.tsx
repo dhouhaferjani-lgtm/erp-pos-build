@@ -37,7 +37,7 @@ export function ZReportListPage() {
       }
     },
     onError: () => {
-      toast.error(t('common:error.generic'))
+      toast.error(t('common:errorMessages.generic'))
     },
   })
 

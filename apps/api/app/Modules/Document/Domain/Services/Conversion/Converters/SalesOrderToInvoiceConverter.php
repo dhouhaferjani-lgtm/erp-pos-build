@@ -7,6 +7,7 @@ namespace App\Modules\Document\Domain\Services\Conversion\Converters;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\LocationContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DeliveryStatus;
@@ -59,6 +60,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
         protected readonly DocumentNumberingService $numberingService,
         private readonly GeneralLedgerService $glService,
         private readonly FEFOInventoryService $fefoService,
+        private readonly LocationContext $locationContext,
     ) {}
 
     public function sourceType(): DocumentType
@@ -451,10 +453,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
         $locationId = $order->location_id;
 
         if ($locationId === null) {
-            // Get company's default location
-            $defaultLocation = Location::where('company_id', $order->company_id)
-                ->where('is_default', true)
-                ->first();
+            $defaultLocation = $this->locationContext->getDefaultLocation($order->company_id);
 
             if ($defaultLocation === null) {
                 throw new \DomainException('No default location found for company');

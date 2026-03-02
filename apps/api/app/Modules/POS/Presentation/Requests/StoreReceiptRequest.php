@@ -40,6 +40,8 @@ final class StoreReceiptRequest extends FormRequest
             'lines.*.discount_reason' => ['nullable', 'string', 'max:255'],
             'customer_id' => ['nullable', 'uuid', 'exists:partners,id'],
             'notes' => ['nullable', 'string', 'max:500'],
+            'transaction_discount_amount' => ['nullable', 'numeric', 'gte:0'],
+            'transaction_discount_reason' => ['nullable', 'string', 'max:255'],
         ];
     }
 

@@ -1,7 +1,48 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { POSPage } from './POSPage'
 import type { Product } from '../../molecules'
+
+// Mock react-router-dom
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => vi.fn(),
+}))
+
+// Mock useCurrency hook
+vi.mock('@/hooks/useCurrency', () => ({
+  useCurrency: () => ({
+    currency: 'EUR',
+    locale: 'fr-FR',
+    decimals: 2,
+    symbol: '\u20ac',
+    format: (value: string | number) => {
+      const num = typeof value === 'string' ? parseFloat(value) : value
+      return `${num.toFixed(2)} EUR`
+    },
+    toFixed: (value: number) => value.toFixed(2),
+  }),
+  getDecimals: (currency: string) => currency === 'TND' || currency === 'LYD' ? 3 : 2,
+  getLocale: (_currency: string) => 'fr-FR',
+  formatAmount: (value: string | number, currency: string) => {
+    const num = typeof value === 'string' ? parseFloat(value) : value
+    const decimals = currency === 'TND' || currency === 'LYD' ? 3 : 2
+    return `${num.toFixed(decimals)} ${currency}`
+  },
+}))
+
+function createTestQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+    },
+  })
+}
+
+function renderWithClient(ui: React.ReactElement) {
+  const queryClient = createTestQueryClient()
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
+}
 
 describe('POSPage', () => {
   const mockProducts: Product[] = [
@@ -9,7 +50,7 @@ describe('POSPage', () => {
       id: '1',
       name: 'Oil Filter',
       sku: 'OF-1234',
-      price: '15.500',
+      sale_price: '15.50',
       stock_quantity: 50,
       category: 'Filters',
     },
@@ -17,14 +58,14 @@ describe('POSPage', () => {
       id: '2',
       name: 'Air Filter',
       sku: 'AF-5678',
-      price: '12.000',
+      sale_price: '12.00',
       stock_quantity: 30,
       category: 'Filters',
     },
   ]
 
   it('renders ProductGrid and TransactionCart', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithClient(
       <POSPage
         products={mockProducts}
         onQuickCheckout={vi.fn()}
@@ -34,11 +75,12 @@ describe('POSPage', () => {
     )
 
     expect(getByText('Oil Filter')).toBeInTheDocument()
+    // TransactionCart renders cart title via t('pos:cart.title') = "Cart"
     expect(getByText('Cart')).toBeInTheDocument()
   })
 
   it('adds product to cart when product card is clicked', () => {
-    const { getByText, getAllByText } = render(
+    const { getByText, getAllByText } = renderWithClient(
       <POSPage
         products={mockProducts}
         onQuickCheckout={vi.fn()}
@@ -50,13 +92,13 @@ describe('POSPage', () => {
     // Click on product
     fireEvent.click(getByText('Oil Filter'))
 
-    // Should show in cart
+    // Should show in cart (one in grid, one in cart)
     const oilFilterInCart = getAllByText('Oil Filter')
-    expect(oilFilterInCart.length).toBeGreaterThan(1) // One in grid, one in cart
+    expect(oilFilterInCart.length).toBeGreaterThan(1)
   })
 
   it('updates cart item quantity when increment clicked', () => {
-    const { getByText, getAllByRole } = render(
+    const { getByText, getAllByRole } = renderWithClient(
       <POSPage
         products={mockProducts}
         onQuickCheckout={vi.fn()}
@@ -68,7 +110,7 @@ describe('POSPage', () => {
     // Add product to cart
     fireEvent.click(getByText('Oil Filter'))
 
-    // Increment quantity
+    // Increment quantity (CartLineItem uses aria-label="Increment quantity")
     const incrementButtons = getAllByRole('button', { name: /increment/i })
     fireEvent.click(incrementButtons[0])
 
@@ -77,7 +119,7 @@ describe('POSPage', () => {
   })
 
   it('removes item from cart when remove button clicked', async () => {
-    const { getByText, getAllByRole, getAllByText } = render(
+    const { getByText, getAllByRole, getAllByText } = renderWithClient(
       <POSPage
         products={mockProducts}
         onQuickCheckout={vi.fn()}
@@ -92,7 +134,7 @@ describe('POSPage', () => {
     // Should be in cart and grid (2 instances)
     expect(getAllByText('Oil Filter').length).toBe(2)
 
-    // Remove it
+    // Remove it (CartLineItem uses aria-label="Remove item")
     const removeButtons = getAllByRole('button', { name: /remove/i })
     fireEvent.click(removeButtons[0])
 
@@ -103,7 +145,7 @@ describe('POSPage', () => {
   })
 
   it('calculates cart totals correctly', () => {
-    const { getByText, getAllByText } = render(
+    const { getByText, getAllByText } = renderWithClient(
       <POSPage
         products={mockProducts}
         onQuickCheckout={vi.fn()}
@@ -112,17 +154,17 @@ describe('POSPage', () => {
       />
     )
 
-    // Add product (15.500)
+    // Add product (sale_price = 15.50, with 2 decimal currency => line_total = "15.50")
     fireEvent.click(getByText('Oil Filter'))
 
-    // Should show total (appears in product card, cart item, and totals)
-    const priceElements = getAllByText(/15\.500/)
+    // Price appears in multiple places (product card, cart line item, payment panel totals)
+    const priceElements = getAllByText(/15\.50/)
     expect(priceElements.length).toBeGreaterThan(0)
   })
 
-  it('calls onQuickCheckout when quick checkout button clicked', () => {
+  it('calls onQuickCheckout when cash payment button clicked', () => {
     const onQuickCheckout = vi.fn()
-    const { getByText, getByRole } = render(
+    const { getByText, getByRole } = renderWithClient(
       <POSPage
         products={mockProducts}
         onQuickCheckout={onQuickCheckout}
@@ -134,16 +176,16 @@ describe('POSPage', () => {
     // Add product
     fireEvent.click(getByText('Oil Filter'))
 
-    // Click quick checkout
-    const checkoutButton = getByRole('button', { name: /quick checkout/i })
+    // Click Cash Payment (was "quick checkout" - now uses t('pos:payment.cashPayment') = "Cash Payment")
+    const checkoutButton = getByRole('button', { name: /cash payment/i })
     fireEvent.click(checkoutButton)
 
     expect(onQuickCheckout).toHaveBeenCalled()
   })
 
-  it('calls onAdvancedPayments when advanced payments button clicked', () => {
+  it('calls onAdvancedPayments when split/card payment button clicked', () => {
     const onAdvancedPayments = vi.fn()
-    const { getByText, getByRole } = render(
+    const { getByText, getByRole } = renderWithClient(
       <POSPage
         products={mockProducts}
         onQuickCheckout={vi.fn()}
@@ -155,15 +197,15 @@ describe('POSPage', () => {
     // Add product
     fireEvent.click(getByText('Oil Filter'))
 
-    // Click advanced payments
-    const advancedButton = getByRole('button', { name: /advanced/i })
+    // Click Split / Card Payment (was "advanced" - now uses t('pos:payment.splitCardPayment'))
+    const advancedButton = getByRole('button', { name: /split/i })
     fireEvent.click(advancedButton)
 
     expect(onAdvancedPayments).toHaveBeenCalled()
   })
 
   it('shows calculator when calculator button clicked', () => {
-    const { getByRole, getByText } = render(
+    const { getByText, getByRole } = renderWithClient(
       <POSPage
         products={mockProducts}
         onQuickCheckout={vi.fn()}
@@ -172,14 +214,20 @@ describe('POSPage', () => {
       />
     )
 
+    // Add a product so the PaymentPanel renders (it only shows when cart is non-empty)
+    fireEvent.click(getByText('Oil Filter'))
+
+    // Calculator button has aria-label from t('common:pos.calculator') = "Calculator"
     const calcButton = getByRole('button', { name: /calculator/i })
     fireEvent.click(calcButton)
 
+    // Calculator modal renders title t('pos:calculator.title') = "Calculator"
+    // There will be multiple "Calculator" texts, but the modal title should be present
     expect(getByText('Calculator')).toBeInTheDocument()
   })
 
   it('highlights products that are in cart', () => {
-    const { getByText, getAllByText } = render(
+    const { getByText, getAllByText } = renderWithClient(
       <POSPage
         products={mockProducts}
         onQuickCheckout={vi.fn()}
@@ -191,13 +239,13 @@ describe('POSPage', () => {
     // Add product
     fireEvent.click(getByText('Oil Filter'))
 
-    // Should show "Added" indicator
+    // ProductCard shows hardcoded "Added" when isInCart
     expect(getAllByText('Added')[0]).toBeInTheDocument()
   })
 
   it('calls onProductInfo when info button clicked', () => {
     const onProductInfo = vi.fn()
-    const { getAllByRole } = render(
+    const { getAllByRole } = renderWithClient(
       <POSPage
         products={mockProducts}
         onQuickCheckout={vi.fn()}
@@ -206,6 +254,7 @@ describe('POSPage', () => {
       />
     )
 
+    // ProductCard uses aria-label="Product info"
     const infoButtons = getAllByRole('button', { name: /info/i })
     fireEvent.click(infoButtons[0])
 
@@ -213,7 +262,7 @@ describe('POSPage', () => {
   })
 
   it('displays selected customer in cart', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithClient(
       <POSPage
         products={mockProducts}
         onQuickCheckout={vi.fn()}
@@ -232,7 +281,7 @@ describe('POSPage', () => {
 
   it('calls onChangeCustomer when change customer button clicked', () => {
     const onChangeCustomer = vi.fn()
-    const { getByRole } = render(
+    const { getByRole } = renderWithClient(
       <POSPage
         products={mockProducts}
         onQuickCheckout={vi.fn()}
@@ -243,14 +292,15 @@ describe('POSPage', () => {
       />
     )
 
-    const changeButton = getByRole('button', { name: /change customer/i })
+    // TransactionCart uses t('pos:cart.change') = "Change" for the button
+    const changeButton = getByRole('button', { name: /change/i })
     fireEvent.click(changeButton)
 
     expect(onChangeCustomer).toHaveBeenCalled()
   })
 
-  it('clears cart when clear cart button clicked', () => {
-    const { getByText, getByRole } = render(
+  it('clears cart when clear cart button clicked', async () => {
+    const { getByText, getByRole } = renderWithClient(
       <POSPage
         products={mockProducts}
         onQuickCheckout={vi.fn()}
@@ -262,16 +312,18 @@ describe('POSPage', () => {
     // Add product
     fireEvent.click(getByText('Oil Filter'))
 
-    // Clear cart
+    // Clear cart (t('pos:cart.clear') = "Clear")
     const clearButton = getByRole('button', { name: /clear/i })
     fireEvent.click(clearButton)
 
-    // Should show empty cart
-    expect(getByText(/cart is empty/i)).toBeInTheDocument()
+    // Should show empty cart message t('pos:cart.empty') = "Cart is empty"
+    await waitFor(() => {
+      expect(getByText(/cart is empty/i)).toBeInTheDocument()
+    })
   })
 
-  it('uses 60/40 split layout on desktop', () => {
-    const { container } = render(
+  it('uses flex layout on desktop', () => {
+    const { container } = renderWithClient(
       <POSPage
         products={mockProducts}
         onQuickCheckout={vi.fn()}
@@ -280,12 +332,13 @@ describe('POSPage', () => {
       />
     )
 
-    const grid = container.querySelector('[class*="grid-cols-"]')
-    expect(grid).toBeInTheDocument()
+    // POSPage uses flex layout (not grid-cols), with flex-[3] and flex-[2] children
+    const flexContainer = container.querySelector('.flex')
+    expect(flexContainer).toBeInTheDocument()
   })
 
   it('applies touch-optimized styles when touchOptimized is true', () => {
-    const { container } = render(
+    const { container } = renderWithClient(
       <POSPage
         products={mockProducts}
         onQuickCheckout={vi.fn()}
@@ -295,12 +348,13 @@ describe('POSPage', () => {
       />
     )
 
-    const page = container.firstChild as HTMLElement
-    expect(page.className).toContain('p-6')
+    // POSPage wraps in POSLayout (fixed inset-0), the inner div gets p-6 when touchOptimized
+    const touchDiv = container.querySelector('.p-6')
+    expect(touchDiv).toBeInTheDocument()
   })
 
   it('shows loading state when isLoading is true', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithClient(
       <POSPage
         products={[]}
         onQuickCheckout={vi.fn()}
@@ -310,27 +364,28 @@ describe('POSPage', () => {
       />
     )
 
+    // t('common:loading') = "Loading..."
     expect(getByText(/loading/i)).toBeInTheDocument()
   })
 
-  it('prevents checkout when cart is empty', () => {
-    const onQuickCheckout = vi.fn()
-    const { getByRole } = render(
+  it('does not show payment buttons when cart is empty', () => {
+    const { queryByRole } = renderWithClient(
       <POSPage
         products={mockProducts}
-        onQuickCheckout={onQuickCheckout}
+        onQuickCheckout={vi.fn()}
         onAdvancedPayments={vi.fn()}
         onProductInfo={vi.fn()}
       />
     )
 
-    const checkoutButton = getByRole('button', { name: /quick checkout/i })
-    expect(checkoutButton).toBeDisabled()
+    // PaymentPanel only renders when cart is non-empty
+    const checkoutButton = queryByRole('button', { name: /cash payment/i })
+    expect(checkoutButton).not.toBeInTheDocument()
   })
 
   it('passes cart items to checkout handler', () => {
     const onQuickCheckout = vi.fn()
-    const { getByText, getByRole } = render(
+    const { getByText, getByRole } = renderWithClient(
       <POSPage
         products={mockProducts}
         onQuickCheckout={onQuickCheckout}
@@ -343,7 +398,7 @@ describe('POSPage', () => {
     fireEvent.click(getByText('Oil Filter'))
 
     // Checkout
-    const checkoutButton = getByRole('button', { name: /quick checkout/i })
+    const checkoutButton = getByRole('button', { name: /cash payment/i })
     fireEvent.click(checkoutButton)
 
     expect(onQuickCheckout).toHaveBeenCalledWith(

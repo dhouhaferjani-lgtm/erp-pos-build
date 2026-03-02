@@ -74,6 +74,7 @@ class MenuCategory extends Model
     public function items(): BelongsToMany
     {
         return $this->belongsToMany(CompositeItem::class, 'menu_category_items')
+            ->using(MenuCategoryItem::class)
             ->withPivot(['id', 'override_price', 'display_order', 'is_available'])
             ->withTimestamps()
             ->orderByPivot('display_order');

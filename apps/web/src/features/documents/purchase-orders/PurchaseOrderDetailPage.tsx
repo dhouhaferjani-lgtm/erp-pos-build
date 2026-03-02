@@ -3,20 +3,23 @@ import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Calendar, Building2, FileText, Package, TrendingUp } from 'lucide-react'
+import { ArrowLeft, Calendar, Building2, FileText, Package, TrendingUp, CreditCard } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { formatCurrency } from '../../../lib/format'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
 import { DocumentAttachments } from '../components/DocumentAttachments'
 import { PurchaseOrderLandedCostBreakdown } from '../components/PurchaseOrderLandedCostBreakdown'
+import { PaymentStatusBadge } from '../components/PaymentStatusBadge'
+import { PaymentHistorySection, OutstandingAmountSection } from '../components'
 import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail } from '../hooks'
 import { DocumentActionBar } from '../components/DocumentActionBar'
+import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
 import { useCompany } from '../../../hooks/useCompany'
 import type { Document } from '../../../types/document'
 
 type ConfirmAction = 'confirm' | 'receive' | null
-type ActiveTab = 'related' | 'attachments' | 'landedCosts'
+type ActiveTab = 'related' | 'attachments' | 'landedCosts' | 'payments'
 
 const receiptStatusColors = {
   not_received: 'bg-gray-100 text-gray-800',
@@ -32,6 +35,7 @@ export function PurchaseOrderDetailPage() {
   const { currentCompany } = useCompany()
 
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [activeTab, setActiveTab] = useState<ActiveTab>('related')
   const [emailForm, setEmailForm] = useState({
@@ -132,6 +136,13 @@ export function PurchaseOrderDetailPage() {
     })
   }
 
+  const handlePaymentSuccess = () => {
+    setShowPaymentModal(false)
+    void queryClient.invalidateQueries({ queryKey: ['document', 'purchase_order', id] })
+    void queryClient.invalidateQueries({ queryKey: ['documents'] })
+    void queryClient.invalidateQueries({ queryKey: ['payments'] })
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -145,7 +156,7 @@ export function PurchaseOrderDetailPage() {
 
   if (error || !purchaseOrder) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="py-6">
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <p className="text-red-800">{t('common.errorLoadingData')}</p>
         </div>
@@ -157,8 +168,16 @@ export function PurchaseOrderDetailPage() {
   const receiptStatus = purchaseOrder.status === 'received' ? 'fully_received' :
                        purchaseOrder.status === 'confirmed' ? 'not_received' : 'not_received'
 
+  // Payment computation
+  const outstandingAmount = parseFloat(purchaseOrder.outstanding_amount || purchaseOrder.balance_due || '0')
+  const total = parseFloat(purchaseOrder.total || '0')
+  const amountPaid = parseFloat(purchaseOrder.amount_paid || '0')
+  const isPaid = purchaseOrder.payment_status === 'paid' || outstandingAmount === 0
+  const canRecordPayment = ['confirmed', 'received'].includes(purchaseOrder.status) && !isPaid && outstandingAmount > 0
+  const creditNotesApplied = Math.max(0, total - outstandingAmount - amountPaid)
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="py-6">
       {/* Header */}
       <div className="mb-6">
         <Link
@@ -190,6 +209,17 @@ export function PurchaseOrderDetailPage() {
                   {t(`purchaseOrders.receiptStatus.${receiptStatus}`)}
                 </span>
               )}
+              {['confirmed', 'received'].includes(purchaseOrder.status) && purchaseOrder.payment_status && (
+                <>
+                  <PaymentStatusBadge status={purchaseOrder.payment_status as any} />
+                  {!isPaid && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-3 py-1 text-sm font-medium text-orange-800">
+                      <CreditCard className="h-4 w-4" />
+                      {t('purchaseOrders.outstandingAmount')}: {formatCurrency(outstandingAmount, { currency: currentCompany?.currency ?? 'EUR' })}
+                    </span>
+                  )}
+                </>
+              )}
             </div>
           </div>
 
@@ -199,7 +229,7 @@ export function PurchaseOrderDetailPage() {
             isActionPending={isActionPending}
             onConfirm={() => setConfirmAction('confirm')}
             onReceiveGoods={() => setConfirmAction('receive')}
-            onRecordPayment={() => navigate(`/treasury/payments/new?purchase_order=${purchaseOrder.id}`)}
+            onRecordPayment={canRecordPayment ? () => setShowPaymentModal(true) : undefined}
             onDownloadPdf={handleDownloadPdf}
             onPreviewPdf={handlePreviewPdf}
             onPrintPdf={handlePrintPdf}
@@ -244,7 +274,7 @@ export function PurchaseOrderDetailPage() {
                 {t('documents.supplier')}
               </dt>
               <dd className="mt-1 text-sm text-gray-900">
-                {purchaseOrder.partner?.name || '-'}
+                {purchaseOrder.partner_name || '-'}
               </dd>
             </div>
 
@@ -381,6 +411,18 @@ export function PurchaseOrderDetailPage() {
                 {t('purchaseOrders.landedCosts')}
               </button>
             )}
+            {['confirmed', 'received'].includes(purchaseOrder.status) && (
+              <button
+                onClick={() => setActiveTab('payments')}
+                className={`${
+                  activeTab === 'payments'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+              >
+                {t('purchaseOrders.paymentHistory')}
+              </button>
+            )}
           </nav>
         </div>
 
@@ -389,6 +431,27 @@ export function PurchaseOrderDetailPage() {
           {activeTab === 'attachments' && <DocumentAttachments documentId={purchaseOrder.id} />}
           {activeTab === 'landedCosts' && purchaseOrder.status === 'received' && (
             <PurchaseOrderLandedCostBreakdown purchaseOrderId={purchaseOrder.id} />
+          )}
+          {activeTab === 'payments' && ['confirmed', 'received'].includes(purchaseOrder.status) && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <PaymentHistorySection
+                  documentId={purchaseOrder.id}
+                  currency={currentCompany?.currency ?? 'EUR'}
+                />
+              </div>
+              <div>
+                <OutstandingAmountSection
+                  total={total}
+                  amountPaid={amountPaid}
+                  creditNotesApplied={creditNotesApplied}
+                  outstandingAmount={outstandingAmount}
+                  paymentStatus={purchaseOrder.payment_status as any}
+                  currency={currentCompany?.currency ?? 'EUR'}
+                  onRecordPayment={canRecordPayment ? () => setShowPaymentModal(true) : undefined}
+                />
+              </div>
+            </div>
           )}
         </div>
       </div>
@@ -413,6 +476,23 @@ export function PurchaseOrderDetailPage() {
         confirmText={t('purchaseOrders.receiveGoods')}
         isLoading={receiveGoodsMutation.isPending}
       />
+
+      {/* Record Payment Modal */}
+      {purchaseOrder.partner_id && (
+        <RecordPaymentModal
+          isOpen={showPaymentModal}
+          onClose={() => setShowPaymentModal(false)}
+          onSuccess={handlePaymentSuccess}
+          prefill={{
+            partner_id: purchaseOrder.partner_id,
+            partner_name: purchaseOrder.partner_name || '',
+            amount: outstandingAmount,
+            reference: purchaseOrder.document_number,
+            document_id: purchaseOrder.id,
+            document_type: 'purchase_order',
+          }}
+        />
+      )}
 
       {/* Email Modal */}
       {showEmailModal && (

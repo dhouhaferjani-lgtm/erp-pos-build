@@ -333,7 +333,7 @@ export function AddPartnerModal({
             <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
               {mutation.error instanceof Error
                 ? mutation.error.message
-                : t('common:error.generic')}
+                : t('common:errorMessages.generic')}
             </div>
           )}
         </ModalContent>

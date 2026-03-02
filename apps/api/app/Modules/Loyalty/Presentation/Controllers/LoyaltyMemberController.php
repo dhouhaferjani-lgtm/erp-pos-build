@@ -8,6 +8,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Loyalty\Application\DTOs\EnrollmentData;
 use App\Modules\Loyalty\Application\DTOs\LoyaltyMemberData;
 use App\Modules\Loyalty\Application\Services\MemberEnrollmentService;
+use App\Modules\Loyalty\Domain\Enums\MemberStatus;
 use App\Modules\Loyalty\Domain\Entities\LoyaltyMember;
 use App\Modules\Loyalty\Presentation\Requests\CreateMemberRequest;
 use App\Modules\Loyalty\Presentation\Requests\EnrollMemberRequest;
@@ -88,7 +89,7 @@ class LoyaltyMemberController extends Controller
 
         $member = LoyaltyMember::create(array_merge($request->validated(), [
             'tenant_id' => $tenantId,
-            'status' => 'ACTIVE',
+            'status' => MemberStatus::Active,
             'enrollment_date' => now(),
         ]));
 

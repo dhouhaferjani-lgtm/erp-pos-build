@@ -63,7 +63,7 @@ export function RolesPage() {
       closeModal()
     },
     onError: () => {
-      toast.error(t('error.generic'))
+      toast.error(t('errorMessages.generic'))
     },
   })
 
@@ -78,7 +78,7 @@ export function RolesPage() {
       closeModal()
     },
     onError: () => {
-      toast.error(t('error.generic'))
+      toast.error(t('errorMessages.generic'))
     },
   })
 
@@ -98,7 +98,7 @@ export function RolesPage() {
       } else if (err.response?.data?.error?.code === 'SYSTEM_ROLE_PROTECTED') {
         toast.error(t('roles.messages.cannotDeleteSystem'))
       } else {
-        toast.error(t('error.generic'))
+        toast.error(t('errorMessages.generic'))
       }
     },
   })

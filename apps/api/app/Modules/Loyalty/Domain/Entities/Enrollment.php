@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Loyalty\Domain\Entities;
 
+use App\Modules\Loyalty\Domain\Enums\EnrollmentStatus;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -19,7 +20,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property numeric-string $lifetime_redeemed
  * @property string|null $current_tier_id
  * @property \Illuminate\Support\Carbon|null $tier_qualified_at
- * @property string $status
+ * @property \Illuminate\Support\Carbon|null $tier_changed_at
+ * @property EnrollmentStatus $status
  * @property \Illuminate\Support\Carbon $enrolled_at
  * @property \Illuminate\Support\Carbon|null $last_transaction_at
  * @property \Illuminate\Support\Carbon|null $created_at
@@ -44,6 +46,7 @@ class Enrollment extends Model
         'lifetime_redeemed',
         'current_tier_id',
         'tier_qualified_at',
+        'tier_changed_at',
         'status',
         'enrolled_at',
         'last_transaction_at',
@@ -59,6 +62,8 @@ class Enrollment extends Model
             'lifetime_earned' => 'decimal:2',
             'lifetime_redeemed' => 'decimal:2',
             'tier_qualified_at' => 'datetime',
+            'tier_changed_at' => 'datetime',
+            'status' => EnrollmentStatus::class,
             'enrolled_at' => 'datetime',
             'last_transaction_at' => 'datetime',
         ];

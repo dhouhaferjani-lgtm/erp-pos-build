@@ -245,8 +245,8 @@ describe('CartLineItem', () => {
         onRemove={vi.fn()}
       />
     )
-    const tndElements = getAllByText(/TND/)
-    expect(tndElements.length).toBeGreaterThan(0)
+    const currencyElements = getAllByText(/EUR/)
+    expect(currencyElements.length).toBeGreaterThan(0)
   })
 
   it('prevents negative quantities', () => {

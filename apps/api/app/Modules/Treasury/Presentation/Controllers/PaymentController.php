@@ -249,8 +249,8 @@ class PaymentController extends Controller
                 $newBalance = bcsub($currentBalance, $allocationAmount, 2);
                 $document->balance_due = $newBalance;
 
-                // Mark as paid if fully paid
-                if (bccomp($newBalance, '0.00', 2) === 0) {
+                // Mark as paid if fully paid (only for document types that support paid status)
+                if (bccomp($newBalance, '0.00', 2) === 0 && $document->type->canTransitionToPaid()) {
                     $document->status = DocumentStatus::Paid;
                 }
 
@@ -540,7 +540,7 @@ class PaymentController extends Controller
             // Update primary document balance
             $newBalance = bcsub($documentBalance, $primaryAllocationAmount, 2);
             $primaryDocument->balance_due = $newBalance;
-            if (bccomp($newBalance, '0.00', 2) === 0) {
+            if (bccomp($newBalance, '0.00', 2) === 0 && $primaryDocument->type->canTransitionToPaid()) {
                 $primaryDocument->status = DocumentStatus::Paid;
 
                 // Dispatch InvoicePaid event
@@ -606,7 +606,7 @@ class PaymentController extends Controller
                         $targetBalance = $targetDoc->balance_due ?? $targetDoc->total;
                         $newTargetBalance = bcsub($targetBalance, $allocAmount, 2);
                         $targetDoc->balance_due = $newTargetBalance;
-                        if (bccomp($newTargetBalance, '0.00', 2) === 0) {
+                        if (bccomp($newTargetBalance, '0.00', 2) === 0 && $targetDoc->type->canTransitionToPaid()) {
                             $targetDoc->status = DocumentStatus::Paid;
                         }
                         $targetDoc->save();
@@ -648,7 +648,7 @@ class PaymentController extends Controller
                         $targetBalance = $targetDoc->balance_due ?? $targetDoc->total;
                         $newTargetBalance = bcsub($targetBalance, $allocAmount, 2);
                         $targetDoc->balance_due = $newTargetBalance;
-                        if (bccomp($newTargetBalance, '0.00', 2) === 0) {
+                        if (bccomp($newTargetBalance, '0.00', 2) === 0 && $targetDoc->type->canTransitionToPaid()) {
                             $targetDoc->status = DocumentStatus::Paid;
                         }
                         $targetDoc->save();

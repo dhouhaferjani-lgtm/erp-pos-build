@@ -110,8 +110,9 @@ export function DocumentActionBar({
     !document.goods_received
 
   const canRecordPayment =
-    (document.type === 'invoice' && document.status === 'posted' && document.payment_status !== 'paid') ||
-    (document.type === 'purchase_order' && (document.status === 'confirmed' || document.status === 'received'))
+    (document.type === 'invoice' && ['confirmed', 'posted'].includes(document.status) && document.payment_status !== 'paid') ||
+    (document.type === 'purchase_order' && ['confirmed', 'received'].includes(document.status) && document.payment_status !== 'paid') ||
+    (document.type === 'sales_order' && document.status === 'confirmed' && document.payment_status !== 'paid')
 
   const canCreateCreditNote = document.type === 'invoice' && document.status === 'posted'
   const canCreateReturnNote =

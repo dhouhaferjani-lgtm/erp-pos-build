@@ -7,6 +7,8 @@
  * All amounts are represented as strings to maintain precision.
  */
 
+import { getDecimals } from '../hooks/useCurrency'
+
 /**
  * Add two decimal numbers
  *
@@ -149,18 +151,27 @@ export function applyDiscount(
 }
 
 /**
- * Format decimal as currency (TND)
+ * Format decimal as currency string
  *
  * @param amount Amount (as string or number)
- * @param includeCurrency Include 'TND' suffix (default: true)
+ * @param includeCurrency Include currency code suffix (default: true)
+ * @param currency Currency code (default: 'TND')
+ * @param scale Decimal places (defaults based on currency: TND=3, EUR/USD=2)
  * @returns Formatted currency string
  *
  * @example
  * formatCurrency('123.456') // '123.456 TND'
  * formatCurrency('123.456', false) // '123.456'
+ * formatCurrency('123.45', true, 'EUR', 2) // '123.45 EUR'
  */
-export function formatCurrency(amount: string | number, includeCurrency: boolean = true): string {
+export function formatCurrency(
+  amount: string | number,
+  includeCurrency: boolean = true,
+  currency: string = 'EUR',
+  scale?: number
+): string {
   const num = typeof amount === 'string' ? parseFloat(amount) : amount
-  const formatted = num.toFixed(3)
-  return includeCurrency ? `${formatted} TND` : formatted
+  const decimals = scale ?? getDecimals(currency)
+  const formatted = num.toFixed(decimals)
+  return includeCurrency ? `${formatted} ${currency}` : formatted
 }

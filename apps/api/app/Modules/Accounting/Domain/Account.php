@@ -11,6 +11,8 @@ use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Database\Factories\AccountFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -44,12 +46,19 @@ use RuntimeException;
  */
 class Account extends Model
 {
+    /** @use HasFactory<AccountFactory> */
+    use HasFactory;
     use HasUuids;
 
     /**
      * @var string
      */
     protected $table = 'accounts';
+
+    protected static function newFactory(): AccountFactory
+    {
+        return AccountFactory::new();
+    }
 
     /**
      * @var list<string>

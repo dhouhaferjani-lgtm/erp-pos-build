@@ -1,12 +1,19 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
+import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
-import { useCompositeItem, useCreateCompositeItem, useUpdateCompositeItem } from '../hooks/useCompositeItems'
+import { Input, FormField, Button, Select } from '@/components/atoms'
+import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
+import { tokens } from '@/lib/designTokens'
+import { useQuery } from '@tanstack/react-query'
+import { fetchLocations } from '@/features/location/api'
+import { useCompositeItem, useCreateCompositeItem, useUpdateCompositeItem, useCompositeItemAvailability } from '../hooks/useCompositeItems'
 import { useCreateRecipe } from '../hooks/useRecipes'
 import { RecipeLineEditor } from '../components/RecipeLineEditor'
 import { VariantEditor } from '../components/VariantEditor'
 import { ModifierGroupAssigner } from '../components/ModifierGroupAssigner'
+import { useVerticalLabels } from '../hooks/useVerticalLabels'
 import type { VerticalType, ProductionType } from '../types/compositeItem'
 
 const TABS = ['details', 'recipeTab', 'sizesTab', 'modifiersTab'] as const
@@ -18,11 +25,26 @@ export function CompositeItemFormPage() {
   const isEdit = !!id && id !== 'new'
 
   const { data: item, isLoading } = useCompositeItem(isEdit ? id : '')
+  const getLabel = useVerticalLabels(item?.vertical_type)
   const createMutation = useCreateCompositeItem()
   const updateMutation = useUpdateCompositeItem()
   const createRecipeMutation = useCreateRecipe()
 
   const [activeTab, setActiveTab] = useState<typeof TABS[number]>('details')
+  const [selectedLocationId, setSelectedLocationId] = useState('')
+
+  const { data: locations } = useQuery({
+    queryKey: ['locations'],
+    queryFn: fetchLocations,
+    enabled: isEdit,
+    staleTime: 60000,
+  })
+
+  const { data: availability, isLoading: isCheckingAvailability } = useCompositeItemAvailability(
+    isEdit ? id : '',
+    selectedLocationId,
+  )
+
   const [form, setForm] = useState({
     code: '',
     name: '',
@@ -108,9 +130,19 @@ export function CompositeItemFormPage() {
 
   return (
     <div className="space-y-6">
-      <div className="sm:flex sm:items-center sm:justify-between">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <button
+          type="button"
+          onClick={() => navigate('/catalog/composite-items')}
+          className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
         <h1 className="text-2xl font-semibold text-gray-900">
-          {isEdit ? t('catalog:editCompositeItem') : t('catalog:createCompositeItem')}
+          {isEdit
+            ? `${t('common:actions.edit')} ${getLabel('compositeItem')}`
+            : `${t('common:actions.create')} ${getLabel('compositeItem')}`}
         </h1>
       </div>
 
@@ -128,7 +160,10 @@ export function CompositeItemFormPage() {
                     : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
                 }`}
               >
-                {t(`catalog:${tab}`)}
+                {tab === 'recipeTab' ? getLabel('recipe')
+                  : tab === 'sizesTab' ? getLabel('variant')
+                  : tab === 'modifiersTab' ? getLabel('modifierGroup')
+                  : t(`catalog:${tab}`)}
               </button>
             ))}
           </nav>
@@ -138,116 +173,169 @@ export function CompositeItemFormPage() {
       {/* Details tab / Create form */}
       {(activeTab === 'details' || !isEdit) && (
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{t('catalog:code')}</label>
-              <input
-                type="text"
-                required
-                value={form.code}
-                onChange={(e) => setForm({ ...form, code: e.target.value })}
-                className="mt-1 block w-full rounded-md border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{t('catalog:name')}</label>
-              <input
-                type="text"
-                required
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="mt-1 block w-full rounded-md border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{t('catalog:basePrice')}</label>
-              <input
-                type="number"
-                required
-                step="0.01"
-                min="0"
-                value={form.base_price}
-                onChange={(e) => setForm({ ...form, base_price: e.target.value })}
-                className="mt-1 block w-full rounded-md border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{t('catalog:verticalType')}</label>
-              <select
-                value={form.vertical_type}
-                onChange={(e) => setForm({ ...form, vertical_type: e.target.value as VerticalType })}
-                className="mt-1 block w-full rounded-md border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
-              >
-                <option value="fnb">F&B</option>
-                <option value="manufacturing">Manufacturing</option>
-                <option value="sewing">Sewing</option>
-                <option value="bakery">Bakery</option>
-                <option value="generic">Generic</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{t('catalog:productionType')}</label>
-              <select
-                value={form.production_type}
-                onChange={(e) => setForm({ ...form, production_type: e.target.value as ProductionType })}
-                className="mt-1 block w-full rounded-md border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
-              >
-                <option value="made_to_order">{t('catalog:productionTypes.made_to_order')}</option>
-                <option value="batch">{t('catalog:productionTypes.batch')}</option>
-                <option value="stock">{t('catalog:productionTypes.stock')}</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{t('catalog:taxRate')}</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                max="100"
-                value={form.tax_rate}
-                onChange={(e) => setForm({ ...form, tax_rate: e.target.value })}
-                className="mt-1 block w-full rounded-md border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
-              />
-            </div>
-            <div className="flex items-center gap-6">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={form.is_active}
-                  onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
-                  className="rounded border-gray-300"
+          <div className={tokens.card.base}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField label={t('catalog:code')} htmlFor="ci-code" required>
+                <Input
+                  id="ci-code"
+                  required
+                  value={form.code}
+                  onChange={(e) => setForm({ ...form, code: e.target.value })}
                 />
-                <span className="text-sm text-gray-700">{t('catalog:isActive')}</span>
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={form.is_available}
-                  onChange={(e) => setForm({ ...form, is_available: e.target.checked })}
-                  className="rounded border-gray-300"
+              </FormField>
+              <FormField label={t('catalog:name')} htmlFor="ci-name" required>
+                <Input
+                  id="ci-name"
+                  required
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
                 />
-                <span className="text-sm text-gray-700">{t('catalog:isAvailable')}</span>
-              </label>
+              </FormField>
+              <FormField label={t('catalog:basePrice')} htmlFor="ci-price" required>
+                <Input
+                  id="ci-price"
+                  type="number"
+                  required
+                  step="0.01"
+                  min="0"
+                  value={form.base_price}
+                  onChange={(e) => setForm({ ...form, base_price: e.target.value })}
+                />
+              </FormField>
+              <FormField label={t('catalog:verticalType')} htmlFor="ci-vertical">
+                <Select
+                  id="ci-vertical"
+                  value={form.vertical_type}
+                  onChange={(e) => setForm({ ...form, vertical_type: e.target.value as VerticalType })}
+                >
+                  <option value="fnb">F&B</option>
+                  <option value="manufacturing">Manufacturing</option>
+                  <option value="sewing">Sewing</option>
+                  <option value="bakery">Bakery</option>
+                  <option value="generic">Generic</option>
+                </Select>
+              </FormField>
+              <FormField label={t('catalog:productionType')} htmlFor="ci-production">
+                <Select
+                  id="ci-production"
+                  value={form.production_type}
+                  onChange={(e) => setForm({ ...form, production_type: e.target.value as ProductionType })}
+                >
+                  <option value="made_to_order">{t('catalog:productionTypes.made_to_order')}</option>
+                  <option value="batch">{t('catalog:productionTypes.batch')}</option>
+                  <option value="stock">{t('catalog:productionTypes.stock')}</option>
+                </Select>
+              </FormField>
+              <FormField label={t('catalog:taxRate')} htmlFor="ci-tax">
+                <Input
+                  id="ci-tax"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  value={form.tax_rate}
+                  onChange={(e) => setForm({ ...form, tax_rate: e.target.value })}
+                />
+              </FormField>
+              <div className="flex items-center gap-6 pt-6">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={form.is_active}
+                    onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+                    className={tokens.checkbox.base}
+                  />
+                  <span className="text-sm text-gray-700">{t('catalog:isActive')}</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={form.is_available}
+                    onChange={(e) => setForm({ ...form, is_available: e.target.checked })}
+                    className={tokens.checkbox.base}
+                  />
+                  <span className="text-sm text-gray-700">{t('catalog:isAvailable')}</span>
+                </label>
+              </div>
             </div>
           </div>
 
-          <div className="flex justify-end gap-3">
-            <button
+          <StickyFormFooter>
+            <Button
               type="button"
+              variant="secondary"
               onClick={() => navigate('/catalog/composite-items')}
-              className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50"
             >
               {t('common:cancel')}
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
+              variant="primary"
               disabled={createMutation.isPending || updateMutation.isPending}
-              className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
             >
               {t('common:save')}
-            </button>
-          </div>
+            </Button>
+          </StickyFormFooter>
         </form>
+      )}
+
+      {/* Availability section (details tab, edit mode only) */}
+      {isEdit && activeTab === 'details' && item?.active_recipe && (
+        <div className={tokens.card.base}>
+          <h3 className="text-lg font-medium text-gray-900 mb-4">{t('catalog:availability')}</h3>
+          <div className="flex items-end gap-3 mb-4">
+            <FormField label={t('common:location')} htmlFor="avail-location" className="flex-1">
+              <Select
+                id="avail-location"
+                value={selectedLocationId}
+                onChange={(e) => setSelectedLocationId(e.target.value)}
+              >
+                <option value="">{t('common:select')}</option>
+                {(locations ?? []).map((loc) => (
+                  <option key={loc.id} value={loc.id}>{loc.name}</option>
+                ))}
+              </Select>
+            </FormField>
+          </div>
+          {isCheckingAvailability && (
+            <p className="text-sm text-gray-500">{t('common:loading')}</p>
+          )}
+          {availability && selectedLocationId && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-4">
+                <div className="text-2xl font-bold text-gray-900">{availability.available_quantity}</div>
+                <div className="text-sm text-gray-600">{t('catalog:maxProducible')}</div>
+                {availability.limiting_component && (
+                  <div className="text-sm text-amber-600">
+                    {t('catalog:limitingIngredient')}: {availability.limiting_component}
+                  </div>
+                )}
+              </div>
+              {availability.components.length > 0 && (
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr>
+                      <th className="text-left py-1 font-medium text-gray-700">{getLabel('recipeLine')}</th>
+                      <th className="text-right py-1 font-medium text-gray-700">{t('catalog:required')}</th>
+                      <th className="text-right py-1 font-medium text-gray-700">{t('catalog:available')}</th>
+                      <th className="text-right py-1 font-medium text-gray-700">{t('catalog:maxProducible')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {availability.components.map((comp) => (
+                      <tr key={comp.product_id}>
+                        <td className="py-1">{comp.product_name}</td>
+                        <td className="text-right py-1">{comp.required_quantity}</td>
+                        <td className="text-right py-1">{comp.available_quantity}</td>
+                        <td className="text-right py-1">{comp.max_produces}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Recipe tab */}
@@ -257,17 +345,17 @@ export function CompositeItemFormPage() {
             <RecipeLineEditor
               recipe={item.active_recipe}
               compositeItemId={id}
+              verticalType={item.vertical_type}
             />
           ) : (
             <div className="text-center py-8">
               <p className="text-gray-500 mb-4">{t('catalog:createRecipe')}</p>
-              <button
+              <Button
                 onClick={handleCreateRecipe}
                 disabled={createRecipeMutation.isPending}
-                className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
               >
                 {t('catalog:createRecipe')}
-              </button>
+              </Button>
             </div>
           )}
         </div>

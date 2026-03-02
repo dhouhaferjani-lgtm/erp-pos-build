@@ -65,9 +65,7 @@ export function CheckoutSuccessDialog({
               receiptId={receiptId}
               showDownload={true}
               autoPrint={autoPrint}
-              onPrintComplete={() => {
-                console.log('Receipt printed:', receiptId)
-              }}
+              onPrintComplete={() => {}}
             />
           )}
 

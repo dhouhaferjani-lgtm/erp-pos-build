@@ -11,6 +11,26 @@ vi.mock('react-i18next', () => ({
   }),
 }))
 
+vi.mock('@/hooks/useCurrency', () => ({
+  useCurrency: () => ({
+    currency: 'EUR',
+    locale: 'fr-FR',
+    decimals: 2,
+    format: (value: string | number) => {
+      const num = typeof value === 'string' ? parseFloat(value) : value
+      return `${num.toFixed(2)} EUR`
+    },
+    toFixed: (value: number) => value.toFixed(2),
+  }),
+  getDecimals: (currency: string) => currency === 'TND' || currency === 'LYD' ? 3 : 2,
+  getLocale: (_currency: string) => 'fr-FR',
+  formatAmount: (value: string | number, currency: string) => {
+    const num = typeof value === 'string' ? parseFloat(value) : value
+    const decimals = currency === 'TND' || currency === 'LYD' ? 3 : 2
+    return `${num.toFixed(decimals)} ${currency}`
+  },
+}))
+
 describe('PaymentPanel', () => {
   const mockOnQuickCheckout = vi.fn()
   const mockOnAdvancedPayments = vi.fn()
@@ -130,7 +150,7 @@ describe('PaymentPanel', () => {
         />
       )
 
-      const quickCheckoutButton = screen.getByRole('button', { name: /common:pos.quickCheckout/i })
+      const quickCheckoutButton = screen.getByRole('button', { name: /pos:payment.cashPayment/i })
       expect(quickCheckoutButton).toBeInTheDocument()
     })
 
@@ -143,7 +163,7 @@ describe('PaymentPanel', () => {
         />
       )
 
-      const advancedButton = screen.getByRole('button', { name: /common:pos.advancedPayments/i })
+      const advancedButton = screen.getByRole('button', { name: /pos:payment.splitCardPayment/i })
       expect(advancedButton).toBeInTheDocument()
     })
 
@@ -185,8 +205,8 @@ describe('PaymentPanel', () => {
         />
       )
 
-      // Subtotal = 50.000 + 50.000 = 100.000
-      expect(screen.getByText('100.000')).toBeInTheDocument()
+      // Subtotal = 50.000 + 50.000 = 100.00
+      expect(screen.getByText('100.00')).toBeInTheDocument()
     })
 
     it('should calculate and display correct tax total', () => {
@@ -198,8 +218,8 @@ describe('PaymentPanel', () => {
         />
       )
 
-      // Tax = 9.500 + 9.500 = 19.000
-      expect(screen.getByText('19.000')).toBeInTheDocument()
+      // Tax = 9.500 + 9.500 = 19.00
+      expect(screen.getByText('19.00')).toBeInTheDocument()
     })
 
     it('should calculate and display correct grand total', () => {
@@ -211,8 +231,8 @@ describe('PaymentPanel', () => {
         />
       )
 
-      // Total = 100.000 + 19.000 = 119.000
-      expect(screen.getByText('119.000')).toBeInTheDocument()
+      // Total = 100.000 + 19.000 = 119.00
+      expect(screen.getByText('119.00')).toBeInTheDocument()
     })
 
     it('should handle zero tax amounts correctly', () => {
@@ -235,8 +255,8 @@ describe('PaymentPanel', () => {
         />
       )
 
-      // Tax should be 0.000
-      expect(screen.getByText('0.000')).toBeInTheDocument()
+      // Tax should be 0.00
+      expect(screen.getByText('0.00')).toBeInTheDocument()
     })
 
     it('should recalculate totals when items change', () => {
@@ -249,7 +269,7 @@ describe('PaymentPanel', () => {
       )
 
       // Initial: 50.000 subtotal
-      expect(screen.getByText('50.000')).toBeInTheDocument()
+      expect(screen.getByText('50.00')).toBeInTheDocument()
 
       // Update to all items
       rerender(
@@ -261,7 +281,7 @@ describe('PaymentPanel', () => {
       )
 
       // Updated: 100.000 subtotal
-      expect(screen.getByText('100.000')).toBeInTheDocument()
+      expect(screen.getByText('100.00')).toBeInTheDocument()
     })
   })
 
@@ -277,7 +297,7 @@ describe('PaymentPanel', () => {
         />
       )
 
-      const quickCheckoutButton = screen.getByRole('button', { name: /common:pos.quickCheckout/i })
+      const quickCheckoutButton = screen.getByRole('button', { name: /pos:payment.cashPayment/i })
       await user.click(quickCheckoutButton)
 
       expect(mockOnQuickCheckout).toHaveBeenCalledTimes(1)
@@ -294,7 +314,7 @@ describe('PaymentPanel', () => {
         />
       )
 
-      const advancedButton = screen.getByRole('button', { name: /common:pos.advancedPayments/i })
+      const advancedButton = screen.getByRole('button', { name: /pos:payment.splitCardPayment/i })
       await user.click(advancedButton)
 
       expect(mockOnAdvancedPayments).toHaveBeenCalledTimes(1)
@@ -329,7 +349,7 @@ describe('PaymentPanel', () => {
         />
       )
 
-      const quickCheckoutButton = screen.getByRole('button', { name: /common:pos.quickCheckout/i })
+      const quickCheckoutButton = screen.getByRole('button', { name: /pos:payment.cashPayment/i })
       expect(quickCheckoutButton).toBeDisabled()
     })
 
@@ -342,7 +362,7 @@ describe('PaymentPanel', () => {
         />
       )
 
-      const advancedButton = screen.getByRole('button', { name: /common:pos.advancedPayments/i })
+      const advancedButton = screen.getByRole('button', { name: /pos:payment.splitCardPayment/i })
       expect(advancedButton).toBeDisabled()
     })
 
@@ -355,8 +375,8 @@ describe('PaymentPanel', () => {
         />
       )
 
-      const quickCheckoutButton = screen.getByRole('button', { name: /common:pos.quickCheckout/i })
-      const advancedButton = screen.getByRole('button', { name: /common:pos.advancedPayments/i })
+      const quickCheckoutButton = screen.getByRole('button', { name: /pos:payment.cashPayment/i })
+      const advancedButton = screen.getByRole('button', { name: /pos:payment.splitCardPayment/i })
 
       expect(quickCheckoutButton).toBeEnabled()
       expect(advancedButton).toBeEnabled()
@@ -421,8 +441,8 @@ describe('PaymentPanel', () => {
       )
 
       // All buttons should have accessible names
-      expect(screen.getByRole('button', { name: /common:pos.quickCheckout/i })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /common:pos.advancedPayments/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /pos:payment.cashPayment/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /pos:payment.splitCardPayment/i })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: /calculator/i })).toBeInTheDocument()
     })
 
@@ -435,7 +455,7 @@ describe('PaymentPanel', () => {
         />
       )
 
-      const quickCheckoutButton = screen.getByRole('button', { name: /common:pos.quickCheckout/i })
+      const quickCheckoutButton = screen.getByRole('button', { name: /pos:payment.cashPayment/i })
       expect(quickCheckoutButton).toHaveAttribute('disabled')
     })
   })
@@ -495,7 +515,7 @@ describe('PaymentPanel', () => {
       expect(totalLabel).toHaveClass('font-bold', 'text-gray-900')
 
       // Total amount should be blue and bold
-      const totalAmount = screen.getByText('119.000')
+      const totalAmount = screen.getByText('119.00')
       expect(totalAmount).toHaveClass('font-bold', 'text-blue-600')
     })
   })

@@ -19,6 +19,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::patch('composite-items/{id}', [CompositeItemController::class, 'update']);
     Route::delete('composite-items/{id}', [CompositeItemController::class, 'destroy']);
     Route::post('composite-items/{id}/duplicate', [CompositeItemController::class, 'duplicate']);
+    Route::get('composite-items/{id}/availability', [CompositeItemController::class, 'checkAvailability']);
 
     // Recipes (nested under composite items for creation, standalone for show/update)
     Route::get('composite-items/{compositeItemId}/recipes', [RecipeController::class, 'index']);

@@ -1,0 +1,62 @@
+{
+  "title": "Coupons",
+  "subtitle": "Manage discount codes and vouchers",
+  "createCoupon": "Create Coupon",
+  "editCoupon": "Edit Coupon",
+  "deleteCoupon": "Delete Coupon",
+  "noCoupons": "No coupons yet",
+  "noCouponsDescription": "Create your first coupon to offer discount codes",
+  "fields": {
+    "name": "Name",
+    "code": "Code",
+    "type": "Type",
+    "status": "Status",
+    "isSingleUse": "Single Use",
+    "maxUses": "Maximum Uses",
+    "useCount": "Times Used",
+    "maxUsesPerCustomer": "Max Uses Per Customer",
+    "discountType": "Discount Type",
+    "discountValue": "Discount Value",
+    "maxDiscountAmount": "Max Discount Amount",
+    "minimumOrderAmount": "Minimum Order Amount",
+    "isExclusive": "Exclusive",
+    "stackingGroup": "Stacking Group",
+    "startsAt": "Start Date",
+    "expiresAt": "Expiry Date",
+    "qualifyingProducts": "Qualifying Products",
+    "qualifyingCategories": "Qualifying Categories"
+  },
+  "types": {
+    "standard": "Standard",
+    "single_use": "Single Use",
+    "customer_specific": "Customer Specific"
+  },
+  "statuses": {
+    "active": "Active",
+    "exhausted": "Exhausted",
+    "expired": "Expired",
+    "revoked": "Revoked"
+  },
+  "discountTypes": {
+    "percentage": "Percentage",
+    "fixed": "Fixed Amount"
+  },
+  "actions": {
+    "revoke": "Revoke",
+    "reactivate": "Reactivate",
+    "confirmRevoke": "Are you sure you want to revoke this coupon?",
+    "confirmReactivate": "Are you sure you want to reactivate this coupon?",
+    "confirmDelete": "Are you sure you want to delete this coupon?"
+  },
+  "sections": {
+    "basicInfo": "Basic Information",
+    "discountConfig": "Discount Configuration",
+    "usageLimits": "Usage Limits",
+    "schedule": "Schedule",
+    "stacking": "Stacking Rules"
+  },
+  "placeholders": {
+    "code": "e.g. WELCOME10",
+    "codeHint": "Code will be auto-uppercased. Letters, numbers, dashes allowed."
+  }
+}

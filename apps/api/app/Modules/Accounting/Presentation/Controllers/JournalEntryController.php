@@ -155,7 +155,7 @@ class JournalEntryController extends Controller
             'status' => JournalEntryStatus::Posted,
             'posted_at' => now(),
             'posted_by' => $user->id,
-            'hash' => $this->calculateHash($entry),
+            'fiscal_hash' => $this->calculateHash($entry),
             'previous_hash' => $this->getPreviousHash($tenantId),
         ]);
 
@@ -209,10 +209,10 @@ class JournalEntryController extends Controller
         $lastPosted = JournalEntry::query()
             ->where('tenant_id', $tenantId)
             ->where('status', JournalEntryStatus::Posted)
-            ->whereNotNull('hash')
+            ->whereNotNull('fiscal_hash')
             ->orderByDesc('posted_at')
             ->first();
 
-        return $lastPosted !== null ? $lastPosted->hash ?? '' : '';
+        return $lastPosted !== null ? $lastPosted->fiscal_hash ?? '' : '';
     }
 }

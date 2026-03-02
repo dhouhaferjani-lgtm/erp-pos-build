@@ -195,8 +195,20 @@
   "purchaseOrders": {
     "title": "Bons d'achat",
     "new": "Nouveau bon d'achat",
+    "backToList": "Retour aux bons d'achat",
+    "expectedDate": "Date prévue",
+    "paymentHistory": "Historique des paiements",
+    "outstandingAmount": "Montant restant dû",
+    "landedCosts": "Coûts annexes",
     "receiveGoods": "Réceptionner les marchandises",
+    "receiveGoodsTitle": "Réceptionner les marchandises",
+    "receiveGoodsMessage": "Cela créera des mouvements de stock pour réceptionner les marchandises de ce bon d'achat. Continuer ?",
     "goodsReceived": "Marchandises réceptionnées",
+    "receiptStatus": {
+      "not_received": "Non réceptionné",
+      "partially_received": "Partiellement réceptionné",
+      "fully_received": "Entièrement réceptionné"
+    },
     "receiveGoodsConfirm": {
       "title": "Réceptionner les marchandises",
       "message": "Cela créera des mouvements de stock pour réceptionner les marchandises de ce bon d'achat. Continuer ?",
@@ -220,6 +232,9 @@
   "invoices": {
     "title": "Factures",
     "new": "Nouvelle facture",
+    "backToList": "Retour aux factures",
+    "dueDate": "Date d'échéance",
+    "creditNotes": "Avoirs",
     "post": "Comptabiliser la facture",
     "createCreditNote": "Créer un avoir",
     "searchInvoicePlaceholder": "Rechercher par numéro de facture ou partenaire...",
@@ -229,12 +244,32 @@
     "balance": "Solde",
     "total": "Total",
     "noPayments": "Aucun paiement enregistré pour le moment",
-    "paymentHistory": "Historique des paiements",
     "recordPayment": "Enregistrer un paiement",
-    "outstandingAmount": "Montant restant dû",
     "fiscallySealed": "Scellé fiscalement",
     "postTitle": "Comptabiliser la facture",
     "postMessage": "Êtes-vous sûr de vouloir comptabiliser cette facture ? Cela va finaliser le document et créer les écritures comptables. Cette action ne peut pas être annulée.",
+    "balanceDue": "Solde Dû",
+    "paymentStatus": {
+      "unpaid": "Impayée",
+      "partially_paid": "Partiellement Payée",
+      "in_payment": "En Paiement",
+      "paid": "Payée",
+      "overpaid": "Surpayée"
+    },
+    "paymentHistory": {
+      "noPayments": "Aucun paiement enregistré",
+      "allocated": "Alloué",
+      "totalPaid": "Total Payé"
+    },
+    "outstandingAmount": {
+      "title": "Montant Restant Dû",
+      "invoiceTotal": "Total Facture",
+      "paymentsReceived": "Paiements Reçus",
+      "creditNotesApplied": "Avoirs Appliqués",
+      "outstanding": "RESTANT DÛ",
+      "recordPayment": "Enregistrer un Paiement",
+      "overpaidWarning": "Cette facture a été surpayée. Le client a un crédit."
+    },
     "deliveryConfirmation": {
       "title": "Confirmer les livraisons avant comptabilisation",
       "description": "Les bons de livraison suivants ont été créés automatiquement lors de la conversion du devis en facture. Ils doivent être confirmés avant de pouvoir comptabiliser la facture.",
@@ -509,30 +544,6 @@
         "line": "Ligne personnalisée"
       }
     }
-  },
-  "invoices": {
-    "paymentStatus": {
-      "unpaid": "Impayée",
-      "partially_paid": "Partiellement Payée",
-      "in_payment": "En Paiement",
-      "paid": "Payée",
-      "overpaid": "Surpayée"
-    },
-    "paymentHistory": {
-      "noPayments": "Aucun paiement enregistré",
-      "allocated": "Alloué",
-      "totalPaid": "Total Payé"
-    },
-    "outstandingAmount": {
-      "title": "Montant Restant Dû",
-      "invoiceTotal": "Total Facture",
-      "paymentsReceived": "Paiements Reçus",
-      "creditNotesApplied": "Avoirs Appliqués",
-      "outstanding": "RESTANT DÛ",
-      "recordPayment": "Enregistrer un Paiement",
-      "overpaidWarning": "Cette facture a été surpayée. Le client a un crédit."
-    },
-    "balanceDue": "Solde Dû"
   },
   "fulfillment": {
     "fulfilled": "Livré",

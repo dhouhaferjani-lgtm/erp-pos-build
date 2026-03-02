@@ -18,7 +18,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $name
  * @property ProgramType $program_type
  * @property ProgramStatus $status
+ * @property string|null $description
  * @property string|null $currency
+ * @property int|null $points_expiry_months
+ * @property string|null $welcome_bonus_points
  * @property \Illuminate\Support\Carbon|null $start_date
  * @property \Illuminate\Support\Carbon|null $end_date
  * @property string|null $terms_and_conditions
@@ -47,9 +50,12 @@ class LoyaltyProgram extends Model
         'tenant_id',
         'company_ids',
         'name',
+        'description',
         'program_type',
         'status',
         'currency',
+        'points_expiry_months',
+        'welcome_bonus_points',
         'start_date',
         'end_date',
         'terms_and_conditions',

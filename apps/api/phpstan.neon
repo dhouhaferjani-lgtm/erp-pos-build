@@ -6,7 +6,7 @@ parameters:
         - app/
     level: 8
 
-    # Exclude paths (optional - may not exist in Laravel 11+)
+    # Exclude paths
     excludePaths:
         analyseAndScan:
             - app/Console/Kernel.php (?)
@@ -14,3 +14,8 @@ parameters:
 
     # Laravel specific
     checkModelProperties: true
+
+    # Parallel processing - reduces per-worker memory by splitting work
+    parallel:
+        maximumNumberOfProcesses: 4
+        processTimeout: 300.0

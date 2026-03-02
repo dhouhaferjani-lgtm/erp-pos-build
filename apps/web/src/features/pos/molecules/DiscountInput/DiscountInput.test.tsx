@@ -27,6 +27,26 @@ vi.mock('react-i18next', () => ({
   }),
 }))
 
+vi.mock('@/hooks/useCurrency', () => ({
+  useCurrency: () => ({
+    currency: 'EUR',
+    locale: 'fr-FR',
+    decimals: 2,
+    format: (value: string | number) => {
+      const num = typeof value === 'string' ? parseFloat(value) : value
+      return `${num.toFixed(2)} EUR`
+    },
+    toFixed: (value: number) => value.toFixed(2),
+  }),
+  getDecimals: (currency: string) => currency === 'TND' || currency === 'LYD' ? 3 : 2,
+  getLocale: (_currency: string) => 'fr-FR',
+  formatAmount: (value: string | number, currency: string) => {
+    const num = typeof value === 'string' ? parseFloat(value) : value
+    const decimals = currency === 'TND' || currency === 'LYD' ? 3 : 2
+    return `${num.toFixed(decimals)} ${currency}`
+  },
+}))
+
 describe('DiscountInput', () => {
   const defaultProps = {
     lineTotal: '100.000',
@@ -175,7 +195,7 @@ describe('DiscountInput', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Preview/)).toBeInTheDocument()
-      expect(screen.getByText(/90.000 TND/)).toBeInTheDocument()
+      expect(screen.getByText(/90.00 EUR/)).toBeInTheDocument()
     })
   })
 

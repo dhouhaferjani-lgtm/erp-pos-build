@@ -302,12 +302,8 @@ class MultiPaymentService
      */
     private function getDocumentStatusAfterPayment(Document $document): \App\Modules\Document\Domain\Enums\DocumentStatus
     {
-        // Import the enum
-        $statusClass = \App\Modules\Document\Domain\Enums\DocumentStatus::class;
-
-        return match ($document->type->value) {
-            'invoice', 'credit_note' => $statusClass::Paid,
-            default => $document->status,
-        };
+        return $document->type->canTransitionToPaid()
+            ? \App\Modules\Document\Domain\Enums\DocumentStatus::Paid
+            : $document->status;
     }
 }

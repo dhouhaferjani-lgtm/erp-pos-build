@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { Store, X, Monitor, Clock, DollarSign, Settings } from 'lucide-react'
 import { getCurrentShift, getShiftBalance } from '../api/shiftApi'
-import { formatMoney } from '@/lib/utils'
+import { useCurrency } from '@/hooks/useCurrency'
 import { ShiftOperationsMenu } from './ShiftOperationsMenu'
 import { CashOperationModal } from '../components/CashOperationModal'
 
@@ -32,6 +32,7 @@ export function POSLayout({
   terminalCode,
 }: POSLayoutProps) {
   const { t } = useTranslation(['common'])
+  const { format: formatMoney } = useCurrency()
   const [shiftDuration, setShiftDuration] = useState<string | null>(null)
   const [isOperationsMenuOpen, setIsOperationsMenuOpen] = useState(false)
   const [activeModal, setActiveModal] = useState<'deposit' | 'payout' | null>(null)

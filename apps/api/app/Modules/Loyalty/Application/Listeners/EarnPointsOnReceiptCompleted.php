@@ -1,0 +1,88 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\Loyalty\Application\Listeners;
+
+use App\Modules\Loyalty\Application\Services\EarningProcessingService;
+use App\Modules\Loyalty\Domain\Entities\Enrollment;
+use App\Modules\Loyalty\Domain\Entities\LoyaltyMember;
+use App\Modules\Loyalty\Domain\Enums\EnrollmentStatus;
+use App\Modules\POS\Domain\Events\ReceiptCompleted;
+use App\Modules\POS\Domain\Receipt;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Support\Facades\Log;
+
+/**
+ * Listens for receipt completion and awards loyalty points
+ * to any enrolled customer.
+ */
+final class EarnPointsOnReceiptCompleted implements ShouldQueue
+{
+    public function __construct(
+        private readonly EarningProcessingService $earningService,
+    ) {}
+
+    public function handle(ReceiptCompleted $event): void
+    {
+        if ($event->customerId === null) {
+            return;
+        }
+
+        // Find loyalty member by customer (partner) ID
+        $member = LoyaltyMember::query()
+            ->where('customer_id', $event->customerId)
+            ->where('tenant_id', $event->tenantId)
+            ->first();
+
+        if ($member === null) {
+            return;
+        }
+
+        // Get all active enrollments for this member
+        $enrollments = Enrollment::query()
+            ->where('member_id', $member->id)
+            ->where('status', EnrollmentStatus::Active)
+            ->get();
+
+        // Build transaction data from receipt
+        $receipt = Receipt::with('lines')->find($event->receiptId);
+        if ($receipt === null) {
+            return;
+        }
+
+        $items = [];
+        foreach ($receipt->lines as $line) {
+            $items[] = [
+                'product_id' => $line->product_id,
+                'category_id' => null,
+                'quantity' => $line->quantity,
+                'price' => (float) $line->unit_price,
+            ];
+        }
+
+        $transactionData = [
+            'amount' => (float) $event->totalAmount,
+            'items' => $items,
+            'timestamp' => $receipt->posted_at ?? now(),
+        ];
+
+        foreach ($enrollments as $enrollment) {
+            try {
+                $this->earningService->earnPoints(
+                    enrollmentId: $enrollment->id,
+                    transactionData: $transactionData,
+                    sourceType: 'pos_receipt',
+                    sourceId: $event->receiptId,
+                    description: "POS receipt #{$receipt->receipt_number}",
+                );
+            } catch (\Throwable $e) {
+                Log::error('Failed to earn loyalty points on receipt completion', [
+                    'receipt_id' => $event->receiptId,
+                    'enrollment_id' => $enrollment->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+}

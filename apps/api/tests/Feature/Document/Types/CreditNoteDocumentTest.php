@@ -16,6 +16,7 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Seeders\FranceChartOfAccountsSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
@@ -76,6 +77,8 @@ class CreditNoteDocumentTest extends TestCase
 
         // Set company context for the test
         app(\App\Modules\Company\Services\CompanyContext::class)->setCompanyId($this->company->id);
+
+        (new FranceChartOfAccountsSeeder())->run($this->company->id, $this->tenant->id);
 
         $this->partner = Partner::create([
             'tenant_id' => $this->tenant->id,

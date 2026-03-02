@@ -1,0 +1,62 @@
+{
+  "title": "Coupons",
+  "subtitle": "G\u00e9rer les codes de r\u00e9duction et bons d'achat",
+  "createCoupon": "Cr\u00e9er un coupon",
+  "editCoupon": "Modifier le coupon",
+  "deleteCoupon": "Supprimer le coupon",
+  "noCoupons": "Aucun coupon",
+  "noCouponsDescription": "Cr\u00e9ez votre premier coupon pour offrir des codes de r\u00e9duction",
+  "fields": {
+    "name": "Nom",
+    "code": "Code",
+    "type": "Type",
+    "status": "Statut",
+    "isSingleUse": "Usage unique",
+    "maxUses": "Utilisations max",
+    "useCount": "Fois utilis\u00e9",
+    "maxUsesPerCustomer": "Max par client",
+    "discountType": "Type de remise",
+    "discountValue": "Valeur de remise",
+    "maxDiscountAmount": "Montant max de remise",
+    "minimumOrderAmount": "Montant minimum de commande",
+    "isExclusive": "Exclusif",
+    "stackingGroup": "Groupe de cumul",
+    "startsAt": "Date de d\u00e9but",
+    "expiresAt": "Date d'expiration",
+    "qualifyingProducts": "Produits qualifiants",
+    "qualifyingCategories": "Cat\u00e9gories qualifiantes"
+  },
+  "types": {
+    "standard": "Standard",
+    "single_use": "Usage unique",
+    "customer_specific": "Sp\u00e9cifique au client"
+  },
+  "statuses": {
+    "active": "Actif",
+    "exhausted": "\u00c9puis\u00e9",
+    "expired": "Expir\u00e9",
+    "revoked": "R\u00e9voqu\u00e9"
+  },
+  "discountTypes": {
+    "percentage": "Pourcentage",
+    "fixed": "Montant fixe"
+  },
+  "actions": {
+    "revoke": "R\u00e9voquer",
+    "reactivate": "R\u00e9activer",
+    "confirmRevoke": "\u00cates-vous s\u00fbr de vouloir r\u00e9voquer ce coupon ?",
+    "confirmReactivate": "\u00cates-vous s\u00fbr de vouloir r\u00e9activer ce coupon ?",
+    "confirmDelete": "\u00cates-vous s\u00fbr de vouloir supprimer ce coupon ?"
+  },
+  "sections": {
+    "basicInfo": "Informations de base",
+    "discountConfig": "Configuration de la remise",
+    "usageLimits": "Limites d'utilisation",
+    "schedule": "Calendrier",
+    "stacking": "R\u00e8gles de cumul"
+  },
+  "placeholders": {
+    "code": "ex: BIENVENUE10",
+    "codeHint": "Le code sera mis en majuscules. Lettres, chiffres et tirets autoris\u00e9s."
+  }
+}

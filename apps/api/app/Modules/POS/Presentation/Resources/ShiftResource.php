@@ -29,7 +29,7 @@ final class ShiftResource extends JsonResource
             'expected_cash' => $this->expected_cash,
             'actual_cash' => $this->actual_cash,
             'variance' => $this->variance,
-            'status' => $this->status,
+            'status' => $this->status->value,
             'opened_at' => $this->opened_at?->toIso8601String(),
             'closed_at' => $this->closed_at?->toIso8601String(),
             'closed_by' => $this->closed_by,

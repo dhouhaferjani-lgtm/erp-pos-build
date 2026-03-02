@@ -128,9 +128,9 @@ class FEFOInventoryService
      */
     public function productRequiresBatchTracking(string $productId): bool
     {
-        return \App\Modules\Product\Domain\Product::query()
+        return (bool) (\App\Modules\Product\Domain\Product::query()
             ->where('id', $productId)
-            ->value('requires_batch_tracking') ?? false;
+            ->value('requires_batch_tracking') ?? false);
     }
 
     /**

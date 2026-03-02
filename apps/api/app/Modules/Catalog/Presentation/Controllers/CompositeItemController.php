@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Catalog\Presentation\Controllers;
 
 use App\Modules\Catalog\Application\DTOs\CompositeItemData;
+use App\Modules\Catalog\Application\Services\CompositeItemAvailabilityService;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Presentation\Requests\StoreCompositeItemRequest;
 use App\Modules\Catalog\Presentation\Requests\UpdateCompositeItemRequest;
@@ -18,6 +19,7 @@ class CompositeItemController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly CompositeItemAvailabilityService $availabilityService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -160,5 +162,27 @@ class CompositeItemController extends Controller
         $newItem->load(['category', 'activeRecipe.lines.component', 'variants']);
 
         return response()->json(['data' => CompositeItemData::fromModel($newItem)], 201);
+    }
+
+    public function checkAvailability(Request $request, string $id): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+
+        if (! Str::isUuid($id)) {
+            return response()->json(['message' => 'Invalid ID format'], 400);
+        }
+
+        $locationId = $request->input('location_id');
+        if (! is_string($locationId) || ! Str::isUuid($locationId)) {
+            return response()->json(['message' => 'location_id is required and must be a valid UUID'], 422);
+        }
+
+        $item = CompositeItem::where('company_id', $companyId)
+            ->with(['activeRecipe.lines.component'])
+            ->findOrFail($id);
+
+        $availability = $this->availabilityService->checkAvailability($item, $locationId);
+
+        return response()->json(['data' => $availability]);
     }
 }

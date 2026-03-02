@@ -6,6 +6,7 @@ import {
   updateCompositeItem,
   deleteCompositeItem,
   duplicateCompositeItem,
+  checkCompositeItemAvailability,
 } from '../api/compositeItemApi'
 import type { CreateCompositeItemData, UpdateCompositeItemData } from '../types/compositeItem'
 
@@ -75,5 +76,13 @@ export function useDuplicateCompositeItem() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: compositeItemKeys.all })
     },
+  })
+}
+
+export function useCompositeItemAvailability(id: string, locationId: string) {
+  return useQuery({
+    queryKey: [...compositeItemKeys.detail(id), 'availability', locationId],
+    queryFn: () => checkCompositeItemAvailability(id, locationId),
+    enabled: !!id && !!locationId,
   })
 }

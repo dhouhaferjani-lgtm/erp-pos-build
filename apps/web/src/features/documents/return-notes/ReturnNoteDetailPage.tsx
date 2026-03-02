@@ -91,7 +91,7 @@ export function ReturnNoteDetailPage() {
 
   if (error || !returnNote) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="py-6">
         <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
           <p className="text-red-800">{t('common.error')}</p>
         </div>
@@ -100,7 +100,7 @@ export function ReturnNoteDetailPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="py-6">
       {/* Header */}
       <div className="mb-6">
         <Link to="/inventory/return-notes" className="text-blue-600 hover:text-blue-700 flex items-center gap-2 mb-4">

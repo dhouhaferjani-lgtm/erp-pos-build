@@ -11,6 +11,7 @@ import { PaymentAllocationForm } from './components'
 import type { OpenInvoice } from '../../types/treasury'
 import { useWithholdingPreview } from '../withholding'
 import type { TransactionType } from '../withholding/types'
+import { useCurrency } from '../../hooks/useCurrency'
 
 interface PaymentMethod {
   id: string
@@ -76,6 +77,7 @@ interface PaymentFormData {
 
 export function PaymentForm() {
   const { t } = useTranslation(['treasury', 'common', 'sales', 'withholding'])
+  const { currency, symbol, format: formatCurrency } = useCurrency()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
@@ -240,7 +242,7 @@ export function PaymentForm() {
       withholdingPreviewMutation.mutate({
         partner_id: selectedPartnerId,
         amount: paymentAmount,
-        currency: 'TND', // TODO: Get from company settings
+        currency,
         transaction_type: withholdingTransactionType || undefined,
       })
     }
@@ -381,7 +383,7 @@ export function PaymentForm() {
               </label>
               <div className="relative mt-1">
                 <span className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-500">
-                  $
+                  {symbol}
                 </span>
                 <input
                   type="number"
@@ -391,7 +393,7 @@ export function PaymentForm() {
                     required: t('treasury:payments.form.amountRequired'),
                     min: { value: 0.01, message: t('treasury:payments.form.amountPositive') },
                   })}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 ps-8 pe-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 ps-10 pe-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
               {errors.amount && (
@@ -694,19 +696,19 @@ export function PaymentForm() {
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">{t('withholding:form.grossAmount')}</span>
                     <span className="font-mono font-semibold text-gray-900">
-                      {parseFloat(paymentAmount || '0').toFixed(3)} TND
+                      {formatCurrency(parseFloat(paymentAmount || '0'))}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">{t('withholding:form.withholdingAmount')}</span>
                     <span className="font-mono font-semibold text-red-600">
-                      - {(parseFloat(paymentAmount || '0') * parseFloat(withholdingRate) / 100).toFixed(3)} TND
+                      - {formatCurrency(parseFloat(paymentAmount || '0') * parseFloat(withholdingRate) / 100)}
                     </span>
                   </div>
                   <div className="flex justify-between border-t border-gray-300 pt-2 text-sm">
                     <span className="font-semibold text-gray-900">{t('withholding:form.netPayment')}</span>
                     <span className="font-mono text-lg font-bold text-gray-900">
-                      {(parseFloat(paymentAmount || '0') * (1 - parseFloat(withholdingRate) / 100)).toFixed(3)} TND
+                      {formatCurrency(parseFloat(paymentAmount || '0') * (1 - parseFloat(withholdingRate) / 100))}
                     </span>
                   </div>
                 </div>

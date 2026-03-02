@@ -10,7 +10,7 @@ class UpdateRecipeRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        return $this->user()?->can('composite-items.manage-recipes') ?? false;
     }
 
     /**

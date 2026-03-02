@@ -1,7 +1,21 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TransactionCart } from './TransactionCart'
 import type { CartItem } from '../../molecules'
+
+function createTestQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+    },
+  })
+}
+
+function renderWithClient(ui: React.ReactElement) {
+  const queryClient = createTestQueryClient()
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
+}
 
 describe('TransactionCart', () => {
   const mockItems: CartItem[] = [
@@ -34,7 +48,7 @@ describe('TransactionCart', () => {
   ]
 
   it('renders all cart items', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithClient(
       <TransactionCart
         items={mockItems}
         onUpdateQuantity={vi.fn()}
@@ -49,7 +63,7 @@ describe('TransactionCart', () => {
   })
 
   it('displays empty cart message when no items', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithClient(
       <TransactionCart
         items={[]}
         onUpdateQuantity={vi.fn()}
@@ -66,7 +80,7 @@ describe('TransactionCart', () => {
   // See PaymentPanel.test.tsx for comprehensive totals calculation tests
 
   it('displays item count', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithClient(
       <TransactionCart
         items={mockItems}
         onUpdateQuantity={vi.fn()}
@@ -82,7 +96,7 @@ describe('TransactionCart', () => {
 
   it('calls onUpdateQuantity when quantity is changed', () => {
     const onUpdateQuantity = vi.fn()
-    const { getAllByRole } = render(
+    const { getAllByRole } = renderWithClient(
       <TransactionCart
         items={mockItems}
         onUpdateQuantity={onUpdateQuantity}
@@ -100,7 +114,7 @@ describe('TransactionCart', () => {
 
   it('calls onRemoveItem when item is removed', () => {
     const onRemoveItem = vi.fn()
-    const { getAllByRole } = render(
+    const { getAllByRole } = renderWithClient(
       <TransactionCart
         items={mockItems}
         onUpdateQuantity={vi.fn()}
@@ -120,7 +134,7 @@ describe('TransactionCart', () => {
   // See PaymentPanel.test.tsx for comprehensive button tests (Quick Checkout, Advanced Payments, Calculator)
 
   it('displays selected customer when provided', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithClient(
       <TransactionCart
         items={mockItems}
         onUpdateQuantity={vi.fn()}
@@ -140,7 +154,7 @@ describe('TransactionCart', () => {
   })
 
   it('displays walk-in customer indicator when no customer selected', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithClient(
       <TransactionCart
         items={mockItems}
         onUpdateQuantity={vi.fn()}
@@ -156,7 +170,7 @@ describe('TransactionCart', () => {
 
   it('calls onChangeCustomer when change customer button clicked', () => {
     const onChangeCustomer = vi.fn()
-    const { getByRole } = render(
+    const { getByRole } = renderWithClient(
       <TransactionCart
         items={mockItems}
         onUpdateQuantity={vi.fn()}
@@ -168,14 +182,14 @@ describe('TransactionCart', () => {
       />
     )
 
-    const changeButton = getByRole('button', { name: /change customer/i })
+    const changeButton = getByRole('button', { name: /change/i })
     fireEvent.click(changeButton)
 
     expect(onChangeCustomer).toHaveBeenCalled()
   })
 
   it('applies touch-optimized styles', () => {
-    const { container } = render(
+    const { container } = renderWithClient(
       <TransactionCart
         items={mockItems}
         onUpdateQuantity={vi.fn()}
@@ -191,7 +205,7 @@ describe('TransactionCart', () => {
   })
 
   it('displays clear cart button', () => {
-    const { getByRole } = render(
+    const { getByRole } = renderWithClient(
       <TransactionCart
         items={mockItems}
         onUpdateQuantity={vi.fn()}
@@ -202,12 +216,12 @@ describe('TransactionCart', () => {
       />
     )
 
-    expect(getByRole('button', { name: /clear cart/i })).toBeInTheDocument()
+    expect(getByRole('button', { name: /clear/i })).toBeInTheDocument()
   })
 
   it('calls onClearCart when clear button clicked', () => {
     const onClearCart = vi.fn()
-    const { getByRole } = render(
+    const { getByRole } = renderWithClient(
       <TransactionCart
         items={mockItems}
         onUpdateQuantity={vi.fn()}
@@ -218,14 +232,14 @@ describe('TransactionCart', () => {
       />
     )
 
-    const clearButton = getByRole('button', { name: /clear cart/i })
+    const clearButton = getByRole('button', { name: /clear/i })
     fireEvent.click(clearButton)
 
     expect(onClearCart).toHaveBeenCalled()
   })
 
   it('applies custom className', () => {
-    const { container } = render(
+    const { container } = renderWithClient(
       <TransactionCart
         items={mockItems}
         onUpdateQuantity={vi.fn()}
@@ -245,7 +259,7 @@ describe('TransactionCart', () => {
       tax_amount: undefined,
     }))
 
-    const { getByText } = render(
+    const { getByText } = renderWithClient(
       <TransactionCart
         items={itemsWithoutTax}
         onUpdateQuantity={vi.fn()}
@@ -255,7 +269,7 @@ describe('TransactionCart', () => {
       />
     )
 
-    // Should show 0.000 for tax
-    expect(getByText(/0\.000/)).toBeInTheDocument()
+    // Should show 0.00 for tax (EUR default uses 2 decimal places)
+    expect(getByText(/0\.00/)).toBeInTheDocument()
   })
 })

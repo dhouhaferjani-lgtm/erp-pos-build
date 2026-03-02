@@ -146,6 +146,16 @@ class DocumentGLIntegrationTest extends TestCase
             'is_active' => true,
         ]);
 
+        Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '706',
+            'name' => 'Service Revenue',
+            'type' => AccountType::Revenue,
+            'system_purpose' => SystemAccountPurpose::ServiceRevenue,
+            'is_active' => true,
+        ]);
+
         $this->glService = app(GeneralLedgerService::class);
         $this->postingService = app(DocumentPostingService::class);
     }
@@ -407,7 +417,7 @@ class DocumentGLIntegrationTest extends TestCase
         $entry->refresh();
 
         $this->assertEquals(JournalEntryStatus::Posted, $entry->status);
-        $this->assertNotNull($entry->hash);
+        $this->assertNotNull($entry->fiscal_hash);
         $this->assertNotNull($entry->posted_at);
         $this->assertEquals($this->user->id, $entry->posted_by);
     }

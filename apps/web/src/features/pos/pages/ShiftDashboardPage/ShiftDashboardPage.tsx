@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { POSButton, MoneyInput } from '../../atoms'
+import { useCurrency } from '@/hooks/useCurrency'
 import {
   Clock,
   DollarSign,
@@ -58,6 +60,8 @@ export function ShiftDashboardPage({
   touchOptimized = false,
   className,
 }: ShiftDashboardPageProps) {
+  const { t } = useTranslation(['pos', 'common'])
+  const { toFixed: toFixedCurrency } = useCurrency()
   const [activeModal, setActiveModal] = useState<ModalType>(null)
   const [openingBalance, setOpeningBalance] = useState('')
   const [actualCash, setActualCash] = useState('')
@@ -77,8 +81,8 @@ export function ShiftDashboardPage({
     if (!currentShift || !actualCash) return null
     const expected = parseFloat(currentShift.expected_cash)
     const actual = parseFloat(actualCash)
-    return (actual - expected).toFixed(3)
-  }, [currentShift, actualCash])
+    return toFixedCurrency(actual - expected)
+  }, [currentShift, actualCash, toFixedCurrency])
 
   const handleOpenShift = () => {
     onOpenShift(openingBalance)
@@ -108,7 +112,7 @@ export function ShiftDashboardPage({
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
           <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading...</p>
+          <p className="text-gray-600">{t('common:loading')}</p>
         </div>
       </div>
     )
@@ -158,34 +162,34 @@ export function ShiftDashboardPage({
                   touchOptimized ? 'text-2xl' : 'text-xl'
                 )}
               >
-                Shift #{currentShift.shift_number}
+                {t('pos:shiftDashboard.shiftNumber', { number: currentShift.shift_number })}
               </h2>
               <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
-                OPEN
+                {t('pos:shiftDashboard.statusOpen')}
               </span>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-sm text-gray-600">Cashier</p>
+                <p className="text-sm text-gray-600">{t('pos:shiftDashboard.cashier')}</p>
                 <p className="font-medium text-gray-900">
                   {currentShift.cashier_name}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-600">Opening Balance</p>
+                <p className="text-sm text-gray-600">{t('pos:shiftDashboard.openingBalance')}</p>
                 <p className="font-medium text-gray-900">
-                  {currentShift.opening_cash} TND
+                  {currentShift.opening_cash}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-600">Expected Cash</p>
+                <p className="text-sm text-gray-600">{t('pos:shiftDashboard.expectedCash')}</p>
                 <p className="font-medium text-gray-900">
-                  {currentShift.expected_cash} TND
+                  {currentShift.expected_cash}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-600">Duration</p>
+                <p className="text-sm text-gray-600">{t('pos:shiftDashboard.duration')}</p>
                 <p className="font-medium text-gray-900">{shiftDuration}</p>
               </div>
             </div>
@@ -201,7 +205,7 @@ export function ShiftDashboardPage({
               fullWidth
               touchOptimized={touchOptimized}
             >
-              Cash Deposit
+              {t('pos:shiftDashboard.cashDeposit')}
             </POSButton>
 
             <POSButton
@@ -212,7 +216,7 @@ export function ShiftDashboardPage({
               fullWidth
               touchOptimized={touchOptimized}
             >
-              Cash Payout
+              {t('pos:shiftDashboard.cashPayout')}
             </POSButton>
 
             <POSButton
@@ -223,7 +227,7 @@ export function ShiftDashboardPage({
               fullWidth
               touchOptimized={touchOptimized}
             >
-              X Report
+              {t('pos:shiftDashboard.xReport')}
             </POSButton>
 
             <POSButton
@@ -234,7 +238,7 @@ export function ShiftDashboardPage({
               fullWidth
               touchOptimized={touchOptimized}
             >
-              Close Shift
+              {t('pos:shiftDashboard.closeShift')}
             </POSButton>
           </div>
         </div>
@@ -242,10 +246,10 @@ export function ShiftDashboardPage({
         <div className="bg-white rounded-lg shadow-sm p-12 text-center">
           <DollarSign className="w-16 h-16 text-gray-300 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-gray-900 mb-2">
-            No Active Shift
+            {t('pos:shiftDashboard.noActiveShift')}
           </h2>
           <p className="text-gray-600 mb-6">
-            Start a new shift to begin operations
+            {t('pos:shiftDashboard.noActiveShiftDescription')}
           </p>
           <POSButton
             variant="primary"
@@ -253,7 +257,7 @@ export function ShiftDashboardPage({
             onClick={() => setActiveModal('open')}
             touchOptimized={touchOptimized}
           >
-            Open Shift
+            {t('pos:shiftDashboard.openShift')}
           </POSButton>
         </div>
       )}
@@ -261,15 +265,15 @@ export function ShiftDashboardPage({
       {/* Modals */}
       {activeModal === 'open' && (
         <Modal
-          title="Open Shift"
+          title={t('pos:shiftDashboard.openShift')}
           onClose={() => setActiveModal(null)}
           touchOptimized={touchOptimized}
         >
           <MoneyInput
-            label="Opening Balance"
+            label={t('pos:shiftDashboard.openingBalance')}
             value={openingBalance}
             onChange={setOpeningBalance}
-            placeholder="Opening balance"
+            placeholder={t('pos:shiftDashboard.openingBalance')}
             touchOptimized={touchOptimized}
             autoFocus
           />
@@ -279,7 +283,7 @@ export function ShiftDashboardPage({
               onClick={() => setActiveModal(null)}
               fullWidth
             >
-              Cancel
+              {t('common:cancel')}
             </POSButton>
             <POSButton
               variant="primary"
@@ -287,7 +291,7 @@ export function ShiftDashboardPage({
               fullWidth
               disabled={!openingBalance}
             >
-              Confirm
+              {t('common:confirm')}
             </POSButton>
           </div>
         </Modal>
@@ -295,23 +299,23 @@ export function ShiftDashboardPage({
 
       {activeModal === 'close' && currentShift && (
         <Modal
-          title="Close Shift"
+          title={t('pos:shiftDashboard.closeShift')}
           onClose={() => setActiveModal(null)}
           touchOptimized={touchOptimized}
         >
           <div className="space-y-4">
             <div className="bg-gray-50 rounded-lg p-4">
-              <p className="text-sm text-gray-600">Expected Cash</p>
+              <p className="text-sm text-gray-600">{t('pos:shiftDashboard.expectedCash')}</p>
               <p className="text-xl font-bold text-gray-900">
-                {currentShift.expected_cash} TND
+                {currentShift.expected_cash}
               </p>
             </div>
 
             <MoneyInput
-              label="Actual Cash Count"
+              label={t('pos:shiftDashboard.actualCashCount')}
               value={actualCash}
               onChange={setActualCash}
-              placeholder="Actual cash"
+              placeholder={t('pos:shiftDashboard.actualCashCount')}
               touchOptimized={touchOptimized}
               autoFocus
             />
@@ -325,7 +329,7 @@ export function ShiftDashboardPage({
                   parseFloat(cashVariance) < 0 && 'bg-red-50'
                 )}
               >
-                <p className="text-sm text-gray-600">Variance</p>
+                <p className="text-sm text-gray-600">{t('pos:shiftDashboard.variance')}</p>
                 <p
                   className={cn(
                     'text-xl font-bold',
@@ -334,7 +338,7 @@ export function ShiftDashboardPage({
                     parseFloat(cashVariance) < 0 && 'text-red-600'
                   )}
                 >
-                  {cashVariance} TND
+                  {cashVariance}
                 </p>
               </div>
             )}
@@ -346,7 +350,7 @@ export function ShiftDashboardPage({
               onClick={() => setActiveModal(null)}
               fullWidth
             >
-              Cancel
+              {t('common:cancel')}
             </POSButton>
             <POSButton
               variant="danger"
@@ -354,7 +358,7 @@ export function ShiftDashboardPage({
               fullWidth
               disabled={!actualCash}
             >
-              Confirm
+              {t('common:confirm')}
             </POSButton>
           </div>
         </Modal>
@@ -362,29 +366,29 @@ export function ShiftDashboardPage({
 
       {(activeModal === 'deposit' || activeModal === 'payout') && (
         <Modal
-          title={activeModal === 'deposit' ? 'Cash Deposit' : 'Cash Payout'}
+          title={activeModal === 'deposit' ? t('pos:shiftDashboard.cashDeposit') : t('pos:shiftDashboard.cashPayout')}
           onClose={() => setActiveModal(null)}
           touchOptimized={touchOptimized}
         >
           <div className="space-y-4">
             <MoneyInput
-              label="Amount"
+              label={t('pos:shiftDashboard.amount')}
               value={operationAmount}
               onChange={setOperationAmount}
-              placeholder="Amount"
+              placeholder={t('pos:shiftDashboard.amount')}
               touchOptimized={touchOptimized}
               autoFocus
             />
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Reason
+                {t('pos:shiftDashboard.reason')}
               </label>
               <input
                 type="text"
                 value={operationReason}
                 onChange={(e) => setOperationReason(e.target.value)}
-                placeholder="Reason"
+                placeholder={t('pos:shiftDashboard.reason')}
                 className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -396,7 +400,7 @@ export function ShiftDashboardPage({
               onClick={() => setActiveModal(null)}
               fullWidth
             >
-              Cancel
+              {t('common:cancel')}
             </POSButton>
             <POSButton
               variant="primary"
@@ -404,7 +408,7 @@ export function ShiftDashboardPage({
               fullWidth
               disabled={!operationAmount || !operationReason}
             >
-              Confirm
+              {t('common:confirm')}
             </POSButton>
           </div>
         </Modal>

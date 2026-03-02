@@ -13,11 +13,17 @@ use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\POS\Domain\Enums\ShiftStatus;
+use App\Modules\POS\Domain\Exceptions\DiscountExceedsLimitException;
+use App\Modules\POS\Domain\Exceptions\DiscountNotAllowedException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
 use App\Modules\POS\Domain\ReceiptLineBatchAllocation;
 use App\Modules\POS\Domain\ReceiptVatDetail;
+use App\Modules\POS\Domain\Services\DiscountCalculationService;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
+use App\Modules\Promotion\Domain\ValueObjects\CartContext;
+use App\Modules\Promotion\Domain\ValueObjects\CartItemContext;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
@@ -47,25 +53,39 @@ final class ReceiptCreationService
         private readonly ReceiptHashService $receiptHashService,
         private readonly FEFOInventoryService $fefoService,
         private readonly BatchStockService $batchStockService,
+        private readonly DiscountCalculationService $discountCalculationService,
+        private readonly DiscountOrchestratorService $discountOrchestrator,
     ) {}
 
     /**
      * Create a new POS receipt.
      *
      * @param  string  $terminalId  Terminal UUID or code
-     * @param  array<int, array{product_id: string, quantity: string, unit_price: string, discount_amount?: string, discount_reason?: string}>  $lines
+     * @param  array<int, array{product_id: string, quantity: string, unit_price: string, discount_amount?: string, discount_type?: string, discount_percent?: string, discount_reason?: string}>  $lines
      * @param  string|null  $customerId  Optional partner ID
      * @param  string|null  $notes  Optional notes
+     * @param  string|null  $transactionDiscountAmount  Optional transaction-level discount (fixed amount)
+     * @param  string|null  $transactionDiscountReason  Optional reason for transaction discount
+     * @param  string|null  $couponCode  Optional coupon code to apply
+     * @param  string|null  $loyaltyDiscountAmount  Optional loyalty reward discount
+     * @param  string|null  $loyaltyRewardId  Optional loyalty reward reference
      * @return Receipt The created receipt with relationships loaded
      *
      * @throws \RuntimeException If no active shift or insufficient stock
      * @throws \InvalidArgumentException If lines are empty or products not found
+     * @throws DiscountNotAllowedException If discount is not permitted
+     * @throws DiscountExceedsLimitException If discount exceeds limits
      */
     public function createReceipt(
         string $terminalId,
         array $lines,
         ?string $customerId = null,
         ?string $notes = null,
+        ?string $transactionDiscountAmount = null,
+        ?string $transactionDiscountReason = null,
+        ?string $couponCode = null,
+        ?string $loyaltyDiscountAmount = null,
+        ?string $loyaltyRewardId = null,
     ): Receipt {
         if (count($lines) === 0) {
             throw new \InvalidArgumentException('At least one line item is required');
@@ -73,7 +93,7 @@ final class ReceiptCreationService
 
         $companyId = $this->companyContext->requireCompanyId();
 
-        return DB::transaction(function () use ($terminalId, $lines, $customerId, $notes, $companyId): Receipt {
+        return DB::transaction(function () use ($terminalId, $lines, $customerId, $notes, $companyId, $transactionDiscountAmount, $transactionDiscountReason, $couponCode, $loyaltyDiscountAmount, $loyaltyRewardId): Receipt {
             // 1. Lock and load terminal
             /** @var Terminal $terminal */
             $terminal = Terminal::where('company_id', $companyId)
@@ -88,7 +108,7 @@ final class ReceiptCreationService
             // 2. Verify active shift (eager-load cashier to avoid lazy load under lock)
             $shift = Shift::with('cashier')
                 ->where('terminal_id', $terminal->id)
-                ->where('status', 'OPEN')
+                ->where('status', ShiftStatus::Open)
                 ->first();
 
             if ($shift === null) {
@@ -110,6 +130,8 @@ final class ReceiptCreationService
             }
 
             // 4. Calculate line totals and aggregate VAT
+            /** @var User $cashier */
+            $cashier = $shift->cashier;
             $receiptLines = [];
             $vatAggregates = []; // keyed by tax_rate
             $subtotal = '0.00';
@@ -118,13 +140,25 @@ final class ReceiptCreationService
             foreach ($lines as $index => $lineData) {
                 /** @var Product $product */
                 $product = $products->get($lineData['product_id']);
-                $quantity = $lineData['quantity'];
-                $unitPrice = $lineData['unit_price'];
-                $discountAmount = $lineData['discount_amount'] ?? '0.00';
-                $taxRate = $product->tax_rate ?? '0.00';
+                /** @var numeric-string $quantity */
+                $quantity = (string) $lineData['quantity'];
+                /** @var numeric-string $unitPrice */
+                $unitPrice = (string) $lineData['unit_price'];
+                /** @var numeric-string $taxRate */
+                $taxRate = (string) ($product->tax_rate ?? '0.00');
+
+                // Calculate gross line total before discount
+                $grossLineTotal = bcmul($quantity, $unitPrice, self::SCALE);
+
+                // Resolve line discount amount from type/percent/amount
+                $discountAmount = $this->resolveLineDiscountAmount(
+                    $lineData,
+                    $grossLineTotal,
+                    $terminal,
+                    $cashier,
+                );
 
                 // line_total = (qty * unit_price) - discount
-                $grossLineTotal = bcmul($quantity, $unitPrice, self::SCALE);
                 $lineTotal = bcsub($grossLineTotal, $discountAmount, self::SCALE);
 
                 // Calculate tax: net = lineTotal / (1 + taxRate/100), tax = lineTotal - net
@@ -143,7 +177,7 @@ final class ReceiptCreationService
                     'product_name' => $product->name,
                     'product_description' => $product->description,
                     'quantity' => $quantity,
-                    'unit' => $product->unitOfMeasure?->symbol ?? $product->unit ?? 'pc',
+                    'unit' => $product->unitOfMeasure->symbol ?? $product->unit ?? 'pc',
                     'unit_price' => $unitPrice,
                     'line_total' => $lineTotal,
                     'tax_rate' => $taxRate,
@@ -167,7 +201,88 @@ final class ReceiptCreationService
                 $vatAggregates[$rateKey]['gross_amount'] = bcadd($vatAggregates[$rateKey]['gross_amount'], $lineTotal, self::SCALE);
             }
 
-            $total = bcadd($subtotal, $totalTax, self::SCALE);
+            // 4b. Validate and apply transaction-level discount
+            $validatedTransactionDiscount = '0.00';
+            $discountReason = null;
+            $discountAuthorizedBy = null;
+
+            /** @var numeric-string $txDiscountStr */
+            $txDiscountStr = $transactionDiscountAmount ?? '0.00';
+
+            if ($transactionDiscountAmount !== null && bccomp($txDiscountStr, '0', self::SCALE) > 0) {
+                // Subtotal for validation is the sum of all line totals (gross before tax split)
+                /** @var numeric-string $grossTotal */
+                $grossTotal = bcadd($subtotal, $totalTax, self::SCALE);
+
+                /** @var numeric-string $numericDiscountAmount */
+                $numericDiscountAmount = bcadd($txDiscountStr, '0', self::SCALE);
+
+                $this->discountCalculationService->validateTransactionDiscount(
+                    $terminal,
+                    $cashier,
+                    $grossTotal,
+                    $numericDiscountAmount,
+                    $transactionDiscountReason,
+                );
+
+                $validatedTransactionDiscount = $numericDiscountAmount;
+                $discountReason = $transactionDiscountReason;
+                $effectiveLimit = $this->discountCalculationService->getEffectiveDiscountLimit($terminal, $cashier);
+                $discountAuthorizedBy = number_format($effectiveLimit['limit'], 2, '.', '');
+            }
+
+            $total = bcsub(bcadd($subtotal, $totalTax, self::SCALE), $validatedTransactionDiscount, self::SCALE);
+
+            // 4c. Resolve full discount breakdown via orchestrator (audit-only JSONB)
+            $discountBreakdownData = null;
+            try {
+                /** @var numeric-string $grossTotal */
+                $grossTotal = bcadd($subtotal, $totalTax, self::SCALE);
+
+                $cartItems = [];
+                foreach ($lines as $lineData) {
+                    /** @var Product $product */
+                    $product = $products->get($lineData['product_id']);
+                    /** @var numeric-string $itemUnitPrice */
+                    $itemUnitPrice = (string) $lineData['unit_price'];
+                    /** @var numeric-string $itemLineTotal */
+                    $itemLineTotal = bcmul((string) $lineData['quantity'], $itemUnitPrice, self::SCALE);
+
+                    $cartItems[] = new CartItemContext(
+                        productId: $lineData['product_id'],
+                        categoryId: $product->category_id ?? null,
+                        quantity: (int) $lineData['quantity'],
+                        unitPrice: $itemUnitPrice,
+                        lineTotal: $itemLineTotal,
+                    );
+                }
+
+                $cart = new CartContext(
+                    tenantId: $terminal->tenant_id,
+                    companyId: $companyId,
+                    items: $cartItems,
+                    subtotal: $grossTotal,
+                    appliedAt: Carbon::now()->toIso8601String(),
+                );
+
+                $breakdown = $this->discountOrchestrator->resolve(
+                    cart: $cart,
+                    manualDiscountAmount: $validatedTransactionDiscount !== '0.00' ? $validatedTransactionDiscount : null,
+                    manualDiscountReason: $discountReason,
+                    couponCode: $couponCode,
+                    customerId: $customerId,
+                    loyaltyDiscountAmount: $loyaltyDiscountAmount,
+                    loyaltyRewardId: $loyaltyRewardId,
+                );
+
+                $discountBreakdownData = $breakdown->toArray();
+            } catch (\Throwable $e) {
+                // Orchestrator failure must not block receipt creation
+                Log::warning('Discount orchestrator failed during receipt creation', [
+                    'error' => $e->getMessage(),
+                    'terminal_id' => $terminalId,
+                ]);
+            }
 
             // 5. Generate receipt number and sequence
             $currentYear = (int) now()->format('Y');
@@ -185,14 +300,13 @@ final class ReceiptCreationService
 
             // 7. Create receipt with previous_hash set immediately
             $now = Carbon::now();
-            /** @var User $cashier */
-            $cashier = $shift->cashier;
             $previousHash = $terminal->last_hash;
             $currency = $company->currency ?? 'TND';
 
+            // 7a. Build receipt in memory to calculate fiscal hash before INSERT
+            $receiptId = Str::uuid()->toString();
             /** @var Receipt $receipt */
-            $receipt = Receipt::create([
-                'id' => Str::uuid()->toString(),
+            $receipt = new Receipt([
                 'tenant_id' => $terminal->tenant_id,
                 'company_id' => $companyId,
                 'location_id' => $terminal->location_id,
@@ -206,7 +320,9 @@ final class ReceiptCreationService
                 'cashier_name' => $cashier->name ?? 'Unknown',
                 'subtotal' => $subtotal,
                 'tax_amount' => $totalTax,
-                'discount_amount' => '0.00',
+                'discount_amount' => $validatedTransactionDiscount,
+                'discount_reason' => $discountReason,
+                'discount_authorized_by' => $discountAuthorizedBy,
                 'total' => $total,
                 'currency' => $currency,
                 'customer_name' => null,
@@ -214,8 +330,16 @@ final class ReceiptCreationService
                 'is_voided' => false,
                 'vat_breakdown_hash' => $vatHash,
                 'payment_methods_hash' => $paymentHash,
+                'discount_breakdown' => $discountBreakdownData,
                 'notes' => $notes,
             ]);
+
+            // 7b. Calculate fiscal hash before saving (fiscal_hash is NOT NULL)
+            $receipt->id = $receiptId;
+            $receipt->setRelation('terminal', $terminal);
+            $fiscalHash = $this->receiptHashService->calculateHash($receipt, $previousHash);
+            $receipt->fiscal_hash = $fiscalHash;
+            $receipt->save();
 
             // 8. Create receipt lines
             foreach ($receiptLines as $lineData) {
@@ -232,12 +356,6 @@ final class ReceiptCreationService
                     'receipt_id' => $receipt->id,
                 ]));
             }
-
-            // 10. Calculate fiscal hash and update receipt + terminal in single save
-            $receipt->setRelation('terminal', $terminal);
-            $fiscalHash = $this->receiptHashService->calculateHash($receipt, $previousHash);
-            $receipt->fiscal_hash = $fiscalHash;
-            $receipt->save();
 
             // Update terminal sequence and hash chain
             $terminal->current_sequence = $sequence + 1;
@@ -373,6 +491,79 @@ final class ReceiptCreationService
             'user_id' => $cashierId,
             'is_historical' => false,
         ]);
+    }
+
+    /**
+     * Resolve line discount amount from request data.
+     *
+     * Handles both percentage-based and fixed-amount discounts.
+     * Validates against terminal/cashier limits when discount > 0.
+     *
+     * @param  array{product_id: string, quantity: string, unit_price: string, discount_amount?: string, discount_type?: string, discount_percent?: string, discount_reason?: string}  $lineData
+     * @param  numeric-string  $grossLineTotal  The gross line total before discount
+     * @param  Terminal  $terminal  The terminal for limit checks
+     * @param  User  $cashier  The cashier for permission/limit checks
+     * @return numeric-string The calculated discount amount
+     *
+     * @throws DiscountNotAllowedException If line discounts not allowed
+     * @throws DiscountExceedsLimitException If discount exceeds limits
+     */
+    private function resolveLineDiscountAmount(
+        array $lineData,
+        string $grossLineTotal,
+        Terminal $terminal,
+        User $cashier,
+    ): string {
+        $discountType = $lineData['discount_type'] ?? null;
+        $discountPercent = isset($lineData['discount_percent']) ? (string) $lineData['discount_percent'] : null;
+        /** @var numeric-string|null $discountAmount */
+        $discountAmount = isset($lineData['discount_amount']) ? (string) $lineData['discount_amount'] : null;
+        $discountReason = $lineData['discount_reason'] ?? null;
+
+        // If percentage-based discount, calculate the amount
+        if ($discountType === 'percentage' && $discountPercent !== null && (float) $discountPercent > 0) {
+            $this->discountCalculationService->validateLineDiscount(
+                $terminal,
+                $cashier,
+                (float) $discountPercent,
+                $discountReason,
+            );
+
+            return $this->discountCalculationService->calculateLineDiscountAmount(
+                $grossLineTotal,
+                (float) $discountPercent,
+            );
+        }
+
+        // If fixed-amount discount
+        if ($discountAmount !== null && bccomp((string) $discountAmount, '0', self::SCALE) > 0) {
+            /** @var numeric-string $numericDiscount */
+            $numericDiscount = bcadd($discountAmount, '0', self::SCALE);
+
+            // Derive percent from amount for validation
+            if (bccomp($grossLineTotal, '0', self::SCALE) > 0) {
+                /** @var numeric-string $derivedPercent */
+                $derivedPercent = bcdiv(
+                    bcmul($numericDiscount, '100', 10),
+                    $grossLineTotal,
+                    2,
+                );
+
+                $this->discountCalculationService->validateLineDiscount(
+                    $terminal,
+                    $cashier,
+                    (float) $derivedPercent,
+                    $discountReason,
+                );
+            }
+
+            return $this->discountCalculationService->calculateFixedDiscountAmount(
+                $grossLineTotal,
+                $numericDiscount,
+            );
+        }
+
+        return '0.00';
     }
 
     /**

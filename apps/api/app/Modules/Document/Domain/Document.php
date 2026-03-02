@@ -606,8 +606,13 @@ class Document extends Model
      */
     public function getOutstandingAmount(): string
     {
-        // Only invoices have payment tracking
-        if ($this->type !== DocumentType::Invoice) {
+        $payableTypes = [
+            DocumentType::Invoice,
+            DocumentType::SalesOrder,
+            DocumentType::PurchaseOrder,
+        ];
+
+        if (!in_array($this->type, $payableTypes, true)) {
             return '0.00';
         }
 
@@ -628,15 +633,20 @@ class Document extends Model
     }
 
     /**
-     * Get the payment status for this invoice.
+     * Get the payment status for this document.
      *
      * This is COMPUTED from the outstanding amount, not stored.
      * Uses getOutstandingAmount() as the source of truth.
      */
     public function getPaymentStatus(): PaymentStatus
     {
-        // Only invoices have payment status
-        if ($this->type !== DocumentType::Invoice) {
+        $payableTypes = [
+            DocumentType::Invoice,
+            DocumentType::SalesOrder,
+            DocumentType::PurchaseOrder,
+        ];
+
+        if (!in_array($this->type, $payableTypes, true)) {
             return PaymentStatus::Unpaid;
         }
 

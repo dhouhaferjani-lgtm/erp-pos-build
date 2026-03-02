@@ -18,6 +18,19 @@ vi.mock('@/hooks/usePermissions', () => ({
   }),
 }))
 
+vi.mock('@/lib/format', () => ({
+  formatCurrency: (amount: string | number) => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount
+    if (isNaN(num)) return '0.00'
+    return num.toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'EUR',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+  },
+}))
+
 describe('FinanceWidget', () => {
   let queryClient: QueryClient
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\POS\Domain;
 
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\ShiftStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -25,7 +26,7 @@ use Illuminate\Support\Carbon;
  * @property numeric-string|null $expected_cash Calculated expected cash at close
  * @property numeric-string|null $actual_cash Counted cash at close
  * @property numeric-string|null $variance Difference: actual - expected
- * @property string $status OPEN or CLOSED
+ * @property ShiftStatus $status OPEN or CLOSED
  * @property Carbon $opened_at
  * @property Carbon|null $closed_at
  * @property string|null $closed_by User who closed the shift
@@ -79,6 +80,7 @@ class Shift extends Model
             'expected_cash' => 'decimal:2',
             'actual_cash' => 'decimal:2',
             'variance' => 'decimal:2',
+            'status' => ShiftStatus::class,
             'opened_at' => 'datetime',
             'closed_at' => 'datetime',
         ];
@@ -113,7 +115,7 @@ class Shift extends Model
      */
     public function isOpen(): bool
     {
-        return $this->status === 'OPEN';
+        return $this->status === ShiftStatus::Open;
     }
 
     /**
@@ -121,7 +123,7 @@ class Shift extends Model
      */
     public function isClosed(): bool
     {
-        return $this->status === 'CLOSED';
+        return $this->status === ShiftStatus::Closed;
     }
 
     /**
@@ -196,7 +198,7 @@ class Shift extends Model
      */
     public function scopeOpen(Builder $query): Builder
     {
-        return $query->where('status', 'OPEN');
+        return $query->where('status', ShiftStatus::Open);
     }
 
     /**
@@ -207,7 +209,7 @@ class Shift extends Model
      */
     public function scopeClosed(Builder $query): Builder
     {
-        return $query->where('status', 'CLOSED');
+        return $query->where('status', ShiftStatus::Closed);
     }
 
     /**

@@ -7,6 +7,7 @@ use App\Modules\Loyalty\Presentation\Controllers\EarningRuleController;
 use App\Modules\Loyalty\Presentation\Controllers\LoyaltyMemberController;
 use App\Modules\Loyalty\Presentation\Controllers\LoyaltyProgramController;
 use App\Modules\Loyalty\Presentation\Controllers\RewardController;
+use App\Modules\Loyalty\Presentation\Controllers\LoyaltyPOSController;
 use App\Modules\Loyalty\Presentation\Controllers\StampCardController;
 use App\Modules\Loyalty\Presentation\Controllers\TierController;
 use Illuminate\Support\Facades\Route;
@@ -174,6 +175,29 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         Route::delete('/{id}', [StampCardController::class, 'destroy'])
             ->middleware('can:loyalty.manage')
             ->name('loyalty.stamp-cards.destroy');
+    });
+
+    // POS Loyalty Operations
+    Route::prefix('loyalty/pos')->group(function () {
+        Route::post('/member-lookup', [LoyaltyPOSController::class, 'memberLookup'])
+            ->middleware('can:pos.operate_terminal')
+            ->name('loyalty.pos.member-lookup');
+
+        Route::post('/preview-earning', [LoyaltyPOSController::class, 'previewEarning'])
+            ->middleware('can:pos.operate_terminal')
+            ->name('loyalty.pos.preview-earning');
+
+        Route::get('/rewards/{enrollmentId}', [LoyaltyPOSController::class, 'rewards'])
+            ->middleware('can:pos.operate_terminal')
+            ->name('loyalty.pos.rewards');
+
+        Route::post('/redeem', [LoyaltyPOSController::class, 'redeem'])
+            ->middleware('can:pos.operate_terminal')
+            ->name('loyalty.pos.redeem');
+
+        Route::post('/earn', [LoyaltyPOSController::class, 'earn'])
+            ->middleware('can:pos.operate_terminal')
+            ->name('loyalty.pos.earn');
     });
 
     // Loyalty Members (Admin)

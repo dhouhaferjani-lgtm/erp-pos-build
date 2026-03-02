@@ -1,0 +1,86 @@
+{
+  "title": "Promotions",
+  "subtitle": "Gérer les remises automatiques et les offres promotionnelles",
+  "createPromotion": "Créer une promotion",
+  "editPromotion": "Modifier la promotion",
+  "deletePromotion": "Supprimer la promotion",
+  "noPromotions": "Aucune promotion",
+  "noPromotionsDescription": "Créez votre première promotion pour offrir des remises automatiques",
+  "fields": {
+    "name": "Nom",
+    "description": "Description",
+    "type": "Type",
+    "status": "Statut",
+    "priority": "Priorité",
+    "isExclusive": "Exclusif",
+    "stackingGroup": "Groupe de cumul",
+    "startsAt": "Date de début",
+    "endsAt": "Date de fin",
+    "daysOfWeek": "Jours actifs",
+    "timeFrom": "Heure de début",
+    "timeUntil": "Heure de fin",
+    "discountType": "Type de remise",
+    "discountValue": "Valeur de la remise",
+    "maxDiscountAmount": "Montant maximum de remise",
+    "appliesTo": "S'applique à",
+    "usageLimit": "Limite d'utilisation",
+    "usageCount": "Nombre d'utilisations",
+    "conditions": "Conditions",
+    "qualifyingProducts": "Produits éligibles",
+    "categoryIds": "Catégories",
+    "comboProducts": "Produits combo",
+    "triggerQuantity": "Quantité déclencheuse",
+    "minimumQuantity": "Quantité minimum",
+    "minimumAmount": "Montant minimum"
+  },
+  "types": {
+    "happy_hour": "Happy Hour",
+    "buy_x_get_y": "Achetez X obtenez Y",
+    "volume_discount": "Remise volume",
+    "category_discount": "Remise catégorie",
+    "combo_discount": "Remise combo"
+  },
+  "statuses": {
+    "draft": "Brouillon",
+    "active": "Actif",
+    "paused": "En pause",
+    "expired": "Expiré",
+    "archived": "Archivé"
+  },
+  "discountTypes": {
+    "percentage": "Pourcentage",
+    "fixed": "Montant fixe",
+    "free_item": "Article gratuit"
+  },
+  "appliesTo": {
+    "transaction": "Transaction entière",
+    "qualifying_items": "Articles éligibles",
+    "specific_item": "Article spécifique",
+    "cheapest_item": "Article le moins cher"
+  },
+  "actions": {
+    "activate": "Activer",
+    "pause": "Mettre en pause",
+    "archive": "Archiver",
+    "confirmActivate": "Voulez-vous vraiment activer cette promotion ?",
+    "confirmPause": "Voulez-vous vraiment mettre en pause cette promotion ?",
+    "confirmArchive": "Voulez-vous vraiment archiver cette promotion ?",
+    "confirmDelete": "Voulez-vous vraiment supprimer cette promotion ?"
+  },
+  "schedule": {
+    "title": "Planification",
+    "always": "Toujours actif",
+    "dateRange": "Actif entre des dates",
+    "timeWindow": "Actif pendant une plage horaire",
+    "specificDays": "Actif certains jours"
+  },
+  "days": {
+    "1": "Lun",
+    "2": "Mar",
+    "3": "Mer",
+    "4": "Jeu",
+    "5": "Ven",
+    "6": "Sam",
+    "7": "Dim"
+  }
+}

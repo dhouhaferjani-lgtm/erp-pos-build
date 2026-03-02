@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { ProductGrid, TransactionCart, Calculator } from '../../organisms'
@@ -6,6 +7,7 @@ import { POSLayout } from '../../layouts'
 import type { Product } from '../../molecules'
 import type { Customer } from '../../organisms/TransactionCart'
 import type { CartItem } from '../../molecules/CartLineItem'
+import { useCurrency } from '@/hooks/useCurrency'
 
 export interface POSPageProps {
   products: Product[]
@@ -18,6 +20,9 @@ export interface POSPageProps {
   isLoading?: boolean
   className?: string
   terminalCode?: string
+  transactionDiscount?: { amount: string; reason?: string }
+  onTransactionDiscountChange?: (discount: { amount: string; reason?: string } | undefined) => void
+  onEditLineDiscount?: (productId: string, discount: { type: 'percentage' | 'fixed'; value: string; reason?: string } | undefined) => void
 }
 
 export function POSPage({
@@ -31,8 +36,13 @@ export function POSPage({
   isLoading = false,
   className,
   terminalCode,
+  transactionDiscount,
+  onTransactionDiscountChange,
+  onEditLineDiscount: externalEditLineDiscount,
 }: POSPageProps) {
+  const { t } = useTranslation(['common'])
   const navigate = useNavigate()
+  const { decimals } = useCurrency()
   const [cartItems, setCartItems] = useState<CartItem[]>([])
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false)
   const [screenWidth, setScreenWidth] = useState(window.innerWidth)
@@ -81,19 +91,29 @@ export function POSPage({
     setCartItems((prev) => {
       const existing = prev.find((item) => item.product.id === product.id)
       if (existing) {
-        // Increment quantity
-        return prev.map((item) =>
-          item.product.id === product.id
-            ? {
-                ...item,
-                quantity: item.quantity + 1,
-                line_total: (
-                  parseFloat(item.unit_price) *
-                  (item.quantity + 1)
-                ).toFixed(3),
-              }
-            : item
-        )
+        // Increment quantity, recalculate discount if percentage-based
+        return prev.map((item): CartItem => {
+          if (item.product.id !== product.id) return item
+
+          const newQty = item.quantity + 1
+          const grossTotal = parseFloat(item.unit_price) * newQty
+          let discountAmount = 0
+
+          if (item.discount_type === 'percentage' && item.discount_percent) {
+            discountAmount = (grossTotal * parseFloat(item.discount_percent)) / 100
+          } else if (item.discount_amount && item.discount_type === 'fixed') {
+            discountAmount = parseFloat(item.discount_amount)
+          }
+
+          const lineTotal = Math.max(0, grossTotal - discountAmount)
+
+          return {
+            ...item,
+            quantity: newQty,
+            ...(item.discount_type === 'percentage' ? { discount_amount: discountAmount.toFixed(decimals) } : {}),
+            line_total: lineTotal.toFixed(decimals),
+          }
+        })
       } else {
         // Add new item
         const priceValue = product.sale_price || '0'
@@ -110,8 +130,8 @@ export function POSPage({
             },
             quantity: 1,
             unit_price: priceValue,
-            line_total: unitPrice.toFixed(3),
-            tax_amount: '0.000',
+            line_total: unitPrice.toFixed(decimals),
+            tax_amount: (0).toFixed(decimals),
           },
         ]
       }
@@ -126,21 +146,80 @@ export function POSPage({
     }
 
     setCartItems((prev) =>
-      prev.map((item) =>
-        item.product.id === productId
-          ? {
-              ...item,
-              quantity,
-              line_total: (parseFloat(item.unit_price) * quantity).toFixed(3),
-            }
-          : item
-      )
+      prev.map((item): CartItem => {
+        if (item.product.id !== productId) return item
+
+        const grossTotal = parseFloat(item.unit_price) * quantity
+        let discountAmount = 0
+
+        if (item.discount_type === 'percentage' && item.discount_percent) {
+          discountAmount = (grossTotal * parseFloat(item.discount_percent)) / 100
+        } else if (item.discount_amount && item.discount_type === 'fixed') {
+          discountAmount = parseFloat(item.discount_amount)
+        }
+
+        const lineTotal = Math.max(0, grossTotal - discountAmount)
+
+        return {
+          ...item,
+          quantity,
+          ...(item.discount_type === 'percentage' ? { discount_amount: discountAmount.toFixed(decimals) } : {}),
+          line_total: lineTotal.toFixed(decimals),
+        }
+      })
     )
   }
 
   // Remove item from cart
   const handleRemoveItem = (productId: string) => {
     setCartItems((prev) => prev.filter((item) => item.product.id !== productId))
+  }
+
+  // Edit line discount
+  const handleEditLineDiscount = (
+    productId: string,
+    discount: { type: 'percentage' | 'fixed'; value: string; reason?: string } | undefined,
+  ) => {
+    if (externalEditLineDiscount) {
+      externalEditLineDiscount(productId, discount)
+      return
+    }
+
+    setCartItems((prev) =>
+      prev.map((item): CartItem => {
+        if (item.product.id !== productId) return item
+
+        const grossTotal = parseFloat(item.unit_price) * item.quantity
+
+        if (!discount) {
+          // Clear discount — omit discount fields entirely
+          const { discount_type: _dt, discount_percent: _dp, discount_amount: _da, discount_reason: _dr, ...rest } = item
+          return {
+            ...rest,
+            line_total: grossTotal.toFixed(decimals),
+          }
+        }
+
+        let discountAmount: number
+
+        if (discount.type === 'percentage') {
+          discountAmount = (grossTotal * parseFloat(discount.value)) / 100
+        } else {
+          discountAmount = parseFloat(discount.value)
+        }
+
+        const lineTotal = Math.max(0, grossTotal - discountAmount)
+
+        return {
+          ...item,
+          discount_type: discount.type,
+          discount_amount: discountAmount.toFixed(decimals),
+          line_total: lineTotal.toFixed(decimals),
+          ...(discount.type === 'percentage' ? { discount_percent: discount.value } : {}),
+          ...(discount.reason != null ? { discount_reason: discount.reason } : {}),
+        }
+      })
+    )
   }
 
   // Clear cart
@@ -168,7 +247,7 @@ export function POSPage({
       >
         <div className="flex h-full items-center justify-center">
           <div className="text-center">
-            <div className="text-lg font-medium text-gray-600">Loading...</div>
+            <div className="text-lg font-medium text-gray-600">{t('common:loading')}</div>
           </div>
         </div>
       </POSLayout>
@@ -215,6 +294,7 @@ export function POSPage({
             items={cartItems}
             onUpdateQuantity={handleUpdateQuantity}
             onRemoveItem={handleRemoveItem}
+            onEditLineDiscount={handleEditLineDiscount}
             onClearCart={handleClearCart}
             onQuickCheckout={handleQuickCheckout}
             onAdvancedPayments={handleAdvancedPayments}
@@ -223,6 +303,8 @@ export function POSPage({
             onChangeCustomer={onChangeCustomer}
             touchOptimized={touchOptimized}
             terminalCode={terminalCode}
+            transactionDiscount={transactionDiscount}
+            onUpdateTransactionDiscount={onTransactionDiscountChange}
           />
         </div>
 

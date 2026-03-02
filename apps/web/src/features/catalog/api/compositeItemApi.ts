@@ -41,3 +41,22 @@ export async function deleteCompositeItem(id: string): Promise<void> {
 export async function duplicateCompositeItem(id: string): Promise<CompositeItemData> {
   return apiPost(`/composite-items/${id}/duplicate`)
 }
+
+export interface AvailabilityData {
+  available_quantity: number
+  limiting_component: string | null
+  components: Array<{
+    product_id: string
+    product_name: string
+    required_quantity: string
+    available_quantity: string
+    max_produces: number
+  }>
+}
+
+export async function checkCompositeItemAvailability(
+  id: string,
+  locationId: string,
+): Promise<AvailabilityData> {
+  return apiGet(`/composite-items/${id}/availability`, { location_id: locationId })
+}

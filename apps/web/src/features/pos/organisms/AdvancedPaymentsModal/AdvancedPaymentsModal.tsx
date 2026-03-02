@@ -7,9 +7,29 @@ import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
 import { POSButton } from '../../atoms/POSButton'
 import { ReceiptPrintButton } from '../../components/ReceiptPrintButton'
 import { useCompanySettings } from '../../hooks'
+import { useCurrency } from '@/hooks/useCurrency'
 import { fetchPaymentMethods } from '../../api/paymentMethodApi'
 import { fetchPaymentRepositories } from '../../api/paymentRepositoryApi'
 import type { CartItem } from '../../molecules/CartLineItem'
+import type { PaymentMethod as PaymentMethodType } from '../../api/paymentMethodApi'
+import type { PaymentRepository as PaymentRepositoryType } from '../../api/paymentRepositoryApi'
+
+/**
+ * Return the repository types compatible with a given payment method.
+ * Cash-like → cash_register/safe; Card-like → bank_account/virtual; Check-like → safe/bank_account.
+ */
+function getCompatibleRepositoryTypes(method: PaymentMethodType): PaymentRepositoryType['type'][] {
+  if (method.is_physical && !method.has_maturity) {
+    return ['cash_register', 'safe']
+  }
+  if (method.requires_third_party) {
+    return ['bank_account', 'virtual']
+  }
+  if (method.has_maturity) {
+    return ['safe', 'bank_account']
+  }
+  return ['cash_register', 'safe', 'bank_account', 'virtual']
+}
 
 // Icon mapping for payment methods (based on common payment method codes)
 const PAYMENT_METHOD_ICONS: Record<string, typeof Banknote> = {
@@ -73,6 +93,7 @@ export function AdvancedPaymentsModal({
 }: AdvancedPaymentsModalProps) {
   const { t } = useTranslation('pos')
   const { autoPrintReceipts } = useCompanySettings()
+  const { currency, format: formatMoney, toFixed: toFixedCurrency } = useCurrency()
   const [selectedMethods, setSelectedMethods] = useState<string[]>([])
   const [payments, setPayments] = useState<Record<string, string>>({})
   const [repositories, setRepositories] = useState<Record<string, string>>({})
@@ -120,11 +141,11 @@ export function AdvancedPaymentsModal({
     }
 
     return {
-      subtotal: subtotal.toFixed(3),
-      tax: tax.toFixed(3),
-      total: total.toFixed(3),
+      subtotal: toFixedCurrency(subtotal),
+      tax: toFixedCurrency(tax),
+      total: toFixedCurrency(total),
     }
-  }, [cartItems, _discount])
+  }, [cartItems, _discount, toFixedCurrency])
 
   // Calculate total paid
   const totalPaid = useMemo(() => {
@@ -298,10 +319,13 @@ export function AdvancedPaymentsModal({
                             setRepositories(newRepositories)
                           } else {
                             setSelectedMethods([...selectedMethods, method.id])
-                            // Auto-select first active repository
-                            const activeRepos = paymentRepositories.filter(r => r.is_active)
-                            if (activeRepos.length > 0) {
-                              setRepositories((prev) => ({ ...prev, [method.id]: activeRepos[0].id }))
+                            // Auto-select first compatible active repository
+                            const compatibleTypes = getCompatibleRepositoryTypes(method)
+                            const compatibleRepos = paymentRepositories.filter(
+                              r => r.is_active && compatibleTypes.includes(r.type)
+                            )
+                            if (compatibleRepos.length > 0) {
+                              setRepositories((prev) => ({ ...prev, [method.id]: compatibleRepos[0].id }))
                             }
                           }
                         }}
@@ -345,7 +369,12 @@ export function AdvancedPaymentsModal({
                             <label className={cn('text-sm font-medium', textColors.secondary)}>
                               {t('advancedPayments.selectRepository')}
                             </label>
-                            {paymentRepositories.filter(r => r.is_active).length === 0 ? (
+                            {(() => {
+                              const compatibleTypes = getCompatibleRepositoryTypes(method)
+                              const compatibleRepos = paymentRepositories.filter(
+                                r => r.is_active && compatibleTypes.includes(r.type)
+                              )
+                              return compatibleRepos.length === 0 ? (
                               <p className={cn('text-sm py-2', textColors.error)}>
                                 {t('advancedPayments.noRepositories', { defaultValue: 'No payment repositories configured. Add a cash register or bank account in Settings.' })}
                               </p>
@@ -360,13 +389,14 @@ export function AdvancedPaymentsModal({
                               <option value="">
                                 {t('advancedPayments.selectRepositoryPlaceholder')}
                               </option>
-                              {paymentRepositories.filter(r => r.is_active).map((repo) => (
+                              {compatibleRepos.map((repo) => (
                                 <option key={repo.id} value={repo.id}>
                                   {repo.name} ({t(`advancedPayments.repositoryType.${repo.type}`)})
                                 </option>
                               ))}
                             </select>
-                            )}
+                            )
+                            })()}
                           </div>
 
                           {/* Amount Input */}
@@ -391,7 +421,7 @@ export function AdvancedPaymentsModal({
                               variant="secondary"
                               size="sm"
                               onClick={() => {
-                                setPayments({ ...payments, [methodId]: remaining.toFixed(3) })
+                                setPayments({ ...payments, [methodId]: toFixedCurrency(remaining) })
                               }}
                               disabled={remaining <= 0}
                               className="mt-6"
@@ -399,7 +429,7 @@ export function AdvancedPaymentsModal({
                               {t('advancedPayments.useRemaining')}
                             </POSButton>
                             <span className={cn('text-sm font-medium mt-6', textColors.tertiary)}>
-                              TND
+                              {currency}
                             </span>
                           </div>
                         </div>
@@ -426,7 +456,7 @@ export function AdvancedPaymentsModal({
                     {t('advancedPayments.overpaymentDetected')}
                   </h4>
                   <p className={cn('text-sm', textColors.warning)}>
-                    {t('advancedPayments.excess')}: {(totalPaid - parseFloat(total)).toFixed(3)} TND
+                    {t('advancedPayments.excess')}: {toFixedCurrency(totalPaid - parseFloat(total))} {currency}
                   </p>
                   <div className="mt-4 space-y-2">
                     <label className={cn('flex items-center gap-2 text-sm cursor-pointer', textColors.warning)}>
@@ -472,7 +502,7 @@ export function AdvancedPaymentsModal({
                       <span className={cn('font-medium', textColors.primary)}>{item.product.name}</span>
                       <span className={cn('ml-2', textColors.tertiary)}>×{item.quantity}</span>
                     </div>
-                    <span className={cn('font-medium', textColors.primary)}>{item.line_total} TND</span>
+                    <span className={cn('font-medium', textColors.primary)}>{item.line_total} {currency}</span>
                   </div>
                 ))}
               </div>
@@ -480,23 +510,23 @@ export function AdvancedPaymentsModal({
               <div className={cn('mt-6 pt-4 space-y-2', borderColors.light, 'border-t')}>
                 <div className="flex justify-between text-sm">
                   <span className={textColors.tertiary}>{t('advancedPayments.subtotal')}:</span>
-                  <span className={cn('font-medium', textColors.primary)}>{subtotal} TND</span>
+                  <span className={cn('font-medium', textColors.primary)}>{subtotal} {currency}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className={textColors.tertiary}>{t('advancedPayments.tax')}:</span>
-                  <span className={cn('font-medium', textColors.primary)}>{tax} TND</span>
+                  <span className={cn('font-medium', textColors.primary)}>{tax} {currency}</span>
                 </div>
                 {_discount && (
                   <div className={cn('flex justify-between text-sm', textColors.success)}>
                     <span>{t('advancedPayments.discount')}:</span>
                     <span className="font-medium">
-                      -{_discount.type === 'percentage' ? `${_discount.value.toString()}%` : `${_discount.value.toString()} TND`}
+                      -{_discount.type === 'percentage' ? `${_discount.value.toString()}%` : `${_discount.value.toString()} ${currency}`}
                     </span>
                   </div>
                 )}
                 <div className={cn('flex justify-between text-xl font-bold pt-3 mt-3', borderColors.light, 'border-t')}>
                   <span className={textColors.primary}>{t('advancedPayments.total')}:</span>
-                  <span className={textColors.primary}>{total} TND</span>
+                  <span className={textColors.primary}>{total} {currency}</span>
                 </div>
               </div>
 
@@ -512,7 +542,7 @@ export function AdvancedPaymentsModal({
                       totalPaid < parseFloat(total) ? textColors.error : textColors.success
                     )}
                   >
-                    {totalPaid.toFixed(3)} TND
+                    {toFixedCurrency(totalPaid)} {currency}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -520,7 +550,7 @@ export function AdvancedPaymentsModal({
                     {t('advancedPayments.remaining')}:
                   </span>
                   <span className={cn('text-base font-bold', remaining > 0.001 ? textColors.error : textColors.primary)}>
-                    {remaining.toFixed(3)} TND
+                    {toFixedCurrency(remaining)} {currency}
                   </span>
                 </div>
               </div>

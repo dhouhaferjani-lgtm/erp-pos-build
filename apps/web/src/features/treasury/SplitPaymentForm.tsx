@@ -3,6 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2 } from 'lucide-react'
 import { api } from '../../lib/api'
+import { useCurrency } from '../../hooks/useCurrency'
 
 interface PaymentMethod {
   id: string
@@ -29,7 +30,7 @@ interface PaymentLine {
 interface SplitPaymentFormProps {
   documentId: string
   totalAmount: number
-  currency: string
+  currency?: string
   onSuccess: () => void
   onCancel: () => void
 }
@@ -37,11 +38,12 @@ interface SplitPaymentFormProps {
 export function SplitPaymentForm({
   documentId,
   totalAmount,
-  currency,
+  currency: _currency,
   onSuccess,
   onCancel,
 }: SplitPaymentFormProps) {
   const { t } = useTranslation(['treasury', 'common'])
+  const { format: formatCurrencyHook } = useCurrency()
 
   const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([
     {
@@ -153,10 +155,7 @@ export function SplitPaymentForm({
   }
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-    }).format(amount)
+    return formatCurrencyHook(amount)
   }
 
   return (

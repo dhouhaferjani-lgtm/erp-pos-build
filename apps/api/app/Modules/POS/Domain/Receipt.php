@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace App\Modules\POS\Domain;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Database\Factories\ReceiptFactory;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -45,7 +48,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $discount_reason Reason for transaction discount
  * @property numeric-string $total Gross total ((subtotal - discount) + tax)
  * @property string $currency
- * @property string|null $consumption_mode SUR_PLACE, A_EMPORTER
+ * @property ConsumptionMode|null $consumption_mode SUR_PLACE, A_EMPORTER
  * @property string|null $customer_name
  * @property string|null $customer_identifier Loyalty number, phone, etc.
  * @property bool $is_voided
@@ -55,6 +58,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $void_receipt_id Reference to negative receipt
  * @property Carbon|null $synced_at When terminal synced to server
  * @property string|null $sync_error Last sync error if any
+ * @property array<string, mixed>|null $discount_breakdown JSONB audit snapshot of resolved discounts
  * @property string|null $notes
  * @property Carbon $created_at Server creation time
  * @property Carbon $updated_at
@@ -80,12 +84,19 @@ use Illuminate\Support\Carbon;
  */
 class Receipt extends Model
 {
+    /** @use HasFactory<ReceiptFactory> */
+    use HasFactory;
     use HasUuids;
 
     /**
      * @var string
      */
     protected $table = 'pos_receipts';
+
+    protected static function newFactory(): ReceiptFactory
+    {
+        return ReceiptFactory::new();
+    }
 
     /**
      * @var list<string>
@@ -109,6 +120,7 @@ class Receipt extends Model
         'tax_amount',
         'discount_amount',
         'discount_reason',
+        'discount_authorized_by',
         'total',
         'currency',
         'consumption_mode',
@@ -121,6 +133,7 @@ class Receipt extends Model
         'void_receipt_id',
         'synced_at',
         'sync_error',
+        'discount_breakdown',
         'notes',
     ];
 
@@ -137,9 +150,11 @@ class Receipt extends Model
             'tax_amount' => 'decimal:2',
             'discount_amount' => 'decimal:2',
             'total' => 'decimal:2',
+            'consumption_mode' => ConsumptionMode::class,
             'is_voided' => 'boolean',
             'voided_at' => 'datetime',
             'synced_at' => 'datetime',
+            'discount_breakdown' => 'array',
         ];
     }
 

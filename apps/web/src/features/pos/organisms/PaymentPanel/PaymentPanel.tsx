@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { POSButton } from '../../atoms'
 import { type CartItem } from '../../molecules'
 import { Calculator, Banknote, CreditCard } from 'lucide-react'
+import { useCurrency } from '@/hooks/useCurrency'
 
 export interface PaymentPanelProps {
   items: CartItem[]
@@ -41,6 +42,7 @@ export function PaymentPanel({
   transactionDiscountAmount = '0',
 }: PaymentPanelProps) {
   const { t } = useTranslation(['common', 'pos'])
+  const { toFixed: toFixedCurrency } = useCurrency()
 
   // Calculate totals
   const { subtotal, discount, tax, total } = useMemo(() => {
@@ -57,12 +59,12 @@ export function PaymentPanel({
     const total = subtotalAfterDiscount + tax
 
     return {
-      subtotal: subtotal.toFixed(3),
-      discount: discount.toFixed(3),
-      tax: tax.toFixed(3),
-      total: total.toFixed(3),
+      subtotal: toFixedCurrency(subtotal),
+      discount: toFixedCurrency(discount),
+      tax: toFixedCurrency(tax),
+      total: toFixedCurrency(total),
     }
-  }, [items, transactionDiscountAmount])
+  }, [items, transactionDiscountAmount, toFixedCurrency])
 
   const isEmpty = items.length === 0
 

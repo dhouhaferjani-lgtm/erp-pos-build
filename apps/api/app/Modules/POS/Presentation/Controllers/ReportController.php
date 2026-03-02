@@ -15,6 +15,7 @@ use App\Modules\POS\Presentation\Resources\XReportResource;
 use App\Modules\POS\Presentation\Resources\ZReportResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 
 /**
  * Controller for POS reports.
@@ -39,6 +40,8 @@ final class ReportController extends Controller
      */
     public function generateXReport(Request $request): JsonResponse
     {
+        Gate::authorize('pos.view_reports');
+
         $request->validate([
             'terminal_id' => ['required', 'string', 'uuid', 'exists:pos_terminals,id'],
         ]);
@@ -81,6 +84,8 @@ final class ReportController extends Controller
      */
     public function generateZReport(Request $request): JsonResponse
     {
+        Gate::authorize('pos.view_reports');
+
         $request->validate([
             'terminal_id' => ['required', 'string', 'uuid', 'exists:pos_terminals,id'],
         ]);
@@ -123,6 +128,8 @@ final class ReportController extends Controller
      */
     public function showZReport(string $zNumber, Request $request): JsonResponse
     {
+        Gate::authorize('pos.view_reports');
+
         $request->validate([
             'terminal_id' => ['required', 'string', 'uuid'],
         ]);
@@ -153,6 +160,8 @@ final class ReportController extends Controller
      */
     public function listZReports(Request $request): JsonResponse
     {
+        Gate::authorize('pos.view_reports');
+
         $request->validate([
             'terminal_id' => ['required', 'string', 'uuid'],
             'from_date' => ['nullable', 'date'],
@@ -195,6 +204,8 @@ final class ReportController extends Controller
      */
     public function verifyZReportChain(Request $request): JsonResponse
     {
+        Gate::authorize('pos.view_reports');
+
         $request->validate([
             'terminal_id' => ['required', 'string', 'uuid', 'exists:pos_terminals,id'],
         ]);

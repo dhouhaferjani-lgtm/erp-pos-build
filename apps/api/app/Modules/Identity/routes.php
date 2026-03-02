@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::prefix('api/v1/auth')->middleware('api')->group(function () {
+Route::prefix('api/v1/auth')->middleware('web')->group(function () {
     // Public routes with rate limiting
     Route::post('login', [AuthController::class, 'login'])
         ->middleware('throttle:login')

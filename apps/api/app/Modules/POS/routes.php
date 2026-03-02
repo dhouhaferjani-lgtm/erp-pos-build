@@ -59,6 +59,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // Shift receipts (transaction history)
     Route::get('/pos/shifts/{id}/receipts', [ShiftController::class, 'receipts']);
 
-    // Discount Permissions
+    // Discount Permissions & Preview
     Route::get('/pos/discount-permissions', [DiscountController::class, 'getPermissions']);
+    Route::post('/pos/cart/preview-discounts', [DiscountController::class, 'previewDiscounts']);
 });

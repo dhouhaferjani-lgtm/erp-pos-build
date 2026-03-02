@@ -37,6 +37,8 @@ export interface CreateReceiptRequest {
     discount_reason?: string
   }>
   customer_id?: string
+  transaction_discount_amount?: string
+  transaction_discount_reason?: string
 }
 
 /**
@@ -48,6 +50,7 @@ export interface CreateReceiptResponse {
   total: string
   subtotal: string
   tax_amount: string
+  discount_amount: string
   currency: string
 }
 

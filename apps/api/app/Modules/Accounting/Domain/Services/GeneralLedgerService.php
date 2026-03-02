@@ -796,7 +796,7 @@ final class GeneralLedgerService
 
         $entry->update([
             'status' => JournalEntryStatus::Posted,
-            'hash' => $hash,
+            'fiscal_hash' => $hash,
             'previous_hash' => $previousHash,
             'posted_at' => now(),
             'posted_by' => $user->id,
@@ -1060,10 +1060,10 @@ final class GeneralLedgerService
         $lastPosted = JournalEntry::query()
             ->where('company_id', $companyId)
             ->where('status', JournalEntryStatus::Posted)
-            ->whereNotNull('hash')
+            ->whereNotNull('fiscal_hash')
             ->orderByDesc('posted_at')
             ->first();
 
-        return $lastPosted !== null ? $lastPosted->hash ?? '' : '';
+        return $lastPosted !== null ? $lastPosted->fiscal_hash ?? '' : '';
     }
 }

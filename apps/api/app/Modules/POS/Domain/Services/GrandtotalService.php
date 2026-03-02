@@ -122,12 +122,12 @@ final class GrandtotalService
         $refundsAmount = '0.00';
 
         foreach ($receipts as $receipt) {
-            if ($receipt->is_voided || $receipt->is_refund) {
+            if ($receipt->is_voided) {
                 $refundsCount++;
-                $refundsAmount = bcadd($refundsAmount, $receipt->total_amount, 2);
+                $refundsAmount = bcadd($refundsAmount, $receipt->total, 2);
             } else {
                 $salesCount++;
-                $grossSales = bcadd($grossSales, $receipt->total_amount, 2);
+                $grossSales = bcadd($grossSales, $receipt->total, 2);
                 $taxAmount = bcadd($taxAmount, $receipt->tax_amount, 2);
             }
         }
@@ -157,9 +157,8 @@ final class GrandtotalService
         // Get ALL receipts for terminal (excluding voids/refunds)
         $totals = Receipt::where('terminal_id', $terminal->id)
             ->where('is_voided', false)
-            ->where('is_refund', false)
             ->selectRaw('
-                SUM(total_amount) as lifetime_sales,
+                SUM(total) as lifetime_sales,
                 SUM(tax_amount) as lifetime_tax,
                 COUNT(*) as lifetime_transactions
             ')

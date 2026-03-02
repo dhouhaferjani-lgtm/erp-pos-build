@@ -38,7 +38,7 @@ class EnrollmentData extends Data
             lifetime_redeemed: (string) $enrollment->lifetime_redeemed,
             current_tier_id: $enrollment->current_tier_id,
             tier_qualified_at: $enrollment->tier_qualified_at?->toIso8601String(),
-            status: $enrollment->status,
+            status: $enrollment->status->value,
             enrolled_at: $enrollment->enrolled_at->toIso8601String(),
             last_transaction_at: $enrollment->last_transaction_at?->toIso8601String(),
             created_at: $enrollment->created_at?->toIso8601String() ?? '',

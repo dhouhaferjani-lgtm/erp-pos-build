@@ -2,12 +2,32 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
 import { ProductCard } from './ProductCard'
 
+vi.mock('@/hooks/useCurrency', () => ({
+  useCurrency: () => ({
+    currency: 'EUR',
+    locale: 'fr-FR',
+    decimals: 2,
+    format: (value: string | number) => {
+      const num = typeof value === 'string' ? parseFloat(value) : value
+      return `${num.toFixed(2)} EUR`
+    },
+    toFixed: (value: number) => value.toFixed(2),
+  }),
+  getDecimals: (currency: string) => currency === 'TND' || currency === 'LYD' ? 3 : 2,
+  getLocale: (_currency: string) => 'fr-FR',
+  formatAmount: (value: string | number, currency: string) => {
+    const num = typeof value === 'string' ? parseFloat(value) : value
+    const decimals = currency === 'TND' || currency === 'LYD' ? 3 : 2
+    return `${num.toFixed(decimals)} ${currency}`
+  },
+}))
+
 describe('ProductCard', () => {
   const mockProduct = {
     id: '1',
     name: 'Oil Filter',
     sku: 'OF-1234',
-    price: '15.500',
+    sale_price: '15.500',
     stock_quantity: 50,
     image_url: 'https://example.com/image.jpg',
     category: 'Filters',
@@ -256,6 +276,6 @@ describe('ProductCard', () => {
         onShowInfo={vi.fn()}
       />
     )
-    expect(getByText(/TND/)).toBeInTheDocument()
+    expect(getByText(/EUR/)).toBeInTheDocument()
   })
 })

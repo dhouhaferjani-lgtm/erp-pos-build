@@ -6,6 +6,7 @@ namespace App\Modules\POS\Application\Services;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\POS\Domain\Events\ReceiptCompleted;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptPayment;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
@@ -27,7 +28,7 @@ use Illuminate\Support\Str;
  */
 final class ReceiptPaymentService
 {
-    private const SCALE = 2;
+    private const SCALE = 3;
 
     public function __construct(
         private readonly CompanyContext $companyContext,
@@ -62,7 +63,7 @@ final class ReceiptPaymentService
             }
 
             // Calculate total paid
-            $totalPaid = '0.00';
+            $totalPaid = '0.000';
             foreach ($payments as $payment) {
                 if (bccomp($payment['amount'], '0', self::SCALE) <= 0) {
                     throw new \InvalidArgumentException('Payment amount must be greater than zero');
@@ -153,6 +154,16 @@ final class ReceiptPaymentService
             /** @var Receipt $freshReceipt */
             $freshReceipt = $receipt->fresh(['lines', 'vatDetails', 'payments']);
 
+            // Dispatch event for cross-module listeners (loyalty, analytics)
+            event(new ReceiptCompleted(
+                receiptId: $receipt->id,
+                tenantId: $receipt->tenant_id,
+                companyId: $companyId,
+                customerId: $customerId,
+                totalAmount: $receipt->total,
+                currency: $receipt->currency,
+            ));
+
             return [
                 'receipt' => $freshReceipt,
                 'receipt_payments' => $receiptPayments,
@@ -170,7 +181,7 @@ final class ReceiptPaymentService
      */
     public function validatePaymentAmounts(array $payments, string $receiptTotal): bool
     {
-        $totalPaid = '0.00';
+        $totalPaid = '0.000';
 
         foreach ($payments as $payment) {
             if (bccomp($payment['amount'], '0', self::SCALE) <= 0) {
@@ -195,6 +206,6 @@ final class ReceiptPaymentService
     {
         $change = bcsub($totalPaid, $receiptTotal, self::SCALE);
 
-        return bccomp($change, '0', self::SCALE) > 0 ? $change : '0.00';
+        return bccomp($change, '0', self::SCALE) > 0 ? $change : '0.000';
     }
 }

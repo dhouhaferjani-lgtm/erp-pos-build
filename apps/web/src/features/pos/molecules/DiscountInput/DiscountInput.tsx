@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { POSButton } from '../../atoms'
 import { applyDiscount, formatCurrency, bccomp } from '@/lib/decimal'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
+import { useCurrency } from '@/hooks/useCurrency'
 
 export interface DiscountData {
   type: 'percentage' | 'fixed'
@@ -62,6 +63,7 @@ export function DiscountInput({
   touchOptimized = false,
 }: DiscountInputProps) {
   const { t } = useTranslation('pos')
+  const { currency } = useCurrency()
 
   // State
   const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>(
@@ -247,7 +249,7 @@ export function DiscountInput({
           />
           <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
             <span className={cn(textColors.tertiary, touchOptimized && 'text-lg')}>
-              {discountType === 'percentage' ? '%' : 'TND'}
+              {discountType === 'percentage' ? '%' : currency}
             </span>
           </div>
         </div>
@@ -300,10 +302,10 @@ export function DiscountInput({
           <div className="flex justify-between items-center">
             <div>
               <p className={cn(textColors.tertiary, 'text-sm line-through')}>
-                {t('cart.originalTotal')}: {formatCurrency(preview.original)}
+                {t('cart.originalTotal')}: {formatCurrency(preview.original, true, currency)}
               </p>
               <p className={cn(textColors.brand, 'font-bold text-lg')}>
-                {t('cart.discountedTotal')}: {formatCurrency(preview.discounted)}
+                {t('cart.discountedTotal')}: {formatCurrency(preview.discounted, true, currency)}
               </p>
             </div>
           </div>

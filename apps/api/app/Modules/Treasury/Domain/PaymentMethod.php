@@ -8,7 +8,9 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\FeeType;
 use Illuminate\Database\Eloquent\Builder;
+use Database\Factories\PaymentMethodFactory;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -42,9 +44,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class PaymentMethod extends Model
 {
+    /** @use HasFactory<PaymentMethodFactory> */
+    use HasFactory;
     use HasUuids;
 
     protected $table = 'payment_methods';
+
+    protected static function newFactory(): PaymentMethodFactory
+    {
+        return PaymentMethodFactory::new();
+    }
 
     protected $fillable = [
         'tenant_id',

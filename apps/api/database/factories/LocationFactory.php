@@ -17,15 +17,14 @@ class LocationFactory extends Factory
     public function definition(): array
     {
         return [
-            'uuid' => $this->faker->uuid(),
-            'tenant_id' => \App\Modules\Tenant\Domain\Tenant::factory(),
-            'company_id' => fn (array $attributes) => \App\Modules\Company\Domain\Company::factory(['tenant_id' => $attributes['tenant_id']]),
+            'company_id' => \App\Modules\Company\Domain\Company::factory(),
             'name' => $this->faker->company().' - '.$this->faker->city(),
             'code' => strtoupper($this->faker->lexify('LOC-???')),
-            'address' => $this->faker->streetAddress(),
-            'city' => $this->faker->city(),
-            'postal_code' => $this->faker->postcode(),
-            'country_code' => $this->faker->randomElement(['TN', 'FR', 'US']),
+            'type' => 'shop',
+            'address_street' => $this->faker->streetAddress(),
+            'address_city' => $this->faker->city(),
+            'address_postal_code' => $this->faker->postcode(),
+            'address_country' => $this->faker->randomElement(['TN', 'FR', 'US']),
             'is_active' => true,
         ];
     }

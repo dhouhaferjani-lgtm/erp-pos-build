@@ -29,9 +29,10 @@ describe('MoneyInput', () => {
     expect(getByText('TND')).toBeInTheDocument()
   })
 
-  it('uses default currency when not specified', () => {
+  it('uses company currency when not specified', () => {
     const { getByText } = render(<MoneyInput value="" onChange={vi.fn()} />)
-    expect(getByText('TND')).toBeInTheDocument()
+    // Default company currency is EUR (no company set in test env)
+    expect(getByText('EUR')).toBeInTheDocument()
   })
 
   it('calls onChange with formatted value when user types', () => {
@@ -78,15 +79,16 @@ describe('MoneyInput', () => {
     expect(onChange).not.toHaveBeenCalledWith('12.3.4')
   })
 
-  it('limits decimal places to 3', () => {
+  it('limits decimal places based on currency', () => {
     const onChange = vi.fn()
     const { getByRole } = render(
       <MoneyInput value="" onChange={onChange} />
     )
     const input = getByRole('textbox') as HTMLInputElement
 
-    fireEvent.change(input, { target: { value: '123.4567' } })
-    expect(onChange).toHaveBeenCalledWith('123.456')
+    // Default currency is EUR (2 decimals) in test env
+    fireEvent.change(input, { target: { value: '123.456' } })
+    expect(onChange).toHaveBeenCalledWith('123.45')
   })
 
   it('applies touch-optimized styles when touchOptimized is true', () => {
@@ -141,7 +143,8 @@ describe('MoneyInput', () => {
     const { getByPlaceholderText } = render(
       <MoneyInput value="" onChange={vi.fn()} />
     )
-    expect(getByPlaceholderText('0.000')).toBeInTheDocument()
+    // Default currency is EUR (2 decimals) in test env
+    expect(getByPlaceholderText('0.00')).toBeInTheDocument()
   })
 
   it('focuses input when autoFocus is true', () => {

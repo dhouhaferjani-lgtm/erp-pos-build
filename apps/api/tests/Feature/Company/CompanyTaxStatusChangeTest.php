@@ -12,6 +12,8 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
+use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -57,6 +59,13 @@ class CompanyTaxStatusChangeTest extends TestCase
         ]);
 
         $this->actingAs($this->user);
+
+        UserCompanyMembership::create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'role' => 'admin',
+        ]);
+        app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
     public function test_allows_tax_status_change_when_no_posted_documents(): void

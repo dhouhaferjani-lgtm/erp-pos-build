@@ -7,6 +7,7 @@ namespace App\Modules\Loyalty\Application\Services;
 use App\Modules\Loyalty\Application\DTOs\EnrollmentData;
 use App\Modules\Loyalty\Domain\Entities\Enrollment;
 use App\Modules\Loyalty\Domain\Entities\Transaction;
+use App\Modules\Loyalty\Domain\Enums\EnrollmentStatus;
 use App\Modules\Loyalty\Domain\Enums\TransactionType;
 use App\Modules\Loyalty\Domain\Events\MemberEnrolledV2;
 use App\Modules\Loyalty\Domain\Repositories\EnrollmentRepositoryInterface;
@@ -65,7 +66,7 @@ final readonly class MemberEnrollmentService
                 'current_balance' => 0,
                 'lifetime_earned' => 0,
                 'lifetime_redeemed' => 0,
-                'status' => 'ACTIVE',
+                'status' => EnrollmentStatus::Active,
                 'enrolled_at' => now(),
             ]);
 
@@ -88,9 +89,12 @@ final readonly class MemberEnrollmentService
             ));
 
             // Reload to get updated balance
-            $enrollment = $this->enrollmentRepository->findById($enrollment->id);
+            $reloaded = $this->enrollmentRepository->findById($enrollment->id);
+            if ($reloaded === null) {
+                return EnrollmentData::fromModel($enrollment);
+            }
 
-            return EnrollmentData::fromModel($enrollment);
+            return EnrollmentData::fromModel($reloaded);
         });
     }
 
@@ -105,7 +109,7 @@ final readonly class MemberEnrollmentService
             throw new InvalidArgumentException("Enrollment with ID {$enrollmentId} not found");
         }
 
-        $enrollment->status = 'OPTED_OUT';
+        $enrollment->status = EnrollmentStatus::OptedOut;
         $this->enrollmentRepository->save($enrollment);
     }
 
@@ -120,7 +124,7 @@ final readonly class MemberEnrollmentService
             throw new InvalidArgumentException("Enrollment with ID {$enrollmentId} not found");
         }
 
-        $enrollment->status = 'ACTIVE';
+        $enrollment->status = EnrollmentStatus::Active;
         $this->enrollmentRepository->save($enrollment);
     }
 
@@ -143,8 +147,12 @@ final readonly class MemberEnrollmentService
         $this->transactionRepository->save($transaction);
 
         // Update enrollment balances
-        $enrollment->current_balance += $amount;
-        $enrollment->lifetime_earned += $amount;
+        /** @var numeric-string $currentBalance */
+        $currentBalance = $enrollment->current_balance;
+        /** @var numeric-string $lifetimeEarned */
+        $lifetimeEarned = $enrollment->lifetime_earned;
+        $enrollment->current_balance = bcadd($currentBalance, (string) $amount, 2);
+        $enrollment->lifetime_earned = bcadd($lifetimeEarned, (string) $amount, 2);
         $enrollment->last_transaction_at = now();
 
         $this->enrollmentRepository->save($enrollment);

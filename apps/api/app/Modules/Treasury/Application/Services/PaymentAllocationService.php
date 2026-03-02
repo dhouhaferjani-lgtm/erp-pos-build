@@ -128,9 +128,9 @@ class PaymentAllocationService
                 // Refresh document to get trigger-updated balance_due
                 $document->refresh();
 
-                // Update document status to Paid if fully paid
+                // Update document status to Paid if fully paid (only for types that support it)
                 // (balance_due was just updated by trigger)
-                if (bccomp($document->balance_due, '0.00', 2) === 0) {
+                if (bccomp($document->balance_due, '0.00', 2) === 0 && $document->type->canTransitionToPaid()) {
                     $document->status = DocumentStatus::Paid;
                 }
 

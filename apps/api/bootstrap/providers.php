@@ -29,4 +29,6 @@ return [
     App\Modules\Loyalty\Providers\LoyaltyServiceProvider::class,
     App\Modules\Catalog\Providers\CatalogServiceProvider::class,
     App\Modules\Menu\Providers\MenuServiceProvider::class,
+    App\Modules\Promotion\Providers\PromotionServiceProvider::class,
+    App\Modules\Coupon\Providers\CouponServiceProvider::class,
 ];

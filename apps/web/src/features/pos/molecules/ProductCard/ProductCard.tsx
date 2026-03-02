@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils'
 import { StockBadge } from '../../atoms'
 import { Info, Package } from 'lucide-react'
+import { useCurrency } from '@/hooks/useCurrency'
 
 export interface Product {
   id: string
@@ -29,6 +30,7 @@ export function ProductCard({
   touchOptimized = false,
   className,
 }: ProductCardProps) {
+  const { currency } = useCurrency()
   const isOutOfStock = product.stock_quantity <= 0
 
   const handleCardClick = () => {
@@ -154,7 +156,7 @@ export function ProductCard({
               touchOptimized ? 'text-xl' : 'text-lg'
             )}
           >
-            {product.sale_price ? `${product.sale_price} TND` : 'N/A'}
+            {product.sale_price ? `${product.sale_price} ${currency}` : 'N/A'}
           </span>
 
           <StockBadge

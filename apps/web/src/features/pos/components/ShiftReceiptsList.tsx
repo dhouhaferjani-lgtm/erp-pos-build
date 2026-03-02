@@ -3,6 +3,7 @@ import { Printer } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { textColors, borderColors } from '@/lib/designTokens'
 import { useReceiptPrint } from '../hooks/useReceiptPrint'
+import { useCurrency } from '@/hooks/useCurrency'
 
 export interface ShiftReceipt {
   id: string
@@ -30,6 +31,7 @@ export interface ShiftReceiptsListProps {
  */
 export function ShiftReceiptsList({ receipts, className }: ShiftReceiptsListProps) {
   const { t } = useTranslation(['pos'])
+  const { currency } = useCurrency()
   const { printReceipt, isPrinting } = useReceiptPrint()
 
   const handleReprint = (receiptId: string) => {
@@ -86,7 +88,7 @@ export function ShiftReceiptsList({ receipts, className }: ShiftReceiptsListProp
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-end">
                 <span className={cn('text-sm font-medium', textColors.primary)}>
-                  {receipt.total} TND
+                  {receipt.total} {currency}
                 </span>
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-end">

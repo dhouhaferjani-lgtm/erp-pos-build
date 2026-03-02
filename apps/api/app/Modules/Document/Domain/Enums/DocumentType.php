@@ -72,4 +72,17 @@ enum DocumentType: string
             default => 0,
         };
     }
+
+    /**
+     * Whether this document type should transition to Paid status when fully paid.
+     * Sales orders / purchase orders retain their workflow status (confirmed)
+     * because they still need to go through conversion (to invoice, delivery note, etc.).
+     */
+    public function canTransitionToPaid(): bool
+    {
+        return match ($this) {
+            self::Invoice, self::CreditNote => true,
+            default => false,
+        };
+    }
 }

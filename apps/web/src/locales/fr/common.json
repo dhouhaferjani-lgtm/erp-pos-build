@@ -43,6 +43,7 @@
     "loading": "Chargement...",
     "noData": "Aucune donnée disponible",
     "confirmDelete": "Êtes-vous sûr de vouloir supprimer {{resource}} ?",
+    "confirmDeleteTitle": "Confirmer la suppression",
     "errorCreating": "Erreur lors de la création de {{resource}}",
     "errorUpdating": "Erreur lors de la mise à jour de {{resource}}",
     "errorDeleting": "Erreur lors de la suppression de {{resource}}",
@@ -60,7 +61,7 @@
     "minAmount": "Le montant minimum est {{amount}}",
     "terminalCodeFormat": "Le code du terminal ne doit contenir que des lettres majuscules et des chiffres"
   },
-  "error": {
+  "errorMessages": {
     "generic": "Une erreur est survenue. Veuillez réessayer."
   },
   "status": {
@@ -172,7 +173,9 @@
     "catalog": "Catalogue",
     "compositeItems": "Articles composés",
     "modifierGroups": "Groupes de modificateurs",
-    "menus": "Menus"
+    "menus": "Menus",
+    "promotions": "Promotions",
+    "coupons": "Coupons"
   },
   "fields": {
     "totalReceivable": "Total à recevoir",
@@ -960,6 +963,9 @@
       "noTerminalsDescription": "Commencez par enregistrer votre premier terminal.",
       "pageDescription": "Gérer les terminaux de point de vente et leurs configurations",
       "deactivationReasonPrompt": "Raison de la désactivation (optionnel) :",
+      "deactivateTerminal": "Désactiver le terminal",
+      "deactivationReasonPlaceholder": "Entrez la raison...",
+      "deactivate": "Désactiver",
       "namePlaceholder": "ex. Terminal du comptoir principal",
       "descriptionPlaceholder": "Description optionnelle pour ce terminal"
     },

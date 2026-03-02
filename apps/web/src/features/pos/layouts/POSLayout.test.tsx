@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { POSLayout } from './POSLayout'
 
 // Mock react-i18next
@@ -9,6 +10,19 @@ vi.mock('react-i18next', () => ({
     t: (key: string) => key,
   }),
 }))
+
+function createTestQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+    },
+  })
+}
+
+function renderWithClient(ui: React.ReactElement) {
+  const queryClient = createTestQueryClient()
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
+}
 
 describe('POSLayout', () => {
   const mockOnExitPOS = vi.fn()
@@ -19,7 +33,7 @@ describe('POSLayout', () => {
 
   describe('Rendering', () => {
     it('should render fullscreen layout with fixed positioning', () => {
-      const { container } = render(
+      const { container } = renderWithClient(
         <POSLayout onExitPOS={mockOnExitPOS}>
           <div>Test Content</div>
         </POSLayout>
@@ -30,7 +44,7 @@ describe('POSLayout', () => {
     })
 
     it('should render header with POS title', () => {
-      render(
+      renderWithClient(
         <POSLayout onExitPOS={mockOnExitPOS}>
           <div>Test Content</div>
         </POSLayout>
@@ -41,7 +55,7 @@ describe('POSLayout', () => {
     })
 
     it('should render exit button', () => {
-      render(
+      renderWithClient(
         <POSLayout onExitPOS={mockOnExitPOS}>
           <div>Test Content</div>
         </POSLayout>
@@ -52,7 +66,7 @@ describe('POSLayout', () => {
     })
 
     it('should render children content', () => {
-      render(
+      renderWithClient(
         <POSLayout onExitPOS={mockOnExitPOS}>
           <div data-testid="pos-content">POS Transaction Interface</div>
         </POSLayout>
@@ -67,7 +81,7 @@ describe('POSLayout', () => {
     it('should call onExitPOS when exit button is clicked', async () => {
       const user = userEvent.setup()
 
-      render(
+      renderWithClient(
         <POSLayout onExitPOS={mockOnExitPOS}>
           <div>Test Content</div>
         </POSLayout>
@@ -82,7 +96,7 @@ describe('POSLayout', () => {
 
   describe('Layout Structure', () => {
     it('should have header with correct height class', () => {
-      render(
+      renderWithClient(
         <POSLayout onExitPOS={mockOnExitPOS}>
           <div>Test Content</div>
         </POSLayout>
@@ -94,7 +108,7 @@ describe('POSLayout', () => {
     })
 
     it('should have content area that fills remaining height', () => {
-      const { container } = render(
+      const { container } = renderWithClient(
         <POSLayout onExitPOS={mockOnExitPOS}>
           <div data-testid="pos-content">Test Content</div>
         </POSLayout>
@@ -108,7 +122,7 @@ describe('POSLayout', () => {
 
   describe('Accessibility', () => {
     it('should have proper heading hierarchy', () => {
-      render(
+      renderWithClient(
         <POSLayout onExitPOS={mockOnExitPOS}>
           <div>Test Content</div>
         </POSLayout>
@@ -120,7 +134,7 @@ describe('POSLayout', () => {
     })
 
     it('should have accessible exit button with clear label', () => {
-      render(
+      renderWithClient(
         <POSLayout onExitPOS={mockOnExitPOS}>
           <div>Test Content</div>
         </POSLayout>
@@ -133,7 +147,7 @@ describe('POSLayout', () => {
 
   describe('Visual Styling', () => {
     it('should have dark header background', () => {
-      render(
+      renderWithClient(
         <POSLayout onExitPOS={mockOnExitPOS}>
           <div>Test Content</div>
         </POSLayout>
@@ -144,7 +158,7 @@ describe('POSLayout', () => {
     })
 
     it('should have dark root background', () => {
-      const { container } = render(
+      const { container } = renderWithClient(
         <POSLayout onExitPOS={mockOnExitPOS}>
           <div>Test Content</div>
         </POSLayout>

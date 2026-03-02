@@ -2,23 +2,28 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import type { RecipeData, RecipeLineData, RecipeCostData } from '../types/compositeItem'
+import { ProductSearchSelect } from '@/components/ui/ProductSearchSelect'
+import type { RecipeData, RecipeLineData, RecipeCostData, VerticalType } from '../types/compositeItem'
+import { useVerticalLabels } from '../hooks/useVerticalLabels'
 import {
   useCreateRecipeLine,
   useUpdateRecipeLine,
   useDeleteRecipeLine,
   useCalculateRecipeCost,
   useActivateRecipe,
+  useUpdateRecipe,
 } from '../hooks/useRecipes'
 
 interface RecipeLineEditorProps {
   recipe: RecipeData | null
   compositeItemId: string
+  verticalType?: VerticalType
   onRecipeCreated?: () => void
 }
 
-export function RecipeLineEditor({ recipe, compositeItemId }: RecipeLineEditorProps) {
+export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, verticalType }: RecipeLineEditorProps) {
   const { t } = useTranslation(['catalog', 'common'])
+  const getLabel = useVerticalLabels(verticalType)
   const [costData, setCostData] = useState<RecipeCostData | null>(null)
   const [newLine, setNewLine] = useState({
     component_id: '',
@@ -32,6 +37,7 @@ export function RecipeLineEditor({ recipe, compositeItemId }: RecipeLineEditorPr
   const deleteLineMutation = useDeleteRecipeLine()
   const calculateCostMutation = useCalculateRecipeCost()
   const activateRecipeMutation = useActivateRecipe()
+  const updateRecipeMutation = useUpdateRecipe()
 
   if (!recipe) {
     return (
@@ -94,6 +100,23 @@ export function RecipeLineEditor({ recipe, compositeItemId }: RecipeLineEditorPr
     })
   }
 
+  const handleUpdateRecipeField = (field: string, value: string) => {
+    const numValue = value === '' ? null : Number(value)
+    updateRecipeMutation.mutate({
+      id: recipe.id,
+      data: { [field]: numValue },
+    })
+  }
+
+  const handleUpdateInstructions = (value: string) => {
+    updateRecipeMutation.mutate({
+      id: recipe.id,
+      data: { instructions: value || null },
+    })
+  }
+
+  const totalTime = (recipe.prep_time_minutes ?? 0) + (recipe.cook_time_minutes ?? 0)
+
   return (
     <div className="space-y-6">
       {/* Recipe info */}
@@ -129,12 +152,54 @@ export function RecipeLineEditor({ recipe, compositeItemId }: RecipeLineEditorPr
         </div>
       </div>
 
+      {/* Recipe metadata */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700">{t('catalog:prepTime')}</label>
+          <input
+            type="number"
+            min="0"
+            defaultValue={recipe.prep_time_minutes ?? ''}
+            onBlur={(e) => handleUpdateRecipeField('prep_time_minutes', e.target.value)}
+            className="mt-1 block w-full rounded-md border-gray-300 text-sm"
+            placeholder="0"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">{t('catalog:cookTime')}</label>
+          <input
+            type="number"
+            min="0"
+            defaultValue={recipe.cook_time_minutes ?? ''}
+            onBlur={(e) => handleUpdateRecipeField('cook_time_minutes', e.target.value)}
+            className="mt-1 block w-full rounded-md border-gray-300 text-sm"
+            placeholder="0"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">{t('catalog:totalTime')}</label>
+          <div className="mt-1 flex h-[38px] items-center rounded-md bg-gray-100 px-3 text-sm text-gray-600">
+            {totalTime > 0 ? totalTime : '-'}
+          </div>
+        </div>
+        <div className="sm:col-span-3">
+          <label className="block text-sm font-medium text-gray-700">{t('catalog:instructions')}</label>
+          <textarea
+            defaultValue={recipe.instructions ?? ''}
+            onBlur={(e) => handleUpdateInstructions(e.target.value)}
+            rows={3}
+            className="mt-1 block w-full rounded-md border-gray-300 text-sm"
+            placeholder={t('catalog:instructions')}
+          />
+        </div>
+      </div>
+
       {/* Lines table */}
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-300">
           <thead>
             <tr>
-              <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:component')}</th>
+              <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{getLabel('recipeLine')}</th>
               <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:quantity')}</th>
               <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:unit')}</th>
               <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:wastagePercent')}</th>
@@ -196,12 +261,11 @@ export function RecipeLineEditor({ recipe, compositeItemId }: RecipeLineEditorPr
             {/* Add new line row */}
             <tr className="bg-gray-50">
               <td className="px-3 py-4">
-                <input
-                  type="text"
-                  placeholder={t('catalog:component') + ' ID'}
+                <ProductSearchSelect
                   value={newLine.component_id}
-                  onChange={(e) => setNewLine({ ...newLine, component_id: e.target.value })}
-                  className="w-full rounded-md border-gray-300 text-sm"
+                  onChange={(id) => setNewLine({ ...newLine, component_id: id })}
+                  placeholder={t(verticalType === 'fnb' || verticalType === 'bakery' ? 'catalog:searchIngredient' : 'catalog:searchComponent')}
+                  className="min-w-[200px]"
                 />
               </td>
               <td className="px-3 py-4">
@@ -255,7 +319,7 @@ export function RecipeLineEditor({ recipe, compositeItemId }: RecipeLineEditorPr
           <table className="min-w-full text-sm">
             <thead>
               <tr>
-                <th className="text-left py-1">{t('catalog:component')}</th>
+                <th className="text-left py-1">{getLabel('recipeLine')}</th>
                 <th className="text-right py-1">{t('catalog:quantity')}</th>
                 <th className="text-right py-1">{t('catalog:unitCost')}</th>
                 <th className="text-right py-1">{t('catalog:lineCost')}</th>

@@ -47,9 +47,11 @@ import {
   PanelLeft,
   UtensilsCrossed,
   Combine,
+  Ticket,
 } from 'lucide-react'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useCompanyConfig } from '../../../contexts'
+import { companyVerticalToCatalog } from '../../../features/catalog/hooks/useVerticalLabels'
 
 const STORAGE_KEY = 'autoerp-sidebar-expanded'
 const COLLAPSED_STORAGE_KEY = 'autoerp-sidebar-collapsed'
@@ -65,8 +67,8 @@ const COLLAPSED_STORAGE_KEY = 'autoerp-sidebar-collapsed'
  */
 const MODULE_NAME_MAP: Record<string, string> = {
   vehicles: 'Vehicle',
+  services: 'Workshop',
   'composite-items': 'CompositeItems',
-  // services: removed - now a core module available to all verticals
   // Core modules (always visible): dashboard, sales, purchases, inventory, treasury, finance, pricing, reports, settings
   // These don't need mapping as they're not filtered by vertical
 }
@@ -189,6 +191,8 @@ const navigation: NavModule[] = [
       { key: 'shiftHistory', href: '/pos/shift-history', icon: History, module: 'pos' },
       { key: 'zReports', href: '/pos/z-reports', icon: FileCheck, module: 'pos' },
       { key: 'receipts', href: '/pos/receipts', icon: Receipt, module: 'pos' },
+      { key: 'promotions', href: '/pos/promotions', icon: Tag, module: 'promotions' },
+      { key: 'coupons', href: '/pos/coupons', icon: Ticket, module: 'coupons' },
     ],
   },
   {
@@ -224,11 +228,30 @@ interface SidebarProps {
   onClose?: () => void
 }
 
+// Navigation keys that should adapt based on company vertical
+const VERTICAL_NAV_KEYS: Record<string, string> = {
+  catalog: 'compositeItems',
+  compositeItems: 'compositeItems',
+  modifierGroups: 'modifierGroup',
+}
+
 export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['common', 'catalog'])
   const location = useLocation()
   const { canAccessModule } = usePermissions()
-  const { hasModule } = useCompanyConfig()
+  const { hasModule, config } = useCompanyConfig()
+  const catalogVertical = companyVerticalToCatalog(config?.vertical)
+
+  const getNavLabel = useCallback(
+    (key: string): string => {
+      const verticalLabelKey = VERTICAL_NAV_KEYS[key]
+      if (verticalLabelKey && catalogVertical !== 'generic') {
+        return t(`catalog:vertical.${catalogVertical}.${verticalLabelKey}`)
+      }
+      return t(`navigation.${key}`)
+    },
+    [catalogVertical, t]
+  )
 
   // Collapsed state with localStorage persistence
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
@@ -446,10 +469,10 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                           ? 'bg-blue-600/20 text-white'
                           : 'text-gray-300 hover:bg-gray-800 hover:text-white'
                       } ${isCollapsed ? 'justify-center' : ''}`}
-                      title={isCollapsed ? t(`navigation.${module.key}`) : undefined}
+                      title={isCollapsed ? getNavLabel(module.key) : undefined}
                     >
                       <Icon className="h-5 w-5 flex-shrink-0" />
-                      {!isCollapsed && t(`navigation.${module.key}`)}
+                      {!isCollapsed && getNavLabel(module.key)}
                     </Link>
                   </li>
                 )
@@ -467,13 +490,13 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                         : 'text-gray-300 hover:bg-gray-800 hover:text-white'
                     } ${isCollapsed ? 'justify-center' : ''}`}
                     aria-expanded={isExpanded}
-                    aria-label={`${t(`navigation.${module.key}`)} - ${isExpanded ? t('actions.collapse') : t('actions.expand')}`}
-                    title={isCollapsed ? t(`navigation.${module.key}`) : undefined}
+                    aria-label={`${getNavLabel(module.key)} - ${isExpanded ? t('actions.collapse') : t('actions.expand')}`}
+                    title={isCollapsed ? getNavLabel(module.key) : undefined}
                   >
                     <Icon className="h-5 w-5 flex-shrink-0" />
                     {!isCollapsed && (
                       <>
-                        <span className="flex-1 text-start">{t(`navigation.${module.key}`)}</span>
+                        <span className="flex-1 text-start">{getNavLabel(module.key)}</span>
                         {isExpanded ? (
                           <ChevronDown className="h-4 w-4 flex-shrink-0" />
                         ) : (
@@ -502,7 +525,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                               }`}
                             >
                               <ChildIcon className="h-4 w-4 flex-shrink-0" />
-                              {t(`navigation.${child.key}`)}
+                              {getNavLabel(child.key)}
                             </Link>
                           </li>
                         )

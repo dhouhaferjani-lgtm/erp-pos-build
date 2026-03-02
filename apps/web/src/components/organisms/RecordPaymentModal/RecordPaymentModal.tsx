@@ -9,6 +9,7 @@ import { Select } from '../../atoms/Select'
 import { Textarea } from '../../atoms/Textarea'
 import { Button } from '../../atoms/Button'
 import { api, apiPost } from '../../../lib/api'
+import { useCurrency } from '../../../hooks/useCurrency'
 import { AddRepositoryModal } from '../AddRepositoryModal'
 
 interface PaymentMethod {
@@ -92,7 +93,7 @@ export interface InvoicePrefill {
   amount: number          // amount_residual, NOT total
   reference: string       // Invoice number
   document_id: string
-  document_type: 'invoice' | 'sales_order'
+  document_type: 'invoice' | 'sales_order' | 'purchase_order'
 }
 
 export interface RecordPaymentModalProps {
@@ -109,6 +110,7 @@ export function RecordPaymentModal({
   prefill,
 }: RecordPaymentModalProps) {
   const { t } = useTranslation(['treasury', 'common'])
+  const { currency, symbol, format: formatCurrencyAmount } = useCurrency()
   const queryClient = useQueryClient()
   const [showRepositoryModal, setShowRepositoryModal] = useState(false)
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0])
@@ -300,7 +302,7 @@ export function RecordPaymentModal({
       return apiPost<MultiPaymentResponseData>('/payments', {
         partner_id: prefill.partner_id,
         document_id: prefill.document_id,
-        currency: 'TND',
+        currency,
         payment_date: paymentDate,
         payments,
         excess_allocation_method: excessAmount > 0 ? excessAllocationMethod : undefined,
@@ -345,12 +347,7 @@ export function RecordPaymentModal({
 
   // Format currency
   const formatAmount = (amount: string | number): string => {
-    const num = typeof amount === 'string' ? parseFloat(amount) : amount
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'TND',
-      minimumFractionDigits: 2,
-    }).format(num)
+    return formatCurrencyAmount(amount)
   }
 
   const confirmedCount = paymentLines.filter(l => l.confirmed).length
@@ -570,7 +567,7 @@ export function RecordPaymentModal({
                           <div className="space-y-2">
                             <div className="relative">
                               <span className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-500">
-                                $
+                                {symbol}
                               </span>
                               <Input
                                 id={`amount-${line.id}`}
@@ -579,7 +576,7 @@ export function RecordPaymentModal({
                                 min="0.01"
                                 value={line.amount}
                                 onChange={e => { updatePaymentLine(line.id, 'amount', e.target.value); }}
-                                className="ps-8"
+                                className="ps-10"
                                 placeholder="0.00"
                               />
                             </div>
@@ -792,7 +789,7 @@ export function RecordPaymentModal({
                 <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 mt-4">
                   {mutation.error instanceof Error
                     ? mutation.error.message
-                    : t('common:error.generic')}
+                    : t('common:errorMessages.generic')}
                 </div>
               )}
             </ModalContent>

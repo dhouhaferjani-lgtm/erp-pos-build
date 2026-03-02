@@ -9,6 +9,9 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Application\Services\ReceiptCreationService;
 use App\Modules\POS\Application\Services\ReceiptPdfService;
 use App\Modules\POS\Application\Services\ReceiptPaymentService;
+use App\Modules\POS\Application\Services\ReceiptVoidService;
+use App\Modules\POS\Domain\Exceptions\DiscountExceedsLimitException;
+use App\Modules\POS\Domain\Exceptions\DiscountNotAllowedException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Presentation\Requests\StoreReceiptPaymentsRequest;
 use App\Modules\POS\Presentation\Requests\StoreReceiptRequest;
@@ -16,7 +19,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -31,6 +34,7 @@ final class ReceiptController extends Controller
         private readonly ReceiptCreationService $receiptCreationService,
         private readonly ReceiptPdfService $receiptPdfService,
         private readonly ReceiptPaymentService $receiptPaymentService,
+        private readonly ReceiptVoidService $receiptVoidService,
     ) {}
 
     /**
@@ -40,6 +44,8 @@ final class ReceiptController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
+        Gate::authorize('pos.view_receipts');
+
         $companyId = $this->companyContext->getCompanyId();
 
         $query = Receipt::where('company_id', $companyId)
@@ -114,6 +120,8 @@ final class ReceiptController extends Controller
      */
     public function void(Request $request, string $id): JsonResponse
     {
+        Gate::authorize('pos.void_receipts');
+
         $request->validate([
             'reason' => 'required|string|max:255',
         ]);
@@ -136,28 +144,19 @@ final class ReceiptController extends Controller
         /** @var \App\Modules\Identity\Domain\User $user */
         $user = Auth::user();
 
-        DB::transaction(function () use ($receipt, $request, $user): void {
-            // Mark as voided
-            $receipt->update([
-                'is_voided' => true,
-                'voided_at' => now(),
-                'voided_by' => $user->id,
-                'void_reason' => $request->input('reason'),
-            ]);
-
-            // TODO: Reverse stock movements (create inverse StockMovement records)
-            // TODO: Create reversal GL entries
-            // TODO: Record REFUND cash drawer operation
-            // These will be implemented when the stock/GL reversal services are ready
-        });
+        $voidedReceipt = $this->receiptVoidService->voidReceipt(
+            $receipt,
+            $user,
+            $request->input('reason'),
+        );
 
         return response()->json([
             'data' => [
-                'id' => $receipt->id,
-                'receipt_number' => $receipt->receipt_number,
+                'id' => $voidedReceipt->id,
+                'receipt_number' => $voidedReceipt->receipt_number,
                 'is_voided' => true,
-                'voided_at' => $receipt->voided_at?->toISOString(),
-                'void_reason' => $receipt->void_reason,
+                'voided_at' => $voidedReceipt->voided_at?->toISOString(),
+                'void_reason' => $voidedReceipt->void_reason,
             ],
         ]);
     }
@@ -170,17 +169,33 @@ final class ReceiptController extends Controller
      */
     public function store(StoreReceiptRequest $request): JsonResponse
     {
+        Gate::authorize('pos.operate_terminal');
+
         try {
+            $validated = $request->validated();
+            $transactionDiscountAmount = isset($validated['transaction_discount_amount'])
+                ? (string) $validated['transaction_discount_amount']
+                : null;
+
             $receipt = $this->receiptCreationService->createReceipt(
-                terminalId: $request->validated('terminal_id'),
-                lines: $request->validated('lines'),
-                customerId: $request->validated('customer_id'),
-                notes: $request->validated('notes'),
+                terminalId: $validated['terminal_id'],
+                lines: $validated['lines'],
+                customerId: $validated['customer_id'] ?? null,
+                notes: $validated['notes'] ?? null,
+                transactionDiscountAmount: $transactionDiscountAmount,
+                transactionDiscountReason: $validated['transaction_discount_reason'] ?? null,
             );
 
             return response()->json([
                 'data' => $receipt,
             ], 201);
+        } catch (DiscountNotAllowedException|DiscountExceedsLimitException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'DISCOUNT_VALIDATION_FAILED',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
         } catch (\RuntimeException $e) {
             return response()->json([
                 'error' => [
@@ -203,6 +218,8 @@ final class ReceiptController extends Controller
      */
     public function show(string $id): JsonResponse
     {
+        Gate::authorize('pos.view_receipts');
+
         $companyId = $this->companyContext->getCompanyId();
 
         $receipt = Receipt::with([
@@ -229,6 +246,8 @@ final class ReceiptController extends Controller
      */
     public function downloadPdf(string $id): Response
     {
+        Gate::authorize('pos.view_receipts');
+
         $companyId = $this->companyContext->getCompanyId();
 
         $receipt = Receipt::where('company_id', $companyId)->findOrFail($id);
@@ -246,6 +265,8 @@ final class ReceiptController extends Controller
      */
     public function streamPdf(string $id): StreamedResponse
     {
+        Gate::authorize('pos.view_receipts');
+
         $companyId = $this->companyContext->getCompanyId();
 
         $receipt = Receipt::where('company_id', $companyId)->findOrFail($id);
@@ -264,6 +285,8 @@ final class ReceiptController extends Controller
      */
     public function storePayments(StoreReceiptPaymentsRequest $request, string $id): JsonResponse
     {
+        Gate::authorize('pos.operate_terminal');
+
         $result = $this->receiptPaymentService->processReceiptPayments(
             receiptId: $id,
             payments: $request->validated('payments'),

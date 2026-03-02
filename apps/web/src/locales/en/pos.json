@@ -225,5 +225,38 @@
     "receiptCreationFailed": "Failed to create receipt",
     "paymentProcessingFailed": "Payment processing failed",
     "invalidPaymentData": "Invalid payment data - please check all fields"
+  },
+  "shiftDashboard": {
+    "shiftNumber": "Shift #{{number}}",
+    "statusOpen": "OPEN",
+    "cashier": "Cashier",
+    "openingBalance": "Opening Balance",
+    "expectedCash": "Expected Cash",
+    "duration": "Duration",
+    "cashDeposit": "Cash Deposit",
+    "cashPayout": "Cash Payout",
+    "xReport": "X Report",
+    "closeShift": "Close Shift",
+    "openShift": "Open Shift",
+    "noActiveShift": "No Active Shift",
+    "noActiveShiftDescription": "Start a new shift to begin operations",
+    "actualCashCount": "Actual Cash Count",
+    "variance": "Variance",
+    "amount": "Amount",
+    "reason": "Reason"
+  },
+  "shifts": {
+    "toasts": {
+      "shiftOpened": "Shift opened successfully",
+      "openFailed": "Failed to open shift",
+      "shiftClosed": "Shift closed successfully",
+      "closeFailed": "Failed to close shift",
+      "depositRecorded": "Cash deposit recorded",
+      "depositFailed": "Failed to record deposit",
+      "payoutRecorded": "Cash payout recorded",
+      "payoutFailed": "Failed to record payout",
+      "xReportGenerated": "X-Report generated",
+      "xReportFailed": "Failed to generate X-Report"
+    }
   }
 }

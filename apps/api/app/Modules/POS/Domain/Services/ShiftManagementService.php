@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\POS\Domain\Services;
 
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Exceptions\ShiftAlreadyOpenException;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Shift;
@@ -44,7 +45,7 @@ final class ShiftManagementService
     ): Shift {
         // Check for existing open shift
         $existingOpenShift = Shift::where('terminal_id', $terminal->id)
-            ->where('status', 'OPEN')
+            ->where('status', ShiftStatus::Open)
             ->first();
 
         if ($existingOpenShift) {
@@ -65,7 +66,7 @@ final class ShiftManagementService
                 'cashier_id' => $cashier->id,
                 'shift_number' => $shiftNumber,
                 'opening_cash' => $openingCash,
-                'status' => 'OPEN',
+                'status' => ShiftStatus::Open,
                 'opened_at' => now(),
             ]);
 
@@ -109,7 +110,7 @@ final class ShiftManagementService
 
             // Update shift
             $shift->update([
-                'status' => 'CLOSED',
+                'status' => ShiftStatus::Closed,
                 'expected_cash' => $expectedCash,
                 'actual_cash' => $actualCash,
                 'variance' => $variance,
@@ -133,7 +134,7 @@ final class ShiftManagementService
     public function getCurrentShift(Terminal $terminal): ?Shift
     {
         return Shift::where('terminal_id', $terminal->id)
-            ->where('status', 'OPEN')
+            ->where('status', ShiftStatus::Open)
             ->first();
     }
 

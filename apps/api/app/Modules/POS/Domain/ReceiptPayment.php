@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Modules\POS\Domain;
 
 use App\Modules\Treasury\Domain\PaymentMethod;
+use Database\Factories\ReceiptPaymentFactory;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
@@ -34,12 +36,19 @@ use Illuminate\Support\Carbon;
  */
 class ReceiptPayment extends Model
 {
+    /** @use HasFactory<ReceiptPaymentFactory> */
+    use HasFactory;
     use HasUuids;
 
     /**
      * @var string
      */
     protected $table = 'pos_receipt_payments';
+
+    protected static function newFactory(): ReceiptPaymentFactory
+    {
+        return ReceiptPaymentFactory::new();
+    }
 
     /**
      * @var list<string>
@@ -54,6 +63,7 @@ class ReceiptPayment extends Model
         'transaction_reference',
         'authorization_code',
         'authorized_at',
+        'treasury_payment_id',
     ];
 
     /**

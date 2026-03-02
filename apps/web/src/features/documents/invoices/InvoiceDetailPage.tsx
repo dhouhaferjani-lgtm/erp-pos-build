@@ -16,6 +16,7 @@ import { PaymentStatusBadge } from '../components/PaymentStatusBadge'
 import { PaymentHistorySection, OutstandingAmountSection } from '../components'
 import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail, useCreditNotes } from '../hooks'
 import { DocumentActionBar } from '../components/DocumentActionBar'
+import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
 import { useCompany } from '../../../hooks/useCompany'
 import type { Document } from '../../../types/document'
 
@@ -34,6 +35,7 @@ export function InvoiceDetailPage() {
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [showDeliveryConfirmationModal, setShowDeliveryConfirmationModal] = useState(false)
   const [draftDeliveryNotes, setDraftDeliveryNotes] = useState<Array<{ id: string; number: string; total: string; line_count: number }>>([])
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [activeTab, setActiveTab] = useState<ActiveTab>('related')
   const [emailForm, setEmailForm] = useState({
     recipientEmail: '',
@@ -172,6 +174,13 @@ export function InvoiceDetailPage() {
     void queryClient.invalidateQueries({ queryKey: ['credit-notes'] })
   }
 
+  const handlePaymentSuccess = () => {
+    setShowPaymentModal(false)
+    void queryClient.invalidateQueries({ queryKey: ['document', 'invoice', id] })
+    void queryClient.invalidateQueries({ queryKey: ['documents'] })
+    void queryClient.invalidateQueries({ queryKey: ['payments'] })
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -185,7 +194,7 @@ export function InvoiceDetailPage() {
 
   if (error || !invoice) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="py-6">
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <p className="text-red-800">{t('common.errorLoadingData')}</p>
         </div>
@@ -199,6 +208,9 @@ export function InvoiceDetailPage() {
   const outstandingAmount = parseFloat(invoice.outstanding_amount || invoice.balance_due || '0')
   const isPaid = invoice.payment_status === 'paid' || outstandingAmount === 0
 
+  const isConfirmedOrPosted = invoice.status === 'confirmed' || isPosted
+  const canRecordPayment = isConfirmedOrPosted && !isPaid && outstandingAmount > 0
+
   // Calculate amounts for OutstandingAmountSection
   const total = parseFloat(invoice.total || '0')
   const amountPaid = parseFloat(invoice.amount_paid || '0')
@@ -207,7 +219,7 @@ export function InvoiceDetailPage() {
   const creditNotesApplied = Math.max(0, total - outstandingAmount - amountPaid)
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="py-6">
       {/* Header */}
       <div className="mb-6">
         <Link
@@ -233,7 +245,7 @@ export function InvoiceDetailPage() {
               }`}>
                 {t(`documents.statuses.${invoice.status}`)}
               </span>
-              {isPosted && invoice.payment_status && (
+              {isConfirmedOrPosted && invoice.payment_status && (
                 <>
                   <PaymentStatusBadge status={invoice.payment_status as any} />
                   {!isPaid && (
@@ -242,10 +254,12 @@ export function InvoiceDetailPage() {
                       {t('sales:invoices.outstandingAmount')}: {formatCurrency(outstandingAmount, { currency: currentCompany?.currency ?? 'EUR' })}
                     </span>
                   )}
-                  <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-800">
-                    <Lock className="h-4 w-4" />
-                    {t('invoices.fiscallySealed')}
-                  </span>
+                  {isPosted && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-800">
+                      <Lock className="h-4 w-4" />
+                      {t('invoices.fiscallySealed')}
+                    </span>
+                  )}
                 </>
               )}
             </div>
@@ -257,7 +271,7 @@ export function InvoiceDetailPage() {
             isActionPending={isActionPending}
             onConfirm={() => setConfirmAction('confirm')}
             onPost={() => setConfirmAction('post')}
-            onRecordPayment={() => navigate(`/treasury/payments/new?invoice=${invoice.id}`)}
+            onRecordPayment={canRecordPayment ? () => setShowPaymentModal(true) : undefined}
             onCreateCreditNote={() => setShowCreditNoteForm(true)}
             onDownloadPdf={handleDownloadPdf}
             onPreviewPdf={handlePreviewPdf}
@@ -303,7 +317,7 @@ export function InvoiceDetailPage() {
                 {t('documents.customer')}
               </dt>
               <dd className="mt-1 text-sm text-gray-900">
-                {invoice.partner?.name || '-'}
+                {invoice.partner_name || '-'}
               </dd>
             </div>
 
@@ -420,28 +434,28 @@ export function InvoiceDetailPage() {
               {t('documents.attachments')}
             </button>
             {isPosted && (
-              <>
-                <button
-                  onClick={() => setActiveTab('creditNotes')}
-                  className={`${
-                    activeTab === 'creditNotes'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-                >
-                  {t('invoices.creditNotes')} {creditNotes.length > 0 && `(${creditNotes.length})`}
-                </button>
-                <button
-                  onClick={() => setActiveTab('payments')}
-                  className={`${
-                    activeTab === 'payments'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-                >
-                  {t('invoices.paymentHistory')}
-                </button>
-              </>
+              <button
+                onClick={() => setActiveTab('creditNotes')}
+                className={`${
+                  activeTab === 'creditNotes'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+              >
+                {t('invoices.creditNotes')} {creditNotes.length > 0 && `(${creditNotes.length})`}
+              </button>
+            )}
+            {isConfirmedOrPosted && (
+              <button
+                onClick={() => setActiveTab('payments')}
+                className={`${
+                  activeTab === 'payments'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+              >
+                {t('invoices.paymentHistory')}
+              </button>
             )}
           </nav>
         </div>
@@ -452,7 +466,7 @@ export function InvoiceDetailPage() {
           {activeTab === 'creditNotes' && isPosted && (
             <CreditNoteList creditNotes={creditNotes} invoiceId={invoice.id} />
           )}
-          {activeTab === 'payments' && isPosted && (
+          {activeTab === 'payments' && isConfirmedOrPosted && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2">
                 <PaymentHistorySection
@@ -518,6 +532,23 @@ export function InvoiceDetailPage() {
             />
           </div>
         </div>
+      )}
+
+      {/* Record Payment Modal */}
+      {invoice.partner_id && (
+        <RecordPaymentModal
+          isOpen={showPaymentModal}
+          onClose={() => setShowPaymentModal(false)}
+          onSuccess={handlePaymentSuccess}
+          prefill={{
+            partner_id: invoice.partner_id,
+            partner_name: invoice.partner_name || '',
+            amount: outstandingAmount,
+            reference: invoice.document_number,
+            document_id: invoice.id,
+            document_type: 'invoice',
+          }}
+        />
       )}
 
       {/* Email Modal */}

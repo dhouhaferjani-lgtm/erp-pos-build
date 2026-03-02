@@ -7,6 +7,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/molecules
 import { tokens } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 import { apiGet } from '@/lib/api'
+import { useCurrency } from '@/hooks/useCurrency'
 
 /**
  * Product Info Modal Props
@@ -123,6 +124,7 @@ export function ProductInfoModal({
   touchOptimized = false,
 }: ProductInfoModalProps) {
   const { t, i18n } = useTranslation(['pos', 'products', 'common'])
+  const { currency } = useCurrency()
   const [activeTab, setActiveTab] = useState('details')
 
   // Fetch product details
@@ -267,7 +269,7 @@ export function ProductInfoModal({
                     <div>
                       <p className="text-xs text-gray-500">{t('pos:productInfo.fields.price')}</p>
                       <p className="text-lg font-bold text-gray-900">
-                        {product.sale_price ? `${product.sale_price} TND` : 'N/A'}
+                        {product.sale_price ? `${product.sale_price} ${currency}` : 'N/A'}
                       </p>
                     </div>
                     {product.tax_rate && (
