@@ -5,15 +5,19 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Document\Domain\Document;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\Services\PaymentRefundService;
+use App\Modules\Treasury\Domain\Services\VendorRefundService;
+use App\Modules\Treasury\Presentation\Requests\RefundPrepaymentRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class PaymentRefundController extends Controller
 {
     public function __construct(
-        private readonly PaymentRefundService $refundService
+        private readonly PaymentRefundService $refundService,
+        private readonly VendorRefundService $vendorRefundService,
     ) {}
 
     /**
@@ -145,6 +149,44 @@ class PaymentRefundController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'error' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Refund a prepayment on a Purchase Order.
+     */
+    public function refundPrepayment(RefundPrepaymentRequest $request, string $documentId): JsonResponse
+    {
+        /** @var Document $document */
+        $document = Document::findOrFail($documentId);
+
+        try {
+            /** @var numeric-string $amount */
+            $amount = (string) $request->validated('amount');
+
+            /** @var string|null $userId */
+            $userId = $request->user()?->id !== null ? (string) $request->user()->id : null;
+
+            $refund = $this->vendorRefundService->refundPrepayment(
+                po: $document,
+                amount: $amount,
+                paymentMethodId: (string) $request->validated('payment_method_id'),
+                repositoryId: (string) $request->validated('repository_id'),
+                reason: $request->validated('reason'),
+                userId: $userId,
+            );
+
+            return response()->json([
+                'data' => $refund->load(['partner', 'paymentMethod', 'allocations']),
+                'message' => 'Prepayment refunded successfully',
+            ], 201);
+        } catch (\DomainException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'REFUND_FAILED',
+                    'message' => $e->getMessage(),
+                ],
             ], 422);
         }
     }

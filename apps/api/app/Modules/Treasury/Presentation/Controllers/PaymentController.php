@@ -8,7 +8,7 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
-use App\Modules\Document\Domain\Events\InvoicePaid;
+use App\Modules\Document\Domain\Events\DocumentFullyPaid;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Application\Services\WithholdingCertificateService;
 use App\Modules\Treasury\Application\Services\PaymentAllocationService;
@@ -195,7 +195,7 @@ class PaymentController extends Controller
             // Create withholding certificate if enabled and document allocated
             if (
                 ($validated['withholding_enabled'] ?? false)
-                && !empty($adjustedAllocations)
+                && ! empty($adjustedAllocations)
             ) {
                 // Get the first document for withholding certificate
                 $firstAllocation = $adjustedAllocations[0];
@@ -256,13 +256,14 @@ class PaymentController extends Controller
 
                 $document->save();
 
-                // Dispatch InvoicePaid event when document is fully paid
+                // Dispatch DocumentFullyPaid event when document is fully paid
                 if ($document->status === DocumentStatus::Paid) {
-                    event(new InvoicePaid(
-                        invoiceId: $document->id,
+                    event(new DocumentFullyPaid(
+                        documentId: $document->id,
                         tenantId: $tenantId,
                         companyId: $companyId,
                         documentNumber: $document->document_number,
+                        documentType: $document->type->value,
                         partnerId: $document->partner_id,
                         totalPaid: $document->total ?? '0.00',
                         paidAt: now()->toIso8601String(),
@@ -543,12 +544,13 @@ class PaymentController extends Controller
             if (bccomp($newBalance, '0.00', 2) === 0 && $primaryDocument->type->canTransitionToPaid()) {
                 $primaryDocument->status = DocumentStatus::Paid;
 
-                // Dispatch InvoicePaid event
-                event(new InvoicePaid(
-                    invoiceId: $primaryDocument->id,
+                // Dispatch DocumentFullyPaid event
+                event(new DocumentFullyPaid(
+                    documentId: $primaryDocument->id,
                     tenantId: $tenantId,
                     companyId: $companyId,
                     documentNumber: $primaryDocument->document_number,
+                    documentType: $primaryDocument->type->value,
                     partnerId: $primaryDocument->partner_id,
                     totalPaid: $primaryDocument->total ?? '0.00',
                     paidAt: now()->toIso8601String(),
@@ -608,6 +610,17 @@ class PaymentController extends Controller
                         $targetDoc->balance_due = $newTargetBalance;
                         if (bccomp($newTargetBalance, '0.00', 2) === 0 && $targetDoc->type->canTransitionToPaid()) {
                             $targetDoc->status = DocumentStatus::Paid;
+
+                            event(new DocumentFullyPaid(
+                                documentId: $targetDoc->id,
+                                tenantId: $tenantId,
+                                companyId: $companyId,
+                                documentNumber: $targetDoc->document_number,
+                                documentType: $targetDoc->type->value,
+                                partnerId: $targetDoc->partner_id,
+                                totalPaid: $targetDoc->total ?? '0.00',
+                                paidAt: now()->toIso8601String(),
+                            ));
                         }
                         $targetDoc->save();
 
@@ -650,6 +663,17 @@ class PaymentController extends Controller
                         $targetDoc->balance_due = $newTargetBalance;
                         if (bccomp($newTargetBalance, '0.00', 2) === 0 && $targetDoc->type->canTransitionToPaid()) {
                             $targetDoc->status = DocumentStatus::Paid;
+
+                            event(new DocumentFullyPaid(
+                                documentId: $targetDoc->id,
+                                tenantId: $tenantId,
+                                companyId: $companyId,
+                                documentNumber: $targetDoc->document_number,
+                                documentType: $targetDoc->type->value,
+                                partnerId: $targetDoc->partner_id,
+                                totalPaid: $targetDoc->total ?? '0.00',
+                                paidAt: now()->toIso8601String(),
+                            ));
                         }
                         $targetDoc->save();
 

@@ -128,6 +128,11 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:payments.view')
         ->name('payments.refund-history');
 
+    // Document Prepayment Refund
+    Route::post('/documents/{document}/refund-prepayment', [PaymentRefundController::class, 'refundPrepayment'])
+        ->middleware('can:payments.void')
+        ->name('documents.refund-prepayment');
+
     // Multi-Payment Operations
     Route::post('/documents/{document}/split-payment', [MultiPaymentController::class, 'createSplitPayment'])
         ->middleware('can:payments.create')

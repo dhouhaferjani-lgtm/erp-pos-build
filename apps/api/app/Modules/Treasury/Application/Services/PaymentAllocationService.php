@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Events\DocumentFullyPaid;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
@@ -79,6 +80,8 @@ class PaymentAllocationService
         $result = DB::transaction(function () use ($payment, $preview) {
             $createdAllocations = [];
             $totalAllocated = '0.0000';
+            /** @var array<int, array{documentId: string, tenantId: string, companyId: string, documentNumber: string, documentType: string, partnerId: string, totalPaid: string, paidAt: string}> $fullyPaidDocuments */
+            $fullyPaidDocuments = [];
 
             foreach ($preview['allocations'] as $allocation) {
                 // Lock the document for update to prevent concurrent modifications
@@ -132,6 +135,16 @@ class PaymentAllocationService
                 // (balance_due was just updated by trigger)
                 if (bccomp($document->balance_due, '0.00', 2) === 0 && $document->type->canTransitionToPaid()) {
                     $document->status = DocumentStatus::Paid;
+                    $fullyPaidDocuments[] = [
+                        'documentId' => $document->id,
+                        'tenantId' => $payment->tenant_id,
+                        'companyId' => $payment->company_id,
+                        'documentNumber' => $document->document_number,
+                        'documentType' => $document->type->value,
+                        'partnerId' => $document->partner_id,
+                        'totalPaid' => $document->total ?? '0.00',
+                        'paidAt' => now()->toIso8601String(),
+                    ];
                 }
 
                 $document->save();
@@ -236,6 +249,7 @@ class PaymentAllocationService
                 'advance_journal_entry_id' => $advanceJournalEntryId,
                 'excess_amount' => $excessAmount,
                 'total_allocated' => $totalAllocated,
+                'fully_paid_documents' => $fullyPaidDocuments,
             ];
         });
 
@@ -250,6 +264,20 @@ class PaymentAllocationService
             excessAmount: $result['excess_amount'],
             allocatedAt: now()->toIso8601String(),
         ));
+
+        // Dispatch DocumentFullyPaid for each document that transitioned to Paid
+        foreach ($result['fully_paid_documents'] as $paidDoc) {
+            event(new DocumentFullyPaid(
+                documentId: $paidDoc['documentId'],
+                tenantId: $paidDoc['tenantId'],
+                companyId: $paidDoc['companyId'],
+                documentNumber: $paidDoc['documentNumber'],
+                documentType: $paidDoc['documentType'],
+                partnerId: $paidDoc['partnerId'],
+                totalPaid: $paidDoc['totalPaid'],
+                paidAt: $paidDoc['paidAt'],
+            ));
+        }
 
         return $result;
     }

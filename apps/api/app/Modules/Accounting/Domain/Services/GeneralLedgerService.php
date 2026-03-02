@@ -306,6 +306,74 @@ final class GeneralLedgerService
     }
 
     /**
+     * Reverse a supplier advance (vendor prepayment refund).
+     *
+     * When a PO prepayment is refunded, this reverses the original advance:
+     * Original: Dr Supplier Advance / Cr Bank (asset increased, cash decreased)
+     * Reversal: Dr Bank / Cr Supplier Advance (cash returned, asset decreased)
+     */
+    public function reverseSupplierAdvanceJournalEntry(
+        string $companyId,
+        string $partnerId,
+        string $refundId,
+        string $amount,
+        string $paymentMethodAccountId,
+        \DateTimeInterface $date,
+        ?string $description = null
+    ): JournalEntry {
+        $advanceAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::SupplierAdvance);
+
+        $entry = DB::transaction(function () use (
+            $companyId, $partnerId, $refundId, $amount, $paymentMethodAccountId,
+            $date, $description, $advanceAccount
+        ): JournalEntry {
+            $entryNumber = $this->generateEntryNumber($companyId);
+
+            $company = \App\Modules\Company\Domain\Company::findOrFail($companyId);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $company->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => $date,
+                'description' => $description ?? 'Supplier advance refund',
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'supplier_advance_refund',
+                'source_id' => $refundId,
+            ]);
+
+            // Debit: Bank/Cash (money returned to company)
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $paymentMethodAccountId,
+                'partner_id' => null,
+                'debit' => $amount,
+                'credit' => '0.00',
+                'description' => 'Refund from supplier',
+                'line_order' => 0,
+            ]);
+
+            // Credit: Supplier Advance (reduce the advance asset)
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $advanceAccount->id,
+                'partner_id' => $partnerId,
+                'debit' => '0.00',
+                'credit' => $amount,
+                'description' => 'Supplier advance reversed',
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+
+        // Refresh partner cached balance after GL write
+        $this->partnerBalanceService->refreshPartnerBalance($companyId, $partnerId);
+
+        return $entry;
+    }
+
+    /**
      * Create journal entry for supplier invoice (purchase).
      *
      * Debit: Expense/Asset account
@@ -809,10 +877,6 @@ final class GeneralLedgerService
      * POS payments are DIRECT TO REVENUE (no AR account).
      * Debit: Cash/Bank Account (from payment repository's GL account)
      * Credit: Revenue Account (ProductRevenue system purpose)
-     *
-     * @param  \App\Modules\Treasury\Domain\Payment  $payment
-     * @param  \App\Modules\POS\Domain\Receipt  $receipt
-     * @param  \App\Modules\Treasury\Domain\PaymentRepository  $repository
      */
     public function createPOSPaymentEntry(
         \App\Modules\Treasury\Domain\Payment $payment,
