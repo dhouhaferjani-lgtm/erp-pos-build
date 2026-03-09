@@ -24,7 +24,7 @@ final class DocumentLineData extends Data
         public ?string $notes,
     ) {}
 
-    public static function fromModel(DocumentLine $line): self
+    public static function fromModel(DocumentLine $line, int $scale = 3): self
     {
         return new self(
             id: $line->id,
@@ -32,12 +32,12 @@ final class DocumentLineData extends Data
             product_id: $line->product_id,
             line_number: $line->line_number,
             description: $line->description,
-            quantity: number_format((float) $line->quantity, 2, '.', ''),
-            unit_price: number_format((float) $line->unit_price, 2, '.', ''),
+            quantity: number_format((float) $line->quantity, $scale, '.', ''),
+            unit_price: number_format((float) $line->unit_price, $scale, '.', ''),
             discount_percent: $line->discount_percent !== null ? number_format((float) $line->discount_percent, 2, '.', '') : null,
-            discount_amount: $line->discount_amount !== null ? number_format((float) $line->discount_amount, 2, '.', '') : null,
+            discount_amount: $line->discount_amount !== null ? number_format((float) $line->discount_amount, $scale, '.', '') : null,
             tax_rate: $line->tax_rate !== null ? number_format((float) $line->tax_rate, 2, '.', '') : null,
-            line_total: number_format((float) $line->line_total, 2, '.', ''),
+            line_total: number_format((float) $line->line_total, $scale, '.', ''),
             notes: $line->notes,
         );
     }

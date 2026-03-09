@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\InvoicePosted;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -27,7 +28,13 @@ final class PostCOGSOnInvoice
 {
     public function __construct(
         private readonly GeneralLedgerService $glService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Handle the InvoicePosted event.
@@ -78,7 +85,7 @@ final class PostCOGSOnInvoice
                     $qty = $item['quantity'];
                     /** @var numeric-string $cost */
                     $cost = $item['unit_cost'];
-                    $totalCogs = bcadd($totalCogs, bcmul($qty, $cost, 2), 2);
+                    $totalCogs = bcadd($totalCogs, bcmul($qty, $cost, $this->scale()), $this->scale());
                 }
 
                 Log::info('PostCOGSOnInvoice: COGS entry created', [
@@ -127,7 +134,7 @@ final class PostCOGSOnInvoice
             $unitCost = $product->cost_price ?? '0.00';
 
             // Skip if no cost (shouldn't happen but safety check)
-            if (bccomp($unitCost, '0.00', 2) <= 0) {
+            if (bccomp($unitCost, '0.00', $this->scale()) <= 0) {
                 Log::debug('PostCOGSOnInvoice: Skipping product with zero cost', [
                     'product_id' => $product->id,
                     'product_name' => $product->name,

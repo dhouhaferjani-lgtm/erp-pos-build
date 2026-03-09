@@ -38,7 +38,7 @@ class Plan extends Model
     {
         return [
             'limits' => 'array',
-            'price_monthly' => 'decimal:2',
+            'price_monthly' => 'decimal:3',
             'is_active' => 'boolean',
             'created_at' => 'datetime',
         ];

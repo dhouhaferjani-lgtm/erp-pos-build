@@ -89,7 +89,7 @@ class PaymentInstrument extends Model
     protected function casts(): array
     {
         return [
-            'amount' => 'decimal:2',
+            'amount' => 'decimal:3',
             'received_date' => 'date',
             'maturity_date' => 'date',
             'expiry_date' => 'date',

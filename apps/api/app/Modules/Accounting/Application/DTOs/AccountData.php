@@ -24,7 +24,7 @@ final class AccountData extends Data
         public string $updated_at,
     ) {}
 
-    public static function fromModel(Account $account): self
+    public static function fromModel(Account $account, int $scale = 3): self
     {
         return new self(
             id: $account->id,
@@ -36,7 +36,7 @@ final class AccountData extends Data
             description: $account->description,
             is_active: $account->is_active,
             is_system: $account->is_system,
-            balance: number_format((float) $account->balance, 2, '.', ''),
+            balance: number_format((float) $account->balance, $scale, '.', ''),
             created_at: $account->created_at?->toIso8601String() ?? '',
             updated_at: $account->updated_at?->toIso8601String() ?? '',
         );

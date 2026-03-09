@@ -4,9 +4,18 @@ declare(strict_types=1);
 
 namespace App\Modules\Accounting\Domain\Services;
 
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
+
 final class DoubleEntryValidator
 {
-    private const SCALE = 2;
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Check if journal entry lines are balanced (total debits = total credits).
@@ -28,11 +37,11 @@ final class DoubleEntryValidator
             /** @var numeric-string $credit */
             $credit = $line['credit'];
 
-            $totalDebits = bcadd($totalDebits, $debit, self::SCALE);
-            $totalCredits = bcadd($totalCredits, $credit, self::SCALE);
+            $totalDebits = bcadd($totalDebits, $debit, $this->scale());
+            $totalCredits = bcadd($totalCredits, $credit, $this->scale());
         }
 
-        return bccomp($totalDebits, $totalCredits, self::SCALE) === 0;
+        return bccomp($totalDebits, $totalCredits, $this->scale()) === 0;
     }
 
     /**
@@ -49,8 +58,8 @@ final class DoubleEntryValidator
             /** @var numeric-string $credit */
             $credit = $line['credit'];
 
-            $hasDebit = bccomp($debit, '0.00', self::SCALE) > 0;
-            $hasCredit = bccomp($credit, '0.00', self::SCALE) > 0;
+            $hasDebit = bccomp($debit, '0.00', $this->scale()) > 0;
+            $hasCredit = bccomp($credit, '0.00', $this->scale()) > 0;
 
             // Line must have exactly one of debit or credit (XOR)
             if ($hasDebit === $hasCredit) {

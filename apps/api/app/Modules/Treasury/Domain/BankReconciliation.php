@@ -68,10 +68,10 @@ class BankReconciliation extends Model
     {
         return [
             'statement_date' => 'date',
-            'opening_balance' => 'decimal:2',
-            'closing_balance' => 'decimal:2',
-            'statement_balance' => 'decimal:2',
-            'difference' => 'decimal:2',
+            'opening_balance' => 'decimal:3',
+            'closing_balance' => 'decimal:3',
+            'statement_balance' => 'decimal:3',
+            'difference' => 'decimal:3',
             'status' => ReconciliationStatus::class,
             'completed_at' => 'datetime',
         ];

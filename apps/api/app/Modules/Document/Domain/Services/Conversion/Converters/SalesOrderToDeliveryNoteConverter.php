@@ -14,6 +14,7 @@ use App\Modules\Document\Domain\Services\Conversion\Concerns\CopiesDocumentData;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterInterface;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -52,6 +53,7 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
     public function __construct(
         protected readonly DocumentNumberingService $numberingService,
         private readonly FEFOInventoryService $fefoService,
+        protected readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     public function sourceType(): DocumentType
@@ -273,10 +275,10 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
 
                 if (! $result->fullyFulfilled) {
                     throw new \DomainException(
-                        "Insufficient batch stock for product '{$product->name}'. " .
-                        "Required: {$line->quantity}, Available from non-expired batches: " .
-                        number_format($result->getSuggestedQuantity(), 4) .
-                        '. Shortfall: ' . number_format($result->shortfall, 4)
+                        "Insufficient batch stock for product '{$product->name}'. ".
+                        "Required: {$line->quantity}, Available from non-expired batches: ".
+                        number_format($result->getSuggestedQuantity(), 4).
+                        '. Shortfall: '.number_format($result->shortfall, 4)
                     );
                 }
 
@@ -288,7 +290,7 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
                     // Calculate proportional line total
                     /** @var numeric-string $unitPrice */
                     $unitPrice = (string) $line->unit_price;
-                    $lineTotal = bcmul($batchQty, $unitPrice, 2);
+                    $lineTotal = bcmul($batchQty, $unitPrice, $this->scale());
 
                     DocumentLine::create([
                         'id' => Str::uuid()->toString(),
@@ -377,8 +379,8 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
 
                 if (! $result->fullyFulfilled) {
                     throw new \DomainException(
-                        "Insufficient batch stock for product '{$product->name}'. " .
-                        "Required: {$qtyToDeliver}, Available: " .
+                        "Insufficient batch stock for product '{$product->name}'. ".
+                        "Required: {$qtyToDeliver}, Available: ".
                         number_format($result->getSuggestedQuantity(), 4)
                     );
                 }
@@ -390,14 +392,14 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
 
                     /** @var numeric-string $unitPrice */
                     $unitPrice = (string) $line->unit_price;
-                    $lineTotal = bcmul($batchQty, $unitPrice, 2);
+                    $lineTotal = bcmul($batchQty, $unitPrice, $this->scale());
 
                     // Apply discount if any
                     if ($line->discount_percent !== null && $line->discount_percent !== '0.00') {
                         /** @var numeric-string $discountPercent */
                         $discountPercent = (string) $line->discount_percent;
-                        $discount = bcmul($lineTotal, bcdiv($discountPercent, '100', 4), 2);
-                        $lineTotal = bcsub($lineTotal, $discount, 2);
+                        $discount = bcmul($lineTotal, bcdiv($discountPercent, '100', 4), $this->scale());
+                        $lineTotal = bcsub($lineTotal, $discount, $this->scale());
                     }
 
                     DocumentLine::create([
@@ -424,22 +426,22 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
                 // Calculate line total based on partial quantity
                 /** @var numeric-string $unitPrice */
                 $unitPrice = (string) $line->unit_price;
-                $lineTotal = bcmul($qtyToDeliver, $unitPrice, 2);
+                $lineTotal = bcmul($qtyToDeliver, $unitPrice, $this->scale());
 
                 // Apply discount if any
                 if ($line->discount_percent !== null && $line->discount_percent !== '0.00') {
                     /** @var numeric-string $discountPercent */
                     $discountPercent = (string) $line->discount_percent;
-                    $discount = bcmul($lineTotal, bcdiv($discountPercent, '100', 4), 2);
-                    $lineTotal = bcsub($lineTotal, $discount, 2);
+                    $discount = bcmul($lineTotal, bcdiv($discountPercent, '100', 4), $this->scale());
+                    $lineTotal = bcsub($lineTotal, $discount, $this->scale());
                 } elseif ($line->discount_amount !== null && $line->discount_amount !== '0.00') {
                     /** @var numeric-string $lineQty */
                     $lineQty = (string) $line->quantity;
                     /** @var numeric-string $discountAmt */
                     $discountAmt = (string) $line->discount_amount;
                     $qtyRatio = bcdiv($qtyToDeliver, $lineQty, 4);
-                    $proratedDiscount = bcmul($discountAmt, $qtyRatio, 2);
-                    $lineTotal = bcsub($lineTotal, $proratedDiscount, 2);
+                    $proratedDiscount = bcmul($discountAmt, $qtyRatio, $this->scale());
+                    $lineTotal = bcsub($lineTotal, $proratedDiscount, $this->scale());
                 }
 
                 DocumentLine::create([

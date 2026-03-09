@@ -92,12 +92,12 @@ final class Invoice extends Model
     {
         return [
             'status' => InvoiceStatus::class,
-            'subtotal' => 'decimal:2',
-            'tax_amount' => 'decimal:2',
-            'discount_amount' => 'decimal:2',
-            'total' => 'decimal:2',
-            'amount_paid' => 'decimal:2',
-            'amount_due' => 'decimal:2',
+            'subtotal' => 'decimal:3',
+            'tax_amount' => 'decimal:3',
+            'discount_amount' => 'decimal:3',
+            'total' => 'decimal:3',
+            'amount_paid' => 'decimal:3',
+            'amount_due' => 'decimal:3',
             'tax_rate' => 'decimal:2',
             'billing_address' => 'array',
             'invoice_date' => 'date',

@@ -22,6 +22,7 @@ use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\GoodsReceiptService;
 use App\Modules\Vehicle\Application\Services\VehicleContextBuilder;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -58,7 +59,13 @@ class PurchaseOrderController extends Controller
         private readonly PurchaseOrderService $purchaseOrderService,
         private readonly GoodsReceiptService $goodsReceiptService,
         private readonly VehicleContextBuilder $vehicleContextBuilder,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Get the CompanyContext service.
@@ -99,7 +106,7 @@ class PurchaseOrderController extends Controller
         $paginator = $query->with('vehicleContext')->cursorPaginate($params['per_page'], ['*'], 'cursor', $params['cursor']);
 
         // Transform items
-        $items = collect($paginator->items())->map(fn (Document $doc): DocumentData => DocumentData::fromModel($doc, false))->all();
+        $items = collect($paginator->items())->map(fn (Document $doc): DocumentData => DocumentData::fromModel($doc, false, $this->scale()))->all();
 
         return response()->json([
             'data' => $items,
@@ -130,7 +137,7 @@ class PurchaseOrderController extends Controller
             return $this->notFoundResponse('Purchase order');
         }
 
-        return $this->documentResponse($documentModel);
+        return $this->documentResponse($documentModel, 200, $this->scale());
     }
 
     /**
@@ -181,14 +188,14 @@ class PurchaseOrderController extends Controller
                 /** @var numeric-string $taxRate */
                 $taxRate = (string) ($line['tax_rate'] ?? '0');
 
-                $lineSubtotal = bcmul($quantity, $unitPrice, 2);
-                $lineTax = bcmul($lineSubtotal, bcdiv($taxRate, '100', 4), 2);
+                $lineSubtotal = bcmul($quantity, $unitPrice, $this->scale());
+                $lineTax = bcmul($lineSubtotal, bcdiv($taxRate, '100', 4), $this->scale());
 
-                $subtotal = bcadd($subtotal, $lineSubtotal, 2);
-                $taxAmount = bcadd($taxAmount, $lineTax, 2);
+                $subtotal = bcadd($subtotal, $lineSubtotal, $this->scale());
+                $taxAmount = bcadd($taxAmount, $lineTax, $this->scale());
             }
 
-            $total = bcadd($subtotal, $taxAmount, 2);
+            $total = bcadd($subtotal, $taxAmount, $this->scale());
 
             // Resolve location using LocationContext fallback chain
             $locationId = $this->locationContext->resolveLocationId(
@@ -219,7 +226,7 @@ class PurchaseOrderController extends Controller
                 $quantity = (string) $lineData['quantity'];
                 /** @var numeric-string $unitPrice */
                 $unitPrice = (string) $lineData['unit_price'];
-                $lineTotal = bcmul($quantity, $unitPrice, 2);
+                $lineTotal = bcmul($quantity, $unitPrice, $this->scale());
 
                 DocumentLine::create([
                     'document_id' => $document->id,
@@ -244,7 +251,7 @@ class PurchaseOrderController extends Controller
             /** @var Document $freshDocument */
             $freshDocument = $document->fresh($this->defaultRelations());
 
-            return $this->documentCreatedResponse($freshDocument);
+            return $this->documentCreatedResponse($freshDocument, $this->scale());
         });
     }
 
@@ -316,11 +323,11 @@ class PurchaseOrderController extends Controller
                     /** @var numeric-string $taxRate */
                     $taxRate = (string) ($lineData['tax_rate'] ?? '0');
 
-                    $lineSubtotal = bcmul($quantity, $unitPrice, 2);
-                    $lineTax = bcmul($lineSubtotal, bcdiv($taxRate, '100', 4), 2);
+                    $lineSubtotal = bcmul($quantity, $unitPrice, $this->scale());
+                    $lineTax = bcmul($lineSubtotal, bcdiv($taxRate, '100', 4), $this->scale());
 
-                    $subtotal = bcadd($subtotal, $lineSubtotal, 2);
-                    $taxAmount = bcadd($taxAmount, $lineTax, 2);
+                    $subtotal = bcadd($subtotal, $lineSubtotal, $this->scale());
+                    $taxAmount = bcadd($taxAmount, $lineTax, $this->scale());
 
                     DocumentLine::create([
                         'document_id' => $documentModel->id,
@@ -337,7 +344,7 @@ class PurchaseOrderController extends Controller
                     ]);
                 }
 
-                $total = bcadd($subtotal, $taxAmount, 2);
+                $total = bcadd($subtotal, $taxAmount, $this->scale());
 
                 $documentModel->update([
                     'subtotal' => $subtotal,
@@ -352,7 +359,7 @@ class PurchaseOrderController extends Controller
             /** @var Document $freshDocument */
             $freshDocument = $documentModel->fresh($this->defaultRelations());
 
-            return $this->documentResponse($freshDocument);
+            return $this->documentResponse($freshDocument, 200, $this->scale());
         });
     }
 
@@ -450,7 +457,7 @@ class PurchaseOrderController extends Controller
         /** @var Document $freshDocument */
         $freshDocument = $documentModel->fresh($this->defaultRelations());
 
-        return $this->documentResponse($freshDocument);
+        return $this->documentResponse($freshDocument, 200, $this->scale());
     }
 
     /**
@@ -513,7 +520,7 @@ class PurchaseOrderController extends Controller
             $receiptStatus = $this->goodsReceiptService->getReceiptStatus($updatedDocument);
 
             return response()->json([
-                'data' => DocumentData::fromModel($updatedDocument),
+                'data' => DocumentData::fromModel($updatedDocument, true, $this->scale()),
                 'meta' => [
                     'timestamp' => now()->toIso8601String(),
                     'receipt_status' => $receiptStatus,

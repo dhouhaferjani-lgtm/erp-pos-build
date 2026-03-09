@@ -50,8 +50,8 @@ class JournalLine extends Model
     protected function casts(): array
     {
         return [
-            'debit' => 'decimal:2',
-            'credit' => 'decimal:2',
+            'debit' => 'decimal:3',
+            'credit' => 'decimal:3',
             'line_order' => 'integer',
         ];
     }

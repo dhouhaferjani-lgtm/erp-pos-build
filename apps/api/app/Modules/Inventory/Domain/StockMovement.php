@@ -84,10 +84,10 @@ class StockMovement extends Model
             'quantity' => 'decimal:2',
             'quantity_before' => 'decimal:2',
             'quantity_after' => 'decimal:2',
-            'unit_cost' => 'decimal:2',
-            'total_cost' => 'decimal:2',
-            'avg_cost_before' => 'decimal:2',
-            'avg_cost_after' => 'decimal:2',
+            'unit_cost' => 'decimal:3',
+            'total_cost' => 'decimal:3',
+            'avg_cost_before' => 'decimal:3',
+            'avg_cost_after' => 'decimal:3',
             'is_historical' => 'boolean',
         ];
     }

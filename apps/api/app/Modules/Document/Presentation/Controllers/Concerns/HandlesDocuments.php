@@ -9,8 +9,8 @@ use App\Modules\Document\Application\DTOs\DocumentData;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentVehicleContext;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
-use App\Services\CompanyConfigService;
 use App\Modules\Vehicle\Application\Services\VehicleContextBuilder;
+use App\Services\CompanyConfigService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -51,10 +51,10 @@ trait HandlesDocuments
      *
      * @param  int  $statusCode  HTTP status code (default 200)
      */
-    protected function documentResponse(Document $document, int $statusCode = 200): JsonResponse
+    protected function documentResponse(Document $document, int $statusCode = 200, int $scale = 3): JsonResponse
     {
         return response()->json([
-            'data' => DocumentData::fromModel($document),
+            'data' => DocumentData::fromModel($document, true, $scale),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
             ],
@@ -64,9 +64,9 @@ trait HandlesDocuments
     /**
      * Format a Document model as a created response (201).
      */
-    protected function documentCreatedResponse(Document $document): JsonResponse
+    protected function documentCreatedResponse(Document $document, int $scale = 3): JsonResponse
     {
-        return $this->documentResponse($document, 201);
+        return $this->documentResponse($document, 201, $scale);
     }
 
     /**

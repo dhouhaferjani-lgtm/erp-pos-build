@@ -63,11 +63,11 @@ class Reward extends Model
     {
         return [
             'reward_type' => RewardType::class,
-            'points_cost' => 'decimal:2',
-            'reward_value' => 'decimal:2',
+            'points_cost' => 'decimal:3',
+            'reward_value' => 'decimal:3',
             'qualifying_items' => 'array',
-            'max_discount' => 'decimal:2',
-            'min_order_value' => 'decimal:2',
+            'max_discount' => 'decimal:3',
+            'min_order_value' => 'decimal:3',
             'tier_ids' => 'array',
             'is_active' => 'boolean',
             'start_date' => 'datetime',

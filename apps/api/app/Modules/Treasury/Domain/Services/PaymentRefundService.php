@@ -7,11 +7,21 @@ namespace App\Modules\Treasury\Domain\Services;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class PaymentRefundService
 {
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
+
     /**
      * Refund a completed payment.
      *
@@ -47,7 +57,7 @@ class PaymentRefundService
                 'payment_method_id' => $payment->payment_method_id,
                 'instrument_id' => $payment->instrument_id,
                 'repository_id' => $payment->repository_id,
-                'amount' => bcmul($payment->amount, '-1', 2), // Negative amount
+                'amount' => bcmul($payment->amount, '-1', $this->scale()), // Negative amount
                 'currency' => $payment->currency,
                 'payment_date' => now(),
                 'status' => PaymentStatus::Completed,
@@ -64,7 +74,7 @@ class PaymentRefundService
                     'id' => Str::uuid()->toString(),
                     'payment_id' => $refund->id,
                     'document_id' => $allocation->document_id,
-                    'amount' => bcmul($allocation->amount, '-1', 2), // Negative amount
+                    'amount' => bcmul($allocation->amount, '-1', $this->scale()), // Negative amount
                     'notes' => "Refund allocation for {$allocation->document_id}",
                 ]);
             }
@@ -93,11 +103,11 @@ class PaymentRefundService
         }
 
         // Validate refund amount
-        if (bccomp($amount, '0', 2) <= 0) {
+        if (bccomp($amount, '0', $this->scale()) <= 0) {
             throw new \InvalidArgumentException('Refund amount must be greater than zero');
         }
 
-        if (bccomp($amount, $payment->amount, 2) > 0) {
+        if (bccomp($amount, $payment->amount, $this->scale()) > 0) {
             throw new \InvalidArgumentException('Refund amount cannot exceed original payment amount');
         }
 
@@ -111,7 +121,7 @@ class PaymentRefundService
                 'payment_method_id' => $payment->payment_method_id,
                 'instrument_id' => $payment->instrument_id,
                 'repository_id' => $payment->repository_id,
-                'amount' => bcmul($amount, '-1', 2), // Negative amount
+                'amount' => bcmul($amount, '-1', $this->scale()), // Negative amount
                 'currency' => $payment->currency,
                 'payment_date' => now(),
                 'status' => PaymentStatus::Completed,
@@ -153,14 +163,14 @@ class PaymentRefundService
         foreach ($refunds as $refund) {
             // Remove leading minus sign to get absolute value (stays as string for bcmath)
             $absAmount = ltrim((string) $refund->amount, '-');
-            $totalRefunded = bcadd($totalRefunded, $absAmount, 2);
+            $totalRefunded = bcadd($totalRefunded, $absAmount, $this->scale());
         }
 
         return [
             'original_amount' => $payment->amount,
             'total_refunded' => $totalRefunded,
-            'remaining_amount' => bcsub($payment->amount, $totalRefunded, 2),
-            'is_fully_refunded' => bccomp($totalRefunded, $payment->amount, 2) >= 0,
+            'remaining_amount' => bcsub($payment->amount, $totalRefunded, $this->scale()),
+            'is_fully_refunded' => bccomp($totalRefunded, $payment->amount, $this->scale()) >= 0,
             'refund_count' => $refunds->count(),
             'refunds' => $refunds,
         ];
@@ -214,7 +224,7 @@ class PaymentRefundService
         /** @var Payment|null $refund */
         $refund = Payment::where('tenant_id', $payment->tenant_id)
             ->where('partner_id', $payment->partner_id)
-            ->where('amount', bcmul($payment->amount, '-1', 2))
+            ->where('amount', bcmul($payment->amount, '-1', $this->scale()))
             ->where('reference', 'like', '%'.$payment->reference.'%')
             ->where('status', PaymentStatus::Completed)
             ->first();

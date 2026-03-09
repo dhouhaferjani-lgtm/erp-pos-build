@@ -13,6 +13,7 @@ use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Shared\Contracts\AccountingServiceInterface;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use DateTimeInterface;
 
 /**
@@ -25,7 +26,13 @@ final class AccountingService implements AccountingServiceInterface
     public function __construct(
         private readonly GeneralLedgerHashService $hashService,
         private readonly PartnerBalanceService $partnerBalanceService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Find an account ID by code.
@@ -137,7 +144,7 @@ final class AccountingService implements AccountingServiceInterface
             'journal_entry_id' => $entry->id,
             'account_id' => $arAccount->id,
             'debit' => $invoice->total,
-            'credit' => '0.00',
+            'credit' => '0',
             'description' => 'AR from Invoice '.$invoice->document_number,
         ]);
 
@@ -153,7 +160,7 @@ final class AccountingService implements AccountingServiceInterface
             JournalLine::create([
                 'journal_entry_id' => $entry->id,
                 'account_id' => $revenueAccount->id,
-                'debit' => '0.00',
+                'debit' => '0',
                 'credit' => $line->line_total,
                 'description' => 'Revenue from Invoice '.$invoice->document_number.' - Line '.$line->line_number,
             ]);
@@ -162,11 +169,11 @@ final class AccountingService implements AccountingServiceInterface
         // 3. Create VAT credit lines (grouped by tax rate)
         $taxByRate = $this->groupTaxByRate($invoice->lines);
         foreach ($taxByRate as $rate => $amount) {
-            if (bccomp($amount, '0.00', 2) > 0) {
+            if (bccomp($amount, '0', $this->scale()) > 0) {
                 JournalLine::create([
                     'journal_entry_id' => $entry->id,
                     'account_id' => $vatCollectedAccount->id,
-                    'debit' => '0.00',
+                    'debit' => '0',
                     'credit' => $amount,
                     'description' => 'VAT '.$rate.'% from Invoice '.$invoice->document_number,
                 ]);
@@ -252,7 +259,7 @@ final class AccountingService implements AccountingServiceInterface
         JournalLine::create([
             'journal_entry_id' => $entry->id,
             'account_id' => $arAccount->id,
-            'debit' => '0.00',
+            'debit' => '0',
             'credit' => $creditNote->total,
             'description' => 'AR reversal from Credit Note '.$creditNote->document_number,
         ]);
@@ -270,7 +277,7 @@ final class AccountingService implements AccountingServiceInterface
                 'journal_entry_id' => $entry->id,
                 'account_id' => $revenueAccount->id,
                 'debit' => $line->line_total,
-                'credit' => '0.00',
+                'credit' => '0',
                 'description' => 'Revenue reversal from Credit Note '.$creditNote->document_number.' - Line '.$line->line_number,
             ]);
         }
@@ -278,12 +285,12 @@ final class AccountingService implements AccountingServiceInterface
         // 3. Create VAT debit lines (grouped by tax rate) - REVERSED from invoice
         $taxByRate = $this->groupTaxByRate($creditNote->lines);
         foreach ($taxByRate as $rate => $amount) {
-            if (bccomp($amount, '0.00', 2) > 0) {
+            if (bccomp($amount, '0', $this->scale()) > 0) {
                 JournalLine::create([
                     'journal_entry_id' => $entry->id,
                     'account_id' => $vatCollectedAccount->id,
                     'debit' => $amount,
-                    'credit' => '0.00',
+                    'credit' => '0',
                     'description' => 'VAT reversal '.$rate.'% from Credit Note '.$creditNote->document_number,
                 ]);
             }
@@ -373,21 +380,21 @@ final class AccountingService implements AccountingServiceInterface
         $taxByRate = [];
 
         foreach ($lines as $line) {
-            $taxRate = $line->tax_rate ?? '0.00';
+            $taxRate = $line->tax_rate ?? '0';
 
             // Calculate tax amount for this line
             $taxAmount = bcmul(
                 $line->line_total,
                 bcdiv($taxRate, '100', 4),
-                2
+                $this->scale()
             );
 
             // Add to the rate's total
             if (! isset($taxByRate[$taxRate])) {
-                $taxByRate[$taxRate] = '0.00';
+                $taxByRate[$taxRate] = '0';
             }
 
-            $taxByRate[$taxRate] = bcadd($taxByRate[$taxRate], $taxAmount, 2);
+            $taxByRate[$taxRate] = bcadd($taxByRate[$taxRate], $taxAmount, $this->scale());
         }
 
         return $taxByRate;
@@ -402,12 +409,12 @@ final class AccountingService implements AccountingServiceInterface
     private function dispatchJournalEntryCreatedEvent(JournalEntry $entry, string $entryType): void
     {
         // Calculate total debits and credits from lines
-        $totalDebit = '0.00';
-        $totalCredit = '0.00';
+        $totalDebit = '0';
+        $totalCredit = '0';
 
         foreach ($entry->lines as $line) {
-            $totalDebit = bcadd($totalDebit, $line->debit, 2);
-            $totalCredit = bcadd($totalCredit, $line->credit, 2);
+            $totalDebit = bcadd($totalDebit, $line->debit, $this->scale());
+            $totalCredit = bcadd($totalCredit, $line->credit, $this->scale());
         }
 
         event(new JournalEntryCreated(

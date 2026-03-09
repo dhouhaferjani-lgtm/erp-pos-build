@@ -23,6 +23,7 @@ use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Vehicle\Application\Services\VehicleContextBuilder;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -60,7 +61,13 @@ class InvoiceController extends Controller
         private readonly DeliveryNoteService $deliveryNoteService,
         private readonly TaxCalculationService $taxCalculationService,
         private readonly VehicleContextBuilder $vehicleContextBuilder,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Get the CompanyContext service.
@@ -101,7 +108,7 @@ class InvoiceController extends Controller
         $paginator = $query->with('vehicleContext')->cursorPaginate($params['per_page'], ['*'], 'cursor', $params['cursor']);
 
         // Transform items
-        $items = collect($paginator->items())->map(fn (Document $doc): DocumentData => DocumentData::fromModel($doc, false))->all();
+        $items = collect($paginator->items())->map(fn (Document $doc): DocumentData => DocumentData::fromModel($doc, false, $this->scale()))->all();
 
         return response()->json([
             'data' => $items,
@@ -132,7 +139,7 @@ class InvoiceController extends Controller
             return $this->notFoundResponse('Invoice');
         }
 
-        return $this->documentResponse($documentModel);
+        return $this->documentResponse($documentModel, 200, $this->scale());
     }
 
     /**
@@ -183,14 +190,14 @@ class InvoiceController extends Controller
                 /** @var numeric-string $taxRate */
                 $taxRate = (string) ($line['tax_rate'] ?? '0');
 
-                $lineSubtotal = bcmul($quantity, $unitPrice, 2);
-                $lineTax = bcmul($lineSubtotal, bcdiv($taxRate, '100', 4), 2);
+                $lineSubtotal = bcmul($quantity, $unitPrice, $this->scale());
+                $lineTax = bcmul($lineSubtotal, bcdiv($taxRate, '100', 4), $this->scale());
 
-                $subtotal = bcadd($subtotal, $lineSubtotal, 2);
-                $taxAmount = bcadd($taxAmount, $lineTax, 2);
+                $subtotal = bcadd($subtotal, $lineSubtotal, $this->scale());
+                $taxAmount = bcadd($taxAmount, $lineTax, $this->scale());
             }
 
-            $total = bcadd($subtotal, $taxAmount, 2);
+            $total = bcadd($subtotal, $taxAmount, $this->scale());
 
             // Resolve location using LocationContext fallback chain
             $locationId = $this->locationContext->resolveLocationId(
@@ -221,7 +228,7 @@ class InvoiceController extends Controller
                 $quantity = (string) $lineData['quantity'];
                 /** @var numeric-string $unitPrice */
                 $unitPrice = (string) $lineData['unit_price'];
-                $lineTotal = bcmul($quantity, $unitPrice, 2);
+                $lineTotal = bcmul($quantity, $unitPrice, $this->scale());
 
                 DocumentLine::create([
                     'document_id' => $document->id,
@@ -246,7 +253,7 @@ class InvoiceController extends Controller
             /** @var Document $freshDocument */
             $freshDocument = $document->fresh($this->defaultRelations());
 
-            return $this->documentCreatedResponse($freshDocument);
+            return $this->documentCreatedResponse($freshDocument, $this->scale());
         });
     }
 
@@ -318,11 +325,11 @@ class InvoiceController extends Controller
                     /** @var numeric-string $taxRate */
                     $taxRate = (string) ($lineData['tax_rate'] ?? '0');
 
-                    $lineSubtotal = bcmul($quantity, $unitPrice, 2);
-                    $lineTax = bcmul($lineSubtotal, bcdiv($taxRate, '100', 4), 2);
+                    $lineSubtotal = bcmul($quantity, $unitPrice, $this->scale());
+                    $lineTax = bcmul($lineSubtotal, bcdiv($taxRate, '100', 4), $this->scale());
 
-                    $subtotal = bcadd($subtotal, $lineSubtotal, 2);
-                    $taxAmount = bcadd($taxAmount, $lineTax, 2);
+                    $subtotal = bcadd($subtotal, $lineSubtotal, $this->scale());
+                    $taxAmount = bcadd($taxAmount, $lineTax, $this->scale());
 
                     DocumentLine::create([
                         'document_id' => $documentModel->id,
@@ -339,7 +346,7 @@ class InvoiceController extends Controller
                     ]);
                 }
 
-                $total = bcadd($subtotal, $taxAmount, 2);
+                $total = bcadd($subtotal, $taxAmount, $this->scale());
 
                 $documentModel->update([
                     'subtotal' => $subtotal,
@@ -354,7 +361,7 @@ class InvoiceController extends Controller
             /** @var Document $freshDocument */
             $freshDocument = $documentModel->fresh($this->defaultRelations());
 
-            return $this->documentResponse($freshDocument);
+            return $this->documentResponse($freshDocument, 200, $this->scale());
         });
     }
 
@@ -465,7 +472,7 @@ class InvoiceController extends Controller
         /** @var Document $freshDocument */
         $freshDocument = $documentModel->fresh($this->defaultRelations());
 
-        return $this->documentResponse($freshDocument);
+        return $this->documentResponse($freshDocument, 200, $this->scale());
     }
 
     /**
@@ -526,7 +533,7 @@ class InvoiceController extends Controller
             $freshDocument = $this->postingService->post($documentModel);
 
             return response()->json([
-                'data' => DocumentData::fromModel($freshDocument),
+                'data' => DocumentData::fromModel($freshDocument, true, $this->scale()),
                 'meta' => [
                     'timestamp' => now()->toIso8601String(),
                     'fiscal_hash' => $freshDocument->fiscal_hash,
@@ -622,7 +629,7 @@ class InvoiceController extends Controller
                 $postedInvoice = $this->postingService->post($documentModel);
 
                 return response()->json([
-                    'data' => DocumentData::fromModel($postedInvoice),
+                    'data' => DocumentData::fromModel($postedInvoice, true, $this->scale()),
                     'meta' => [
                         'timestamp' => now()->toIso8601String(),
                         'invoice_fiscal_hash' => $postedInvoice->fiscal_hash,

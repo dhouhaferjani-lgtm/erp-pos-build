@@ -72,7 +72,7 @@ final class TenantSubscription extends Model
     {
         return [
             'status' => SubscriptionStatus::class,
-            'price' => 'decimal:2',
+            'price' => 'decimal:3',
             'trial_ends_at' => 'datetime',
             'current_period_start' => 'datetime',
             'current_period_end' => 'date',

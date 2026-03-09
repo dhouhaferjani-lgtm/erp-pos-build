@@ -88,13 +88,13 @@ class DocumentLine extends Model
             'quantity' => 'decimal:4',
             'quantity_delivered' => 'decimal:4',
             'quantity_received' => 'decimal:4',
-            'unit_price' => 'decimal:2',
+            'unit_price' => 'decimal:3',
             'discount_percent' => 'decimal:2',
-            'discount_amount' => 'decimal:2',
+            'discount_amount' => 'decimal:3',
             'tax_rate' => 'decimal:2',
-            'line_total' => 'decimal:2',
-            'allocated_costs' => 'decimal:2',
-            'landed_unit_cost' => 'decimal:2',
+            'line_total' => 'decimal:3',
+            'allocated_costs' => 'decimal:3',
+            'landed_unit_cost' => 'decimal:3',
         ];
     }
 
@@ -176,16 +176,16 @@ class DocumentLine extends Model
     /**
      * Calculate the line total
      */
-    public function calculateTotal(): string
+    public function calculateTotal(int $scale = 3): string
     {
-        $subtotal = bcmul($this->quantity, $this->unit_price, 2);
+        $subtotal = bcmul($this->quantity, $this->unit_price, $scale);
 
         // Apply discount if any
-        if ($this->discount_percent !== null && $this->discount_percent !== '0.00') {
-            $discount = bcmul($subtotal, bcdiv($this->discount_percent, '100', 4), 2);
-            $subtotal = bcsub($subtotal, $discount, 2);
-        } elseif ($this->discount_amount !== null && $this->discount_amount !== '0.00') {
-            $subtotal = bcsub($subtotal, $this->discount_amount, 2);
+        if ($this->discount_percent !== null && bccomp($this->discount_percent, '0', 4) !== 0) {
+            $discount = bcmul($subtotal, bcdiv($this->discount_percent, '100', 4), $scale);
+            $subtotal = bcsub($subtotal, $discount, $scale);
+        } elseif ($this->discount_amount !== null && bccomp($this->discount_amount, '0', $scale) !== 0) {
+            $subtotal = bcsub($subtotal, $this->discount_amount, $scale);
         }
 
         return $subtotal;

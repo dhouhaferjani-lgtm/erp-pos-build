@@ -63,12 +63,12 @@ final class InvoiceItem extends Model
     {
         return [
             'quantity' => 'decimal:2',
-            'unit_price' => 'decimal:2',
-            'amount' => 'decimal:2',
+            'unit_price' => 'decimal:3',
+            'amount' => 'decimal:3',
             'tax_rate' => 'decimal:2',
-            'tax_amount' => 'decimal:2',
+            'tax_amount' => 'decimal:3',
             'discount_percent' => 'decimal:2',
-            'discount_amount' => 'decimal:2',
+            'discount_amount' => 'decimal:3',
             'period_start' => 'date',
             'period_end' => 'date',
             'sort_order' => 'integer',

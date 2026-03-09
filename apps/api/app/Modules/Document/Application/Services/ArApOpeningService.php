@@ -16,6 +16,7 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Partner\Domain\Partner;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -37,11 +38,15 @@ use RuntimeException;
  */
 class ArApOpeningService
 {
-    private const SCALE = 2;
-
     public function __construct(
-        private readonly OpeningBalanceBatchService $batchService
+        private readonly OpeningBalanceBatchService $batchService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Validate all import rows in an AR or AP opening batch.
@@ -65,8 +70,8 @@ class ArApOpeningService
             $validationResults[$row->id] = $result;
 
             if ($result['valid']) {
-                $totalAmount = bcadd($totalAmount, $result['mapped_data']['total'] ?? '0.00', self::SCALE);
-                $totalOpenAmount = bcadd($totalOpenAmount, $result['mapped_data']['open_amount'] ?? '0.00', self::SCALE);
+                $totalAmount = bcadd($totalAmount, $result['mapped_data']['total'] ?? '0.00', $this->scale());
+                $totalOpenAmount = bcadd($totalOpenAmount, $result['mapped_data']['open_amount'] ?? '0.00', $this->scale());
             } else {
                 $errors[$row->id] = $result['errors'];
             }
@@ -181,25 +186,25 @@ class ArApOpeningService
 
         // Validate total amount
         $total = $rawData['total'] ?? '0.00';
-        if (! is_numeric($total) || bccomp((string) $total, '0.00', self::SCALE) <= 0) {
+        if (! is_numeric($total) || bccomp((string) $total, '0.00', $this->scale()) <= 0) {
             $errors['total'] = ['Total amount must be a positive number'];
         } else {
-            $mappedData['total'] = bcadd('0.00', (string) $total, self::SCALE);
+            $mappedData['total'] = bcadd('0.00', (string) $total, $this->scale());
         }
 
         // Validate open amount
         $openAmount = $rawData['open_amount'] ?? '0.00';
-        if (! is_numeric($openAmount) || bccomp((string) $openAmount, '0.00', self::SCALE) < 0) {
+        if (! is_numeric($openAmount) || bccomp((string) $openAmount, '0.00', $this->scale()) < 0) {
             $errors['open_amount'] = ['Open amount must be a non-negative number'];
         } else {
-            $mappedData['open_amount'] = bcadd('0.00', (string) $openAmount, self::SCALE);
+            $mappedData['open_amount'] = bcadd('0.00', (string) $openAmount, $this->scale());
         }
 
         // Validate open_amount <= total
         if (empty($errors['total']) && empty($errors['open_amount'])) {
             $openAmountVal = $mappedData['open_amount'] ?? '0.00';
             $totalVal = $mappedData['total'] ?? '0.00';
-            if (bccomp($openAmountVal, $totalVal, self::SCALE) > 0) {
+            if (bccomp($openAmountVal, $totalVal, $this->scale()) > 0) {
                 $errors['open_amount'] = ['Open amount cannot exceed total amount'];
             }
         }
@@ -309,8 +314,8 @@ class ArApOpeningService
                     'type' => $docType->value,
                 ];
 
-                $totalAmount = bcadd($totalAmount, $mappedData['total'], self::SCALE);
-                $totalOpenAmount = bcadd($totalOpenAmount, $mappedData['open_amount'], self::SCALE);
+                $totalAmount = bcadd($totalAmount, $mappedData['total'], $this->scale());
+                $totalOpenAmount = bcadd($totalOpenAmount, $mappedData['open_amount'], $this->scale());
                 $rowEntityMap[$row->id] = $document->id;
             }
 
@@ -366,13 +371,13 @@ class ArApOpeningService
 
         $totalAmount = $documents->reduce(
             /** @phpstan-ignore argument.type */
-            fn (string $carry, array $doc): string => bcadd($carry, (string) $doc['total'], self::SCALE),
+            fn (string $carry, array $doc): string => bcadd($carry, (string) $doc['total'], $this->scale()),
             '0.00'
         );
 
         $totalOpenAmount = $documents->reduce(
             /** @phpstan-ignore argument.type */
-            fn (string $carry, array $doc): string => bcadd($carry, (string) $doc['open_amount'], self::SCALE),
+            fn (string $carry, array $doc): string => bcadd($carry, (string) $doc['open_amount'], $this->scale()),
             '0.00'
         );
 

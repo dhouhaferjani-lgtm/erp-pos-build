@@ -58,7 +58,7 @@ final class Refund extends Model
     {
         return [
             'status' => PaymentStatus::class,
-            'amount' => 'decimal:2',
+            'amount' => 'decimal:3',
             'refunded_at' => 'datetime',
             'metadata' => 'array',
         ];

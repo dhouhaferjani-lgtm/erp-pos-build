@@ -58,9 +58,9 @@ class Enrollment extends Model
     protected function casts(): array
     {
         return [
-            'current_balance' => 'decimal:2',
-            'lifetime_earned' => 'decimal:2',
-            'lifetime_redeemed' => 'decimal:2',
+            'current_balance' => 'decimal:3',
+            'lifetime_earned' => 'decimal:3',
+            'lifetime_redeemed' => 'decimal:3',
             'tier_qualified_at' => 'datetime',
             'tier_changed_at' => 'datetime',
             'status' => EnrollmentStatus::class,

@@ -15,6 +15,7 @@ use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Events\PaymentAllocated;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -23,8 +24,14 @@ class PaymentAllocationService
 {
     public function __construct(
         private PaymentToleranceService $toleranceService,
-        private GeneralLedgerService $glService
+        private GeneralLedgerService $glService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Preview how a payment will be allocated
@@ -133,7 +140,7 @@ class PaymentAllocationService
 
                 // Update document status to Paid if fully paid (only for types that support it)
                 // (balance_due was just updated by trigger)
-                if (bccomp($document->balance_due, '0.00', 2) === 0 && $document->type->canTransitionToPaid()) {
+                if (bccomp($document->balance_due, '0.00', $this->scale()) === 0 && $document->type->canTransitionToPaid()) {
                     $document->status = DocumentStatus::Paid;
                     $fullyPaidDocuments[] = [
                         'documentId' => $document->id,
@@ -161,14 +168,14 @@ class PaymentAllocationService
                     /** @var Document $doc */
                     $doc = Document::find($allocation['document_id']);
                     if ($doc && $doc->type === DocumentType::SalesOrder) {
-                        $allocatedToOrders = bcadd($allocatedToOrders, $allocation['amount'], 2);
+                        $allocatedToOrders = bcadd($allocatedToOrders, $allocation['amount'], $this->scale());
                     } else {
-                        $allocatedToInvoices = bcadd($allocatedToInvoices, $allocation['amount'], 2);
+                        $allocatedToInvoices = bcadd($allocatedToInvoices, $allocation['amount'], $this->scale());
                     }
                 }
 
                 // Create regular payment entry for invoice allocations
-                if (bccomp($allocatedToInvoices, '0', 2) > 0) {
+                if (bccomp($allocatedToInvoices, '0', $this->scale()) > 0) {
                     $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
                         companyId: $payment->company_id,
                         partnerId: $payment->partner_id,
@@ -189,7 +196,7 @@ class PaymentAllocationService
                 // Create advance entry for sales order allocations (prepayments)
                 /** @var User|null $user */
                 $user = Auth::user();
-                if (bccomp($allocatedToOrders, '0', 2) > 0 && $user instanceof User) {
+                if (bccomp($allocatedToOrders, '0', $this->scale()) > 0 && $user instanceof User) {
                     $advanceEntry = $this->glService->createCustomerAdvanceJournalEntry(
                         companyId: $payment->company_id,
                         partnerId: $payment->partner_id,
@@ -225,7 +232,7 @@ class PaymentAllocationService
                         companyId: $payment->company_id,
                         partnerId: $payment->partner_id,
                         advanceId: $payment->id,
-                        amount: bcsub($excessAmount, '0', 2), // Format to 2 decimal places
+                        amount: bcsub($excessAmount, '0', $this->scale()), // Format to currency scale
                         paymentMethodAccountId: $payment->repository->account_id,
                         date: $payment->payment_date,
                         user: $user,

@@ -7,6 +7,7 @@ namespace App\Modules\Inventory\Application\Services;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Taxation\Domain\DTOs\TaxCalculationResult;
 use App\Modules\Taxation\Domain\Enums\TaxApplicationLevel;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -20,6 +21,15 @@ use Illuminate\Support\Facades\DB;
  */
 class LandedCostService
 {
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
+
     /**
      * Allocate additional costs to purchase order lines proportionally by value
      *
@@ -36,14 +46,14 @@ class LandedCostService
             foreach ($lines as $line) {
                 if ($subtotal > 0 && $additionalCostsTotal > 0) {
                     $proportion = (float) $line->line_total / $subtotal;
-                    $allocatedCost = round($additionalCostsTotal * $proportion, 2);
+                    $allocatedCost = round($additionalCostsTotal * $proportion, $this->scale());
                 } else {
                     $allocatedCost = 0;
                 }
 
                 $line->allocated_costs = (string) $allocatedCost;
                 $line->landed_unit_cost = (float) $line->quantity > 0
-                    ? (string) round(((float) $line->line_total + $allocatedCost) / (float) $line->quantity, 2)
+                    ? (string) round(((float) $line->line_total + $allocatedCost) / (float) $line->quantity, $this->scale())
                     : $line->unit_price;
                 $line->save();
             }
@@ -100,7 +110,7 @@ class LandedCostService
 
                 // Allocate additional costs proportionally
                 $allocatedCost = $additionalCostsTotal > 0
-                    ? round($additionalCostsTotal * $proportion, 3)
+                    ? round($additionalCostsTotal * $proportion, $this->scale())
                     : 0;
 
                 // Calculate line-specific non-recoverable tax (VAT based on line's tax_rate)
@@ -127,7 +137,7 @@ class LandedCostService
 
                 // Allocate proportional share of document-level non-recoverable taxes
                 $allocatedDocumentTax = $nonRecoverableDocumentTaxTotal > 0
-                    ? round($nonRecoverableDocumentTaxTotal * $proportion, 3)
+                    ? round($nonRecoverableDocumentTaxTotal * $proportion, $this->scale())
                     : 0;
 
                 // Total non-recoverable tax for this line
@@ -136,12 +146,12 @@ class LandedCostService
 
                 // Update line
                 $line->allocated_costs = (string) $allocatedCost;
-                $line->non_recoverable_tax = (string) round($totalLineTax, 3);
+                $line->non_recoverable_tax = (string) round($totalLineTax, $this->scale());
 
                 // Calculate landed unit cost: (line_total + allocated_costs + non_recoverable_tax) / quantity
                 $totalCost = (float) $line->line_total + $allocatedCost + $totalLineTax;
                 $line->landed_unit_cost = (float) $line->quantity > 0
-                    ? (string) round($totalCost / (float) $line->quantity, 3)
+                    ? (string) round($totalCost / (float) $line->quantity, $this->scale())
                     : $line->unit_price;
 
                 $line->save();
@@ -152,7 +162,7 @@ class LandedCostService
                 'payload' => array_merge($purchaseOrder->payload ?? [], [
                     'costs_allocated_at' => now()->toDateTimeString(),
                     'costs_allocated_total' => (string) $additionalCostsTotal,
-                    'non_recoverable_tax_total' => (string) round($totalNonRecoverableTax, 3),
+                    'non_recoverable_tax_total' => (string) round($totalNonRecoverableTax, $this->scale()),
                 ]),
             ]);
         });
@@ -173,14 +183,14 @@ class LandedCostService
             foreach ($lines as $line) {
                 if ($subtotal > 0 && $additionalCostsTotal > 0) {
                     $proportion = (float) $line->line_total / $subtotal;
-                    $allocatedCost = round($additionalCostsTotal * $proportion, 2);
+                    $allocatedCost = round($additionalCostsTotal * $proportion, $this->scale());
                 } else {
                     $allocatedCost = 0;
                 }
 
                 $line->allocated_costs = (string) $allocatedCost;
                 $line->landed_unit_cost = (float) $line->quantity > 0
-                    ? (string) round(((float) $line->line_total + $allocatedCost) / (float) $line->quantity, 2)
+                    ? (string) round(((float) $line->line_total + $allocatedCost) / (float) $line->quantity, $this->scale())
                     : $line->unit_price;
                 $line->save();
             }
@@ -231,7 +241,7 @@ class LandedCostService
 
         $proportion = $lineTotal / $subtotal;
 
-        return round($additionalCostsTotal * $proportion, 2);
+        return round($additionalCostsTotal * $proportion, $this->scale());
     }
 
     /**
@@ -252,7 +262,7 @@ class LandedCostService
             return 0;
         }
 
-        return round(($lineTotal + $allocatedCost + $nonRecoverableTax) / $quantity, 3);
+        return round(($lineTotal + $allocatedCost + $nonRecoverableTax) / $quantity, $this->scale());
     }
 
     /**

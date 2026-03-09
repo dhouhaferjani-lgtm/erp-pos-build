@@ -19,6 +19,7 @@ use App\Modules\Treasury\Domain\Events\PaymentRecorded;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -31,7 +32,13 @@ class PaymentController extends Controller
         private readonly GeneralLedgerService $glService,
         private readonly PaymentAllocationService $allocationService,
         private readonly WithholdingCertificateService $withholdingService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     public function index(Request $request): JsonResponse
     {
@@ -117,10 +124,10 @@ class PaymentController extends Controller
         foreach ($allocations as $allocation) {
             /** @var numeric-string $allocationAmt */
             $allocationAmt = (string) $allocation['amount'];
-            $totalAllocated = bcadd($totalAllocated, $allocationAmt, 2);
+            $totalAllocated = bcadd($totalAllocated, $allocationAmt, $this->scale());
         }
 
-        if (bccomp($totalAllocated, $paymentAmount, 2) > 0) {
+        if (bccomp($totalAllocated, $paymentAmount, $this->scale()) > 0) {
             return response()->json([
                 'error' => [
                     'code' => 'ALLOCATION_EXCEEDS_PAYMENT',
@@ -144,11 +151,11 @@ class PaymentController extends Controller
 
             // Cap allocation at document balance (can't overpay a single invoice)
             /** @var numeric-string $allocationAmount */
-            $allocationAmount = bccomp($requestedAmount, $balanceDue, 2) > 0
+            $allocationAmount = bccomp($requestedAmount, $balanceDue, $this->scale()) > 0
                 ? $balanceDue
                 : $requestedAmount;
 
-            if (bccomp($allocationAmount, '0', 2) > 0) {
+            if (bccomp($allocationAmount, '0', $this->scale()) > 0) {
                 $adjustedAllocations[] = [
                     'document_id' => $document->id,
                     'amount' => $allocationAmount,
@@ -241,16 +248,16 @@ class PaymentController extends Controller
                     'amount' => $allocationAmount,
                 ]);
 
-                $totalAllocatedForGL = bcadd($totalAllocatedForGL, $allocationAmount, 2);
+                $totalAllocatedForGL = bcadd($totalAllocatedForGL, $allocationAmount, $this->scale());
 
                 // Update document balance
                 /** @var numeric-string $currentBalance */
                 $currentBalance = $document->balance_due ?? $document->total;
-                $newBalance = bcsub($currentBalance, $allocationAmount, 2);
+                $newBalance = bcsub($currentBalance, $allocationAmount, $this->scale());
                 $document->balance_due = $newBalance;
 
                 // Mark as paid if fully paid (only for document types that support paid status)
-                if (bccomp($newBalance, '0.00', 2) === 0 && $document->type->canTransitionToPaid()) {
+                if (bccomp($newBalance, '0.00', $this->scale()) === 0 && $document->type->canTransitionToPaid()) {
                     $document->status = DocumentStatus::Paid;
                 }
 
@@ -284,12 +291,12 @@ class PaymentController extends Controller
                     // Increment repository balance by payment amount
                     /** @var numeric-string $currentBalance */
                     $currentBalance = $repository->balance ?? '0.00';
-                    $repository->balance = bcadd($currentBalance, $paymentAmount, 2);
+                    $repository->balance = bcadd($currentBalance, $paymentAmount, $this->scale());
                     $repository->save();
                 }
             }
 
-            if ($repositoryId && bccomp($totalAllocatedForGL, '0', 2) > 0) {
+            if ($repositoryId && bccomp($totalAllocatedForGL, '0', $this->scale()) > 0) {
                 // Ensure repository is loaded if not already
                 $repository = $repository ?? PaymentRepository::find($repositoryId);
 
@@ -312,9 +319,9 @@ class PaymentController extends Controller
 
             // Handle excess amount as customer advance
             /** @var numeric-string $excessAmount */
-            $excessAmount = bcsub($paymentAmount, $totalAllocatedForGL, 2);
+            $excessAmount = bcsub($paymentAmount, $totalAllocatedForGL, $this->scale());
 
-            if (bccomp($excessAmount, '0', 2) > 0 && $repositoryId) {
+            if (bccomp($excessAmount, '0', $this->scale()) > 0 && $repositoryId) {
                 /** @var PaymentRepository|null $foundRepository */
                 $foundRepository = PaymentRepository::find($repositoryId);
                 $repository = $repository ?? $foundRepository;
@@ -333,7 +340,7 @@ class PaymentController extends Controller
                     );
 
                     // Update payment type to indicate partial advance
-                    if (bccomp($totalAllocatedForGL, '0', 2) > 0) {
+                    if (bccomp($totalAllocatedForGL, '0', $this->scale()) > 0) {
                         // Has both allocated and excess - keep as DocumentPayment
                         // The advance portion is tracked via GL
                     } else {
@@ -392,13 +399,13 @@ class PaymentController extends Controller
         /** @var numeric-string $totalPaymentAmount */
         $totalPaymentAmount = '0.00';
         foreach ($validated['payments'] as $paymentLine) {
-            $totalPaymentAmount = bcadd($totalPaymentAmount, (string) $paymentLine['amount'], 2);
+            $totalPaymentAmount = bcadd($totalPaymentAmount, (string) $paymentLine['amount'], $this->scale());
         }
 
         // Calculate excess amount
         /** @var numeric-string $excessAmount */
-        $excessAmount = bcsub($totalPaymentAmount, $documentBalance, 2);
-        if (bccomp($excessAmount, '0', 2) < 0) {
+        $excessAmount = bcsub($totalPaymentAmount, $documentBalance, $this->scale());
+        if (bccomp($excessAmount, '0', $this->scale()) < 0) {
             $excessAmount = '0.00';
         }
 
@@ -406,15 +413,15 @@ class PaymentController extends Controller
         $excessAllocationMethod = $validated['excess_allocation_method'] ?? 'advance';
         $excessAllocations = $validated['excess_allocations'] ?? [];
 
-        if ($excessAllocationMethod === 'manual' && bccomp($excessAmount, '0', 2) > 0) {
+        if ($excessAllocationMethod === 'manual' && bccomp($excessAmount, '0', $this->scale()) > 0) {
             /** @var numeric-string $totalManualAllocation */
             $totalManualAllocation = '0.00';
             foreach ($excessAllocations as $allocation) {
-                $totalManualAllocation = bcadd($totalManualAllocation, (string) $allocation['amount'], 2);
+                $totalManualAllocation = bcadd($totalManualAllocation, (string) $allocation['amount'], $this->scale());
             }
 
             // Manual allocations + advance can be less than or equal to excess
-            if (bccomp($totalManualAllocation, $excessAmount, 2) > 0) {
+            if (bccomp($totalManualAllocation, $excessAmount, $this->scale()) > 0) {
                 return response()->json([
                     'error' => [
                         'code' => 'EXCESS_ALLOCATION_EXCEEDS_AMOUNT',
@@ -445,7 +452,7 @@ class PaymentController extends Controller
 
             // Calculate amount to allocate to primary document
             /** @var numeric-string $primaryAllocationAmount */
-            $primaryAllocationAmount = bccomp($totalPaymentAmount, $documentBalance, 2) >= 0
+            $primaryAllocationAmount = bccomp($totalPaymentAmount, $documentBalance, $this->scale()) >= 0
                 ? $documentBalance
                 : $totalPaymentAmount;
 
@@ -459,7 +466,7 @@ class PaymentController extends Controller
                 $lineAmount = (string) $paymentLine['amount'];
 
                 // Determine payment type
-                $paymentType = bccomp($remainingPrimaryAllocation, '0', 2) > 0
+                $paymentType = bccomp($remainingPrimaryAllocation, '0', $this->scale()) > 0
                     ? PaymentType::DocumentPayment
                     : PaymentType::Advance;
 
@@ -493,18 +500,18 @@ class PaymentController extends Controller
 
                 // Allocate to primary document
                 /** @var numeric-string $allocationForThisPayment */
-                $allocationForThisPayment = bccomp($lineAmount, $remainingPrimaryAllocation, 2) >= 0
+                $allocationForThisPayment = bccomp($lineAmount, $remainingPrimaryAllocation, $this->scale()) >= 0
                     ? $remainingPrimaryAllocation
                     : $lineAmount;
 
-                if (bccomp($allocationForThisPayment, '0', 2) > 0) {
+                if (bccomp($allocationForThisPayment, '0', $this->scale()) > 0) {
                     PaymentAllocation::create([
                         'payment_id' => $payment->id,
                         'document_id' => $primaryDocument->id,
                         'amount' => $allocationForThisPayment,
                     ]);
 
-                    $remainingPrimaryAllocation = bcsub($remainingPrimaryAllocation, $allocationForThisPayment, 2);
+                    $remainingPrimaryAllocation = bcsub($remainingPrimaryAllocation, $allocationForThisPayment, $this->scale());
                 }
 
                 // Update repository balance
@@ -515,11 +522,11 @@ class PaymentController extends Controller
                     if ($repository) {
                         /** @var numeric-string $currentBalance */
                         $currentBalance = $repository->balance ?? '0.00';
-                        $repository->balance = bcadd($currentBalance, $lineAmount, 2);
+                        $repository->balance = bcadd($currentBalance, $lineAmount, $this->scale());
                         $repository->save();
 
                         // Create GL entry for allocated portion
-                        if (bccomp($allocationForThisPayment, '0', 2) > 0 && $repository->account_id) {
+                        if (bccomp($allocationForThisPayment, '0', $this->scale()) > 0 && $repository->account_id) {
                             $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
                                 companyId: $companyId,
                                 partnerId: $validated['partner_id'],
@@ -539,9 +546,9 @@ class PaymentController extends Controller
             }
 
             // Update primary document balance
-            $newBalance = bcsub($documentBalance, $primaryAllocationAmount, 2);
+            $newBalance = bcsub($documentBalance, $primaryAllocationAmount, $this->scale());
             $primaryDocument->balance_due = $newBalance;
-            if (bccomp($newBalance, '0.00', 2) === 0 && $primaryDocument->type->canTransitionToPaid()) {
+            if (bccomp($newBalance, '0.00', $this->scale()) === 0 && $primaryDocument->type->canTransitionToPaid()) {
                 $primaryDocument->status = DocumentStatus::Paid;
 
                 // Dispatch DocumentFullyPaid event
@@ -566,7 +573,7 @@ class PaymentController extends Controller
                 'allocations' => [],
             ];
 
-            if (bccomp($excessAmount, '0', 2) > 0) {
+            if (bccomp($excessAmount, '0', $this->scale()) > 0) {
                 // Find the last payment to use for excess allocation
                 $lastPayment = end($createdPayments);
 
@@ -606,9 +613,9 @@ class PaymentController extends Controller
                         // Update target document balance
                         /** @var numeric-string $targetBalance */
                         $targetBalance = $targetDoc->balance_due ?? $targetDoc->total;
-                        $newTargetBalance = bcsub($targetBalance, $allocAmount, 2);
+                        $newTargetBalance = bcsub($targetBalance, $allocAmount, $this->scale());
                         $targetDoc->balance_due = $newTargetBalance;
-                        if (bccomp($newTargetBalance, '0.00', 2) === 0 && $targetDoc->type->canTransitionToPaid()) {
+                        if (bccomp($newTargetBalance, '0.00', $this->scale()) === 0 && $targetDoc->type->canTransitionToPaid()) {
                             $targetDoc->status = DocumentStatus::Paid;
 
                             event(new DocumentFullyPaid(
@@ -659,9 +666,9 @@ class PaymentController extends Controller
                         // Update target document balance
                         /** @var numeric-string $targetBalance */
                         $targetBalance = $targetDoc->balance_due ?? $targetDoc->total;
-                        $newTargetBalance = bcsub($targetBalance, $allocAmount, 2);
+                        $newTargetBalance = bcsub($targetBalance, $allocAmount, $this->scale());
                         $targetDoc->balance_due = $newTargetBalance;
-                        if (bccomp($newTargetBalance, '0.00', 2) === 0 && $targetDoc->type->canTransitionToPaid()) {
+                        if (bccomp($newTargetBalance, '0.00', $this->scale()) === 0 && $targetDoc->type->canTransitionToPaid()) {
                             $targetDoc->status = DocumentStatus::Paid;
 
                             event(new DocumentFullyPaid(
@@ -687,7 +694,7 @@ class PaymentController extends Controller
                     // Any remaining excess becomes customer advance
                     /** @var numeric-string $remainingExcess */
                     $remainingExcess = $preview['excess_amount'];
-                    if (bccomp($remainingExcess, '0', 2) > 0) {
+                    if (bccomp($remainingExcess, '0', $this->scale()) > 0) {
                         $repositoryId = $validated['payments'][count($validated['payments']) - 1]['repository_id'] ?? null;
                         if ($repositoryId) {
                             /** @var PaymentRepository|null $repository */

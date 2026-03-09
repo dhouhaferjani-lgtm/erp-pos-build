@@ -66,12 +66,12 @@ final class DocumentData extends Data
         public string $updated_at,
     ) {}
 
-    public static function fromModel(Document $document, bool $includeLines = true): self
+    public static function fromModel(Document $document, bool $includeLines = true, int $scale = 3): self
     {
         $lines = [];
         if ($includeLines) {
             foreach ($document->lines as $line) {
-                $lines[] = DocumentLineData::fromModel($line);
+                $lines[] = DocumentLineData::fromModel($line, $scale);
             }
         }
 
@@ -83,7 +83,7 @@ final class DocumentData extends Data
                 $payments[] = [
                     'id' => $allocation->id,
                     'payment_id' => $allocation->payment_id,
-                    'amount' => number_format((float) $allocation->amount, 2, '.', ''),
+                    'amount' => number_format((float) $allocation->amount, $scale, '.', ''),
                     'payment_date' => $payment->payment_date->toDateString(),
                     'payment_reference' => $payment->reference,
                     'payment_method' => $payment->paymentMethod->name ?? null,
@@ -154,16 +154,16 @@ final class DocumentData extends Data
             due_date: $document->due_date?->toDateString(),
             valid_until: $document->valid_until?->toDateString(),
             currency: $document->currency,
-            subtotal: $document->subtotal !== null ? number_format((float) $document->subtotal, 2, '.', '') : null,
-            discount_amount: $document->discount_amount !== null ? number_format((float) $document->discount_amount, 2, '.', '') : null,
-            tax_amount: $document->tax_amount !== null ? number_format((float) $document->tax_amount, 2, '.', '') : null,
-            total: $document->total !== null ? number_format($total, 2, '.', '') : null,
-            balance_due: number_format($balanceDue, 2, '.', ''),
+            subtotal: $document->subtotal !== null ? number_format((float) $document->subtotal, $scale, '.', '') : null,
+            discount_amount: $document->discount_amount !== null ? number_format((float) $document->discount_amount, $scale, '.', '') : null,
+            tax_amount: $document->tax_amount !== null ? number_format((float) $document->tax_amount, $scale, '.', '') : null,
+            total: $document->total !== null ? number_format($total, $scale, '.', '') : null,
+            balance_due: number_format($balanceDue, $scale, '.', ''),
             outstanding_amount: $outstandingAmount,
             payment_status: $paymentStatus,
             fulfillment_status: $fulfillmentStatus,
-            amount_paid: number_format($amountPaid, 2, '.', ''),
-            amount_residual: number_format($balanceDue, 2, '.', ''),
+            amount_paid: number_format($amountPaid, $scale, '.', ''),
+            amount_residual: number_format($balanceDue, $scale, '.', ''),
             notes: $document->notes,
             internal_notes: $document->internal_notes,
             reference: $document->reference,

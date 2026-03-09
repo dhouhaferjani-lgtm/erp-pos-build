@@ -88,10 +88,10 @@ final class Payment extends Model
     {
         return [
             'status' => PaymentStatus::class,
-            'amount' => 'decimal:2',
-            'fee' => 'decimal:2',
-            'net_amount' => 'decimal:2',
-            'refunded_amount' => 'decimal:2',
+            'amount' => 'decimal:3',
+            'fee' => 'decimal:3',
+            'net_amount' => 'decimal:3',
+            'refunded_amount' => 'decimal:3',
             'payment_method_details' => 'array',
             'payment_date' => 'date',
             'paid_at' => 'datetime',

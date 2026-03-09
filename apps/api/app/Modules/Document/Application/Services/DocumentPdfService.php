@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Services\CompanyConfigService;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Barryvdh\DomPDF\PDF as DomPdf;
 use Carbon\Carbon;
@@ -17,8 +18,14 @@ use NumberFormatter;
 final class DocumentPdfService
 {
     public function __construct(
-        private readonly CompanyConfigService $configService
+        private readonly CompanyConfigService $configService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Generate PDF for a document.
@@ -165,7 +172,7 @@ final class DocumentPdfService
     private function formatMoney(string|float|null $amount, string $currency, string $locale): string
     {
         if ($amount === null) {
-            return '0.00';
+            return number_format(0, $this->scale(), '.', '');
         }
 
         $amount = is_string($amount) ? (float) $amount : $amount;
@@ -173,7 +180,7 @@ final class DocumentPdfService
         $formatter = new NumberFormatter($locale, NumberFormatter::CURRENCY);
         $result = $formatter->formatCurrency($amount, $currency);
 
-        return $result !== false ? $result : number_format($amount, 2).' '.$currency;
+        return $result !== false ? $result : number_format($amount, $this->scale()).' '.$currency;
     }
 
     /**

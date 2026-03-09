@@ -67,9 +67,9 @@ class Transaction extends Model
     {
         return [
             'transaction_type' => TransactionType::class,
-            'amount' => 'decimal:2',
-            'balance_before' => 'decimal:2',
-            'balance_after' => 'decimal:2',
+            'amount' => 'decimal:3',
+            'balance_before' => 'decimal:3',
+            'balance_after' => 'decimal:3',
             'metadata' => 'array',
             'created_at' => 'datetime',
             'expires_at' => 'datetime',

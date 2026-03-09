@@ -8,8 +8,8 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
-use Illuminate\Database\Eloquent\Builder;
 use Database\Factories\PaymentRepositoryFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -45,6 +45,7 @@ class PaymentRepository extends Model
 {
     /** @use HasFactory<PaymentRepositoryFactory> */
     use HasFactory;
+
     use HasUuids;
 
     protected $table = 'payment_repositories';
@@ -81,8 +82,8 @@ class PaymentRepository extends Model
     {
         return [
             'type' => RepositoryType::class,
-            'balance' => 'decimal:2',
-            'last_reconciled_balance' => 'decimal:2',
+            'balance' => 'decimal:3',
+            'last_reconciled_balance' => 'decimal:3',
             'last_reconciled_at' => 'datetime',
             'is_active' => 'boolean',
         ];

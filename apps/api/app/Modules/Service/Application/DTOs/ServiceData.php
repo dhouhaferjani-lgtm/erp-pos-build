@@ -30,7 +30,7 @@ class ServiceData extends Data
         public ?string $updated_at,
     ) {}
 
-    public static function fromModel(Service $service): self
+    public static function fromModel(Service $service, int $scale = 3): self
     {
         return new self(
             id: $service->id,
@@ -42,10 +42,10 @@ class ServiceData extends Data
                 ? ServiceCategoryData::fromModel($service->category)
                 : null,
             pricing_type: $service->pricing_type,
-            base_price: number_format((float) $service->base_price, 2, '.', ''),
+            base_price: number_format((float) $service->base_price, $scale, '.', ''),
             currency: $service->currency,
             default_duration_minutes: $service->default_duration_minutes,
-            hourly_rate: $service->hourly_rate !== null ? number_format((float) $service->hourly_rate, 2, '.', '') : null,
+            hourly_rate: $service->hourly_rate !== null ? number_format((float) $service->hourly_rate, $scale, '.', '') : null,
             tax_rate: $service->tax_rate !== null ? number_format((float) $service->tax_rate, 2, '.', '') : null,
             is_active: $service->is_active,
             created_at: $service->created_at?->toIso8601String() ?? '',

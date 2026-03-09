@@ -8,11 +8,16 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class MultiPaymentService
 {
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
     /**
      * Create split payment across multiple payment methods
      *
@@ -27,10 +32,10 @@ class MultiPaymentService
         // Validate total matches document balance
         $totalSplit = '0.00';
         foreach ($paymentSplits as $split) {
-            $totalSplit = bcadd($totalSplit, $split['amount'], 2);
+            $totalSplit = bcadd($totalSplit, $split['amount'], $this->scale());
         }
 
-        if (bccomp($totalSplit, $document->balance_due ?? $document->total, 2) !== 0) {
+        if (bccomp($totalSplit, $document->balance_due ?? $document->total, $this->scale()) !== 0) {
             throw new \InvalidArgumentException(
                 'Split payment total must equal document balance'
             );
@@ -100,7 +105,7 @@ class MultiPaymentService
         ?string $notes = null,
         ?string $userId = null
     ): Payment {
-        if (bccomp($amount, '0', 2) <= 0) {
+        if (bccomp($amount, '0', $this->scale()) <= 0) {
             throw new \InvalidArgumentException('Deposit amount must be greater than zero');
         }
 
@@ -150,9 +155,9 @@ class MultiPaymentService
 
         // Check unallocated amount
         $allocatedTotal = $deposit->allocations()->sum('amount');
-        $unallocated = bcsub($deposit->amount, (string) $allocatedTotal, 2);
+        $unallocated = bcsub($deposit->amount, (string) $allocatedTotal, $this->scale());
 
-        if (bccomp($amount, $unallocated, 2) > 0) {
+        if (bccomp($amount, $unallocated, $this->scale()) > 0) {
             throw new \InvalidArgumentException(
                 "Amount exceeds unallocated deposit balance ({$unallocated})"
             );
@@ -167,10 +172,10 @@ class MultiPaymentService
             ]);
 
             // Update document balance
-            $newBalance = bcsub($document->balance_due ?? $document->total, $amount, 2);
+            $newBalance = bcsub($document->balance_due ?? $document->total, $amount, $this->scale());
             $document->update([
                 'balance_due' => $newBalance,
-                'status' => bccomp($newBalance, '0', 2) === 0
+                'status' => bccomp($newBalance, '0', $this->scale()) === 0
                     ? $this->getDocumentStatusAfterPayment($document)
                     : $document->status,
             ]);
@@ -194,10 +199,10 @@ class MultiPaymentService
 
         foreach ($payments as $payment) {
             $allocatedAmount = $payment->allocations->sum('amount');
-            $unallocated = bcsub($payment->amount, (string) $allocatedAmount, 2);
+            $unallocated = bcsub($payment->amount, (string) $allocatedAmount, $this->scale());
 
-            if (bccomp($unallocated, '0', 2) > 0) {
-                $totalUnallocated = bcadd($totalUnallocated, $unallocated, 2);
+            if (bccomp($unallocated, '0', $this->scale()) > 0) {
+                $totalUnallocated = bcadd($totalUnallocated, $unallocated, $this->scale());
             }
         }
 
@@ -219,7 +224,7 @@ class MultiPaymentService
         ?string $notes = null,
         ?string $userId = null
     ): array {
-        if (bccomp($amount, '0', 2) <= 0) {
+        if (bccomp($amount, '0', $this->scale()) <= 0) {
             throw new \InvalidArgumentException('Payment amount must be greater than zero');
         }
 
@@ -287,14 +292,14 @@ class MultiPaymentService
         $totalSplit = '0.00';
 
         foreach ($splits as $split) {
-            if (! isset($split['amount']) || bccomp($split['amount'], '0', 2) <= 0) {
+            if (! isset($split['amount']) || bccomp($split['amount'], '0', $this->scale()) <= 0) {
                 return false;
             }
 
-            $totalSplit = bcadd($totalSplit, $split['amount'], 2);
+            $totalSplit = bcadd($totalSplit, $split['amount'], $this->scale());
         }
 
-        return bccomp($totalSplit, $totalRequired, 2) === 0;
+        return bccomp($totalSplit, $totalRequired, $this->scale()) === 0;
     }
 
     /**
@@ -305,5 +310,10 @@ class MultiPaymentService
         return $document->type->canTransitionToPaid()
             ? \App\Modules\Document\Domain\Enums\DocumentStatus::Paid
             : $document->status;
+    }
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
     }
 }

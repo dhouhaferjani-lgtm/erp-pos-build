@@ -30,6 +30,7 @@ class Country extends Model
         'native_name',
         'currency_code',
         'currency_symbol',
+        'currency_decimal_places',
         'phone_prefix',
         'date_format',
         'default_locale',
@@ -47,6 +48,7 @@ class Country extends Model
     protected function casts(): array
     {
         return [
+            'currency_decimal_places' => 'integer',
             'is_active' => 'boolean',
             'created_at' => 'datetime',
         ];

@@ -79,7 +79,7 @@ class Payment extends Model
     protected function casts(): array
     {
         return [
-            'amount' => 'decimal:2',
+            'amount' => 'decimal:3',
             'payment_date' => 'date',
             'status' => PaymentStatus::class,
             'payment_type' => PaymentType::class,
@@ -205,12 +205,12 @@ class Payment extends Model
     /**
      * Get the unallocated amount.
      */
-    public function getUnallocatedAmount(): string
+    public function getUnallocatedAmount(int $scale = 3): string
     {
         /** @var numeric-string $allocatedAmount */
         $allocatedAmount = $this->getAllocatedAmount();
 
-        return bcsub($this->amount, $allocatedAmount, 2);
+        return bcsub($this->amount, $allocatedAmount, $scale);
     }
 
     /**

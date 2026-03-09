@@ -20,6 +20,7 @@ use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -40,11 +41,20 @@ use RuntimeException;
  */
 class InventoryOpeningService
 {
-    private const SCALE = 2;
-
     public function __construct(
-        private readonly OpeningBalanceBatchService $batchService
+        private readonly OpeningBalanceBatchService $batchService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    private function monetaryScale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
+
+    private function quantityScale(): int
+    {
+        return 2;
+    }
 
     /**
      * Validate all import rows in an inventory opening batch.
@@ -72,9 +82,9 @@ class InventoryOpeningService
                 $lineValue = bcmul(
                     $result['mapped_data']['quantity'] ?? '0.00',
                     $result['mapped_data']['unit_cost'] ?? '0.00',
-                    self::SCALE
+                    $this->monetaryScale()
                 );
-                $totalValue = bcadd($totalValue, $lineValue, self::SCALE);
+                $totalValue = bcadd($totalValue, $lineValue, $this->monetaryScale());
             } else {
                 $errors[$row->id] = $result['errors'];
             }
@@ -153,18 +163,18 @@ class InventoryOpeningService
 
         // Validate quantity
         $quantity = $rawData['quantity'] ?? '0.00';
-        if (! is_numeric($quantity) || bccomp((string) $quantity, '0.00', self::SCALE) <= 0) {
+        if (! is_numeric($quantity) || bccomp((string) $quantity, '0.00', $this->quantityScale()) <= 0) {
             $errors['quantity'] = ['Quantity must be a positive number'];
         } else {
-            $mappedData['quantity'] = bcadd('0.00', (string) $quantity, self::SCALE);
+            $mappedData['quantity'] = bcadd('0.00', (string) $quantity, $this->quantityScale());
         }
 
         // Validate unit cost
         $unitCost = $rawData['unit_cost'] ?? '0.00';
-        if (! is_numeric($unitCost) || bccomp((string) $unitCost, '0.00', self::SCALE) < 0) {
+        if (! is_numeric($unitCost) || bccomp((string) $unitCost, '0.00', $this->monetaryScale()) < 0) {
             $errors['unit_cost'] = ['Unit cost must be a non-negative number'];
         } else {
-            $mappedData['unit_cost'] = bcadd('0.00', (string) $unitCost, self::SCALE);
+            $mappedData['unit_cost'] = bcadd('0.00', (string) $unitCost, $this->monetaryScale());
         }
 
         return [
@@ -225,7 +235,7 @@ class InventoryOpeningService
 
                 $quantity = $mappedData['quantity'] ?? '0.00';
                 $unitCost = $mappedData['unit_cost'] ?? '0.00';
-                $lineValue = bcmul($quantity, $unitCost, self::SCALE);
+                $lineValue = bcmul($quantity, $unitCost, $this->monetaryScale());
 
                 // Get or create stock level (with lock for update)
                 $stockLevel = StockLevel::where('product_id', $mappedData['product_id'])
@@ -234,7 +244,7 @@ class InventoryOpeningService
                     ->first();
 
                 $quantityBefore = $stockLevel !== null ? $stockLevel->quantity : '0.00';
-                $quantityAfter = bcadd($quantityBefore, $quantity, self::SCALE);
+                $quantityAfter = bcadd($quantityBefore, $quantity, $this->quantityScale());
 
                 // Create stock movement
                 $movement = StockMovement::create([
@@ -267,7 +277,7 @@ class InventoryOpeningService
                 }
 
                 // Update product cost_price (simple replacement for opening - no weighted average calculation needed)
-                if (bccomp($unitCost, '0.00', self::SCALE) > 0) {
+                if (bccomp($unitCost, '0.00', $this->monetaryScale()) > 0) {
                     Product::where('id', $mappedData['product_id'])
                         ->update([
                             'cost_price' => $unitCost,
@@ -275,7 +285,7 @@ class InventoryOpeningService
                         ]);
                 }
 
-                $totalInventoryValue = bcadd($totalInventoryValue, $lineValue, self::SCALE);
+                $totalInventoryValue = bcadd($totalInventoryValue, $lineValue, $this->monetaryScale());
                 $rowEntityMap[$row->id] = $movement->id;
             }
 
@@ -350,7 +360,7 @@ class InventoryOpeningService
 
             $quantity = $mappedData['quantity'] ?? '0.00';
             $unitCost = $mappedData['unit_cost'] ?? '0.00';
-            $lineValue = bcmul($quantity, $unitCost, self::SCALE);
+            $lineValue = bcmul($quantity, $unitCost, $this->monetaryScale());
 
             return [
                 'row_number' => $row->row_number,
@@ -367,13 +377,13 @@ class InventoryOpeningService
         /** @var string $totalValue */
         $totalValue = $lines->reduce(
             /** @phpstan-ignore argument.type (array value is always numeric-string) */
-            fn (string $carry, array $line): string => bcadd($carry, $line['line_value'], self::SCALE),
+            fn (string $carry, array $line): string => bcadd($carry, $line['line_value'], $this->monetaryScale()),
             '0.00'
         );
 
         /** @var string $totalQuantity */
         $totalQuantity = $lines->reduce(
-            fn (string $carry, array $line): string => bcadd($carry, $line['quantity'], self::SCALE),
+            fn (string $carry, array $line): string => bcadd($carry, $line['quantity'], $this->quantityScale()),
             '0.00'
         );
 

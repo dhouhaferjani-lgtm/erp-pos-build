@@ -7,12 +7,22 @@ namespace App\Modules\Product\Application\Services;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 
 /**
  * MarginService - Handles margin calculations and pricing validation
  */
 class MarginService
 {
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
+
     /**
      * Margin indicator levels
      */
@@ -60,7 +70,7 @@ class MarginService
             return (float) ($product->sale_price ?? 0);
         }
 
-        return round($cost * (1 + $margins['target_margin'] / 100), 2);
+        return round($cost * (1 + $margins['target_margin'] / 100), $this->scale());
     }
 
     /**
@@ -85,7 +95,7 @@ class MarginService
         $targetMargin = $margins['target_margin'];
 
         // Calculate new sale price
-        $newSalePrice = round($cost * (1 + $targetMargin / 100), 2);
+        $newSalePrice = round($cost * (1 + $targetMargin / 100), $this->scale());
 
         // Only update if different (avoid unnecessary writes)
         $currentSalePrice = (float) ($product->sale_price ?? 0);
@@ -136,7 +146,7 @@ class MarginService
                 'level' => self::LEVEL_RED,
                 'message' => 'Below cost - LOSS',
                 'actual_margin' => $actualMargin,
-                'loss_amount' => round($cost - $sellPrice, 2),
+                'loss_amount' => round($cost - $sellPrice, $this->scale()),
             ];
         }
 

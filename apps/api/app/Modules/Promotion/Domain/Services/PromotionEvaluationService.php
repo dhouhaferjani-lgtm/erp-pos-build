@@ -11,12 +11,22 @@ use App\Modules\Promotion\Domain\Enums\PromotionType;
 use App\Modules\Promotion\Domain\ValueObjects\CartContext;
 use App\Modules\Promotion\Domain\ValueObjects\CartItemContext;
 use App\Modules\Promotion\Domain\ValueObjects\PromotionDiscount;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 
 /**
  * Pure domain logic for evaluating individual promotions against a cart.
  */
 final class PromotionEvaluationService
 {
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
+
     /**
      * Evaluate a single promotion against the cart.
      *
@@ -50,7 +60,7 @@ final class PromotionEvaluationService
             $maxDiscount,
         );
 
-        if (bccomp($discountAmount, '0', 2) <= 0) {
+        if (bccomp($discountAmount, '0', $this->scale()) <= 0) {
             return [];
         }
 
@@ -114,7 +124,7 @@ final class PromotionEvaluationService
             $maxDiscount,
         );
 
-        if (bccomp($discountAmount, '0', 2) <= 0) {
+        if (bccomp($discountAmount, '0', $this->scale()) <= 0) {
             return [];
         }
 
@@ -143,7 +153,7 @@ final class PromotionEvaluationService
     {
         $conditions = $promotion->conditions;
         $minQty = (int) ($conditions['min_qty'] ?? 0);
-        $minAmount = $this->toNumeric((string) ($conditions['min_amount'] ?? '0'), 2);
+        $minAmount = $this->toNumeric((string) ($conditions['min_amount'] ?? '0'), $this->scale());
         /** @var array<string> $qualifyingProductIds */
         $qualifyingProductIds = $conditions['qualifying_product_ids'] ?? [];
 
@@ -156,14 +166,14 @@ final class PromotionEvaluationService
         /** @var numeric-string */
         $totalAmount = '0';
         foreach ($targetItems as $item) {
-            $totalAmount = bcadd($totalAmount, $item->lineTotal, 2);
+            $totalAmount = bcadd($totalAmount, $item->lineTotal, $this->scale());
         }
 
         // Check threshold
         if ($minQty > 0 && $totalQty < $minQty) {
             return [];
         }
-        if (bccomp($minAmount, '0', 2) > 0 && bccomp($totalAmount, $minAmount, 2) < 0) {
+        if (bccomp($minAmount, '0', $this->scale()) > 0 && bccomp($totalAmount, $minAmount, $this->scale()) < 0) {
             return [];
         }
 
@@ -176,7 +186,7 @@ final class PromotionEvaluationService
             $maxDiscount,
         );
 
-        if (bccomp($discountAmount, '0', 2) <= 0) {
+        if (bccomp($discountAmount, '0', $this->scale()) <= 0) {
             return [];
         }
 
@@ -223,7 +233,7 @@ final class PromotionEvaluationService
         /** @var numeric-string */
         $totalAmount = '0';
         foreach ($targetItems as $item) {
-            $totalAmount = bcadd($totalAmount, $item->lineTotal, 2);
+            $totalAmount = bcadd($totalAmount, $item->lineTotal, $this->scale());
         }
 
         [$discountValue, $maxDiscount] = $this->getPromotionAmounts($promotion);
@@ -235,7 +245,7 @@ final class PromotionEvaluationService
             $maxDiscount,
         );
 
-        if (bccomp($discountAmount, '0', 2) <= 0) {
+        if (bccomp($discountAmount, '0', $this->scale()) <= 0) {
             return [];
         }
 
@@ -288,7 +298,7 @@ final class PromotionEvaluationService
         /** @var numeric-string */
         $comboTotal = '0';
         foreach ($comboItems as $item) {
-            $comboTotal = bcadd($comboTotal, $item->lineTotal, 2);
+            $comboTotal = bcadd($comboTotal, $item->lineTotal, $this->scale());
         }
 
         [$discountValue, $maxDiscount] = $this->getPromotionAmounts($promotion);
@@ -300,7 +310,7 @@ final class PromotionEvaluationService
             $maxDiscount,
         );
 
-        if (bccomp($discountAmount, '0', 2) <= 0) {
+        if (bccomp($discountAmount, '0', $this->scale()) <= 0) {
             return [];
         }
 
@@ -334,19 +344,19 @@ final class PromotionEvaluationService
     ): string {
         /** @var numeric-string */
         $discountAmount = match ($type) {
-            DiscountType::Percentage => bcdiv(bcmul($baseAmount, $value, 4), '100', 2),
-            DiscountType::Fixed => bcadd($value, '0', 2),
+            DiscountType::Percentage => bcdiv(bcmul($baseAmount, $value, 4), '100', $this->scale()),
+            DiscountType::Fixed => bcadd($value, '0', $this->scale()),
             DiscountType::FreeItem => $baseAmount,
         };
 
         // Cap at max discount
-        if ($maxDiscount !== null && bccomp($discountAmount, $maxDiscount, 2) > 0) {
-            $discountAmount = bcadd($maxDiscount, '0', 2);
+        if ($maxDiscount !== null && bccomp($discountAmount, $maxDiscount, $this->scale()) > 0) {
+            $discountAmount = bcadd($maxDiscount, '0', $this->scale());
         }
 
         // Cap at base amount (discount cannot exceed what it's applied to)
-        if (bccomp($discountAmount, $baseAmount, 2) > 0) {
-            $discountAmount = bcadd($baseAmount, '0', 2);
+        if (bccomp($discountAmount, $baseAmount, $this->scale()) > 0) {
+            $discountAmount = bcadd($baseAmount, '0', $this->scale());
         }
 
         return $discountAmount;
@@ -374,7 +384,7 @@ final class PromotionEvaluationService
     {
         return [
             $this->toNumeric($promotion->discount_value),
-            $promotion->max_discount_amount !== null ? $this->toNumeric($promotion->max_discount_amount, 2) : null,
+            $promotion->max_discount_amount !== null ? $this->toNumeric($promotion->max_discount_amount, $this->scale()) : null,
         ];
     }
 
@@ -385,7 +395,7 @@ final class PromotionEvaluationService
     {
         $cheapest = null;
         foreach ($items as $item) {
-            if ($cheapest === null || bccomp($item->unitPrice, $cheapest->unitPrice, 2) < 0) {
+            if ($cheapest === null || bccomp($item->unitPrice, $cheapest->unitPrice, $this->scale()) < 0) {
                 $cheapest = $item;
             }
         }

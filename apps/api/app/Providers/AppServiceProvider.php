@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Models\Country;
 use App\Modules\Accounting\Application\Services\AccountingService;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
@@ -21,10 +22,12 @@ use App\Services\CompanyConfigService;
 use App\Services\ProductService as AppProductService;
 use App\Services\VerticalConfigService;
 use App\Shared\Contracts\AccountingServiceInterface;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\InventoryServiceInterface;
 use App\Shared\Contracts\LocationServiceInterface;
 use App\Shared\Contracts\PartnerServiceInterface;
 use App\Shared\Contracts\ProductServiceInterface;
+use App\Shared\Infrastructure\CurrencyScaleResolver;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -51,6 +54,14 @@ class AppServiceProvider extends ServiceProvider
 
         // Register CompanyConfigService (company configuration) as singleton
         $this->app->singleton(CompanyConfigService::class);
+
+        // Register currency scale resolver as singleton
+        $this->app->singleton(CurrencyScaleResolverInterface::class, function ($app): CurrencyScaleResolver {
+            return new CurrencyScaleResolver(
+                $app->make(CompanyContext::class),
+                fn (string $countryCode): ?Country => Country::find($countryCode),
+            );
+        });
 
         // Register cross-module service interfaces
         $this->app->bind(PartnerServiceInterface::class, PartnerService::class);

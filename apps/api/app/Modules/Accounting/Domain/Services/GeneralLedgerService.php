@@ -12,6 +12,7 @@ use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Identity\Domain\User;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -23,11 +24,15 @@ use Illuminate\Support\Facades\DB;
  */
 final class GeneralLedgerService
 {
-    private const SCALE = 2;
-
     public function __construct(
-        private readonly PartnerBalanceService $partnerBalanceService
+        private readonly PartnerBalanceService $partnerBalanceService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Create journal entry from a posted invoice.
@@ -65,8 +70,8 @@ final class GeneralLedgerService
                 'journal_entry_id' => $entry->id,
                 'account_id' => $receivableAccount->id,
                 'partner_id' => $invoice->partner_id,
-                'debit' => $invoice->total ?? '0.00',
-                'credit' => '0.00',
+                'debit' => $invoice->total ?? '0',
+                'credit' => '0',
                 'description' => 'Accounts receivable',
                 'line_order' => $lineOrder++,
             ]);
@@ -75,19 +80,19 @@ final class GeneralLedgerService
             JournalLine::create([
                 'journal_entry_id' => $entry->id,
                 'account_id' => $revenueAccount->id,
-                'debit' => '0.00',
-                'credit' => $invoice->subtotal ?? '0.00',
+                'debit' => '0',
+                'credit' => $invoice->subtotal ?? '0',
                 'description' => 'Sales revenue',
                 'line_order' => $lineOrder++,
             ]);
 
             // Credit: VAT Payable (tax amount) - only if there's tax
-            $taxAmount = $invoice->tax_amount ?? '0.00';
-            if (bccomp($taxAmount, '0.00', self::SCALE) > 0) {
+            $taxAmount = $invoice->tax_amount ?? '0';
+            if (bccomp($taxAmount, '0', $this->scale()) > 0) {
                 JournalLine::create([
                     'journal_entry_id' => $entry->id,
                     'account_id' => $taxAccount->id,
-                    'debit' => '0.00',
+                    'debit' => '0',
                     'credit' => $taxAmount,
                     'description' => 'VAT payable',
                     'line_order' => $lineOrder,
@@ -139,20 +144,20 @@ final class GeneralLedgerService
             JournalLine::create([
                 'journal_entry_id' => $entry->id,
                 'account_id' => $revenueAccount->id,
-                'debit' => $creditNote->subtotal ?? '0.00',
-                'credit' => '0.00',
+                'debit' => $creditNote->subtotal ?? '0',
+                'credit' => '0',
                 'description' => 'Sales revenue reversal',
                 'line_order' => $lineOrder++,
             ]);
 
             // Debit: VAT Payable (tax amount) - only if there's tax
-            $taxAmount = $creditNote->tax_amount ?? '0.00';
-            if (bccomp($taxAmount, '0.00', self::SCALE) > 0) {
+            $taxAmount = $creditNote->tax_amount ?? '0';
+            if (bccomp($taxAmount, '0', $this->scale()) > 0) {
                 JournalLine::create([
                     'journal_entry_id' => $entry->id,
                     'account_id' => $taxAccount->id,
                     'debit' => $taxAmount,
-                    'credit' => '0.00',
+                    'credit' => '0',
                     'description' => 'VAT payable reversal',
                     'line_order' => $lineOrder++,
                 ]);
@@ -163,8 +168,8 @@ final class GeneralLedgerService
                 'journal_entry_id' => $entry->id,
                 'account_id' => $receivableAccount->id,
                 'partner_id' => $creditNote->partner_id,
-                'debit' => '0.00',
-                'credit' => $creditNote->total ?? '0.00',
+                'debit' => '0',
+                'credit' => $creditNote->total ?? '0',
                 'description' => 'Accounts receivable reduction',
                 'line_order' => $lineOrder,
             ]);
@@ -211,7 +216,7 @@ final class GeneralLedgerService
                 'account_id' => $debitAccountId,
                 'partner_id' => null,
                 'debit' => $amount,
-                'credit' => '0.00',
+                'credit' => '0',
                 'description' => 'Cash received',
                 'line_order' => 0,
             ]);
@@ -221,7 +226,7 @@ final class GeneralLedgerService
                 'journal_entry_id' => $entry->id,
                 'account_id' => $creditAccountId,
                 'partner_id' => $partnerId,
-                'debit' => '0.00',
+                'debit' => '0',
                 'credit' => $amount,
                 'description' => 'Receivable cleared',
                 'line_order' => 1,
@@ -280,7 +285,7 @@ final class GeneralLedgerService
                 'account_id' => $paymentMethodAccountId,
                 'partner_id' => null,
                 'debit' => $amount,
-                'credit' => '0.00',
+                'credit' => '0',
                 'description' => 'Advance payment received',
                 'line_order' => 0,
             ]);
@@ -290,7 +295,7 @@ final class GeneralLedgerService
                 'journal_entry_id' => $entry->id,
                 'account_id' => $advanceAccount->id,
                 'partner_id' => $partnerId,
-                'debit' => '0.00',
+                'debit' => '0',
                 'credit' => $amount,
                 'description' => 'Customer advance liability',
                 'line_order' => 1,
@@ -348,7 +353,7 @@ final class GeneralLedgerService
                 'account_id' => $paymentMethodAccountId,
                 'partner_id' => null,
                 'debit' => $amount,
-                'credit' => '0.00',
+                'credit' => '0',
                 'description' => 'Refund from supplier',
                 'line_order' => 0,
             ]);
@@ -358,7 +363,7 @@ final class GeneralLedgerService
                 'journal_entry_id' => $entry->id,
                 'account_id' => $advanceAccount->id,
                 'partner_id' => $partnerId,
-                'debit' => '0.00',
+                'debit' => '0',
                 'credit' => $amount,
                 'description' => 'Supplier advance reversed',
                 'line_order' => 1,
@@ -420,20 +425,20 @@ final class GeneralLedgerService
                 'account_id' => $expenseAccountId,
                 'partner_id' => null,
                 'debit' => $netAmount,
-                'credit' => '0.00',
+                'credit' => '0',
                 'description' => 'Purchase expense/asset',
                 'line_order' => $lineOrder++,
             ]);
 
             // Debit: VAT Deductible (if applicable)
             /** @phpstan-ignore-next-line argument.type */
-            if (bccomp($vatAmount, '0.00', self::SCALE) > 0) {
+            if (bccomp($vatAmount, '0', $this->scale()) > 0) {
                 JournalLine::create([
                     'journal_entry_id' => $entry->id,
                     'account_id' => $vatAccount->id,
                     'partner_id' => null,
                     'debit' => $vatAmount,
-                    'credit' => '0.00',
+                    'credit' => '0',
                     'description' => 'VAT deductible',
                     'line_order' => $lineOrder++,
                 ]);
@@ -444,7 +449,7 @@ final class GeneralLedgerService
                 'journal_entry_id' => $entry->id,
                 'account_id' => $payableAccount->id,
                 'partner_id' => $partnerId,
-                'debit' => '0.00',
+                'debit' => '0',
                 'credit' => $totalAmount,
                 'description' => 'Supplier payable',
                 'line_order' => $lineOrder,
@@ -500,7 +505,7 @@ final class GeneralLedgerService
                 'account_id' => $payableAccount->id,
                 'partner_id' => $partnerId,
                 'debit' => $amount,
-                'credit' => '0.00',
+                'credit' => '0',
                 'description' => 'Payable cleared',
                 'line_order' => 0,
             ]);
@@ -510,7 +515,7 @@ final class GeneralLedgerService
                 'journal_entry_id' => $entry->id,
                 'account_id' => $paymentMethodAccountId,
                 'partner_id' => null,
-                'debit' => '0.00',
+                'debit' => '0',
                 'credit' => $amount,
                 'description' => 'Payment to supplier',
                 'line_order' => 1,
@@ -569,7 +574,7 @@ final class GeneralLedgerService
                 'account_id' => $paymentMethodAccountId,
                 'partner_id' => null,
                 'debit' => $amount,
-                'credit' => '0.00',
+                'credit' => '0',
                 'description' => 'Payment received',
                 'line_order' => 0,
             ]);
@@ -579,7 +584,7 @@ final class GeneralLedgerService
                 'journal_entry_id' => $entry->id,
                 'account_id' => $receivableAccount->id,
                 'partner_id' => $partnerId,
-                'debit' => '0.00',
+                'debit' => '0',
                 'credit' => $amount,
                 'description' => 'Receivable cleared',
                 'line_order' => 1,
@@ -649,7 +654,7 @@ final class GeneralLedgerService
                     'account_id' => $writeoffAccount->id,
                     'partner_id' => null,
                     'debit' => $amount,
-                    'credit' => '0.00',
+                    'credit' => '0',
                     'description' => 'Underpayment tolerance expense',
                     'line_order' => 0,
                 ]);
@@ -658,7 +663,7 @@ final class GeneralLedgerService
                     'journal_entry_id' => $entry->id,
                     'account_id' => $receivableAccount->id,
                     'partner_id' => $partnerId,
-                    'debit' => '0.00',
+                    'debit' => '0',
                     'credit' => $amount,
                     'description' => 'AR reduced by tolerance',
                     'line_order' => 1,
@@ -671,7 +676,7 @@ final class GeneralLedgerService
                     'account_id' => $receivableAccount->id,
                     'partner_id' => $partnerId,
                     'debit' => $amount,
-                    'credit' => '0.00',
+                    'credit' => '0',
                     'description' => 'Overpayment tolerance adjustment',
                     'line_order' => 0,
                 ]);
@@ -680,7 +685,7 @@ final class GeneralLedgerService
                     'journal_entry_id' => $entry->id,
                     'account_id' => $writeoffAccount->id,
                     'partner_id' => null,
-                    'debit' => '0.00',
+                    'debit' => '0',
                     'credit' => $amount,
                     'description' => 'Overpayment tolerance income',
                     'line_order' => 1,
@@ -742,7 +747,7 @@ final class GeneralLedgerService
                 'account_id' => $advanceAccount->id,
                 'partner_id' => $partnerId,
                 'debit' => $amount,
-                'credit' => '0.00',
+                'credit' => '0',
                 'description' => 'Clear customer advance',
                 'line_order' => 0,
             ]);
@@ -752,7 +757,7 @@ final class GeneralLedgerService
                 'journal_entry_id' => $entry->id,
                 'account_id' => $receivableAccount->id,
                 'partner_id' => $partnerId,
-                'debit' => '0.00',
+                'debit' => '0',
                 'credit' => $amount,
                 'description' => 'Prepayment applied to invoice',
                 'line_order' => 1,
@@ -786,18 +791,18 @@ final class GeneralLedgerService
         ?string $description = null
     ): ?JournalEntry {
         // Calculate total COGS
-        $totalCOGS = '0.00';
+        $totalCOGS = '0';
         foreach ($lineItems as $item) {
             /** @var numeric-string $quantity */
             $quantity = $item['quantity'];
             /** @var numeric-string $unitCost */
             $unitCost = $item['unit_cost'];
-            $lineCost = bcmul($quantity, $unitCost, 2);
-            $totalCOGS = bcadd($totalCOGS, $lineCost, 2);
+            $lineCost = bcmul($quantity, $unitCost, $this->scale());
+            $totalCOGS = bcadd($totalCOGS, $lineCost, $this->scale());
         }
 
         // Don't create entry if no COGS
-        if (bccomp($totalCOGS, '0.00', 2) <= 0) {
+        if (bccomp($totalCOGS, '0', $this->scale()) <= 0) {
             return null;
         }
 
@@ -830,7 +835,7 @@ final class GeneralLedgerService
                 'account_id' => $cogsAccount->id,
                 'partner_id' => null,
                 'debit' => $totalCOGS,
-                'credit' => '0.00',
+                'credit' => '0',
                 'description' => 'Cost of goods sold',
                 'line_order' => 0,
             ]);
@@ -840,7 +845,7 @@ final class GeneralLedgerService
                 'journal_entry_id' => $entry->id,
                 'account_id' => $inventoryAccount->id,
                 'partner_id' => null,
-                'debit' => '0.00',
+                'debit' => '0',
                 'credit' => $totalCOGS,
                 'description' => 'Inventory reduction',
                 'line_order' => 1,
@@ -915,7 +920,7 @@ final class GeneralLedgerService
                 'account_id' => $repository->gl_account_id,
                 'partner_id' => null,
                 'debit' => $payment->amount,
-                'credit' => '0.00',
+                'credit' => '0',
                 'description' => "POS payment via {$repository->name}",
                 'line_order' => 0,
             ]);
@@ -925,7 +930,7 @@ final class GeneralLedgerService
                 'journal_entry_id' => $entry->id,
                 'account_id' => $revenueAccount->id,
                 'partner_id' => null,
-                'debit' => '0.00',
+                'debit' => '0',
                 'credit' => $payment->amount,
                 'description' => 'POS sales revenue',
                 'line_order' => 1,
@@ -985,8 +990,8 @@ final class GeneralLedgerService
                 'journal_entry_id' => $entry->id,
                 'account_id' => $expenseAccount->id,
                 'partner_id' => null, // Expenses typically don't have partner tracking
-                'debit' => $expense->total ?? '0.00',
-                'credit' => '0.00',
+                'debit' => $expense->total ?? '0',
+                'credit' => '0',
                 'description' => $vendorName,
                 'line_order' => $lineOrder++,
             ]);
@@ -996,8 +1001,8 @@ final class GeneralLedgerService
                 'journal_entry_id' => $entry->id,
                 'account_id' => $paymentAccount->id,
                 'partner_id' => null,
-                'debit' => '0.00',
-                'credit' => $expense->total ?? '0.00',
+                'debit' => '0',
+                'credit' => $expense->total ?? '0',
                 'description' => 'Expense payment',
                 'line_order' => $lineOrder,
             ]);
@@ -1022,7 +1027,7 @@ final class GeneralLedgerService
         \App\Modules\Inventory\Domain\Enums\MovementReason $reason,
         string $movementId,
     ): ?JournalEntry {
-        if (bccomp($amount, '0.00', self::SCALE) <= 0) {
+        if (bccomp($amount, '0', $this->scale()) <= 0) {
             return null;
         }
 
@@ -1053,7 +1058,7 @@ final class GeneralLedgerService
                 'account_id' => $cogsAccount->id,
                 'partner_id' => null,
                 'debit' => $amount,
-                'credit' => '0.00',
+                'credit' => '0',
                 'description' => "Batch write-off: {$batchNumber}",
                 'line_order' => 0,
             ]);
@@ -1063,7 +1068,7 @@ final class GeneralLedgerService
                 'journal_entry_id' => $entry->id,
                 'account_id' => $inventoryAccount->id,
                 'partner_id' => null,
-                'debit' => '0.00',
+                'debit' => '0',
                 'credit' => $amount,
                 'description' => 'Inventory reduction from write-off',
                 'line_order' => 1,

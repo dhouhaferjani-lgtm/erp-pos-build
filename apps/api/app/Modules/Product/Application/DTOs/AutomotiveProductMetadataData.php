@@ -8,16 +8,17 @@ use App\Modules\Product\Domain\AutomotiveProductMetadata;
 use App\Modules\Product\Domain\Enums\AutomotiveArticleStatus;
 use App\Modules\Product\Domain\Enums\BrandQualityTier;
 use App\Modules\Product\Domain\Enums\PlatformLinkStatus;
-use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\LaravelData\Data;
-use Spatie\LaravelData\DataCollection;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 #[TypeScript]
 class AutomotiveProductMetadataData extends Data
 {
     /**
-     * @param array<string, mixed>|null $dimensions
+     * @param  array<string, mixed>|null  $dimensions
+     * @param  list<AutomotiveCrossReferenceData>|null  $cross_references
+     * @param  list<AutomotiveVehicleData>|null  $vehicles
+     * @param  list<AutomotiveCriterionData>|null  $criteria
      */
     public function __construct(
         public string $id,
@@ -45,12 +46,9 @@ class AutomotiveProductMetadataData extends Data
         public ?string $tire_season,
         public ?string $glass_type,
         public ?string $glass_tinting,
-        #[DataCollectionOf(AutomotiveCrossReferenceData::class)]
-        public ?DataCollection $cross_references,
-        #[DataCollectionOf(AutomotiveVehicleData::class)]
-        public ?DataCollection $vehicles,
-        #[DataCollectionOf(AutomotiveCriterionData::class)]
-        public ?DataCollection $criteria,
+        public ?array $cross_references,
+        public ?array $vehicles,
+        public ?array $criteria,
         public string $created_at,
         public ?string $updated_at,
     ) {}
@@ -94,19 +92,13 @@ class AutomotiveProductMetadataData extends Data
             glass_type: $metadata->glass_type,
             glass_tinting: $metadata->glass_tinting,
             cross_references: $metadata->crossReferences->isNotEmpty()
-                ? AutomotiveCrossReferenceData::collection(
-                    $metadata->crossReferences->map(fn ($cr) => AutomotiveCrossReferenceData::fromModel($cr))
-                )
+                ? array_values($metadata->crossReferences->map(fn ($cr) => AutomotiveCrossReferenceData::fromModel($cr))->all())
                 : null,
             vehicles: $metadata->vehicles->isNotEmpty()
-                ? AutomotiveVehicleData::collection(
-                    $metadata->vehicles->map(fn ($v) => AutomotiveVehicleData::fromModel($v))
-                )
+                ? array_values($metadata->vehicles->map(fn ($v) => AutomotiveVehicleData::fromModel($v))->all())
                 : null,
             criteria: $metadata->criteria->isNotEmpty()
-                ? AutomotiveCriterionData::collection(
-                    $metadata->criteria->map(fn ($c) => AutomotiveCriterionData::fromModel($c))
-                )
+                ? array_values($metadata->criteria->map(fn ($c) => AutomotiveCriterionData::fromModel($c))->all())
                 : null,
             created_at: $metadata->created_at?->toIso8601String() ?? '',
             updated_at: $metadata->updated_at?->toIso8601String(),

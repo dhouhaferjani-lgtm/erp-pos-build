@@ -7,8 +7,8 @@ namespace App\Modules\Treasury\Domain;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\FeeType;
-use Illuminate\Database\Eloquent\Builder;
 use Database\Factories\PaymentMethodFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -46,6 +46,7 @@ class PaymentMethod extends Model
 {
     /** @use HasFactory<PaymentMethodFactory> */
     use HasFactory;
+
     use HasUuids;
 
     protected $table = 'payment_methods';
@@ -91,7 +92,7 @@ class PaymentMethod extends Model
             'is_restricted' => 'boolean',
             'is_active' => 'boolean',
             'fee_type' => FeeType::class,
-            'fee_fixed' => 'decimal:2',
+            'fee_fixed' => 'decimal:3',
             'fee_percent' => 'decimal:2',
             'position' => 'integer',
         ];
@@ -119,25 +120,25 @@ class PaymentMethod extends Model
      * @param  numeric-string  $amount
      * @return numeric-string
      */
-    public function calculateFee(string $amount): string
+    public function calculateFee(string $amount, int $scale = 3): string
     {
         if ($this->fee_type === null || $this->fee_type === FeeType::None) {
-            return '0.00';
+            return '0';
         }
 
-        $fee = '0.00';
+        $fee = '0';
 
         if ($this->fee_type === FeeType::Fixed || $this->fee_type === FeeType::Mixed) {
             /** @var numeric-string $feeFixed */
-            $feeFixed = $this->fee_fixed ?? '0.00';
-            $fee = bcadd($fee, $feeFixed, 2);
+            $feeFixed = $this->fee_fixed ?? '0';
+            $fee = bcadd($fee, $feeFixed, $scale);
         }
 
         if ($this->fee_type === FeeType::Percentage || $this->fee_type === FeeType::Mixed) {
             /** @var numeric-string $feePercent */
-            $feePercent = $this->fee_percent ?? '0.00';
-            $percentageFee = bcdiv(bcmul($amount, $feePercent, 4), '100', 2);
-            $fee = bcadd($fee, $percentageFee, 2);
+            $feePercent = $this->fee_percent ?? '0';
+            $percentageFee = bcdiv(bcmul($amount, $feePercent, 4), '100', $scale);
+            $fee = bcadd($fee, $percentageFee, $scale);
         }
 
         return $fee;
@@ -149,11 +150,11 @@ class PaymentMethod extends Model
      * @param  numeric-string  $amount
      * @return numeric-string
      */
-    public function calculateNetAmount(string $amount): string
+    public function calculateNetAmount(string $amount, int $scale = 3): string
     {
-        $fee = $this->calculateFee($amount);
+        $fee = $this->calculateFee($amount, $scale);
 
-        return bcsub($amount, $fee, 2);
+        return bcsub($amount, $fee, $scale);
     }
 
     /**

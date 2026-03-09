@@ -11,6 +11,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\DocumentConverted;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 
@@ -28,6 +29,13 @@ use Illuminate\Support\Str;
 trait CopiesDocumentData
 {
     protected readonly DocumentNumberingService $numberingService;
+
+    protected readonly CurrencyScaleResolverInterface $scaleResolver;
+
+    protected function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Create a target document with common fields from the source document.
@@ -115,7 +123,7 @@ trait CopiesDocumentData
             'discount_percent' => $line->discount_percent,
             'discount_amount' => $line->discount_amount,
             'tax_rate' => $line->tax_rate,
-            'line_total' => $lineTotal ?? $line->line_total ?? '0.00',
+            'line_total' => $lineTotal ?? $line->line_total ?? '0',
             'notes' => $line->notes,
             'source_line_id' => $linkSource ? $line->id : null,
         ]);
@@ -244,23 +252,23 @@ trait CopiesDocumentData
      */
     protected function recalculateTotals(Document $document): void
     {
-        $subtotal = '0.00';
-        $taxAmount = '0.00';
-        $total = '0.00';
+        $subtotal = '0';
+        $taxAmount = '0';
+        $total = '0';
 
         foreach ($document->lines as $line) {
             // DocumentLine has line_total which represents the line subtotal before tax
             $lineTotal = (string) $line->line_total;
-            $subtotal = bcadd($subtotal, $lineTotal, 2);
+            $subtotal = bcadd($subtotal, $lineTotal, $this->scale());
 
             // Calculate tax for this line if tax_rate is set
-            if ($line->tax_rate !== null && $line->tax_rate !== '0.00') {
-                $lineTax = bcmul($lineTotal, bcdiv((string) $line->tax_rate, '100', 4), 2);
-                $taxAmount = bcadd($taxAmount, $lineTax, 2);
+            if ($line->tax_rate !== null && bccomp((string) $line->tax_rate, '0', 4) !== 0) {
+                $lineTax = bcmul($lineTotal, bcdiv((string) $line->tax_rate, '100', 4), $this->scale());
+                $taxAmount = bcadd($taxAmount, $lineTax, $this->scale());
             }
         }
 
-        $total = bcadd($subtotal, $taxAmount, 2);
+        $total = bcadd($subtotal, $taxAmount, $this->scale());
 
         $document->update([
             'subtotal' => $subtotal,

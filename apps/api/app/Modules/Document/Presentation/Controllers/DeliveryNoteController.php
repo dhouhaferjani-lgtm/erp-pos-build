@@ -20,6 +20,7 @@ use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Vehicle\Application\Services\VehicleContextBuilder;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -54,7 +55,13 @@ class DeliveryNoteController extends Controller
         private readonly DocumentNumberingService $numberingService,
         private readonly DeliveryNoteService $deliveryNoteService,
         private readonly VehicleContextBuilder $vehicleContextBuilder,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Get the CompanyContext service.
@@ -95,7 +102,7 @@ class DeliveryNoteController extends Controller
         $paginator = $query->with('vehicleContext')->cursorPaginate($params['per_page'], ['*'], 'cursor', $params['cursor']);
 
         // Transform items
-        $items = collect($paginator->items())->map(fn (Document $doc): DocumentData => DocumentData::fromModel($doc, false))->all();
+        $items = collect($paginator->items())->map(fn (Document $doc): DocumentData => DocumentData::fromModel($doc, false, $this->scale()))->all();
 
         return response()->json([
             'data' => $items,
@@ -126,7 +133,7 @@ class DeliveryNoteController extends Controller
             return $this->notFoundResponse('Delivery note');
         }
 
-        return $this->documentResponse($documentModel);
+        return $this->documentResponse($documentModel, 200, $this->scale());
     }
 
     /**
@@ -177,14 +184,14 @@ class DeliveryNoteController extends Controller
                 /** @var numeric-string $taxRate */
                 $taxRate = (string) ($line['tax_rate'] ?? '0');
 
-                $lineSubtotal = bcmul($quantity, $unitPrice, 2);
-                $lineTax = bcmul($lineSubtotal, bcdiv($taxRate, '100', 4), 2);
+                $lineSubtotal = bcmul($quantity, $unitPrice, $this->scale());
+                $lineTax = bcmul($lineSubtotal, bcdiv($taxRate, '100', 4), $this->scale());
 
-                $subtotal = bcadd($subtotal, $lineSubtotal, 2);
-                $taxAmount = bcadd($taxAmount, $lineTax, 2);
+                $subtotal = bcadd($subtotal, $lineSubtotal, $this->scale());
+                $taxAmount = bcadd($taxAmount, $lineTax, $this->scale());
             }
 
-            $total = bcadd($subtotal, $taxAmount, 2);
+            $total = bcadd($subtotal, $taxAmount, $this->scale());
 
             // Resolve location using LocationContext fallback chain
             $locationId = $this->locationContext->resolveLocationId(
@@ -215,7 +222,7 @@ class DeliveryNoteController extends Controller
                 $quantity = (string) $lineData['quantity'];
                 /** @var numeric-string $unitPrice */
                 $unitPrice = (string) $lineData['unit_price'];
-                $lineTotal = bcmul($quantity, $unitPrice, 2);
+                $lineTotal = bcmul($quantity, $unitPrice, $this->scale());
 
                 DocumentLine::create([
                     'document_id' => $document->id,
@@ -310,7 +317,7 @@ class DeliveryNoteController extends Controller
         $freshDocument = $documentModel->fresh($this->defaultRelations());
 
         return response()->json([
-            'data' => DocumentData::fromModel($freshDocument),
+            'data' => DocumentData::fromModel($freshDocument, true, $this->scale()),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'fiscal_hash' => $freshDocument->fiscal_hash,

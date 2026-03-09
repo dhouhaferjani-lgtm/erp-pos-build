@@ -18,6 +18,7 @@ use App\Modules\Document\Domain\Services\Conversion\DocumentConverterInterface;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -61,6 +62,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
         private readonly GeneralLedgerService $glService,
         private readonly FEFOInventoryService $fefoService,
         private readonly LocationContext $locationContext,
+        protected readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     public function sourceType(): DocumentType
@@ -333,7 +335,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
         // Calculate total prepaid amount
         $totalPrepaid = '0.00';
         foreach ($allocations as $allocation) {
-            $totalPrepaid = bcadd($totalPrepaid, (string) $allocation->amount, 2);
+            $totalPrepaid = bcadd($totalPrepaid, (string) $allocation->amount, $this->scale());
         }
 
         // Transfer each allocation to the invoice
@@ -348,8 +350,8 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
         if ($invoiceTotal === '') {
             $invoiceTotal = '0.00';
         }
-        $newBalanceDue = bcsub($invoiceTotal, $totalPrepaid, 2);
-        if (bccomp($newBalanceDue, '0.00', 2) < 0) {
+        $newBalanceDue = bcsub($invoiceTotal, $totalPrepaid, $this->scale());
+        if (bccomp($newBalanceDue, '0.00', $this->scale()) < 0) {
             $newBalanceDue = '0.00'; // Cannot be negative
         }
 
@@ -369,7 +371,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
         $invoice->update(['payload' => $invoicePayload]);
 
         // Create GL entry to clear the advance when the invoice is posted
-        if (bccomp($totalPrepaid, '0.00', 2) > 0) {
+        if (bccomp($totalPrepaid, '0.00', $this->scale()) > 0) {
             try {
                 $this->glService->clearCustomerAdvanceToReceivable(
                     $invoice->company_id,
@@ -520,7 +522,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
                         $batchQty = (string) $suggestion->quantity;
                         /** @var numeric-string $unitPrice */
                         $unitPrice = (string) $line->unit_price;
-                        $lineTotal = bcmul($batchQty, $unitPrice, 2);
+                        $lineTotal = bcmul($batchQty, $unitPrice, $this->scale());
 
                         DocumentLine::create([
                             'id' => Str::uuid()->toString(),

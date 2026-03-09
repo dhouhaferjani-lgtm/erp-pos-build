@@ -63,11 +63,11 @@ class DocumentFactory extends Factory
             'document_date' => now(),
             'due_date' => now()->addDays(30),
             'currency' => 'EUR',
-            'subtotal' => '100.00',
-            'discount_amount' => '0.00',
-            'tax_amount' => '20.00',
-            'total' => '120.00',
-            'balance_due' => '120.00',
+            'subtotal' => '100.000',
+            'discount_amount' => '0.000',
+            'tax_amount' => '20.000',
+            'total' => '120.000',
+            'balance_due' => '120.000',
             'is_historical' => false,
         ];
     }
@@ -149,8 +149,8 @@ class DocumentFactory extends Factory
         $balanceDue = $balanceDue ?? $total;
 
         return $this->state(fn (array $attributes) => [
-            'subtotal' => bcmul($total, '0.833333', 2), // Approximate subtotal (excluding 20% VAT)
-            'tax_amount' => bcmul($total, '0.166667', 2), // Approximate VAT (20%)
+            'subtotal' => bcmul($total, '0.833333', 3), // Approximate subtotal (excluding 20% VAT)
+            'tax_amount' => bcmul($total, '0.166667', 3), // Approximate VAT (20%)
             'total' => $total,
             'balance_due' => $balanceDue,
         ]);

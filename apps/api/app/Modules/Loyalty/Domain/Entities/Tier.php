@@ -53,7 +53,7 @@ class Tier extends Model
     {
         return [
             'qualification_type' => QualificationType::class,
-            'qualification_threshold' => 'decimal:2',
+            'qualification_threshold' => 'decimal:3',
             'earning_multiplier' => 'decimal:2',
             'benefits' => 'array',
         ];

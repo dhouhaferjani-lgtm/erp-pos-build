@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Accounting\Application\Services;
 
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 
 /**
  * Service for calculating and verifying fiscal hash chains for journal entries.
@@ -21,6 +22,15 @@ final class GeneralLedgerHashService
     private const ALGORITHM = 'sha256';
 
     private const SEPARATOR = '|';
+
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Calculate hash for a journal entry
@@ -49,12 +59,12 @@ final class GeneralLedgerHashService
     public function serializeForHashing(JournalEntry $entry): string
     {
         // Calculate totals from lines using bcmath for precision
-        $totalDebit = '0.00';
-        $totalCredit = '0.00';
+        $totalDebit = '0';
+        $totalCredit = '0';
 
         foreach ($entry->lines as $line) {
-            $totalDebit = bcadd($totalDebit, $line->debit, 2);
-            $totalCredit = bcadd($totalCredit, $line->credit, 2);
+            $totalDebit = bcadd($totalDebit, $line->debit, $this->scale());
+            $totalCredit = bcadd($totalCredit, $line->credit, $this->scale());
         }
 
         return implode(self::SEPARATOR, [

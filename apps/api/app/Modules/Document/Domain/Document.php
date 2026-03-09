@@ -12,7 +12,6 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
-use App\Modules\Document\Domain\Enums\FulfillmentStatus;
 use App\Modules\Document\Domain\Enums\PaymentStatus;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
@@ -152,11 +151,11 @@ class Document extends Model
             'external_document_date' => 'date',
             'confirmed_at' => 'datetime',
             'cancelled_at' => 'datetime',
-            'subtotal' => 'decimal:2',
-            'discount_amount' => 'decimal:2',
-            'tax_amount' => 'decimal:2',
-            'total' => 'decimal:2',
-            'balance_due' => 'decimal:2',
+            'subtotal' => 'decimal:3',
+            'discount_amount' => 'decimal:3',
+            'tax_amount' => 'decimal:3',
+            'total' => 'decimal:3',
+            'balance_due' => 'decimal:3',
             'is_historical' => 'boolean',
             'payload' => 'array',
         ];
@@ -525,13 +524,13 @@ class Document extends Model
     /**
      * Recalculate document totals from lines
      */
-    public function recalculateTotals(): void
+    public function recalculateTotals(int $scale = 3): void
     {
-        $subtotal = '0.00';
+        $subtotal = '0';
 
         foreach ($this->lines as $line) {
-            $lineSubtotal = bcmul($line->quantity, $line->unit_price, 2);
-            $subtotal = bcadd($subtotal, $lineSubtotal, 2);
+            $lineSubtotal = bcmul($line->quantity, $line->unit_price, $scale);
+            $subtotal = bcadd($subtotal, $lineSubtotal, $scale);
         }
 
         // Use TaxCalculationService to calculate all taxes (line taxes + stamp duties)
@@ -604,7 +603,7 @@ class Document extends Model
      *
      * @return numeric-string The outstanding amount (can be negative if overpaid)
      */
-    public function getOutstandingAmount(): string
+    public function getOutstandingAmount(int $scale = 3): string
     {
         $payableTypes = [
             DocumentType::Invoice,
@@ -612,22 +611,22 @@ class Document extends Model
             DocumentType::PurchaseOrder,
         ];
 
-        if (!in_array($this->type, $payableTypes, true)) {
-            return '0.00';
+        if (! in_array($this->type, $payableTypes, true)) {
+            return '0';
         }
 
-        $total = $this->total ?? '0.00';
+        $total = $this->total ?? '0';
 
         // Sum all payment allocations
         /** @var numeric-string $paid */
-        $paid = (string) ($this->allocations()->sum('amount') ?? '0.00');
+        $paid = (string) ($this->allocations()->sum('amount') ?? '0');
 
         // Sum all credit note allocations
         /** @var numeric-string $credited */
-        $credited = (string) ($this->creditNoteAllocations()->sum('amount') ?? '0.00');
+        $credited = (string) ($this->creditNoteAllocations()->sum('amount') ?? '0');
 
         // Calculate: Total - Paid - Credited
-        $outstanding = bcsub(bcsub($total, $paid, 2), $credited, 2);
+        $outstanding = bcsub(bcsub($total, $paid, $scale), $credited, $scale);
 
         return $outstanding;
     }
@@ -638,7 +637,7 @@ class Document extends Model
      * This is COMPUTED from the outstanding amount, not stored.
      * Uses getOutstandingAmount() as the source of truth.
      */
-    public function getPaymentStatus(): PaymentStatus
+    public function getPaymentStatus(int $scale = 3): PaymentStatus
     {
         $payableTypes = [
             DocumentType::Invoice,
@@ -646,12 +645,12 @@ class Document extends Model
             DocumentType::PurchaseOrder,
         ];
 
-        if (!in_array($this->type, $payableTypes, true)) {
+        if (! in_array($this->type, $payableTypes, true)) {
             return PaymentStatus::Unpaid;
         }
 
-        $outstanding = $this->getOutstandingAmount();
-        $total = $this->total ?? '0.00';
+        $outstanding = $this->getOutstandingAmount($scale);
+        $total = $this->total ?? '0';
 
         // Check if any payments are pending bank reconciliation
         $hasPendingPayments = $this->allocations()
@@ -660,16 +659,16 @@ class Document extends Model
 
         return match (true) {
             // Overpaid: outstanding is negative
-            bccomp($outstanding, '0', 2) < 0 => PaymentStatus::Overpaid,
+            bccomp($outstanding, '0', $scale) < 0 => PaymentStatus::Overpaid,
 
             // Paid: outstanding is zero
-            bccomp($outstanding, '0', 2) === 0 => PaymentStatus::Paid,
+            bccomp($outstanding, '0', $scale) === 0 => PaymentStatus::Paid,
 
             // In Payment: no payments yet but some are pending reconciliation
-            bccomp($outstanding, $total, 2) === 0 && $hasPendingPayments => PaymentStatus::InPayment,
+            bccomp($outstanding, $total, $scale) === 0 && $hasPendingPayments => PaymentStatus::InPayment,
 
             // Unpaid: outstanding equals total (no payments)
-            bccomp($outstanding, $total, 2) === 0 => PaymentStatus::Unpaid,
+            bccomp($outstanding, $total, $scale) === 0 => PaymentStatus::Unpaid,
 
             // Partially Paid: 0 < outstanding < total
             default => PaymentStatus::PartiallyPaid,
@@ -681,8 +680,6 @@ class Document extends Model
      *
      * Tracks delivery/shipment status based on delivery notes.
      * Only applicable to invoices and sales orders.
-     *
-     * @return \App\Modules\Document\Domain\Enums\FulfillmentStatus
      */
     public function getFulfillmentStatus(): Enums\FulfillmentStatus
     {

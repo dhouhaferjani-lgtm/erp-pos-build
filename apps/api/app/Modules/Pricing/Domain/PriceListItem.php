@@ -21,7 +21,7 @@ class PriceListItem extends Model
     ];
 
     protected $casts = [
-        'price' => 'decimal:2',
+        'price' => 'decimal:3',
         'min_quantity' => 'decimal:2',
         'max_quantity' => 'decimal:2',
     ];

@@ -11,12 +11,17 @@ use App\Modules\Promotion\Domain\Enums\DiscountAppliesTo;
 use App\Modules\Promotion\Domain\Enums\DiscountType;
 use App\Modules\Promotion\Domain\ValueObjects\CartContext;
 use App\Modules\Promotion\Domain\ValueObjects\PromotionDiscount;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 
 /**
  * Pure domain validation of coupon rules against cart.
  */
 final class CouponValidationService
 {
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
     /**
      * Validate and calculate the discount for a coupon.
      *
@@ -56,8 +61,8 @@ final class CouponValidationService
             /** @var numeric-string $rawMinOrder */
             $rawMinOrder = $coupon->minimum_order_amount;
             /** @var numeric-string $minOrderAmount */
-            $minOrderAmount = bcadd($rawMinOrder, '0', 2);
-            if (bccomp($cart->subtotal, $minOrderAmount, 2) < 0) {
+            $minOrderAmount = bcadd($rawMinOrder, '0', $this->scale());
+            if (bccomp($cart->subtotal, $minOrderAmount, $this->scale()) < 0) {
                 throw CouponInvalidException::minimumNotMet(
                     $coupon->code,
                     $coupon->minimum_order_amount,
@@ -78,8 +83,8 @@ final class CouponValidationService
 
         /** @var numeric-string $discountAmount */
         $discountAmount = match ($discountType) {
-            DiscountType::Percentage => bcdiv(bcmul($cart->subtotal, $discountValue, 4), '100', 2),
-            DiscountType::Fixed => bcadd($discountValue, '0', 2),
+            DiscountType::Percentage => bcdiv(bcmul($cart->subtotal, $discountValue, 4), '100', $this->scale()),
+            DiscountType::Fixed => bcadd($discountValue, '0', $this->scale()),
             DiscountType::FreeItem => '0.00',
         };
 
@@ -88,14 +93,14 @@ final class CouponValidationService
             /** @var numeric-string $rawMaxDiscount */
             $rawMaxDiscount = $coupon->max_discount_amount;
             /** @var numeric-string $maxDiscount */
-            $maxDiscount = bcadd($rawMaxDiscount, '0', 2);
-            if (bccomp($discountAmount, $maxDiscount, 2) > 0) {
+            $maxDiscount = bcadd($rawMaxDiscount, '0', $this->scale());
+            if (bccomp($discountAmount, $maxDiscount, $this->scale()) > 0) {
                 $discountAmount = $maxDiscount;
             }
         }
 
         // Cap at subtotal
-        if (bccomp($discountAmount, $cart->subtotal, 2) > 0) {
+        if (bccomp($discountAmount, $cart->subtotal, $this->scale()) > 0) {
             $discountAmount = $cart->subtotal;
         }
 
@@ -109,5 +114,10 @@ final class CouponValidationService
             stackingGroup: $coupon->stacking_group,
             priority: 0,
         );
+    }
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
     }
 }

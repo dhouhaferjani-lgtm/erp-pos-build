@@ -12,6 +12,7 @@ use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Application\Services\MarginService;
 use App\Modules\Product\Domain\Events\ProductCostPriceUpdated;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -24,8 +25,14 @@ use Illuminate\Support\Str;
 class WeightedAverageCostService
 {
     public function __construct(
-        private readonly MarginService $marginService
+        private readonly MarginService $marginService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Record a purchase and update weighted average cost
@@ -80,7 +87,7 @@ class WeightedAverageCostService
             $newQty = $currentQty + $quantity;
             $newValue = $currentValue + ($quantity * $landedUnitCost);
 
-            $newAvgCost = $newQty > 0 ? round($newValue / $newQty, 2) : 0;
+            $newAvgCost = $newQty > 0 ? round($newValue / $newQty, $this->scale()) : 0;
 
             // Record movement
             $movement = StockMovement::create([
@@ -315,7 +322,7 @@ class WeightedAverageCostService
             $newQty = $currentQty + $quantity;
             $newValue = $currentValue + ($quantity * $originalCost);
 
-            $newAvgCost = $newQty > 0 ? round($newValue / $newQty, 2) : 0;
+            $newAvgCost = $newQty > 0 ? round($newValue / $newQty, $this->scale()) : 0;
 
             // Record movement
             $movement = StockMovement::create([
@@ -422,7 +429,7 @@ class WeightedAverageCostService
             return 0;
         }
 
-        return round(($currentValue + $newValue) / $totalQty, 2);
+        return round(($currentValue + $newValue) / $totalQty, $this->scale());
     }
 
     /**

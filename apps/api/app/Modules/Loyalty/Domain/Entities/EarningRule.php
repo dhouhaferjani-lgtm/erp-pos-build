@@ -58,8 +58,8 @@ class EarningRule extends Model
             'is_active' => 'boolean',
             'conditions' => 'array',
             'reward_value' => 'decimal:4',
-            'max_earn_per_transaction' => 'decimal:2',
-            'max_earn_per_day' => 'decimal:2',
+            'max_earn_per_transaction' => 'decimal:3',
+            'max_earn_per_day' => 'decimal:3',
             'start_date' => 'datetime',
             'end_date' => 'datetime',
         ];

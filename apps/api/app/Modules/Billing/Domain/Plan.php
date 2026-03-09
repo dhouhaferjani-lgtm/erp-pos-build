@@ -59,8 +59,8 @@ final class Plan extends Model
     {
         return [
             'limits' => 'array',
-            'price_monthly' => 'decimal:2',
-            'price_yearly' => 'decimal:2',
+            'price_monthly' => 'decimal:3',
+            'price_yearly' => 'decimal:3',
             'trial_days' => 'integer',
             'is_active' => 'boolean',
             'is_public' => 'boolean',

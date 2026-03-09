@@ -18,6 +18,7 @@ use App\Modules\Document\Domain\Services\ReturnNoteService;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -43,7 +44,13 @@ class ReturnNoteController extends Controller
         private readonly LocationContext $locationContext,
         private readonly ReturnNoteService $returnNoteService,
         private readonly DocumentNumberingService $numberingService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Get the CompanyContext service (required by HandlesDocuments trait).
@@ -113,7 +120,7 @@ class ReturnNoteController extends Controller
             ->with($this->detailRelations())
             ->findOrFail($id);
 
-        return $this->documentResponse($returnNote);
+        return $this->documentResponse($returnNote, 200, $this->scale());
     }
 
     /**
@@ -211,13 +218,13 @@ class ReturnNoteController extends Controller
                     $lineTotal = bcmul(
                         $lineData['quantity'],
                         $lineData['unit_price'],
-                        2
+                        $this->scale()
                     );
 
                     $lineTax = bcmul(
                         $lineTotal,
                         bcdiv($lineData['tax_rate'] ?? '0.00', '100', 4),
-                        2
+                        $this->scale()
                     );
 
                     \App\Modules\Document\Domain\DocumentLine::create([
@@ -233,11 +240,11 @@ class ReturnNoteController extends Controller
                         'notes' => $lineData['notes'] ?? null,
                     ]);
 
-                    $subtotal = bcadd($subtotal, $lineTotal, 2);
-                    $taxAmount = bcadd($taxAmount, $lineTax, 2);
+                    $subtotal = bcadd($subtotal, $lineTotal, $this->scale());
+                    $taxAmount = bcadd($taxAmount, $lineTax, $this->scale());
                 }
 
-                $total = bcadd($subtotal, $taxAmount, 2);
+                $total = bcadd($subtotal, $taxAmount, $this->scale());
 
                 // Update document totals
                 $returnNote->update([
@@ -250,7 +257,7 @@ class ReturnNoteController extends Controller
             // Load relations and return
             $returnNote->load($this->defaultRelations());
 
-            return $this->documentCreatedResponse($returnNote);
+            return $this->documentCreatedResponse($returnNote, $this->scale());
         });
     }
 
@@ -332,13 +339,13 @@ class ReturnNoteController extends Controller
                     $lineTotal = bcmul(
                         $lineData['quantity'],
                         $lineData['unit_price'],
-                        2
+                        $this->scale()
                     );
 
                     $lineTax = bcmul(
                         $lineTotal,
                         bcdiv($lineData['tax_rate'] ?? '0.00', '100', 4),
-                        2
+                        $this->scale()
                     );
 
                     \App\Modules\Document\Domain\DocumentLine::create([
@@ -354,11 +361,11 @@ class ReturnNoteController extends Controller
                         'notes' => $lineData['notes'] ?? null,
                     ]);
 
-                    $subtotal = bcadd($subtotal, $lineTotal, 2);
-                    $taxAmount = bcadd($taxAmount, $lineTax, 2);
+                    $subtotal = bcadd($subtotal, $lineTotal, $this->scale());
+                    $taxAmount = bcadd($taxAmount, $lineTax, $this->scale());
                 }
 
-                $total = bcadd($subtotal, $taxAmount, 2);
+                $total = bcadd($subtotal, $taxAmount, $this->scale());
 
                 // Update document totals
                 $returnNote->update([
@@ -371,7 +378,7 @@ class ReturnNoteController extends Controller
             // Reload and return
             $returnNote->refresh()->load($this->defaultRelations());
 
-            return $this->documentResponse($returnNote);
+            return $this->documentResponse($returnNote, 200, $this->scale());
         });
     }
 
@@ -432,13 +439,13 @@ class ReturnNoteController extends Controller
 
         // Idempotency: if already confirmed, return success with current state
         if ($returnNote->status === DocumentStatus::Confirmed) {
-            return $this->documentResponse($returnNote);
+            return $this->documentResponse($returnNote, 200, $this->scale());
         }
 
         try {
             $confirmedReturnNote = $this->returnNoteService->confirm($returnNote);
 
-            return $this->documentResponse($confirmedReturnNote);
+            return $this->documentResponse($confirmedReturnNote, 200, $this->scale());
         } catch (\DomainException $e) {
             return response()->json([
                 'error' => [

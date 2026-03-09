@@ -8,11 +8,21 @@ use App\Modules\Catalog\Domain\Product;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Pricing\Domain\PriceList;
 use App\Modules\Pricing\Domain\PriceListItem;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class PricingService
 {
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
+
     /**
      * Get price for a product based on partner, quantity, and date
      *
@@ -181,27 +191,27 @@ class PricingService
         ?string $discountPercent = null,
         ?string $discountAmount = null
     ): array {
-        $subtotal = bcmul($unitPrice, $quantity, 2);
+        $subtotal = bcmul($unitPrice, $quantity, $this->scale());
 
-        $totalDiscount = '0.00';
+        $totalDiscount = '0';
 
         // Apply percentage discount
-        if ($discountPercent !== null && bccomp($discountPercent, '0', 2) > 0) {
-            $percentDiscount = bcmul($subtotal, bcdiv($discountPercent, '100', 4), 2);
-            $totalDiscount = bcadd($totalDiscount, $percentDiscount, 2);
+        if ($discountPercent !== null && bccomp($discountPercent, '0', $this->scale()) > 0) {
+            $percentDiscount = bcmul($subtotal, bcdiv($discountPercent, '100', 4), $this->scale());
+            $totalDiscount = bcadd($totalDiscount, $percentDiscount, $this->scale());
         }
 
         // Apply fixed amount discount
-        if ($discountAmount !== null && bccomp($discountAmount, '0', 2) > 0) {
-            $totalDiscount = bcadd($totalDiscount, $discountAmount, 2);
+        if ($discountAmount !== null && bccomp($discountAmount, '0', $this->scale()) > 0) {
+            $totalDiscount = bcadd($totalDiscount, $discountAmount, $this->scale());
         }
 
         // Discount cannot exceed subtotal
-        if (bccomp($totalDiscount, $subtotal, 2) > 0) {
+        if (bccomp($totalDiscount, $subtotal, $this->scale()) > 0) {
             $totalDiscount = $subtotal;
         }
 
-        $total = bcsub($subtotal, $totalDiscount, 2);
+        $total = bcsub($subtotal, $totalDiscount, $this->scale());
 
         return [
             'subtotal' => $subtotal,
@@ -220,22 +230,22 @@ class PricingService
         ?string $discountPercent = null,
         ?string $discountAmount = null
     ): array {
-        $totalDiscount = '0.00';
+        $totalDiscount = '0';
 
-        if ($discountPercent !== null && bccomp($discountPercent, '0', 2) > 0) {
-            $percentDiscount = bcmul($subtotal, bcdiv($discountPercent, '100', 4), 2);
-            $totalDiscount = bcadd($totalDiscount, $percentDiscount, 2);
+        if ($discountPercent !== null && bccomp($discountPercent, '0', $this->scale()) > 0) {
+            $percentDiscount = bcmul($subtotal, bcdiv($discountPercent, '100', 4), $this->scale());
+            $totalDiscount = bcadd($totalDiscount, $percentDiscount, $this->scale());
         }
 
-        if ($discountAmount !== null && bccomp($discountAmount, '0', 2) > 0) {
-            $totalDiscount = bcadd($totalDiscount, $discountAmount, 2);
+        if ($discountAmount !== null && bccomp($discountAmount, '0', $this->scale()) > 0) {
+            $totalDiscount = bcadd($totalDiscount, $discountAmount, $this->scale());
         }
 
-        if (bccomp($totalDiscount, $subtotal, 2) > 0) {
+        if (bccomp($totalDiscount, $subtotal, $this->scale()) > 0) {
             $totalDiscount = $subtotal;
         }
 
-        $total = bcsub($subtotal, $totalDiscount, 2);
+        $total = bcsub($subtotal, $totalDiscount, $this->scale());
 
         return [
             'discount_amount' => $totalDiscount,

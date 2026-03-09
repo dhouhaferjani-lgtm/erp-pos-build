@@ -14,6 +14,7 @@ use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Accounting\Domain\OpeningBalanceImportRow;
 use App\Modules\Company\Domain\Company;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -31,11 +32,15 @@ use RuntimeException;
  */
 class AccountingOpeningService
 {
-    private const SCALE = 2;
-
     public function __construct(
-        private readonly OpeningBalanceBatchService $batchService
+        private readonly OpeningBalanceBatchService $batchService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Validate all import rows in a GL opening batch.
@@ -52,16 +57,16 @@ class AccountingOpeningService
         $validationResults = [];
         $errors = [];
 
-        $totalDebit = '0.00';
-        $totalCredit = '0.00';
+        $totalDebit = '0';
+        $totalCredit = '0';
 
         foreach ($rows as $row) {
             $result = $this->validateRow($row, $batch->company_id);
             $validationResults[$row->id] = $result;
 
             if ($result['valid']) {
-                $totalDebit = bcadd($totalDebit, $result['mapped_data']['debit'] ?? '0.00', self::SCALE);
-                $totalCredit = bcadd($totalCredit, $result['mapped_data']['credit'] ?? '0.00', self::SCALE);
+                $totalDebit = bcadd($totalDebit, $result['mapped_data']['debit'] ?? '0', $this->scale());
+                $totalCredit = bcadd($totalCredit, $result['mapped_data']['credit'] ?? '0', $this->scale());
             } else {
                 $errors[$row->id] = $result['errors'];
             }
@@ -71,7 +76,7 @@ class AccountingOpeningService
         $this->batchService->applyValidationResults($batch, $validationResults);
 
         // Check if debits equal credits
-        $isBalanced = bccomp($totalDebit, $totalCredit, self::SCALE) === 0;
+        $isBalanced = bccomp($totalDebit, $totalCredit, $this->scale()) === 0;
 
         $validCount = count(array_filter($validationResults, fn (array $r): bool => $r['valid']));
         $invalidCount = count($validationResults) - $validCount;
@@ -80,7 +85,7 @@ class AccountingOpeningService
         if (! $isBalanced && $validCount > 0) {
             $errors['_batch'] = [
                 "Total debits ({$totalDebit}) do not equal total credits ({$totalCredit}). ".
-                'Difference: '.bcsub($totalDebit, $totalCredit, self::SCALE),
+                'Difference: '.bcsub($totalDebit, $totalCredit, $this->scale()),
             ];
         }
 
@@ -135,31 +140,31 @@ class AccountingOpeningService
         }
 
         // Validate debit/credit amounts
-        $debit = $rawData['debit'] ?? '0.00';
-        $credit = $rawData['credit'] ?? '0.00';
+        $debit = $rawData['debit'] ?? '0';
+        $credit = $rawData['credit'] ?? '0';
 
-        if (! is_numeric($debit) || bccomp((string) $debit, '0.00', self::SCALE) < 0) {
+        if (! is_numeric($debit) || bccomp((string) $debit, '0', $this->scale()) < 0) {
             $errors['debit'] = ['Debit must be a non-negative number'];
         } else {
-            $mappedData['debit'] = bcadd('0.00', (string) $debit, self::SCALE);
+            $mappedData['debit'] = bcadd('0', (string) $debit, $this->scale());
         }
 
-        if (! is_numeric($credit) || bccomp((string) $credit, '0.00', self::SCALE) < 0) {
+        if (! is_numeric($credit) || bccomp((string) $credit, '0', $this->scale()) < 0) {
             $errors['credit'] = ['Credit must be a non-negative number'];
         } else {
-            $mappedData['credit'] = bcadd('0.00', (string) $credit, self::SCALE);
+            $mappedData['credit'] = bcadd('0', (string) $credit, $this->scale());
         }
 
         // Check that at least one of debit/credit is non-zero
-        if (empty($errors) && bccomp($mappedData['debit'] ?? '0.00', '0.00', self::SCALE) === 0
-            && bccomp($mappedData['credit'] ?? '0.00', '0.00', self::SCALE) === 0) {
+        if (empty($errors) && bccomp($mappedData['debit'] ?? '0', '0', $this->scale()) === 0
+            && bccomp($mappedData['credit'] ?? '0', '0', $this->scale()) === 0) {
             $errors['amount'] = ['Either debit or credit must be non-zero'];
         }
 
         // Check that both debit and credit are not non-zero simultaneously
         if (empty($errors)
-            && bccomp($mappedData['debit'] ?? '0.00', '0.00', self::SCALE) > 0
-            && bccomp($mappedData['credit'] ?? '0.00', '0.00', self::SCALE) > 0) {
+            && bccomp($mappedData['debit'] ?? '0', '0', $this->scale()) > 0
+            && bccomp($mappedData['credit'] ?? '0', '0', $this->scale()) > 0) {
             $errors['amount'] = ['A line cannot have both debit and credit - split into two lines'];
         }
 
@@ -227,8 +232,8 @@ class AccountingOpeningService
             ]);
 
             $lineOrder = 0;
-            $totalDebit = '0.00';
-            $totalCredit = '0.00';
+            $totalDebit = '0';
+            $totalCredit = '0';
             $rowEntityMap = [];
 
             // Create journal lines from valid rows
@@ -239,11 +244,11 @@ class AccountingOpeningService
                     continue;
                 }
 
-                $debit = $mappedData['debit'] ?? '0.00';
-                $credit = $mappedData['credit'] ?? '0.00';
+                $debit = $mappedData['debit'] ?? '0';
+                $credit = $mappedData['credit'] ?? '0';
 
                 // Only create line if there's a non-zero amount
-                if (bccomp($debit, '0.00', self::SCALE) > 0 || bccomp($credit, '0.00', self::SCALE) > 0) {
+                if (bccomp($debit, '0', $this->scale()) > 0 || bccomp($credit, '0', $this->scale()) > 0) {
                     $line = JournalLine::create([
                         'journal_entry_id' => $entry->id,
                         'account_id' => $mappedData['account_id'],
@@ -254,21 +259,21 @@ class AccountingOpeningService
                         'line_order' => $lineOrder++,
                     ]);
 
-                    $totalDebit = bcadd($totalDebit, $debit, self::SCALE);
-                    $totalCredit = bcadd($totalCredit, $credit, self::SCALE);
+                    $totalDebit = bcadd($totalDebit, $debit, $this->scale());
+                    $totalCredit = bcadd($totalCredit, $credit, $this->scale());
 
                     $rowEntityMap[$row->id] = $line->id;
                 }
             }
 
             // Add OBE offset if needed (shouldn't be needed if properly validated)
-            $difference = bcsub($totalDebit, $totalCredit, self::SCALE);
-            if (bccomp($difference, '0.00', self::SCALE) !== 0) {
+            $difference = bcsub($totalDebit, $totalCredit, $this->scale());
+            if (bccomp($difference, '0', $this->scale()) !== 0) {
                 $obeAccount = Account::findByPurposeOrFail($company->id, SystemAccountPurpose::OpeningBalanceEquity);
 
                 // If debits > credits, credit OBE; if credits > debits, debit OBE
-                $obeDebit = bccomp($difference, '0.00', self::SCALE) < 0 ? bcmul($difference, '-1', self::SCALE) : '0.00';
-                $obeCredit = bccomp($difference, '0.00', self::SCALE) > 0 ? $difference : '0.00';
+                $obeDebit = bccomp($difference, '0', $this->scale()) < 0 ? bcmul($difference, '-1', $this->scale()) : '0';
+                $obeCredit = bccomp($difference, '0', $this->scale()) > 0 ? $difference : '0';
 
                 JournalLine::create([
                     'journal_entry_id' => $entry->id,
@@ -314,20 +319,20 @@ class AccountingOpeningService
                 'row_number' => $row->row_number,
                 'account_code' => $mappedData['account_code'] ?? 'N/A',
                 'account_name' => $mappedData['account_name'] ?? 'N/A',
-                'debit' => $mappedData['debit'] ?? '0.00',
-                'credit' => $mappedData['credit'] ?? '0.00',
+                'debit' => $mappedData['debit'] ?? '0',
+                'credit' => $mappedData['credit'] ?? '0',
                 'description' => $mappedData['description'] ?? '',
             ];
         });
 
         $totalDebit = $lines->reduce(
-            fn (string $carry, array $line): string => bcadd($carry, $line['debit'], self::SCALE),
-            '0.00'
+            fn (string $carry, array $line): string => bcadd($carry, $line['debit'], $this->scale()),
+            '0'
         );
 
         $totalCredit = $lines->reduce(
-            fn (string $carry, array $line): string => bcadd($carry, $line['credit'], self::SCALE),
-            '0.00'
+            fn (string $carry, array $line): string => bcadd($carry, $line['credit'], $this->scale()),
+            '0'
         );
 
         return [
@@ -341,7 +346,7 @@ class AccountingOpeningService
             'totals' => [
                 'debit' => $totalDebit,
                 'credit' => $totalCredit,
-                'is_balanced' => bccomp($totalDebit, $totalCredit, self::SCALE) === 0,
+                'is_balanced' => bccomp($totalDebit, $totalCredit, $this->scale()) === 0,
             ],
         ];
     }

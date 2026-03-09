@@ -9,10 +9,20 @@ use App\Modules\Treasury\Domain\BankReconciliationItem;
 use App\Modules\Treasury\Domain\Enums\ReconciliationStatus;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 
 class BankReconciliationService
 {
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
+
     /**
      * Start a new reconciliation session.
      *
@@ -45,7 +55,7 @@ class BankReconciliationService
                 'opening_balance' => $openingBalance,
                 'closing_balance' => $repository->balance,
                 'statement_balance' => $data['statement_balance'],
-                'difference' => bcsub($data['statement_balance'], (string) $repository->balance, 2),
+                'difference' => bcsub($data['statement_balance'], (string) $repository->balance, $this->scale()),
                 'status' => ReconciliationStatus::Draft,
                 'created_by' => $userId,
                 'notes' => $data['notes'] ?? null,
@@ -220,9 +230,9 @@ class BankReconciliationService
             'status' => $reconciliation->status->value,
             'matched_count' => $matchedItems->count(),
             'unmatched_count' => $unmatchedItems->count(),
-            'matched_total' => number_format($matchedTotal, 2, '.', ''),
-            'unmatched_total' => number_format($unmatchedTotal, 2, '.', ''),
-            'can_complete' => $reconciliation->isEditable() && bccomp($reconciliation->difference, '0.00', 2) === 0,
+            'matched_total' => number_format($matchedTotal, $this->scale(), '.', ''),
+            'unmatched_total' => number_format($unmatchedTotal, $this->scale(), '.', ''),
+            'can_complete' => $reconciliation->isEditable() && bccomp($reconciliation->difference, '0.00', $this->scale()) === 0,
         ];
     }
 
@@ -235,8 +245,8 @@ class BankReconciliationService
         $matchedTotal = $matchedItems->sum(fn ($item) => (float) $item->payment->amount);
 
         // Calculate expected balance based on matched transactions
-        $expectedBalance = bcadd($reconciliation->opening_balance, number_format($matchedTotal, 2, '.', ''), 2);
-        $difference = bcsub($reconciliation->statement_balance, $expectedBalance, 2);
+        $expectedBalance = bcadd($reconciliation->opening_balance, number_format($matchedTotal, $this->scale(), '.', ''), $this->scale());
+        $difference = bcsub($reconciliation->statement_balance, $expectedBalance, $this->scale());
 
         $reconciliation->update([
             'closing_balance' => $expectedBalance,
