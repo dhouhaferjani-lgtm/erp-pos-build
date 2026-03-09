@@ -85,8 +85,11 @@
 - [x] Backend + frontend tests (10 tests, 28 assertions)
 - [x] Translations (en/fr) for frontend and backend PDF
 
-**Known limitations (not blocking go-live):**
-- Duplicate product lines: if the same product appears on multiple original receipt lines, returned quantities may be attributed to the first matching line. A future improvement would store `original_line_id` on return receipt lines.
+**Follow-up items (tracked for next iteration):**
+- [ ] **Duplicate product line matching** — `calculateReturnedQuantities()` (in both `ReceiptController` and `ReceiptReturnService`) matches return lines to original lines by `product_id + composite_item_id + product_code` and breaks on first match. If the original receipt has two lines with the same product (e.g., added twice at different prices or with different modifiers), returned quantities are attributed to the first matching line only. **Fix:** Add `original_line_id` FK to `pos_receipt_lines`, populate it during return creation, and use it for matching instead of product attributes.
+- [ ] **Return receipt `discount_amount` always zero** — `ReceiptReturnService` hardcodes receipt-level `discount_amount` to `'0.00'` even though line-level proportional discounts are calculated correctly. Should sum the line-level discounts to set the receipt total.
+- [ ] **Silent stock restore skip** — `ReceiptReturnService::restoreStock()` silently returns if no `StockLevel` record exists for the product/location. Should log a warning so missing stock records are visible in ops.
+- [ ] **Return flow test coverage** — Add tests for: `processReturn` endpoint validation (over-return rejection, voided receipt rejection, return-a-return rejection), multiple sequential returns on same receipt (cumulative quantities), and the duplicate product line edge case.
 
 #### 1.5 ~~POS PIN Auth Frontend~~ — MOVED TO TAURI POS
 > PIN auth is for shared physical terminals (Tauri POS) where multiple
