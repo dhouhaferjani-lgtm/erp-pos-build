@@ -18,6 +18,7 @@ export interface Terminal {
   activated_at: string | null
   deactivated_at: string | null
   deactivation_reason: string | null
+  has_history: boolean
   current_sequence: number
   current_year: number
   created_at: string
@@ -70,7 +71,14 @@ export async function updateTerminal(id: string, data: UpdateTerminalInput): Pro
 }
 
 /**
- * Delete a terminal
+ * Archive a terminal (soft delete — data preserved)
+ */
+export async function archiveTerminal(id: string): Promise<void> {
+  return apiPatch(`/pos/terminals/${id}/archive`)
+}
+
+/**
+ * Permanently delete a terminal (only when it has no receipts)
  */
 export async function deleteTerminal(id: string): Promise<void> {
   return apiDelete(`/pos/terminals/${id}`)

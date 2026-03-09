@@ -4,6 +4,7 @@ import {
   fetchTerminal,
   createTerminal,
   updateTerminal,
+  archiveTerminal,
   deleteTerminal,
   activateTerminal,
   deactivateTerminal,
@@ -77,7 +78,21 @@ export function useUpdateTerminal() {
 }
 
 /**
- * Delete a terminal
+ * Archive a terminal (soft delete)
+ */
+export function useArchiveTerminal() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (id: string) => archiveTerminal(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: terminalKeys.lists() })
+    },
+  })
+}
+
+/**
+ * Permanently delete a terminal
  */
 export function useDeleteTerminal() {
   const queryClient = useQueryClient()

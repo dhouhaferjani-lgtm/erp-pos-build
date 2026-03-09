@@ -155,6 +155,14 @@ class Terminal extends Model
     }
 
     /**
+     * @return HasMany<Shift, $this>
+     */
+    public function shifts(): HasMany
+    {
+        return $this->hasMany(Shift::class, 'terminal_id');
+    }
+
+    /**
      * Check if terminal is active
      */
     public function isActive(): bool

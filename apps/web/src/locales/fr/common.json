@@ -175,7 +175,10 @@
     "modifierGroups": "Groupes de modificateurs",
     "menus": "Menus",
     "promotions": "Promotions",
-    "coupons": "Coupons"
+    "coupons": "Coupons",
+    "crm": "CRM",
+    "companies": "Entreprises",
+    "contacts": "Contacts"
   },
   "fields": {
     "totalReceivable": "Total à recevoir",
@@ -654,6 +657,7 @@
       "activate": "Activer",
       "deactivate": "Désactiver",
       "resetPassword": "Réinitialiser le mot de passe",
+      "setPosPin": "Définir le PIN POS",
       "delete": "Supprimer"
     },
     "confirmations": {
@@ -665,7 +669,9 @@
       "activated": "Utilisateur activé avec succès.",
       "deactivated": "Utilisateur désactivé avec succès.",
       "passwordReset": "E-mail de réinitialisation du mot de passe envoyé avec succès.",
-      "deleted": "Utilisateur supprimé avec succès."
+      "deleted": "Utilisateur supprimé avec succès.",
+      "pinSet": "PIN POS défini avec succès.",
+      "pinCleared": "PIN POS supprimé."
     },
     "modal": {
       "title": "Ajouter un nouvel utilisateur",
@@ -679,10 +685,16 @@
       "invitationNote": "Un e-mail d'invitation sera envoyé à l'utilisateur avec les instructions pour définir son mot de passe.",
       "createUser": "Créer l'utilisateur"
     },
+    "pinModal": {
+      "title": "Définir le PIN POS",
+      "pinLabel": "PIN (4-6 chiffres)",
+      "clearPin": "Supprimer le PIN"
+    },
     "validation": {
       "nameRequired": "Le nom est requis",
       "emailRequired": "L'e-mail est requis",
       "invalidEmail": "Format d'e-mail invalide",
+      "invalidPin": "Le PIN doit contenir 4 à 6 chiffres",
       "roleRequired": "Le rôle est requis"
     },
     "never": "Jamais"
@@ -966,6 +978,10 @@
       "deactivateTerminal": "Désactiver le terminal",
       "deactivationReasonPlaceholder": "Entrez la raison...",
       "deactivate": "Désactiver",
+      "archive": "Archiver",
+      "confirmArchiveTitle": "Archiver le terminal",
+      "confirmArchive": "Êtes-vous sûr de vouloir archiver {{resource}} ? Le terminal sera masqué mais tout l'historique des transactions sera conservé.",
+      "cannotDeleteHasHistory": "Suppression impossible — le terminal a un historique de transactions. Utilisez l'archivage.",
       "namePlaceholder": "ex. Terminal du comptoir principal",
       "descriptionPlaceholder": "Description optionnelle pour ce terminal"
     },
@@ -975,6 +991,7 @@
       "paymentProcessing": "Traitement du paiement...",
       "terminalCreated": "Terminal créé avec succès",
       "terminalUpdated": "Terminal mis à jour avec succès",
+      "terminalArchived": "Terminal archivé avec succès",
       "terminalDeleted": "Terminal supprimé avec succès",
       "terminalActivated": "Terminal activé avec succès",
       "terminalDeactivated": "Terminal désactivé avec succès"

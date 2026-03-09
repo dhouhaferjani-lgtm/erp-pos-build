@@ -7,6 +7,7 @@ import {
   useTerminals,
   useCreateTerminal,
   useUpdateTerminal,
+  useArchiveTerminal,
   useDeleteTerminal,
   useActivateTerminal,
   useDeactivateTerminal,
@@ -26,6 +27,7 @@ export function TerminalsPage() {
   const { t } = useTranslation()
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingTerminal, setEditingTerminal] = useState<Terminal | undefined>()
+  const [archiveTarget, setArchiveTarget] = useState<Terminal | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Terminal | null>(null)
   const [deactivateTarget, setDeactivateTarget] = useState<Terminal | null>(null)
   const [deactivateReason, setDeactivateReason] = useState('')
@@ -42,6 +44,7 @@ export function TerminalsPage() {
   // Mutations
   const createTerminal = useCreateTerminal()
   const updateTerminal = useUpdateTerminal()
+  const archiveTerminalMutation = useArchiveTerminal()
   const deleteTerminal = useDeleteTerminal()
   const activateTerminal = useActivateTerminal()
   const deactivateTerminal = useDeactivateTerminal()
@@ -82,6 +85,23 @@ export function TerminalsPage() {
           ? t('common.errorUpdating', { resource: t('pos.terminal.terminal') })
           : t('common.errorCreating', { resource: t('pos.terminal.terminal') })
       )
+    }
+  }
+
+  // Handle archive - show confirmation modal
+  const handleArchive = (terminal: Terminal) => {
+    setArchiveTarget(terminal)
+  }
+
+  const confirmArchive = async () => {
+    if (!archiveTarget) return
+    try {
+      await archiveTerminalMutation.mutateAsync(archiveTarget.id)
+      toast.success(t('pos.messages.terminalArchived'))
+    } catch (_err) {
+      toast.error(t('common.error'))
+    } finally {
+      setArchiveTarget(null)
     }
   }
 
@@ -162,6 +182,7 @@ export function TerminalsPage() {
           terminals={terminals}
           isLoading={terminalsLoading}
           onEdit={handleOpenEditForm}
+          onArchive={handleArchive}
           onDelete={handleDelete}
           onActivate={handleActivate}
           onDeactivate={handleDeactivate}
@@ -209,6 +230,36 @@ export function TerminalsPage() {
                   onCancel={handleCloseForm}
                 />
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Archive Confirmation Modal */}
+      {archiveTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              {t('pos.terminal.confirmArchiveTitle')}
+            </h3>
+            <p className="text-gray-600 mb-6">
+              {t('pos.terminal.confirmArchive', { resource: `${archiveTarget.name} (${archiveTarget.code})` })}
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setArchiveTarget(null)}
+                className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                {t('common.actions.cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmArchive()}
+                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-amber-600 rounded-lg hover:bg-amber-700"
+              >
+                {t('pos.terminal.archive')}
+              </button>
             </div>
           </div>
         </div>

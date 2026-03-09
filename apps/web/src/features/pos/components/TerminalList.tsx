@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Edit2, Trash2, Power, PowerOff } from 'lucide-react'
+import { Edit2, Trash2, Power, PowerOff, Archive } from 'lucide-react'
 import { TerminalStatusBadge } from './TerminalStatusBadge'
 import type { Terminal } from '../hooks/useTerminals'
 
@@ -7,6 +7,7 @@ interface TerminalListProps {
   terminals: Terminal[]
   isLoading?: boolean
   onEdit: (terminal: Terminal) => void
+  onArchive: (terminal: Terminal) => void
   onDelete: (terminal: Terminal) => void
   onActivate: (terminal: Terminal) => void
   onDeactivate: (terminal: Terminal) => void
@@ -19,6 +20,7 @@ export function TerminalList({
   terminals,
   isLoading = false,
   onEdit,
+  onArchive,
   onDelete,
   onActivate,
   onDeactivate,
@@ -138,9 +140,27 @@ export function TerminalList({
 
                   <button
                     type="button"
+                    onClick={() => { onArchive(terminal) }}
+                    className="text-amber-600 hover:text-amber-900"
+                    title={t('pos.terminal.archive')}
+                  >
+                    <Archive className="h-4 w-4" />
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => { onDelete(terminal) }}
-                    className="text-red-600 hover:text-red-900"
-                    title={t('common.delete')}
+                    disabled={terminal.has_history}
+                    className={
+                      terminal.has_history
+                        ? 'text-gray-300 cursor-not-allowed'
+                        : 'text-red-600 hover:text-red-900'
+                    }
+                    title={
+                      terminal.has_history
+                        ? t('pos.terminal.cannotDeleteHasHistory')
+                        : t('common.delete')
+                    }
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>

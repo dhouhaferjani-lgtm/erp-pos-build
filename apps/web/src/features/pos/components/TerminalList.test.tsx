@@ -13,6 +13,7 @@ vi.mock('react-i18next', () => ({
 
 const mockTerminal: Terminal = {
   id: '1',
+  type: 'physical',
   code: 'POS01',
   name: 'Main Counter Terminal',
   description: 'Primary checkout terminal',
@@ -26,10 +27,19 @@ const mockTerminal: Terminal = {
   activated_at: '2025-01-01T00:00:00Z',
   deactivated_at: null,
   deactivation_reason: null,
+  has_history: false,
   current_sequence: 0,
   current_year: 2025,
   created_at: '2025-01-01T00:00:00Z',
   updated_at: '2025-01-01T00:00:00Z',
+}
+
+const mockTerminalWithReceipts: Terminal = {
+  ...mockTerminal,
+  id: '3',
+  code: 'POS03',
+  name: 'Terminal With History',
+  has_history: true,
 }
 
 const mockInactiveTerminal: Terminal = {
@@ -47,6 +57,7 @@ describe('TerminalList', () => {
   const defaultProps = {
     terminals: [],
     onEdit: vi.fn(),
+    onArchive: vi.fn(),
     onDelete: vi.fn(),
     onActivate: vi.fn(),
     onDeactivate: vi.fn(),
@@ -125,7 +136,22 @@ describe('TerminalList', () => {
     expect(onEdit).toHaveBeenCalledWith(mockTerminal)
   })
 
-  it('calls onDelete when delete button is clicked', async () => {
+  it('calls onArchive when archive button is clicked', async () => {
+    const user = userEvent.setup()
+    const onArchive = vi.fn()
+
+    render(
+      <TerminalList {...defaultProps} terminals={[mockTerminal]} onArchive={onArchive} />
+    )
+
+    const archiveButton = screen.getByTitle('pos.terminal.archive')
+    await user.click(archiveButton)
+
+    expect(onArchive).toHaveBeenCalledTimes(1)
+    expect(onArchive).toHaveBeenCalledWith(mockTerminal)
+  })
+
+  it('calls onDelete when delete button is clicked for terminal without receipts', async () => {
     const user = userEvent.setup()
     const onDelete = vi.fn()
 
@@ -138,6 +164,15 @@ describe('TerminalList', () => {
 
     expect(onDelete).toHaveBeenCalledTimes(1)
     expect(onDelete).toHaveBeenCalledWith(mockTerminal)
+  })
+
+  it('disables delete button when terminal has receipts', () => {
+    render(
+      <TerminalList {...defaultProps} terminals={[mockTerminalWithReceipts]} />
+    )
+
+    const deleteButton = screen.getByTitle('pos.terminal.cannotDeleteHasHistory')
+    expect(deleteButton).toBeDisabled()
   })
 
   it('shows deactivate button for active terminals', async () => {
@@ -201,11 +236,13 @@ describe('TerminalList', () => {
     expect(screen.getByText('POS01')).toBeInTheDocument()
     expect(screen.getByText('POS02')).toBeInTheDocument()
 
-    // Verify each has its action buttons (3 buttons each)
+    // Verify each has its action buttons
     const editButtons = screen.getAllByTitle('common.edit')
+    const archiveButtons = screen.getAllByTitle('pos.terminal.archive')
     const deleteButtons = screen.getAllByTitle('common.delete')
 
     expect(editButtons).toHaveLength(2)
+    expect(archiveButtons).toHaveLength(2)
     expect(deleteButtons).toHaveLength(2)
   })
 

@@ -31,10 +31,13 @@ final class TerminalResource extends JsonResource
                     'code' => $this->location->code,
                 ];
             }),
+            'hardware_identifier' => $this->hardware_identifier,
             'is_active' => $this->is_active,
             'activated_at' => $this->activated_at?->toISOString(),
             'deactivated_at' => $this->deactivated_at?->toISOString(),
             'deactivation_reason' => $this->deactivation_reason,
+            'has_history' => ($this->receipts_count ?? $this->receipts()->count()) > 0
+                || ($this->shifts_count ?? $this->shifts()->count()) > 0,
             'current_sequence' => $this->current_sequence,
             'current_year' => $this->current_year,
             'created_at' => $this->created_at->toISOString(),

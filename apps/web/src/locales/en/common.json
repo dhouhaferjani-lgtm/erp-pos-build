@@ -233,7 +233,10 @@
     "modifierGroups": "Modifier Groups",
     "menus": "Menus",
     "promotions": "Promotions",
-    "coupons": "Coupons"
+    "coupons": "Coupons",
+    "crm": "CRM",
+    "companies": "Companies",
+    "contacts": "Contacts"
   },
   "locations": {
     "title": "Location Management",
@@ -685,6 +688,7 @@
       "activate": "Activate",
       "deactivate": "Deactivate",
       "resetPassword": "Reset Password",
+      "setPosPin": "Set POS PIN",
       "delete": "Delete"
     },
     "confirmations": {
@@ -696,7 +700,9 @@
       "activated": "User activated successfully.",
       "deactivated": "User deactivated successfully.",
       "passwordReset": "Password reset email sent successfully.",
-      "deleted": "User deleted successfully."
+      "deleted": "User deleted successfully.",
+      "pinSet": "POS PIN set successfully.",
+      "pinCleared": "POS PIN cleared."
     },
     "modal": {
       "title": "Add New User",
@@ -710,10 +716,16 @@
       "invitationNote": "An invitation email will be sent to the user with instructions to set their password.",
       "createUser": "Create User"
     },
+    "pinModal": {
+      "title": "Set POS PIN",
+      "pinLabel": "PIN (4-6 digits)",
+      "clearPin": "Clear PIN"
+    },
     "validation": {
       "nameRequired": "Name is required",
       "emailRequired": "Email is required",
       "invalidEmail": "Invalid email format",
+      "invalidPin": "PIN must be 4-6 digits",
       "roleRequired": "Role is required"
     },
     "never": "Never"
@@ -1033,6 +1045,10 @@
       "deactivateTerminal": "Deactivate Terminal",
       "deactivationReasonPlaceholder": "Enter reason...",
       "deactivate": "Deactivate",
+      "archive": "Archive",
+      "confirmArchiveTitle": "Archive Terminal",
+      "confirmArchive": "Are you sure you want to archive {{resource}}? The terminal will be hidden but all transaction history will be preserved.",
+      "cannotDeleteHasHistory": "Cannot delete — terminal has transaction history. Use archive instead.",
       "namePlaceholder": "e.g. Main Counter Terminal",
       "descriptionPlaceholder": "Optional description for this terminal"
     },
@@ -1042,6 +1058,7 @@
       "paymentProcessing": "Processing payment...",
       "terminalCreated": "Terminal created successfully",
       "terminalUpdated": "Terminal updated successfully",
+      "terminalArchived": "Terminal archived successfully",
       "terminalDeleted": "Terminal deleted successfully",
       "terminalActivated": "Terminal activated successfully",
       "terminalDeactivated": "Terminal deactivated successfully"
