@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Modules\POS\Application\Services;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Receipt;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Barryvdh\DomPDF\PDF as DomPdf;
 use Carbon\Carbon;
@@ -21,6 +23,15 @@ use NumberFormatter;
  */
 final class ReceiptPdfService
 {
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
+
     /**
      * Generate PDF for a receipt.
      *
@@ -29,7 +40,7 @@ final class ReceiptPdfService
      */
     public function generate(Receipt $receipt, bool $stream = false): DomPdf
     {
-        $receipt->load([
+        $relations = [
             'company',
             'location',
             'terminal',
@@ -37,7 +48,13 @@ final class ReceiptPdfService
             'lines.product',
             'vatDetails',
             'payments.paymentMethod',
-        ]);
+        ];
+
+        if ($receipt->receipt_type === ReceiptType::Return) {
+            $relations[] = 'originalReceipt';
+        }
+
+        $receipt->load($relations);
 
         $company = $receipt->company;
         $data = $this->prepareData($receipt, $company);
@@ -87,8 +104,10 @@ final class ReceiptPdfService
         // Calculate change given if any
         $totalPaid = $receipt->payments->sum('amount');
         $changeGiven = (float) $totalPaid > (float) $receipt->total
-            ? bcsub((string) $totalPaid, (string) $receipt->total, 2)
-            : '0.00';
+            ? bcsub((string) $totalPaid, (string) $receipt->total, $this->scale())
+            : number_format(0, $this->scale(), '.', '');
+
+        $isReturn = $receipt->receipt_type === ReceiptType::Return;
 
         return [
             'receipt' => $receipt,
@@ -103,6 +122,9 @@ final class ReceiptPdfService
             'currency' => $currency,
             'changeGiven' => $changeGiven,
             'totalPaid' => $totalPaid,
+            'isReturn' => $isReturn,
+            'originalReceiptNumber' => $isReturn ? $receipt->originalReceipt?->receipt_number : null,
+            'returnReason' => $isReturn ? $receipt->return_reason?->label() : null,
             'formatMoney' => fn (string|float|null $amount) => $this->formatMoney($amount, $currency, $locale),
             'formatDate' => fn (Carbon|string|null $date) => $this->formatDate($date, $locale),
             'formatDateTime' => fn (Carbon|string|null $date) => $this->formatDateTime($date, $locale),
@@ -116,7 +138,7 @@ final class ReceiptPdfService
     private function formatMoney(string|float|null $amount, string $currency, string $locale): string
     {
         if ($amount === null) {
-            return '0.00';
+            return number_format(0, $this->scale(), '.', '');
         }
 
         $amount = is_string($amount) ? (float) $amount : $amount;
@@ -124,7 +146,7 @@ final class ReceiptPdfService
         $formatter = new NumberFormatter($locale, NumberFormatter::CURRENCY);
         $result = $formatter->formatCurrency($amount, $currency);
 
-        return $result !== false ? $result : number_format($amount, 2).' '.$currency;
+        return $result !== false ? $result : number_format($amount, $this->scale()).' '.$currency;
     }
 
     /**

@@ -8,6 +8,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Exceptions\DiscountExceedsLimitException;
 use App\Modules\POS\Domain\Exceptions\DiscountNotAllowedException;
 use App\Modules\POS\Domain\Terminal;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 
 /**
  * Domain service for discount calculation and validation.
@@ -28,6 +29,15 @@ final readonly class DiscountCalculationService
      * Threshold percentage requiring a discount reason
      */
     private const REASON_REQUIRED_THRESHOLD = 10.00;
+
+    public function __construct(
+        private CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Validate if a line-level discount is allowed
@@ -143,7 +153,7 @@ final readonly class DiscountCalculationService
 
         // Round to 2 decimal places
         /** @var numeric-string $result */
-        $result = bcadd($discountAmount, '0', 2);
+        $result = bcadd($discountAmount, '0', $this->scale());
 
         return $result;
     }
@@ -162,7 +172,7 @@ final readonly class DiscountCalculationService
     public function calculateFixedDiscountAmount(string $baseAmount, string $fixedDiscount): string
     {
         // Ensure discount doesn't exceed base amount
-        if (bccomp($fixedDiscount, $baseAmount, 2) > 0) {
+        if (bccomp($fixedDiscount, $baseAmount, $this->scale()) > 0) {
             throw new \InvalidArgumentException(
                 sprintf(
                     'Fixed discount %.2f cannot exceed base amount %.2f',
@@ -173,7 +183,7 @@ final readonly class DiscountCalculationService
         }
 
         /** @var numeric-string $result */
-        $result = bcadd($fixedDiscount, '0', 2);
+        $result = bcadd($fixedDiscount, '0', $this->scale());
 
         return $result;
     }

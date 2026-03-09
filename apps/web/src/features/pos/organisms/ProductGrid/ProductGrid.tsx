@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { ProductCard, type Product } from '../../molecules'
 import { POSButton } from '../../atoms'
-import { Search, X, Package } from 'lucide-react'
+import { Search, X, Package, ScanBarcode } from 'lucide-react'
 
 export interface ProductGridProps {
   products: Product[]
@@ -18,6 +18,10 @@ export interface ProductGridProps {
   showProductCount?: boolean
   touchOptimized?: boolean
   className?: string
+  /** Called when user manually enters a barcode/SKU and presses Enter */
+  onBarcodeSubmit?: (code: string) => void
+  /** Whether a barcode lookup is currently in progress */
+  isBarcodeSearching?: boolean
 }
 
 export function ProductGrid({
@@ -33,10 +37,14 @@ export function ProductGrid({
   showProductCount = true,
   touchOptimized = false,
   className,
+  onBarcodeSubmit,
+  isBarcodeSearching = false,
 }: ProductGridProps) {
   const { t } = useTranslation(['pos'])
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [barcodeInput, setBarcodeInput] = useState('')
+  const barcodeInputRef = useRef<HTMLInputElement>(null)
 
   // Extract unique categories (use ordered categories prop if provided)
   const categories = useMemo(() => {
@@ -74,6 +82,14 @@ export function ProductGrid({
     return filtered
   }, [products, selectedCategory, searchQuery])
 
+  const handleBarcodeKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && barcodeInput.trim()) {
+      e.preventDefault()
+      onBarcodeSubmit?.(barcodeInput.trim())
+      setBarcodeInput('')
+    }
+  }
+
   const handleClearSearch = () => {
     setSearchQuery('')
   }
@@ -110,6 +126,39 @@ export function ProductGrid({
     <div className={cn('flex flex-col gap-4', className)}>
       {/* Header Section */}
       <div className="flex flex-col gap-3">
+        {/* Barcode / SKU Input */}
+        {onBarcodeSubmit && (
+          <div className="relative">
+            <ScanBarcode className="absolute start-3 top-1/2 -translate-y-1/2 w-5 h-5 text-emerald-600" />
+            <input
+              ref={barcodeInputRef}
+              type="text"
+              value={barcodeInput}
+              onChange={(e) => setBarcodeInput(e.target.value)}
+              onKeyDown={handleBarcodeKeyDown}
+              placeholder={t('pos:barcode.inputPlaceholder')}
+              className={cn(
+                'w-full ps-10 pe-10 py-3 rounded-lg',
+                'border-2 border-emerald-300 bg-emerald-50',
+                'focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500',
+                'placeholder:text-emerald-400',
+                isBarcodeSearching && 'animate-pulse',
+                touchOptimized && 'py-4 text-lg'
+              )}
+              aria-label={t('pos:barcode.inputLabel')}
+            />
+            {barcodeInput && (
+              <button
+                onClick={() => setBarcodeInput('')}
+                className="absolute end-3 top-1/2 -translate-y-1/2"
+                aria-label={t('pos:barcode.clearInput')}
+              >
+                <X className="w-5 h-5 text-emerald-400 hover:text-emerald-600" />
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Search Bar */}
         {showSearch && (
           <div className="relative">

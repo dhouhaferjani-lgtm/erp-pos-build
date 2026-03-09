@@ -4,6 +4,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import { fetchZReport, verifyZReportChain, type ZReportItem } from '../../api/reportApi'
 import {
   ArrowLeft,
+  Download,
   FileCheck,
   Loader2,
   Printer,
@@ -112,6 +113,14 @@ export function ZReportDetailPage() {
             onClick={() => window.print()}
             className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
+            <Download className="h-4 w-4" />
+            {t('pos:zReports.downloadPdf')}
+          </button>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
             <Printer className="h-4 w-4" />
             {t('pos:zReports.print')}
           </button>
@@ -187,11 +196,17 @@ function SummaryCard({
 }) {
   const { t } = useTranslation(['pos'])
 
+  const averageTicket =
+    report.sales_count > 0
+      ? (parseFloat(report.gross_sales) / report.sales_count).toFixed(2)
+      : '0.00'
+
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-6">
       <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('pos:zReports.detail.salesSummary')}</h3>
       <div className="divide-y divide-gray-100">
         <SummaryRow label={t('pos:zReports.detail.receiptCount')} value={String(report.sales_count)} />
+        <SummaryRow label={t('pos:zReports.detail.averageTicket')} value={averageTicket} mono />
         <SummaryRow label={t('pos:zReports.detail.grossSales')} value={report.gross_sales} mono />
         <SummaryRow label={t('pos:zReports.detail.netSales')} value={reportData?.net_sales ?? '--'} mono />
         <SummaryRow label={t('pos:zReports.detail.taxAmount')} value={reportData?.tax_amount ?? '--'} mono />

@@ -19,28 +19,32 @@ class CatalogBrowseController extends Controller
 
     public function manufacturers(Request $request): JsonResponse
     {
-        $data = $this->catalogBrowseService->getManufacturers();
+        $verticalScope = $this->resolveVerticalScope();
+        $data = $this->catalogBrowseService->getManufacturers($verticalScope);
 
         return $this->respond($request, $data);
     }
 
     public function modelSeries(Request $request, string $manufacturerId): JsonResponse
     {
-        $data = $this->catalogBrowseService->getModelSeries($manufacturerId);
+        $verticalScope = $this->resolveVerticalScope();
+        $data = $this->catalogBrowseService->getModelSeries($manufacturerId, $verticalScope);
 
         return $this->respond($request, $data);
     }
 
     public function vehicles(Request $request, string $modelSeriesId): JsonResponse
     {
-        $data = $this->catalogBrowseService->getVehicles($modelSeriesId);
+        $verticalScope = $this->resolveVerticalScope();
+        $data = $this->catalogBrowseService->getVehicles($modelSeriesId, $verticalScope);
 
         return $this->respond($request, $data);
     }
 
     public function vehicleArticles(Request $request, string $vehicleType, string $vehicleId): JsonResponse
     {
-        $data = $this->catalogBrowseService->getVehicleArticles($vehicleType, $vehicleId);
+        $verticalScope = $this->resolveVerticalScope();
+        $data = $this->catalogBrowseService->getVehicleArticles($vehicleType, $vehicleId, $verticalScope);
         $companyId = $this->companyContext->requireCompanyId();
 
         if ($data !== null && isset($data['articles']) && is_array($data['articles'])) {
@@ -57,7 +61,8 @@ class CatalogBrowseController extends Controller
     {
         $params = $request->only(['article_number', 'reference_number', 'barcode', 'search']);
         /** @var array<string, string> $params */
-        $data = $this->catalogBrowseService->searchArticles($params);
+        $verticalScope = $this->resolveVerticalScope();
+        $data = $this->catalogBrowseService->searchArticles($params, $verticalScope);
         $companyId = $this->companyContext->requireCompanyId();
 
         if ($data !== null && isset($data['articles']) && is_array($data['articles'])) {
@@ -76,9 +81,10 @@ class CatalogBrowseController extends Controller
             'reference_number' => ['required', 'string', 'max:200'],
         ]);
 
+        $verticalScope = $this->resolveVerticalScope();
         $data = $this->catalogBrowseService->searchArticles([
             'reference_number' => (string) $request->input('reference_number'),
-        ]);
+        ], $verticalScope);
         $companyId = $this->companyContext->requireCompanyId();
 
         if ($data !== null && isset($data['articles']) && is_array($data['articles'])) {
@@ -93,21 +99,24 @@ class CatalogBrowseController extends Controller
 
     public function searchTreeRoots(Request $request): JsonResponse
     {
-        $data = $this->catalogBrowseService->getSearchTreeRoots();
+        $verticalScope = $this->resolveVerticalScope();
+        $data = $this->catalogBrowseService->getSearchTreeRoots($verticalScope);
 
         return $this->respond($request, $data);
     }
 
     public function searchTreeChildren(Request $request, string $nodeId): JsonResponse
     {
-        $data = $this->catalogBrowseService->getSearchTreeChildren($nodeId);
+        $verticalScope = $this->resolveVerticalScope();
+        $data = $this->catalogBrowseService->getSearchTreeChildren($nodeId, $verticalScope);
 
         return $this->respond($request, $data);
     }
 
     public function searchTreeArticles(Request $request, string $nodeId): JsonResponse
     {
-        $data = $this->catalogBrowseService->getSearchTreeArticles($nodeId);
+        $verticalScope = $this->resolveVerticalScope();
+        $data = $this->catalogBrowseService->getSearchTreeArticles($nodeId, $verticalScope);
         $companyId = $this->companyContext->requireCompanyId();
 
         if ($data !== null && isset($data['articles']) && is_array($data['articles'])) {
@@ -120,8 +129,22 @@ class CatalogBrowseController extends Controller
         return $this->respond($request, $data);
     }
 
+    private function resolveVerticalScope(): ?string
+    {
+        $company = $this->companyContext->getCompany();
+
+        if ($company === null) {
+            return null;
+        }
+
+        /** @var \App\Enums\Vertical $vertical */
+        $vertical = $company->tenant->vertical;
+
+        return $vertical->catalogScope();
+    }
+
     /**
-     * @param array<string, mixed>|null $data
+     * @param  array<string, mixed>|null  $data
      */
     private function respond(Request $request, ?array $data): JsonResponse
     {

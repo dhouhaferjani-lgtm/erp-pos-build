@@ -242,6 +242,7 @@
     "noReportsDescription": "Aucun rapport Z n'existe encore pour ce terminal.",
     "loadError": "Échec du chargement du rapport Z",
     "print": "Imprimer",
+    "downloadPdf": "Télécharger PDF",
     "detailTitle": "Rapport Z {{zNumber}}",
     "filters": {
       "from": "Du",
@@ -260,6 +261,7 @@
       "refundsCount": "Remboursements",
       "refundsAmount": "Montant des Remboursements",
       "voidedCount": "Tickets Annulés",
+      "averageTicket": "Ticket Moyen",
       "openingCash": "Fond de Caisse",
       "expectedCash": "Espèces Attendues",
       "actualCash": "Espèces Réelles",
@@ -293,8 +295,12 @@
     "filters": {
       "terminal": "Terminal",
       "status": "Statut",
+      "type": "Type",
       "allTerminals": "Tous les terminaux",
       "allStatuses": "Tous les statuts",
+      "allTypes": "Tous les types",
+      "salesOnly": "Ventes uniquement",
+      "returnsOnly": "Retours uniquement",
       "dateRange": "Période",
       "from": "Du",
       "to": "Au"
@@ -403,7 +409,16 @@
   "barcode": {
     "productNotFound": "Produit non trouvé : {{code}}",
     "productAdded": "{{name}} ajouté au panier",
-    "multipleMatches": "Plusieurs produits correspondent au code-barres : {{code}}"
+    "multipleMatches": "Plusieurs produits correspondent au code-barres : {{code}}",
+    "inputPlaceholder": "Scanner ou saisir code-barres / SKU...",
+    "inputLabel": "Recherche par code-barres ou SKU",
+    "clearInput": "Effacer le code-barres",
+    "selectProduct": "Sélectionner un Produit",
+    "multipleMatchesDetail": "Plusieurs produits correspondent à \"{{code}}\"",
+    "matchSku": "SKU : {{sku}}",
+    "matchBarcode": "Code-barres : {{barcode}}",
+    "cancel": "Annuler",
+    "scanDetected": "Scan de code-barres détecté"
   },
   "modifiers": {
     "selectOptions": "Choisir les Options",

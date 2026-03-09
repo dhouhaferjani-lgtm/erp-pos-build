@@ -182,11 +182,11 @@ class ZReport extends Model
     /**
      * Check if report has variance
      */
-    public function hasVariance(): bool
+    public function hasVariance(int $scale = 3): bool
     {
         $variance = $this->getVariance();
 
-        return bccomp($variance, '0', 2) !== 0;
+        return bccomp($variance, '0', $scale) !== 0;
     }
 
     /**

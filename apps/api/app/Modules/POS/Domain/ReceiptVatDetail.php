@@ -54,9 +54,9 @@ class ReceiptVatDetail extends Model
     {
         return [
             'tax_rate' => 'decimal:2',
-            'net_amount' => 'decimal:2',
-            'vat_amount' => 'decimal:2',
-            'gross_amount' => 'decimal:2',
+            'net_amount' => 'decimal:3',
+            'vat_amount' => 'decimal:3',
+            'gross_amount' => 'decimal:3',
         ];
     }
 
@@ -79,16 +79,16 @@ class ReceiptVatDetail extends Model
     /**
      * Verify VAT calculation is correct
      */
-    public function verifyCalculation(): bool
+    public function verifyCalculation(int $scale = 3): bool
     {
         // Verify gross = net + vat
-        $calculatedGross = bcadd($this->net_amount, $this->vat_amount, 2);
+        $calculatedGross = bcadd($this->net_amount, $this->vat_amount, $scale);
         if ($calculatedGross !== $this->gross_amount) {
             return false;
         }
 
         // Verify vat = net * rate
-        $expectedVat = bcmul($this->net_amount, $this->getVatRateDecimal(), 2);
+        $expectedVat = bcmul($this->net_amount, $this->getVatRateDecimal(), $scale);
         if ($expectedVat !== $this->vat_amount) {
             return false;
         }

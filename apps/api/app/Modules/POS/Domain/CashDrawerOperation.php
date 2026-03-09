@@ -72,7 +72,7 @@ class CashDrawerOperation extends Model
     protected function casts(): array
     {
         return [
-            'amount' => 'decimal:2',
+            'amount' => 'decimal:3',
             'created_at' => 'datetime',
         ];
     }
@@ -144,10 +144,10 @@ class CashDrawerOperation extends Model
     /**
      * Get signed amount (negative for removals)
      */
-    public function getSignedAmount(): string
+    public function getSignedAmount(int $scale = 3): string
     {
         if ($this->isRemoval()) {
-            return bcmul($this->amount, '-1', 2);
+            return bcmul($this->amount, '-1', $scale);
         }
 
         return $this->amount;

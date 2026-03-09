@@ -93,6 +93,12 @@ export const PERMISSIONS = {
   // Coupons
   'coupons.view': ['admin', 'manager'],
   'coupons.manage': ['admin', 'manager'],
+
+  // Contacts / CRM
+  'contacts.view': ['admin', 'manager', 'sales', 'cashier'],
+  'contacts.create': ['admin', 'manager', 'sales', 'cashier'],
+  'contacts.update': ['admin', 'manager', 'sales'],
+  'contacts.delete': ['admin', 'manager'],
 } as const
 
 export type Permission = keyof typeof PERMISSIONS
@@ -118,6 +124,7 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   'modifier-groups': ['modifier-groups.view'],
   promotions: ['promotions.view'],
   coupons: ['coupons.view'],
+  contacts: ['contacts.view'],
 }
 
 /**
@@ -131,7 +138,8 @@ export function usePermissions() {
    * Check if user has a specific permission
    */
   const hasPermission = (permission: Permission): boolean => {
-    const allowedRoles = PERMISSIONS[permission] as readonly string[]
+    const allowedRoles = PERMISSIONS[permission] as readonly string[] | undefined
+    if (!allowedRoles) return false
     return roles.some((role) => allowedRoles.includes(role))
   }
 

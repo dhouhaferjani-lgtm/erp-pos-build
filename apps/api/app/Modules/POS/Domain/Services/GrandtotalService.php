@@ -8,6 +8,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\GrandtotalEvent;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -23,6 +24,15 @@ use Illuminate\Support\Facades\DB;
  */
 final class GrandtotalService
 {
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
+
     /**
      * Create grand total event (daily/monthly/yearly)
      *
@@ -124,15 +134,15 @@ final class GrandtotalService
         foreach ($receipts as $receipt) {
             if ($receipt->is_voided) {
                 $refundsCount++;
-                $refundsAmount = bcadd($refundsAmount, $receipt->total, 2);
+                $refundsAmount = bcadd($refundsAmount, $receipt->total, $this->scale());
             } else {
                 $salesCount++;
-                $grossSales = bcadd($grossSales, $receipt->total, 2);
-                $taxAmount = bcadd($taxAmount, $receipt->tax_amount, 2);
+                $grossSales = bcadd($grossSales, $receipt->total, $this->scale());
+                $taxAmount = bcadd($taxAmount, $receipt->tax_amount, $this->scale());
             }
         }
 
-        $netSales = bcsub($grossSales, $taxAmount, 2);
+        $netSales = bcsub($grossSales, $taxAmount, $this->scale());
 
         return [
             'gross_sales' => $grossSales,
@@ -165,8 +175,8 @@ final class GrandtotalService
             ->first();
 
         return [
-            'lifetime_sales' => number_format((float) ($totals->lifetime_sales ?? 0), 2, '.', ''),
-            'lifetime_tax' => number_format((float) ($totals->lifetime_tax ?? 0), 2, '.', ''),
+            'lifetime_sales' => number_format((float) ($totals->lifetime_sales ?? 0), $this->scale(), '.', ''),
+            'lifetime_tax' => number_format((float) ($totals->lifetime_tax ?? 0), $this->scale(), '.', ''),
             'lifetime_transactions' => (int) ($totals->lifetime_transactions ?? 0),
         ];
     }

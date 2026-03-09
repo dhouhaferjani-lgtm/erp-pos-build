@@ -10,8 +10,10 @@ import type { Customer } from '../../organisms/TransactionCart'
 import type { CartItem, SelectedModifier } from '../../molecules/CartLineItem'
 import { useCurrency } from '@/hooks/useCurrency'
 import { useBarcodeScanner } from '../../hooks/useBarcodeScanner'
+import { useBarcodeLookup } from '../../hooks/useBarcodeLookup'
 import { ConsumptionModeToggle, type ConsumptionMode } from '../../atoms/ConsumptionModeToggle/ConsumptionModeToggle'
 import { toast } from 'sonner'
+import type { POSProduct } from '../../api/productApi'
 
 export interface POSPageProps {
   products: Product[]
@@ -61,6 +63,9 @@ export function POSPage({
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false)
   const [screenWidth, setScreenWidth] = useState(window.innerWidth)
   const [modifierProduct, setModifierProduct] = useState<Product | null>(null)
+  const [scanFlash, setScanFlash] = useState(false)
+  const [barcodeMatchProducts, setBarcodeMatchProducts] = useState<POSProduct[]>([])
+  const [barcodeMatchCode, setBarcodeMatchCode] = useState<string | null>(null)
 
   // Responsive breakpoint: stack vertically on tablets < 768px
   const isNarrowScreen = screenWidth < 768
@@ -174,34 +179,99 @@ export function POSPage({
     [decimals],
   )
 
-  // Barcode scanner: look up product by barcode or SKU, auto-add to cart
-  const handleBarcodeScan = useCallback(
-    (barcode: string) => {
-      const code = barcode.trim()
-      // Match by barcode (exact) or SKU (exact, case-insensitive)
-      const matches = products.filter(
-        (p) =>
-          (p.barcode && p.barcode === code) ||
-          p.sku.toLowerCase() === code.toLowerCase()
-      )
-
-      if (matches.length === 1) {
-        addItemToCart(matches[0])
-        toast.success(t('pos:barcode.productAdded', { name: matches[0].name }))
-      } else if (matches.length === 0) {
-        toast.error(t('pos:barcode.productNotFound', { code }))
-      } else {
-        // Multiple matches — unlikely but handled
-        toast.warning(t('pos:barcode.multipleMatches', { code }))
-      }
-    },
-    [products, addItemToCart, t],
+  // Convert Product to POSProduct shape for the barcode lookup hook
+  const posProducts: POSProduct[] = useMemo(
+    () =>
+      products.map((p) => {
+        const item: POSProduct = {
+          id: p.id,
+          name: p.name,
+          sku: p.sku,
+          barcode: p.barcode ?? null,
+          sale_price: p.sale_price,
+          stock_quantity: p.stock_quantity,
+        }
+        if (p.category !== undefined) item.category = p.category
+        if (p.image_url !== undefined) item.image_url = p.image_url
+        return item
+      }),
+    [products],
   )
 
+  // Resolve a POSProduct match back to the full Product (from props) if possible,
+  // otherwise adapt the POSProduct to the Product shape for cart addition.
+  const resolveProduct = useCallback(
+    (match: POSProduct): Product => {
+      const full = products.find((p) => p.id === match.id)
+      if (full) return full
+      return {
+        id: match.id,
+        name: match.name,
+        sku: match.sku,
+        barcode: match.barcode ?? null,
+        sale_price: match.sale_price,
+        stock_quantity: match.stock_quantity,
+      }
+    },
+    [products],
+  )
+
+  // Flash indicator when a scan is detected
+  const triggerScanFlash = useCallback(() => {
+    setScanFlash(true)
+    const timer = setTimeout(() => setScanFlash(false), 600)
+    return () => clearTimeout(timer)
+  }, [])
+
+  const { lookup, status: barcodeStatus } = useBarcodeLookup({
+    localProducts: posProducts,
+    onSingleMatch: (match) => {
+      triggerScanFlash()
+      const product = resolveProduct(match)
+      addItemToCart(product)
+      toast.success(t('pos:barcode.productAdded', { name: match.name }))
+    },
+    onNoMatch: (code) => {
+      triggerScanFlash()
+      toast.error(t('pos:barcode.productNotFound', { code }))
+    },
+    onMultipleMatches: (matches, code) => {
+      triggerScanFlash()
+      setBarcodeMatchProducts(matches)
+      setBarcodeMatchCode(code)
+    },
+  })
+
+  // Handle barcode scanner hardware input
   useBarcodeScanner({
-    onScan: handleBarcodeScan,
+    onScan: lookup,
     enabled: !isLoading,
   })
+
+  // Handle manual barcode input from ProductGrid
+  const handleBarcodeSubmit = useCallback(
+    (code: string) => {
+      lookup(code)
+    },
+    [lookup],
+  )
+
+  // Handle selection from multi-match modal
+  const handleBarcodeMatchSelect = useCallback(
+    (match: POSProduct) => {
+      const product = resolveProduct(match)
+      addItemToCart(product)
+      toast.success(t('pos:barcode.productAdded', { name: match.name }))
+      setBarcodeMatchProducts([])
+      setBarcodeMatchCode(null)
+    },
+    [resolveProduct, addItemToCart, t],
+  )
+
+  const handleBarcodeMatchClose = useCallback(() => {
+    setBarcodeMatchProducts([])
+    setBarcodeMatchCode(null)
+  }, [])
 
   // Add product to cart — always adds standard version (no modifiers)
   const handleAddToCart = (product: Product) => {
@@ -375,6 +445,8 @@ export function POSPage({
             onCustomize={handleCustomizeProduct}
             cartProductIds={cartProductIds}
             touchOptimized={touchOptimized}
+            onBarcodeSubmit={handleBarcodeSubmit}
+            isBarcodeSearching={barcodeStatus === 'searching'}
           />
         </div>
 
@@ -404,6 +476,62 @@ export function POSPage({
             loyaltyEnrollment={loyaltyEnrollment}
           />
         </div>
+
+        {/* Barcode Scan Flash Indicator */}
+        {scanFlash && (
+          <div
+            className="pointer-events-none fixed inset-0 z-50 border-4 border-emerald-400 rounded-lg animate-pulse"
+            aria-hidden="true"
+          />
+        )}
+
+        {/* Barcode Multi-Match Selection Modal */}
+        {barcodeMatchProducts.length > 1 && (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {t('pos:barcode.selectProduct')}
+                </h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  {t('pos:barcode.multipleMatchesDetail', { code: barcodeMatchCode })}
+                </p>
+              </div>
+              <div className="max-h-80 overflow-y-auto">
+                {barcodeMatchProducts.map((product) => (
+                  <button
+                    key={product.id}
+                    onClick={() => handleBarcodeMatchSelect(product)}
+                    className="w-full px-6 py-4 text-start hover:bg-blue-50 border-b border-gray-100 last:border-b-0 transition-colors"
+                  >
+                    <div className="font-medium text-gray-900">{product.name}</div>
+                    <div className="text-sm text-gray-500 mt-1">
+                      {t('pos:barcode.matchSku', { sku: product.sku })}
+                      {product.barcode && (
+                        <span className="ms-3">
+                          {t('pos:barcode.matchBarcode', { barcode: product.barcode })}
+                        </span>
+                      )}
+                    </div>
+                    {product.sale_price && (
+                      <div className="text-sm font-medium text-emerald-600 mt-1">
+                        {product.sale_price}
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <div className="px-6 py-3 border-t border-gray-200 bg-gray-50 flex justify-end">
+                <button
+                  onClick={handleBarcodeMatchClose}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  {t('pos:barcode.cancel')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Calculator Modal */}
         <Calculator

@@ -27,7 +27,7 @@ final class CloseShiftRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'actual_cash' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'actual_cash' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
         ];
     }
 
@@ -42,7 +42,7 @@ final class CloseShiftRequest extends FormRequest
             'actual_cash.required' => 'Actual cash count is required',
             'actual_cash.numeric' => 'Actual cash must be a valid number',
             'actual_cash.min' => 'Actual cash cannot be negative',
-            'actual_cash.regex' => 'Actual cash must have at most 2 decimal places',
+            'actual_cash.regex' => 'Actual cash must have at most 3 decimal places',
         ];
     }
 }

@@ -81,6 +81,10 @@ final class ReceiptController extends Controller
             $query->where('is_voided', filter_var($request->input('is_voided'), FILTER_VALIDATE_BOOLEAN));
         }
 
+        if ($request->filled('receipt_type')) {
+            $query->where('receipt_type', $request->input('receipt_type'));
+        }
+
         if ($request->filled('from_date')) {
             $query->where('posted_at', '>=', $request->input('from_date'));
         }
@@ -319,13 +323,65 @@ final class ReceiptController extends Controller
             'lines.product',
             'vatDetails',
             'payments.paymentMethod',
+            'returnReceipts' => function ($query): void {
+                $query->where('is_voided', false)->with('lines');
+            },
         ])
             ->where('company_id', $companyId)
             ->findOrFail($id);
 
+        // Calculate already-returned quantities per line
+        $returnedQuantities = $this->calculateReturnedQuantities($receipt);
+
+        // Build response with returned_quantity on each line
+        $receiptData = $receipt->toArray();
+        $receiptData['lines'] = $receipt->lines->map(function ($line) use ($returnedQuantities) {
+            $lineData = $line->toArray();
+            $lineData['returned_quantity'] = $returnedQuantities[$line->id] ?? '0.000';
+
+            return $lineData;
+        })->values()->toArray();
+
+        // Remove the returnReceipts from the response (internal use only)
+        unset($receiptData['return_receipts']);
+
         return response()->json([
-            'data' => $receipt,
+            'data' => $receiptData,
         ]);
+    }
+
+    /**
+     * Calculate already-returned quantities per original line ID.
+     *
+     * Sums absolute quantities from non-voided return receipts.
+     *
+     * @return array<string, string> Map of original line ID to returned quantity
+     */
+    private function calculateReturnedQuantities(Receipt $receipt): array
+    {
+        $returned = [];
+
+        foreach ($receipt->returnReceipts as $returnReceipt) {
+            foreach ($returnReceipt->lines as $returnLine) {
+                $absQuantity = bcmul((string) $returnLine->quantity, '-1', 3);
+
+                foreach ($receipt->lines as $originalLine) {
+                    $sameProduct = (
+                        $originalLine->product_id === $returnLine->product_id
+                        && $originalLine->composite_item_id === $returnLine->composite_item_id
+                        && $originalLine->product_code === $returnLine->product_code
+                    );
+
+                    if ($sameProduct) {
+                        $key = $originalLine->id;
+                        $returned[$key] = bcadd($returned[$key] ?? '0.000', $absQuantity, 3);
+                        break;
+                    }
+                }
+            }
+        }
+
+        return $returned;
     }
 
     /**

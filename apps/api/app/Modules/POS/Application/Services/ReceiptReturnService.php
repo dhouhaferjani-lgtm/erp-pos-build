@@ -21,6 +21,7 @@ use App\Modules\POS\Domain\Services\CashDrawerService;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -40,13 +41,17 @@ use Illuminate\Support\Str;
  */
 final class ReceiptReturnService
 {
-    private const SCALE = 2;
-
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly ReceiptHashService $receiptHashService,
         private readonly CashDrawerService $cashDrawerService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Process a partial or full return on a receipt.
@@ -131,23 +136,23 @@ final class ReceiptReturnService
                 // Line total is negative (we are returning money)
                 /** @var numeric-string $lineTotal */
                 $lineTotal = bcmul(
-                    bcmul($ratio, (string) $originalLine->line_total, self::SCALE),
+                    bcmul($ratio, (string) $originalLine->line_total, $this->scale()),
                     '-1',
-                    self::SCALE,
+                    $this->scale(),
                 );
 
                 $taxRate = (string) $originalLine->tax_rate;
                 $taxRateDecimal = bcdiv($taxRate, '100', 6);
                 $divisor = bcadd('1', $taxRateDecimal, 6);
-                $netAmount = bcdiv($lineTotal, $divisor, self::SCALE);
-                $taxAmount = bcsub($lineTotal, $netAmount, self::SCALE);
+                $netAmount = bcdiv($lineTotal, $divisor, $this->scale());
+                $taxAmount = bcsub($lineTotal, $netAmount, $this->scale());
 
-                $subtotal = bcadd($subtotal, $netAmount, self::SCALE);
-                $totalTax = bcadd($totalTax, $taxAmount, self::SCALE);
+                $subtotal = bcadd($subtotal, $netAmount, $this->scale());
+                $totalTax = bcadd($totalTax, $taxAmount, $this->scale());
 
                 // Proportional discount
                 /** @var numeric-string $discountAmount */
-                $discountAmount = bcmul($ratio, (string) $originalLine->discount_amount, self::SCALE);
+                $discountAmount = bcmul($ratio, (string) $originalLine->discount_amount, $this->scale());
 
                 $receiptLines[] = [
                     'line_number' => $index + 1,
@@ -156,7 +161,7 @@ final class ReceiptReturnService
                     'product_code' => $originalLine->product_code,
                     'product_name' => $originalLine->product_name,
                     'product_description' => $originalLine->product_description,
-                    'quantity' => '-' . $returnQuantity,
+                    'quantity' => '-'.$returnQuantity,
                     'unit' => $originalLine->unit,
                     'unit_price' => (string) $originalLine->unit_price,
                     'line_total' => $lineTotal,
@@ -177,21 +182,21 @@ final class ReceiptReturnService
                         'gross_amount' => '0.00',
                     ];
                 }
-                $vatAggregates[$rateKey]['net_amount'] = bcadd($vatAggregates[$rateKey]['net_amount'], $netAmount, self::SCALE);
-                $vatAggregates[$rateKey]['vat_amount'] = bcadd($vatAggregates[$rateKey]['vat_amount'], $taxAmount, self::SCALE);
-                $vatAggregates[$rateKey]['gross_amount'] = bcadd($vatAggregates[$rateKey]['gross_amount'], $lineTotal, self::SCALE);
+                $vatAggregates[$rateKey]['net_amount'] = bcadd($vatAggregates[$rateKey]['net_amount'], $netAmount, $this->scale());
+                $vatAggregates[$rateKey]['vat_amount'] = bcadd($vatAggregates[$rateKey]['vat_amount'], $taxAmount, $this->scale());
+                $vatAggregates[$rateKey]['gross_amount'] = bcadd($vatAggregates[$rateKey]['gross_amount'], $lineTotal, $this->scale());
             }
 
             // Recalculate VAT aggregates from aggregate net_amount (same as ReceiptCreationService)
             $totalTax = '0.00';
             foreach ($vatAggregates as &$vatData) {
                 $vatData['vat_amount'] = $this->roundVat($vatData['net_amount'], $vatData['tax_rate']);
-                $vatData['gross_amount'] = bcadd($vatData['net_amount'], $vatData['vat_amount'], self::SCALE);
-                $totalTax = bcadd($totalTax, $vatData['vat_amount'], self::SCALE);
+                $vatData['gross_amount'] = bcadd($vatData['net_amount'], $vatData['vat_amount'], $this->scale());
+                $totalTax = bcadd($totalTax, $vatData['vat_amount'], $this->scale());
             }
             unset($vatData);
 
-            $total = bcadd($subtotal, $totalTax, self::SCALE);
+            $total = bcadd($subtotal, $totalTax, $this->scale());
 
             // 6. Generate receipt number and sequence
             $currentYear = (int) now()->format('Y');
@@ -365,7 +370,7 @@ final class ReceiptReturnService
             if (bccomp($requestedQuantity, $remainingReturnable, 3) > 0) {
                 throw new \InvalidArgumentException(
                     "Cannot return {$requestedQuantity} of '{$originalLine->product_name}'. "
-                    . "Maximum returnable: {$remainingReturnable} (original: {$originalLine->quantity}, already returned: {$alreadyReturnedQty})"
+                    ."Maximum returnable: {$remainingReturnable} (original: {$originalLine->quantity}, already returned: {$alreadyReturnedQty})"
                 );
             }
 
@@ -424,7 +429,7 @@ final class ReceiptReturnService
      *
      * Creates a Receipt (inbound) StockMovement with POSReturn reason.
      *
-     * @param numeric-string $quantity
+     * @param  numeric-string  $quantity
      */
     private function restoreStock(
         string $tenantId,
@@ -475,14 +480,14 @@ final class ReceiptReturnService
     /**
      * Record cash drawer refund for the return amount.
      *
-     * @param numeric-string $returnTotal Negative total
+     * @param  numeric-string  $returnTotal  Negative total
      */
     private function recordCashDrawerRefund(Receipt $returnReceipt, string $returnTotal, User $cashier, Shift $shift): void
     {
         // Return total is negative, refund amount is positive (absolute value)
-        $refundAmount = bcmul($returnTotal, '-1', self::SCALE);
+        $refundAmount = bcmul($returnTotal, '-1', $this->scale());
 
-        if (bccomp($refundAmount, '0.00', self::SCALE) <= 0) {
+        if (bccomp($refundAmount, '0.00', $this->scale()) <= 0) {
             return;
         }
 
@@ -505,6 +510,6 @@ final class ReceiptReturnService
         $raw = (float) $netAmount * (float) $taxRate / 100.0;
 
         /** @var numeric-string */
-        return number_format(round($raw, 2), 2, '.', '');
+        return number_format(round($raw, $this->scale()), $this->scale(), '.', '');
     }
 }

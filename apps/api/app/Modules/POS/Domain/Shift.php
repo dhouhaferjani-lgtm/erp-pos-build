@@ -76,10 +76,10 @@ class Shift extends Model
     {
         return [
             'shift_number' => 'integer',
-            'opening_cash' => 'decimal:2',
-            'expected_cash' => 'decimal:2',
-            'actual_cash' => 'decimal:2',
-            'variance' => 'decimal:2',
+            'opening_cash' => 'decimal:3',
+            'expected_cash' => 'decimal:3',
+            'actual_cash' => 'decimal:3',
+            'variance' => 'decimal:3',
             'status' => ShiftStatus::class,
             'opened_at' => 'datetime',
             'closed_at' => 'datetime',
@@ -129,37 +129,37 @@ class Shift extends Model
     /**
      * Check if shift has variance (overage or shortage)
      */
-    public function hasVariance(): bool
+    public function hasVariance(int $scale = 3): bool
     {
         if ($this->variance === null) {
             return false;
         }
 
-        return bccomp($this->variance, '0', 2) !== 0;
+        return bccomp($this->variance, '0', $scale) !== 0;
     }
 
     /**
      * Check if shift has overage (more cash than expected)
      */
-    public function hasOverage(): bool
+    public function hasOverage(int $scale = 3): bool
     {
         if ($this->variance === null) {
             return false;
         }
 
-        return bccomp($this->variance, '0', 2) > 0;
+        return bccomp($this->variance, '0', $scale) > 0;
     }
 
     /**
      * Check if shift has shortage (less cash than expected)
      */
-    public function hasShortage(): bool
+    public function hasShortage(int $scale = 3): bool
     {
         if ($this->variance === null) {
             return false;
         }
 
-        return bccomp($this->variance, '0', 2) < 0;
+        return bccomp($this->variance, '0', $scale) < 0;
     }
 
     /**

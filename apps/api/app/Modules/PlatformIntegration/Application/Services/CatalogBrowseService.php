@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\PlatformIntegration\Application\Services;
 
 use App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient;
-use App\Modules\Product\Domain\AutomotiveProductMetadata;
 use App\Modules\Product\Domain\Product;
 use Illuminate\Support\Facades\Cache;
 
@@ -20,85 +19,132 @@ final class CatalogBrowseService
     /**
      * @return array<string, mixed>|null
      */
-    public function getManufacturers(): ?array
+    public function getManufacturers(?string $verticalScope = null): ?array
     {
-        return $this->cachedGet('/api/v1/automotive/manufacturers', 'manufacturers', 86400);
+        $params = $this->buildVerticalParams($verticalScope);
+
+        if ($params === []) {
+            return $this->cachedGet('/api/v1/automotive/manufacturers', 'manufacturers', 86400);
+        }
+
+        $scopeKey = "manufacturers:{$verticalScope}";
+
+        return $this->cachedGet('/api/v1/automotive/manufacturers', $scopeKey, 86400, $params);
     }
 
     /**
      * @return array<string, mixed>|null
      */
-    public function getModelSeries(string $manufacturerId): ?array
+    public function getModelSeries(string $manufacturerId, ?string $verticalScope = null): ?array
     {
+        $params = $this->buildVerticalParams($verticalScope);
+        $scopeSuffix = $verticalScope !== null ? ":{$verticalScope}" : '';
+
         return $this->cachedGet(
             "/api/v1/automotive/manufacturers/{$manufacturerId}/model-series",
-            "model-series:{$manufacturerId}",
-            86400
+            "model-series:{$manufacturerId}{$scopeSuffix}",
+            86400,
+            $params,
         );
     }
 
     /**
      * @return array<string, mixed>|null
      */
-    public function getVehicles(string $modelSeriesId): ?array
+    public function getVehicles(string $modelSeriesId, ?string $verticalScope = null): ?array
     {
+        $params = $this->buildVerticalParams($verticalScope);
+        $scopeSuffix = $verticalScope !== null ? ":{$verticalScope}" : '';
+
         return $this->cachedGet(
             "/api/v1/automotive/model-series/{$modelSeriesId}/vehicles",
-            "vehicles:{$modelSeriesId}",
-            86400
+            "vehicles:{$modelSeriesId}{$scopeSuffix}",
+            86400,
+            $params,
         );
     }
 
     /**
      * @return array<string, mixed>|null
      */
-    public function getVehicleArticles(string $vehicleType, string $vehicleId): ?array
+    public function getVehicleArticles(string $vehicleType, string $vehicleId, ?string $verticalScope = null): ?array
     {
-        return $this->platformClient->get("/api/v1/automotive/vehicles/{$vehicleType}/{$vehicleId}/articles");
+        $params = $this->buildVerticalParams($verticalScope);
+
+        return $this->platformClient->get("/api/v1/automotive/vehicles/{$vehicleType}/{$vehicleId}/articles", $params);
     }
 
     /**
-     * @param array<string, string> $params
+     * @param  array<string, string>  $params
      * @return array<string, mixed>|null
      */
-    public function searchArticles(array $params): ?array
+    public function searchArticles(array $params, ?string $verticalScope = null): ?array
     {
+        $params = array_merge($params, $this->buildVerticalParams($verticalScope));
+
         return $this->platformClient->get('/api/v1/automotive/articles', $params);
     }
 
     /**
      * @return array<string, mixed>|null
      */
-    public function getSearchTreeRoots(): ?array
+    public function getSearchTreeRoots(?string $verticalScope = null): ?array
     {
-        return $this->cachedGet('/api/v1/automotive/search-tree/roots', 'search-tree:roots', 86400);
+        $params = $this->buildVerticalParams($verticalScope);
+
+        if ($params === []) {
+            return $this->cachedGet('/api/v1/automotive/search-tree/roots', 'search-tree:roots', 86400);
+        }
+
+        $scopeKey = "search-tree:roots:{$verticalScope}";
+
+        return $this->cachedGet('/api/v1/automotive/search-tree/roots', $scopeKey, 86400, $params);
     }
 
     /**
      * @return array<string, mixed>|null
      */
-    public function getSearchTreeChildren(string $nodeId): ?array
+    public function getSearchTreeChildren(string $nodeId, ?string $verticalScope = null): ?array
     {
+        $params = $this->buildVerticalParams($verticalScope);
+        $scopeSuffix = $verticalScope !== null ? ":{$verticalScope}" : '';
+
         return $this->cachedGet(
             "/api/v1/automotive/search-tree/{$nodeId}/children",
-            "search-tree:children:{$nodeId}",
-            86400
+            "search-tree:children:{$nodeId}{$scopeSuffix}",
+            86400,
+            $params,
         );
     }
 
     /**
      * @return array<string, mixed>|null
      */
-    public function getSearchTreeArticles(string $nodeId): ?array
+    public function getSearchTreeArticles(string $nodeId, ?string $verticalScope = null): ?array
     {
-        return $this->platformClient->get("/api/v1/automotive/search-tree/{$nodeId}/articles");
+        $params = $this->buildVerticalParams($verticalScope);
+
+        return $this->platformClient->get("/api/v1/automotive/search-tree/{$nodeId}/articles", $params);
+    }
+
+    /**
+     * Build query parameters for vertical scoping.
+     *
+     * @return array<string, string>
+     */
+    private function buildVerticalParams(?string $verticalScope): array
+    {
+        if ($verticalScope === null) {
+            return [];
+        }
+
+        return ['vertical' => $verticalScope];
     }
 
     /**
      * Enrich articles with local inventory status.
      *
-     * @param array<int, array<string, mixed>> $articles
-     * @param string $companyId
+     * @param  array<int, array<string, mixed>>  $articles
      * @return array<int, array<string, mixed>>
      */
     public function enrichWithInventoryStatus(array $articles, string $companyId): array
@@ -144,11 +190,12 @@ final class CatalogBrowseService
     }
 
     /**
+     * @param  array<string, string>  $queryParams
      * @return array<string, mixed>|null
      */
-    private function cachedGet(string $path, string $cacheKey, int $ttl): ?array
+    private function cachedGet(string $path, string $cacheKey, int $ttl, array $queryParams = []): ?array
     {
-        $fullKey = self::CACHE_PREFIX . $cacheKey;
+        $fullKey = self::CACHE_PREFIX.$cacheKey;
 
         $cached = Cache::get($fullKey);
         if ($cached !== null) {
@@ -156,7 +203,7 @@ final class CatalogBrowseService
             return $cached;
         }
 
-        $response = $this->platformClient->get($path);
+        $response = $this->platformClient->get($path, $queryParams);
         if ($response !== null) {
             Cache::put($fullKey, $response, $ttl);
         }

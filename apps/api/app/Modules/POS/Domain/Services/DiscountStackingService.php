@@ -6,6 +6,7 @@ namespace App\Modules\POS\Domain\Services;
 
 use App\Modules\POS\Domain\ValueObjects\DiscountBreakdown;
 use App\Modules\POS\Domain\ValueObjects\DiscountLine;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 
 /**
  * Resolves stacking rules for discount candidates from multiple sources.
@@ -19,6 +20,15 @@ use App\Modules\POS\Domain\ValueObjects\DiscountLine;
  */
 final class DiscountStackingService
 {
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
+
     /**
      * @param  array<int, DiscountLine>  $candidates
      * @param  numeric-string  $subtotal
@@ -62,14 +72,14 @@ final class DiscountStackingService
 
         foreach ($resolvedLines as $line) {
             if ($line->appliesTo === 'transaction') {
-                $totalTransactionDiscount = bcadd($totalTransactionDiscount, $line->discountAmount, 2);
+                $totalTransactionDiscount = bcadd($totalTransactionDiscount, $line->discountAmount, $this->scale());
             } else {
                 // Line-level discount (appliesTo = 'line:{product_id}')
                 $productId = str_replace('line:', '', $line->appliesTo);
                 if (! isset($lineDiscounts[$productId])) {
                     $lineDiscounts[$productId] = '0.00';
                 }
-                $lineDiscounts[$productId] = bcadd($lineDiscounts[$productId], $line->discountAmount, 2);
+                $lineDiscounts[$productId] = bcadd($lineDiscounts[$productId], $line->discountAmount, $this->scale());
             }
         }
 
@@ -77,16 +87,16 @@ final class DiscountStackingService
         /** @var numeric-string $grandTotal */
         $grandTotal = $totalTransactionDiscount;
         foreach ($lineDiscounts as $amount) {
-            $grandTotal = bcadd($grandTotal, $amount, 2);
+            $grandTotal = bcadd($grandTotal, $amount, $this->scale());
         }
 
-        if (bccomp($grandTotal, $subtotal, 2) > 0) {
+        if (bccomp($grandTotal, $subtotal, $this->scale()) > 0) {
             // Scale down proportionally to fit within subtotal
             $ratio = bcdiv($subtotal, $grandTotal, 8);
-            $totalTransactionDiscount = bcmul($totalTransactionDiscount, $ratio, 2);
+            $totalTransactionDiscount = bcmul($totalTransactionDiscount, $ratio, $this->scale());
 
             foreach ($lineDiscounts as $productId => $amount) {
-                $lineDiscounts[$productId] = bcmul($amount, $ratio, 2);
+                $lineDiscounts[$productId] = bcmul($amount, $ratio, $this->scale());
             }
         }
 

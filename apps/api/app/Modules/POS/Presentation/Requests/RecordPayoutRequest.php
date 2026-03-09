@@ -28,7 +28,7 @@ final class RecordPayoutRequest extends FormRequest
     {
         return [
             'shift_id' => ['required', 'string', 'uuid', 'exists:pos_shifts,id'],
-            'amount' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'amount' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
             'reason' => ['required', 'string', 'max:255'],
         ];
     }
@@ -46,7 +46,7 @@ final class RecordPayoutRequest extends FormRequest
             'amount.required' => 'Payout amount is required',
             'amount.numeric' => 'Payout amount must be a valid number',
             'amount.min' => 'Payout amount must be greater than zero',
-            'amount.regex' => 'Payout amount must have at most 2 decimal places',
+            'amount.regex' => 'Payout amount must have at most 3 decimal places',
             'reason.required' => 'Reason is required',
             'reason.max' => 'Reason cannot exceed 255 characters',
         ];

@@ -10,6 +10,7 @@ use App\Modules\POS\Domain\Exceptions\ShiftAlreadyOpenException;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -21,8 +22,14 @@ use Illuminate\Support\Facades\DB;
 final class ShiftManagementService
 {
     public function __construct(
-        private readonly CashDrawerService $cashDrawerService
+        private readonly CashDrawerService $cashDrawerService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Open a new shift with opening balance
@@ -106,7 +113,7 @@ final class ShiftManagementService
             $expectedCash = $this->cashDrawerService->calculateExpectedCash($shift);
 
             // Calculate variance
-            $variance = bcsub($actualCash, $expectedCash, 2);
+            $variance = bcsub($actualCash, $expectedCash, $this->scale());
 
             // Update shift
             $shift->update([

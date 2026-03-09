@@ -25,3 +25,13 @@ export async function fetchPOSProducts(params?: GetPOSProductsParams): Promise<P
   const backendParams = params ? { ...params, per_page: params.limit } : undefined
   return apiGet<POSProduct[]>('/products', backendParams)
 }
+
+/**
+ * Fetch products by exact barcode or SKU match.
+ *
+ * Uses the `barcode` filter parameter which does exact matching
+ * on both the `barcode` and `sku` columns (OR).
+ */
+export async function fetchProductByBarcode(barcode: string): Promise<POSProduct[]> {
+  return apiGet<POSProduct[]>('/products', { barcode, per_page: 10 })
+}

@@ -81,11 +81,11 @@ class ReceiptLine extends Model
         return [
             'line_number' => 'integer',
             'quantity' => 'decimal:3',
-            'unit_price' => 'decimal:2',
-            'line_total' => 'decimal:2',
+            'unit_price' => 'decimal:3',
+            'line_total' => 'decimal:3',
             'tax_rate' => 'decimal:2',
-            'tax_amount' => 'decimal:2',
-            'discount_amount' => 'decimal:2',
+            'tax_amount' => 'decimal:3',
+            'discount_amount' => 'decimal:3',
             'modifiers' => 'array',
         ];
     }
@@ -117,9 +117,9 @@ class ReceiptLine extends Model
     /**
      * Calculate net amount (before tax)
      */
-    public function getNetAmount(): string
+    public function getNetAmount(int $scale = 3): string
     {
-        return bcsub($this->line_total, $this->tax_amount, 2);
+        return bcsub($this->line_total, $this->tax_amount, $scale);
     }
 
     /**
@@ -133,9 +133,9 @@ class ReceiptLine extends Model
     /**
      * Check if line has discount
      */
-    public function hasDiscount(): bool
+    public function hasDiscount(int $scale = 3): bool
     {
-        return bccomp($this->discount_amount, '0', 2) > 0;
+        return bccomp($this->discount_amount, '0', $scale) > 0;
     }
 
     /**

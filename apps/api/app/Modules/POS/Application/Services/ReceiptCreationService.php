@@ -6,6 +6,8 @@ namespace App\Modules\POS\Application\Services;
 
 use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
+use App\Modules\Catalog\Domain\Entities\CompositeItem;
+use App\Modules\Catalog\Domain\Entities\Modifier;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
@@ -13,9 +15,6 @@ use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
-use App\Modules\Catalog\Domain\Entities\CompositeItem;
-use App\Modules\Catalog\Domain\Entities\Modifier;
-use App\Modules\Catalog\Domain\Entities\ModifierGroup;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Exceptions\DiscountExceedsLimitException;
@@ -26,11 +25,12 @@ use App\Modules\POS\Domain\ReceiptLineBatchAllocation;
 use App\Modules\POS\Domain\ReceiptVatDetail;
 use App\Modules\POS\Domain\Services\DiscountCalculationService;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
-use App\Modules\Promotion\Domain\ValueObjects\CartContext;
-use App\Modules\Promotion\Domain\ValueObjects\CartItemContext;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Promotion\Domain\ValueObjects\CartContext;
+use App\Modules\Promotion\Domain\ValueObjects\CartItemContext;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -50,8 +50,6 @@ use Illuminate\Support\Str;
  */
 final class ReceiptCreationService
 {
-    private const SCALE = 2;
-
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly ReceiptHashService $receiptHashService,
@@ -59,7 +57,13 @@ final class ReceiptCreationService
         private readonly BatchStockService $batchStockService,
         private readonly DiscountCalculationService $discountCalculationService,
         private readonly DiscountOrchestratorService $discountOrchestrator,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Create a new POS receipt.
@@ -196,7 +200,7 @@ final class ReceiptCreationService
                 }
 
                 // Calculate gross line total before discount
-                $grossLineTotal = bcmul($quantity, $unitPrice, self::SCALE);
+                $grossLineTotal = bcmul($quantity, $unitPrice, $this->scale());
 
                 // Resolve line discount amount from type/percent/amount
                 $discountAmount = $this->resolveLineDiscountAmount(
@@ -207,16 +211,16 @@ final class ReceiptCreationService
                 );
 
                 // line_total = (qty * unit_price) - discount
-                $lineTotal = bcsub($grossLineTotal, $discountAmount, self::SCALE);
+                $lineTotal = bcsub($grossLineTotal, $discountAmount, $this->scale());
 
                 // Calculate tax: net = lineTotal / (1 + taxRate/100), tax = lineTotal - net
                 $taxRateDecimal = bcdiv($taxRate, '100', 6);
                 $divisor = bcadd('1', $taxRateDecimal, 6);
-                $netAmount = bcdiv($lineTotal, $divisor, self::SCALE);
-                $taxAmount = bcsub($lineTotal, $netAmount, self::SCALE);
+                $netAmount = bcdiv($lineTotal, $divisor, $this->scale());
+                $taxAmount = bcsub($lineTotal, $netAmount, $this->scale());
 
-                $subtotal = bcadd($subtotal, $netAmount, self::SCALE);
-                $totalTax = bcadd($totalTax, $taxAmount, self::SCALE);
+                $subtotal = bcadd($subtotal, $netAmount, $this->scale());
+                $totalTax = bcadd($totalTax, $taxAmount, $this->scale());
 
                 $receiptLines[] = [
                     'line_number' => $index + 1,
@@ -246,9 +250,9 @@ final class ReceiptCreationService
                         'gross_amount' => '0.00',
                     ];
                 }
-                $vatAggregates[$rateKey]['net_amount'] = bcadd($vatAggregates[$rateKey]['net_amount'], $netAmount, self::SCALE);
-                $vatAggregates[$rateKey]['vat_amount'] = bcadd($vatAggregates[$rateKey]['vat_amount'], $taxAmount, self::SCALE);
-                $vatAggregates[$rateKey]['gross_amount'] = bcadd($vatAggregates[$rateKey]['gross_amount'], $lineTotal, self::SCALE);
+                $vatAggregates[$rateKey]['net_amount'] = bcadd($vatAggregates[$rateKey]['net_amount'], $netAmount, $this->scale());
+                $vatAggregates[$rateKey]['vat_amount'] = bcadd($vatAggregates[$rateKey]['vat_amount'], $taxAmount, $this->scale());
+                $vatAggregates[$rateKey]['gross_amount'] = bcadd($vatAggregates[$rateKey]['gross_amount'], $lineTotal, $this->scale());
             }
 
             // 4a-fix. Recalculate VAT aggregates from aggregated net_amount
@@ -257,8 +261,8 @@ final class ReceiptCreationService
             $totalTax = '0.00';
             foreach ($vatAggregates as &$vatData) {
                 $vatData['vat_amount'] = $this->roundVat($vatData['net_amount'], $vatData['tax_rate']);
-                $vatData['gross_amount'] = bcadd($vatData['net_amount'], $vatData['vat_amount'], self::SCALE);
-                $totalTax = bcadd($totalTax, $vatData['vat_amount'], self::SCALE);
+                $vatData['gross_amount'] = bcadd($vatData['net_amount'], $vatData['vat_amount'], $this->scale());
+                $totalTax = bcadd($totalTax, $vatData['vat_amount'], $this->scale());
             }
             unset($vatData);
 
@@ -270,13 +274,13 @@ final class ReceiptCreationService
             /** @var numeric-string $txDiscountStr */
             $txDiscountStr = $transactionDiscountAmount ?? '0.00';
 
-            if ($transactionDiscountAmount !== null && bccomp($txDiscountStr, '0', self::SCALE) > 0) {
+            if ($transactionDiscountAmount !== null && bccomp($txDiscountStr, '0', $this->scale()) > 0) {
                 // Subtotal for validation is the sum of all line totals (gross before tax split)
                 /** @var numeric-string $grossTotal */
-                $grossTotal = bcadd($subtotal, $totalTax, self::SCALE);
+                $grossTotal = bcadd($subtotal, $totalTax, $this->scale());
 
                 /** @var numeric-string $numericDiscountAmount */
-                $numericDiscountAmount = bcadd($txDiscountStr, '0', self::SCALE);
+                $numericDiscountAmount = bcadd($txDiscountStr, '0', $this->scale());
 
                 $this->discountCalculationService->validateTransactionDiscount(
                     $terminal,
@@ -292,13 +296,13 @@ final class ReceiptCreationService
                 $discountAuthorizedBy = number_format($effectiveLimit['limit'], 2, '.', '');
             }
 
-            $total = bcsub(bcadd($subtotal, $totalTax, self::SCALE), $validatedTransactionDiscount, self::SCALE);
+            $total = bcsub(bcadd($subtotal, $totalTax, $this->scale()), $validatedTransactionDiscount, $this->scale());
 
             // 4c. Resolve full discount breakdown via orchestrator (audit-only JSONB)
             $discountBreakdownData = null;
             try {
                 /** @var numeric-string $grossTotal */
-                $grossTotal = bcadd($subtotal, $totalTax, self::SCALE);
+                $grossTotal = bcadd($subtotal, $totalTax, $this->scale());
 
                 $cartItems = [];
                 foreach ($lines as $lineData) {
@@ -306,7 +310,7 @@ final class ReceiptCreationService
                     /** @var numeric-string $itemUnitPrice */
                     $itemUnitPrice = (string) $lineData['unit_price'];
                     /** @var numeric-string $itemLineTotal */
-                    $itemLineTotal = bcmul((string) $lineData['quantity'], $itemUnitPrice, self::SCALE);
+                    $itemLineTotal = bcmul((string) $lineData['quantity'], $itemUnitPrice, $this->scale());
 
                     $itemId = $isComposite ? $lineData['composite_item_id'] : $lineData['product_id'];
                     $categoryId = null;
@@ -661,7 +665,7 @@ final class ReceiptCreationService
             'quantity' => $quantity,
             'quantity_before' => $quantityBefore,
             'quantity_after' => $quantityAfter,
-            'reference' => "POS Sale",
+            'reference' => 'POS Sale',
             'reference_type' => 'pos_receipt',
             'reference_id' => $receiptId,
             'notes' => "Stock issued via POS sale (receipt: {$receiptId})",
@@ -679,7 +683,7 @@ final class ReceiptCreationService
     {
         $raw = (float) $netAmount * (float) $taxRate / 100.0;
 
-        return number_format(round($raw, 2), 2, '.', '');
+        return number_format(round($raw, $this->scale()), $this->scale(), '.', '');
     }
 
     /**
@@ -725,12 +729,12 @@ final class ReceiptCreationService
         }
 
         // If fixed-amount discount
-        if ($discountAmount !== null && bccomp((string) $discountAmount, '0', self::SCALE) > 0) {
+        if ($discountAmount !== null && bccomp((string) $discountAmount, '0', $this->scale()) > 0) {
             /** @var numeric-string $numericDiscount */
-            $numericDiscount = bcadd($discountAmount, '0', self::SCALE);
+            $numericDiscount = bcadd($discountAmount, '0', $this->scale());
 
             // Derive percent from amount for validation
-            if (bccomp($grossLineTotal, '0', self::SCALE) > 0) {
+            if (bccomp($grossLineTotal, '0', $this->scale()) > 0) {
                 /** @var numeric-string $derivedPercent */
                 $derivedPercent = bcdiv(
                     bcmul($numericDiscount, '100', 10),

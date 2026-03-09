@@ -13,6 +13,7 @@ use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLineBatchAllocation;
 use App\Modules\POS\Domain\Services\CashDrawerService;
 use App\Modules\POS\Domain\Shift;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -29,7 +30,13 @@ final class ReceiptVoidService
 {
     public function __construct(
         private readonly CashDrawerService $cashDrawerService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Void a receipt with full reversal.
@@ -91,7 +98,7 @@ final class ReceiptVoidService
      * Creates a Receipt (inbound) StockMovement to add stock back.
      */
     /**
-     * @param numeric-string $quantity
+     * @param  numeric-string  $quantity
      */
     private function reverseStockMovement(
         string $tenantId,
@@ -185,11 +192,11 @@ final class ReceiptVoidService
         $cashAmount = '0.00';
         foreach ($receipt->payments as $payment) {
             if ($payment->payment_type === 'CASH') {
-                $cashAmount = bcadd($cashAmount, (string) $payment->amount, 2);
+                $cashAmount = bcadd($cashAmount, (string) $payment->amount, $this->scale());
             }
         }
 
-        if (bccomp($cashAmount, '0.00', 2) > 0) {
+        if (bccomp($cashAmount, '0.00', $this->scale()) > 0) {
             $this->cashDrawerService->recordRefund(
                 $shift,
                 $cashAmount,

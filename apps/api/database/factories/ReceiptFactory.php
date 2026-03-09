@@ -33,7 +33,7 @@ class ReceiptFactory extends Factory
             'company_id' => Company::factory(),
             'location_id' => Location::factory(),
             'terminal_id' => Terminal::factory(),
-            'receipt_number' => 'T001-C001-L01-POS01-' . date('Y') . '-' . str_pad((string) $this->faker->unique()->numberBetween(1, 99999999), 8, '0', STR_PAD_LEFT),
+            'receipt_number' => 'T001-C001-L01-POS01-'.date('Y').'-'.str_pad((string) $this->faker->unique()->numberBetween(1, 99999999), 8, '0', STR_PAD_LEFT),
             'chain_sequence' => $this->faker->unique()->numberBetween(1, 99999),
             'receipt_year' => (int) date('Y'),
             'fiscal_hash' => hash('sha256', $this->faker->uuid()),
@@ -43,9 +43,9 @@ class ReceiptFactory extends Factory
             'posted_at' => now(),
             'cashier_id' => User::factory(),
             'cashier_name' => $this->faker->name(),
-            'subtotal' => number_format($subtotal, 2, '.', ''),
-            'tax_amount' => number_format($taxAmount, 2, '.', ''),
-            'total' => number_format($total, 2, '.', ''),
+            'subtotal' => number_format($subtotal, 3, '.', ''),
+            'tax_amount' => number_format($taxAmount, 3, '.', ''),
+            'total' => number_format($total, 3, '.', ''),
             'currency' => 'EUR',
             'is_voided' => false,
         ];
@@ -55,9 +55,9 @@ class ReceiptFactory extends Factory
      * Configure receipt with consistent totals.
      * Use when overriding total to ensure CHECK constraint passes.
      */
-    public function withTotal(string $total, string $taxAmount = '0.00'): static
+    public function withTotal(string $total, string $taxAmount = '0.000'): static
     {
-        $subtotal = bcsub($total, $taxAmount, 2);
+        $subtotal = bcsub($total, $taxAmount, 3);
 
         return $this->state(fn () => [
             'total' => $total,

@@ -5,17 +5,17 @@ declare(strict_types=1);
 namespace App\Modules\POS\Domain;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
+use App\Modules\Contact\Domain\Contact;
+use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ReturnReason;
-use App\Modules\Company\Domain\Location;
-use App\Modules\Identity\Domain\User;
-use App\Modules\Contact\Domain\Contact;
-use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Factories\ReceiptFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
-use Database\Factories\ReceiptFactory;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -99,6 +99,7 @@ class Receipt extends Model
 {
     /** @use HasFactory<ReceiptFactory> */
     use HasFactory;
+
     use HasUuids;
 
     /**
@@ -166,10 +167,10 @@ class Receipt extends Model
             'chain_sequence' => 'integer',
             'receipt_year' => 'integer',
             'posted_at' => 'datetime',
-            'subtotal' => 'decimal:2',
-            'tax_amount' => 'decimal:2',
-            'discount_amount' => 'decimal:2',
-            'total' => 'decimal:2',
+            'subtotal' => 'decimal:3',
+            'tax_amount' => 'decimal:3',
+            'discount_amount' => 'decimal:3',
+            'total' => 'decimal:3',
             'consumption_mode' => ConsumptionMode::class,
             'is_voided' => 'boolean',
             'voided_at' => 'datetime',

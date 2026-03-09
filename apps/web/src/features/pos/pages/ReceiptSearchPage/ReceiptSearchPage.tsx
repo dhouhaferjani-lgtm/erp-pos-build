@@ -38,6 +38,7 @@ interface ReceiptItem {
 interface ReceiptSearchFilters {
   terminal_id?: string
   receipt_number?: string
+  receipt_type?: string
   is_voided?: boolean
   from_date?: string
   to_date?: string
@@ -89,6 +90,7 @@ export function ReceiptSearchPage() {
       const params = new URLSearchParams()
       if (filters.terminal_id) params.set('terminal_id', filters.terminal_id)
       if (filters.receipt_number) params.set('receipt_number', filters.receipt_number)
+      if (filters.receipt_type) params.set('receipt_type', filters.receipt_type)
       if (filters.is_voided !== undefined) params.set('is_voided', String(filters.is_voided))
       if (filters.from_date) params.set('from_date', filters.from_date)
       if (filters.to_date) params.set('to_date', filters.to_date)
@@ -197,6 +199,27 @@ export function ReceiptSearchPage() {
             <option value="">{t('pos:receiptSearch.filters.allStatuses')}</option>
             <option value="false">{t('pos:receiptSearch.active')}</option>
             <option value="true">{t('pos:receiptSearch.voided')}</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            {t('pos:receiptSearch.filters.type')}
+          </label>
+          <select
+            className="rounded-md border-gray-300 text-sm"
+            value={filters.receipt_type ?? ''}
+            onChange={(e) =>
+              setFilters((prev) => ({
+                ...prev,
+                receipt_type: e.target.value || undefined,
+                page: 1,
+              }))
+            }
+          >
+            <option value="">{t('pos:receiptSearch.filters.allTypes')}</option>
+            <option value="sale">{t('pos:receiptSearch.filters.salesOnly')}</option>
+            <option value="return">{t('pos:receiptSearch.filters.returnsOnly')}</option>
           </select>
         </div>
 

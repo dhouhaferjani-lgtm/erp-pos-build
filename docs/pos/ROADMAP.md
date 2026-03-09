@@ -66,19 +66,27 @@
 - [ ] Handle no-match and multi-match cases (toast / selection modal)
 - [ ] Support both USB scanners (keyboard wedge) and camera scanning (Tauri)
 
-#### 1.4 Return/Exchange Workflow ⬜
-**Depends on 1.1** (customer lookup for return association)
+#### 1.4 Return/Exchange Workflow ✅ DONE
+**Completed** — All items except GL reversal (deferred to Phase 5.4)
 
-- [ ] Add `ReceiptType` enum: `sale` | `return`
-- [ ] Add `original_receipt_id` nullable FK on `pos_receipts`
-- [ ] `POST /pos/receipts/{id}/return` — creates return receipt (negative amounts)
-- [ ] Partial returns: select which lines to return + quantities
-- [ ] Return reason enum: `defective`, `wrong_item`, `customer_changed_mind`, `other`
-- [ ] Stock restoration on return (reverse inventory deduction)
-- [ ] GL reversal entries for returned items
-- [ ] Frontend: "Return" button on receipt detail → line selection → reason → confirm
-- [ ] Return receipt prints with "RETURN" header and original receipt reference
-- [ ] Add return filters to receipt list page
+- [x] Add `ReceiptType` enum: `sale` | `return`
+- [x] Add `original_receipt_id` nullable FK on `pos_receipts`
+- [x] `POST /pos/receipts/{id}/return` — creates return receipt (negative amounts)
+- [x] Partial returns: select which lines to return + quantities
+- [x] Return reason enum: `defective`, `wrong_item`, `customer_changed_mind`, `other`
+- [x] Stock restoration on return (reverse inventory deduction via `StockMovement`)
+- [ ] ~~GL reversal entries for returned items~~ — **Deferred to Phase 5.4.** POS receipts don't post GL on sale; returns naturally offset when consolidated via Z-Report.
+- [x] Frontend: "Return" button on receipt search → `ReturnItemsModal` (line selection, quantities, reason, notes)
+- [x] Return receipt prints with "RETURN" banner, original receipt number, and return reason
+- [x] Receipt type filter on receipt search page (All Types / Sales Only / Returns Only)
+- [x] Already-returned quantity tracking: `returned_quantity` per line in receipt detail, prevents over-return in UI
+- [x] Cash drawer refund recorded on return
+- [x] Fiscal hash chain maintained for return receipts
+- [x] Backend + frontend tests (10 tests, 28 assertions)
+- [x] Translations (en/fr) for frontend and backend PDF
+
+**Known limitations (not blocking go-live):**
+- Duplicate product lines: if the same product appears on multiple original receipt lines, returned quantities may be attributed to the first matching line. A future improvement would store `original_line_id` on return receipt lines.
 
 #### 1.5 ~~POS PIN Auth Frontend~~ — MOVED TO TAURI POS
 > PIN auth is for shared physical terminals (Tauri POS) where multiple
@@ -312,9 +320,9 @@ Phase 1 (Retail MVP):
          │
          ▼
 ┌──────────────────┐
-│  Session D        │
+│  Session D     ✅ │
 │  1.4 Returns      │
-│  (needs 1.1)      │
+│  DONE             │
 └──────────────────┘
 
 Phase 2 (B2B/B2C):

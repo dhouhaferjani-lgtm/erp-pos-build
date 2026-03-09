@@ -14,6 +14,7 @@ use App\Modules\POS\Domain\Services\ZReportHashService;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Domain\XReport;
 use App\Modules\POS\Domain\ZReport;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -30,7 +31,13 @@ final class ReportGenerationService
         private readonly CashDrawerService $cashDrawerService,
         private readonly ZReportHashService $zReportHashService,
         private readonly GrandtotalService $grandtotalService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Generate X report (mid-shift snapshot)
@@ -193,9 +200,9 @@ final class ReportGenerationService
             }
 
             $salesCount++;
-            $grossSales = bcadd($grossSales, $receipt->total, 2);
-            $taxAmount = bcadd($taxAmount, $receipt->tax_amount, 2);
-            $netSales = bcadd($netSales, $receipt->subtotal, 2);
+            $grossSales = bcadd($grossSales, $receipt->total, $this->scale());
+            $taxAmount = bcadd($taxAmount, $receipt->tax_amount, $this->scale());
+            $netSales = bcadd($netSales, $receipt->subtotal, $this->scale());
 
             // Aggregate VAT breakdown
             foreach ($receipt->vatDetails as $vatDetail) {
@@ -208,9 +215,9 @@ final class ReportGenerationService
                         'gross_amount' => '0.00',
                     ];
                 }
-                $vatBreakdown[$rate]['net_amount'] = bcadd($vatBreakdown[$rate]['net_amount'], $vatDetail->net_amount, 2);
-                $vatBreakdown[$rate]['vat_amount'] = bcadd($vatBreakdown[$rate]['vat_amount'], $vatDetail->vat_amount, 2);
-                $vatBreakdown[$rate]['gross_amount'] = bcadd($vatBreakdown[$rate]['gross_amount'], $vatDetail->gross_amount, 2);
+                $vatBreakdown[$rate]['net_amount'] = bcadd($vatBreakdown[$rate]['net_amount'], $vatDetail->net_amount, $this->scale());
+                $vatBreakdown[$rate]['vat_amount'] = bcadd($vatBreakdown[$rate]['vat_amount'], $vatDetail->vat_amount, $this->scale());
+                $vatBreakdown[$rate]['gross_amount'] = bcadd($vatBreakdown[$rate]['gross_amount'], $vatDetail->gross_amount, $this->scale());
             }
 
             // Aggregate payment methods
@@ -223,7 +230,7 @@ final class ReportGenerationService
                         'transaction_count' => 0,
                     ];
                 }
-                $paymentMethods[$method]['total_amount'] = bcadd($paymentMethods[$method]['total_amount'], $payment->amount, 2);
+                $paymentMethods[$method]['total_amount'] = bcadd($paymentMethods[$method]['total_amount'], $payment->amount, $this->scale());
                 $paymentMethods[$method]['transaction_count']++;
             }
         }

@@ -7,6 +7,7 @@ namespace App\Modules\POS\Domain\Services;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\CashDrawerOperation;
 use App\Modules\POS\Domain\Shift;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 
 /**
  * Service for managing cash drawer operations.
@@ -23,6 +24,15 @@ use App\Modules\POS\Domain\Shift;
  */
 final class CashDrawerService
 {
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
+    ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
+
     /**
      * Record opening cash drawer operation
      *
@@ -207,14 +217,14 @@ final class CashDrawerService
                 case 'OPENING':
                 case 'SALE':
                     // Add to balance
-                    $expected = bcadd($expected, $operation->amount, 2);
+                    $expected = bcadd($expected, $operation->amount, $this->scale());
                     break;
 
                 case 'REFUND':
                 case 'DEPOSIT':
                 case 'PAYOUT':
                     // Subtract from balance
-                    $expected = bcsub($expected, $operation->amount, 2);
+                    $expected = bcsub($expected, $operation->amount, $this->scale());
                     break;
             }
         }
@@ -263,6 +273,6 @@ final class CashDrawerService
             ->where('operation_type', $operationType)
             ->sum('amount');
 
-        return number_format((float) $total, 2, '.', '');
+        return number_format((float) $total, $this->scale(), '.', '');
     }
 }

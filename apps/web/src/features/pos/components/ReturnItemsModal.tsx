@@ -59,16 +59,21 @@ export function ReturnItemsModal({
       setReturnLines(
         receipt.lines
           .filter((line) => parseFloat(line.quantity) > 0) // Only sale lines (positive qty)
-          .map((line) => ({
-            lineId: line.id,
-            productName: line.product_name,
-            originalQuantity: parseFloat(line.quantity),
-            returnQuantity: 0,
-            maxReturnable: parseFloat(line.quantity), // TODO: subtract already returned
-            unitPrice: line.unit_price,
-            lineTotal: line.line_total,
-            selected: false,
-          }))
+          .map((line) => {
+            const maxReturnable =
+              parseFloat(line.quantity) - parseFloat(line.returned_quantity ?? '0')
+            return {
+              lineId: line.id,
+              productName: line.product_name,
+              originalQuantity: parseFloat(line.quantity),
+              returnQuantity: 0,
+              maxReturnable,
+              unitPrice: line.unit_price,
+              lineTotal: line.line_total,
+              selected: false,
+            }
+          })
+          .filter((line) => line.maxReturnable > 0) // Hide fully returned lines
       )
     }
   }, [receipt])

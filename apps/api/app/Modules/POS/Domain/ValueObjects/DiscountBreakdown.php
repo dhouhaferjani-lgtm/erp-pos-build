@@ -23,12 +23,12 @@ final readonly class DiscountBreakdown
     /**
      * @return numeric-string
      */
-    public function totalDiscount(): string
+    public function totalDiscount(int $scale = 3): string
     {
         /** @var numeric-string $total */
         $total = $this->totalTransactionDiscount;
         foreach ($this->lineDiscounts as $amount) {
-            $total = bcadd($total, $amount, 2);
+            $total = bcadd($total, $amount, $scale);
         }
 
         return $total;

@@ -26,6 +26,9 @@ return [
     'chain_sequence' => 'N° Séquence',
     'fiscal_hash' => 'Hash Fiscal',
     'previous_hash' => 'Hash Précédent',
+    'return_receipt' => 'RETOUR',
+    'original_receipt' => 'Ticket Original',
+    'return_reason' => 'Motif',
     'thank_you' => 'Merci !',
     'powered_by' => 'Propulsé par AutoERP',
 ];

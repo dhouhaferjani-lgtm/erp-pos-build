@@ -28,7 +28,7 @@ final class RecordDepositRequest extends FormRequest
     {
         return [
             'shift_id' => ['required', 'string', 'uuid', 'exists:pos_shifts,id'],
-            'amount' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'amount' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
             'reason' => ['required', 'string', 'max:255'],
         ];
     }
@@ -46,7 +46,7 @@ final class RecordDepositRequest extends FormRequest
             'amount.required' => 'Deposit amount is required',
             'amount.numeric' => 'Deposit amount must be a valid number',
             'amount.min' => 'Deposit amount must be greater than zero',
-            'amount.regex' => 'Deposit amount must have at most 2 decimal places',
+            'amount.regex' => 'Deposit amount must have at most 3 decimal places',
             'reason.required' => 'Reason is required',
             'reason.max' => 'Reason cannot exceed 255 characters',
         ];

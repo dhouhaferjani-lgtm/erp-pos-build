@@ -228,6 +228,29 @@
             border-top: 1px dashed #000;
             margin: 10px 0;
         }
+
+        /* Return Banner */
+        .return-banner {
+            text-align: center;
+            font-size: 14pt;
+            font-weight: bold;
+            padding: 8px 0;
+            margin-bottom: 10px;
+            border: 2px dashed #000;
+            letter-spacing: 2px;
+        }
+
+        .return-details {
+            text-align: center;
+            font-size: 8pt;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px dashed #000;
+        }
+
+        .return-details div {
+            margin-bottom: 2px;
+        }
     </style>
 </head>
 <body>
@@ -253,6 +276,19 @@
                 @endif
             </div>
         </div>
+
+        {{-- Return Banner (for return receipts only) --}}
+        @if($isReturn ?? false)
+            <div class="return-banner">{{ __('pos.return_receipt') }}</div>
+            <div class="return-details">
+                @if($originalReceiptNumber)
+                    <div><strong>{{ __('pos.original_receipt') }}:</strong> {{ $originalReceiptNumber }}</div>
+                @endif
+                @if($returnReason)
+                    <div><strong>{{ __('pos.return_reason') }}:</strong> {{ $returnReason }}</div>
+                @endif
+            </div>
+        @endif
 
         {{-- Receipt Info Section --}}
         <div class="receipt-info">

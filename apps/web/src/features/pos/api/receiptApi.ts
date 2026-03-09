@@ -155,6 +155,7 @@ export interface ReceiptDetailData {
     tax_rate: string
     tax_amount: string
     discount_amount: string
+    returned_quantity: string
   }>
 }
 

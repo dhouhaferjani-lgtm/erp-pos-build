@@ -13,6 +13,7 @@ use App\Modules\Promotion\Domain\Contracts\PromotionEvaluatorContract;
 use App\Modules\Promotion\Domain\Enums\DiscountAppliesTo;
 use App\Modules\Promotion\Domain\ValueObjects\CartContext;
 use App\Modules\Promotion\Domain\ValueObjects\PromotionDiscount;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 
 /**
  * Single resolution point for all discount sources.
@@ -31,7 +32,13 @@ final class DiscountOrchestratorService
         private readonly PromotionEvaluatorContract $promotionEvaluator,
         private readonly CouponValidatorContract $couponValidator,
         private readonly DiscountStackingService $stackingService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    private function scale(): int
+    {
+        return $this->scaleResolver->getScale();
+    }
 
     /**
      * Resolve all discount sources for a cart.
@@ -51,7 +58,7 @@ final class DiscountOrchestratorService
         $candidates = [];
 
         // 1. Manual discount (cashier-applied)
-        if ($manualDiscountAmount !== null && bccomp($manualDiscountAmount, '0', 2) > 0) {
+        if ($manualDiscountAmount !== null && bccomp($manualDiscountAmount, '0', $this->scale()) > 0) {
             $candidates[] = new DiscountLine(
                 source: DiscountSource::Manual->value,
                 stackingGroup: 'manual',
@@ -91,7 +98,7 @@ final class DiscountOrchestratorService
         }
 
         // 4. Loyalty reward redemption
-        if ($loyaltyDiscountAmount !== null && bccomp($loyaltyDiscountAmount, '0', 2) > 0) {
+        if ($loyaltyDiscountAmount !== null && bccomp($loyaltyDiscountAmount, '0', $this->scale()) > 0) {
             $candidates[] = new DiscountLine(
                 source: DiscountSource::Loyalty->value,
                 stackingGroup: 'loyalty',

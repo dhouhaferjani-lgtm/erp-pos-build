@@ -222,6 +222,7 @@
     "noReportsDescription": "No Z-reports exist for this terminal yet.",
     "loadError": "Failed to load Z-report",
     "print": "Print",
+    "downloadPdf": "Download PDF",
     "detailTitle": "Z-Report {{zNumber}}",
     "filters": {
       "from": "From",
@@ -240,6 +241,7 @@
       "refundsCount": "Refunds",
       "refundsAmount": "Refunds Amount",
       "voidedCount": "Voided Receipts",
+      "averageTicket": "Average Ticket",
       "openingCash": "Opening Cash",
       "expectedCash": "Expected Cash",
       "actualCash": "Actual Cash",
@@ -273,8 +275,12 @@
     "filters": {
       "terminal": "Terminal",
       "status": "Status",
+      "type": "Type",
       "allTerminals": "All Terminals",
       "allStatuses": "All Statuses",
+      "allTypes": "All Types",
+      "salesOnly": "Sales Only",
+      "returnsOnly": "Returns Only",
       "dateRange": "Date Range",
       "from": "From",
       "to": "To"
@@ -383,7 +389,16 @@
   "barcode": {
     "productNotFound": "Product not found: {{code}}",
     "productAdded": "{{name}} added to cart",
-    "multipleMatches": "Multiple products match barcode: {{code}}"
+    "multipleMatches": "Multiple products match barcode: {{code}}",
+    "inputPlaceholder": "Scan or type barcode / SKU...",
+    "inputLabel": "Barcode or SKU lookup",
+    "clearInput": "Clear barcode input",
+    "selectProduct": "Select Product",
+    "multipleMatchesDetail": "Multiple products matched \"{{code}}\"",
+    "matchSku": "SKU: {{sku}}",
+    "matchBarcode": "Barcode: {{barcode}}",
+    "cancel": "Cancel",
+    "scanDetected": "Barcode scan detected"
   },
   "modifiers": {
     "selectOptions": "Select Options",

@@ -38,6 +38,7 @@ class ReceiptPayment extends Model
 {
     /** @use HasFactory<ReceiptPaymentFactory> */
     use HasFactory;
+
     use HasUuids;
 
     /**
@@ -72,7 +73,7 @@ class ReceiptPayment extends Model
     protected function casts(): array
     {
         return [
-            'amount' => 'decimal:2',
+            'amount' => 'decimal:3',
             'authorized_at' => 'datetime',
         ];
     }

@@ -150,6 +150,14 @@ class ProductController extends Controller
                 'type' => 'text',
                 'columns' => ['name', 'sku', 'barcode'],
             ],
+            'barcode' => [
+                'type' => 'computed',
+                'callback' => fn ($q, $value) => $q->where(function ($sub) use ($value) {
+                    $exact = (string) $value;
+                    $sub->where('barcode', $exact)
+                        ->orWhere('sku', $exact);
+                }),
+            ],
             'has_stock' => [
                 'type' => 'computed',
                 'callback' => fn ($q) => $q->whereHas('stockLevels', fn ($sq) => $sq->where('quantity', '>', 0)),
