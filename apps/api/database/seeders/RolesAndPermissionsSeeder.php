@@ -209,6 +209,20 @@ class RolesAndPermissionsSeeder extends Seeder
             'contacts.update',
             'contacts.delete',
 
+            // Marketplace
+            'marketplace.browse',
+            'marketplace.order',
+            'marketplace.view_orders',
+            'marketplace.admin',
+
+            // Catalog Cart
+            'catalog_cart.view',
+            'catalog_cart.create',
+            'catalog_cart.convert_po',
+            'catalog_cart.convert_so',
+            'catalog_cart.marketplace_checkout',
+            'catalog_cart.manage_all',
+
             // System
             'settings.view',
             'settings.update',
@@ -272,6 +286,9 @@ class RolesAndPermissionsSeeder extends Seeder
             'coupons.view', 'coupons.manage',
             'loyalty.view', 'loyalty.manage',
             'contacts.view', 'contacts.create', 'contacts.update', 'contacts.delete',
+            'marketplace.browse', 'marketplace.order', 'marketplace.view_orders',
+            'catalog_cart.view', 'catalog_cart.create', 'catalog_cart.convert_po', 'catalog_cart.convert_so',
+            'catalog_cart.marketplace_checkout',
         ]);
         $this->command->info('Created role: manager');
 
@@ -298,6 +315,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'modifier-groups.view',
             'menus.view',
             'contacts.view', 'contacts.create',
+            'marketplace.browse',
+            'catalog_cart.view',
         ]);
         $this->command->info('Created role: cashier');
 
@@ -331,6 +350,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'promotions.view',
             'coupons.view',
             'loyalty.view',
+            'marketplace.browse',
+            'catalog_cart.view',
         ]);
         $this->command->info('Created role: viewer');
 
@@ -362,6 +383,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'deliveries.view', 'deliveries.create',
             'payments.view', 'payments.create',
             'work-orders.view', 'work-orders.create', 'work-orders.update',
+            'marketplace.browse',
+            'catalog_cart.view', 'catalog_cart.create',
         ]);
         $this->command->info('Created role: operator');
 

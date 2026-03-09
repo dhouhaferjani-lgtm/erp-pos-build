@@ -153,6 +153,21 @@ enum Vertical: string
     }
 
     /**
+     * Get the catalog scope filter for this vertical.
+     * Used to filter platform catalog results to relevant product groups.
+     *
+     * @return string|null Scope identifier passed to platform API, null means full catalog
+     */
+    public function catalogScope(): ?string
+    {
+        return match ($this) {
+            self::TireShop => 'tire_shop',
+            self::CarGlass => 'car_glass',
+            default => null,
+        };
+    }
+
+    /**
      * Get all verticals for a specific product
      *
      * @return array<int, self>

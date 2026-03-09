@@ -33,4 +33,6 @@ return [
     App\Modules\Coupon\Providers\CouponServiceProvider::class,
     App\Modules\PlatformIntegration\Providers\PlatformIntegrationServiceProvider::class,
     App\Modules\Contact\Providers\ContactServiceProvider::class,
+    App\Modules\Marketplace\Providers\MarketplaceServiceProvider::class,
+    App\Modules\Cart\Providers\CartServiceProvider::class,
 ];
