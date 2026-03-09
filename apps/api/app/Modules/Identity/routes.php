@@ -65,6 +65,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('users/{id}/activate', [UserController::class, 'activate'])->name('users.activate');
     Route::post('users/{id}/deactivate', [UserController::class, 'deactivate'])->name('users.deactivate');
     Route::post('users/{id}/reset-password', [UserController::class, 'resetPassword'])->name('users.reset-password');
+    Route::patch('users/{id}/pos-pin', [UserController::class, 'setPosPin'])->name('users.pos-pin');
 
     // User role assignment (requires users.assign-roles permission)
     Route::get('users/{userId}/roles', [RoleController::class, 'userRoles'])->name('users.roles');

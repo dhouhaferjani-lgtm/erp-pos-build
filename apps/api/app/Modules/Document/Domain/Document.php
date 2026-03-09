@@ -699,9 +699,9 @@ class Document extends Model
 
         // If no delivery notes exist, check if document has physical products
         if ($deliveryNotes->isEmpty()) {
-            // Check if any lines require physical delivery (not services)
+            // Check if any lines require physical delivery
             $hasPhysicalProducts = $this->lines()
-                ->whereHas('product', fn ($q) => $q->where('type', '!=', 'service'))
+                ->whereHas('product', fn ($q) => $q->where('is_physical', true))
                 ->exists();
 
             return $hasPhysicalProducts

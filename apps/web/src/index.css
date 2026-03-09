@@ -129,3 +129,10 @@ body {
   outline: 2px solid var(--theme-primary-500);
   outline-offset: 2px;
 }
+
+/* X Report print styles */
+@media print {
+  body * { visibility: hidden; }
+  .x-report-print-area, .x-report-print-area * { visibility: visible; }
+  .x-report-print-area { position: absolute; left: 0; top: 0; width: 100%; padding: 24px; }
+}

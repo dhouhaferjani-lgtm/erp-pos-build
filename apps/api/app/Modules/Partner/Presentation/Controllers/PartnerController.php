@@ -252,6 +252,49 @@ class PartnerController extends Controller
     }
 
     /**
+     * Get contacts linked to a partner.
+     */
+    public function contacts(Request $request, string $partner): JsonResponse
+    {
+        $partnerModel = Partner::where('company_id', $this->companyContext->requireCompanyId())
+            ->where('id', $partner)
+            ->first();
+
+        if (! $partnerModel) {
+            return response()->json([
+                'error' => [
+                    'code' => 'PARTNER_NOT_FOUND',
+                    'message' => 'Partner not found',
+                ],
+                'meta' => [
+                    'timestamp' => now()->toIso8601String(),
+                    'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
+                ],
+            ], 404);
+        }
+
+        $contacts = $partnerModel->contacts()->get()->map(fn ($contact) => [
+            'id' => $contact->id,
+            'first_name' => $contact->first_name,
+            'last_name' => $contact->last_name,
+            'full_name' => $contact->full_name,
+            'email' => $contact->email,
+            'phone' => $contact->phone,
+            'job_title' => $contact->pivot->job_title,
+            'department' => $contact->pivot->department,
+            'is_primary' => (bool) $contact->pivot->is_primary,
+        ]);
+
+        return response()->json([
+            'data' => $contacts,
+            'meta' => [
+                'timestamp' => now()->toIso8601String(),
+                'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
+            ],
+        ]);
+    }
+
+    /**
      * Get tax status and exemption information for a partner
      */
     public function taxStatus(Request $request, string $partner): JsonResponse

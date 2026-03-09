@@ -19,6 +19,8 @@ use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
+ * @property string|null $tenant_id
+ * @property string|null $counting_number
  * @property string $company_id
  * @property string $created_by_user_id
  * @property CountingScopeType $scope_type
@@ -56,6 +58,8 @@ class InventoryCounting extends Model
     protected $table = 'inventory_countings';
 
     protected $fillable = [
+        'tenant_id',
+        'counting_number',
         'company_id',
         'created_by_user_id',
         'scope_type',

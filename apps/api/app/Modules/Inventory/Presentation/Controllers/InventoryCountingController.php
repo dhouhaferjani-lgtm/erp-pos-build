@@ -338,6 +338,7 @@ class InventoryCountingController extends Controller
     {
         $data = [
             'id' => $counting->id,
+            'counting_number' => $counting->counting_number,
             'company_id' => $counting->company_id,
             'scope_type' => $counting->scope_type->value,
             'scope_filters' => $counting->scope_filters,
@@ -686,22 +687,16 @@ class InventoryCountingController extends Controller
             ], 422);
         }
 
-        // Use the existing counting service to activate
-        $activateImmediately = $request->input('activate_immediately', true);
+        /** @var \App\Modules\Identity\Domain\User $user */
+        $user = $request->user();
+        $activateImmediately = (bool) $request->input('activate_immediately', true);
 
-        if ($activateImmediately) {
-            $counting->status = CountingStatus::Count1InProgress;
-            $counting->activated_at = now();
-        } else {
-            $counting->status = CountingStatus::Scheduled;
-        }
-
-        $counting->last_modified_at = now();
-        $counting->last_modified_by_user_id = $request->user()->id;
-        $counting->save();
-
-        // Generate counting items from product list
-        $this->countingService->generateCountingItems($counting);
+        $counting = $this->countingService->activateDraft(
+            $counting,
+            $companyId,
+            $user,
+            $activateImmediately,
+        );
 
         return response()->json([
             'data' => $this->transformCounting($counting, false),

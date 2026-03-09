@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Calendar, Building2, FileText, Car, Lock } from 'lucide-react'
+import { AxiosError } from 'axios'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { formatCurrency } from '../../../lib/format'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
@@ -21,6 +22,7 @@ import { DocumentActionBar } from '../components/DocumentActionBar'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
 import { useCompany } from '../../../hooks/useCompany'
 import type { Document } from '../../../types/document'
+import type { PaymentStatus } from '../components/PaymentStatusBadge'
 
 type ConfirmAction = 'confirm' | 'post' | null
 type ActiveTab = 'related' | 'attachments' | 'creditNotes' | 'payments'
@@ -28,7 +30,6 @@ type ActiveTab = 'related' | 'attachments' | 'creditNotes' | 'payments'
 export function InvoiceDetailPage() {
   const { t } = useTranslation(['sales', 'common'])
   const { id = '' } = useParams<{ id: string }>()
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { currentCompany } = useCompany()
 
@@ -89,20 +90,22 @@ export function InvoiceDetailPage() {
       void queryClient.invalidateQueries({ queryKey: ['documents'] })
       toast.success(t('documents.messages.posted'))
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       // Check if error is due to draft delivery notes
-      if (
-        error?.response?.data?.error?.code === 'DELIVERY_NOT_COMPLETED' &&
-        error?.response?.data?.error?.details?.status === 'draft_dns_found' &&
-        error?.response?.data?.error?.details?.can_auto_confirm === true
-      ) {
-        // Show modal with draft DNs
-        const draftDns = error.response.data.error.details.draft_dns || []
-        setDraftDeliveryNotes(draftDns)
-        setShowDeliveryConfirmationModal(true)
-      } else {
-        toast.error(getErrorMessage(error))
+      if (error instanceof AxiosError) {
+        const errorData = error.response?.data as { error?: { code?: string; details?: { status?: string; can_auto_confirm?: boolean; draft_dns?: Array<{ id: string; number: string; total: string; line_count: number }> } } } | undefined
+        if (
+          errorData?.error?.code === 'DELIVERY_NOT_COMPLETED' &&
+          errorData?.error?.details?.status === 'draft_dns_found' &&
+          errorData?.error?.details?.can_auto_confirm === true
+        ) {
+          const draftDns = errorData.error.details.draft_dns ?? []
+          setDraftDeliveryNotes(draftDns)
+          setShowDeliveryConfirmationModal(true)
+          return
+        }
       }
+      toast.error(getErrorMessage(error))
     },
   })
 
@@ -164,7 +167,7 @@ export function InvoiceDetailPage() {
       onSuccess: () => {
         setShowEmailModal(false)
         setEmailForm({ recipientEmail: '', subject: '', message: '', ccEmails: '' })
-        toast.success(t('common.emailSent'))
+        toast.success(t('common:email.success'))
       },
     })
   }
@@ -462,7 +465,7 @@ export function InvoiceDetailPage() {
                   amountPaid={amountPaid}
                   creditNotesApplied={creditNotesApplied}
                   outstandingAmount={outstandingAmount}
-                  paymentStatus={invoice.payment_status as any}
+                  paymentStatus={invoice.payment_status as PaymentStatus}
                   currency={currentCompany?.currency ?? 'EUR'}
                   onRecordPayment={canRecordPayment ? () => setShowPaymentModal(true) : undefined}
                 />
@@ -537,10 +540,10 @@ export function InvoiceDetailPage() {
       {showEmailModal && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">{t('common.sendEmail')}</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">{t('common:email.title')}</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">{t('common.recipientEmail')}</label>
+                <label className="block text-sm font-medium text-gray-700">{t('common:email.recipientEmail')}</label>
                 <input
                   type="email"
                   value={emailForm.recipientEmail}
@@ -549,7 +552,7 @@ export function InvoiceDetailPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">{t('common.subject')}</label>
+                <label className="block text-sm font-medium text-gray-700">{t('common:email.subject')}</label>
                 <input
                   type="text"
                   value={emailForm.subject}
@@ -558,7 +561,7 @@ export function InvoiceDetailPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">{t('common.message')}</label>
+                <label className="block text-sm font-medium text-gray-700">{t('common:email.message')}</label>
                 <textarea
                   value={emailForm.message}
                   onChange={(e) => setEmailForm({ ...emailForm, message: e.target.value })}

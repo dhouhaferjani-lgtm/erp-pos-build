@@ -37,6 +37,34 @@ export interface XReportData {
   terminal_id: string
 }
 
+export interface VatBreakdownEntry {
+  rate: string
+  net: string
+  vat: string
+  gross: string
+}
+
+export interface PaymentMethodEntry {
+  method: string
+  count: number
+  amount: string
+}
+
+export interface XReportResponse {
+  id: string
+  terminal_id: string
+  shift_id: string
+  generated_by: string
+  generated_at: string
+  sales_count: number
+  gross_sales: string
+  net_sales: string
+  tax_amount: string
+  refunds_count: number
+  vat_breakdown: VatBreakdownEntry[]
+  payment_methods: PaymentMethodEntry[]
+}
+
 export interface ZReportData {
   terminal_id: string
 }
@@ -70,8 +98,8 @@ export async function closeShift(shiftId: string, actualCash: string): Promise<C
 /**
  * Generate X-report for current shift (mid-shift report, doesn't close shift)
  */
-export async function generateXReport(data: XReportData): Promise<void> {
-  return apiPost<void>('/pos/reports/x', data)
+export async function generateXReport(data: XReportData): Promise<XReportResponse> {
+  return apiPost<XReportResponse>('/pos/reports/x', data)
 }
 
 /**

@@ -9,12 +9,16 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Application\Services\ReceiptCreationService;
 use App\Modules\POS\Application\Services\ReceiptPdfService;
 use App\Modules\POS\Application\Services\ReceiptPaymentService;
+use App\Modules\POS\Application\Services\ReceiptReturnService;
 use App\Modules\POS\Application\Services\ReceiptVoidService;
+use App\Modules\POS\Domain\Enums\ConsumptionMode;
+use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Exceptions\DiscountExceedsLimitException;
 use App\Modules\POS\Domain\Exceptions\DiscountNotAllowedException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Presentation\Requests\StoreReceiptPaymentsRequest;
 use App\Modules\POS\Presentation\Requests\StoreReceiptRequest;
+use App\Modules\POS\Presentation\Requests\StoreReturnRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -35,6 +39,7 @@ final class ReceiptController extends Controller
         private readonly ReceiptPdfService $receiptPdfService,
         private readonly ReceiptPaymentService $receiptPaymentService,
         private readonly ReceiptVoidService $receiptVoidService,
+        private readonly ReceiptReturnService $receiptReturnService,
     ) {}
 
     /**
@@ -64,6 +69,14 @@ final class ReceiptController extends Controller
             $query->where('receipt_number', 'like', '%' . $request->input('receipt_number') . '%');
         }
 
+        if ($request->filled('customer_id')) {
+            $query->where('partner_id', $request->input('customer_id'));
+        }
+
+        if ($request->filled('contact_id')) {
+            $query->where('contact_id', $request->input('contact_id'));
+        }
+
         if ($request->has('is_voided')) {
             $query->where('is_voided', filter_var($request->input('is_voided'), FILTER_VALIDATE_BOOLEAN));
         }
@@ -84,6 +97,9 @@ final class ReceiptController extends Controller
             return [
                 'id' => $receipt->id,
                 'receipt_number' => $receipt->receipt_number,
+                'receipt_type' => $receipt->receipt_type?->value ?? 'sale',
+                'original_receipt_id' => $receipt->original_receipt_id,
+                'return_reason' => $receipt->return_reason?->value,
                 'terminal_id' => $receipt->terminal_id,
                 'terminal_code' => $receipt->terminal?->code ?? '',
                 'cashier_name' => $receipt->cashier_name,
@@ -91,6 +107,9 @@ final class ReceiptController extends Controller
                 'tax_amount' => $receipt->tax_amount,
                 'total' => $receipt->total,
                 'currency' => $receipt->currency,
+                'customer_name' => $receipt->customer_name,
+                'partner_id' => $receipt->partner_id,
+                'contact_id' => $receipt->contact_id,
                 'posted_at' => $receipt->posted_at?->toISOString(),
                 'is_voided' => $receipt->is_voided,
                 'void_reason' => $receipt->void_reason,
@@ -162,6 +181,70 @@ final class ReceiptController extends Controller
     }
 
     /**
+     * Process a partial or full return on a receipt.
+     *
+     * Creates a new negative receipt (return receipt) that references the original.
+     * Restores stock for returned items and records cash drawer refund.
+     *
+     * POST /api/v1/pos/receipts/{id}/return
+     */
+    public function processReturn(StoreReturnRequest $request, string $id): JsonResponse
+    {
+        Gate::authorize('pos.process_returns');
+
+        try {
+            $validated = $request->validated();
+
+            /** @var \App\Modules\Identity\Domain\User $user */
+            $user = Auth::user();
+
+            $returnReceipt = $this->receiptReturnService->processReturn(
+                originalReceiptId: $id,
+                returnLines: $validated['lines'],
+                returnReason: ReturnReason::from($validated['return_reason']),
+                cashier: $user,
+                terminalId: $validated['terminal_id'],
+                notes: $validated['notes'] ?? null,
+            );
+
+            return response()->json([
+                'data' => [
+                    'id' => $returnReceipt->id,
+                    'receipt_number' => $returnReceipt->receipt_number,
+                    'receipt_type' => $returnReceipt->receipt_type->value,
+                    'original_receipt_id' => $returnReceipt->original_receipt_id,
+                    'return_reason' => $returnReceipt->return_reason?->value,
+                    'subtotal' => $returnReceipt->subtotal,
+                    'tax_amount' => $returnReceipt->tax_amount,
+                    'total' => $returnReceipt->total,
+                    'currency' => $returnReceipt->currency,
+                    'posted_at' => $returnReceipt->posted_at?->toISOString(),
+                    'lines' => $returnReceipt->lines->map(fn ($line) => [
+                        'product_name' => $line->product_name,
+                        'quantity' => $line->quantity,
+                        'unit_price' => $line->unit_price,
+                        'line_total' => $line->line_total,
+                    ])->values()->toArray(),
+                ],
+            ], 201);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'RETURN_FAILED',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'INVALID_RETURN_DATA',
+                    'message' => $e->getMessage(),
+                ],
+            ], 400);
+        }
+    }
+
+    /**
      * Create a new POS receipt.
      *
      * Creates a receipt with line items, calculates VAT, decrements stock,
@@ -177,13 +260,19 @@ final class ReceiptController extends Controller
                 ? (string) $validated['transaction_discount_amount']
                 : null;
 
+            $consumptionMode = isset($validated['consumption_mode'])
+                ? ConsumptionMode::from($validated['consumption_mode'])
+                : null;
+
             $receipt = $this->receiptCreationService->createReceipt(
                 terminalId: $validated['terminal_id'],
                 lines: $validated['lines'],
                 customerId: $validated['customer_id'] ?? null,
+                contactId: $validated['contact_id'] ?? null,
                 notes: $validated['notes'] ?? null,
                 transactionDiscountAmount: $transactionDiscountAmount,
                 transactionDiscountReason: $validated['transaction_discount_reason'] ?? null,
+                consumptionMode: $consumptionMode,
             );
 
             return response()->json([

@@ -84,6 +84,14 @@ enum Vertical: string
     }
 
     /**
+     * Check if this vertical is an automotive (Otospex) vertical.
+     */
+    public function isAutomotive(): bool
+    {
+        return $this->product() === 'otospex';
+    }
+
+    /**
      * Get compatible optional modules (extras) for this vertical
      *
      * @return array<int, string>
@@ -125,7 +133,7 @@ enum Vertical: string
             self::CarGlass => ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Workshop', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
             self::TireShop => ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
             self::ServiceStation => ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
-            self::Parapharmacy => ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
+            self::Parapharmacy => ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'Parapharmacy'],
         };
     }
 

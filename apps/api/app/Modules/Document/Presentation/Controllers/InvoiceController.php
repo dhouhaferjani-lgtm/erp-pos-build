@@ -22,6 +22,7 @@ use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
+use App\Modules\Vehicle\Application\Services\VehicleContextBuilder;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -58,6 +59,7 @@ class InvoiceController extends Controller
         private readonly DocumentPostingService $postingService,
         private readonly DeliveryNoteService $deliveryNoteService,
         private readonly TaxCalculationService $taxCalculationService,
+        private readonly VehicleContextBuilder $vehicleContextBuilder,
     ) {}
 
     /**
@@ -238,7 +240,7 @@ class InvoiceController extends Controller
 
             // Create vehicle context if vehicle_context provided
             if ($vehicleContext !== null) {
-                $this->createVehicleContext($document, $vehicleContext, $tenantId, $companyId);
+                $this->createVehicleContext($document, $vehicleContext, $tenantId, $companyId, $this->vehicleContextBuilder);
             }
 
             /** @var Document $freshDocument */
@@ -347,7 +349,7 @@ class InvoiceController extends Controller
             }
 
             // Update vehicle context only if vehicle_context was provided in request
-            $this->attachVehicleContext($documentModel, $vehicleContext, $hasVehicleContext);
+            $this->attachVehicleContext($documentModel, $vehicleContext, $hasVehicleContext, $this->vehicleContextBuilder);
 
             /** @var Document $freshDocument */
             $freshDocument = $documentModel->fresh($this->defaultRelations());

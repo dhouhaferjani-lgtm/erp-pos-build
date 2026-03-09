@@ -13,6 +13,7 @@ import {
   XCircle,
   KeyRound,
   Trash2,
+  Hash,
 } from 'lucide-react'
 import { api, getErrorMessage } from '../../lib/api'
 import { useAuthStore } from '../../stores/authStore'
@@ -82,6 +83,7 @@ export function UsersPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showPinModal, setShowPinModal] = useState<string | null>(null)
   const [showActionMenu, setShowActionMenu] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [notification, setNotification] = useState<{
@@ -199,6 +201,19 @@ export function UsersPage() {
     },
   })
 
+  const setPosPinMutation = useMutation({
+    mutationFn: async ({ userId, pin }: { userId: string; pin: string | null }): Promise<void> => {
+      await api.patch(`/users/${userId}/pos-pin`, { pin })
+    },
+    onSuccess: (_data, variables) => {
+      showNotification('success', variables.pin ? t('users.messages.pinSet') : t('users.messages.pinCleared'))
+      setShowPinModal(null)
+    },
+    onError: (error) => {
+      showNotification('error', getErrorMessage(error))
+    },
+  })
+
   const users = data?.data ?? []
   const total = data?.meta?.total ?? users.length
   const roles = rolesData ?? []
@@ -238,6 +253,10 @@ export function UsersPage() {
         break
       case 'reset-password':
         resetPasswordMutation.mutate(userId)
+        break
+      case 'set-pin':
+        setShowActionMenu(null)
+        setShowPinModal(userId)
         break
       case 'delete':
         if (confirm(t('users.confirmations.delete'))) {
@@ -451,6 +470,13 @@ export function UsersPage() {
                               </button>
                             )}
                             <button
+                              onClick={() => { handleAction('set-pin', user.id) }}
+                              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            >
+                              <Hash className="h-4 w-4 text-indigo-500" />
+                              {t('users.actions.setPosPin', { defaultValue: 'Set POS PIN' })}
+                            </button>
+                            <button
                               onClick={() => { handleAction('reset-password', user.id) }}
                               className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                             >
@@ -488,6 +514,17 @@ export function UsersPage() {
         />
       )}
 
+      {/* POS PIN Modal */}
+      {showPinModal && (
+        <PosPinModal
+          userId={showPinModal}
+          onClose={() => { setShowPinModal(null) }}
+          onSubmit={(pin) => { setPosPinMutation.mutate({ userId: showPinModal, pin }) }}
+          onClear={() => { setPosPinMutation.mutate({ userId: showPinModal, pin: null }) }}
+          isLoading={setPosPinMutation.isPending}
+        />
+      )}
+
       {/* Click outside to close action menu */}
       {showActionMenu && (
         <div className="fixed inset-0 z-0" onClick={() => { setShowActionMenu(null) }} />
@@ -501,6 +538,97 @@ interface AddUserModalProps {
   onClose: () => void
   onSubmit: (data: CreateUserData) => void
   isLoading: boolean
+}
+
+interface PosPinModalProps {
+  userId: string
+  onClose: () => void
+  onSubmit: (pin: string) => void
+  onClear: () => void
+  isLoading: boolean
+}
+
+function PosPinModal({ onClose, onSubmit, onClear, isLoading }: PosPinModalProps) {
+  const { t } = useTranslation()
+  const [pin, setPin] = useState('')
+  const [pinError, setPinError] = useState<string | null>(null)
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!/^\d{4,6}$/.test(pin)) {
+      setPinError(t('users.validation.invalidPin', { defaultValue: 'PIN must be 4-6 digits' }))
+      return
+    }
+    setPinError(null)
+    onSubmit(pin)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      <div className="flex min-h-full items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-25" onClick={onClose} />
+        <div className="relative w-full max-w-sm rounded-lg bg-white p-6 shadow-xl">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            {t('users.pinModal.title', { defaultValue: 'Set POS PIN' })}
+          </h2>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="posPin" className="block text-sm font-medium text-gray-700">
+                {t('users.pinModal.pinLabel', { defaultValue: 'PIN (4-6 digits)' })}
+              </label>
+              <input
+                type="text"
+                id="posPin"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                value={pin}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/\D/g, '')
+                  setPin(v)
+                  setPinError(null)
+                }}
+                className={`mt-1 block w-full rounded-md border px-3 py-2 text-center text-2xl tracking-[0.5em] shadow-sm focus:outline-none focus:ring-1 ${
+                  pinError
+                    ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
+                }`}
+                autoFocus
+              />
+              {pinError && <p className="mt-1 text-sm text-red-600">{pinError}</p>}
+            </div>
+
+            <div className="flex justify-between gap-3 pt-2">
+              <button
+                type="button"
+                onClick={onClear}
+                disabled={isLoading}
+                className="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+              >
+                {t('users.pinModal.clearPin', { defaultValue: 'Clear PIN' })}
+              </button>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  {t('actions.cancel')}
+                </button>
+                <button
+                  type="submit"
+                  disabled={isLoading || !pin}
+                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {isLoading ? t('status.saving', { defaultValue: 'Saving...' }) : t('actions.save', { defaultValue: 'Save' })}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function AddUserModal({ roles, onClose, onSubmit, isLoading }: AddUserModalProps) {

@@ -11,13 +11,11 @@ import { ProductImageSection, ParapharmacyMetadataFields } from '../products/com
 import { useCompanyConfig } from '../../contexts/CompanyConfigContext'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
 
-type ProductType = 'part' | 'service' | 'consumable'
-
 interface Product {
   id: string
   name: string
   sku: string
-  type: ProductType
+  is_physical: boolean
   category_id: number | null
   description: string | null
   sale_price: string | null
@@ -54,7 +52,7 @@ interface ParapharmacyMetadata {
 interface ProductFormData {
   name: string
   sku: string
-  type: ProductType
+  is_physical: boolean
   category_id: number | null
   description: string
   sale_price: string
@@ -91,7 +89,7 @@ export function ProductForm() {
     defaultValues: {
       name: '',
       sku: '',
-      type: 'part',
+      is_physical: true,
       category_id: null,
       description: '',
       sale_price: '',
@@ -144,7 +142,7 @@ export function ProductForm() {
       reset({
         name: product.name,
         sku: product.sku,
-        type: product.type,
+        is_physical: product.is_physical ?? true,
         category_id: product.category_id ?? null,
         description: product.description ?? '',
         sale_price: product.sale_price ?? '',
@@ -276,21 +274,20 @@ export function ProductForm() {
             </div>
 
             <div>
-              <label htmlFor="type" className="block text-sm font-medium text-gray-700">
-                Type *
-              </label>
-              <select
-                id="type"
-                {...register('type', { required: 'Type is required' })}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="part">Part</option>
-                <option value="service">Service</option>
-                <option value="consumable">Consumable</option>
-              </select>
-              {errors.type && (
-                <p className="mt-1 text-sm text-red-600">{errors.type.message}</p>
-              )}
+              <div className="flex items-center gap-2 mt-6">
+                <input
+                  type="checkbox"
+                  id="is_physical"
+                  {...register('is_physical')}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <label htmlFor="is_physical" className="text-sm font-medium text-gray-700">
+                  {t('inventory:products.isPhysical')}
+                </label>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                {t('inventory:products.isPhysicalHelper')}
+              </p>
             </div>
 
             <div>

@@ -70,10 +70,10 @@ export function usePreviewPdf() {
       const url = window.URL.createObjectURL(blob)
       window.open(url, '_blank')
 
-      // Clean up after a delay to ensure the tab has opened
+      // Clean up after a generous delay to ensure the tab has fully loaded the PDF
       setTimeout(() => {
         window.URL.revokeObjectURL(url)
-      }, 1000)
+      }, 60_000)
 
       return { success: true }
     },
@@ -85,6 +85,11 @@ export function usePreviewPdf() {
 
 /**
  * Print a document PDF
+ *
+ * Uses a hidden iframe positioned off-screen (not display:none, which
+ * prevents rendering). Adds a delay before calling print() to give the
+ * browser's PDF viewer time to initialise. Cleans up after the print
+ * dialog is dismissed.
  */
 export function usePrintPdf() {
   return useMutation({
@@ -93,26 +98,47 @@ export function usePrintPdf() {
         responseType: 'blob',
       })
 
-      // Create blob URL
       const blob = new Blob([response.data], { type: 'application/pdf' })
       const url = window.URL.createObjectURL(blob)
 
-      // Create an iframe for printing
       const iframe = document.createElement('iframe')
-      iframe.style.display = 'none'
+      // Position off-screen instead of display:none so the PDF actually renders
+      iframe.style.position = 'fixed'
+      iframe.style.width = '1px'
+      iframe.style.height = '1px'
+      iframe.style.opacity = '0'
+      iframe.style.left = '-9999px'
+      iframe.style.top = '0'
+      iframe.style.border = 'none'
       iframe.src = url
       document.body.appendChild(iframe)
 
-      iframe.onload = () => {
-        iframe.contentWindow?.print()
-        // Clean up after printing
-        setTimeout(() => {
-          document.body.removeChild(iframe)
-          window.URL.revokeObjectURL(url)
-        }, 1000)
-      }
+      return new Promise<{ success: boolean }>((resolve) => {
+        iframe.onload = () => {
+          // Delay to let the PDF viewer plugin initialise inside the iframe
+          setTimeout(() => {
+            try {
+              iframe.contentWindow?.focus()
+              iframe.contentWindow?.print()
+            } catch {
+              // Cross-origin or plugin restriction — fall back to new tab
+              window.open(url, '_blank')
+            }
 
-      return { success: true }
+            // Clean up after a generous delay (user may still be in the dialog)
+            setTimeout(() => {
+              try {
+                document.body.removeChild(iframe)
+              } catch {
+                // already removed
+              }
+              window.URL.revokeObjectURL(url)
+            }, 60_000)
+
+            resolve({ success: true })
+          }, 500)
+        }
+      })
     },
     onError: (error) => {
       toast.error(getErrorMessage(error))

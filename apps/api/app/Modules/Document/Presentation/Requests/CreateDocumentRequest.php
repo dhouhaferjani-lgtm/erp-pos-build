@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Document\Presentation\Requests;
 
 use App\Modules\Identity\Domain\User;
+use App\Services\CompanyConfigService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -27,13 +28,18 @@ class CreateDocumentRequest extends FormRequest
         $user = $authenticatedUser;
         $tenantId = $user->tenant_id;
 
+        // Check if Vehicle module is enabled for this tenant
+        $configService = app(CompanyConfigService::class);
+        $hasVehicleModule = $user->tenant !== null
+            && $configService->getConfigForTenant($user->tenant)->hasModule('Vehicle');
+
         return [
             'partner_id' => [
                 'required',
                 'uuid',
                 Rule::exists('partners', 'id')->where('tenant_id', $tenantId),
             ],
-            'vehicle_context' => ['nullable', 'array'],
+            'vehicle_context' => $hasVehicleModule ? ['nullable', 'array'] : ['prohibited'],
             'vehicle_context.vehicle_id' => ['required_with:vehicle_context', 'uuid'],
             'vehicle_context.snapshot' => ['nullable', 'array'],
             'vehicle_context.snapshot.license_plate' => ['nullable', 'string', 'max:50'],
@@ -66,7 +72,14 @@ class CreateDocumentRequest extends FormRequest
             'lines.*.product_id' => [
                 'nullable',
                 'uuid',
+                'prohibits:lines.*.service_id',
                 Rule::exists('products', 'id')->where('tenant_id', $tenantId),
+            ],
+            'lines.*.service_id' => [
+                'nullable',
+                'uuid',
+                'prohibits:lines.*.product_id',
+                Rule::exists('services', 'id')->where('tenant_id', $tenantId),
             ],
             'lines.*.location_id' => [
                 'nullable',

@@ -3,11 +3,13 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { POSButton, MoneyInput } from '../../atoms'
 import { useCurrency } from '@/hooks/useCurrency'
+import type { XReportResponse } from '../../api/shiftApi'
 import {
   Clock,
   DollarSign,
   FileText,
   LogOut,
+  Printer,
   TrendingDown,
   TrendingUp,
   Loader2,
@@ -39,6 +41,8 @@ export interface ShiftDashboardPageProps {
   onOpenShift: (openingBalance: string) => void
   onCloseShift: (actualCash: string) => void
   onGenerateXReport: () => void
+  xReportData?: XReportResponse | null
+  onCloseXReport?: () => void
   onCashDeposit: (data: { amount: string; reason: string }) => void
   onCashPayout: (data: { amount: string; reason: string }) => void
   isLoading?: boolean
@@ -54,6 +58,8 @@ export function ShiftDashboardPage({
   onOpenShift,
   onCloseShift,
   onGenerateXReport,
+  xReportData,
+  onCloseXReport,
   onCashDeposit,
   onCashPayout,
   isLoading = false,
@@ -409,6 +415,119 @@ export function ShiftDashboardPage({
               disabled={!operationAmount || !operationReason}
             >
               {t('common:confirm')}
+            </POSButton>
+          </div>
+        </Modal>
+      )}
+
+      {/* X Report Modal */}
+      {xReportData && onCloseXReport && (
+        <Modal
+          title={t('pos:xReport.title')}
+          onClose={onCloseXReport}
+          touchOptimized={touchOptimized}
+        >
+          <div className="x-report-print-area space-y-6">
+            {/* Generated At */}
+            <p className="text-sm text-gray-500">
+              {t('pos:xReport.generatedAt')}: {new Date(xReportData.generated_at).toLocaleString()}
+            </p>
+
+            {/* Sales Summary */}
+            <div>
+              <h4 className="font-semibold text-gray-900 mb-3">{t('pos:xReport.salesSummary')}</h4>
+              <div className="bg-gray-50 rounded-lg divide-y divide-gray-200">
+                <div className="flex justify-between px-4 py-2">
+                  <span className="text-gray-600">{t('pos:xReport.salesCount')}</span>
+                  <span className="font-medium">{xReportData.sales_count}</span>
+                </div>
+                <div className="flex justify-between px-4 py-2">
+                  <span className="text-gray-600">{t('pos:xReport.grossSales')}</span>
+                  <span className="font-medium">{xReportData.gross_sales}</span>
+                </div>
+                <div className="flex justify-between px-4 py-2">
+                  <span className="text-gray-600">{t('pos:xReport.netSales')}</span>
+                  <span className="font-medium">{xReportData.net_sales}</span>
+                </div>
+                <div className="flex justify-between px-4 py-2">
+                  <span className="text-gray-600">{t('pos:xReport.taxAmount')}</span>
+                  <span className="font-medium">{xReportData.tax_amount}</span>
+                </div>
+                <div className="flex justify-between px-4 py-2">
+                  <span className="text-gray-600">{t('pos:xReport.refundsCount')}</span>
+                  <span className="font-medium">{xReportData.refunds_count}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* VAT Breakdown */}
+            {xReportData.vat_breakdown.length > 0 && (
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-3">{t('pos:xReport.vatBreakdown')}</h4>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-500 border-b">
+                      <th className="pb-2 font-medium">{t('pos:xReport.rate')}</th>
+                      <th className="pb-2 font-medium text-right">{t('pos:xReport.net')}</th>
+                      <th className="pb-2 font-medium text-right">{t('pos:xReport.vat')}</th>
+                      <th className="pb-2 font-medium text-right">{t('pos:xReport.gross')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {xReportData.vat_breakdown.map((entry) => (
+                      <tr key={entry.rate} className="border-b border-gray-100">
+                        <td className="py-2">{entry.rate}</td>
+                        <td className="py-2 text-right">{entry.net}</td>
+                        <td className="py-2 text-right">{entry.vat}</td>
+                        <td className="py-2 text-right">{entry.gross}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Payment Methods */}
+            {xReportData.payment_methods.length > 0 && (
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-3">{t('pos:xReport.paymentMethods')}</h4>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-500 border-b">
+                      <th className="pb-2 font-medium">{t('pos:xReport.method')}</th>
+                      <th className="pb-2 font-medium text-right">{t('pos:xReport.count')}</th>
+                      <th className="pb-2 font-medium text-right">{t('pos:xReport.amount')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {xReportData.payment_methods.map((entry) => (
+                      <tr key={entry.method} className="border-b border-gray-100">
+                        <td className="py-2">{entry.method}</td>
+                        <td className="py-2 text-right">{entry.count}</td>
+                        <td className="py-2 text-right">{entry.amount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <POSButton
+              variant="secondary"
+              onClick={() => window.print()}
+              icon={<Printer className="w-4 h-4" />}
+              fullWidth
+            >
+              {t('pos:xReport.print')}
+            </POSButton>
+            <POSButton
+              variant="primary"
+              onClick={onCloseXReport}
+              fullWidth
+            >
+              {t('common:close')}
             </POSButton>
           </div>
         </Modal>

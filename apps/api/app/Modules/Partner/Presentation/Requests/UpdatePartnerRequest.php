@@ -66,6 +66,12 @@ class UpdatePartnerRequest extends FormRequest
                 },
             ],
             'notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'street_address' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'street_address_2' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'city' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'state' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'postal_code' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'country' => ['sometimes', 'nullable', 'string', 'size:2'],
         ];
     }
 

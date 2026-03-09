@@ -35,6 +35,13 @@ return Application::configure(basePath: dirname(__DIR__))
             'module' => RequireModule::class,
         ]);
 
+        // Exclude auth endpoints from CSRF verification for token-based clients
+        // (desktop apps, mobile apps) that don't use browser cookies
+        $middleware->validateCsrfTokens(except: [
+            'api/v1/auth/login',
+            'api/v1/auth/register',
+        ]);
+
         // Enable CORS handling FIRST (must run before other middleware)
         $middleware->prependToGroup('api', [
             CorsMiddleware::class,

@@ -26,7 +26,8 @@ export interface Product {
   id: string
   name: string
   sku: string
-  type: ProductType
+  type?: ProductType | null
+  is_physical: boolean
   description: string | null
   sale_price: string | null
   purchase_price: string | null
@@ -45,7 +46,7 @@ export interface Product {
 
 export interface GetProductsParams {
   search?: string | undefined
-  type?: ProductType
+  is_physical?: boolean
   active?: boolean
   per_page?: number
   cursor?: string | null
@@ -72,6 +73,6 @@ export interface ProductSelectionItem {
   name: string
   sku: string
   barcode: string | null
-  type: ProductType
+  is_physical: boolean
   is_active: boolean
 }

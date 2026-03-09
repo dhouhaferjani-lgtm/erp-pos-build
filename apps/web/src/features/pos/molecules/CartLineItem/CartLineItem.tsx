@@ -7,6 +7,14 @@ import { tokens, textColors } from '@/lib/designTokens'
 import { formatCurrency } from '@/lib/decimal'
 import { useCurrency } from '@/hooks/useCurrency'
 
+export interface SelectedModifier {
+  modifier_id: string
+  modifier_group_id: string
+  name: string
+  group_name: string
+  price_adjustment: string
+}
+
 export interface CartItem {
   id: string
   product: {
@@ -14,6 +22,8 @@ export interface CartItem {
     name: string
     sku: string
     price: string
+    sellableType?: 'product' | 'composite_item'
+    selectedModifiers?: SelectedModifier[]
   }
   quantity: number
   unit_price: string
@@ -126,6 +136,19 @@ export function CartLineItem({
         >
           {item.product.sku}
         </p>
+
+        {/* Selected Modifiers */}
+        {item.product.selectedModifiers && item.product.selectedModifiers.length > 0 && (
+          <p
+            className={cn(
+              textColors.tertiary,
+              'italic',
+              touchOptimized ? 'text-sm' : 'text-xs'
+            )}
+          >
+            {item.product.selectedModifiers.map((m) => m.name).join(', ')}
+          </p>
+        )}
 
         {/* Price and Quantity */}
         <div className="flex items-center gap-2 mt-1">

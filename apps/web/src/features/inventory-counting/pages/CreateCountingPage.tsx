@@ -12,6 +12,8 @@ import { cn } from '@/lib/utils'
 import { UserSelector } from '@/features/users/components/UserSelector'
 import { ProductSelector } from '@/features/products/components/ProductSelector'
 import { LocationSelectorMulti } from '@/features/locations/components/LocationSelectorMulti'
+import { CategorySelector } from '@/features/categories/components/CategorySelector'
+import { useUsers } from '@/features/users/hooks/useUsers'
 
 const STEPS = ['scope', 'selection', 'configuration', 'assignment', 'review'] as const
 type Step = (typeof STEPS)[number]
@@ -63,7 +65,9 @@ export function CreateCountingPage() {
         if (formData.scope_type === 'location') {
           return (formData.scope_filters?.location_ids?.length ?? 0) > 0
         }
-        // Category selection not implemented yet, allow proceeding
+        if (formData.scope_type === 'category') {
+          return (formData.scope_filters?.category_ids?.length ?? 0) > 0
+        }
         return true
       case 'configuration':
         return true
@@ -365,16 +369,21 @@ function ProductSelectionStep({ scopeType, data, onChange }: ProductSelectionSte
         />
       )}
 
-      {/* Category Selection - Placeholder for future implementation */}
+      {/* Category Selection */}
       {scopeType === 'category' && (
-        <div className="border border-yellow-200 bg-yellow-50 rounded-lg p-6 text-center">
-          <div className="text-yellow-800 font-medium mb-2">
-            {t('counting.create.categorySelectionComingSoon')}
-          </div>
-          <div className="text-sm text-yellow-700">
-            {t('counting.create.categorySelectionComingSoonHint')}
-          </div>
-        </div>
+        <CategorySelector
+          value={(data.scope_filters?.category_ids ?? []).map(Number)}
+          onChange={(categoryIds) => {
+            onChange({
+              scope_filters: {
+                ...data.scope_filters,
+                category_ids: categoryIds.map(String),
+              },
+            })
+          }}
+          label={t('counting.create.selectionTitleCategory')}
+          helperText={t('counting.create.selectionDescriptionCategory')}
+        />
       )}
     </div>
   )
@@ -608,6 +617,13 @@ interface ReviewStepProps {
 
 function ReviewStep({ data }: ReviewStepProps) {
   const { t } = useTranslation('inventory')
+  const { data: usersData } = useUsers()
+
+  const getUserName = (userId: string | undefined): string => {
+    if (!userId) return '-'
+    const user = usersData?.data?.find((u) => u.id === userId)
+    return user?.name ?? userId.slice(0, 8) + '...'
+  }
 
   return (
     <div>
@@ -651,17 +667,17 @@ function ReviewStep({ data }: ReviewStepProps) {
           </h3>
           <dl className="grid grid-cols-2 gap-2 text-sm">
             <dt className="text-gray-500">{t('counting.create.counter1')}</dt>
-            <dd>{data.count_1_user_id || '-'}</dd>
+            <dd>{getUserName(data.count_1_user_id)}</dd>
             {data.requires_count_2 && (
               <>
                 <dt className="text-gray-500">{t('counting.create.counter2')}</dt>
-                <dd>{data.count_2_user_id || '-'}</dd>
+                <dd>{getUserName(data.count_2_user_id)}</dd>
               </>
             )}
             {data.requires_count_3 && (
               <>
                 <dt className="text-gray-500">{t('counting.create.counter3')}</dt>
-                <dd>{data.count_3_user_id || '-'}</dd>
+                <dd>{getUserName(data.count_3_user_id)}</dd>
               </>
             )}
           </dl>

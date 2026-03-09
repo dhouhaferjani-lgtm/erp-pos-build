@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Loyalty\Domain\Entities;
 
+use App\Modules\Loyalty\Domain\Enums\LoyaltyTargetType;
 use App\Modules\Loyalty\Domain\Enums\ProgramStatus;
 use App\Modules\Loyalty\Domain\Enums\ProgramType;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -25,6 +26,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property \Illuminate\Support\Carbon|null $start_date
  * @property \Illuminate\Support\Carbon|null $end_date
  * @property string|null $terms_and_conditions
+ * @property LoyaltyTargetType $target_type
  * @property array<string, mixed>|null $metadata
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
@@ -58,6 +60,7 @@ class LoyaltyProgram extends Model
         'welcome_bonus_points',
         'start_date',
         'end_date',
+        'target_type',
         'terms_and_conditions',
         'metadata',
     ];
@@ -70,6 +73,7 @@ class LoyaltyProgram extends Model
         return [
             'program_type' => ProgramType::class,
             'status' => ProgramStatus::class,
+            'target_type' => LoyaltyTargetType::class,
             'company_ids' => 'array',
             'start_date' => 'datetime',
             'end_date' => 'datetime',

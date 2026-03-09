@@ -589,6 +589,177 @@ describe('AdvancedPaymentsModal', () => {
     expect(amountInput).toHaveValue(69)
   })
 
+  // ── Safe Change Calculation Tests ──
+
+  it('Scenario B: shows change/credit choice when overpayment is fully from immediate methods', async () => {
+    const user = userEvent.setup()
+
+    renderWithClient(
+      <AdvancedPaymentsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        cartItems={mockCartItems}
+        onComplete={vi.fn()}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Cash/i })).toBeInTheDocument()
+    })
+
+    // Pay 150 cash for a 119 bill — overpayment is 31, all from cash (immediate)
+    await addPaymentViaButton(user, 'Cash', '150')
+
+    await waitFor(() => {
+      expect(screen.getByText('advancedPayments.overpaymentDetected')).toBeInTheDocument()
+    })
+
+    // Should show radio buttons (give change / add to credit)
+    expect(screen.getByDisplayValue('change')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('credit')).toBeInTheDocument()
+
+    // Should NOT show warning or full credit message
+    expect(screen.queryByTestId('partial-safe-change')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('full-credit-required')).not.toBeInTheDocument()
+  })
+
+  it('Scenario C1: shows partial safe change when overpayment is split across immediate and deferred methods', async () => {
+    const user = userEvent.setup()
+
+    renderWithClient(
+      <AdvancedPaymentsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        cartItems={mockCartItems}
+        onComplete={vi.fn()}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Cash/i })).toBeInTheDocument()
+    })
+
+    // Pay 80 cash + 200 check for 119 bill
+    // Overpayment = 161, maxSafeChange = 80 (cash), safeChangeLimit = 80 - 119 = 0... wait
+    // Actually safeChangeLimit = max(0, 80 - 119) = 0 → this would be scenario C2
+    // Let me use: 150 cash + 200 check for 119 bill
+    // Overpayment = 231, maxSafeChange = 150, safeChangeLimit = max(0, 150 - 119) = 31
+    // 231 > 31 → partial safe change
+    await addPaymentViaButton(user, 'Cash', '150')
+    await addPaymentViaButton(user, 'Check', '200')
+
+    await waitFor(() => {
+      expect(screen.getByTestId('partial-safe-change')).toBeInTheDocument()
+    })
+
+    // Should show the change warning with the safe limit
+    expect(screen.getByText(/advancedPayments\.changeWarning/)).toBeInTheDocument()
+
+    // Should show change/credit portions breakdown
+    expect(screen.getByText('advancedPayments.changePortion')).toBeInTheDocument()
+    expect(screen.getByText('advancedPayments.creditPortion')).toBeInTheDocument()
+  })
+
+  it('Scenario C2: shows full credit required when overpayment is all from deferred methods', async () => {
+    const user = userEvent.setup()
+
+    renderWithClient(
+      <AdvancedPaymentsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        cartItems={mockCartItems}
+        onComplete={vi.fn()}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Check/i })).toBeInTheDocument()
+    })
+
+    // Pay 200 check for 119 bill — overpayment is 81, no immediate methods
+    await addPaymentViaButton(user, 'Check', '200')
+
+    await waitFor(() => {
+      expect(screen.getByTestId('full-credit-required')).toBeInTheDocument()
+    })
+
+    // Should show full credit message
+    expect(screen.getByText('advancedPayments.fullCreditRequired')).toBeInTheDocument()
+    expect(screen.getByText('advancedPayments.noImmediatePayment')).toBeInTheDocument()
+
+    // Should NOT show radio buttons
+    expect(screen.queryByDisplayValue('change')).not.toBeInTheDocument()
+  })
+
+  it('includes correct overpaymentHandling in payment data for Scenario B (change)', async () => {
+    const user = userEvent.setup()
+    const onComplete = vi.fn().mockResolvedValue({ receiptId: 'r1', receiptNumber: 'R-001' })
+
+    renderWithClient(
+      <AdvancedPaymentsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        cartItems={mockCartItems}
+        onComplete={onComplete}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Cash/i })).toBeInTheDocument()
+    })
+
+    // Pay 150 cash for 119 bill
+    await addPaymentViaButton(user, 'Cash', '150')
+
+    await waitFor(() => {
+      expect(screen.getByText('advancedPayments.overpaymentDetected')).toBeInTheDocument()
+    })
+
+    // Default is "give change"
+    const completeButton = screen.getByRole('button', { name: /advancedPayments\.completeTransaction/i })
+    await user.click(completeButton)
+
+    expect(onComplete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        overpaymentHandling: { changeAmount: 31, creditAmount: 0 },
+      })
+    )
+  })
+
+  it('includes correct overpaymentHandling in payment data for Scenario C2 (all credit)', async () => {
+    const user = userEvent.setup()
+    const onComplete = vi.fn().mockResolvedValue({ receiptId: 'r1', receiptNumber: 'R-001' })
+
+    renderWithClient(
+      <AdvancedPaymentsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        cartItems={mockCartItems}
+        onComplete={onComplete}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Check/i })).toBeInTheDocument()
+    })
+
+    // Pay 200 check for 119 bill
+    await addPaymentViaButton(user, 'Check', '200')
+
+    await waitFor(() => {
+      expect(screen.getByTestId('full-credit-required')).toBeInTheDocument()
+    })
+
+    const completeButton = screen.getByRole('button', { name: /advancedPayments\.completeTransaction/i })
+    await user.click(completeButton)
+
+    expect(onComplete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        overpaymentHandling: { changeAmount: 0, creditAmount: 81 },
+      })
+    )
+  })
+
   it('shows card-specific fields for card payment method', async () => {
     const user = userEvent.setup()
 

@@ -36,6 +36,8 @@ class CreateMemberRequest extends FormRequest
             'last_name' => ['nullable', 'string', 'max:255'],
             'date_of_birth' => ['nullable', 'date', 'before:today'],
             'customer_id' => ['nullable', 'uuid', 'exists:partners,id'],
+            'loyaltyable_type' => ['nullable', 'string', 'in:contact,partner'],
+            'loyaltyable_id' => ['nullable', 'uuid'],
             'external_id' => ['nullable', 'string', 'max:255'],
         ];
     }

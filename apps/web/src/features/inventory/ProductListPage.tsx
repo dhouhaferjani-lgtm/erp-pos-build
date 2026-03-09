@@ -12,18 +12,15 @@ import { FilterPanel } from '../../components/ui/FilterPanel'
 import { ActiveFilters } from '../../components/ui/ActiveFilters'
 import { OffsetPagination } from '../../components/ui/OffsetPagination'
 import { StatCard } from '../../components/ui/StatCard'
-import { EnumFilter } from '../../components/ui/filters/EnumFilter'
 import { BooleanFilter } from '../../components/ui/filters/BooleanFilter'
 import { RangeFilter } from '../../components/ui/filters/RangeFilter'
 import { SearchFilter } from '../../components/ui/filters/SearchFilter'
-
-type ProductType = 'part' | 'service' | 'consumable'
 
 interface Product {
   id: string
   name: string
   sku: string
-  type: ProductType
+  is_physical: boolean
   description: string | null
   sale_price: string | null
   purchase_price: string | null
@@ -54,21 +51,10 @@ interface ProductsResponse {
   }
 }
 
-const typeColors: Record<ProductType, string> = {
-  part: 'bg-blue-100 text-blue-800',
-  service: 'bg-purple-100 text-purple-800',
-  consumable: 'bg-orange-100 text-orange-800',
-}
-
 type ViewMode = 'list' | 'grid'
 
 export function ProductListPage() {
   const { t } = useTranslation(['common', 'inventory'])
-
-  // Get translated type label
-  const getTypeLabel = (type: ProductType) => {
-    return t(`inventory:products.types.${type}`, type)
-  }
 
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
   const [viewMode, setViewMode] = useState<ViewMode>('list')
@@ -110,16 +96,9 @@ export function ProductListPage() {
     })
   }
 
-  // Product type options for filter
-  const productTypeOptions = useMemo(() => [
-    { value: 'part', label: getTypeLabel('part') },
-    { value: 'service', label: getTypeLabel('service') },
-    { value: 'consumable', label: getTypeLabel('consumable') },
-  ], [t])
-
   // Filter config for ActiveFilters component
   const filterConfig = useMemo(() => ({
-    type: { label: t('inventory:products.filters.type'), type: 'enum' as const },
+    is_physical: { label: t('inventory:products.isPhysical'), type: 'boolean' as const },
     is_active: { label: t('inventory:products.filters.active'), type: 'boolean' as const },
     price_min: { label: t('inventory:products.filters.priceMin'), type: 'range' as const },
     price_max: { label: t('inventory:products.filters.priceMax'), type: 'range' as const },
@@ -180,11 +159,10 @@ export function ProductListPage() {
                 onChange={(v) => tableState.setFilter('search', v)}
                 placeholder={t('inventory:products.searchPlaceholder')}
               />
-              <EnumFilter
-                label={t('inventory:products.filters.type')}
-                value={tableState.filters.type as string | undefined}
-                onChange={(v) => tableState.setFilter('type', v)}
-                options={productTypeOptions}
+              <BooleanFilter
+                label={t('inventory:products.isPhysical')}
+                value={tableState.filters.is_physical as boolean | undefined}
+                onChange={(v) => tableState.setFilter('is_physical', v)}
               />
               <BooleanFilter
                 label={t('inventory:products.filters.active')}
@@ -289,14 +267,6 @@ export function ProductListPage() {
                   align="left"
                 />
                 <SortableTableHeader
-                  column="type"
-                  label={t('fields.type', 'Type')}
-                  currentSort={tableState.sortColumn}
-                  currentDirection={tableState.sortDirection}
-                  onSort={tableState.setSorting}
-                  align="left"
-                />
-                <SortableTableHeader
                   column="sale_price"
                   label={t('inventory:products.salePrice')}
                   currentSort={tableState.sortColumn}
@@ -330,13 +300,6 @@ export function ProductListPage() {
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
                     {product.sku}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4">
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${typeColors[product.type]}`}
-                    >
-                      {getTypeLabel(product.type)}
-                    </span>
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-end text-sm font-medium text-gray-900">
                     {formatAmount(product.sale_price)}
@@ -378,11 +341,6 @@ export function ProductListPage() {
                   <h3 className="font-medium text-gray-900 truncate">{product.name}</h3>
                   <p className="text-sm text-gray-500">{product.sku}</p>
                 </div>
-                <span
-                  className={`ml-2 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${typeColors[product.type]}`}
-                >
-                  {getTypeLabel(product.type)}
-                </span>
               </div>
               {product.description && (
                 <p className="mt-2 text-sm text-gray-500 line-clamp-2">{product.description}</p>

@@ -1,22 +1,26 @@
 import { cn } from '@/lib/utils'
 import { StockBadge } from '../../atoms'
-import { Info, Package } from 'lucide-react'
+import { Info, Package, SlidersHorizontal } from 'lucide-react'
 import { useCurrency } from '@/hooks/useCurrency'
 
 export interface Product {
   id: string
   name: string
   sku: string
+  barcode?: string | null
   sale_price: string | null
   stock_quantity: number
   image_url?: string
   category?: string
+  sellableType?: 'product' | 'composite_item'
+  modifierGroups?: import('../../hooks/useActiveMenu').MenuModifierGroup[]
 }
 
 export interface ProductCardProps {
   product: Product
   onAddToCart: (product: Product) => void
   onShowInfo: (product: Product) => void
+  onCustomize?: (product: Product) => void
   isInCart?: boolean
   touchOptimized?: boolean
   className?: string
@@ -26,12 +30,14 @@ export function ProductCard({
   product,
   onAddToCart,
   onShowInfo,
+  onCustomize,
   isInCart = false,
   touchOptimized = false,
   className,
 }: ProductCardProps) {
   const { currency } = useCurrency()
   const isOutOfStock = product.stock_quantity <= 0
+  const hasModifiers = (product.modifierGroups?.length ?? 0) > 0
 
   const handleCardClick = () => {
     if (!isOutOfStock) {
@@ -42,6 +48,11 @@ export function ProductCard({
   const handleInfoClick = (e: React.MouseEvent) => {
     e.stopPropagation() // Prevent card click
     onShowInfo(product)
+  }
+
+  const handleCustomizeClick = (e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent card click
+    onCustomize?.(product)
   }
 
   return (
@@ -123,6 +134,24 @@ export function ProductCard({
           <div className="absolute bottom-2 start-2 px-2 py-1 bg-green-600 text-white text-xs font-bold rounded">
             Added
           </div>
+        )}
+
+        {/* Customize Button (Bottom Right) — only for items with modifiers */}
+        {hasModifiers && onCustomize && (
+          <button
+            onClick={handleCustomizeClick}
+            className={cn(
+              'absolute bottom-2 end-2',
+              'p-2 rounded-full',
+              'bg-blue-600/90 hover:bg-blue-700',
+              'shadow-md hover:shadow-lg',
+              'transition-all duration-150',
+              touchOptimized && 'p-3'
+            )}
+            aria-label="Customize product"
+          >
+            <SlidersHorizontal className={cn('text-white', touchOptimized ? 'w-5 h-5' : 'w-4 h-4')} />
+          </button>
         )}
       </div>
 

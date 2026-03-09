@@ -92,6 +92,8 @@
     "brand": "Brand",
     "reference": "Reference",
     "type": "Product Type",
+    "isPhysical": "Physical Product",
+    "isPhysicalHelper": "Uncheck for non-physical items (e.g., digital goods). Services should be created in the Services module.",
     "quickCreateNote": "This creates a basic product. Edit the product later to add more details.",
     "types": {
       "part": "Part",
@@ -434,6 +436,12 @@
         "status": "Status",
         "progress": "Progress",
         "created": "Created"
+      },
+      "mobileBadge": "Mobile",
+      "sourceFilter": {
+        "all": "All Sources",
+        "mobileOnly": "Mobile Only",
+        "webOnly": "Web Only"
       }
     },
     "create": {

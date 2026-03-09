@@ -33,6 +33,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property string|null $locale Preferred locale
  * @property string|null $timezone Preferred timezone
  * @property array<string, mixed> $preferences User preferences
+ * @property string|null $pos_pin Bcrypt-hashed 4-6 digit PIN for POS operator auth
  * @property bool $can_discount Whether cashier can apply discounts
  * @property float|null $max_discount_percent Maximum discount percentage (NULL = no individual limit)
  * @property Carbon|null $email_verified_at
@@ -76,6 +77,7 @@ class User extends Authenticatable
         'email',
         'phone',
         'password',
+        'pos_pin',
         'status',
         'locale',
         'timezone',
@@ -94,6 +96,7 @@ class User extends Authenticatable
      */
     protected $hidden = [
         'password',
+        'pos_pin',
         'remember_token',
     ];
 
@@ -112,6 +115,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
             'password' => 'hashed',
+            'pos_pin' => 'hashed',
         ];
     }
 
@@ -154,6 +158,14 @@ class User extends Authenticatable
     public function getPermissionsTeamId(): string
     {
         return $this->tenant_id;
+    }
+
+    /**
+     * Check if user has a POS PIN set.
+     */
+    public function hasPosPin(): bool
+    {
+        return $this->pos_pin !== null;
     }
 
     /**

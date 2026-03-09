@@ -64,6 +64,12 @@ class ProductController extends Controller
             $with[] = 'parapharmacyMetadata.certifications';
         }
 
+        if ($company->tenant->vertical->isAutomotive()) {
+            $with[] = 'automotiveMetadata.crossReferences';
+            $with[] = 'automotiveMetadata.vehicles';
+            $with[] = 'automotiveMetadata.criteria';
+        }
+
         $query = Product::query()
             ->where('company_id', $companyId)
             ->with($with);
@@ -117,6 +123,10 @@ class ProductController extends Controller
             'type' => [
                 'type' => 'enum',
                 'enum' => ProductType::class,
+            ],
+            'is_physical' => [
+                'type' => 'boolean',
+                'column' => 'is_physical',
             ],
             'is_active' => [
                 'type' => 'boolean',
@@ -203,6 +213,14 @@ class ProductController extends Controller
             ]);
         }
 
+        if ($company->tenant->vertical->isAutomotive()) {
+            $productModel->load([
+                'automotiveMetadata.crossReferences',
+                'automotiveMetadata.vehicles',
+                'automotiveMetadata.criteria',
+            ]);
+        }
+
         return response()->json([
             'data' => ProductData::fromModel($productModel),
             'meta' => [
@@ -231,6 +249,13 @@ class ProductController extends Controller
             unset($validated['parapharmacy_metadata']);
         }
 
+        // Extract automotive metadata if provided
+        $automotiveMetadata = null;
+        if (array_key_exists('automotive_metadata', $validated)) {
+            $automotiveMetadata = $validated['automotive_metadata'];
+            unset($validated['automotive_metadata']);
+        }
+
         $product = Product::create([
             'tenant_id' => $tenantId,
             'company_id' => $companyId,
@@ -242,6 +267,34 @@ class ProductController extends Controller
             $product->parapharmacyMetadata()->create($parapharmacyMetadata);
         }
 
+        // Create automotive metadata if provided AND tenant is automotive vertical
+        if ($automotiveMetadata !== null && is_array($automotiveMetadata) && $company->tenant->vertical->isAutomotive()) {
+            $crossReferences = $automotiveMetadata['cross_references'] ?? null;
+            $vehicles = $automotiveMetadata['vehicles'] ?? null;
+            $criteria = $automotiveMetadata['criteria'] ?? null;
+            unset($automotiveMetadata['cross_references'], $automotiveMetadata['vehicles'], $automotiveMetadata['criteria']);
+
+            $metadata = $product->automotiveMetadata()->create($automotiveMetadata);
+
+            if (is_array($crossReferences)) {
+                foreach ($crossReferences as $crossRef) {
+                    $metadata->crossReferences()->create($crossRef);
+                }
+            }
+
+            if (is_array($vehicles)) {
+                foreach ($vehicles as $vehicle) {
+                    $metadata->vehicles()->create($vehicle);
+                }
+            }
+
+            if (is_array($criteria)) {
+                foreach ($criteria as $criterion) {
+                    $metadata->criteria()->create($criterion);
+                }
+            }
+        }
+
         // Load metadata for response if Parapharmacy vertical
         if ($company->tenant->vertical === Vertical::Parapharmacy) {
             $product->load([
@@ -249,6 +302,15 @@ class ProductController extends Controller
                 'parapharmacyMetadata.keyComponents',
                 'parapharmacyMetadata.healthClaims',
                 'parapharmacyMetadata.certifications',
+            ]);
+        }
+
+        // Load metadata for response if automotive vertical
+        if ($company->tenant->vertical->isAutomotive()) {
+            $product->load([
+                'automotiveMetadata.crossReferences',
+                'automotiveMetadata.vehicles',
+                'automotiveMetadata.criteria',
             ]);
         }
 
@@ -297,6 +359,13 @@ class ProductController extends Controller
             unset($validated['parapharmacy_metadata']);
         }
 
+        // Extract automotive metadata if provided
+        $automotiveMetadata = null;
+        if (array_key_exists('automotive_metadata', $validated)) {
+            $automotiveMetadata = $validated['automotive_metadata'];
+            unset($validated['automotive_metadata']);
+        }
+
         // Update product core fields
         $productModel->update($validated);
 
@@ -306,6 +375,43 @@ class ProductController extends Controller
                 ['product_id' => $productModel->id],
                 $parapharmacyMetadata
             );
+        }
+
+        // Update or create automotive metadata if provided AND tenant is automotive vertical
+        if ($automotiveMetadata !== null && is_array($automotiveMetadata) && $company->tenant->vertical->isAutomotive()) {
+            $crossReferences = $automotiveMetadata['cross_references'] ?? null;
+            $vehicles = $automotiveMetadata['vehicles'] ?? null;
+            $criteria = $automotiveMetadata['criteria'] ?? null;
+            unset($automotiveMetadata['cross_references'], $automotiveMetadata['vehicles'], $automotiveMetadata['criteria']);
+
+            $metadata = $productModel->automotiveMetadata()->updateOrCreate(
+                ['product_id' => $productModel->id],
+                $automotiveMetadata
+            );
+
+            // Sync cross-references (replace all)
+            if (is_array($crossReferences)) {
+                $metadata->crossReferences()->delete();
+                foreach ($crossReferences as $crossRef) {
+                    $metadata->crossReferences()->create($crossRef);
+                }
+            }
+
+            // Sync vehicles (replace all)
+            if (is_array($vehicles)) {
+                $metadata->vehicles()->delete();
+                foreach ($vehicles as $vehicle) {
+                    $metadata->vehicles()->create($vehicle);
+                }
+            }
+
+            // Sync criteria (replace all)
+            if (is_array($criteria)) {
+                $metadata->criteria()->delete();
+                foreach ($criteria as $criterion) {
+                    $metadata->criteria()->create($criterion);
+                }
+            }
         }
 
         /** @var Product $freshProduct */
@@ -318,6 +424,15 @@ class ProductController extends Controller
                 'parapharmacyMetadata.keyComponents',
                 'parapharmacyMetadata.healthClaims',
                 'parapharmacyMetadata.certifications',
+            ]);
+        }
+
+        // Load metadata for response if automotive vertical
+        if ($company->tenant->vertical->isAutomotive()) {
+            $freshProduct->load([
+                'automotiveMetadata.crossReferences',
+                'automotiveMetadata.vehicles',
+                'automotiveMetadata.criteria',
             ]);
         }
 

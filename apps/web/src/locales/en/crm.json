@@ -1,0 +1,62 @@
+{
+  "title": "CRM",
+  "companies": {
+    "title": "Companies",
+    "name": "Company Name",
+    "code": "Code",
+    "vatNumber": "VAT Number",
+    "phone": "Phone",
+    "email": "Email",
+    "primaryContact": "Primary Contact",
+    "balance": "Balance",
+    "noCompanies": "No companies found"
+  },
+  "contacts": {
+    "title": "Contacts",
+    "firstName": "First Name",
+    "lastName": "Last Name",
+    "fullName": "Full Name",
+    "email": "Email",
+    "phone": "Phone",
+    "mobile": "Mobile",
+    "dateOfBirth": "Date of Birth",
+    "gender": "Gender",
+    "nationalId": "National ID",
+    "notes": "Notes",
+    "company": "Company",
+    "jobTitle": "Job Title",
+    "department": "Department",
+    "isPrimary": "Primary Contact",
+    "isActive": "Active",
+    "newContact": "New Contact",
+    "editContact": "Edit Contact",
+    "contactDetails": "Contact Details",
+    "personalInfo": "Personal Information",
+    "companyAssociations": "Company Associations",
+    "linkCompany": "Link Company",
+    "unlinkCompany": "Unlink Company",
+    "noContacts": "No contacts found",
+    "createSuccess": "Contact created successfully",
+    "updateSuccess": "Contact updated successfully",
+    "deleteSuccess": "Contact deleted successfully",
+    "deleteConfirm": "Are you sure you want to delete this contact?",
+    "genders": {
+      "male": "Male",
+      "female": "Female",
+      "other": "Other"
+    },
+    "filters": {
+      "hasCompany": "Has Company",
+      "standalone": "Standalone",
+      "all": "All",
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "tabs": {
+      "overview": "Overview",
+      "companies": "Companies",
+      "loyalty": "Loyalty",
+      "receipts": "Receipt History"
+    }
+  }
+}

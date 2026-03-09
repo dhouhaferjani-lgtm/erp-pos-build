@@ -10,7 +10,6 @@ use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Partner\Domain\Partner;
-use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Seeder;
@@ -53,7 +52,7 @@ class SmartPaymentTestDataSeeder extends Seeder
 
         // Get a test product
         $product = Product::where('company_id', $company->id)
-            ->where('type', ProductType::Part)
+            ->where('is_physical', true)
             ->where('is_active', true)
             ->first();
 

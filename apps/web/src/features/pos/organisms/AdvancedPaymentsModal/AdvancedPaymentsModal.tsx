@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import {
-  X, CheckCircle, Loader2, Trash2,
+  X, CheckCircle, Loader2, Trash2, AlertTriangle,
   Banknote, CreditCard, FileText, Building2, Wallet,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -73,11 +73,16 @@ export interface AdvancedPaymentsModalProps {
   loyaltyEnrollmentId?: string | undefined
 }
 
+export interface OverpaymentHandling {
+  changeAmount: number
+  creditAmount: number
+}
+
 export interface PaymentData {
   methods: PaymentMethodAmount[]
   discount?: DiscountData
   voucherCode?: string
-  overpaymentHandling?: 'change' | 'credit'
+  overpaymentHandling?: OverpaymentHandling
   invoiceAllocations?: Record<string, number>
 }
 
@@ -108,7 +113,6 @@ export function AdvancedPaymentsModal({
   const { currency, toFixed: toFixedCurrency } = useCurrency()
   const [_discount, _setDiscount] = useState<DiscountData | null>(null)
   const [_voucherCode, _setVoucherCode] = useState('')
-  const [overpaymentHandling, setOverpaymentHandling] = useState<'change' | 'credit'>('change')
   const [completedReceipt, setCompletedReceipt] = useState<{ receiptId: string; receiptNumber: string } | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
 
@@ -174,6 +178,49 @@ export function AdvancedPaymentsModal({
 
   const remaining = parseFloat(total) - totalPaid
   const hasOverpayment = totalPaid > parseFloat(total) + 0.001
+
+  /**
+   * Sum of amounts from "immediate" (change-safe) payment methods:
+   * - Cash: is_physical && !has_maturity (funds in hand)
+   * - Card/mobile: requires_third_party (settled immediately by processor)
+   */
+  const maxSafeChange = useMemo(() => {
+    return addedPayments
+      .filter(p => {
+        const method = paymentMethods.find(m => m.id === p.methodId)
+        if (!method) return false
+        return (method.is_physical && !method.has_maturity) || method.requires_third_party
+      })
+      .reduce((sum, p) => sum + p.amount, 0)
+  }, [addedPayments, paymentMethods])
+
+  const overpaymentAmount = hasOverpayment ? totalPaid - parseFloat(total) : 0
+  /** Maximum cash change that can safely be returned */
+  const safeChangeLimit = Math.max(0, maxSafeChange - parseFloat(total))
+  /** Whether all overpayment is covered by immediate methods */
+  const isFullySafeOverpayment = overpaymentAmount > 0 && overpaymentAmount <= safeChangeLimit + 0.001
+  /** Whether some (but not all) overpayment can be returned as change */
+  const hasPartialSafeChange = overpaymentAmount > 0 && !isFullySafeOverpayment && safeChangeLimit > 0.001
+
+  // For Scenario B (fully safe): user can choose change vs credit
+  const [preferChangeOverCredit, setPreferChangeOverCredit] = useState(true)
+
+  /** Computed overpayment handling based on safety analysis */
+  const computedOverpaymentHandling = useMemo((): OverpaymentHandling | undefined => {
+    if (!hasOverpayment) return undefined
+
+    if (isFullySafeOverpayment) {
+      // Scenario B: user can choose all-change or all-credit
+      return preferChangeOverCredit
+        ? { changeAmount: overpaymentAmount, creditAmount: 0 }
+        : { changeAmount: 0, creditAmount: overpaymentAmount }
+    }
+
+    // Scenario C: partially or fully unsafe
+    const changeAmount = Math.min(overpaymentAmount, safeChangeLimit)
+    const creditAmount = overpaymentAmount - changeAmount
+    return { changeAmount, creditAmount }
+  }, [hasOverpayment, isFullySafeOverpayment, preferChangeOverCredit, overpaymentAmount, safeChangeLimit])
 
   const selectedMethod = useMemo(
     () => paymentMethods.find(m => m.id === selectedMethodId),
@@ -254,7 +301,7 @@ export function AdvancedPaymentsModal({
     l.methodId && l.amount > 0 && l.repositoryId
   )
 
-  const isValid = Math.abs(remaining) < 0.001 && totalPaid > 0 && allConfigured
+  const isValid = (Math.abs(remaining) < 0.001 || hasOverpayment) && totalPaid > 0 && allConfigured
 
   const handleComplete = () => {
     if (!isValid || isProcessing) return
@@ -277,7 +324,7 @@ export function AdvancedPaymentsModal({
     const paymentData: PaymentData = { methods }
     if (_discount) paymentData.discount = _discount
     if (_voucherCode) paymentData.voucherCode = _voucherCode
-    if (hasOverpayment) paymentData.overpaymentHandling = overpaymentHandling
+    if (computedOverpaymentHandling) paymentData.overpaymentHandling = computedOverpaymentHandling
 
     void onComplete(paymentData)
       .then((result) => {
@@ -642,32 +689,80 @@ export function AdvancedPaymentsModal({
                         {t('advancedPayments.overpaymentDetected')}
                       </h4>
                       <p className={cn('text-sm', textColors.warning)}>
-                        {t('advancedPayments.excess')}: {toFixedCurrency(totalPaid - parseFloat(total))} {currency}
+                        {t('advancedPayments.excess')}: {toFixedCurrency(overpaymentAmount)} {currency}
                       </p>
-                      <div className="mt-4 space-y-2">
-                        <label className={cn('flex items-center gap-2 text-sm cursor-pointer', textColors.warning)}>
-                          <input
-                            type="radio"
-                            name="overpayment"
-                            value="change"
-                            checked={overpaymentHandling === 'change'}
-                            onChange={(e) => { setOverpaymentHandling(e.target.value as 'change') }}
-                            className={cn(tokens.radio.base, textColors.warningDark)}
-                          />
-                          <span>{t('advancedPayments.giveChange')}</span>
-                        </label>
-                        <label className={cn('flex items-center gap-2 text-sm cursor-pointer', textColors.warning)}>
-                          <input
-                            type="radio"
-                            name="overpayment"
-                            value="credit"
-                            checked={overpaymentHandling === 'credit'}
-                            onChange={(e) => { setOverpaymentHandling(e.target.value as 'credit') }}
-                            className={cn(tokens.radio.base, textColors.warningDark)}
-                          />
-                          <span>{t('advancedPayments.addToCredit')}</span>
-                        </label>
-                      </div>
+
+                      {isFullySafeOverpayment ? (
+                        /* Scenario B: all overpayment from immediate methods — user can choose */
+                        <div className="mt-4 space-y-2">
+                          <label className={cn('flex items-center gap-2 text-sm cursor-pointer', textColors.warning)}>
+                            <input
+                              type="radio"
+                              name="overpayment"
+                              value="change"
+                              checked={preferChangeOverCredit}
+                              onChange={() => { setPreferChangeOverCredit(true) }}
+                              className={cn(tokens.radio.base, textColors.warningDark)}
+                            />
+                            <span>{t('advancedPayments.giveChange')}</span>
+                          </label>
+                          <label className={cn('flex items-center gap-2 text-sm cursor-pointer', textColors.warning)}>
+                            <input
+                              type="radio"
+                              name="overpayment"
+                              value="credit"
+                              checked={!preferChangeOverCredit}
+                              onChange={() => { setPreferChangeOverCredit(false) }}
+                              className={cn(tokens.radio.base, textColors.warningDark)}
+                            />
+                            <span>{t('advancedPayments.addToCredit')}</span>
+                          </label>
+                        </div>
+                      ) : hasPartialSafeChange ? (
+                        /* Scenario C1: some change possible, rest must go to credit */
+                        <div className="mt-4 space-y-2" data-testid="partial-safe-change">
+                          <div className={cn('flex items-start gap-2 text-sm', textColors.warning)}>
+                            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                            <span>{t('advancedPayments.changeWarning', { amount: toFixedCurrency(safeChangeLimit), currency })}</span>
+                          </div>
+                          <p className={cn('text-xs', textColors.warning)}>
+                            {t('advancedPayments.changeExplanation')}
+                          </p>
+                          <div className={cn('mt-2 rounded-md border p-3 space-y-1', borderColors.light, 'bg-white/50')}>
+                            <div className="flex justify-between text-sm">
+                              <span className={textColors.warning}>{t('advancedPayments.changePortion')}</span>
+                              <span className={cn('font-medium', textColors.warning)}>
+                                {toFixedCurrency(computedOverpaymentHandling?.changeAmount ?? 0)} {currency}
+                              </span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                              <span className={textColors.warning}>{t('advancedPayments.creditPortion')}</span>
+                              <span className={cn('font-medium', textColors.warning)}>
+                                {toFixedCurrency(computedOverpaymentHandling?.creditAmount ?? 0)} {currency}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Scenario C2: no immediate payment — all to credit */
+                        <div className="mt-4 space-y-2" data-testid="full-credit-required">
+                          <div className={cn('flex items-start gap-2 text-sm', textColors.warning)}>
+                            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                            <span>{t('advancedPayments.fullCreditRequired')}</span>
+                          </div>
+                          <p className={cn('text-xs', textColors.warning)}>
+                            {t('advancedPayments.noImmediatePayment')}
+                          </p>
+                          <div className={cn('mt-2 rounded-md border p-3', borderColors.light, 'bg-white/50')}>
+                            <div className="flex justify-between text-sm">
+                              <span className={textColors.warning}>{t('advancedPayments.creditPortion')}</span>
+                              <span className={cn('font-medium', textColors.warning)}>
+                                {toFixedCurrency(overpaymentAmount)} {currency}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

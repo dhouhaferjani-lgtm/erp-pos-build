@@ -182,6 +182,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'pos.view_reports',
             'pos.void_receipts',
             'pos.view_receipts',
+            'pos.process_returns',
 
             // Batch/Expiry Management
             'batches.view',
@@ -201,6 +202,12 @@ class RolesAndPermissionsSeeder extends Seeder
             // Loyalty
             'loyalty.view',
             'loyalty.manage',
+
+            // CRM / Contacts
+            'contacts.view',
+            'contacts.create',
+            'contacts.update',
+            'contacts.delete',
 
             // System
             'settings.view',
@@ -253,7 +260,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'work-orders.view', 'work-orders.create', 'work-orders.update', 'work-orders.complete',
             'users.view',
             'pos.manage_terminals', 'pos.operate_terminal', 'pos.manage_shifts',
-            'pos.view_reports', 'pos.void_receipts', 'pos.view_receipts',
+            'pos.view_reports', 'pos.void_receipts', 'pos.view_receipts', 'pos.process_returns',
             'batches.view', 'batches.create', 'batches.update', 'batches.delete',
             'batches.recall', 'batches.write-off', 'batches.traceability',
             'withholding.view',
@@ -264,6 +271,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'promotions.view', 'promotions.manage',
             'coupons.view', 'coupons.manage',
             'loyalty.view', 'loyalty.manage',
+            'contacts.view', 'contacts.create', 'contacts.update', 'contacts.delete',
         ]);
         $this->command->info('Created role: manager');
 
@@ -289,6 +297,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'composite-items.view',
             'modifier-groups.view',
             'menus.view',
+            'contacts.view', 'contacts.create',
         ]);
         $this->command->info('Created role: cashier');
 

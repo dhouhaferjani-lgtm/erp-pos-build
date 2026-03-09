@@ -1,21 +1,74 @@
-import { apiGet, apiPost } from '@/lib/api'
+import { api, apiGet, apiPost } from '@/lib/api'
+
+export interface VatBreakdownEntry {
+  rate: string
+  net: string
+  vat: string
+  gross: string
+}
+
+export interface PaymentMethodEntry {
+  type: string
+  count: number
+  amount: string
+}
+
+export interface ZReportReportData {
+  sales_count: number
+  gross_sales: string
+  net_sales: string
+  tax_amount: string
+  refunds_count: number
+  refunds_amount: string
+  voided_count: number
+  voided_amount: string
+  opening_cash: string
+  expected_cash: string
+  actual_cash: string
+  variance: string
+  vat_breakdown: VatBreakdownEntry[]
+  payment_methods: PaymentMethodEntry[]
+}
 
 export interface ZReportItem {
   id: string
   z_number: number
   terminal_id: string
-  terminal_code: string
   shift_id: string
+  fiscal_hash: string
+  previous_z_hash: string | null
   generated_by: string
   generated_at: string
-  total_sales: string
-  total_tax: string
-  receipt_count: number
-  fiscal_hash: string
+  is_first_z_report: boolean
+  formatted_z_number: string
+  sales_count: number
+  gross_sales: string
+  opening_cash: string
+  expected_cash: string
+  actual_cash: string
+  variance: string
+  has_variance: boolean
+  report_data: ZReportReportData
+  terminal?: {
+    id: string
+    code: string
+    name: string
+  }
+  shift?: {
+    id: string
+    shift_number: number
+  }
+  generated_by_user?: {
+    id: string
+    name: string
+    email: string
+  }
 }
 
 export interface ZReportListFilters {
   terminal_id?: string
+  from_date?: string
+  to_date?: string
   page?: number
   per_page?: number
 }
@@ -31,24 +84,40 @@ export interface PaginatedZReports {
 }
 
 export interface ChainVerificationResult {
-  valid: boolean
-  checked_count: number
-  error_at?: number
+  is_valid: boolean
+  broken_at_z_number: number | null
+  broken_at_id: string | null
 }
 
 /**
- * Fetch paginated Z-reports with terminal filter.
+ * Fetch paginated Z-reports with terminal and date filters.
  *
  * Backend: GET /api/v1/pos/reports/z
+ *
+ * Uses the raw axios client because the backend returns { data, meta } at the
+ * top level (not wrapped in an outer `data` envelope), and we need both the
+ * report list and the pagination metadata.
  */
 export async function fetchZReports(filters?: ZReportListFilters): Promise<PaginatedZReports> {
   const params = new URLSearchParams()
   if (filters?.terminal_id) params.set('terminal_id', filters.terminal_id)
+  if (filters?.from_date) params.set('from_date', filters.from_date)
+  if (filters?.to_date) params.set('to_date', filters.to_date)
   if (filters?.page) params.set('page', String(filters.page))
   if (filters?.per_page) params.set('per_page', String(filters.per_page))
 
   const query = params.toString()
-  return apiGet<PaginatedZReports>(`/pos/reports/z${query ? `?${query}` : ''}`)
+  const response = await api.get<PaginatedZReports>(`/pos/reports/z${query ? `?${query}` : ''}`)
+  return response.data
+}
+
+/**
+ * Fetch a single Z-report by Z number for a terminal.
+ *
+ * Backend: GET /api/v1/pos/reports/z/{zNumber}
+ */
+export async function fetchZReport(zNumber: string, terminalId: string): Promise<ZReportItem> {
+  return apiGet<ZReportItem>(`/pos/reports/z/${zNumber}?terminal_id=${terminalId}`)
 }
 
 /**

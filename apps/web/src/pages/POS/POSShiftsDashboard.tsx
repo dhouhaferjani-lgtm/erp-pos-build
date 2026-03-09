@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ShiftDashboardPage } from '@/features/pos'
@@ -13,6 +13,7 @@ import {
   recordCashPayout,
   getShiftBalance,
 } from '@/features/pos/api/shiftApi'
+import type { XReportResponse } from '@/features/pos/api/shiftApi'
 import { useLocation } from '@/hooks/useLocation'
 import { Loader2, MapPin } from 'lucide-react'
 import { toast } from 'sonner'
@@ -21,6 +22,7 @@ export function POSShiftsDashboard() {
   const { t } = useTranslation(['pos', 'common'])
   const queryClient = useQueryClient()
   const { currentLocationId, isLoading: isLocationLoading } = useLocation()
+  const [xReportData, setXReportData] = useState<XReportResponse | null>(null)
 
   // Resolve web terminal for the active location
   const webTerminalMutation = useMutation({
@@ -109,7 +111,8 @@ export function POSShiftsDashboard() {
   const handleGenerateXReport = async () => {
     if (!webTerminal) return
     try {
-      await generateXReport({ terminal_id: webTerminal.id })
+      const data = await generateXReport({ terminal_id: webTerminal.id })
+      setXReportData(data)
       toast.success(t('pos:shifts.toasts.xReportGenerated'))
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t('pos:shifts.toasts.xReportFailed'))
@@ -197,6 +200,8 @@ export function POSShiftsDashboard() {
         onCashDeposit={handleCashDeposit}
         onCashPayout={handleCashPayout}
         onGenerateXReport={handleGenerateXReport}
+        xReportData={xReportData}
+        onCloseXReport={() => setXReportData(null)}
         isLoading={isLoadingShift}
         touchOptimized={false}
       />

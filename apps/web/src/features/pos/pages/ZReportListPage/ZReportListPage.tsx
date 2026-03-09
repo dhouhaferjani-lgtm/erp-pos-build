@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { apiGet } from '@/lib/api'
 import { fetchZReports, verifyZReportChain, type ZReportListFilters } from '../../api/reportApi'
-import { FileCheck, Loader2, ShieldCheck, ShieldAlert } from 'lucide-react'
+import { FileCheck, Loader2, ShieldCheck, ShieldAlert, ChevronRight, Calendar } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface Terminal {
@@ -14,6 +15,7 @@ interface Terminal {
 
 export function ZReportListPage() {
   const { t } = useTranslation(['pos', 'common'])
+  const navigate = useNavigate()
   const [filters, setFilters] = useState<ZReportListFilters>({ page: 1, per_page: 20 })
 
   const { data: terminals = [] } = useQuery({
@@ -30,10 +32,14 @@ export function ZReportListPage() {
   const verifyChainMutation = useMutation({
     mutationFn: (terminalId: string) => verifyZReportChain(terminalId),
     onSuccess: (result) => {
-      if (result.valid) {
+      if (result.is_valid) {
         toast.success(t('pos:zReports.chainValid'))
       } else {
-        toast.error(t('pos:zReports.chainInvalid'))
+        toast.error(
+          result.broken_at_z_number
+            ? t('pos:zReports.chainBrokenAt', { zNumber: result.broken_at_z_number })
+            : t('pos:zReports.chainInvalid')
+        )
       }
     },
     onError: () => {
@@ -43,6 +49,27 @@ export function ZReportListPage() {
 
   const reports = data?.data ?? []
   const meta = data?.meta
+
+  const handleRowClick = (report: (typeof reports)[0]) => {
+    if (filters.terminal_id) {
+      navigate(`/pos/z-reports/${String(report.z_number)}?terminal_id=${filters.terminal_id}`)
+    }
+  }
+
+  const updateFilter = (key: 'from_date' | 'to_date', value: string) => {
+    setFilters((prev) => {
+      const next: ZReportListFilters = { page: 1, per_page: prev.per_page ?? 20 }
+      if (prev.terminal_id) next.terminal_id = prev.terminal_id
+      if (key === 'from_date') {
+        if (value) next.from_date = value
+        if (prev.to_date) next.to_date = prev.to_date
+      } else {
+        if (prev.from_date) next.from_date = prev.from_date
+        if (value) next.to_date = value
+      }
+      return next
+    })
+  }
 
   return (
     <div className="space-y-6">
@@ -65,6 +92,10 @@ export function ZReportListPage() {
           >
             {verifyChainMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
+            ) : verifyChainMutation.isSuccess && verifyChainMutation.data.is_valid ? (
+              <ShieldCheck className="h-4 w-4" />
+            ) : verifyChainMutation.isSuccess && !verifyChainMutation.data.is_valid ? (
+              <ShieldAlert className="h-4 w-4" />
             ) : (
               <ShieldCheck className="h-4 w-4" />
             )}
@@ -73,29 +104,95 @@ export function ZReportListPage() {
         )}
       </div>
 
-      {/* Terminal Selector */}
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          {t('pos:zReports.selectTerminal')}
-        </label>
-        <select
-          className="rounded-md border-gray-300 text-sm w-full max-w-xs"
-          value={filters.terminal_id ?? ''}
-          onChange={(e) =>
-            setFilters({
-              terminal_id: e.target.value || undefined,
-              page: 1,
-              per_page: 20,
-            })
-          }
+      {/* Chain verification result banner */}
+      {verifyChainMutation.isSuccess && (
+        <div
+          className={`rounded-lg p-4 flex items-center gap-3 ${
+            verifyChainMutation.data.is_valid
+              ? 'bg-green-50 border border-green-200'
+              : 'bg-red-50 border border-red-200'
+          }`}
         >
-          <option value="">— {t('pos:shiftHistory.filters.allTerminals')} —</option>
-          {terminals.map((term) => (
-            <option key={term.id} value={term.id}>
-              {term.name} ({term.code})
-            </option>
-          ))}
-        </select>
+          {verifyChainMutation.data.is_valid ? (
+            <>
+              <ShieldCheck className="h-5 w-5 text-green-600 shrink-0" />
+              <p className="text-sm text-green-800">{t('pos:zReports.chainValid')}</p>
+            </>
+          ) : (
+            <>
+              <ShieldAlert className="h-5 w-5 text-red-600 shrink-0" />
+              <p className="text-sm text-red-800">
+                {verifyChainMutation.data.broken_at_z_number
+                  ? t('pos:zReports.chainBrokenAt', { zNumber: verifyChainMutation.data.broken_at_z_number })
+                  : t('pos:zReports.chainInvalid')}
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="flex flex-wrap gap-4 items-end">
+          {/* Terminal selector */}
+          <div className="min-w-[200px]">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t('pos:zReports.terminal')}
+            </label>
+            <select
+              className="rounded-md border-gray-300 text-sm w-full"
+              value={filters.terminal_id ?? ''}
+              onChange={(e) => {
+                const value = e.target.value
+                setFilters((prev) => {
+                  const next: ZReportListFilters = { page: 1, per_page: 20 }
+                  if (value) next.terminal_id = value
+                  if (prev.from_date) next.from_date = prev.from_date
+                  if (prev.to_date) next.to_date = prev.to_date
+                  return next
+                })
+                verifyChainMutation.reset()
+              }}
+            >
+              <option value="">-- {t('pos:shiftHistory.filters.allTerminals')} --</option>
+              {terminals.map((term) => (
+                <option key={term.id} value={term.id}>
+                  {term.name} ({term.code})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Date range */}
+          <div className="min-w-[160px]">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              <span className="flex items-center gap-1">
+                <Calendar className="h-3.5 w-3.5" />
+                {t('pos:zReports.filters.from')}
+              </span>
+            </label>
+            <input
+              type="date"
+              className="rounded-md border-gray-300 text-sm w-full"
+              value={filters.from_date ?? ''}
+              onChange={(e) => updateFilter('from_date', e.target.value)}
+            />
+          </div>
+          <div className="min-w-[160px]">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              <span className="flex items-center gap-1">
+                <Calendar className="h-3.5 w-3.5" />
+                {t('pos:zReports.filters.to')}
+              </span>
+            </label>
+            <input
+              type="date"
+              className="rounded-md border-gray-300 text-sm w-full"
+              value={filters.to_date ?? ''}
+              onChange={(e) => updateFilter('to_date', e.target.value)}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Table */}
@@ -124,31 +221,57 @@ export function ZReportListPage() {
                     <th className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase">{t('pos:zReports.zNumber')}</th>
                     <th className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase">{t('pos:zReports.date')}</th>
                     <th className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase">{t('pos:zReports.generatedBy')}</th>
-                    <th className="px-4 py-3 text-end text-xs font-medium text-gray-500 uppercase">{t('pos:zReports.totalSales')}</th>
+                    <th className="px-4 py-3 text-end text-xs font-medium text-gray-500 uppercase">{t('pos:zReports.grossSales')}</th>
+                    <th className="px-4 py-3 text-end text-xs font-medium text-gray-500 uppercase">{t('pos:zReports.netSales')}</th>
                     <th className="px-4 py-3 text-end text-xs font-medium text-gray-500 uppercase">{t('pos:zReports.taxCollected')}</th>
                     <th className="px-4 py-3 text-end text-xs font-medium text-gray-500 uppercase">{t('pos:zReports.receiptCount')}</th>
+                    <th className="px-4 py-3 text-end text-xs font-medium text-gray-500 uppercase">{t('pos:zReports.variance')}</th>
+                    <th className="px-4 py-3 w-8"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {reports.map((report) => (
-                    <tr key={report.id} className="hover:bg-gray-50">
+                    <tr
+                      key={report.id}
+                      onClick={() => handleRowClick(report)}
+                      className="hover:bg-gray-50 cursor-pointer"
+                    >
                       <td className="px-4 py-3 text-sm font-mono font-medium text-gray-900">
-                        Z-{report.z_number}
+                        {report.formatted_z_number}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {new Date(report.generated_at).toLocaleString()}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
-                        {report.generated_by}
+                        {report.generated_by_user?.name ?? report.generated_by}
                       </td>
                       <td className="px-4 py-3 text-sm text-end font-mono text-gray-900">
-                        {report.total_sales}
+                        {report.gross_sales}
                       </td>
                       <td className="px-4 py-3 text-sm text-end font-mono text-gray-600">
-                        {report.total_tax}
+                        {report.report_data?.net_sales ?? '--'}
                       </td>
                       <td className="px-4 py-3 text-sm text-end font-mono text-gray-600">
-                        {report.receipt_count}
+                        {report.report_data?.tax_amount ?? '--'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-end font-mono text-gray-600">
+                        {report.sales_count}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-end font-mono">
+                        <span
+                          className={
+                            report.has_variance
+                              ? parseFloat(report.variance) < 0
+                                ? 'text-red-600'
+                                : 'text-blue-600'
+                              : 'text-green-600'
+                          }
+                        >
+                          {report.variance}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <ChevronRight className="h-4 w-4 text-gray-400" />
                       </td>
                     </tr>
                   ))}

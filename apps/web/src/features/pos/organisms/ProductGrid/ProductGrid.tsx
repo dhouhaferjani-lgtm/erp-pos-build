@@ -7,8 +7,10 @@ import { Search, X, Package } from 'lucide-react'
 
 export interface ProductGridProps {
   products: Product[]
+  categories?: string[]
   onAddToCart: (product: Product) => void
   onShowProductInfo: (product: Product) => void
+  onCustomize?: (product: Product) => void
   cartProductIds: string[]
   isLoading?: boolean
   showSearch?: boolean
@@ -20,8 +22,10 @@ export interface ProductGridProps {
 
 export function ProductGrid({
   products,
+  categories: orderedCategories,
   onAddToCart,
   onShowProductInfo,
+  onCustomize,
   cartProductIds,
   isLoading = false,
   showSearch = true,
@@ -34,15 +38,18 @@ export function ProductGrid({
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
 
-  // Extract unique categories
+  // Extract unique categories (use ordered categories prop if provided)
   const categories = useMemo(() => {
+    if (orderedCategories && orderedCategories.length > 0) {
+      return [t('pos:products.allCategories'), ...orderedCategories]
+    }
     const uniqueCategories = new Set(
       products
         .map((p) => p.category)
         .filter((c): c is string => c !== undefined)
     )
     return [t('pos:products.allCategories'), ...Array.from(uniqueCategories)]
-  }, [products])
+  }, [products, orderedCategories])
 
   // Filter products
   const filteredProducts = useMemo(() => {
@@ -59,7 +66,8 @@ export function ProductGrid({
       filtered = filtered.filter(
         (p) =>
           p.name.toLowerCase().includes(query) ||
-          p.sku.toLowerCase().includes(query)
+          p.sku.toLowerCase().includes(query) ||
+          (p.barcode && p.barcode.toLowerCase().includes(query))
       )
     }
 
@@ -184,6 +192,7 @@ export function ProductGrid({
               product={product}
               onAddToCart={onAddToCart}
               onShowInfo={onShowProductInfo}
+              {...(onCustomize ? { onCustomize } : {})}
               isInCart={cartProductIds.includes(product.id)}
               touchOptimized={touchOptimized}
             />

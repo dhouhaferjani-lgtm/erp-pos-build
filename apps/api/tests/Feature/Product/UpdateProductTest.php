@@ -9,7 +9,6 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
-use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -81,7 +80,6 @@ class UpdateProductTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Original Product',
             'sku' => 'ORG-001',
-            'type' => ProductType::Part,
             'sale_price' => '50.00',
         ]);
     }
@@ -113,15 +111,47 @@ class UpdateProductTest extends TestCase
             ->assertJsonPath('data.sale_price', '75.99');
     }
 
-    public function test_can_update_product_type(): void
+    public function test_can_update_type_to_valid_value(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
             ->patchJson("/api/v1/products/{$this->product->id}", [
-                'type' => 'service',
+                'type' => 'part',
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('data.type', 'service');
+            ->assertJsonPath('data.type', 'part');
+    }
+
+    public function test_can_set_type_to_null(): void
+    {
+        // First set a type
+        $this->product->update(['type' => 'part']);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/products/{$this->product->id}", [
+                'type' => null,
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.type', null);
+    }
+
+    public function test_can_update_is_physical(): void
+    {
+        $this->assertTrue($this->product->is_physical);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/products/{$this->product->id}", [
+                'is_physical' => false,
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.is_physical', false);
+
+        $this->assertDatabaseHas('products', [
+            'id' => $this->product->id,
+            'is_physical' => false,
+        ]);
     }
 
     public function test_sku_uniqueness_on_update(): void
@@ -131,7 +161,6 @@ class UpdateProductTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Other Product',
             'sku' => 'OTH-001',
-            'type' => ProductType::Part,
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
@@ -247,7 +276,6 @@ class UpdateProductTest extends TestCase
             'company_id' => $otherCompany->id,
             'name' => 'Other Product',
             'sku' => 'OTH-001',
-            'type' => ProductType::Part,
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')

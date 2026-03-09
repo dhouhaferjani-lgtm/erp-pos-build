@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Partner\Presentation\Requests;
 
+use App\Modules\Partner\Domain\Enums\CustomerCategory;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -27,6 +28,7 @@ class CreatePartnerRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'type' => ['required', new Enum(PartnerType::class)],
+            'customer_category' => ['nullable', new Enum(CustomerCategory::class)],
             'code' => [
                 'nullable',
                 'string',
@@ -61,6 +63,12 @@ class CreatePartnerRequest extends FormRequest
                 },
             ],
             'notes' => ['nullable', 'string', 'max:5000'],
+            'street_address' => ['nullable', 'string', 'max:255'],
+            'street_address_2' => ['nullable', 'string', 'max:255'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'state' => ['nullable', 'string', 'max:100'],
+            'postal_code' => ['nullable', 'string', 'max:20'],
+            'country' => ['nullable', 'string', 'size:2'],
         ];
     }
 

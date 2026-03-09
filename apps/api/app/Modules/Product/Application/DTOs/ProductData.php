@@ -20,7 +20,7 @@ class ProductData extends Data
         public string $id,
         public string $name,
         public string $sku,
-        public ProductType $type,
+        public ?ProductType $type,
         public ?string $description,
         public ?string $sale_price,
         public ?string $purchase_price,
@@ -29,6 +29,7 @@ class ProductData extends Data
         public ?string $unit,
         public ?string $barcode,
         public bool $is_active,
+        public bool $is_physical,
         public ?array $oem_numbers,
         public ?array $cross_references,
         public ?string $target_margin_override,
@@ -36,6 +37,7 @@ class ProductData extends Data
         public string $created_at,
         public ?string $updated_at,
         public ?ParapharmacyProductMetadataData $parapharmacy_metadata = null,
+        public ?AutomotiveProductMetadataData $automotive_metadata = null,
     ) {}
 
     public static function fromModel(Product $product): self
@@ -53,6 +55,7 @@ class ProductData extends Data
             unit: $product->unit,
             barcode: $product->barcode,
             is_active: $product->is_active,
+            is_physical: $product->is_physical,
             oem_numbers: $product->oem_numbers,
             cross_references: $product->cross_references,
             target_margin_override: $product->target_margin_override !== null ? (string) $product->target_margin_override : null,
@@ -61,6 +64,9 @@ class ProductData extends Data
             updated_at: $product->updated_at?->toIso8601String(),
             parapharmacy_metadata: $product->relationLoaded('parapharmacyMetadata') && $product->parapharmacyMetadata !== null
                 ? ParapharmacyProductMetadataData::fromModel($product->parapharmacyMetadata)
+                : null,
+            automotive_metadata: $product->relationLoaded('automotiveMetadata') && $product->automotiveMetadata !== null
+                ? AutomotiveProductMetadataData::fromModel($product->automotiveMetadata)
                 : null,
         );
     }

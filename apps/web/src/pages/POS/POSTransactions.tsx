@@ -12,6 +12,7 @@ import { CashTenderedModal } from '@/features/pos/components/CashTenderedModal'
 import type { Product } from '@/features/pos/molecules/ProductCard/ProductCard'
 import type { CartItem } from '@/features/pos/molecules/CartLineItem/CartLineItem'
 import { usePOSProducts } from '@/features/pos/hooks/usePOSProducts'
+import { useFnBProducts } from '@/features/pos/hooks/useFnBProducts'
 import { getCurrentShift } from '@/features/pos/api/shiftApi'
 import { createReceipt, processReceiptPayments } from '@/features/pos/api/receiptApi'
 import { fetchPaymentMethods } from '@/features/pos/api/paymentMethodApi'
@@ -19,8 +20,11 @@ import { fetchPaymentRepositories } from '@/features/pos/api/paymentRepositoryAp
 import { getOrCreateWebTerminal } from '@/features/pos/api/terminalApi'
 import { lookupMember, earnPoints, type LoyaltyMember, type LoyaltyEnrollment } from '@/features/pos/api/loyaltyApi'
 import { PartnerSearchSelect } from '@/components/ui/PartnerSearchSelect'
+import { QuickAddCustomerModal } from '@/features/pos/components/QuickAddCustomerModal'
 import { isApiError, getErrorMessage } from '@/lib/api'
 import { useLocation } from '@/hooks/useLocation'
+import { useCompanyConfig } from '@/contexts/CompanyConfigContext'
+import type { ConsumptionMode } from '@/features/pos/atoms/ConsumptionModeToggle/ConsumptionModeToggle'
 import { Loader2, MapPin, X } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -52,6 +56,8 @@ export function POSTransactions() {
   const { t } = useTranslation(['pos', 'common'])
   const queryClient = useQueryClient()
   const { currentLocationId, currentLocation, isLoading: isLocationLoading } = useLocation()
+  const { hasModule } = useCompanyConfig()
+  const isFnBVertical = hasModule('Menu')
 
   const [selectedCustomer, setSelectedCustomer] = useState<{
     id: string
@@ -59,6 +65,7 @@ export function POSTransactions() {
     phone?: string
   } | null>(null)
   const [showCustomerSearch, setShowCustomerSearch] = useState(false)
+  const [showQuickAddCustomer, setShowQuickAddCustomer] = useState(false)
   const [customerSearchId, setCustomerSearchId] = useState('')
   const [isAdvancedPaymentsOpen, setIsAdvancedPaymentsOpen] = useState(false)
   const [currentCartItems, setCurrentCartItems] = useState<CartItem[]>([])
@@ -87,6 +94,7 @@ export function POSTransactions() {
   } | undefined>(undefined)
   const [loyaltyMember, setLoyaltyMember] = useState<LoyaltyMember | null>(null)
   const [loyaltyEnrollment, setLoyaltyEnrollment] = useState<LoyaltyEnrollment | null>(null)
+  const [consumptionMode, setConsumptionMode] = useState<ConsumptionMode>('SUR_PLACE')
 
   // Auto-resolve web terminal for the active location
   const webTerminalMutation = useMutation({
@@ -117,12 +125,14 @@ export function POSTransactions() {
     enabled: !!terminalCode,
   })
 
-  // Fetch products from API (automatically filtered by company vertical)
-  const {
-    data: products = [],
-    isLoading: isLoadingProducts,
-    error: productsError,
-  } = usePOSProducts({ limit: 500 })
+  // Fetch products: retail uses /products, F&B uses /active-menu
+  const retailProducts = usePOSProducts({ limit: 500, enabled: !isFnBVertical })
+  const fnbProducts = useFnBProducts({ enabled: isFnBVertical })
+
+  const products: Product[] = isFnBVertical ? (fnbProducts.data ?? []) : (retailProducts.data ?? [])
+  const fnbCategories = isFnBVertical ? fnbProducts.categories : undefined
+  const isLoadingProducts = isFnBVertical ? fnbProducts.isLoading : retailProducts.isLoading
+  const productsError = isFnBVertical ? fnbProducts.error : retailProducts.error
 
   // Fetch payment methods + repositories for quick checkout
   const { data: paymentMethods = [] } = useQuery({
@@ -147,6 +157,29 @@ export function POSTransactions() {
       setShowOpenShift(false)
     }
   }, [isLoadingShift, shift, terminalCode])
+
+  /**
+   * Select a customer and trigger loyalty lookup.
+   */
+  const selectCustomer = useCallback((customer: { id: string; name: string; phone?: string }) => {
+    setSelectedCustomer(customer)
+    setCustomerSearchId(customer.id)
+    // Look up loyalty enrollment by phone
+    if (customer.phone) {
+      void lookupMember(customer.phone).then((result) => {
+        if (result) {
+          setLoyaltyMember(result.member)
+          setLoyaltyEnrollment(result.enrollments[0] ?? null)
+        } else {
+          setLoyaltyMember(null)
+          setLoyaltyEnrollment(null)
+        }
+      })
+    } else {
+      setLoyaltyMember(null)
+      setLoyaltyEnrollment(null)
+    }
+  }, [])
 
   const handleAdvancedPayments = useCallback((items: CartItem[]) => {
     setCurrentCartItems(items)
@@ -217,7 +250,7 @@ export function POSTransactions() {
   const error = shiftError || productsError
 
   /**
-   * Convert cart items to receipt creation payload
+   * Convert cart items to receipt creation payload (polymorphic: product or composite item)
    */
   const buildReceiptPayload = (items: CartItem[]) => {
     if (!shift?.terminal_id) {
@@ -226,18 +259,30 @@ export function POSTransactions() {
 
     return {
       terminal_id: shift.terminal_id,
-      customer_id: selectedCustomer?.id,
-      lines: items.map((item) => ({
-        product_id: item.product.id,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        discount_type: item.discount_type || undefined,
-        discount_percent: item.discount_percent || undefined,
-        discount_amount: item.discount_amount || undefined,
-        discount_reason: item.discount_reason || undefined,
-      })),
-      transaction_discount_amount: transactionDiscount?.amount || undefined,
-      transaction_discount_reason: transactionDiscount?.reason || undefined,
+      ...(selectedCustomer?.id ? { customer_id: selectedCustomer.id } : {}),
+      lines: items.map((item) => {
+        const isComposite = item.product.sellableType === 'composite_item'
+        const modifiers = item.product.selectedModifiers?.map((m) => ({
+          modifier_id: m.modifier_id,
+          modifier_group_id: m.modifier_group_id,
+          price_adjustment: m.price_adjustment,
+        }))
+        return {
+          ...(isComposite
+            ? { composite_item_id: item.product.id }
+            : { product_id: item.product.id }),
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          ...(modifiers && modifiers.length > 0 ? { modifiers } : {}),
+          ...(item.discount_type ? { discount_type: item.discount_type } : {}),
+          ...(item.discount_percent ? { discount_percent: item.discount_percent } : {}),
+          ...(item.discount_amount ? { discount_amount: item.discount_amount } : {}),
+          ...(item.discount_reason ? { discount_reason: item.discount_reason } : {}),
+        }
+      }),
+      ...(transactionDiscount?.amount ? { transaction_discount_amount: transactionDiscount.amount } : {}),
+      ...(transactionDiscount?.reason ? { transaction_discount_reason: transactionDiscount.reason } : {}),
+      ...(isFnBVertical ? { consumption_mode: consumptionMode } : {}),
     }
   }
 
@@ -468,6 +513,7 @@ export function POSTransactions() {
       <POSPage
         key={cartVersion}
         products={products}
+        categories={fnbCategories}
         onQuickCheckout={handleQuickCheckout}
         onAdvancedPayments={handleAdvancedPayments}
         onProductInfo={handleProductInfo}
@@ -479,6 +525,8 @@ export function POSTransactions() {
         onTransactionDiscountChange={setTransactionDiscount}
         loyaltyMember={loyaltyMember}
         loyaltyEnrollment={loyaltyEnrollment}
+        consumptionMode={isFnBVertical ? consumptionMode : undefined}
+        onConsumptionModeChange={isFnBVertical ? setConsumptionMode : undefined}
       />
 
       {/* Advanced Payments Modal */}
@@ -517,7 +565,7 @@ export function POSTransactions() {
       )}
 
       {/* Customer Search Modal */}
-      {showCustomerSearch && (
+      {showCustomerSearch && !showQuickAddCustomer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
@@ -539,6 +587,7 @@ export function POSTransactions() {
               }}
               partnerType="customer"
               placeholder={t('pos:cart.selectCustomer')}
+              onAddNew={() => { setShowQuickAddCustomer(true) }}
             />
             <div className="flex gap-3 mt-6">
               {selectedCustomer && (
@@ -564,24 +613,8 @@ export function POSTransactions() {
                     void import('@/lib/api').then(({ apiGet }) => {
                       void apiGet<{ id: string; name: string; phone?: string }>(`/partners/${customerSearchId}`).then(
                         (partner) => {
-                          setSelectedCustomer({
-                            id: partner.id,
-                            name: partner.name,
-                            phone: partner.phone,
-                          })
+                          selectCustomer(partner)
                           setShowCustomerSearch(false)
-                          // Look up loyalty enrollment
-                          if (partner.phone) {
-                            void lookupMember(partner.phone).then((result) => {
-                              if (result) {
-                                setLoyaltyMember(result.member)
-                                setLoyaltyEnrollment(result.enrollments[0] ?? null)
-                              } else {
-                                setLoyaltyMember(null)
-                                setLoyaltyEnrollment(null)
-                              }
-                            })
-                          }
                         }
                       )
                     })
@@ -598,6 +631,18 @@ export function POSTransactions() {
           </div>
         </div>
       )}
+
+      {/* Quick Add Customer Modal */}
+      <QuickAddCustomerModal
+        isOpen={showQuickAddCustomer}
+        onClose={() => { setShowQuickAddCustomer(false) }}
+        onCustomerCreated={(customer) => {
+          selectCustomer(customer)
+          setShowQuickAddCustomer(false)
+          setShowCustomerSearch(false)
+          toast.success(t('pos:cart.customerCreated', { name: customer.name }))
+        }}
+      />
 
       {/* Product Info Modal */}
       {productInfoId && (

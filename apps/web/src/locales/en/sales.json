@@ -153,7 +153,8 @@
       "posted": "Document posted",
       "goodsReceived": "Goods received"
     },
-    "taxExemptionMention": "Tax exemption applies to {{partner}} - {{reason}}"
+    "taxExemptionMention": "Tax exemption applies to {{partner}} - {{reason}}",
+    "vehicle": "Vehicle"
   },
   "lineItems": {
     "title": "Line Items",
@@ -170,19 +171,27 @@
       "title": "No items added yet.",
       "description": "Click 'Add Item' to add products or services."
     },
+    "tabs": {
+      "product": "Product",
+      "service": "Service"
+    },
+    "serviceBadge": "Service",
     "actions": {
       "dragToReorder": "Drag to reorder",
       "clickToEdit": "Click to edit",
       "removeLine": "Remove line",
       "searchProducts": "Search Products",
       "searchProductsPlaceholder": "Search products...",
+      "searchServicesPlaceholder": "Search services...",
       "createNewProduct": "Create New Product",
       "addBlankLine": "Add Blank Line",
       "close": "Close"
     },
-    "loading": "Loading products...",
+    "loading": "Loading...",
     "noProductsFound": "No products found matching your search",
-    "noProductsAvailable": "No products available"
+    "noProductsAvailable": "No products available",
+    "noServicesFound": "No services found matching your search",
+    "noServicesAvailable": "No services available"
   },
   "orders": {
     "title": "Orders",
@@ -193,6 +202,7 @@
     "fullyDelivered": "Fully Delivered",
     "fullyInvoiced": "Fully Invoiced",
     "alreadyDelivered": "Delivery note already exists for this order",
+    "delivered": "Delivered",
     "deliveryStatus": {
       "not_delivered": "Not Delivered",
       "partially_delivered": "Partially Delivered",
@@ -229,6 +239,7 @@
     "convertToOrder": "Convert to Order",
     "convertToOrderTitle": "Convert to Sales Order",
     "convertToOrderMessage": "This will create a new sales order from this quote. The quote will remain unchanged.",
+    "validUntil": "Valid Until",
     "expiry": {
       "expired": "This quote has expired",
       "expiresIn": "Expires in {{days}} days",

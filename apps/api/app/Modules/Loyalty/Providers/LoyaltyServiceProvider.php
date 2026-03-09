@@ -20,6 +20,9 @@ use App\Modules\Loyalty\Infrastructure\Repositories\EloquentRewardRepository;
 use App\Modules\Loyalty\Infrastructure\Repositories\EloquentStampCardRepository;
 use App\Modules\Loyalty\Infrastructure\Repositories\EloquentTierRepository;
 use App\Modules\Loyalty\Infrastructure\Repositories\EloquentTransactionRepository;
+use App\Modules\Contact\Domain\Contact;
+use App\Modules\Partner\Domain\Partner;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\ServiceProvider;
 
 class LoyaltyServiceProvider extends ServiceProvider
@@ -41,5 +44,10 @@ class LoyaltyServiceProvider extends ServiceProvider
     {
         $this->loadRoutesFrom(__DIR__.'/../Presentation/routes.php');
         $this->loadMigrationsFrom(__DIR__.'/../../../database/migrations');
+
+        Relation::morphMap([
+            'contact' => Contact::class,
+            'partner' => Partner::class,
+        ]);
     }
 }

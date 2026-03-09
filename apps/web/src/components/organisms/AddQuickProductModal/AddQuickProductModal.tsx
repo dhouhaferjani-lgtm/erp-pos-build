@@ -6,17 +6,14 @@ import { Loader2 } from 'lucide-react'
 import { Modal, ModalHeader, ModalContent, ModalFooter } from '../Modal'
 import { FormField } from '../../atoms/FormField'
 import { Input } from '../../atoms/Input'
-import { Select } from '../../atoms/Select'
 import { Button } from '../../atoms/Button'
 import { apiPost } from '../../../lib/api'
-
-type ProductType = 'service' | 'consumable' | 'storable'
 
 interface Product {
   id: string
   name: string
   sku: string | null
-  type: ProductType
+  is_physical: boolean
   sale_price: number
   cost_price: number
   tax_rate: number
@@ -25,7 +22,6 @@ interface Product {
 interface QuickProductFormData {
   name: string
   sku: string
-  type: ProductType | ''
   sale_price: string
   tax_rate: string
 }
@@ -84,7 +80,6 @@ export function AddQuickProductModal({
     defaultValues: {
       name: '',
       sku: '',
-      type: '',
       sale_price: '',
       tax_rate: '19', // Default VAT rate (can be adjusted per country)
     },
@@ -96,7 +91,6 @@ export function AddQuickProductModal({
       reset({
         name: '',
         sku: '',
-        type: '',
         sale_price: '',
         tax_rate: '19',
       })
@@ -110,7 +104,7 @@ export function AddQuickProductModal({
       const payload = {
         name: data.name,
         sku: data.sku || null,
-        type: data.type,
+        is_physical: true,
         sale_price: parseFloat(data.sale_price),
         cost_price: 0, // Default cost for quick creation
         tax_rate: parseFloat(data.tax_rate),
@@ -160,25 +154,6 @@ export function AddQuickProductModal({
               {...register('sku')}
               placeholder={t('inventory:products.skuPlaceholder')}
             />
-          </FormField>
-
-          {/* Type */}
-          <FormField
-            label={t('inventory:products.type')}
-            htmlFor="product-type"
-            required
-            error={errors.type?.message}
-          >
-            <Select
-              id="product-type"
-              {...register('type', { required: t('common:validation.required') })}
-              error={!!errors.type}
-            >
-              <option value="">{t('common:actions.select')}</option>
-              <option value="service">{t('inventory:products.types.service')}</option>
-              <option value="consumable">{t('inventory:products.types.consumable')}</option>
-              <option value="storable">{t('inventory:products.types.storable')}</option>
-            </Select>
           </FormField>
 
           {/* Sale Price and Tax Rate */}

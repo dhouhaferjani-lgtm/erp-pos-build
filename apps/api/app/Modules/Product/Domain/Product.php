@@ -23,7 +23,7 @@ use App\Shared\Contracts\SellableContract;
  * @property string $tenant_id
  * @property string $name
  * @property string $sku
- * @property ProductType $type
+ * @property ProductType|null $type
  * @property string|null $description
  * @property string|null $sale_price
  * @property string|null $purchase_price
@@ -49,6 +49,7 @@ use App\Shared\Contracts\SellableContract;
  * @property-read Company $company
  * @property-read Unit|null $unitOfMeasure
  * @property-read ParapharmacyProductMetadata|null $parapharmacyMetadata
+ * @property-read AutomotiveProductMetadata|null $automotiveMetadata
  */
 class Product extends Model implements SellableContract
 {
@@ -176,21 +177,6 @@ class Product extends Model implements SellableContract
 
     // -- Domain Methods --
 
-    public function isPart(): bool
-    {
-        return $this->type === ProductType::Part;
-    }
-
-    public function isService(): bool
-    {
-        return $this->type === ProductType::Service;
-    }
-
-    public function isConsumable(): bool
-    {
-        return $this->type === ProductType::Consumable;
-    }
-
     /**
      * Check if this product requires physical delivery.
      * Services are non-physical and don't require delivery notes.
@@ -209,28 +195,6 @@ class Product extends Model implements SellableContract
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);
-    }
-
-    /**
-     * Scope a query to only include parts.
-     *
-     * @param  Builder<Product>  $query
-     * @return Builder<Product>
-     */
-    public function scopeParts(Builder $query): Builder
-    {
-        return $query->where('type', ProductType::Part);
-    }
-
-    /**
-     * Scope a query to only include services.
-     *
-     * @param  Builder<Product>  $query
-     * @return Builder<Product>
-     */
-    public function scopeServices(Builder $query): Builder
-    {
-        return $query->where('type', ProductType::Service);
     }
 
     /**
@@ -293,6 +257,16 @@ class Product extends Model implements SellableContract
     public function parapharmacyMetadata(): HasOne
     {
         return $this->hasOne(ParapharmacyProductMetadata::class);
+    }
+
+    /**
+     * Get automotive-specific metadata for this product.
+     *
+     * @return HasOne<AutomotiveProductMetadata>
+     */
+    public function automotiveMetadata(): HasOne
+    {
+        return $this->hasOne(AutomotiveProductMetadata::class);
     }
 
     /**

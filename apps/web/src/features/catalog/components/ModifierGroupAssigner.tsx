@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { Button } from '@/components/atoms'
 import type { ModifierGroupData } from '../types/compositeItem'
 import { useModifierGroups, useAssignModifierGroup, useRemoveModifierGroup } from '../hooks/useModifierGroups'
 
@@ -57,13 +58,15 @@ export function ModifierGroupAssigner({ compositeItemId, assignedGroups }: Modif
                     </div>
                   )}
                 </div>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => handleRemove(group.id)}
                   disabled={removeMutation.isPending}
-                  className="text-red-600 hover:text-red-900"
+                  className="!p-1 text-red-600 hover:text-red-900 hover:bg-red-50"
                 >
                   <X className="h-4 w-4" />
-                </button>
+                </Button>
               </div>
             ))}
           </div>
@@ -81,13 +84,15 @@ export function ModifierGroupAssigner({ compositeItemId, assignedGroups }: Modif
                   <span className="text-sm">{group.name}</span>
                   <span className="text-gray-500 text-xs ml-2">({group.code})</span>
                 </div>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => handleAssign(group.id)}
                   disabled={assignMutation.isPending}
-                  className="text-indigo-600 hover:text-indigo-900"
+                  className="!p-1 text-blue-600 hover:text-blue-700"
                 >
                   <Plus className="h-4 w-4" />
-                </button>
+                </Button>
               </div>
             ))}
           </div>

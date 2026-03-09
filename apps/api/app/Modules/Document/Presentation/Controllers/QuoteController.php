@@ -20,6 +20,7 @@ use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
+use App\Modules\Vehicle\Application\Services\VehicleContextBuilder;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -47,6 +48,7 @@ class QuoteController extends Controller
         private readonly LocationContext $locationContext,
         private readonly DocumentNumberingService $numberingService,
         private readonly TaxCalculationService $taxCalculationService,
+        private readonly VehicleContextBuilder $vehicleContextBuilder,
     ) {}
 
     /**
@@ -227,7 +229,7 @@ class QuoteController extends Controller
 
             // Create vehicle context if vehicle_context provided
             if ($vehicleContext !== null) {
-                $this->createVehicleContext($document, $vehicleContext, $tenantId, $companyId);
+                $this->createVehicleContext($document, $vehicleContext, $tenantId, $companyId, $this->vehicleContextBuilder);
             }
 
             /** @var Document $freshDocument */
@@ -334,7 +336,7 @@ class QuoteController extends Controller
             }
 
             // Update vehicle context only if vehicle_context was provided in request
-            $this->attachVehicleContext($documentModel, $vehicleContext, $hasVehicleContext);
+            $this->attachVehicleContext($documentModel, $vehicleContext, $hasVehicleContext, $this->vehicleContextBuilder);
 
             /** @var Document $freshDocument */
             $freshDocument = $documentModel->fresh($this->defaultRelations());

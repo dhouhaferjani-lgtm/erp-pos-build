@@ -13,6 +13,10 @@ use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\Catalog\Domain\Entities\CompositeItem;
+use App\Modules\Catalog\Domain\Entities\Modifier;
+use App\Modules\Catalog\Domain\Entities\ModifierGroup;
+use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Exceptions\DiscountExceedsLimitException;
 use App\Modules\POS\Domain\Exceptions\DiscountNotAllowedException;
@@ -61,14 +65,16 @@ final class ReceiptCreationService
      * Create a new POS receipt.
      *
      * @param  string  $terminalId  Terminal UUID or code
-     * @param  array<int, array{product_id: string, quantity: string, unit_price: string, discount_amount?: string, discount_type?: string, discount_percent?: string, discount_reason?: string}>  $lines
+     * @param  array<int, array{product_id?: string, composite_item_id?: string, quantity: string, unit_price: string, modifiers?: array<int, array{modifier_id: string, modifier_group_id: string, price_adjustment: string}>, discount_amount?: string, discount_type?: string, discount_percent?: string, discount_reason?: string}>  $lines
      * @param  string|null  $customerId  Optional partner ID
+     * @param  string|null  $contactId  Optional contact ID
      * @param  string|null  $notes  Optional notes
      * @param  string|null  $transactionDiscountAmount  Optional transaction-level discount (fixed amount)
      * @param  string|null  $transactionDiscountReason  Optional reason for transaction discount
      * @param  string|null  $couponCode  Optional coupon code to apply
      * @param  string|null  $loyaltyDiscountAmount  Optional loyalty reward discount
      * @param  string|null  $loyaltyRewardId  Optional loyalty reward reference
+     * @param  ConsumptionMode|null  $consumptionMode  Optional consumption mode (F&B)
      * @return Receipt The created receipt with relationships loaded
      *
      * @throws \RuntimeException If no active shift or insufficient stock
@@ -80,12 +86,14 @@ final class ReceiptCreationService
         string $terminalId,
         array $lines,
         ?string $customerId = null,
+        ?string $contactId = null,
         ?string $notes = null,
         ?string $transactionDiscountAmount = null,
         ?string $transactionDiscountReason = null,
         ?string $couponCode = null,
         ?string $loyaltyDiscountAmount = null,
         ?string $loyaltyRewardId = null,
+        ?ConsumptionMode $consumptionMode = null,
     ): Receipt {
         if (count($lines) === 0) {
             throw new \InvalidArgumentException('At least one line item is required');
@@ -93,7 +101,7 @@ final class ReceiptCreationService
 
         $companyId = $this->companyContext->requireCompanyId();
 
-        return DB::transaction(function () use ($terminalId, $lines, $customerId, $notes, $companyId, $transactionDiscountAmount, $transactionDiscountReason, $couponCode, $loyaltyDiscountAmount, $loyaltyRewardId): Receipt {
+        return DB::transaction(function () use ($terminalId, $lines, $customerId, $contactId, $notes, $companyId, $transactionDiscountAmount, $transactionDiscountReason, $couponCode, $loyaltyDiscountAmount, $loyaltyRewardId, $consumptionMode): Receipt {
             // 1. Lock and load terminal
             /** @var Terminal $terminal */
             $terminal = Terminal::where('company_id', $companyId)
@@ -119,13 +127,26 @@ final class ReceiptCreationService
             /** @var Company $company */
             $company = $terminal->company ?? Company::findOrFail($terminal->company_id);
 
-            // 3. Load and validate products
-            $productIds = array_column($lines, 'product_id');
-            $products = Product::with('unitOfMeasure')->whereIn('id', $productIds)->get()->keyBy('id');
+            // 3. Load and validate sellable items (products and/or composite items)
+            $productIds = array_values(array_filter(array_column($lines, 'product_id')));
+            $compositeItemIds = array_values(array_filter(array_column($lines, 'composite_item_id')));
+
+            $products = count($productIds) > 0
+                ? Product::with('unitOfMeasure')->whereIn('id', $productIds)->get()->keyBy('id')
+                : collect();
+
+            $compositeItems = count($compositeItemIds) > 0
+                ? CompositeItem::with(['unitOfMeasure', 'modifierGroups.modifiers' => function ($query): void {
+                    $query->where('is_active', true);
+                }])->whereIn('id', $compositeItemIds)->get()->keyBy('id')
+                : collect();
 
             foreach ($lines as $line) {
-                if (! $products->has($line['product_id'])) {
+                if (! empty($line['product_id']) && ! $products->has($line['product_id'])) {
                     throw new \InvalidArgumentException("Product not found: {$line['product_id']}");
+                }
+                if (! empty($line['composite_item_id']) && ! $compositeItems->has($line['composite_item_id'])) {
+                    throw new \InvalidArgumentException("Composite item not found: {$line['composite_item_id']}");
                 }
             }
 
@@ -138,14 +159,41 @@ final class ReceiptCreationService
             $totalTax = '0.00';
 
             foreach ($lines as $index => $lineData) {
-                /** @var Product $product */
-                $product = $products->get($lineData['product_id']);
+                $isCompositeItem = ! empty($lineData['composite_item_id']);
+
+                if ($isCompositeItem) {
+                    /** @var CompositeItem $compositeItem */
+                    $compositeItem = $compositeItems->get($lineData['composite_item_id']);
+                    $sellableName = $compositeItem->getSellableName();
+                    $sellableCode = $compositeItem->code;
+                    $sellableUnit = $compositeItem->getSellableUnit() ?? 'pc';
+                    /** @var numeric-string $taxRate */
+                    $taxRate = (string) ($compositeItem->tax_rate ?? '0.00');
+                    $sellableDescription = null;
+                } else {
+                    /** @var Product $product */
+                    $product = $products->get($lineData['product_id']);
+                    $sellableName = $product->name;
+                    $sellableCode = $product->sku ?? $product->barcode ?? '';
+                    $sellableUnit = $product->unitOfMeasure->symbol ?? $product->unit ?? 'pc';
+                    /** @var numeric-string $taxRate */
+                    $taxRate = (string) ($product->tax_rate ?? '0.00');
+                    $sellableDescription = $product->description;
+                }
+
                 /** @var numeric-string $quantity */
                 $quantity = (string) $lineData['quantity'];
                 /** @var numeric-string $unitPrice */
                 $unitPrice = (string) $lineData['unit_price'];
-                /** @var numeric-string $taxRate */
-                $taxRate = (string) ($product->tax_rate ?? '0.00');
+
+                // Process modifiers for composite item lines
+                $modifiersSnapshot = null;
+                if ($isCompositeItem && ! empty($lineData['modifiers'])) {
+                    $modifiersSnapshot = $this->processModifiers(
+                        $compositeItem,
+                        $lineData['modifiers'],
+                    );
+                }
 
                 // Calculate gross line total before discount
                 $grossLineTotal = bcmul($quantity, $unitPrice, self::SCALE);
@@ -172,16 +220,18 @@ final class ReceiptCreationService
 
                 $receiptLines[] = [
                     'line_number' => $index + 1,
-                    'product_id' => $product->id,
-                    'product_code' => $product->sku ?? $product->barcode ?? '',
-                    'product_name' => $product->name,
-                    'product_description' => $product->description,
+                    'product_id' => $isCompositeItem ? null : ($lineData['product_id'] ?? null),
+                    'composite_item_id' => $isCompositeItem ? $lineData['composite_item_id'] : null,
+                    'product_code' => $sellableCode,
+                    'product_name' => $sellableName,
+                    'product_description' => $sellableDescription,
                     'quantity' => $quantity,
-                    'unit' => $product->unitOfMeasure->symbol ?? $product->unit ?? 'pc',
+                    'unit' => $sellableUnit,
                     'unit_price' => $unitPrice,
                     'line_total' => $lineTotal,
                     'tax_rate' => $taxRate,
                     'tax_amount' => $taxAmount,
+                    'modifiers' => $modifiersSnapshot,
                     'discount_amount' => $discountAmount,
                     'discount_reason' => $lineData['discount_reason'] ?? null,
                 ];
@@ -252,16 +302,23 @@ final class ReceiptCreationService
 
                 $cartItems = [];
                 foreach ($lines as $lineData) {
-                    /** @var Product $product */
-                    $product = $products->get($lineData['product_id']);
+                    $isComposite = ! empty($lineData['composite_item_id']);
                     /** @var numeric-string $itemUnitPrice */
                     $itemUnitPrice = (string) $lineData['unit_price'];
                     /** @var numeric-string $itemLineTotal */
                     $itemLineTotal = bcmul((string) $lineData['quantity'], $itemUnitPrice, self::SCALE);
 
+                    $itemId = $isComposite ? $lineData['composite_item_id'] : $lineData['product_id'];
+                    $categoryId = null;
+                    if (! $isComposite && $products->has($lineData['product_id'])) {
+                        $categoryId = $products->get($lineData['product_id'])->category_id ?? null;
+                    } elseif ($isComposite && $compositeItems->has($lineData['composite_item_id'])) {
+                        $categoryId = $compositeItems->get($lineData['composite_item_id'])->category_id ?? null;
+                    }
+
                     $cartItems[] = new CartItemContext(
-                        productId: $lineData['product_id'],
-                        categoryId: $product->category_id ?? null,
+                        productId: $itemId,
+                        categoryId: $categoryId,
                         quantity: (int) $lineData['quantity'],
                         unitPrice: $itemUnitPrice,
                         lineTotal: $itemLineTotal,
@@ -314,6 +371,37 @@ final class ReceiptCreationService
             $previousHash = $terminal->last_hash;
             $currency = $company->currency ?? 'TND';
 
+            // 6a. Resolve customer info before receipt creation (must be set at INSERT time,
+            // not via UPDATE, because the immutability trigger blocks all updates except void)
+            $customerName = null;
+            $customerIdentifier = null;
+            $partnerId = null;
+            $resolvedContactId = null;
+
+            if ($contactId !== null) {
+                $contact = \App\Modules\Contact\Domain\Contact::find($contactId);
+                if ($contact !== null) {
+                    $customerName = $contact->full_name;
+                    $customerIdentifier = $contact->phone ?? $contact->email ?? null;
+                    $resolvedContactId = $contact->id;
+
+                    // If contact is linked to a party, auto-set partner_id
+                    $primaryParty = $contact->parties()->wherePivot('is_primary', true)->first();
+                    if ($primaryParty !== null) {
+                        $partnerId = $primaryParty->id;
+                    }
+                }
+            }
+
+            if ($customerName === null && $customerId !== null) {
+                $partner = \App\Modules\Partner\Domain\Partner::find($customerId);
+                if ($partner !== null) {
+                    $customerName = $partner->name;
+                    $customerIdentifier = $partner->phone ?? $partner->email ?? null;
+                    $partnerId = $partner->id;
+                }
+            }
+
             // 7a. Build receipt in memory to calculate fiscal hash before INSERT
             $receiptId = Str::uuid()->toString();
             /** @var Receipt $receipt */
@@ -323,6 +411,7 @@ final class ReceiptCreationService
                 'location_id' => $terminal->location_id,
                 'terminal_id' => $terminal->id,
                 'receipt_number' => $receiptNumber,
+                'receipt_type' => \App\Modules\POS\Domain\Enums\ReceiptType::Sale,
                 'chain_sequence' => $sequence,
                 'receipt_year' => $currentYear,
                 'previous_hash' => $previousHash,
@@ -336,11 +425,14 @@ final class ReceiptCreationService
                 'discount_authorized_by' => $discountAuthorizedBy,
                 'total' => $total,
                 'currency' => $currency,
-                'customer_name' => null,
-                'customer_identifier' => null,
+                'customer_name' => $customerName,
+                'customer_identifier' => $customerIdentifier,
+                'partner_id' => $partnerId,
+                'contact_id' => $resolvedContactId,
                 'is_voided' => false,
                 'vat_breakdown_hash' => $vatHash,
                 'payment_methods_hash' => $paymentHash,
+                'consumption_mode' => $consumptionMode,
                 'discount_breakdown' => $discountBreakdownData,
                 'notes' => $notes,
             ]);
@@ -380,37 +472,29 @@ final class ReceiptCreationService
             foreach ($receiptLines as $index => $lineData) {
                 $receiptLineModel = $createdReceiptLines[$index] ?? null;
 
-                $this->decrementStock(
-                    tenantId: $terminal->tenant_id,
-                    companyId: $companyId,
-                    locationId: $terminal->location_id,
-                    productId: $lineData['product_id'],
-                    quantity: $lineData['quantity'],
-                    receiptId: $receipt->id,
-                    cashierId: $shift->cashier_id,
-                );
-
-                // Allocate batches using FEFO for batch-tracked products
-                if ($receiptLineModel !== null && $this->fefoService->productRequiresBatchTracking($lineData['product_id'])) {
-                    $this->allocateBatches(
+                // Only decrement stock for product lines (composite items handle their own inventory)
+                if ($lineData['product_id'] !== null) {
+                    $this->decrementStock(
                         tenantId: $terminal->tenant_id,
+                        companyId: $companyId,
                         locationId: $terminal->location_id,
                         productId: $lineData['product_id'],
                         quantity: $lineData['quantity'],
                         receiptId: $receipt->id,
-                        receiptLineId: $receiptLineModel->id,
+                        cashierId: $shift->cashier_id,
                     );
-                }
-            }
 
-            // 12. If customer was provided, update customer info on receipt
-            if ($customerId !== null) {
-                $partner = \App\Modules\Partner\Domain\Partner::find($customerId);
-                if ($partner !== null) {
-                    $receipt->update([
-                        'customer_name' => $partner->name,
-                        'customer_identifier' => $partner->phone ?? $partner->email ?? null,
-                    ]);
+                    // Allocate batches using FEFO for batch-tracked products
+                    if ($receiptLineModel !== null && $this->fefoService->productRequiresBatchTracking($lineData['product_id'])) {
+                        $this->allocateBatches(
+                            tenantId: $terminal->tenant_id,
+                            locationId: $terminal->location_id,
+                            productId: $lineData['product_id'],
+                            quantity: $lineData['quantity'],
+                            receiptId: $receipt->id,
+                            receiptLineId: $receiptLineModel->id,
+                        );
+                    }
                 }
             }
 
@@ -422,6 +506,88 @@ final class ReceiptCreationService
                 'cashier',
             ]);
         });
+    }
+
+    /**
+     * Process and validate modifiers for a composite item line.
+     *
+     * Validates that selected modifiers belong to the item's assigned groups,
+     * checks selection constraints (min/max), and builds the snapshot array.
+     *
+     * @param  CompositeItem  $compositeItem  The composite item with loaded modifierGroups.modifiers
+     * @param  array<int, array{modifier_id: string, modifier_group_id: string, price_adjustment: string}>  $requestedModifiers
+     * @return array<int, array{modifier_id: string, modifier_group_id: string, name: string, group_name: string, price_adjustment: string}>
+     *
+     * @throws \InvalidArgumentException If modifier validation fails
+     */
+    private function processModifiers(CompositeItem $compositeItem, array $requestedModifiers): array
+    {
+        // Index the item's modifier groups for quick lookup
+        $groupsById = $compositeItem->modifierGroups->keyBy('id');
+
+        // Group requested modifiers by group_id for constraint validation
+        /** @var array<string, array<int, array{modifier_id: string, modifier_group_id: string, price_adjustment: string}>> $byGroup */
+        $byGroup = [];
+        foreach ($requestedModifiers as $mod) {
+            $byGroup[$mod['modifier_group_id']][] = $mod;
+        }
+
+        // Validate each requested modifier belongs to an assigned group
+        foreach ($requestedModifiers as $mod) {
+            if (! $groupsById->has($mod['modifier_group_id'])) {
+                throw new \InvalidArgumentException(
+                    "Modifier group '{$mod['modifier_group_id']}' is not assigned to composite item '{$compositeItem->id}'"
+                );
+            }
+        }
+
+        // Validate selection constraints per group
+        foreach ($groupsById as $groupId => $group) {
+            /** @var \App\Modules\Catalog\Domain\Entities\ModifierGroup $group */
+            $selectedInGroup = $byGroup[$groupId] ?? [];
+            $count = count($selectedInGroup);
+
+            if ($group->is_required && $count < $group->min_selections) {
+                throw new \InvalidArgumentException(
+                    "Modifier group '{$group->name}' requires at least {$group->min_selections} selection(s), got {$count}"
+                );
+            }
+
+            if ($count > 0 && $count > $group->max_selections) {
+                throw new \InvalidArgumentException(
+                    "Modifier group '{$group->name}' allows at most {$group->max_selections} selection(s), got {$count}"
+                );
+            }
+
+            // Validate each modifier exists in this group
+            $groupModifierIds = $group->modifiers->pluck('id')->all();
+            foreach ($selectedInGroup as $mod) {
+                if (! in_array($mod['modifier_id'], $groupModifierIds, true)) {
+                    throw new \InvalidArgumentException(
+                        "Modifier '{$mod['modifier_id']}' does not belong to group '{$group->name}'"
+                    );
+                }
+            }
+        }
+
+        // Build snapshot array with denormalized names
+        $snapshot = [];
+        foreach ($requestedModifiers as $mod) {
+            /** @var \App\Modules\Catalog\Domain\Entities\ModifierGroup $group */
+            $group = $groupsById->get($mod['modifier_group_id']);
+            /** @var \App\Modules\Catalog\Domain\Entities\Modifier|null $modifier */
+            $modifier = $group->modifiers->firstWhere('id', $mod['modifier_id']);
+
+            $snapshot[] = [
+                'modifier_id' => $mod['modifier_id'],
+                'modifier_group_id' => $mod['modifier_group_id'],
+                'name' => $modifier?->name ?? 'Unknown',
+                'group_name' => $group->name,
+                'price_adjustment' => (string) $mod['price_adjustment'],
+            ];
+        }
+
+        return $snapshot;
     }
 
     /**

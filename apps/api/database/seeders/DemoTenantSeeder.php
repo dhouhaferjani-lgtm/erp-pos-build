@@ -8,12 +8,16 @@ use App\Modules\Billing\Domain\Enums\SubscriptionStatus;
 use App\Modules\Billing\Domain\Plan;
 use App\Modules\Billing\Domain\TenantSubscription;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\MembershipRole;
+use App\Modules\Company\Domain\Enums\MembershipStatus;
+use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Spatie\Permission\Models\Role;
 
 /**
  * Seeds demo tenants with proper subscriptions for testing.
@@ -131,7 +135,7 @@ class DemoTenantSeeder extends Seeder
         );
 
         // Create admin user
-        User::updateOrCreate(
+        $user = User::updateOrCreate(
             ['email' => 'admin@demo.local'],
             [
                 'tenant_id' => $tenant->id,
@@ -141,6 +145,8 @@ class DemoTenantSeeder extends Seeder
                 'status' => 'active',
             ]
         );
+
+        $this->assignAdminRoleAndMembership($user, $tenant, $company);
 
         $this->command->info("Created unlimited demo tenant: {$tenant->name}");
         $this->command->line('  - Email: admin@demo.local');
@@ -206,7 +212,7 @@ class DemoTenantSeeder extends Seeder
         );
 
         // Create company
-        Company::updateOrCreate(
+        $company = Company::updateOrCreate(
             ['tenant_id' => $tenant->id, 'code' => 'TRIAL'],
             [
                 'name' => 'Trial Company',
@@ -220,7 +226,7 @@ class DemoTenantSeeder extends Seeder
         );
 
         // Create admin user
-        User::updateOrCreate(
+        $user = User::updateOrCreate(
             ['email' => 'admin@trial.local'],
             [
                 'tenant_id' => $tenant->id,
@@ -230,6 +236,8 @@ class DemoTenantSeeder extends Seeder
                 'status' => 'active',
             ]
         );
+
+        $this->assignAdminRoleAndMembership($user, $tenant, $company);
 
         $this->command->info("Created trial tenant: {$tenant->name}");
         $this->command->line('  - Email: admin@trial.local');
@@ -299,7 +307,7 @@ class DemoTenantSeeder extends Seeder
         );
 
         // Create company
-        Company::updateOrCreate(
+        $company = Company::updateOrCreate(
             ['tenant_id' => $tenant->id, 'code' => 'PRO'],
             [
                 'name' => 'Pro Garage SARL',
@@ -314,7 +322,7 @@ class DemoTenantSeeder extends Seeder
         );
 
         // Create admin user
-        User::updateOrCreate(
+        $user = User::updateOrCreate(
             ['email' => 'admin@pro.local'],
             [
                 'tenant_id' => $tenant->id,
@@ -324,6 +332,8 @@ class DemoTenantSeeder extends Seeder
                 'status' => 'active',
             ]
         );
+
+        $this->assignAdminRoleAndMembership($user, $tenant, $company);
 
         $this->command->info("Created professional tenant: {$tenant->name}");
         $this->command->line('  - Email: admin@pro.local');
@@ -372,7 +382,7 @@ class DemoTenantSeeder extends Seeder
             ]
         );
 
-        Company::updateOrCreate(
+        $company = Company::updateOrCreate(
             ['tenant_id' => $tenant->id, 'code' => 'RETAIL'],
             [
                 'name' => 'IziPos Retail Demo',
@@ -385,7 +395,7 @@ class DemoTenantSeeder extends Seeder
             ]
         );
 
-        User::updateOrCreate(
+        $user = User::updateOrCreate(
             ['email' => 'retail@demo.local'],
             [
                 'tenant_id' => $tenant->id,
@@ -395,6 +405,8 @@ class DemoTenantSeeder extends Seeder
                 'status' => 'active',
             ]
         );
+
+        $this->assignAdminRoleAndMembership($user, $tenant, $company);
 
         $this->command->info("Created retail demo tenant: {$tenant->name}");
         $this->command->line('  - Email: retail@demo.local');
@@ -443,7 +455,7 @@ class DemoTenantSeeder extends Seeder
             ]
         );
 
-        Company::updateOrCreate(
+        $company = Company::updateOrCreate(
             ['tenant_id' => $tenant->id, 'code' => 'PHARM'],
             [
                 'name' => 'IziPos Pharmacy Demo',
@@ -456,7 +468,7 @@ class DemoTenantSeeder extends Seeder
             ]
         );
 
-        User::updateOrCreate(
+        $user = User::updateOrCreate(
             ['email' => 'pharmacy@demo.local'],
             [
                 'tenant_id' => $tenant->id,
@@ -466,6 +478,8 @@ class DemoTenantSeeder extends Seeder
                 'status' => 'active',
             ]
         );
+
+        $this->assignAdminRoleAndMembership($user, $tenant, $company);
 
         $this->command->info("Created pharmacy demo tenant: {$tenant->name}");
         $this->command->line('  - Email: pharmacy@demo.local');
@@ -514,7 +528,7 @@ class DemoTenantSeeder extends Seeder
             ]
         );
 
-        Company::updateOrCreate(
+        $company = Company::updateOrCreate(
             ['tenant_id' => $tenant->id, 'code' => 'REST'],
             [
                 'name' => 'IziPos Restaurant Demo',
@@ -527,7 +541,7 @@ class DemoTenantSeeder extends Seeder
             ]
         );
 
-        User::updateOrCreate(
+        $user = User::updateOrCreate(
             ['email' => 'restaurant@demo.local'],
             [
                 'tenant_id' => $tenant->id,
@@ -537,6 +551,8 @@ class DemoTenantSeeder extends Seeder
                 'status' => 'active',
             ]
         );
+
+        $this->assignAdminRoleAndMembership($user, $tenant, $company);
 
         $this->command->info("Created restaurant demo tenant: {$tenant->name}");
         $this->command->line('  - Email: restaurant@demo.local');
@@ -585,7 +601,7 @@ class DemoTenantSeeder extends Seeder
             ]
         );
 
-        Company::updateOrCreate(
+        $company = Company::updateOrCreate(
             ['tenant_id' => $tenant->id, 'code' => 'COFFEE'],
             [
                 'name' => 'IziPos Coffee Shop Demo',
@@ -598,7 +614,7 @@ class DemoTenantSeeder extends Seeder
             ]
         );
 
-        User::updateOrCreate(
+        $user = User::updateOrCreate(
             ['email' => 'coffee_shop@demo.local'],
             [
                 'tenant_id' => $tenant->id,
@@ -608,6 +624,8 @@ class DemoTenantSeeder extends Seeder
                 'status' => 'active',
             ]
         );
+
+        $this->assignAdminRoleAndMembership($user, $tenant, $company);
 
         $this->command->info("Created coffee shop demo tenant: {$tenant->name}");
         $this->command->line('  - Email: coffee_shop@demo.local');
@@ -656,7 +674,7 @@ class DemoTenantSeeder extends Seeder
             ]
         );
 
-        Company::updateOrCreate(
+        $company = Company::updateOrCreate(
             ['tenant_id' => $tenant->id, 'code' => 'FASHION'],
             [
                 'name' => 'IziPos Fashion Demo',
@@ -669,7 +687,7 @@ class DemoTenantSeeder extends Seeder
             ]
         );
 
-        User::updateOrCreate(
+        $user = User::updateOrCreate(
             ['email' => 'fashion@demo.local'],
             [
                 'tenant_id' => $tenant->id,
@@ -679,6 +697,8 @@ class DemoTenantSeeder extends Seeder
                 'status' => 'active',
             ]
         );
+
+        $this->assignAdminRoleAndMembership($user, $tenant, $company);
 
         $this->command->info("Created fashion demo tenant: {$tenant->name}");
         $this->command->line('  - Email: fashion@demo.local');
@@ -727,7 +747,7 @@ class DemoTenantSeeder extends Seeder
             ]
         );
 
-        Company::updateOrCreate(
+        $company = Company::updateOrCreate(
             ['tenant_id' => $tenant->id, 'code' => 'PARA'],
             [
                 'name' => 'IziPos Parapharmacy Demo',
@@ -740,7 +760,7 @@ class DemoTenantSeeder extends Seeder
             ]
         );
 
-        User::updateOrCreate(
+        $user = User::updateOrCreate(
             ['email' => 'parapharmacy@demo.local'],
             [
                 'tenant_id' => $tenant->id,
@@ -751,9 +771,37 @@ class DemoTenantSeeder extends Seeder
             ]
         );
 
+        $this->assignAdminRoleAndMembership($user, $tenant, $company);
+
         $this->command->info("Created parapharmacy demo tenant: {$tenant->name}");
         $this->command->line('  - Email: parapharmacy@demo.local');
         $this->command->line('  - Password: password');
         $this->command->line('  - Vertical: parapharmacy');
+    }
+
+    /**
+     * Assign admin role and company membership to a demo user.
+     */
+    private function assignAdminRoleAndMembership(User $user, Tenant $tenant, Company $company): void
+    {
+        setPermissionsTeamId($tenant->id);
+
+        $adminRole = Role::where('name', 'admin')->where('guard_name', 'sanctum')->first();
+        if ($adminRole !== null) {
+            $user->assignRole($adminRole);
+        }
+
+        UserCompanyMembership::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'company_id' => $company->id,
+            ],
+            [
+                'role' => MembershipRole::Admin,
+                'is_primary' => true,
+                'status' => MembershipStatus::Active,
+                'accepted_at' => now(),
+            ]
+        );
     }
 }

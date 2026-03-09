@@ -9,6 +9,7 @@ use App\Modules\Document\Application\DTOs\DocumentData;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentVehicleContext;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Services\CompanyConfigService;
 use App\Modules\Vehicle\Application\Services\VehicleContextBuilder;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -69,13 +70,35 @@ trait HandlesDocuments
     }
 
     /**
+     * Check if the Vehicle module is enabled for the current tenant.
+     */
+    protected function isVehicleModuleEnabled(): bool
+    {
+        $company = $this->getCompanyContext()->getCompany();
+        $tenant = $company?->tenant;
+        if ($tenant === null) {
+            return false;
+        }
+
+        /** @var CompanyConfigService $configService */
+        $configService = app(CompanyConfigService::class);
+
+        return $configService->getConfigForTenant($tenant)->hasModule('Vehicle');
+    }
+
+    /**
      * Get the default relations for eager loading documents.
      *
      * @return list<string>
      */
     protected function defaultRelations(): array
     {
-        return ['lines', 'vehicleContext'];
+        $relations = ['lines'];
+        if ($this->isVehicleModuleEnabled()) {
+            $relations[] = 'vehicleContext';
+        }
+
+        return $relations;
     }
 
     /**
@@ -85,7 +108,12 @@ trait HandlesDocuments
      */
     protected function detailRelations(): array
     {
-        return ['lines', 'allocations.payment.paymentMethod', 'vehicleContext'];
+        $relations = ['lines', 'allocations.payment.paymentMethod'];
+        if ($this->isVehicleModuleEnabled()) {
+            $relations[] = 'vehicleContext';
+        }
+
+        return $relations;
     }
 
     /**
@@ -161,7 +189,8 @@ trait HandlesDocuments
     protected function attachVehicleContext(
         Document $document,
         ?array $vehicleContextData,
-        bool $wasExplicitlyProvided = true
+        bool $wasExplicitlyProvided,
+        VehicleContextBuilder $vehicleContextBuilder
     ): void {
         // Only process if the field was actually provided in the request
         if (! $wasExplicitlyProvided) {
@@ -169,8 +198,6 @@ trait HandlesDocuments
         }
 
         if ($vehicleContextData !== null) {
-            $vehicleContextBuilder = app(VehicleContextBuilder::class);
-
             // Build authoritative context from vehicle_id
             $builtContext = $vehicleContextBuilder->buildFromVehicleId(
                 vehicleId: $vehicleContextData['vehicle_id'],
@@ -206,10 +233,9 @@ trait HandlesDocuments
         Document $document,
         array $vehicleContextData,
         string $tenantId,
-        string $companyId
+        string $companyId,
+        VehicleContextBuilder $vehicleContextBuilder
     ): void {
-        $vehicleContextBuilder = app(VehicleContextBuilder::class);
-
         // Build authoritative context from vehicle_id
         $builtContext = $vehicleContextBuilder->buildFromVehicleId(
             vehicleId: $vehicleContextData['vehicle_id'],

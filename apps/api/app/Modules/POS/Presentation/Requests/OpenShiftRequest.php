@@ -29,6 +29,7 @@ final class OpenShiftRequest extends FormRequest
         return [
             'terminal_code' => ['required', 'string', 'max:50', 'exists:pos_terminals,code'],
             'opening_cash' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'cashier_id' => ['nullable', 'uuid', 'exists:users,id'],
         ];
     }
 

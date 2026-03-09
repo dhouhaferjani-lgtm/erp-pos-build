@@ -34,10 +34,14 @@ class InventoryCountingService
     public function create(array $data, User $createdBy, string $companyId): InventoryCounting
     {
         return DB::transaction(function () use ($data, $createdBy, $companyId): InventoryCounting {
+            $countingNumber = $this->generateCountingNumber($companyId);
+
             /** @var InventoryCounting $counting */
             $counting = InventoryCounting::create([
                 'company_id' => $companyId,
                 'created_by_user_id' => $createdBy->id,
+                'tenant_id' => $createdBy->tenant_id ?? null,
+                'counting_number' => $countingNumber,
                 'scope_type' => $data['scope_type'],
                 'scope_filters' => $data['scope_filters'] ?? [],
                 'execution_mode' => $data['execution_mode'] ?? 'parallel',
@@ -77,7 +81,7 @@ class InventoryCountingService
     /**
      * Generate counting items based on scope.
      */
-    private function generateCountingItems(InventoryCounting $counting, string $companyId): void
+    public function generateCountingItems(InventoryCounting $counting, string $companyId): void
     {
         $stockLevels = $this->getStockLevelsForScope(
             $companyId,
@@ -195,6 +199,66 @@ class InventoryCountingService
                 'total_items' => 0, // Will be updated when 3rd count triggered
             ]);
         }
+    }
+
+    /**
+     * Activate a draft counting operation.
+     *
+     * Generates counting number, items, assignments, and transitions to active.
+     */
+    public function activateDraft(
+        InventoryCounting $counting,
+        string $companyId,
+        User $user,
+        bool $activateImmediately = true,
+    ): InventoryCounting {
+        if ($counting->status !== CountingStatus::Draft) {
+            throw new \InvalidArgumentException('Counting is not in draft status');
+        }
+
+        return DB::transaction(function () use ($counting, $companyId, $user, $activateImmediately): InventoryCounting {
+            // Generate counting number if not already set
+            if ($counting->counting_number === null) {
+                $counting->counting_number = $this->generateCountingNumber($companyId);
+            }
+
+            // Set tenant_id if not already set
+            if ($counting->tenant_id === null) {
+                $counting->tenant_id = $user->tenant_id ?? null;
+            }
+
+            $counting->save();
+
+            // Generate counting items from scope
+            $this->generateCountingItems($counting, $companyId);
+
+            // Create assignments
+            $this->createAssignments($counting);
+
+            if ($activateImmediately) {
+                $counting->transitionTo(CountingStatus::Count1InProgress);
+
+                $assignment = $counting->assignments()
+                    ->where('count_number', 1)
+                    ->first();
+                $assignment?->start();
+            } else {
+                $counting->transitionTo(CountingStatus::Scheduled);
+            }
+
+            // Record event
+            InventoryCountingEvent::create([
+                'counting_id' => $counting->id,
+                'event_type' => InventoryCountingEvent::COUNTING_ACTIVATED,
+                'event_data' => [
+                    'items_count' => $counting->items()->count(),
+                    'activate_immediately' => $activateImmediately,
+                ],
+                'user_id' => $user->id,
+            ]);
+
+            return $counting->fresh() ?? $counting;
+        });
     }
 
     /**
@@ -579,5 +643,29 @@ class InventoryCountingService
             completedBy: (string) $user->id,
             completedAt: now()->toIso8601String(),
         ));
+    }
+
+    /**
+     * Generate a sequential counting number in the format CNT-{YYYY}-{NNNN}.
+     *
+     * Resets yearly per company.
+     */
+    private function generateCountingNumber(string $companyId): string
+    {
+        $year = now()->year;
+        $prefix = "CNT-{$year}-";
+
+        $lastNumber = InventoryCounting::where('company_id', $companyId)
+            ->where('counting_number', 'like', "{$prefix}%")
+            ->lockForUpdate()
+            ->orderByDesc('counting_number')
+            ->value('counting_number');
+
+        $sequence = 1;
+        if ($lastNumber !== null) {
+            $sequence = (int) substr($lastNumber, strlen($prefix)) + 1;
+        }
+
+        return $prefix.str_pad((string) $sequence, 4, '0', STR_PAD_LEFT);
     }
 }

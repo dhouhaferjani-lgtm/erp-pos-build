@@ -5,9 +5,14 @@ declare(strict_types=1);
 namespace App\Modules\Product\Presentation\Requests;
 
 use App\Modules\Product\Domain\Enums\AgeRestriction;
+use App\Modules\Product\Domain\Enums\AutomotiveArticleStatus;
+use App\Modules\Product\Domain\Enums\BrandQualityTier;
+use App\Modules\Product\Domain\Enums\CrossReferenceType;
 use App\Modules\Product\Domain\Enums\DosageForm;
 use App\Modules\Product\Domain\Enums\ParapharmacyCategory;
+use App\Modules\Product\Domain\Enums\PlatformLinkStatus;
 use App\Modules\Product\Domain\Enums\ProductType;
+use App\Modules\Product\Domain\Enums\VehicleTypeRef;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Enum;
@@ -37,7 +42,8 @@ class CreateProductRequest extends FormRequest
                     ->where('tenant_id', $tenantId)
                     ->whereNull('deleted_at'),
             ],
-            'type' => ['required', new Enum(ProductType::class)],
+            'type' => ['nullable', new Enum(ProductType::class)],
+            'is_physical' => ['sometimes', 'boolean'],
             'description' => ['nullable', 'string', 'max:5000'],
             'sale_price' => ['nullable', 'numeric', 'min:0'],
             'purchase_price' => ['nullable', 'numeric', 'min:0'],
@@ -73,6 +79,48 @@ class CreateProductRequest extends FormRequest
             'parapharmacy_metadata.certifications.*.type' => ['required', 'string', 'max:100'],
             'parapharmacy_metadata.certifications.*.code' => ['nullable', 'string', 'max:100'],
             'parapharmacy_metadata.storage_requirements' => ['nullable', 'string', 'max:500'],
+
+            // Automotive metadata (vertical-specific)
+            'automotive_metadata' => ['sometimes', 'array'],
+            'automotive_metadata.platform_article_id' => ['nullable', 'uuid'],
+            'automotive_metadata.platform_link_status' => ['nullable', new Enum(PlatformLinkStatus::class)],
+            'automotive_metadata.article_number' => ['nullable', 'string', 'max:100'],
+            'automotive_metadata.supplier_brand' => ['nullable', 'string', 'max:200'],
+            'automotive_metadata.product_group_name' => ['nullable', 'string', 'max:200'],
+            'automotive_metadata.brand_quality_tier' => ['nullable', new Enum(BrandQualityTier::class)],
+            'automotive_metadata.article_status' => ['nullable', new Enum(AutomotiveArticleStatus::class)],
+            'automotive_metadata.confidence_score' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'automotive_metadata.data_source' => ['nullable', 'string', 'max:50'],
+            'automotive_metadata.weight_kg' => ['nullable', 'numeric', 'min:0'],
+            'automotive_metadata.dimensions' => ['nullable', 'array'],
+            'automotive_metadata.superseded_by_product_id' => ['nullable', 'uuid'],
+            'automotive_metadata.is_universal_fit' => ['sometimes', 'boolean'],
+            'automotive_metadata.notes' => ['nullable', 'string', 'max:5000'],
+            'automotive_metadata.tire_width' => ['nullable', 'integer', 'min:100', 'max:400'],
+            'automotive_metadata.tire_aspect_ratio' => ['nullable', 'integer', 'min:20', 'max:90'],
+            'automotive_metadata.tire_rim_diameter' => ['nullable', 'integer', 'min:10', 'max:30'],
+            'automotive_metadata.tire_speed_rating' => ['nullable', 'string', 'max:5'],
+            'automotive_metadata.tire_load_index' => ['nullable', 'integer', 'min:50', 'max:200'],
+            'automotive_metadata.tire_season' => ['nullable', 'string', 'max:20'],
+            'automotive_metadata.glass_type' => ['nullable', 'string', 'max:50'],
+            'automotive_metadata.glass_tinting' => ['nullable', 'string', 'max:20'],
+            'automotive_metadata.cross_references' => ['nullable', 'array'],
+            'automotive_metadata.cross_references.*.reference_type' => ['required', new Enum(CrossReferenceType::class)],
+            'automotive_metadata.cross_references.*.reference_number' => ['required', 'string', 'max:200'],
+            'automotive_metadata.cross_references.*.manufacturer_name' => ['nullable', 'string', 'max:200'],
+            'automotive_metadata.vehicles' => ['nullable', 'array'],
+            'automotive_metadata.vehicles.*.vehicle_type' => ['required', new Enum(VehicleTypeRef::class)],
+            'automotive_metadata.vehicles.*.vehicle_display' => ['required', 'string', 'max:500'],
+            'automotive_metadata.vehicles.*.platform_vehicle_id' => ['nullable', 'uuid'],
+            'automotive_metadata.vehicles.*.year_from' => ['nullable', 'integer', 'min:1900', 'max:2100'],
+            'automotive_metadata.vehicles.*.year_to' => ['nullable', 'integer', 'min:1900', 'max:2100'],
+            'automotive_metadata.vehicles.*.notes' => ['nullable', 'string', 'max:500'],
+            'automotive_metadata.criteria' => ['nullable', 'array'],
+            'automotive_metadata.criteria.*.criteria_key' => ['required', 'string', 'max:100'],
+            'automotive_metadata.criteria.*.criteria_label' => ['required', 'string', 'max:200'],
+            'automotive_metadata.criteria.*.value' => ['required', 'string', 'max:500'],
+            'automotive_metadata.criteria.*.unit' => ['nullable', 'string', 'max:20'],
+            'automotive_metadata.criteria.*.sort_order' => ['nullable', 'integer', 'min:0'],
         ];
     }
 }

@@ -70,9 +70,9 @@ export function CreditNoteDetailPage() {
     },
   })
 
-  const handleDownloadPdf = useDownloadPdf()
-  const handlePreviewPdf = usePreviewPdf()
-  const handlePrintPdf = usePrintPdf()
+  const downloadPdfMutation = useDownloadPdf()
+  const previewPdfMutation = usePreviewPdf()
+  const printPdfMutation = usePrintPdf()
   const sendEmailMutation = useSendDocumentEmail()
 
   const handleSendEmail = async () => {
@@ -154,9 +154,12 @@ export function CreditNoteDetailPage() {
             isActionPending={confirmMutation.isPending || postMutation.isPending}
             onConfirm={() => setConfirmAction('confirm')}
             onPost={() => setConfirmAction('post')}
-            onDownloadPdf={() => handleDownloadPdf(creditNote.id, creditNote.document_number)}
-            onPreviewPdf={() => handlePreviewPdf(creditNote.id)}
-            onPrintPdf={() => handlePrintPdf(creditNote.id)}
+            onDownloadPdf={() => downloadPdfMutation.mutate(creditNote.id)}
+            onPreviewPdf={() => previewPdfMutation.mutate(creditNote.id)}
+            onPrintPdf={() => printPdfMutation.mutate(creditNote.id)}
+            isDownloading={downloadPdfMutation.isPending}
+            isPreviewing={previewPdfMutation.isPending}
+            isPrinting={printPdfMutation.isPending}
             onSendEmail={() => {
               setEmailForm({
                 ...emailForm,

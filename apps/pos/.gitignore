@@ -1,0 +1,10 @@
+# Rust build artifacts
+src-tauri/target/
+
+# Node
+node_modules/
+dist/
+
+# Environment
+.env
+.env.local

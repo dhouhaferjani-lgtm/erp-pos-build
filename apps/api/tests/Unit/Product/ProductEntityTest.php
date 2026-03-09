@@ -55,7 +55,6 @@ class ProductEntityTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Test Product',
             'sku' => 'TST-001',
-            'type' => ProductType::Part,
         ]);
 
         $this->assertIsString($product->id);
@@ -72,14 +71,25 @@ class ProductEntityTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Test Product',
             'sku' => 'TST-001',
-            'type' => ProductType::Part,
         ]);
 
         $this->assertEquals($this->tenant->id, $product->tenant_id);
         $this->assertEquals($this->tenant->id, $product->tenant->id);
     }
 
-    public function test_product_type_is_enum(): void
+    public function test_product_type_is_nullable(): void
+    {
+        $product = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Test Product',
+            'sku' => 'TST-001',
+        ]);
+
+        $this->assertNull($product->type);
+    }
+
+    public function test_product_type_can_be_set_to_enum_value(): void
     {
         $product = Product::create([
             'tenant_id' => $this->tenant->id,
@@ -93,45 +103,33 @@ class ProductEntityTest extends TestCase
         $this->assertEquals(ProductType::Part, $product->type);
     }
 
-    public function test_product_can_be_part(): void
+    public function test_product_defaults_to_physical(): void
     {
         $product = Product::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
-            'name' => 'Part Product',
-            'sku' => 'PRT-001',
-            'type' => ProductType::Part,
+            'name' => 'Default Product',
+            'sku' => 'DEF-001',
         ]);
 
-        $this->assertTrue($product->isPart());
-        $this->assertFalse($product->isService());
+        $this->assertTrue($product->is_physical);
+        $this->assertTrue($product->isPhysical());
+        $this->assertTrue($product->isStockTracked());
     }
 
-    public function test_product_can_be_service(): void
+    public function test_product_can_be_non_physical(): void
     {
         $product = Product::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
-            'name' => 'Service Product',
-            'sku' => 'SVC-001',
-            'type' => ProductType::Service,
+            'name' => 'Digital Product',
+            'sku' => 'DIG-001',
+            'is_physical' => false,
         ]);
 
-        $this->assertFalse($product->isPart());
-        $this->assertTrue($product->isService());
-    }
-
-    public function test_product_can_be_consumable(): void
-    {
-        $product = Product::create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'name' => 'Consumable Product',
-            'sku' => 'CON-001',
-            'type' => ProductType::Consumable,
-        ]);
-
-        $this->assertTrue($product->isConsumable());
+        $this->assertFalse($product->is_physical);
+        $this->assertFalse($product->isPhysical());
+        $this->assertFalse($product->isStockTracked());
     }
 
     public function test_product_has_fillable_fields(): void
@@ -141,7 +139,6 @@ class ProductEntityTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Full Product',
             'sku' => 'FUL-001',
-            'type' => ProductType::Part,
             'description' => 'A complete product description',
             'sale_price' => '99.99',
             'purchase_price' => '50.00',
@@ -149,6 +146,7 @@ class ProductEntityTest extends TestCase
             'unit' => 'piece',
             'barcode' => '1234567890123',
             'is_active' => true,
+            'is_physical' => true,
         ]);
 
         $this->assertEquals('Full Product', $product->name);
@@ -160,6 +158,7 @@ class ProductEntityTest extends TestCase
         $this->assertEquals('piece', $product->unit);
         $this->assertEquals('1234567890123', $product->barcode);
         $this->assertTrue($product->is_active);
+        $this->assertTrue($product->is_physical);
     }
 
     public function test_product_uses_soft_deletes(): void
@@ -169,7 +168,6 @@ class ProductEntityTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Delete Me',
             'sku' => 'DEL-001',
-            'type' => ProductType::Part,
         ]);
 
         $productId = $product->id;
@@ -186,7 +184,6 @@ class ProductEntityTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'OEM Product',
             'sku' => 'OEM-001',
-            'type' => ProductType::Part,
             'oem_numbers' => ['OEM123', 'OEM456', 'OEM789'],
         ]);
 
@@ -207,7 +204,6 @@ class ProductEntityTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Cross Ref Product',
             'sku' => 'CRF-001',
-            'type' => ProductType::Part,
             'cross_references' => $crossRefs,
         ]);
 
@@ -223,7 +219,6 @@ class ProductEntityTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Default Active Product',
             'sku' => 'DEF-001',
-            'type' => ProductType::Part,
         ]);
 
         $this->assertTrue($product->is_active);
@@ -236,7 +231,6 @@ class ProductEntityTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Active Product',
             'sku' => 'ACT-001',
-            'type' => ProductType::Part,
             'is_active' => true,
         ]);
 
@@ -245,7 +239,6 @@ class ProductEntityTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Inactive Product',
             'sku' => 'INA-001',
-            'type' => ProductType::Part,
             'is_active' => false,
         ]);
 
@@ -255,49 +248,45 @@ class ProductEntityTest extends TestCase
         $this->assertEquals('Active Product', $activeProducts->first()->name);
     }
 
-    public function test_product_scope_parts(): void
+    public function test_is_physical_controls_stock_tracking(): void
     {
-        Product::create([
+        $physicalProduct = Product::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
-            'name' => 'Part',
-            'sku' => 'PRT-001',
-            'type' => ProductType::Part,
+            'name' => 'Physical Product',
+            'sku' => 'PHY-001',
+            'is_physical' => true,
         ]);
 
-        Product::create([
+        $nonPhysicalProduct = Product::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
-            'name' => 'Service',
-            'sku' => 'SVC-001',
-            'type' => ProductType::Service,
+            'name' => 'Non-Physical Product',
+            'sku' => 'NPH-001',
+            'is_physical' => false,
         ]);
 
-        $parts = Product::parts()->get();
-
-        $this->assertCount(1, $parts);
+        $this->assertTrue($physicalProduct->isStockTracked());
+        $this->assertFalse($nonPhysicalProduct->isStockTracked());
     }
 
-    public function test_product_scope_services(): void
+    public function test_sellable_contract_implementation(): void
     {
-        Product::create([
+        $product = Product::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
-            'name' => 'Part',
-            'sku' => 'PRT-001',
-            'type' => ProductType::Part,
+            'name' => 'Sellable Product',
+            'sku' => 'SLL-001',
+            'sale_price' => '29.99',
+            'unit' => 'piece',
+            'is_physical' => true,
         ]);
 
-        Product::create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'name' => 'Service',
-            'sku' => 'SVC-001',
-            'type' => ProductType::Service,
-        ]);
-
-        $services = Product::services()->get();
-
-        $this->assertCount(1, $services);
+        $this->assertEquals($product->id, $product->getSellableId());
+        $this->assertEquals('product', $product->getSellableType());
+        $this->assertEquals('Sellable Product', $product->getSellableName());
+        $this->assertEquals('29.99', $product->getSellableBasePrice());
+        $this->assertEquals('piece', $product->getSellableUnit());
+        $this->assertTrue($product->isAvailable());
     }
 }

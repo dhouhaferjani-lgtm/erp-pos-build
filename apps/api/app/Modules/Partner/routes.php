@@ -40,4 +40,8 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('partners/{partner}/tax-status', [PartnerController::class, 'taxStatus'])
         ->middleware('can:partners.view')
         ->name('partners.tax-status');
+
+    Route::get('partners/{partner}/contacts', [PartnerController::class, 'contacts'])
+        ->middleware('can:partners.view')
+        ->name('partners.contacts');
 });

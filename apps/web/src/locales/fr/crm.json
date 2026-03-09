@@ -1,0 +1,62 @@
+{
+  "title": "CRM",
+  "companies": {
+    "title": "Entreprises",
+    "name": "Nom de l'entreprise",
+    "code": "Code",
+    "vatNumber": "Numéro TVA",
+    "phone": "Téléphone",
+    "email": "Email",
+    "primaryContact": "Contact principal",
+    "balance": "Solde",
+    "noCompanies": "Aucune entreprise trouvée"
+  },
+  "contacts": {
+    "title": "Contacts",
+    "firstName": "Prénom",
+    "lastName": "Nom",
+    "fullName": "Nom complet",
+    "email": "Email",
+    "phone": "Téléphone",
+    "mobile": "Mobile",
+    "dateOfBirth": "Date de naissance",
+    "gender": "Genre",
+    "nationalId": "Numéro d'identité",
+    "notes": "Notes",
+    "company": "Entreprise",
+    "jobTitle": "Fonction",
+    "department": "Département",
+    "isPrimary": "Contact principal",
+    "isActive": "Actif",
+    "newContact": "Nouveau contact",
+    "editContact": "Modifier le contact",
+    "contactDetails": "Détails du contact",
+    "personalInfo": "Informations personnelles",
+    "companyAssociations": "Associations entreprises",
+    "linkCompany": "Lier une entreprise",
+    "unlinkCompany": "Délier l'entreprise",
+    "noContacts": "Aucun contact trouvé",
+    "createSuccess": "Contact créé avec succès",
+    "updateSuccess": "Contact mis à jour avec succès",
+    "deleteSuccess": "Contact supprimé avec succès",
+    "deleteConfirm": "Êtes-vous sûr de vouloir supprimer ce contact ?",
+    "genders": {
+      "male": "Homme",
+      "female": "Femme",
+      "other": "Autre"
+    },
+    "filters": {
+      "hasCompany": "A une entreprise",
+      "standalone": "Indépendant",
+      "all": "Tous",
+      "active": "Actif",
+      "inactive": "Inactif"
+    },
+    "tabs": {
+      "overview": "Aperçu",
+      "companies": "Entreprises",
+      "loyalty": "Fidélité",
+      "receipts": "Historique des reçus"
+    }
+  }
+}

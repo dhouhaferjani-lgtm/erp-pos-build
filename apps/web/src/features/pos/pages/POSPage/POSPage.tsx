@@ -1,16 +1,21 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { ProductGrid, TransactionCart, Calculator } from '../../organisms'
+import { ModifierSelectionModal } from '../../organisms/ModifierSelectionModal'
 import { POSLayout } from '../../layouts'
 import type { Product } from '../../molecules'
 import type { Customer } from '../../organisms/TransactionCart'
-import type { CartItem } from '../../molecules/CartLineItem'
+import type { CartItem, SelectedModifier } from '../../molecules/CartLineItem'
 import { useCurrency } from '@/hooks/useCurrency'
+import { useBarcodeScanner } from '../../hooks/useBarcodeScanner'
+import { ConsumptionModeToggle, type ConsumptionMode } from '../../atoms/ConsumptionModeToggle/ConsumptionModeToggle'
+import { toast } from 'sonner'
 
 export interface POSPageProps {
   products: Product[]
+  categories?: string[]
   onQuickCheckout: (items: CartItem[]) => void
   onAdvancedPayments: (items: CartItem[]) => void
   onProductInfo: (product: Product) => void
@@ -25,10 +30,13 @@ export interface POSPageProps {
   onEditLineDiscount?: (productId: string, discount: { type: 'percentage' | 'fixed'; value: string; reason?: string } | undefined) => void
   loyaltyMember?: import('../../api/loyaltyApi').LoyaltyMember | null
   loyaltyEnrollment?: import('../../api/loyaltyApi').LoyaltyEnrollment | null
+  consumptionMode?: ConsumptionMode
+  onConsumptionModeChange?: (mode: ConsumptionMode) => void
 }
 
 export function POSPage({
   products,
+  categories,
   onQuickCheckout,
   onAdvancedPayments,
   onProductInfo,
@@ -43,13 +51,16 @@ export function POSPage({
   onEditLineDiscount: externalEditLineDiscount,
   loyaltyMember,
   loyaltyEnrollment,
+  consumptionMode,
+  onConsumptionModeChange,
 }: POSPageProps) {
-  const { t } = useTranslation(['common'])
+  const { t } = useTranslation(['common', 'pos'])
   const navigate = useNavigate()
   const { decimals } = useCurrency()
   const [cartItems, setCartItems] = useState<CartItem[]>([])
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false)
   const [screenWidth, setScreenWidth] = useState(window.innerWidth)
+  const [modifierProduct, setModifierProduct] = useState<Product | null>(null)
 
   // Responsive breakpoint: stack vertically on tablets < 768px
   const isNarrowScreen = screenWidth < 768
@@ -90,56 +101,124 @@ export function POSPage({
     return cartItems.map((item) => item.product.id)
   }, [cartItems])
 
-  // Add product to cart
-  const handleAddToCart = (product: Product) => {
-    setCartItems((prev) => {
-      const existing = prev.find((item) => item.product.id === product.id)
-      if (existing) {
-        // Increment quantity, recalculate discount if percentage-based
-        return prev.map((item): CartItem => {
-          if (item.product.id !== product.id) return item
+  // Add item to cart (internal — no modifier check)
+  const addItemToCart = useCallback(
+    (product: Product, selectedModifiers?: SelectedModifier[]) => {
+      setCartItems((prev) => {
+        // For items with modifiers, always add a new line (different modifier combos)
+        const hasModifiers = selectedModifiers && selectedModifiers.length > 0
+        const existing = hasModifiers
+          ? undefined
+          : prev.find((item) => item.product.id === product.id && !item.product.selectedModifiers?.length)
 
-          const newQty = item.quantity + 1
-          const grossTotal = parseFloat(item.unit_price) * newQty
-          let discountAmount = 0
+        if (existing) {
+          // Increment quantity, recalculate discount if percentage-based
+          return prev.map((item): CartItem => {
+            if (item.product.id !== product.id || item.product.selectedModifiers?.length) return item
 
-          if (item.discount_type === 'percentage' && item.discount_percent) {
-            discountAmount = (grossTotal * parseFloat(item.discount_percent)) / 100
-          } else if (item.discount_amount && item.discount_type === 'fixed') {
-            discountAmount = parseFloat(item.discount_amount)
+            const newQty = item.quantity + 1
+            const grossTotal = parseFloat(item.unit_price) * newQty
+            let discountAmount = 0
+
+            if (item.discount_type === 'percentage' && item.discount_percent) {
+              discountAmount = (grossTotal * parseFloat(item.discount_percent)) / 100
+            } else if (item.discount_amount && item.discount_type === 'fixed') {
+              discountAmount = parseFloat(item.discount_amount)
+            }
+
+            const lineTotal = Math.max(0, grossTotal - discountAmount)
+
+            return {
+              ...item,
+              quantity: newQty,
+              ...(item.discount_type === 'percentage' ? { discount_amount: discountAmount.toFixed(decimals) } : {}),
+              line_total: lineTotal.toFixed(decimals),
+            }
+          })
+        } else {
+          // Add new item
+          const basePrice = parseFloat(product.sale_price || '0')
+          const modifierAdjustment = hasModifiers
+            ? selectedModifiers.reduce((sum, m) => sum + parseFloat(m.price_adjustment), 0)
+            : 0
+          const unitPrice = basePrice + modifierAdjustment
+          const priceValue = unitPrice.toFixed(decimals)
+
+          const cartProduct: CartItem['product'] = {
+            id: product.id,
+            name: product.name,
+            sku: product.sku,
+            price: priceValue,
+          }
+          if (product.sellableType) {
+            cartProduct.sellableType = product.sellableType
+          }
+          if (hasModifiers) {
+            cartProduct.selectedModifiers = selectedModifiers
           }
 
-          const lineTotal = Math.max(0, grossTotal - discountAmount)
+          return [
+            ...prev,
+            {
+              id: `cart-${Date.now()}-${product.id}`,
+              product: cartProduct,
+              quantity: 1,
+              unit_price: priceValue,
+              line_total: unitPrice.toFixed(decimals),
+              tax_amount: (0).toFixed(decimals),
+            } satisfies CartItem,
+          ]
+        }
+      })
+    },
+    [decimals],
+  )
 
-          return {
-            ...item,
-            quantity: newQty,
-            ...(item.discount_type === 'percentage' ? { discount_amount: discountAmount.toFixed(decimals) } : {}),
-            line_total: lineTotal.toFixed(decimals),
-          }
-        })
+  // Barcode scanner: look up product by barcode or SKU, auto-add to cart
+  const handleBarcodeScan = useCallback(
+    (barcode: string) => {
+      const code = barcode.trim()
+      // Match by barcode (exact) or SKU (exact, case-insensitive)
+      const matches = products.filter(
+        (p) =>
+          (p.barcode && p.barcode === code) ||
+          p.sku.toLowerCase() === code.toLowerCase()
+      )
+
+      if (matches.length === 1) {
+        addItemToCart(matches[0])
+        toast.success(t('pos:barcode.productAdded', { name: matches[0].name }))
+      } else if (matches.length === 0) {
+        toast.error(t('pos:barcode.productNotFound', { code }))
       } else {
-        // Add new item
-        const priceValue = product.sale_price || '0'
-        const unitPrice = parseFloat(priceValue)
-        return [
-          ...prev,
-          {
-            id: `cart-${Date.now()}-${product.id}`,
-            product: {
-              id: product.id,
-              name: product.name,
-              sku: product.sku,
-              price: priceValue,
-            },
-            quantity: 1,
-            unit_price: priceValue,
-            line_total: unitPrice.toFixed(decimals),
-            tax_amount: (0).toFixed(decimals),
-          },
-        ]
+        // Multiple matches — unlikely but handled
+        toast.warning(t('pos:barcode.multipleMatches', { code }))
       }
-    })
+    },
+    [products, addItemToCart, t],
+  )
+
+  useBarcodeScanner({
+    onScan: handleBarcodeScan,
+    enabled: !isLoading,
+  })
+
+  // Add product to cart — always adds standard version (no modifiers)
+  const handleAddToCart = (product: Product) => {
+    addItemToCart(product)
+  }
+
+  // Open modifier modal for customization
+  const handleCustomizeProduct = (product: Product) => {
+    setModifierProduct(product)
+  }
+
+  // Handle modifier modal confirm
+  const handleModifierConfirm = (selectedModifiers: SelectedModifier[]) => {
+    if (modifierProduct) {
+      addItemToCart(modifierProduct, selectedModifiers)
+      setModifierProduct(null)
+    }
   }
 
   // Update cart item quantity
@@ -278,10 +357,22 @@ export function POSPage({
             isNarrowScreen ? 'h-1/2' : 'flex-[3]'
           )}
         >
+          {/* Consumption Mode Toggle (F&B only) */}
+          {consumptionMode && onConsumptionModeChange && (
+            <div className="mb-4">
+              <ConsumptionModeToggle
+                value={consumptionMode}
+                onChange={onConsumptionModeChange}
+              />
+            </div>
+          )}
+
           <ProductGrid
             products={products}
+            {...(categories ? { categories } : {})}
             onAddToCart={handleAddToCart}
             onShowProductInfo={onProductInfo}
+            onCustomize={handleCustomizeProduct}
             cartProductIds={cartProductIds}
             touchOptimized={touchOptimized}
           />
@@ -320,6 +411,16 @@ export function POSPage({
           onClose={() => setIsCalculatorOpen(false)}
           touchOptimized={touchOptimized}
         />
+
+        {/* Modifier Selection Modal */}
+        {modifierProduct && (
+          <ModifierSelectionModal
+            isOpen={!!modifierProduct}
+            onClose={() => setModifierProduct(null)}
+            product={modifierProduct}
+            onConfirm={handleModifierConfirm}
+          />
+        )}
       </div>
     </POSLayout>
   )

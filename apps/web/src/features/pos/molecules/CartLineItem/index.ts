@@ -1,1 +1,1 @@
-export { CartLineItem, type CartLineItemProps, type CartItem } from './CartLineItem'
+export { CartLineItem, type CartLineItemProps, type CartItem, type SelectedModifier } from './CartLineItem'

@@ -32,3 +32,16 @@ Broadcast::channel('tenant.{tenantId}.company.{companyId}.product.{productId}', 
 Broadcast::channel('tenant.{tenantId}.company.{companyId}.imports', function (User $user, string $tenantId, string $companyId) {
     return $user->canAccessImportChannel($tenantId, $companyId);
 });
+
+/**
+ * POS Terminal Activation Channel
+ *
+ * Private channel for real-time terminal activation notifications.
+ * Authorization ensures users can only subscribe to terminals in their tenant and company.
+ *
+ * Channel pattern: private-tenant.{tenantId}.company.{companyId}.pos.terminal.{terminalId}
+ * Event: terminal.activated
+ */
+Broadcast::channel('tenant.{tenantId}.company.{companyId}.pos.terminal.{terminalId}', function (User $user, string $tenantId, string $companyId) {
+    return $user->canAccessImportChannel($tenantId, $companyId);
+});

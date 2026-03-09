@@ -80,4 +80,22 @@ return [
         'sandbox' => env('KONNECT_SANDBOX', true),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Syneriva Platform Integration
+    |--------------------------------------------------------------------------
+    */
+
+    'platform' => [
+        'url' => env('SYNERIVA_PLATFORM_URL', 'http://localhost:8080'),
+        'api_key' => env('SYNERIVA_PLATFORM_API_KEY'),
+    ],
+
+    'vin_decoder' => [
+        'default_provider' => env('VIN_DECODER_PROVIDER', 'vindecoder_eu'),
+        'api_key' => env('VIN_DECODER_API_KEY'),
+        'base_url' => env('VIN_DECODER_URL', 'https://api.vindecoder.eu/3.2'),
+        'cache_ttl' => (int) env('VIN_DECODER_CACHE_TTL', 86400),
+    ],
+
 ];

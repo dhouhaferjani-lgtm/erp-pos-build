@@ -256,7 +256,7 @@ export function ModifierGroupFormPage() {
                   <tr key={mod.id}>
                     <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">{mod.code}</td>
                     <td className="whitespace-nowrap px-3 py-4 text-sm">
-                      <input
+                      <Input
                         type="text"
                         defaultValue={mod.name}
                         onBlur={(e) => {
@@ -264,11 +264,11 @@ export function ModifierGroupFormPage() {
                             handleUpdateModifier(mod.id, 'name', e.target.value)
                           }
                         }}
-                        className="w-32 rounded-md border-gray-300 text-sm"
+                        className="!mt-0 w-32"
                       />
                     </td>
                     <td className="whitespace-nowrap px-3 py-4 text-sm">
-                      <input
+                      <Input
                         type="number"
                         step="0.01"
                         defaultValue={mod.price_adjustment}
@@ -277,7 +277,7 @@ export function ModifierGroupFormPage() {
                             handleUpdateModifier(mod.id, 'price_adjustment', e.target.value)
                           }
                         }}
-                        className="w-24 rounded-md border-gray-300 text-sm"
+                        className="!mt-0 w-24"
                       />
                     </td>
                     <td className="whitespace-nowrap px-3 py-4 text-sm">
@@ -297,66 +297,70 @@ export function ModifierGroupFormPage() {
                           className="min-w-[160px]"
                         />
                         {mod.component_id && (
-                          <input
+                          <Input
                             type="number"
                             step="0.01"
                             min="0"
                             defaultValue={mod.component_quantity ?? ''}
                             onBlur={(e) => handleUpdateModifier(mod.id, 'component_quantity', e.target.value)}
-                            className="w-20 rounded-md border-gray-300 text-sm"
+                            className="!mt-0 w-20"
                             placeholder={t('catalog:quantity')}
                           />
                         )}
                       </div>
                     </td>
                     <td className="whitespace-nowrap px-3 py-4 text-sm">
-                      <button
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => handleDeleteModifier(mod.id)}
-                        className="text-red-600 hover:text-red-900"
+                        className="!p-1 text-red-600 hover:text-red-900 hover:bg-red-50"
                       >
                         <Trash2 className="h-4 w-4" />
-                      </button>
+                      </Button>
                     </td>
                   </tr>
                 ))}
                 <tr className="bg-gray-50">
                   <td className="px-3 py-4">
-                    <input
+                    <Input
                       type="text"
                       placeholder={t('catalog:code')}
                       value={newModifier.code}
                       onChange={(e) => setNewModifier({ ...newModifier, code: e.target.value })}
-                      className="w-24 rounded-md border-gray-300 text-sm"
+                      className="!mt-0 w-24"
                     />
                   </td>
                   <td className="px-3 py-4">
-                    <input
+                    <Input
                       type="text"
                       placeholder={t('catalog:name')}
                       value={newModifier.name}
                       onChange={(e) => setNewModifier({ ...newModifier, name: e.target.value })}
-                      className="w-32 rounded-md border-gray-300 text-sm"
+                      className="!mt-0 w-32"
                     />
                   </td>
                   <td className="px-3 py-4">
-                    <input
+                    <Input
                       type="number"
                       step="0.01"
                       value={newModifier.price_adjustment}
                       onChange={(e) => setNewModifier({ ...newModifier, price_adjustment: e.target.value })}
-                      className="w-24 rounded-md border-gray-300 text-sm"
+                      className="!mt-0 w-24"
                     />
                   </td>
                   <td className="px-3 py-4">-</td>
                   <td className="px-3 py-4">-</td>
                   <td className="px-3 py-4">
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={handleAddModifier}
                       disabled={!newModifier.code || !newModifier.name || createModifierMutation.isPending}
-                      className="text-indigo-600 hover:text-indigo-900 disabled:opacity-50"
+                      className="!p-1 text-blue-600 hover:text-blue-700"
                     >
                       <Plus className="h-4 w-4" />
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               </tbody>

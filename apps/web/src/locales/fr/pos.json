@@ -42,7 +42,13 @@
     "tapToSelect": "Sélectionnez un moyen de paiement",
     "addPaymentButton": "Ajouter le Paiement",
     "addedPayments": "Paiements Ajoutés",
-    "noPaymentsAdded": "Aucun paiement ajouté"
+    "noPaymentsAdded": "Aucun paiement ajouté",
+    "changeWarning": "La monnaie est limitée à {{amount}} {{currency}} (espèces/carte versées)",
+    "fullCreditRequired": "La totalité du surpaiement sera ajoutée au crédit client",
+    "changePortion": "Monnaie (espèces)",
+    "creditPortion": "Crédit client",
+    "changeExplanation": "La monnaie ne peut pas dépasser le montant payé en espèces ou par carte",
+    "noImmediatePayment": "Aucun moyen de paiement immédiat pour rendre la monnaie"
   },
   "payment": {
     "success": "Paiement Réussi!",
@@ -100,10 +106,20 @@
     "transactionDiscount": "Remise sur Commande",
     "discountAmount": "Montant de la Remise",
     "addDiscount": "Ajouter une Remise",
-    "currentDiscount": "Actuel"
+    "currentDiscount": "Actuel",
+    "selectCustomer": "Sélectionner un Client",
+    "clearCustomer": "Retirer le Client",
+    "customerSelected": "Confirmer",
+    "quickAddCustomer": "Ajout Rapide Client",
+    "customerName": "Nom",
+    "customerPhone": "Téléphone",
+    "customerEmail": "Email",
+    "customerNameRequired": "Le nom du client est requis",
+    "customerCreated": "Client \"{{name}}\" créé",
+    "customerCreateFailed": "Échec de la création du client"
   },
   "products": {
-    "searchPlaceholder": "Rechercher des produits...",
+    "searchPlaceholder": "Rechercher par nom, SKU ou code-barres...",
     "loading": "Chargement des produits...",
     "empty": "Aucun produit disponible",
     "notFound": "Aucun produit trouvé",
@@ -208,17 +224,50 @@
     "zNumber": "Z #",
     "date": "Date",
     "shift": "Poste",
+    "terminal": "Terminal",
     "generatedBy": "Généré par",
     "totalSales": "Ventes totales",
+    "grossSales": "Ventes brutes",
+    "netSales": "Ventes nettes",
     "taxCollected": "Taxes collectées",
     "receiptCount": "Tickets",
+    "variance": "Écart",
     "verifyChain": "Vérifier la chaîne",
     "chainValid": "La chaîne de hachage est valide",
     "chainInvalid": "Erreur d'intégrité de la chaîne de hachage détectée",
+    "chainBrokenAt": "Chaîne de hachage rompue au Z-{{zNumber}}",
     "verifying": "Vérification...",
     "selectTerminal": "Sélectionnez un terminal pour voir les rapports Z",
     "noReports": "Aucun rapport Z trouvé",
-    "noReportsDescription": "Aucun rapport Z n'existe encore pour ce terminal."
+    "noReportsDescription": "Aucun rapport Z n'existe encore pour ce terminal.",
+    "loadError": "Échec du chargement du rapport Z",
+    "print": "Imprimer",
+    "detailTitle": "Rapport Z {{zNumber}}",
+    "filters": {
+      "from": "Du",
+      "to": "Au"
+    },
+    "detail": {
+      "salesSummary": "Résumé des Ventes",
+      "cashSummary": "Résumé de Caisse",
+      "vatBreakdown": "Ventilation TVA",
+      "paymentMethods": "Moyens de Paiement",
+      "fiscalHash": "Chaîne de Hachage Fiscale",
+      "receiptCount": "Nombre de Tickets",
+      "grossSales": "Ventes Brutes",
+      "netSales": "Ventes Nettes",
+      "taxAmount": "Montant des Taxes",
+      "refundsCount": "Remboursements",
+      "refundsAmount": "Montant des Remboursements",
+      "voidedCount": "Tickets Annulés",
+      "openingCash": "Fond de Caisse",
+      "expectedCash": "Espèces Attendues",
+      "actualCash": "Espèces Réelles",
+      "variance": "Écart",
+      "currentHash": "Hachage Actuel",
+      "previousHash": "Hachage Précédent",
+      "genesisReport": "Ceci est le premier rapport Z (genèse) pour ce terminal"
+    }
   },
   "receiptSearch": {
     "title": "Tickets",
@@ -260,6 +309,26 @@
     "receiptCreationFailed": "Échec de la création du ticket",
     "paymentProcessingFailed": "Échec du traitement du paiement",
     "invalidPaymentData": "Données de paiement invalides - veuillez vérifier tous les champs"
+  },
+  "xReport": {
+    "title": "Rapport X",
+    "generatedAt": "Généré le",
+    "salesSummary": "Résumé des Ventes",
+    "salesCount": "Nombre de Ventes",
+    "grossSales": "Ventes Brutes",
+    "netSales": "Ventes Nettes",
+    "taxAmount": "Montant des Taxes",
+    "refundsCount": "Nombre de Remboursements",
+    "vatBreakdown": "Ventilation TVA",
+    "rate": "Taux",
+    "net": "HT",
+    "vat": "TVA",
+    "gross": "TTC",
+    "paymentMethods": "Moyens de Paiement",
+    "method": "Méthode",
+    "count": "Nombre",
+    "amount": "Montant",
+    "print": "Imprimer"
   },
   "shiftDashboard": {
     "shiftNumber": "Caisse #{{number}}",
@@ -325,5 +394,45 @@
       "notFound": "Aucun programme de fidélité trouvé",
       "enroll": "Inscrire au programme fidélité"
     }
+  },
+  "consumptionMode": {
+    "label": "Mode de Consommation",
+    "dineIn": "Sur Place",
+    "takeout": "À Emporter"
+  },
+  "barcode": {
+    "productNotFound": "Produit non trouvé : {{code}}",
+    "productAdded": "{{name}} ajouté au panier",
+    "multipleMatches": "Plusieurs produits correspondent au code-barres : {{code}}"
+  },
+  "modifiers": {
+    "selectOptions": "Choisir les Options",
+    "required": "Obligatoire",
+    "addToCart": "Ajouter au Panier",
+    "basePrice": "Prix de Base",
+    "selectUpTo": "Sélectionnez jusqu'à {{max}}"
+  },
+  "returns": {
+    "title": "Traiter un Retour",
+    "returnButton": "Retour",
+    "returnLabel": "Retour",
+    "originalReceipt": "Ticket Original",
+    "reason": "Motif du Retour",
+    "reasons": {
+      "defective": "Produit Défectueux",
+      "wrong_item": "Mauvais Article",
+      "customer_changed_mind": "Le Client a Changé d'Avis",
+      "other": "Autre"
+    },
+    "selectItems": "Sélectionner les articles à retourner",
+    "qty": "Qté",
+    "notes": "Notes (optionnel)",
+    "notesPlaceholder": "Ajoutez des notes supplémentaires sur ce retour...",
+    "refundSummary": "Récapitulatif du Remboursement",
+    "itemCount": "{{count}} article(s) sélectionné(s)",
+    "processReturn": "Traiter le Retour",
+    "success": "Retour traité avec succès",
+    "error": "Échec du traitement du retour",
+    "receiptNotFound": "Ticket non trouvé"
   }
 }

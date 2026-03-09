@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from '@/lib/api'
+import { api, apiGet, apiPost } from '@/lib/api'
 
 export interface ReceiptData {
   id: string
@@ -28,9 +28,15 @@ export async function getReceipt(id: string): Promise<ReceiptData> {
 export interface CreateReceiptRequest {
   terminal_id: string
   lines: Array<{
-    product_id: string
+    product_id?: string
+    composite_item_id?: string
     quantity: number
     unit_price: string
+    modifiers?: Array<{
+      modifier_id: string
+      modifier_group_id: string
+      price_adjustment: string
+    }>
     discount_type?: 'percentage' | 'fixed' | null
     discount_percent?: string
     discount_amount?: string
@@ -39,6 +45,7 @@ export interface CreateReceiptRequest {
   customer_id?: string
   transaction_discount_amount?: string
   transaction_discount_reason?: string
+  consumption_mode?: string
 }
 
 /**
@@ -116,41 +123,117 @@ export async function processReceiptPayments(
 }
 
 /**
+ * Receipt detail with lines (for return modal)
+ */
+export interface ReceiptDetailData {
+  id: string
+  receipt_number: string
+  receipt_type: 'sale' | 'return'
+  original_receipt_id: string | null
+  return_reason: string | null
+  terminal_id: string
+  cashier_name: string
+  subtotal: string
+  tax_amount: string
+  total: string
+  currency: string
+  posted_at: string
+  is_voided: boolean
+  fiscal_hash: string
+  chain_sequence: number
+  lines: Array<{
+    id: string
+    line_number: number
+    product_id: string | null
+    composite_item_id: string | null
+    product_code: string
+    product_name: string
+    quantity: string
+    unit: string
+    unit_price: string
+    line_total: string
+    tax_rate: string
+    tax_amount: string
+    discount_amount: string
+  }>
+}
+
+/**
+ * Get receipt details with lines
+ */
+export async function getReceiptDetail(id: string): Promise<ReceiptDetailData> {
+  return apiGet<ReceiptDetailData>(`/pos/receipts/${id}`)
+}
+
+/**
+ * Request structure for processing a return
+ */
+export interface ProcessReturnRequest {
+  terminal_id: string
+  return_reason: 'defective' | 'wrong_item' | 'customer_changed_mind' | 'other'
+  lines: Array<{
+    line_id: string
+    quantity: string
+  }>
+  notes?: string
+}
+
+/**
+ * Response structure for a return
+ */
+export interface ProcessReturnResponse {
+  id: string
+  receipt_number: string
+  receipt_type: 'return'
+  original_receipt_id: string
+  return_reason: string
+  subtotal: string
+  tax_amount: string
+  total: string
+  currency: string
+  posted_at: string
+  lines: Array<{
+    product_name: string
+    quantity: string
+    unit_price: string
+    line_total: string
+  }>
+}
+
+/**
+ * Process a partial or full return on a receipt.
+ * Creates a new negative receipt referencing the original.
+ */
+export async function processReturn(
+  receiptId: string,
+  data: ProcessReturnRequest
+): Promise<ProcessReturnResponse> {
+  return apiPost<ProcessReturnResponse>(
+    `/pos/receipts/${receiptId}/return`,
+    data
+  )
+}
+
+/**
  * Print receipt - returns PDF blob for browser print dialog
  */
 export async function printReceipt(receiptId: string): Promise<Blob> {
-  const response = await fetch(`/api/v1/pos/receipts/${receiptId}/pdf`, {
-    headers: {
-      Authorization: `Bearer ${localStorage.getItem('token')}`,
-      'Accept-Language': localStorage.getItem('autoerp-language') ?? 'en',
-    },
-    credentials: 'include',
+  const response = await api.get(`/pos/receipts/${receiptId}/pdf`, {
+    responseType: 'blob',
   })
 
-  if (!response.ok) {
-    throw new Error('Failed to generate receipt PDF')
-  }
-
-  return response.blob()
+  return response.data as Blob
 }
 
 /**
  * Download receipt - triggers browser download
  */
 export async function downloadReceipt(receiptId: string): Promise<void> {
-  const response = await fetch(`/api/v1/pos/receipts/${receiptId}/pdf/download`, {
-    headers: {
-      Authorization: `Bearer ${localStorage.getItem('token')}`,
-      'Accept-Language': localStorage.getItem('autoerp-language') ?? 'en',
-    },
-    credentials: 'include',
+  const response = await api.get(`/pos/receipts/${receiptId}/pdf/download`, {
+    responseType: 'blob',
   })
 
-  if (!response.ok) {
-    throw new Error('Failed to download receipt PDF')
-  }
-
-  const blob = await response.blob()
+  const blob = new Blob([response.data], { type: 'application/pdf' })
   const url = window.URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url

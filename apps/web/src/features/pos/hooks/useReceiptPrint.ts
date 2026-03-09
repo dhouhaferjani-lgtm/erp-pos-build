@@ -32,32 +32,42 @@ export function useReceiptPrint(): UseReceiptPrintReturn {
         // Create object URL
         const url = window.URL.createObjectURL(blob)
 
-        // Open in new window for printing
-        const printWindow = window.open(url, '_blank')
+        // Use a hidden iframe instead of window.open (more reliable, avoids popup blockers)
+        const iframe = document.createElement('iframe')
+        iframe.style.position = 'fixed'
+        iframe.style.width = '1px'
+        iframe.style.height = '1px'
+        iframe.style.opacity = '0'
+        iframe.style.left = '-9999px'
+        iframe.style.top = '0'
+        iframe.style.border = 'none'
+        iframe.src = url
+        document.body.appendChild(iframe)
 
-        if (printWindow) {
-          // Wait for PDF to load, then trigger print dialog
-          printWindow.onload = () => {
-            printWindow.print()
-          }
-
-          // Clean up URL after a delay
+        iframe.onload = () => {
+          // Delay to let the PDF viewer plugin initialise inside the iframe
           setTimeout(() => {
-            window.URL.revokeObjectURL(url)
-          }, 1000)
+            try {
+              iframe.contentWindow?.focus()
+              iframe.contentWindow?.print()
+            } catch {
+              // Cross-origin or plugin restriction — fall back to new tab
+              window.open(url, '_blank')
+            }
 
-          toast.success(t('pos:receipt.printSuccess'))
-        } else {
-          // Popup blocked - fallback to download
-          toast.warning(t('pos:receipt.popupBlocked'))
-          const a = document.createElement('a')
-          a.href = url
-          a.download = `receipt-${receiptId}.pdf`
-          document.body.appendChild(a)
-          a.click()
-          window.URL.revokeObjectURL(url)
-          document.body.removeChild(a)
+            // Clean up after a generous delay
+            setTimeout(() => {
+              try {
+                document.body.removeChild(iframe)
+              } catch {
+                // already removed
+              }
+              window.URL.revokeObjectURL(url)
+            }, 60_000)
+          }, 500)
         }
+
+        toast.success(t('pos:receipt.printSuccess'))
       } catch (error) {
         console.error('Failed to print receipt:', error)
         toast.error(t('pos:receipt.printError'))

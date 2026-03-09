@@ -123,9 +123,9 @@ export function CountingListPage() {
           }
           className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
         >
-          <option value="all">All Sources</option>
-          <option value="true">Mobile Only</option>
-          <option value="false">Web Only</option>
+          <option value="all">{t('counting.list.sourceFilter.all')}</option>
+          <option value="true">{t('counting.list.sourceFilter.mobileOnly')}</option>
+          <option value="false">{t('counting.list.sourceFilter.webOnly')}</option>
         </select>
       </div>
 
@@ -193,7 +193,7 @@ export function CountingListPage() {
                         {counting.created_on_mobile && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                             <Smartphone className="w-3 h-3" />
-                            Mobile
+                            {t('counting.list.mobileBadge')}
                           </span>
                         )}
                       </div>

@@ -1,12 +1,15 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost } from '@/lib/api'
-import { Receipt as ReceiptIcon, Loader2, Search, Ban, Printer } from 'lucide-react'
+import { Receipt as ReceiptIcon, Loader2, Search, Ban, Printer, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { useReceiptPrint } from '../../hooks/useReceiptPrint'
 import { Modal, ModalContent, ModalFooter } from '@/components/organisms/Modal/Modal'
+import { ReturnItemsModal } from '../../components/ReturnItemsModal'
+import { getOrCreateWebTerminal } from '../../api/terminalApi'
+import { useLocation } from '@/hooks/useLocation'
 
 interface Terminal {
   id: string
@@ -17,6 +20,9 @@ interface Terminal {
 interface ReceiptItem {
   id: string
   receipt_number: string
+  receipt_type: 'sale' | 'return'
+  original_receipt_id: string | null
+  return_reason: string | null
   terminal_id: string
   terminal_code: string
   cashier_name: string
@@ -53,10 +59,24 @@ export function ReceiptSearchPage() {
   const { t } = useTranslation(['pos', 'common'])
   const queryClient = useQueryClient()
   const { handlePrint } = useReceiptPrint()
+  const { currentLocationId } = useLocation()
   const [filters, setFilters] = useState<ReceiptSearchFilters>({ page: 1, per_page: 20 })
   const [searchInput, setSearchInput] = useState('')
   const [voidTarget, setVoidTarget] = useState<ReceiptItem | null>(null)
   const [voidReason, setVoidReason] = useState('')
+  const [returnTarget, setReturnTarget] = useState<ReceiptItem | null>(null)
+
+  // Resolve web terminal for returns (returns need a terminal for the hash chain)
+  const webTerminalMutation = useMutation({
+    mutationFn: (locationId: string) => getOrCreateWebTerminal(locationId),
+  })
+
+  useEffect(() => {
+    if (currentLocationId) {
+      webTerminalMutation.mutate(currentLocationId)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentLocationId])
 
   const { data: terminals = [] } = useQuery({
     queryKey: ['pos', 'terminals'],
@@ -260,14 +280,22 @@ export function ReceiptSearchPage() {
                       {receipt.total} {receipt.currency}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={cn(
-                        'inline-flex items-center rounded-full px-2 py-1 text-xs font-medium',
-                        receipt.is_voided
-                          ? 'bg-red-100 text-red-700'
-                          : 'bg-green-100 text-green-700'
-                      )}>
-                        {receipt.is_voided ? t('pos:receiptSearch.voided') : t('pos:receiptSearch.active')}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className={cn(
+                          'inline-flex items-center rounded-full px-2 py-1 text-xs font-medium',
+                          receipt.is_voided
+                            ? 'bg-red-100 text-red-700'
+                            : receipt.receipt_type === 'return'
+                              ? 'bg-orange-100 text-orange-700'
+                              : 'bg-green-100 text-green-700'
+                        )}>
+                          {receipt.is_voided
+                            ? t('pos:receiptSearch.voided')
+                            : receipt.receipt_type === 'return'
+                              ? t('pos:returns.returnLabel')
+                              : t('pos:receiptSearch.active')}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-end">
                       <div className="flex items-center justify-end gap-2">
@@ -279,6 +307,16 @@ export function ReceiptSearchPage() {
                         >
                           <Printer className="h-3.5 w-3.5" />
                         </button>
+                        {!receipt.is_voided && receipt.receipt_type !== 'return' && (
+                          <button
+                            type="button"
+                            onClick={() => setReturnTarget(receipt)}
+                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-orange-600 hover:bg-orange-50"
+                            title={t('pos:returns.returnButton')}
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                         {!receipt.is_voided && (
                           <button
                             type="button"
@@ -329,6 +367,20 @@ export function ReceiptSearchPage() {
           </div>
         )}
       </div>
+
+      {/* Return Items Modal */}
+      {returnTarget && webTerminalMutation.data && (
+        <ReturnItemsModal
+          isOpen={!!returnTarget}
+          onClose={() => setReturnTarget(null)}
+          receiptId={returnTarget.id}
+          terminalId={webTerminalMutation.data.id}
+          onSuccess={() => {
+            toast.success(t('pos:returns.success'))
+            void queryClient.invalidateQueries({ queryKey: ['pos', 'receipts'] })
+          }}
+        />
+      )}
 
       {/* Void Confirmation Modal */}
       {voidTarget && (

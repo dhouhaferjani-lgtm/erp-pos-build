@@ -177,12 +177,19 @@ const HealthClaimFormPage = lazy(() => import('../features/parapharmacy/pages').
 const KeyComponentListPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.KeyComponentListPage })))
 const KeyComponentFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.KeyComponentFormPage })))
 
+// CRM module
+const CrmCompanyListPage = lazy(() => import('../features/crm/pages/CompanyListPage').then((m) => ({ default: m.CompanyListPage })))
+const CrmContactListPage = lazy(() => import('../features/crm/pages/ContactListPage').then((m) => ({ default: m.ContactListPage })))
+const CrmContactFormPage = lazy(() => import('../features/crm/pages/ContactFormPage').then((m) => ({ default: m.ContactFormPage })))
+const CrmContactDetailPage = lazy(() => import('../features/crm/pages/ContactDetailPage').then((m) => ({ default: m.ContactDetailPage })))
+
 // POS module
 const POSTerminalsPage = lazy(() => import('../pages/POS/Terminals').then((m) => ({ default: m.TerminalsPage })))
 const POSTransactionsPage = lazy(() => import('../pages/POS/POSTransactions').then((m) => ({ default: m.POSTransactions })))
 const POSShiftsPage = lazy(() => import('../pages/POS/POSShiftsDashboard').then((m) => ({ default: m.POSShiftsDashboard })))
 const ShiftHistoryPage = lazy(() => import('../features/pos/pages/ShiftHistoryPage/ShiftHistoryPage').then((m) => ({ default: m.ShiftHistoryPage })))
 const ZReportListPage = lazy(() => import('../features/pos/pages/ZReportListPage/ZReportListPage').then((m) => ({ default: m.ZReportListPage })))
+const ZReportDetailPage = lazy(() => import('../features/pos/pages/ZReportDetailPage/ZReportDetailPage').then((m) => ({ default: m.ZReportDetailPage })))
 const ReceiptSearchPage = lazy(() => import('../features/pos/pages/ReceiptSearchPage/ReceiptSearchPage').then((m) => ({ default: m.ReceiptSearchPage })))
 
 function SuspenseWrapper({ children }: { children: React.ReactNode }) {
@@ -1807,6 +1814,61 @@ export function AppRoutes() {
           />
         </Route>
 
+        {/* CRM Module */}
+        <Route path="crm">
+          <Route index element={<Navigate to="/crm/contacts" replace />} />
+          <Route
+            path="companies"
+            element={
+              <RequirePermission moduleKey="partners">
+                <SuspenseWrapper>
+                  <CrmCompanyListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="contacts"
+            element={
+              <RequirePermission moduleKey="contacts">
+                <SuspenseWrapper>
+                  <CrmContactListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="contacts/new"
+            element={
+              <RequirePermission permission="contacts.create">
+                <SuspenseWrapper>
+                  <CrmContactFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="contacts/:id"
+            element={
+              <RequirePermission moduleKey="contacts">
+                <SuspenseWrapper>
+                  <CrmContactDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="contacts/:id/edit"
+            element={
+              <RequirePermission permission="contacts.update">
+                <SuspenseWrapper>
+                  <CrmContactFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+        </Route>
+
         {/* POS Module - Administrative Pages (Inside Layout) */}
         <Route path="pos">
           {/* Terminals - Admin page for managing POS terminals */}
@@ -1838,6 +1900,16 @@ export function AppRoutes() {
               <RequirePermission permission="pos.view_reports">
                 <SuspenseWrapper>
                   <ZReportListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="z-reports/:zNumber"
+            element={
+              <RequirePermission permission="pos.view_reports">
+                <SuspenseWrapper>
+                  <ZReportDetailPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

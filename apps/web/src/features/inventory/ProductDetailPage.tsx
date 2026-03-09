@@ -20,13 +20,11 @@ import { useProductRealtime } from '../products/hooks/useProductRealtime'
 import { ProductPrimaryImageDisplay } from '../products/components'
 import { ProductStockLevels } from './components'
 
-type ProductType = 'part' | 'service' | 'consumable'
-
 interface Product {
   id: string
   name: string
   sku: string
-  type: ProductType
+  is_physical: boolean
   description: string | null
   sale_price: string | null
   purchase_price: string | null
@@ -45,12 +43,6 @@ interface ProductResponse {
   data: Product
 }
 
-const typeColors: Record<ProductType, string> = {
-  part: 'bg-blue-100 text-blue-800',
-  service: 'bg-purple-100 text-purple-800',
-  consumable: 'bg-orange-100 text-orange-800',
-}
-
 export function ProductDetailPage() {
   const { t } = useTranslation(['inventory', 'common', 'products'])
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
@@ -60,8 +52,6 @@ export function ProductDetailPage() {
   const companyCurrency = currentCompany?.currency ?? 'EUR'
   const companyLocale = currentCompany?.locale.replace('_', '-') ?? 'en-US'
 
-  // Helper to get translated type labels
-  const getTypeLabel = (type: ProductType) => t(`products.types.${type}`)
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -161,11 +151,6 @@ export function ProductDetailPage() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold text-gray-900">{product.name}</h1>
-              <span
-                className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${typeColors[product.type]}`}
-              >
-                {getTypeLabel(product.type)}
-              </span>
               <span
                 className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
                   product.is_active

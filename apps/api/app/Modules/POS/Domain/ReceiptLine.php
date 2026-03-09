@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Domain;
 
+use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Product\Domain\Product;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -20,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property string $receipt_id
  * @property int $line_number
  * @property string|null $product_id
+ * @property string|null $composite_item_id
  * @property string $product_code Product code at time of sale (immutable)
  * @property string $product_name Product name at time of sale (immutable)
  * @property string|null $product_description
@@ -37,6 +39,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon $updated_at
  * @property-read Receipt $receipt
  * @property-read Product|null $product
+ * @property-read CompositeItem|null $compositeItem
  */
 class ReceiptLine extends Model
 {
@@ -54,6 +57,7 @@ class ReceiptLine extends Model
         'receipt_id',
         'line_number',
         'product_id',
+        'composite_item_id',
         'product_code',
         'product_name',
         'product_description',
@@ -100,6 +104,14 @@ class ReceiptLine extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class, 'product_id');
+    }
+
+    /**
+     * @return BelongsTo<CompositeItem, $this>
+     */
+    public function compositeItem(): BelongsTo
+    {
+        return $this->belongsTo(CompositeItem::class, 'composite_item_id');
     }
 
     /**

@@ -9,7 +9,6 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
-use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -80,7 +79,6 @@ class ListProductsTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Product One',
             'sku' => 'PRD-001',
-            'type' => ProductType::Part,
         ]);
 
         Product::create([
@@ -88,7 +86,6 @@ class ListProductsTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Product Two',
             'sku' => 'PRD-002',
-            'type' => ProductType::Service,
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
@@ -112,7 +109,6 @@ class ListProductsTest extends TestCase
                 'company_id' => $this->company->id,
                 'name' => "Product {$i}",
                 'sku' => "PRD-{$i}",
-                'type' => ProductType::Part,
             ]);
         }
 
@@ -121,35 +117,42 @@ class ListProductsTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('meta.total', 25)
-            ->assertJsonPath('meta.per_page', 15);
+            ->assertJsonPath('meta.per_page', 25);
 
-        $this->assertCount(15, $response->json('data'));
+        $this->assertCount(25, $response->json('data'));
     }
 
-    public function test_can_filter_by_type(): void
+    public function test_can_filter_by_is_physical(): void
     {
         Product::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
-            'name' => 'Part Product',
-            'sku' => 'PART-001',
-            'type' => ProductType::Part,
+            'name' => 'Physical Product',
+            'sku' => 'PHY-001',
+            'is_physical' => true,
         ]);
 
         Product::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
-            'name' => 'Service Product',
-            'sku' => 'SVC-001',
-            'type' => ProductType::Service,
+            'name' => 'Digital Product',
+            'sku' => 'DIG-001',
+            'is_physical' => false,
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/v1/products?type=part');
+            ->getJson('/api/v1/products?is_physical=1');
 
         $response->assertOk()
             ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.name', 'Part Product');
+            ->assertJsonPath('data.0.name', 'Physical Product');
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/products?is_physical=0');
+
+        $response->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.name', 'Digital Product');
     }
 
     public function test_can_search_by_name(): void
@@ -159,7 +162,6 @@ class ListProductsTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Brake Pad Set',
             'sku' => 'BRK-001',
-            'type' => ProductType::Part,
         ]);
 
         Product::create([
@@ -167,7 +169,6 @@ class ListProductsTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Air Filter',
             'sku' => 'FLT-001',
-            'type' => ProductType::Part,
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
@@ -185,7 +186,6 @@ class ListProductsTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Product One',
             'sku' => 'ABC-123',
-            'type' => ProductType::Part,
         ]);
 
         Product::create([
@@ -193,7 +193,6 @@ class ListProductsTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Product Two',
             'sku' => 'XYZ-789',
-            'type' => ProductType::Part,
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
@@ -211,7 +210,6 @@ class ListProductsTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'My Product',
             'sku' => 'MY-001',
-            'type' => ProductType::Part,
         ]);
 
         $otherTenant = Tenant::create([
@@ -238,7 +236,6 @@ class ListProductsTest extends TestCase
             'company_id' => $otherCompany->id,
             'name' => 'Other Product',
             'sku' => 'OTH-001',
-            'type' => ProductType::Part,
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
@@ -256,7 +253,6 @@ class ListProductsTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Single Product',
             'sku' => 'SNG-001',
-            'type' => ProductType::Part,
             'sale_price' => '99.99',
         ]);
 
@@ -306,7 +302,6 @@ class ListProductsTest extends TestCase
             'company_id' => $otherCompany->id,
             'name' => 'Other Product',
             'sku' => 'OTH-001',
-            'type' => ProductType::Part,
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
@@ -329,7 +324,6 @@ class ListProductsTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Test Product',
             'sku' => 'TST-001',
-            'type' => ProductType::Part,
         ]);
 
         $viewerUser = User::create([
@@ -361,7 +355,6 @@ class ListProductsTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Active Product',
             'sku' => 'ACT-001',
-            'type' => ProductType::Part,
             'is_active' => true,
         ]);
 
@@ -370,12 +363,11 @@ class ListProductsTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Inactive Product',
             'sku' => 'INA-001',
-            'type' => ProductType::Part,
             'is_active' => false,
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/v1/products?active=1');
+            ->getJson('/api/v1/products?is_active=1');
 
         $response->assertOk()
             ->assertJsonCount(1, 'data')

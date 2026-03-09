@@ -153,7 +153,8 @@
       "posted": "Document comptabilisé",
       "goodsReceived": "Marchandises réceptionnées"
     },
-    "taxExemptionMention": "Exonération fiscale applicable à {{partner}} - {{reason}}"
+    "taxExemptionMention": "Exonération fiscale applicable à {{partner}} - {{reason}}",
+    "vehicle": "Véhicule"
   },
   "lineItems": {
     "title": "Lignes",
@@ -170,19 +171,27 @@
       "title": "Aucun article ajouté.",
       "description": "Cliquez sur « Ajouter un article » pour ajouter des produits ou services."
     },
+    "tabs": {
+      "product": "Produit",
+      "service": "Service"
+    },
+    "serviceBadge": "Service",
     "actions": {
       "dragToReorder": "Glisser pour réorganiser",
       "clickToEdit": "Cliquer pour modifier",
       "removeLine": "Supprimer la ligne",
       "searchProducts": "Rechercher des produits",
       "searchProductsPlaceholder": "Rechercher des produits...",
+      "searchServicesPlaceholder": "Rechercher des services...",
       "createNewProduct": "Créer un nouveau produit",
       "addBlankLine": "Ajouter une ligne vide",
       "close": "Fermer"
     },
-    "loading": "Chargement des produits...",
+    "loading": "Chargement...",
     "noProductsFound": "Aucun produit trouvé correspondant à votre recherche",
-    "noProductsAvailable": "Aucun produit disponible"
+    "noProductsAvailable": "Aucun produit disponible",
+    "noServicesFound": "Aucun service trouvé correspondant à votre recherche",
+    "noServicesAvailable": "Aucun service disponible"
   },
   "orders": {
     "title": "Commandes",
@@ -193,6 +202,7 @@
     "fullyDelivered": "Entièrement livré",
     "fullyInvoiced": "Entièrement facturé",
     "alreadyDelivered": "Un bon de livraison existe déjà pour cette commande",
+    "delivered": "Livré",
     "deliveryStatus": {
       "not_delivered": "Non livré",
       "partially_delivered": "Partiellement livré",
@@ -229,6 +239,7 @@
     "convertToOrder": "Convertir en commande",
     "convertToOrderTitle": "Convertir en bon de commande",
     "convertToOrderMessage": "Cela créera un nouveau bon de commande à partir de ce devis. Le devis restera inchangé.",
+    "validUntil": "Valide jusqu'au",
     "expiry": {
       "expired": "Ce devis a expiré",
       "expiresIn": "Expire dans {{days}} jours",

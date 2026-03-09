@@ -7,6 +7,7 @@ namespace App\Modules\Document\Application\Services;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Services\CompanyConfigService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Barryvdh\DomPDF\PDF as DomPdf;
 use Carbon\Carbon;
@@ -15,6 +16,10 @@ use NumberFormatter;
 
 final class DocumentPdfService
 {
+    public function __construct(
+        private readonly CompanyConfigService $configService
+    ) {}
+
     /**
      * Generate PDF for a document.
      *
@@ -23,9 +28,15 @@ final class DocumentPdfService
      */
     public function generate(Document $document, bool $stream = false): DomPdf
     {
-        $document->load(['company', 'partner', 'lines', 'vehicle']);
+        $document->load(['company.tenant', 'partner', 'lines']);
 
         $company = $document->company;
+
+        // Only load vehicle context if Vehicle module is enabled
+        $hasVehicleModule = $this->configService->getConfigForTenant($company->tenant)->hasModule('Vehicle');
+        if ($hasVehicleModule) {
+            $document->load(['vehicleContext']);
+        }
         $templateView = $this->resolveTemplate($document);
 
         $data = $this->prepareData($document, $company);
@@ -109,7 +120,7 @@ final class DocumentPdfService
             'company' => $company,
             'partner' => $document->partner,
             'lines' => $document->lines,
-            'vehicle' => $document->vehicle,
+            'vehicle' => $document->vehicleContext ? (object) $document->vehicleContext->getVehicleSnapshot() : null,
             'locale' => $locale,
             'currency' => $currency,
             'documentTitle' => $this->getDocumentTitle($document->type, $locale),
@@ -132,6 +143,7 @@ final class DocumentPdfService
                 DocumentType::Invoice->value => 'Invoice',
                 DocumentType::CreditNote->value => 'Credit Note',
                 DocumentType::DeliveryNote->value => 'Delivery Note',
+                DocumentType::ReturnNote->value => 'Return Note',
             ],
             'fr' => [
                 DocumentType::Quote->value => 'Devis',
@@ -140,6 +152,7 @@ final class DocumentPdfService
                 DocumentType::Invoice->value => 'Facture',
                 DocumentType::CreditNote->value => 'Avoir',
                 DocumentType::DeliveryNote->value => 'Bon de Livraison',
+                DocumentType::ReturnNote->value => 'Bon de Retour',
             ],
         ];
 

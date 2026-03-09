@@ -213,9 +213,11 @@ export function ProductSelector({
                     </div>
 
                     {/* Type Badge */}
-                    <span className="text-xs px-2 py-1 bg-gray-100 rounded">
-                      {t(`inventory:products.types.${product.type}`)}
-                    </span>
+                    {product.type && (
+                      <span className="text-xs px-2 py-1 bg-gray-100 rounded">
+                        {t(`inventory:products.types.${product.type}`)}
+                      </span>
+                    )}
                   </div>
                 </ComboboxOption>
               ))

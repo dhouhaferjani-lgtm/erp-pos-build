@@ -1,0 +1,69 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\Contact\Domain;
+
+use App\Modules\Partner\Domain\Partner;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+/**
+ * @property string $id
+ * @property string $party_id
+ * @property string $contact_id
+ * @property string|null $job_title
+ * @property string|null $department
+ * @property bool $is_primary
+ * @property \Illuminate\Support\Carbon|null $start_date
+ * @property \Illuminate\Support\Carbon|null $end_date
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property-read Partner $party
+ * @property-read Contact $contact
+ */
+class PartyContact extends Model
+{
+    use HasUuids;
+
+    protected $table = 'party_contacts';
+
+    protected $fillable = [
+        'party_id',
+        'contact_id',
+        'job_title',
+        'department',
+        'is_primary',
+        'start_date',
+        'end_date',
+    ];
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'is_primary' => 'boolean',
+            'start_date' => 'date',
+            'end_date' => 'date',
+        ];
+    }
+
+    /**
+     * @return BelongsTo<Partner, $this>
+     */
+    public function party(): BelongsTo
+    {
+        return $this->belongsTo(Partner::class, 'party_id');
+    }
+
+    /**
+     * @return BelongsTo<Contact, $this>
+     */
+    public function contact(): BelongsTo
+    {
+        return $this->belongsTo(Contact::class);
+    }
+}

@@ -27,7 +27,6 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Menu\Domain\Entities\Menu;
 use App\Modules\Menu\Domain\Entities\MenuCategory;
-use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -140,6 +139,18 @@ class CoffeeShopSeeder extends Seeder
         $existing = Tenant::where('slug', 'cafe-tunis')->first();
         if ($existing) {
             $this->command->warn('Tenant cafe-tunis already exists. Deleting and recreating...');
+
+            // Delete POS data that blocks cascade due to restrictOnDelete FKs
+            $userIds = DB::table('users')->where('tenant_id', $existing->id)->pluck('id');
+            DB::statement('ALTER TABLE pos_receipts DISABLE TRIGGER enforce_receipt_immutability');
+            $receiptIds = DB::table('pos_receipts')->whereIn('cashier_id', $userIds)->pluck('id');
+            if ($receiptIds->isNotEmpty()) {
+                DB::table('pos_receipt_lines')->whereIn('receipt_id', $receiptIds)->delete();
+                DB::table('pos_receipts')->whereIn('id', $receiptIds)->delete();
+            }
+            DB::table('pos_shifts')->whereIn('cashier_id', $userIds)->delete();
+            DB::statement('ALTER TABLE pos_receipts ENABLE TRIGGER enforce_receipt_immutability');
+
             $existing->delete();
         }
 
@@ -293,7 +304,7 @@ class CoffeeShopSeeder extends Seeder
                 'company_id' => $this->company->id,
                 'name' => $data['name'],
                 'sku' => $data['code'],
-                'type' => ProductType::Part,
+                'is_physical' => true,
                 'purchase_price' => $data['cost'],
                 'sale_price' => $data['price'],
                 'tax_rate' => 7.00, // 7% Tunisia VAT on food items

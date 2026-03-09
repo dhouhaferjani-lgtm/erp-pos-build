@@ -21,7 +21,6 @@ use App\Modules\Product\Domain\Certification;
 use App\Modules\Product\Domain\Enums\AgeRestriction;
 use App\Modules\Product\Domain\Enums\DosageForm;
 use App\Modules\Product\Domain\Enums\ParapharmacyCategory;
-use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\HealthClaim;
 use App\Modules\Product\Domain\Ingredient;
 use App\Modules\Product\Domain\KeyComponent;
@@ -334,7 +333,7 @@ class ParapharmacySeeder extends Seeder
             'name' => $productName,
             'sku' => $sku,
             'barcode' => $barcode,
-            'type' => ProductType::Part,
+            'is_physical' => true,
             'purchase_price' => $cost,
             'sale_price' => $retailPrice,
             'tax_rate' => $vatRate,
@@ -676,7 +675,9 @@ class ParapharmacySeeder extends Seeder
             $owner->assignRole($adminRole);
         }
 
-        $this->command->info('✓ Owner: owner@pharmabio.fr');
+        $owner->update(['pos_pin' => Hash::make('1234')]);
+
+        $this->command->info('✓ Owner: owner@pharmabio.fr (PIN: 1234)');
 
         // 2. Manager Account
         $manager = User::create([
@@ -704,7 +705,9 @@ class ParapharmacySeeder extends Seeder
             $manager->assignRole($managerRole);
         }
 
-        $this->command->info('✓ Manager: manager@pharmabio.fr');
+        $manager->update(['pos_pin' => Hash::make('5678')]);
+
+        $this->command->info('✓ Manager: manager@pharmabio.fr (PIN: 5678)');
 
         // 3. Cashier Account (POS-only permissions)
         $cashier = User::create([
@@ -732,7 +735,9 @@ class ParapharmacySeeder extends Seeder
             $cashier->assignRole($cashierRole);
         }
 
-        $this->command->info('✓ Cashier: cashier@pharmabio.fr');
+        $cashier->update(['pos_pin' => Hash::make('0000')]);
+
+        $this->command->info('✓ Cashier: cashier@pharmabio.fr (PIN: 0000)');
     }
 
     // ==================== Helper Methods ====================

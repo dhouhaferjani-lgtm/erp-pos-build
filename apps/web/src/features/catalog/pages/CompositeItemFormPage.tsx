@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { Input, FormField, Button, Select } from '@/components/atoms'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/molecules/Tabs/Tabs'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
 import { tokens } from '@/lib/designTokens'
 import { useQuery } from '@tanstack/react-query'
@@ -13,24 +14,27 @@ import { useCreateRecipe } from '../hooks/useRecipes'
 import { RecipeLineEditor } from '../components/RecipeLineEditor'
 import { VariantEditor } from '../components/VariantEditor'
 import { ModifierGroupAssigner } from '../components/ModifierGroupAssigner'
-import { useVerticalLabels } from '../hooks/useVerticalLabels'
-import type { VerticalType, ProductionType } from '../types/compositeItem'
+import { useVerticalLabels, companyVerticalToCatalog } from '../hooks/useVerticalLabels'
+import { useCompanyConfig } from '@/contexts'
+import type { ProductionType } from '../types/compositeItem'
 
-const TABS = ['details', 'recipeTab', 'sizesTab', 'modifiersTab'] as const
+type TabValue = 'details' | 'recipeTab' | 'sizesTab' | 'modifiersTab'
 
 export function CompositeItemFormPage() {
   const { t } = useTranslation(['catalog', 'common'])
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const isEdit = !!id && id !== 'new'
+  const { config } = useCompanyConfig()
+  const companyVerticalType = companyVerticalToCatalog(config?.vertical)
 
   const { data: item, isLoading } = useCompositeItem(isEdit ? id : '')
-  const getLabel = useVerticalLabels(item?.vertical_type)
+  const getLabel = useVerticalLabels(item?.vertical_type ?? companyVerticalType)
   const createMutation = useCreateCompositeItem()
   const updateMutation = useUpdateCompositeItem()
   const createRecipeMutation = useCreateRecipe()
 
-  const [activeTab, setActiveTab] = useState<typeof TABS[number]>('details')
+  const [activeTab, setActiveTab] = useState<TabValue>('details')
   const [selectedLocationId, setSelectedLocationId] = useState('')
 
   const { data: locations } = useQuery({
@@ -49,7 +53,7 @@ export function CompositeItemFormPage() {
     code: '',
     name: '',
     category_id: '',
-    vertical_type: 'generic' as VerticalType,
+    vertical_type: companyVerticalType,
     base_price: '',
     production_type: 'made_to_order' as ProductionType,
     tax_rate: '',
@@ -57,6 +61,13 @@ export function CompositeItemFormPage() {
     is_available: true,
     image_url: '',
   })
+
+  // Sync vertical_type from company config when it loads (for new items)
+  useEffect(() => {
+    if (!isEdit && companyVerticalType !== 'generic') {
+      setForm((prev) => ({ ...prev, vertical_type: companyVerticalType }))
+    }
+  }, [isEdit, companyVerticalType])
 
   useEffect(() => {
     if (item) {
@@ -146,32 +157,206 @@ export function CompositeItemFormPage() {
         </h1>
       </div>
 
-      {/* Tabs */}
-      {isEdit && (
-        <div className="border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8">
-            {TABS.map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium ${
-                  activeTab === tab
-                    ? 'border-indigo-500 text-indigo-600'
-                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                }`}
-              >
-                {tab === 'recipeTab' ? getLabel('recipe')
-                  : tab === 'sizesTab' ? getLabel('variant')
-                  : tab === 'modifiersTab' ? getLabel('modifierGroup')
-                  : t(`catalog:${tab}`)}
-              </button>
-            ))}
-          </nav>
-        </div>
-      )}
+      {/* Tabs (edit mode) / Details form (create mode) */}
+      {isEdit ? (
+        <Tabs defaultValue="details" value={activeTab} onChange={(v) => setActiveTab(v as TabValue)}>
+          <TabsList>
+            <TabsTrigger value="details">{t('catalog:details')}</TabsTrigger>
+            <TabsTrigger value="recipeTab">{getLabel('recipe')}</TabsTrigger>
+            <TabsTrigger value="sizesTab">{getLabel('variant')}</TabsTrigger>
+            <TabsTrigger value="modifiersTab">{getLabel('modifierGroup')}</TabsTrigger>
+          </TabsList>
 
-      {/* Details tab / Create form */}
-      {(activeTab === 'details' || !isEdit) && (
+          <TabsContent value="details" className="mt-6">
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className={tokens.card.base}>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <FormField label={t('catalog:code')} htmlFor="ci-code" required>
+                    <Input
+                      id="ci-code"
+                      required
+                      value={form.code}
+                      onChange={(e) => setForm({ ...form, code: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label={t('catalog:name')} htmlFor="ci-name" required>
+                    <Input
+                      id="ci-name"
+                      required
+                      value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label={t('catalog:basePrice')} htmlFor="ci-price" required>
+                    <Input
+                      id="ci-price"
+                      type="number"
+                      required
+                      step="0.01"
+                      min="0"
+                      value={form.base_price}
+                      onChange={(e) => setForm({ ...form, base_price: e.target.value })}
+                    />
+                  </FormField>
+                  <input type="hidden" name="vertical_type" value={form.vertical_type} />
+                  <FormField label={t('catalog:productionType')} htmlFor="ci-production">
+                    <Select
+                      id="ci-production"
+                      value={form.production_type}
+                      onChange={(e) => setForm({ ...form, production_type: e.target.value as ProductionType })}
+                    >
+                      <option value="made_to_order">{t('catalog:productionTypes.made_to_order')}</option>
+                      <option value="batch">{t('catalog:productionTypes.batch')}</option>
+                      <option value="stock">{t('catalog:productionTypes.stock')}</option>
+                    </Select>
+                  </FormField>
+                  <FormField label={t('catalog:taxRate')} htmlFor="ci-tax">
+                    <Input
+                      id="ci-tax"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={form.tax_rate}
+                      onChange={(e) => setForm({ ...form, tax_rate: e.target.value })}
+                    />
+                  </FormField>
+                  <div className="flex items-center gap-6 pt-6">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={form.is_active}
+                        onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+                        className={tokens.checkbox.base}
+                      />
+                      <span className="text-sm text-gray-700">{t('catalog:isActive')}</span>
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={form.is_available}
+                        onChange={(e) => setForm({ ...form, is_available: e.target.checked })}
+                        className={tokens.checkbox.base}
+                      />
+                      <span className="text-sm text-gray-700">{t('catalog:isAvailable')}</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <StickyFormFooter>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => navigate('/catalog/composite-items')}
+                >
+                  {t('common:cancel')}
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={createMutation.isPending || updateMutation.isPending}
+                >
+                  {t('common:save')}
+                </Button>
+              </StickyFormFooter>
+            </form>
+
+            {/* Availability section */}
+            {item?.active_recipe && (
+              <div className={`${tokens.card.base} mt-6`}>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">{t('catalog:availability')}</h3>
+                <div className="flex items-end gap-3 mb-4">
+                  <FormField label={t('common:location')} htmlFor="avail-location" className="flex-1">
+                    <Select
+                      id="avail-location"
+                      value={selectedLocationId}
+                      onChange={(e) => setSelectedLocationId(e.target.value)}
+                    >
+                      <option value="">{t('common:select')}</option>
+                      {(locations ?? []).map((loc) => (
+                        <option key={loc.id} value={loc.id}>{loc.name}</option>
+                      ))}
+                    </Select>
+                  </FormField>
+                </div>
+                {isCheckingAvailability && (
+                  <p className="text-sm text-gray-500">{t('common:loading')}</p>
+                )}
+                {availability && selectedLocationId && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-4">
+                      <div className="text-2xl font-bold text-gray-900">{availability.available_quantity}</div>
+                      <div className="text-sm text-gray-600">{t('catalog:maxProducible')}</div>
+                      {availability.limiting_component && (
+                        <div className="text-sm text-amber-600">
+                          {t('catalog:limitingIngredient')}: {availability.limiting_component}
+                        </div>
+                      )}
+                    </div>
+                    {availability.components.length > 0 && (
+                      <table className="min-w-full text-sm">
+                        <thead>
+                          <tr>
+                            <th className="text-left py-1 font-medium text-gray-700">{getLabel('recipeLine')}</th>
+                            <th className="text-right py-1 font-medium text-gray-700">{t('catalog:required')}</th>
+                            <th className="text-right py-1 font-medium text-gray-700">{t('catalog:available')}</th>
+                            <th className="text-right py-1 font-medium text-gray-700">{t('catalog:maxProducible')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {availability.components.map((comp) => (
+                            <tr key={comp.product_id}>
+                              <td className="py-1">{comp.product_name}</td>
+                              <td className="text-right py-1">{comp.required_quantity}</td>
+                              <td className="text-right py-1">{comp.available_quantity}</td>
+                              <td className="text-right py-1">{comp.max_produces}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="recipeTab" className="mt-6">
+            {item?.active_recipe ? (
+              <RecipeLineEditor
+                recipe={item.active_recipe}
+                compositeItemId={id}
+                verticalType={item.vertical_type}
+              />
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-gray-500 mb-4">{t('catalog:createRecipe')}</p>
+                <Button
+                  onClick={handleCreateRecipe}
+                  disabled={createRecipeMutation.isPending}
+                >
+                  {t('catalog:createRecipe')}
+                </Button>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="sizesTab" className="mt-6">
+            <VariantEditor
+              compositeItemId={id}
+              variants={item?.variants ?? []}
+            />
+          </TabsContent>
+
+          <TabsContent value="modifiersTab" className="mt-6">
+            <ModifierGroupAssigner
+              compositeItemId={id}
+              assignedGroups={item?.modifier_groups ?? []}
+            />
+          </TabsContent>
+        </Tabs>
+      ) : (
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className={tokens.card.base}>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -202,19 +387,7 @@ export function CompositeItemFormPage() {
                   onChange={(e) => setForm({ ...form, base_price: e.target.value })}
                 />
               </FormField>
-              <FormField label={t('catalog:verticalType')} htmlFor="ci-vertical">
-                <Select
-                  id="ci-vertical"
-                  value={form.vertical_type}
-                  onChange={(e) => setForm({ ...form, vertical_type: e.target.value as VerticalType })}
-                >
-                  <option value="fnb">F&B</option>
-                  <option value="manufacturing">Manufacturing</option>
-                  <option value="sewing">Sewing</option>
-                  <option value="bakery">Bakery</option>
-                  <option value="generic">Generic</option>
-                </Select>
-              </FormField>
+              <input type="hidden" name="vertical_type" value={form.vertical_type} />
               <FormField label={t('catalog:productionType')} htmlFor="ci-production">
                 <Select
                   id="ci-production"
@@ -277,104 +450,6 @@ export function CompositeItemFormPage() {
             </Button>
           </StickyFormFooter>
         </form>
-      )}
-
-      {/* Availability section (details tab, edit mode only) */}
-      {isEdit && activeTab === 'details' && item?.active_recipe && (
-        <div className={tokens.card.base}>
-          <h3 className="text-lg font-medium text-gray-900 mb-4">{t('catalog:availability')}</h3>
-          <div className="flex items-end gap-3 mb-4">
-            <FormField label={t('common:location')} htmlFor="avail-location" className="flex-1">
-              <Select
-                id="avail-location"
-                value={selectedLocationId}
-                onChange={(e) => setSelectedLocationId(e.target.value)}
-              >
-                <option value="">{t('common:select')}</option>
-                {(locations ?? []).map((loc) => (
-                  <option key={loc.id} value={loc.id}>{loc.name}</option>
-                ))}
-              </Select>
-            </FormField>
-          </div>
-          {isCheckingAvailability && (
-            <p className="text-sm text-gray-500">{t('common:loading')}</p>
-          )}
-          {availability && selectedLocationId && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-4">
-                <div className="text-2xl font-bold text-gray-900">{availability.available_quantity}</div>
-                <div className="text-sm text-gray-600">{t('catalog:maxProducible')}</div>
-                {availability.limiting_component && (
-                  <div className="text-sm text-amber-600">
-                    {t('catalog:limitingIngredient')}: {availability.limiting_component}
-                  </div>
-                )}
-              </div>
-              {availability.components.length > 0 && (
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr>
-                      <th className="text-left py-1 font-medium text-gray-700">{getLabel('recipeLine')}</th>
-                      <th className="text-right py-1 font-medium text-gray-700">{t('catalog:required')}</th>
-                      <th className="text-right py-1 font-medium text-gray-700">{t('catalog:available')}</th>
-                      <th className="text-right py-1 font-medium text-gray-700">{t('catalog:maxProducible')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {availability.components.map((comp) => (
-                      <tr key={comp.product_id}>
-                        <td className="py-1">{comp.product_name}</td>
-                        <td className="text-right py-1">{comp.required_quantity}</td>
-                        <td className="text-right py-1">{comp.available_quantity}</td>
-                        <td className="text-right py-1">{comp.max_produces}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Recipe tab */}
-      {isEdit && activeTab === 'recipeTab' && (
-        <div>
-          {item?.active_recipe ? (
-            <RecipeLineEditor
-              recipe={item.active_recipe}
-              compositeItemId={id}
-              verticalType={item.vertical_type}
-            />
-          ) : (
-            <div className="text-center py-8">
-              <p className="text-gray-500 mb-4">{t('catalog:createRecipe')}</p>
-              <Button
-                onClick={handleCreateRecipe}
-                disabled={createRecipeMutation.isPending}
-              >
-                {t('catalog:createRecipe')}
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Sizes/Variants tab */}
-      {isEdit && activeTab === 'sizesTab' && (
-        <VariantEditor
-          compositeItemId={id}
-          variants={item?.variants ?? []}
-        />
-      )}
-
-      {/* Modifiers tab */}
-      {isEdit && activeTab === 'modifiersTab' && (
-        <ModifierGroupAssigner
-          compositeItemId={id}
-          assignedGroups={item?.modifier_groups ?? []}
-        />
       )}
     </div>
   )

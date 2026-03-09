@@ -73,11 +73,18 @@ class RecipeController extends Controller
         // Auto-increment version
         $maxVersion = Recipe::where('composite_item_id', $item->id)->max('version') ?? 0;
 
+        $isFirstRecipe = $maxVersion === 0;
+
         $recipe = Recipe::create([
             ...$request->validated(),
             'composite_item_id' => $item->id,
             'version' => $maxVersion + 1,
+            'is_active' => $isFirstRecipe,
         ]);
+
+        if ($isFirstRecipe) {
+            $item->update(['default_recipe_id' => $recipe->id]);
+        }
 
         return response()->json(['data' => RecipeData::fromModel($recipe)], 201);
     }

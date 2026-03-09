@@ -15,13 +15,26 @@ interface Product {
   tax_rate: number
 }
 
+interface Service {
+  id: string
+  name: string
+  code: string
+  base_price: number
+  tax_rate: number
+}
+
 interface ProductsResponse {
   data: Product[]
+}
+
+interface ServicesResponse {
+  data: Service[]
 }
 
 export interface DocumentLine {
   id: string
   product_id: string
+  service_id?: string
   product_code?: string
   product_name: string
   description: string
@@ -29,7 +42,10 @@ export interface DocumentLine {
   unit_price: number
   tax_rate: number
   line_total: number
+  is_service?: boolean
 }
+
+type SearchTab = 'product' | 'service'
 
 interface DocumentLineEditorProps {
   lines: DocumentLine[]
@@ -42,6 +58,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false }: Docume
   const queryClient = useQueryClient()
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
   const [searchQuery, setSearchQuery] = useState('')
+  const [searchTab, setSearchTab] = useState<SearchTab>('product')
   const [showProductSearch, setShowProductSearch] = useState(false)
   const [showProductModal, setShowProductModal] = useState(false)
   const [editingLineId, setEditingLineId] = useState<string | null>(null)
@@ -63,7 +80,20 @@ export function DocumentLineEditor({ lines, onChange, readonly = false }: Docume
     staleTime: 30000, // Cache for 30 seconds
   })
 
+  // Fetch services for search
+  const { data: servicesData, isLoading: isLoadingServices } = useQuery({
+    queryKey: ['services', searchQuery],
+    queryFn: async () => {
+      const params = searchQuery ? `?search=${encodeURIComponent(searchQuery)}` : ''
+      const response = await api.get<ServicesResponse>(`/services${params}`)
+      return response.data
+    },
+    enabled: showProductSearch && searchTab === 'service',
+    staleTime: 30000,
+  })
+
   const products = productsData?.data ?? []
+  const services = servicesData?.data ?? []
 
   // Calculate totals
   const totals = useMemo(() => {
@@ -114,6 +144,29 @@ export function DocumentLineEditor({ lines, onChange, readonly = false }: Docume
         unit_price: product.sale_price,
         tax_rate: product.tax_rate,
         line_total: calculateLineTotal(1, product.sale_price, product.tax_rate),
+      }
+      onChange([...lines, newLine])
+      setShowProductSearch(false)
+      setSearchQuery('')
+    },
+    [lines, onChange]
+  )
+
+  // Add service to lines
+  const handleAddService = useCallback(
+    (service: Service) => {
+      const newLine: DocumentLine = {
+        id: generateId(),
+        product_id: '',
+        service_id: service.id,
+        product_code: service.code,
+        product_name: service.name,
+        description: service.name,
+        quantity: 1,
+        unit_price: service.base_price,
+        tax_rate: service.tax_rate,
+        line_total: calculateLineTotal(1, service.base_price, service.tax_rate),
+        is_service: true,
       }
       onChange([...lines, newLine])
       setShowProductSearch(false)
@@ -276,9 +329,16 @@ export function DocumentLineEditor({ lines, onChange, readonly = false }: Docume
                     </td>
                   )}
                   <td className="px-4 py-3">
-                    <span className="text-sm font-mono text-gray-600">
-                      {line.product_code || '-'}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-mono text-gray-600">
+                        {line.product_code || '-'}
+                      </span>
+                      {line.is_service && (
+                        <span className="inline-flex rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
+                          {t('sales:lineItems.serviceBadge')}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     {editingLineId === line.id && !readonly ? (
@@ -414,9 +474,26 @@ export function DocumentLineEditor({ lines, onChange, readonly = false }: Docume
               {t('sales:lineItems.actions.searchProducts')}
             </button>
 
-            {/* Product Search Dropdown */}
+            {/* Product/Service Search Dropdown */}
             {showProductSearch && (
               <div className="absolute left-0 top-full z-10 mt-1 w-80 rounded-lg border border-gray-200 bg-white shadow-lg">
+                {/* Tab Toggle */}
+                <div className="flex border-b border-gray-200">
+                  <button
+                    type="button"
+                    onClick={() => { setSearchTab('product'); setSearchQuery('') }}
+                    className={`flex-1 px-4 py-2 text-sm font-medium ${searchTab === 'product' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    {t('sales:lineItems.tabs.product')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setSearchTab('service'); setSearchQuery('') }}
+                    className={`flex-1 px-4 py-2 text-sm font-medium ${searchTab === 'service' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    {t('sales:lineItems.tabs.service')}
+                  </button>
+                </div>
                 <div className="p-3">
                   <div className="relative">
                     <input
@@ -425,7 +502,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false }: Docume
                       onChange={(e) => {
                         setSearchQuery(e.target.value)
                       }}
-                      placeholder={t('sales:lineItems.actions.searchProductsPlaceholder')}
+                      placeholder={searchTab === 'product' ? t('sales:lineItems.actions.searchProductsPlaceholder') : t('sales:lineItems.actions.searchServicesPlaceholder')}
                       className="w-full rounded-lg border border-gray-300 py-2 pe-10 ps-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       autoFocus
                     />
@@ -443,54 +520,103 @@ export function DocumentLineEditor({ lines, onChange, readonly = false }: Docume
                   </div>
                 </div>
                 <div className="max-h-60 overflow-y-auto border-t border-gray-200">
-                  {isLoadingProducts ? (
-                    <div className="p-4 text-center text-sm text-gray-500">
-                      {t('sales:lineItems.loading')}
-                    </div>
-                  ) : products.length === 0 ? (
-                    <div className="p-4 text-center text-sm">
-                      <p className="text-gray-500">
-                        {searchQuery ? t('sales:lineItems.noProductsFound') : t('sales:lineItems.noProductsAvailable')}
-                      </p>
-                    </div>
+                  {searchTab === 'product' ? (
+                    <>
+                      {isLoadingProducts ? (
+                        <div className="p-4 text-center text-sm text-gray-500">
+                          {t('sales:lineItems.loading')}
+                        </div>
+                      ) : products.length === 0 ? (
+                        <div className="p-4 text-center text-sm">
+                          <p className="text-gray-500">
+                            {searchQuery ? t('sales:lineItems.noProductsFound') : t('sales:lineItems.noProductsAvailable')}
+                          </p>
+                        </div>
+                      ) : (
+                        <ul className="divide-y divide-gray-100">
+                          {products.map((product) => (
+                            <li key={product.id}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleAddProduct(product)
+                                }}
+                                className="flex w-full items-center justify-between px-4 py-3 text-start hover:bg-gray-50"
+                              >
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {product.name}
+                                  </div>
+                                  <div className="text-xs text-gray-500">{product.sku}</div>
+                                </div>
+                                <div className="text-sm font-medium text-gray-900">
+                                  {formatAmount(product.sale_price)}
+                                </div>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
                   ) : (
-                    <ul className="divide-y divide-gray-100">
-                      {products.map((product) => (
-                        <li key={product.id}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleAddProduct(product)
-                            }}
-                            className="flex w-full items-center justify-between px-4 py-3 text-start hover:bg-gray-50"
-                          >
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">
-                                {product.name}
-                              </div>
-                              <div className="text-xs text-gray-500">{product.sku}</div>
-                            </div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {formatAmount(product.sale_price)}
-                            </div>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
+                    <>
+                      {isLoadingServices ? (
+                        <div className="p-4 text-center text-sm text-gray-500">
+                          {t('sales:lineItems.loading')}
+                        </div>
+                      ) : services.length === 0 ? (
+                        <div className="p-4 text-center text-sm">
+                          <p className="text-gray-500">
+                            {searchQuery ? t('sales:lineItems.noServicesFound') : t('sales:lineItems.noServicesAvailable')}
+                          </p>
+                        </div>
+                      ) : (
+                        <ul className="divide-y divide-gray-100">
+                          {services.map((service) => (
+                            <li key={service.id}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleAddService(service)
+                                }}
+                                className="flex w-full items-center justify-between px-4 py-3 text-start hover:bg-gray-50"
+                              >
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium text-gray-900">
+                                      {service.name}
+                                    </span>
+                                    <span className="inline-flex rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
+                                      {t('sales:lineItems.serviceBadge')}
+                                    </span>
+                                  </div>
+                                  <div className="text-xs text-gray-500">{service.code}</div>
+                                </div>
+                                <div className="text-sm font-medium text-gray-900">
+                                  {formatAmount(service.base_price)}
+                                </div>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
                   )}
                 </div>
                 <div className="border-t border-gray-200 p-2 space-y-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowProductSearch(false)
-                      setShowProductModal(true)
-                    }}
-                    className="w-full flex items-center justify-center gap-2 rounded px-3 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors"
-                  >
-                    <Plus className="h-4 w-4" />
-                    {t('sales:lineItems.actions.createNewProduct')}
-                  </button>
+                  {searchTab === 'product' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowProductSearch(false)
+                        setShowProductModal(true)
+                      }}
+                      className="w-full flex items-center justify-center gap-2 rounded px-3 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors"
+                    >
+                      <Plus className="h-4 w-4" />
+                      {t('sales:lineItems.actions.createNewProduct')}
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {

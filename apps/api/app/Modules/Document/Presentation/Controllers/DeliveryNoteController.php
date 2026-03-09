@@ -19,6 +19,7 @@ use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Vehicle\Application\Services\VehicleContextBuilder;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -52,6 +53,7 @@ class DeliveryNoteController extends Controller
         private readonly LocationContext $locationContext,
         private readonly DocumentNumberingService $numberingService,
         private readonly DeliveryNoteService $deliveryNoteService,
+        private readonly VehicleContextBuilder $vehicleContextBuilder,
     ) {}
 
     /**
@@ -232,7 +234,7 @@ class DeliveryNoteController extends Controller
 
             // Create vehicle context if vehicle_context provided
             if ($vehicleContext !== null) {
-                $this->createVehicleContext($document, $vehicleContext, $tenantId, $companyId);
+                $this->createVehicleContext($document, $vehicleContext, $tenantId, $companyId, $this->vehicleContextBuilder);
             }
 
             /** @var Document $freshDocument */

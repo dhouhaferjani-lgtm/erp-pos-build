@@ -11,12 +11,15 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * @property string $id
  * @property string $tenant_id
  * @property string|null $customer_id
+ * @property string|null $loyaltyable_type
+ * @property string|null $loyaltyable_id
  * @property string $phone
  * @property string|null $email
  * @property string|null $first_name
@@ -27,6 +30,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $external_id
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property-read \Illuminate\Database\Eloquent\Model|null $loyaltyable
  * @property-read Partner|null $customer
  * @property-read \Illuminate\Database\Eloquent\Collection<int, Enrollment> $enrollments
  */
@@ -39,6 +43,8 @@ class LoyaltyMember extends Model
     protected $fillable = [
         'tenant_id',
         'customer_id',
+        'loyaltyable_type',
+        'loyaltyable_id',
         'phone',
         'email',
         'first_name',
@@ -62,7 +68,19 @@ class LoyaltyMember extends Model
     }
 
     /**
+     * Get the loyaltyable entity (Contact or Partner)
+     *
+     * @return MorphTo<\Illuminate\Database\Eloquent\Model, $this>
+     */
+    public function loyaltyable(): MorphTo
+    {
+        return $this->morphTo();
+    }
+
+    /**
      * Get the customer (partner) associated with this member
+     *
+     * @deprecated Use loyaltyable() instead. Kept for backward compatibility.
      */
     public function customer(): BelongsTo
     {

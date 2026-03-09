@@ -459,6 +459,88 @@ class UserController extends Controller
     }
 
     /**
+     * Set or clear POS PIN for a user.
+     *
+     * PATCH /api/v1/users/{id}/pos-pin
+     */
+    public function setPosPin(Request $request, string $id): JsonResponse
+    {
+        /** @var User $currentUser */
+        $currentUser = $request->user();
+
+        if (! $currentUser->can('users.update')) {
+            return response()->json([
+                'error' => [
+                    'code' => 'FORBIDDEN',
+                    'message' => 'You do not have permission to manage POS PINs.',
+                ],
+                'meta' => $this->getMeta($request),
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        $request->validate([
+            'pin' => ['nullable', 'string', 'digits_between:4,6'],
+        ]);
+
+        $user = User::where('tenant_id', $currentUser->tenant_id)
+            ->where('id', $id)
+            ->first();
+
+        if ($user === null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'NOT_FOUND',
+                    'message' => 'User not found.',
+                ],
+                'meta' => $this->getMeta($request),
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        $pin = $request->input('pin');
+
+        if ($pin === null) {
+            $user->update(['pos_pin' => null]);
+
+            return response()->json([
+                'data' => ['message' => 'POS PIN cleared'],
+                'meta' => $this->getMeta($request),
+            ]);
+        }
+
+        // Check uniqueness within tenant (iterate and Hash::check)
+        $existingUsers = User::where('tenant_id', $currentUser->tenant_id)
+            ->where('id', '!=', $user->id)
+            ->whereNotNull('pos_pin')
+            ->get();
+
+        foreach ($existingUsers as $existingUser) {
+            if (Hash::check($pin, $existingUser->pos_pin)) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'PIN_ALREADY_IN_USE',
+                        'message' => 'This PIN is already used by another user.',
+                    ],
+                    'meta' => $this->getMeta($request),
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+        }
+
+        $user->update(['pos_pin' => $pin]);
+
+        $this->logAuditEvent(
+            eventType: 'user.pos_pin_set',
+            aggregateId: $user->id,
+            userId: $currentUser->id,
+            companyId: $request->header('X-Company-Id'),
+        );
+
+        return response()->json([
+            'data' => ['message' => 'POS PIN updated'],
+            'meta' => $this->getMeta($request),
+        ]);
+    }
+
+    /**
      * Trigger password reset for a user.
      */
     public function resetPassword(Request $request, string $id): JsonResponse

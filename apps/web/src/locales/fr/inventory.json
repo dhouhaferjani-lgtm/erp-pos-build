@@ -92,6 +92,8 @@
     "brand": "Marque",
     "reference": "Référence",
     "type": "Type de produit",
+    "isPhysical": "Produit physique",
+    "isPhysicalHelper": "Décochez pour les articles non physiques (ex. biens numériques). Les services doivent être créés dans le module Services.",
     "quickCreateNote": "Ceci crée un produit de base. Modifiez le produit plus tard pour ajouter plus de détails.",
     "types": {
       "part": "Pièce",
@@ -434,6 +436,12 @@
         "status": "Statut",
         "progress": "Progression",
         "created": "Créé"
+      },
+      "mobileBadge": "Mobile",
+      "sourceFilter": {
+        "all": "Toutes les sources",
+        "mobileOnly": "Mobile uniquement",
+        "webOnly": "Web uniquement"
       }
     },
     "create": {

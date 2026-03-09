@@ -9,6 +9,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Domain\Exceptions\ShiftAlreadyOpenException;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Services\ShiftManagementService;
+use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
@@ -49,9 +50,14 @@ final class ShiftController extends Controller
             ->firstOrFail();
 
         try {
+            $cashierId = $request->validated('cashier_id');
+            $cashier = $cashierId
+                ? User::findOrFail($cashierId)
+                : $request->user();
+
             $shift = $this->shiftManagementService->openShift(
                 $terminal,
-                $request->user(),
+                $cashier,
                 $request->validated('opening_cash')
             );
 

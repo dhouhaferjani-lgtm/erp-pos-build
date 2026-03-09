@@ -8,6 +8,7 @@ import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { formatCurrency } from '../../../lib/format'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
+import { DocumentAttachments } from '../components/DocumentAttachments'
 import { DocumentTotals } from '../components/DocumentTotals'
 import { DocumentHeader } from '../components/DocumentHeader'
 import type { QuoteExpiryInfo } from '../components/DocumentHeader'
@@ -18,6 +19,7 @@ import { useCompany } from '../../../hooks/useCompany'
 import type { Document } from '../../../types/document'
 
 type ConfirmAction = 'confirm' | 'convert' | null
+type ActiveTab = 'related' | 'attachments'
 
 export function QuoteDetailPage() {
   const { t } = useTranslation(['sales', 'common'])
@@ -27,6 +29,7 @@ export function QuoteDetailPage() {
   const { currentCompany } = useCompany()
 
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
+  const [activeTab, setActiveTab] = useState<ActiveTab>('related')
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [emailForm, setEmailForm] = useState({
     recipientEmail: '',
@@ -152,7 +155,7 @@ export function QuoteDetailPage() {
       onSuccess: () => {
         setShowEmailModal(false)
         setEmailForm({ recipientEmail: '', subject: '', message: '', ccEmails: '' })
-        toast.success(t('email.success'))
+        toast.success(t('common:email.success'))
       },
     })
   }
@@ -172,7 +175,7 @@ export function QuoteDetailPage() {
     return (
       <div className="py-6">
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-800">{t('errors.loadingFailed')}</p>
+          <p className="text-red-800">{t('common:errorMessages.generic')}</p>
         </div>
       </div>
     )
@@ -332,17 +335,32 @@ export function QuoteDetailPage() {
       <div className="mt-6">
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
-            <button className="border-blue-500 text-blue-600 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+            <button
+              onClick={() => setActiveTab('related')}
+              className={`${
+                activeTab === 'related'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+            >
               {t('documents.relatedDocuments')}
             </button>
-            <button className="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+            <button
+              onClick={() => setActiveTab('attachments')}
+              className={`${
+                activeTab === 'attachments'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+            >
               {t('documents.attachments')}
             </button>
           </nav>
         </div>
 
         <div className="mt-6">
-          <RelatedDocumentsTab documentId={quote.id} />
+          {activeTab === 'related' && <RelatedDocumentsTab documentId={quote.id} />}
+          {activeTab === 'attachments' && <DocumentAttachments documentId={quote.id} />}
         </div>
       </div>
 
@@ -371,10 +389,10 @@ export function QuoteDetailPage() {
       {showEmailModal && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">{t('email.title')}</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">{t('common:email.title')}</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">{t('email.recipientEmail')}</label>
+                <label className="block text-sm font-medium text-gray-700">{t('common:email.recipientEmail')}</label>
                 <input
                   type="email"
                   value={emailForm.recipientEmail}
@@ -383,7 +401,7 @@ export function QuoteDetailPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">{t('email.subject')}</label>
+                <label className="block text-sm font-medium text-gray-700">{t('common:email.subject')}</label>
                 <input
                   type="text"
                   value={emailForm.subject}
@@ -392,7 +410,7 @@ export function QuoteDetailPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">{t('email.message')}</label>
+                <label className="block text-sm font-medium text-gray-700">{t('common:email.message')}</label>
                 <textarea
                   value={emailForm.message}
                   onChange={(e) => setEmailForm({ ...emailForm, message: e.target.value })}

@@ -6,8 +6,12 @@ namespace App\Modules\POS\Domain;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
+use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Contact\Domain\Contact;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -33,6 +37,9 @@ use Illuminate\Support\Carbon;
  * @property string $location_id
  * @property string $terminal_id
  * @property string $receipt_number Format: T001-C042-L01-POS03-2026-00000001
+ * @property ReceiptType $receipt_type Sale or Return
+ * @property string|null $original_receipt_id FK to original receipt (for returns)
+ * @property ReturnReason|null $return_reason Reason for return
  * @property int $chain_sequence Sequential number in terminal's chain
  * @property int $receipt_year Year for filtering/reset logic
  * @property string $fiscal_hash SHA-256 hash of this receipt
@@ -51,6 +58,8 @@ use Illuminate\Support\Carbon;
  * @property ConsumptionMode|null $consumption_mode SUR_PLACE, A_EMPORTER
  * @property string|null $customer_name
  * @property string|null $customer_identifier Loyalty number, phone, etc.
+ * @property string|null $partner_id Optional FK to partners for customer queryability
+ * @property string|null $contact_id
  * @property bool $is_voided
  * @property Carbon|null $voided_at
  * @property string|null $voided_by
@@ -67,8 +76,12 @@ use Illuminate\Support\Carbon;
  * @property-read Location $location
  * @property-read Terminal $terminal
  * @property-read User $cashier
+ * @property-read Partner|null $partner
+ * @property-read Contact|null $contact
  * @property-read User|null $voidedBy
  * @property-read Receipt|null $voidReceipt
+ * @property-read Receipt|null $originalReceipt
+ * @property-read Collection<int, Receipt> $returnReceipts
  * @property-read Collection<int, ReceiptLine> $lines
  * @property-read Collection<int, ReceiptVatDetail> $vatDetails
  * @property-read Collection<int, ReceiptPayment> $payments
@@ -107,6 +120,9 @@ class Receipt extends Model
         'location_id',
         'terminal_id',
         'receipt_number',
+        'receipt_type',
+        'original_receipt_id',
+        'return_reason',
         'chain_sequence',
         'receipt_year',
         'fiscal_hash',
@@ -126,6 +142,8 @@ class Receipt extends Model
         'consumption_mode',
         'customer_name',
         'customer_identifier',
+        'partner_id',
+        'contact_id',
         'is_voided',
         'voided_at',
         'voided_by',
@@ -143,6 +161,8 @@ class Receipt extends Model
     protected function casts(): array
     {
         return [
+            'receipt_type' => ReceiptType::class,
+            'return_reason' => ReturnReason::class,
             'chain_sequence' => 'integer',
             'receipt_year' => 'integer',
             'posted_at' => 'datetime',
@@ -191,6 +211,22 @@ class Receipt extends Model
     }
 
     /**
+     * @return BelongsTo<Partner, $this>
+     */
+    public function partner(): BelongsTo
+    {
+        return $this->belongsTo(Partner::class);
+    }
+
+    /**
+     * @return BelongsTo<Contact, $this>
+     */
+    public function contact(): BelongsTo
+    {
+        return $this->belongsTo(Contact::class);
+    }
+
+    /**
      * @return BelongsTo<User, $this>
      */
     public function cashier(): BelongsTo
@@ -212,6 +248,26 @@ class Receipt extends Model
     public function voidReceipt(): BelongsTo
     {
         return $this->belongsTo(Receipt::class, 'void_receipt_id');
+    }
+
+    /**
+     * The original receipt that this return receipt references.
+     *
+     * @return BelongsTo<Receipt, $this>
+     */
+    public function originalReceipt(): BelongsTo
+    {
+        return $this->belongsTo(Receipt::class, 'original_receipt_id');
+    }
+
+    /**
+     * Return receipts that reference this receipt.
+     *
+     * @return HasMany<Receipt, $this>
+     */
+    public function returnReceipts(): HasMany
+    {
+        return $this->hasMany(Receipt::class, 'original_receipt_id');
     }
 
     /**
@@ -237,6 +293,22 @@ class Receipt extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(ReceiptPayment::class, 'receipt_id');
+    }
+
+    /**
+     * Check if this is a return receipt
+     */
+    public function isReturn(): bool
+    {
+        return $this->receipt_type === ReceiptType::Return;
+    }
+
+    /**
+     * Check if this is a sale receipt
+     */
+    public function isSale(): bool
+    {
+        return $this->receipt_type === ReceiptType::Sale;
     }
 
     /**

@@ -48,6 +48,7 @@ import {
   UtensilsCrossed,
   Combine,
   Ticket,
+  ContactRound,
 } from 'lucide-react'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useCompanyConfig } from '../../../contexts'
@@ -69,6 +70,7 @@ const MODULE_NAME_MAP: Record<string, string> = {
   vehicles: 'Vehicle',
   services: 'Workshop',
   'composite-items': 'CompositeItems',
+  parapharmacy: 'Parapharmacy',
   // Core modules (always visible): dashboard, sales, purchases, inventory, treasury, finance, pricing, reports, settings
   // These don't need mapping as they're not filtered by vertical
 }
@@ -196,14 +198,22 @@ const navigation: NavModule[] = [
     ],
   },
   {
+    key: 'crm',
+    icon: ContactRound,
+    children: [
+      { key: 'companies', href: '/crm/companies', icon: Building2 },
+      { key: 'contacts', href: '/crm/contacts', icon: Users },
+    ],
+  },
+  {
     key: 'parapharmacy',
     icon: Pill,
-    module: 'settings',
+    module: 'parapharmacy',
     children: [
-      { key: 'ingredients', href: '/parapharmacy/ingredients', icon: Layers3, module: 'settings' },
-      { key: 'certifications', href: '/parapharmacy/certifications', icon: Award, module: 'settings' },
-      { key: 'healthClaims', href: '/parapharmacy/health-claims', icon: ListChecks, module: 'settings' },
-      { key: 'keyComponents', href: '/parapharmacy/key-components', icon: Package, module: 'settings' },
+      { key: 'ingredients', href: '/parapharmacy/ingredients', icon: Layers3, module: 'parapharmacy' },
+      { key: 'certifications', href: '/parapharmacy/certifications', icon: Award, module: 'parapharmacy' },
+      { key: 'healthClaims', href: '/parapharmacy/health-claims', icon: ListChecks, module: 'parapharmacy' },
+      { key: 'keyComponents', href: '/parapharmacy/key-components', icon: Package, module: 'parapharmacy' },
     ],
   },
   {

@@ -78,7 +78,6 @@ class CreateProductTest extends TestCase
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/products', [
                 'sku' => 'SKU-001',
-                'type' => 'part',
             ]);
 
         $this->assertApiValidationErrors($response, ['name']);
@@ -89,7 +88,6 @@ class CreateProductTest extends TestCase
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/products', [
                 'name' => 'Test Product',
-                'type' => 'part',
             ]);
 
         $this->assertApiValidationErrors($response, ['sku']);
@@ -101,7 +99,6 @@ class CreateProductTest extends TestCase
             ->postJson('/api/v1/products', [
                 'name' => 'First Product',
                 'sku' => 'SKU-001',
-                'type' => 'part',
             ])
             ->assertCreated();
 
@@ -109,13 +106,12 @@ class CreateProductTest extends TestCase
             ->postJson('/api/v1/products', [
                 'name' => 'Second Product',
                 'sku' => 'SKU-001',
-                'type' => 'part',
             ]);
 
         $this->assertApiValidationErrors($response, ['sku']);
     }
 
-    public function test_type_is_required(): void
+    public function test_type_is_nullable(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/products', [
@@ -123,10 +119,11 @@ class CreateProductTest extends TestCase
                 'sku' => 'SKU-001',
             ]);
 
-        $this->assertApiValidationErrors($response, ['type']);
+        $response->assertCreated()
+            ->assertJsonPath('data.type', null);
     }
 
-    public function test_type_must_be_valid(): void
+    public function test_type_must_be_valid_when_provided(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/products', [
@@ -138,13 +135,64 @@ class CreateProductTest extends TestCase
         $this->assertApiValidationErrors($response, ['type']);
     }
 
+    public function test_can_create_product_with_type(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/products', [
+                'name' => 'Part Product',
+                'sku' => 'PART-001',
+                'type' => 'part',
+            ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.type', 'part');
+    }
+
+    public function test_can_set_type_to_null_explicitly(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/products', [
+                'name' => 'Generic Product',
+                'sku' => 'GEN-001',
+                'type' => null,
+            ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.type', null);
+    }
+
+    public function test_can_create_product_with_is_physical_true(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/products', [
+                'name' => 'Physical Product',
+                'sku' => 'PHY-001',
+                'is_physical' => true,
+            ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.is_physical', true);
+    }
+
+    public function test_can_create_product_with_is_physical_false(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/products', [
+                'name' => 'Digital Product',
+                'sku' => 'DIG-001',
+                'is_physical' => false,
+            ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.is_physical', false);
+    }
+
     public function test_sale_price_must_be_numeric(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/products', [
                 'name' => 'Test Product',
                 'sku' => 'SKU-001',
-                'type' => 'part',
                 'sale_price' => 'not-a-number',
             ]);
 
@@ -157,7 +205,6 @@ class CreateProductTest extends TestCase
             ->postJson('/api/v1/products', [
                 'name' => 'Test Product',
                 'sku' => 'SKU-001',
-                'type' => 'part',
                 'purchase_price' => 'not-a-number',
             ]);
 
@@ -170,7 +217,6 @@ class CreateProductTest extends TestCase
             ->postJson('/api/v1/products', [
                 'name' => 'Brake Pad Set',
                 'sku' => 'BRK-PAD-001',
-                'type' => 'part',
                 'description' => 'Front brake pad set for various models',
                 'sale_price' => '49.99',
                 'purchase_price' => '25.00',
@@ -181,7 +227,6 @@ class CreateProductTest extends TestCase
         $response->assertCreated()
             ->assertJsonPath('data.name', 'Brake Pad Set')
             ->assertJsonPath('data.sku', 'BRK-PAD-001')
-            ->assertJsonPath('data.type', 'part')
             ->assertJsonPath('data.sale_price', '49.99')
             ->assertJsonStructure([
                 'data' => [
@@ -206,52 +251,12 @@ class CreateProductTest extends TestCase
         ]);
     }
 
-    public function test_can_create_part_type(): void
-    {
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/v1/products', [
-                'name' => 'Part Product',
-                'sku' => 'PART-001',
-                'type' => 'part',
-            ]);
-
-        $response->assertCreated()
-            ->assertJsonPath('data.type', 'part');
-    }
-
-    public function test_can_create_service_type(): void
-    {
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/v1/products', [
-                'name' => 'Labor Service',
-                'sku' => 'SVC-001',
-                'type' => 'service',
-            ]);
-
-        $response->assertCreated()
-            ->assertJsonPath('data.type', 'service');
-    }
-
-    public function test_can_create_consumable_type(): void
-    {
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/v1/products', [
-                'name' => 'Motor Oil 5W-30',
-                'sku' => 'CON-001',
-                'type' => 'consumable',
-            ]);
-
-        $response->assertCreated()
-            ->assertJsonPath('data.type', 'consumable');
-    }
-
     public function test_can_store_oem_numbers(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/products', [
                 'name' => 'Air Filter',
                 'sku' => 'FLT-001',
-                'type' => 'part',
                 'oem_numbers' => ['1234567890', 'ABC123DEF'],
             ]);
 
@@ -265,7 +270,6 @@ class CreateProductTest extends TestCase
             ->postJson('/api/v1/products', [
                 'name' => 'Oil Filter',
                 'sku' => 'FLT-002',
-                'type' => 'part',
                 'cross_references' => [
                     ['brand' => 'Bosch', 'reference' => 'F026407022'],
                     ['brand' => 'Mann', 'reference' => 'W712/80'],
@@ -281,7 +285,6 @@ class CreateProductTest extends TestCase
         $response = $this->postJson('/api/v1/products', [
             'name' => 'Test Product',
             'sku' => 'SKU-001',
-            'type' => 'part',
         ]);
 
         $response->assertUnauthorized();
@@ -308,7 +311,6 @@ class CreateProductTest extends TestCase
             ->postJson('/api/v1/products', [
                 'name' => 'Test Product',
                 'sku' => 'SKU-001',
-                'type' => 'part',
             ]);
 
         $response->assertForbidden();

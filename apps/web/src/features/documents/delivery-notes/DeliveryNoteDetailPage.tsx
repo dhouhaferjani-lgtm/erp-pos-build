@@ -57,9 +57,9 @@ export function DeliveryNoteDetailPage() {
     },
   })
 
-  const handleDownloadPdf = useDownloadPdf()
-  const handlePreviewPdf = usePreviewPdf()
-  const handlePrintPdf = usePrintPdf()
+  const downloadPdfMutation = useDownloadPdf()
+  const previewPdfMutation = usePreviewPdf()
+  const printPdfMutation = usePrintPdf()
   const sendEmailMutation = useSendDocumentEmail()
 
   const handleSendEmail = async () => {
@@ -132,9 +132,12 @@ export function DeliveryNoteDetailPage() {
             onConfirm={() => setConfirmAction('confirm')}
             onCreateReturnNote={() => setShowReturnNoteForm(true)}
             onRecordPayment={() => navigate(`/treasury/payments/new?delivery_note=${deliveryNote.id}`)}
-            onDownloadPdf={() => handleDownloadPdf(deliveryNote.id, deliveryNote.document_number)}
-            onPreviewPdf={() => handlePreviewPdf(deliveryNote.id)}
-            onPrintPdf={() => handlePrintPdf(deliveryNote.id)}
+            onDownloadPdf={() => downloadPdfMutation.mutate(deliveryNote.id)}
+            onPreviewPdf={() => previewPdfMutation.mutate(deliveryNote.id)}
+            onPrintPdf={() => printPdfMutation.mutate(deliveryNote.id)}
+            isDownloading={downloadPdfMutation.isPending}
+            isPreviewing={previewPdfMutation.isPending}
+            isPrinting={printPdfMutation.isPending}
             onSendEmail={() => {
               setEmailForm({
                 ...emailForm,

@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
+import { Input, Button, Select } from '@/components/atoms'
+import { tokens } from '@/lib/designTokens'
 import type { CompositeItemVariantData, PriceAdjustmentType } from '../types/compositeItem'
 import { useCreateVariant, useUpdateVariant, useDeleteVariant } from '../hooks/useRecipes'
 
@@ -86,39 +88,39 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
               <tr key={variant.id}>
                 <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">{variant.code}</td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm">
-                  <input
+                  <Input
                     type="text"
                     defaultValue={variant.name}
                     onBlur={(e) => handleUpdate(variant.id, 'name', e.target.value)}
-                    className="w-32 rounded-md border-gray-300 text-sm"
+                    className="!mt-0 w-32"
                   />
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm">
-                  <select
+                  <Select
                     defaultValue={variant.price_adjustment_type}
                     onChange={(e) => handleUpdate(variant.id, 'price_adjustment_type', e.target.value)}
-                    className="rounded-md border-gray-300 text-sm"
+                    className="!mt-0"
                   >
                     <option value="absolute">{t('catalog:absolute')}</option>
                     <option value="percentage">{t('catalog:percentage')}</option>
                     <option value="override">{t('catalog:override')}</option>
-                  </select>
+                  </Select>
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm">
-                  <input
+                  <Input
                     type="number"
                     defaultValue={variant.price_adjustment}
                     onBlur={(e) => handleUpdate(variant.id, 'price_adjustment', e.target.value)}
-                    className="w-24 rounded-md border-gray-300 text-sm"
+                    className="!mt-0 w-24"
                     step="0.01"
                   />
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm">
-                  <input
+                  <Input
                     type="number"
                     defaultValue={variant.recipe_multiplier}
                     onBlur={(e) => handleUpdate(variant.id, 'recipe_multiplier', e.target.value)}
-                    className="w-20 rounded-md border-gray-300 text-sm"
+                    className="!mt-0 w-20"
                     step="0.01"
                     min="0.01"
                   />
@@ -129,66 +131,68 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
                     name="default_variant"
                     checked={variant.is_default}
                     onChange={() => handleUpdate(variant.id, 'is_default', true)}
-                    className="border-gray-300"
+                    className={tokens.radio.base}
                   />
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm">
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => handleDelete(variant.id)}
-                    className="text-red-600 hover:text-red-900"
                     disabled={deleteMutation.isPending}
+                    className="!p-1 text-red-600 hover:text-red-900 hover:bg-red-50"
                   >
                     <Trash2 className="h-4 w-4" />
-                  </button>
+                  </Button>
                 </td>
               </tr>
             ))}
             {/* Add new variant row */}
             <tr className="bg-gray-50">
               <td className="px-3 py-4">
-                <input
+                <Input
                   type="text"
                   placeholder={t('catalog:code')}
                   value={newVariant.code}
                   onChange={(e) => setNewVariant({ ...newVariant, code: e.target.value })}
-                  className="w-24 rounded-md border-gray-300 text-sm"
+                  className="!mt-0 w-24"
                 />
               </td>
               <td className="px-3 py-4">
-                <input
+                <Input
                   type="text"
                   placeholder={t('catalog:name')}
                   value={newVariant.name}
                   onChange={(e) => setNewVariant({ ...newVariant, name: e.target.value })}
-                  className="w-32 rounded-md border-gray-300 text-sm"
+                  className="!mt-0 w-32"
                 />
               </td>
               <td className="px-3 py-4">
-                <select
+                <Select
                   value={newVariant.price_adjustment_type}
                   onChange={(e) => setNewVariant({ ...newVariant, price_adjustment_type: e.target.value as PriceAdjustmentType })}
-                  className="rounded-md border-gray-300 text-sm"
+                  className="!mt-0"
                 >
                   <option value="absolute">{t('catalog:absolute')}</option>
                   <option value="percentage">{t('catalog:percentage')}</option>
                   <option value="override">{t('catalog:override')}</option>
-                </select>
+                </Select>
               </td>
               <td className="px-3 py-4">
-                <input
+                <Input
                   type="number"
                   value={newVariant.price_adjustment}
                   onChange={(e) => setNewVariant({ ...newVariant, price_adjustment: e.target.value })}
-                  className="w-24 rounded-md border-gray-300 text-sm"
+                  className="!mt-0 w-24"
                   step="0.01"
                 />
               </td>
               <td className="px-3 py-4">
-                <input
+                <Input
                   type="number"
                   value={newVariant.recipe_multiplier}
                   onChange={(e) => setNewVariant({ ...newVariant, recipe_multiplier: e.target.value })}
-                  className="w-20 rounded-md border-gray-300 text-sm"
+                  className="!mt-0 w-20"
                   step="0.01"
                   min="0.01"
                 />
@@ -198,17 +202,19 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
                   type="checkbox"
                   checked={newVariant.is_default}
                   onChange={(e) => setNewVariant({ ...newVariant, is_default: e.target.checked })}
-                  className="rounded border-gray-300"
+                  className={tokens.checkbox.base}
                 />
               </td>
               <td className="px-3 py-4">
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={handleAdd}
                   disabled={!newVariant.code || !newVariant.name || createMutation.isPending}
-                  className="text-indigo-600 hover:text-indigo-900 disabled:opacity-50"
+                  className="!p-1 text-blue-600 hover:text-blue-700"
                 >
                   <Plus className="h-4 w-4" />
-                </button>
+                </Button>
               </td>
             </tr>
           </tbody>

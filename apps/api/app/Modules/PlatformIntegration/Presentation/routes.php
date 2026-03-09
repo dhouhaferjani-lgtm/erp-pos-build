@@ -1,0 +1,52 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
+use App\Modules\PlatformIntegration\Presentation\Controllers\BarcodeLookupController;
+use App\Modules\PlatformIntegration\Presentation\Controllers\CatalogBrowseController;
+use App\Modules\PlatformIntegration\Presentation\Controllers\VinDecodeController;
+use Illuminate\Support\Facades\Route;
+
+Route::prefix('api/v1/platform')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function () {
+    // Barcode Lookup
+    Route::post('barcode-lookup', BarcodeLookupController::class)
+        ->name('platform.barcode-lookup');
+
+    // Catalog Browse (proxy to platform)
+    Route::prefix('catalog')->group(function () {
+        Route::get('manufacturers', [CatalogBrowseController::class, 'manufacturers'])
+            ->name('platform.catalog.manufacturers');
+
+        Route::get('manufacturers/{manufacturerId}/model-series', [CatalogBrowseController::class, 'modelSeries'])
+            ->name('platform.catalog.model-series');
+
+        Route::get('model-series/{modelSeriesId}/vehicles', [CatalogBrowseController::class, 'vehicles'])
+            ->name('platform.catalog.vehicles');
+
+        Route::get('vehicles/{vehicleType}/{vehicleId}/articles', [CatalogBrowseController::class, 'vehicleArticles'])
+            ->name('platform.catalog.vehicle-articles');
+
+        Route::get('articles', [CatalogBrowseController::class, 'searchArticles'])
+            ->name('platform.catalog.articles');
+
+        Route::get('articles/cross-reference', [CatalogBrowseController::class, 'crossReferenceSearch'])
+            ->name('platform.catalog.cross-reference');
+
+        Route::get('search-tree/roots', [CatalogBrowseController::class, 'searchTreeRoots'])
+            ->name('platform.catalog.search-tree-roots');
+
+        Route::get('search-tree/{nodeId}/children', [CatalogBrowseController::class, 'searchTreeChildren'])
+            ->name('platform.catalog.search-tree-children');
+
+        Route::get('search-tree/{nodeId}/articles', [CatalogBrowseController::class, 'searchTreeArticles'])
+            ->name('platform.catalog.search-tree-articles');
+    });
+
+    // VIN/Plate Decoding
+    Route::post('vin-decode', [VinDecodeController::class, 'decode'])
+        ->name('platform.vin-decode');
+
+    Route::post('vin-decode/confirm-match', [VinDecodeController::class, 'confirmMatch'])
+        ->name('platform.vin-decode.confirm-match');
+});

@@ -21,6 +21,7 @@ use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\GoodsReceiptService;
+use App\Modules\Vehicle\Application\Services\VehicleContextBuilder;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -56,6 +57,7 @@ class PurchaseOrderController extends Controller
         private readonly DocumentNumberingService $numberingService,
         private readonly PurchaseOrderService $purchaseOrderService,
         private readonly GoodsReceiptService $goodsReceiptService,
+        private readonly VehicleContextBuilder $vehicleContextBuilder,
     ) {}
 
     /**
@@ -236,7 +238,7 @@ class PurchaseOrderController extends Controller
 
             // Create vehicle context if vehicle_context provided
             if ($vehicleContext !== null) {
-                $this->createVehicleContext($document, $vehicleContext, $tenantId, $companyId);
+                $this->createVehicleContext($document, $vehicleContext, $tenantId, $companyId, $this->vehicleContextBuilder);
             }
 
             /** @var Document $freshDocument */
@@ -345,7 +347,7 @@ class PurchaseOrderController extends Controller
             }
 
             // Update vehicle context only if vehicle_context was provided in request
-            $this->attachVehicleContext($documentModel, $vehicleContext, $hasVehicleContext);
+            $this->attachVehicleContext($documentModel, $vehicleContext, $hasVehicleContext, $this->vehicleContextBuilder);
 
             /** @var Document $freshDocument */
             $freshDocument = $documentModel->fresh($this->defaultRelations());

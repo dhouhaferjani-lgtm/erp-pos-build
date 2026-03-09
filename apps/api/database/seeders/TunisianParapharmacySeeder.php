@@ -14,7 +14,6 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Product\Domain\Product;
-use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Taxation\Domain\Entities\WithholdingTaxRule;
 use App\Modules\Taxation\Domain\Enums\TransactionType;
 use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
@@ -447,7 +446,7 @@ class TunisianParapharmacySeeder extends Seeder
                 'sku' => 'PARA-' . strtoupper(Str::ascii(mb_substr(str_replace(' ', '', $productData['name']), 0, 8))) . rand(10, 99),
                 'name' => $productData['name'],
                 'description' => 'Produit parapharmaceutique de qualité - ' . $productData['name'],
-                'type' => ProductType::Consumable,
+                'is_physical' => true,
                 'unit' => 'pièce',
                 'sale_price' => $productData['price'],
                 'purchase_price' => $productData['price'] * 0.6, // 40% margin

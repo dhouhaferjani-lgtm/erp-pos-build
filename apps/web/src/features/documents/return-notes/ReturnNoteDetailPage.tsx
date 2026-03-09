@@ -55,9 +55,9 @@ export function ReturnNoteDetailPage() {
     },
   })
 
-  const handleDownloadPdf = useDownloadPdf()
-  const handlePreviewPdf = usePreviewPdf()
-  const handlePrintPdf = usePrintPdf()
+  const downloadPdfMutation = useDownloadPdf()
+  const previewPdfMutation = usePreviewPdf()
+  const printPdfMutation = usePrintPdf()
   const sendEmailMutation = useSendDocumentEmail()
 
   const handleSendEmail = async () => {
@@ -128,9 +128,12 @@ export function ReturnNoteDetailPage() {
             basePath="/inventory/return-notes"
             isActionPending={confirmMutation.isPending}
             onConfirm={() => setConfirmAction('confirm')}
-            onDownloadPdf={() => handleDownloadPdf(returnNote.id, returnNote.document_number)}
-            onPreviewPdf={() => handlePreviewPdf(returnNote.id)}
-            onPrintPdf={() => handlePrintPdf(returnNote.id)}
+            onDownloadPdf={() => downloadPdfMutation.mutate(returnNote.id)}
+            onPreviewPdf={() => previewPdfMutation.mutate(returnNote.id)}
+            onPrintPdf={() => printPdfMutation.mutate(returnNote.id)}
+            isDownloading={downloadPdfMutation.isPending}
+            isPreviewing={previewPdfMutation.isPending}
+            isPrinting={printPdfMutation.isPending}
             onSendEmail={() => {
               setEmailForm({
                 ...emailForm,

@@ -2,7 +2,11 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
+import { Input, Button, FormField } from '@/components/atoms'
+import { Textarea } from '@/components/atoms/Textarea/Textarea'
+import { Badge } from '@/components/atoms/Badge/Badge'
 import { ProductSearchSelect } from '@/components/ui/ProductSearchSelect'
+import { tokens } from '@/lib/designTokens'
 import type { RecipeData, RecipeLineData, RecipeCostData, VerticalType } from '../types/compositeItem'
 import { useVerticalLabels } from '../hooks/useVerticalLabels'
 import {
@@ -127,70 +131,67 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
             {recipe.version_name && ` - ${recipe.version_name}`}
           </span>
           {recipe.is_active && (
-            <span className="ml-2 inline-flex items-center rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
+            <Badge variant="success" className="ml-2">
               {t('catalog:isActive')}
-            </span>
+            </Badge>
           )}
         </div>
         <div className="flex gap-2">
           {!recipe.is_active && (
-            <button
+            <Button
+              variant="primary"
+              size="sm"
               onClick={handleActivate}
               disabled={activateRecipeMutation.isPending}
-              className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
             >
               {t('catalog:activateRecipe')}
-            </button>
+            </Button>
           )}
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={handleCalculateCost}
             disabled={calculateCostMutation.isPending}
-            className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:opacity-50"
           >
             {t('catalog:calculateCost')}
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Recipe metadata */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700">{t('catalog:prepTime')}</label>
-          <input
+        <FormField label={t('catalog:prepTime')}>
+          <Input
             type="number"
             min="0"
             defaultValue={recipe.prep_time_minutes ?? ''}
             onBlur={(e) => handleUpdateRecipeField('prep_time_minutes', e.target.value)}
-            className="mt-1 block w-full rounded-md border-gray-300 text-sm"
             placeholder="0"
           />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700">{t('catalog:cookTime')}</label>
-          <input
+        </FormField>
+        <FormField label={t('catalog:cookTime')}>
+          <Input
             type="number"
             min="0"
             defaultValue={recipe.cook_time_minutes ?? ''}
             onBlur={(e) => handleUpdateRecipeField('cook_time_minutes', e.target.value)}
-            className="mt-1 block w-full rounded-md border-gray-300 text-sm"
             placeholder="0"
           />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700">{t('catalog:totalTime')}</label>
+        </FormField>
+        <FormField label={t('catalog:totalTime')}>
           <div className="mt-1 flex h-[38px] items-center rounded-md bg-gray-100 px-3 text-sm text-gray-600">
             {totalTime > 0 ? totalTime : '-'}
           </div>
-        </div>
+        </FormField>
         <div className="sm:col-span-3">
-          <label className="block text-sm font-medium text-gray-700">{t('catalog:instructions')}</label>
-          <textarea
-            defaultValue={recipe.instructions ?? ''}
-            onBlur={(e) => handleUpdateInstructions(e.target.value)}
-            rows={3}
-            className="mt-1 block w-full rounded-md border-gray-300 text-sm"
-            placeholder={t('catalog:instructions')}
-          />
+          <FormField label={t('catalog:instructions')}>
+            <Textarea
+              defaultValue={recipe.instructions ?? ''}
+              onBlur={(e) => handleUpdateInstructions(e.target.value)}
+              rows={3}
+              placeholder={t('catalog:instructions')}
+            />
+          </FormField>
         </div>
       </div>
 
@@ -217,21 +218,21 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                   {line.component_sku && <span className="text-gray-500 ml-1">({line.component_sku})</span>}
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm">
-                  <input
+                  <Input
                     type="number"
                     defaultValue={line.quantity}
                     onBlur={(e) => handleUpdateLine(line.id, 'quantity', e.target.value)}
-                    className="w-20 rounded-md border-gray-300 text-sm"
+                    className="!mt-0 w-20"
                     step="0.01"
                   />
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{line.unit_name ?? '-'}</td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm">
-                  <input
+                  <Input
                     type="number"
                     defaultValue={line.wastage_percent}
                     onBlur={(e) => handleUpdateLine(line.id, 'wastage_percent', e.target.value)}
-                    className="w-16 rounded-md border-gray-300 text-sm"
+                    className="!mt-0 w-16"
                     step="0.1"
                     min="0"
                     max="100"
@@ -242,19 +243,21 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                     type="checkbox"
                     defaultChecked={line.is_optional}
                     onChange={(e) => handleUpdateLine(line.id, 'is_optional', e.target.checked)}
-                    className="rounded border-gray-300"
+                    className={tokens.checkbox.base}
                   />
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{line.unit_cost ?? '-'}</td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{line.line_cost ?? '-'}</td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm">
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => handleDeleteLine(line.id)}
-                    className="text-red-600 hover:text-red-900"
                     disabled={deleteLineMutation.isPending}
+                    className="!p-1 text-red-600 hover:text-red-900 hover:bg-red-50"
                   >
                     <Trash2 className="h-4 w-4" />
-                  </button>
+                  </Button>
                 </td>
               </tr>
             ))}
@@ -269,22 +272,22 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                 />
               </td>
               <td className="px-3 py-4">
-                <input
+                <Input
                   type="number"
                   placeholder={t('catalog:quantity')}
                   value={newLine.quantity}
                   onChange={(e) => setNewLine({ ...newLine, quantity: e.target.value })}
-                  className="w-20 rounded-md border-gray-300 text-sm"
+                  className="!mt-0 w-20"
                   step="0.01"
                 />
               </td>
               <td className="px-3 py-4">-</td>
               <td className="px-3 py-4">
-                <input
+                <Input
                   type="number"
                   value={newLine.wastage_percent}
                   onChange={(e) => setNewLine({ ...newLine, wastage_percent: e.target.value })}
-                  className="w-16 rounded-md border-gray-300 text-sm"
+                  className="!mt-0 w-16"
                   step="0.1"
                 />
               </td>
@@ -293,19 +296,21 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                   type="checkbox"
                   checked={newLine.is_optional}
                   onChange={(e) => setNewLine({ ...newLine, is_optional: e.target.checked })}
-                  className="rounded border-gray-300"
+                  className={tokens.checkbox.base}
                 />
               </td>
               <td className="px-3 py-4">-</td>
               <td className="px-3 py-4">-</td>
               <td className="px-3 py-4">
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={handleAddLine}
                   disabled={!newLine.component_id || !newLine.quantity || createLineMutation.isPending}
-                  className="text-indigo-600 hover:text-indigo-900 disabled:opacity-50"
+                  className="!p-1 text-blue-600 hover:text-blue-700"
                 >
                   <Plus className="h-4 w-4" />
-                </button>
+                </Button>
               </td>
             </tr>
           </tbody>

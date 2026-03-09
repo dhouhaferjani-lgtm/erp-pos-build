@@ -19,6 +19,7 @@ import { DocumentActionBar } from '../components/DocumentActionBar'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
 import { useCompany } from '../../../hooks/useCompany'
 import type { Document } from '../../../types/document'
+import type { PaymentStatus } from '../components/PaymentStatusBadge'
 
 type ConfirmAction = 'confirm' | 'convertToInvoice' | 'convertToDelivery' | null
 type ActiveTab = 'related' | 'attachments' | 'payments'
@@ -156,7 +157,7 @@ export function SalesOrderDetailPage() {
       onSuccess: () => {
         setShowEmailModal(false)
         setEmailForm({ recipientEmail: '', subject: '', message: '', ccEmails: '' })
-        toast.success(t('common.emailSent'))
+        toast.success(t('common:email.success'))
       },
     })
   }
@@ -423,7 +424,7 @@ export function SalesOrderDetailPage() {
                   amountPaid={amountPaid}
                   creditNotesApplied={creditNotesApplied}
                   outstandingAmount={outstandingAmount}
-                  paymentStatus={order.payment_status as any}
+                  paymentStatus={order.payment_status as PaymentStatus}
                   currency={currentCompany?.currency ?? 'EUR'}
                   onRecordPayment={canRecordPayment ? () => setShowPaymentModal(true) : undefined}
                 />
@@ -485,10 +486,10 @@ export function SalesOrderDetailPage() {
       {showEmailModal && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">{t('common.sendEmail')}</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">{t('common:email.title')}</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">{t('common.recipientEmail')}</label>
+                <label className="block text-sm font-medium text-gray-700">{t('common:email.recipientEmail')}</label>
                 <input
                   type="email"
                   value={emailForm.recipientEmail}
@@ -497,7 +498,7 @@ export function SalesOrderDetailPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">{t('common.subject')}</label>
+                <label className="block text-sm font-medium text-gray-700">{t('common:email.subject')}</label>
                 <input
                   type="text"
                   value={emailForm.subject}
@@ -506,7 +507,7 @@ export function SalesOrderDetailPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">{t('common.message')}</label>
+                <label className="block text-sm font-medium text-gray-700">{t('common:email.message')}</label>
                 <textarea
                   value={emailForm.message}
                   onChange={(e) => setEmailForm({ ...emailForm, message: e.target.value })}

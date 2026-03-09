@@ -7,10 +7,12 @@ export const posProductKeys = {
   list: (params?: GetPOSProductsParams) => [...posProductKeys.lists(), params] as const,
 }
 
-export function usePOSProducts(params?: GetPOSProductsParams) {
+export function usePOSProducts(params?: GetPOSProductsParams & { enabled?: boolean }) {
+  const { enabled, ...queryParams } = params ?? {}
   return useQuery({
-    queryKey: posProductKeys.list(params),
-    queryFn: () => fetchPOSProducts(params),
+    queryKey: posProductKeys.list(Object.keys(queryParams).length > 0 ? queryParams : undefined),
+    queryFn: () => fetchPOSProducts(Object.keys(queryParams).length > 0 ? queryParams : undefined),
     staleTime: 60000, // 1 minute
+    enabled: enabled ?? true,
   })
 }

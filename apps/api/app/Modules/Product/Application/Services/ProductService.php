@@ -52,7 +52,7 @@ final class ProductService implements ProductServiceInterface
             ],
             [
                 'name' => $data['name'],
-                'type' => ProductType::from($data['type']),
+                'type' => isset($data['type']) ? ProductType::from($data['type']) : null,
                 'description' => $this->emptyToNull($data['description'] ?? null),
                 'sale_price' => $this->emptyToNull($data['sale_price'] ?? null),
                 'purchase_price' => $this->emptyToNull($data['purchase_price'] ?? null),

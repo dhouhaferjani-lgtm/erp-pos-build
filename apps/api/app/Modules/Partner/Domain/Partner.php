@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Modules\Partner\Domain;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Contact\Domain\Contact;
+use App\Modules\Contact\Domain\PartyContact;
+use App\Modules\Partner\Domain\Enums\CustomerCategory;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -13,6 +16,8 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
@@ -21,6 +26,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string $company_id
  * @property string $name
  * @property PartnerType $type
+ * @property CustomerCategory|null $customer_category
  * @property numeric-string $receivable_balance
  * @property numeric-string $credit_balance
  * @property numeric-string $payable_balance
@@ -40,6 +46,12 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $notes
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property string|null $street_address
+ * @property string|null $street_address_2
+ * @property string|null $city
+ * @property string|null $state
+ * @property string|null $postal_code
+ * @property string|null $country
  * @property \Illuminate\Support\Carbon|null $deleted_at
  * @property-read Tenant $tenant
  * @property-read Company $company
@@ -56,6 +68,7 @@ class Partner extends Model
         'company_id',
         'name',
         'type',
+        'customer_category',
         'receivable_balance',
         'credit_balance',
         'payable_balance',
@@ -73,6 +86,12 @@ class Partner extends Model
         'withholding_exemption_reason',
         'withholding_exemption_certificate_id',
         'notes',
+        'street_address',
+        'street_address_2',
+        'city',
+        'state',
+        'postal_code',
+        'country',
     ];
 
     /**
@@ -82,6 +101,7 @@ class Partner extends Model
     {
         return [
             'type' => PartnerType::class,
+            'customer_category' => CustomerCategory::class,
             'tax_status' => PartnerTaxStatus::class,
             'tax_exemption_valid_until' => 'date',
             'withholding_exempt' => 'boolean',
@@ -268,5 +288,31 @@ class Partner extends Model
         }
 
         return $warnings;
+    }
+
+    /**
+     * @return HasMany<PartyContact, $this>
+     */
+    public function partyContacts(): HasMany
+    {
+        return $this->hasMany(PartyContact::class, 'party_id');
+    }
+
+    /**
+     * @return BelongsToMany<Contact, $this>
+     */
+    public function contacts(): BelongsToMany
+    {
+        return $this->belongsToMany(Contact::class, 'party_contacts', 'party_id', 'contact_id')
+            ->withPivot(['job_title', 'department', 'is_primary', 'start_date', 'end_date'])
+            ->withTimestamps();
+    }
+
+    /**
+     * Get the primary contact for this partner.
+     */
+    public function primaryContact(): ?Contact
+    {
+        return $this->contacts()->wherePivot('is_primary', true)->first();
     }
 }
