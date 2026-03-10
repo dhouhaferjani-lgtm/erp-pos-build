@@ -130,6 +130,121 @@ body {
   outline-offset: 2px;
 }
 
+/* ============================================================
+   Otospex Theme — Bold Contrast Balanced
+   ============================================================
+   Scoped to [data-product="otospex"]. Overrides :root tokens.
+   Primary: #084AA9 deep blue. Accent: #E63E6D pink.
+   Light sidebar, 12px radius, pink for attention elements.
+   ============================================================ */
+[data-product="otospex"] {
+  /* Primary scale (professional deep blue) */
+  --theme-primary-50:  #E8F0FE;
+  --theme-primary-100: #D0E0FC;
+  --theme-primary-200: #A1C1F9;
+  --theme-primary-300: #6B9BF0;
+  --theme-primary-400: #3A75E0;
+  --theme-primary-500: #084AA9;
+  --theme-primary-600: #084AA9;
+  --theme-primary-700: #063B87;
+  --theme-primary-800: #052D66;
+  --theme-primary-900: #031E44;
+  --theme-primary-950: #021533;
+
+  /* Secondary scale (pink accent) */
+  --theme-secondary-50:  #FDE8EF;
+  --theme-secondary-100: #FBD1DF;
+  --theme-secondary-200: #F7A3BF;
+  --theme-secondary-300: #F3759F;
+  --theme-secondary-400: #EF4780;
+  --theme-secondary-500: #E63E6D;
+  --theme-secondary-600: #C2305A;
+  --theme-secondary-700: #9E2548;
+  --theme-secondary-800: #7A1B36;
+  --theme-secondary-900: #561224;
+  --theme-secondary-950: #3D0C19;
+
+  /* Neutral scale (slate grays — lighter, airier) */
+  --theme-neutral-50:  #F7F9FC;
+  --theme-neutral-100: #F1F5F9;
+  --theme-neutral-200: #E2E8F0;
+  --theme-neutral-300: #CBD5E1;
+  --theme-neutral-400: #94A3B8;
+  --theme-neutral-500: #64748B;
+  --theme-neutral-600: #475569;
+  --theme-neutral-700: #334155;
+  --theme-neutral-800: #1E293B;
+  --theme-neutral-900: #0F172A;
+  --theme-neutral-950: #020617;
+
+  /* Semantic colors */
+  --theme-success: #16A34A;
+  --theme-warning: #D97706;
+  --theme-error:   #E63E6D;
+  --theme-info:    var(--theme-primary-600);
+
+  /* Otospex-specific tokens */
+  --otospex-accent:       #E63E6D;
+  --otospex-accent-light: #FDE8EF;
+  --otospex-accent-dark:  #C2305A;
+  --otospex-sidebar-bg:   #F1F5F9;
+  --otospex-sidebar-active-bg:   #FDE8EF;
+  --otospex-sidebar-active-text: #C2305A;
+  --otospex-page-bg:      #F7F9FC;
+
+  /* Override Tailwind's --color-* so utility classes resolve correctly.
+     @theme defines --color-* = var(--theme-*) at :root, but descendant
+     selector overrides of --theme-* don't propagate to --color-* because
+     Tailwind resolves the var() reference at :root scope. */
+  --color-primary-50:  #E8F0FE;
+  --color-primary-100: #D0E0FC;
+  --color-primary-200: #A1C1F9;
+  --color-primary-300: #6B9BF0;
+  --color-primary-400: #3A75E0;
+  --color-primary-500: #084AA9;
+  --color-primary-600: #084AA9;
+  --color-primary-700: #063B87;
+  --color-primary-800: #052D66;
+  --color-primary-900: #031E44;
+  --color-primary-950: #021533;
+
+  --color-secondary-50:  #FDE8EF;
+  --color-secondary-100: #FBD1DF;
+  --color-secondary-200: #F7A3BF;
+  --color-secondary-300: #F3759F;
+  --color-secondary-400: #EF4780;
+  --color-secondary-500: #E63E6D;
+  --color-secondary-600: #C2305A;
+  --color-secondary-700: #9E2548;
+  --color-secondary-800: #7A1B36;
+  --color-secondary-900: #561224;
+  --color-secondary-950: #3D0C19;
+
+  --color-blue-50:  #E8F0FE;
+  --color-blue-100: #D0E0FC;
+  --color-blue-200: #A1C1F9;
+  --color-blue-300: #6B9BF0;
+  --color-blue-400: #3A75E0;
+  --color-blue-500: #084AA9;
+  --color-blue-600: #084AA9;
+  --color-blue-700: #063B87;
+  --color-blue-800: #052D66;
+  --color-blue-900: #031E44;
+  --color-blue-950: #021533;
+
+  --color-gray-50:  #F7F9FC;
+  --color-gray-100: #F1F5F9;
+  --color-gray-200: #E2E8F0;
+  --color-gray-300: #CBD5E1;
+  --color-gray-400: #94A3B8;
+  --color-gray-500: #64748B;
+  --color-gray-600: #475569;
+  --color-gray-700: #334155;
+  --color-gray-800: #1E293B;
+  --color-gray-900: #0F172A;
+  --color-gray-950: #020617;
+}
+
 /* X Report print styles */
 @media print {
   body * { visibility: hidden; }

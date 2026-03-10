@@ -32,6 +32,7 @@ class TenantSeeder extends Seeder
                 'name' => 'Demo Garage',
                 'status' => TenantStatus::Active,
                 'plan' => SubscriptionPlan::Professional, // Legacy field
+                'vertical' => 'mechanic',
                 'tax_id' => 'FR12345678901',
                 'country_code' => 'FR',
                 'currency_code' => 'EUR',

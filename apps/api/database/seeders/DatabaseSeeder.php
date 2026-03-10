@@ -137,6 +137,7 @@ class DatabaseSeeder extends Seeder
             'slug' => $slug,
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
+            'vertical' => 'mechanic',
             'tax_id' => $countryCode.'12345678901',
             'country_code' => $countryCode,
             'currency_code' => $currency,

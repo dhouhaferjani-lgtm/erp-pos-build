@@ -49,9 +49,11 @@ import {
   Combine,
   Ticket,
   ContactRound,
+  Search,
 } from 'lucide-react'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useCompanyConfig } from '../../../contexts'
+import { useProductConfig } from '../../../contexts/ProductConfigContext'
 import { companyVerticalToCatalog } from '../../../features/catalog/hooks/useVerticalLabels'
 
 const STORAGE_KEY = 'autoerp-sidebar-expanded'
@@ -71,6 +73,7 @@ const MODULE_NAME_MAP: Record<string, string> = {
   services: 'Workshop',
   'composite-items': 'CompositeItems',
   parapharmacy: 'Parapharmacy',
+  'parts-catalog': 'PlatformIntegration',
   // Core modules (always visible): dashboard, sales, purchases, inventory, treasury, finance, pricing, reports, settings
   // These don't need mapping as they're not filtered by vertical
 }
@@ -189,6 +192,7 @@ const navigation: NavModule[] = [
     module: 'pos',
     children: [
       { key: 'openPos', href: '/pos/transactions', icon: Store, module: 'pos' },
+      { key: 'posOrders', href: '/pos/orders', icon: ClipboardList, module: 'pos' },
       { key: 'terminals', href: '/pos/terminals', icon: Monitor, module: 'pos' },
       { key: 'shiftHistory', href: '/pos/shift-history', icon: History, module: 'pos' },
       { key: 'zReports', href: '/pos/z-reports', icon: FileCheck, module: 'pos' },
@@ -227,6 +231,12 @@ const navigation: NavModule[] = [
     ],
   },
   {
+    key: 'parts-catalog',
+    href: '/parts-catalog',
+    icon: Search,
+    module: 'parts-catalog',
+  },
+  {
     key: 'settings',
     href: '/settings',
     icon: Settings,
@@ -250,6 +260,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const location = useLocation()
   const { canAccessModule } = usePermissions()
   const { hasModule, config } = useCompanyConfig()
+  const { isOtospex, productName } = useProductConfig()
   const catalogVertical = companyVerticalToCatalog(config?.vertical)
 
   const getNavLabel = useCallback(
@@ -417,25 +428,35 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
 
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 start-0 z-50 flex flex-col bg-gray-900 transition-all duration-300 lg:static lg:translate-x-0 rtl:lg:-translate-x-0 ${
+        className={`fixed inset-y-0 start-0 z-50 flex flex-col transition-all duration-300 lg:static lg:translate-x-0 rtl:lg:-translate-x-0 ${
+          isOtospex
+            ? 'bg-gray-100 border-e border-gray-200'
+            : 'bg-gray-900'
+        } ${
           isCollapsed ? 'w-16' : 'w-64'
         } ${
           isOpen ? 'translate-x-0 rtl:-translate-x-0' : '-translate-x-full rtl:translate-x-full'
         }`}
       >
         {/* Logo */}
-        <div className={`flex h-16 items-center border-b border-gray-800 ${
+        <div className={`flex h-16 items-center ${
+          isOtospex ? 'border-b border-gray-200' : 'border-b border-gray-800'
+        } ${
           isCollapsed ? 'justify-center px-2' : 'justify-between px-6'
         }`}>
           {!isCollapsed && (
-            <span className="text-xl font-bold text-white">{t('appName')}</span>
+            <span className={`text-xl font-bold ${isOtospex ? 'text-gray-900' : 'text-white'}`}>{productName}</span>
           )}
           <div className="flex items-center gap-2">
             {/* Collapse/Expand toggle (desktop only) */}
             <button
               type="button"
               onClick={() => { setIsCollapsed(!isCollapsed) }}
-              className="hidden lg:block rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+              className={`hidden lg:block rounded-lg p-1 ${
+                isOtospex
+                  ? 'text-gray-500 hover:bg-gray-200 hover:text-gray-700'
+                  : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+              }`}
               aria-label={isCollapsed ? t('actions.expand') : t('actions.collapse')}
             >
               {isCollapsed ? (
@@ -449,7 +470,11 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-200 lg:hidden"
+                className={`rounded-lg p-1 lg:hidden ${
+                  isOtospex
+                    ? 'text-gray-500 hover:bg-gray-200 hover:text-gray-700'
+                    : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                }`}
                 aria-label={t('actions.close')}
               >
                 <X className="h-5 w-5" />
@@ -468,17 +493,18 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
               const hasChildren = module.children && module.children.length > 0
 
               // Simple link (no children)
+              // Otospex: light sidebar styles. IziPOS: dark sidebar styles.
+              const parentActiveClass = isOtospex
+                ? (isActive ? 'bg-secondary-50 text-secondary-700 font-semibold' : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900')
+                : (isActive ? 'bg-blue-600/20 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white')
+
               if (!hasChildren && module.href) {
                 return (
                   <li key={module.key}>
                     <Link
                       to={module.href}
                       onClick={onClose}
-                      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                        isActive
-                          ? 'bg-blue-600/20 text-white'
-                          : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-                      } ${isCollapsed ? 'justify-center' : ''}`}
+                      className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${parentActiveClass} ${isCollapsed ? 'justify-center' : ''}`}
                       title={isCollapsed ? getNavLabel(module.key) : undefined}
                     >
                       <Icon className="h-5 w-5 flex-shrink-0" />
@@ -494,11 +520,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                   <button
                     type="button"
                     onClick={() => { toggleModule(module.key) }}
-                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'bg-blue-600/20 text-white'
-                        : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-                    } ${isCollapsed ? 'justify-center' : ''}`}
+                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${parentActiveClass} ${isCollapsed ? 'justify-center' : ''}`}
                     aria-expanded={isExpanded}
                     aria-label={`${getNavLabel(module.key)} - ${isExpanded ? t('actions.collapse') : t('actions.expand')}`}
                     title={isCollapsed ? getNavLabel(module.key) : undefined}
@@ -523,16 +545,16 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                         const ChildIcon = child.icon
                         const isChildActive = isLinkActive(child.href)
 
+                        const childActiveClass = isOtospex
+                          ? (isChildActive ? 'bg-secondary-50 text-secondary-700 font-medium' : 'text-gray-500 hover:bg-gray-200 hover:text-gray-800')
+                          : (isChildActive ? 'bg-blue-600/20 text-white font-medium' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200')
+
                         return (
                           <li key={child.key}>
                             <Link
                               to={child.href}
                               onClick={onClose}
-                              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
-                                isChildActive
-                                  ? 'bg-blue-600/20 text-white font-medium'
-                                  : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
-                              }`}
+                              className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors ${childActiveClass}`}
                             >
                               <ChildIcon className="h-4 w-4 flex-shrink-0" />
                               {getNavLabel(child.key)}
