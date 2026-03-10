@@ -29,6 +29,7 @@ class BatchRepository implements BatchRepositoryInterface
             ->first();
     }
 
+    /** @return Collection<int, Batch> */
     public function getByProduct(string $productId, bool $activeOnly = true): Collection
     {
         $query = Batch::where('product_id', $productId);
@@ -41,6 +42,10 @@ class BatchRepository implements BatchRepositoryInterface
         return $query->orderBy('expiry_date', 'asc')->get();
     }
 
+    /**
+     * @param  array<string, mixed>  $filters
+     * @return Collection<int, Batch>
+     */
     public function getByCompany(string $companyId, array $filters = []): Collection
     {
         $query = Batch::where('company_id', $companyId);
@@ -71,6 +76,7 @@ class BatchRepository implements BatchRepositoryInterface
         return $query->with(['product', 'batchStock'])->orderBy('expiry_date', 'asc')->get();
     }
 
+    /** @param  array<string, mixed>  $data */
     public function create(array $data): Batch
     {
         if (! isset($data['uuid'])) {
@@ -80,6 +86,7 @@ class BatchRepository implements BatchRepositoryInterface
         return Batch::create($data);
     }
 
+    /** @param  array<string, mixed>  $data */
     public function update(Batch $batch, array $data): bool
     {
         return $batch->update($data);

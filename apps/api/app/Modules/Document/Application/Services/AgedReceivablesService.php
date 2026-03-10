@@ -6,7 +6,6 @@ namespace App\Modules\Document\Application\Services;
 
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
-use Illuminate\Support\Collection;
 
 /**
  * Service for generating aged receivables reports
@@ -23,40 +22,9 @@ class AgedReceivablesService
     /**
      * Generate aged receivables report for a company
      *
-     * @param  string  $companyId
      * @param  string|null  $partnerId  Filter by specific partner
      * @param  string|null  $asOfDate  Calculate aging as of this date (default: today)
-     * @return array{
-     *     as_of_date: string,
-     *     total_outstanding: string,
-     *     summary: array{
-     *         current: string,
-     *         days_1_30: string,
-     *         days_31_60: string,
-     *         days_61_90: string,
-     *         days_over_90: string
-     *     },
-     *     by_partner: array<int, array{
-     *         partner_id: string,
-     *         partner_name: string,
-     *         total_outstanding: string,
-     *         current: string,
-     *         days_1_30: string,
-     *         days_31_60: string,
-     *         days_61_90: string,
-     *         days_over_90: string,
-     *         invoices: array<int, array{
-     *             id: string,
-     *             document_number: string,
-     *             document_date: string,
-     *             due_date: string|null,
-     *             days_overdue: int,
-     *             total: string,
-     *             outstanding: string,
-     *             aging_bucket: string
-     *         }>
-     *     }>
-     * }
+     * @return array<string, mixed>
      */
     public function generateReport(
         string $companyId,
@@ -91,6 +59,7 @@ class AgedReceivablesService
         ];
 
         // Group invoices by partner
+        /** @var array<string, array<string, mixed>> $byPartner */
         $byPartner = [];
         $totalOutstanding = '0.00';
 
@@ -129,13 +98,17 @@ class AgedReceivablesService
             }
 
             // Add to partner totals
+            /** @var numeric-string $partnerOutstanding */
+            $partnerOutstanding = $byPartner[$partnerId]['total_outstanding'];
             $byPartner[$partnerId]['total_outstanding'] = bcadd(
-                $byPartner[$partnerId]['total_outstanding'],
+                $partnerOutstanding,
                 $outstanding,
                 2
             );
+            /** @var numeric-string $bucketAmount */
+            $bucketAmount = $byPartner[$partnerId][$agingBucket];
             $byPartner[$partnerId][$agingBucket] = bcadd(
-                $byPartner[$partnerId][$agingBucket],
+                $bucketAmount,
                 $outstanding,
                 2
             );
@@ -157,13 +130,16 @@ class AgedReceivablesService
         }
 
         // Sort partners by total outstanding (descending)
-        usort($byPartner, fn ($a, $b) => bccomp($b['total_outstanding'], $a['total_outstanding'], 2));
+        /** @var list<array<string, mixed>> $partnerList */
+        $partnerList = array_values($byPartner);
+        usort($partnerList, fn ($a, $b) => bccomp($b['total_outstanding'], $a['total_outstanding'], 2));
 
+        /** @var array<string, mixed> */
         return [
             'as_of_date' => $asOfDate,
             'total_outstanding' => number_format((float) $totalOutstanding, 2, '.', ''),
             'summary' => $summary,
-            'by_partner' => array_values($byPartner),
+            'by_partner' => $partnerList,
         ];
     }
 
@@ -172,10 +148,6 @@ class AgedReceivablesService
      *
      * Shows all transactions: invoices, payments, credit notes
      *
-     * @param  string  $companyId
-     * @param  string  $partnerId
-     * @param  string  $fromDate
-     * @param  string  $toDate
      * @return array{
      *     partner_id: string,
      *     partner_name: string,
@@ -204,12 +176,13 @@ class AgedReceivablesService
         $partner = \App\Modules\Partner\Domain\Partner::findOrFail($partnerId);
 
         // Calculate opening balance (all invoices before fromDate)
-        $openingBalance = Document::where('company_id', $companyId)
+        /** @var numeric-string $openingBalance */
+        $openingBalance = (string) (Document::where('company_id', $companyId)
             ->where('partner_id', $partnerId)
             ->where('type', DocumentType::Invoice)
             ->where('status', 'posted')
             ->where('document_date', '<', $fromDate)
-            ->sum('balance_due') ?? '0.00';
+            ->sum('balance_due'));
 
         // Get all transactions in date range
         $transactions = [];
@@ -226,6 +199,7 @@ class AgedReceivablesService
             ->get();
 
         foreach ($invoices as $invoice) {
+            /** @var numeric-string $amount */
             $amount = $invoice->total ?? '0.00';
             $runningBalance = bcadd($runningBalance, $amount, 2);
 
@@ -249,6 +223,7 @@ class AgedReceivablesService
             ->get();
 
         foreach ($payments as $payment) {
+            /** @var numeric-string $amount */
             $amount = $payment->amount ?? '0.00';
             $runningBalance = bcsub($runningBalance, $amount, 2);
 
@@ -273,6 +248,7 @@ class AgedReceivablesService
             ->get();
 
         foreach ($creditNotes as $creditNote) {
+            /** @var numeric-string $amount */
             $amount = $creditNote->total ?? '0.00';
             $runningBalance = bcsub($runningBalance, $amount, 2);
 
@@ -313,7 +289,6 @@ class AgedReceivablesService
     /**
      * Get overdue invoices summary
      *
-     * @param  string  $companyId
      * @return array{
      *     total_overdue: string,
      *     count: int,

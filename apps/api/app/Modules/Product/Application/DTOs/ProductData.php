@@ -50,7 +50,7 @@ class ProductData extends Data
             description: $product->description,
             sale_price: $product->sale_price !== null ? (string) $product->sale_price : null,
             purchase_price: $product->purchase_price !== null ? (string) $product->purchase_price : null,
-            cost_price: $product->cost_price !== null ? (string) $product->cost_price : null,
+            cost_price: (string) $product->cost_price,
             tax_rate: $product->tax_rate !== null ? (string) $product->tax_rate : null,
             unit: $product->unit,
             barcode: $product->barcode,

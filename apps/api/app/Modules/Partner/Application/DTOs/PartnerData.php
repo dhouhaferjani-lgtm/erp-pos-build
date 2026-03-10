@@ -65,7 +65,7 @@ class PartnerData extends Data
                 ? $partner->partyContacts->count()
                 : ($partner->party_contacts_count ?? 0),
             primary_contact_name: $partner->relationLoaded('contacts')
-                ? $partner->contacts->first(fn ($c) => (bool) $c->pivot->is_primary)?->full_name
+                ? $partner->contacts->first(fn ($c) => (bool) $c->getAttribute('pivot')?->getAttribute('is_primary'))?->full_name
                 : null,
             created_at: $partner->created_at?->toIso8601String() ?? '',
             updated_at: $partner->updated_at?->toIso8601String(),

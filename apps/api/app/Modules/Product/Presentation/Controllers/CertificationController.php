@@ -123,8 +123,11 @@ class CertificationController extends Controller
             return $certification;
         });
 
+        /** @var \App\Modules\Product\Domain\Certification $freshCertification */
+        $freshCertification = $certification->fresh();
+
         return response()->json([
-            'data' => CertificationData::fromModel($certification->fresh()),
+            'data' => CertificationData::fromModel($freshCertification),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
@@ -206,8 +209,11 @@ class CertificationController extends Controller
             }
         });
 
+        /** @var \App\Modules\Product\Domain\Certification $freshCertification */
+        $freshCertification = $certification->fresh();
+
         return response()->json([
-            'data' => CertificationData::fromModel($certification->fresh()),
+            'data' => CertificationData::fromModel($freshCertification),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),

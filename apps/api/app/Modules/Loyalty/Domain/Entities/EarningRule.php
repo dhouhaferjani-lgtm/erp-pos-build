@@ -30,7 +30,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class EarningRule extends Model
 {
+    /** @use HasFactory<\Illuminate\Database\Eloquent\Factories\Factory<static>> */
     use HasFactory;
+
     use HasUuids;
 
     protected $fillable = [
@@ -67,6 +69,8 @@ class EarningRule extends Model
 
     /**
      * Get the program for this rule
+     *
+     * @return BelongsTo<LoyaltyProgram, $this>
      */
     public function program(): BelongsTo
     {

@@ -19,7 +19,7 @@ final class AgedReceivablesData extends Data
 {
     /**
      * @param  string  $as_of_date  The snapshot date for the aging report (YYYY-MM-DD)
-     * @param  DataCollection<AgedReceivablesLineData>  $lines  Customer aging lines
+     * @param  DataCollection<int, AgedReceivablesLineData>|array<int, AgedReceivablesLineData>  $lines  Customer aging lines
      * @param  string  $total_current  Total of all current (0-30 days) balances
      * @param  string  $total_days_30  Total of all 31-60 days balances
      * @param  string  $total_days_60  Total of all 61-90 days balances

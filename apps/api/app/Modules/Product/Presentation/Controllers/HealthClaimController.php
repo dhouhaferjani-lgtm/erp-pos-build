@@ -124,7 +124,7 @@ class HealthClaimController extends Controller
         });
 
         return response()->json([
-            'data' => HealthClaimData::fromModel($healthClaim->fresh()),
+            'data' => HealthClaimData::fromModel($healthClaim->refresh()),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
@@ -207,7 +207,7 @@ class HealthClaimController extends Controller
         });
 
         return response()->json([
-            'data' => HealthClaimData::fromModel($healthClaim->fresh()),
+            'data' => HealthClaimData::fromModel($healthClaim->refresh()),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),

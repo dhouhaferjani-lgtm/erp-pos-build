@@ -33,7 +33,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class Enrollment extends Model
 {
+    /** @use HasFactory<\Illuminate\Database\Eloquent\Factories\Factory<static>> */
     use HasFactory;
+
     use HasUuids;
 
     protected $table = 'loyalty_enrollments';
@@ -71,6 +73,8 @@ class Enrollment extends Model
 
     /**
      * Get the program for this enrollment
+     *
+     * @return BelongsTo<LoyaltyProgram, $this>
      */
     public function program(): BelongsTo
     {
@@ -79,6 +83,8 @@ class Enrollment extends Model
 
     /**
      * Get the member for this enrollment
+     *
+     * @return BelongsTo<LoyaltyMember, $this>
      */
     public function member(): BelongsTo
     {
@@ -87,6 +93,8 @@ class Enrollment extends Model
 
     /**
      * Get the current tier
+     *
+     * @return BelongsTo<Tier, $this>
      */
     public function currentTier(): BelongsTo
     {
@@ -95,6 +103,8 @@ class Enrollment extends Model
 
     /**
      * Get all transactions for this enrollment
+     *
+     * @return HasMany<Transaction, $this>
      */
     public function transactions(): HasMany
     {

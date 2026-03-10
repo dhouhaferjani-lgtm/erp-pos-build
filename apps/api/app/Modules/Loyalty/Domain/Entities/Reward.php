@@ -33,7 +33,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class Reward extends Model
 {
+    /** @use HasFactory<\Illuminate\Database\Eloquent\Factories\Factory<static>> */
     use HasFactory;
+
     use HasUuids;
 
     protected $table = 'loyalty_rewards';
@@ -77,6 +79,8 @@ class Reward extends Model
 
     /**
      * Get the program for this reward
+     *
+     * @return BelongsTo<LoyaltyProgram, $this>
      */
     public function program(): BelongsTo
     {

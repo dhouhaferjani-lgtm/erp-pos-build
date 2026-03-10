@@ -28,11 +28,10 @@ class WithholdingPreviewController extends Controller
 
     /**
      * Preview withholding calculation for a payment.
-     *
-     * @return JsonResponse<array{data: array{should_withhold: bool, calculation: array|null, suggested_rate: float|null}}>
      */
     public function preview(CalculateWithholdingRequest $request): JsonResponse
     {
+        /** @var Partner $partner */
         $partner = Partner::findOrFail($request->input('partner_id'));
         $amount = $request->input('amount');
         $currency = $request->input('currency', 'TND');

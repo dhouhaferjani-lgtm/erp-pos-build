@@ -21,6 +21,7 @@ class UpdatePartnerRequest extends FormRequest
      */
     public function rules(): array
     {
+        /** @var \App\Modules\Identity\Domain\User|null $user */
         $user = $this->user();
         $tenantId = $user?->tenant_id;
         $partnerId = $this->route('partner');

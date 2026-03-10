@@ -61,7 +61,10 @@ final readonly class EloquentEarningRuleRepository implements EarningRuleReposit
     {
         $rule->save();
 
-        return $rule->fresh();
+        /** @var EarningRule $freshRule */
+        $freshRule = $rule->fresh();
+
+        return $freshRule;
     }
 
     /**

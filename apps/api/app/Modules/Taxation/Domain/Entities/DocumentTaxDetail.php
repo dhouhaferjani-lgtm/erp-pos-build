@@ -60,6 +60,8 @@ class DocumentTaxDetail extends Model
 
     /**
      * Get the document this tax detail belongs to
+     *
+     * @return BelongsTo<Document, $this>
      */
     public function document(): BelongsTo
     {

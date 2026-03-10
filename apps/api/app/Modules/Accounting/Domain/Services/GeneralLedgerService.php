@@ -964,19 +964,20 @@ final class GeneralLedgerService
             }
 
             // Determine payment account (Cash or Bank based on repository type)
-            $paymentAccount = match ($metadata?->paymentRepository?->type ?? 'cash_register') {
-                'bank_account' => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Bank),
+            $repositoryType = $metadata !== null && $metadata->paymentRepository !== null ? $metadata->paymentRepository->type : \App\Modules\Treasury\Domain\Enums\RepositoryType::CashRegister;
+            $paymentAccount = match ($repositoryType) {
+                \App\Modules\Treasury\Domain\Enums\RepositoryType::BankAccount => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Bank),
                 default => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Cash),
             };
 
             $entryNumber = $this->generateEntryNumber($companyId);
-            $vendorName = $metadata?->vendor_name ?? 'General Expense';
+            $vendorName = $metadata->vendor_name ?? 'General Expense';
 
             $entry = JournalEntry::create([
                 'tenant_id' => $expense->tenant_id,
                 'company_id' => $companyId,
                 'entry_number' => $entryNumber,
-                'entry_date' => $metadata?->payment_date ?? $expense->document_date,
+                'entry_date' => $metadata->payment_date ?? $expense->document_date,
                 'description' => "Expense: {$expense->document_number} - {$vendorName}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'expense',
@@ -1027,6 +1028,7 @@ final class GeneralLedgerService
         \App\Modules\Inventory\Domain\Enums\MovementReason $reason,
         string $movementId,
     ): ?JournalEntry {
+        /** @var numeric-string $amount */
         if (bccomp($amount, '0', $this->scale()) <= 0) {
             return null;
         }

@@ -88,7 +88,10 @@ final readonly class EloquentLoyaltyMemberRepository implements LoyaltyMemberRep
 
         $member->save();
 
-        return $member->fresh();
+        /** @var LoyaltyMember $freshMember */
+        $freshMember = $member->fresh();
+
+        return $freshMember;
     }
 
     /**

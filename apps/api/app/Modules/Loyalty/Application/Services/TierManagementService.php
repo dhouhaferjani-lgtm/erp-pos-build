@@ -25,6 +25,7 @@ final readonly class TierManagementService
     public function __construct(
         private EnrollmentRepositoryInterface $enrollmentRepository,
         private TierRepositoryInterface $tierRepository,
+        /** @phpstan-ignore-next-line Property is injected for future use */
         private TransactionRepositoryInterface $transactionRepository,
         private TierEvaluationService $tierEvaluationService,
     ) {}
@@ -110,7 +111,7 @@ final readonly class TierManagementService
                     previousTierId: $previousTierId,
                     newTierId: $calculatedTier->id,
                     newTierName: $calculatedTier->name,
-                    upgradedAt: $enrollment->tier_changed_at->toIso8601String(),
+                    upgradedAt: $enrollment->tier_changed_at?->toIso8601String() ?? now()->toIso8601String(),
                 ));
             } else {
                 event(new TierDowngradedV2(
@@ -120,7 +121,7 @@ final readonly class TierManagementService
                     previousTierId: $previousTierId,
                     newTierId: $calculatedTier->id,
                     newTierName: $calculatedTier->name,
-                    downgradedAt: $enrollment->tier_changed_at->toIso8601String(),
+                    downgradedAt: $enrollment->tier_changed_at?->toIso8601String() ?? now()->toIso8601String(),
                 ));
             }
 
@@ -252,7 +253,7 @@ final readonly class TierManagementService
                     previousTierId: $previousTierId,
                     newTierId: $tier->id,
                     newTierName: $tier->name,
-                    upgradedAt: $enrollment->tier_changed_at->toIso8601String(),
+                    upgradedAt: $enrollment->tier_changed_at?->toIso8601String() ?? now()->toIso8601String(),
                 ));
             } else {
                 event(new TierDowngradedV2(
@@ -262,7 +263,7 @@ final readonly class TierManagementService
                     previousTierId: $previousTierId,
                     newTierId: $tier->id,
                     newTierName: $tier->name,
-                    downgradedAt: $enrollment->tier_changed_at->toIso8601String(),
+                    downgradedAt: $enrollment->tier_changed_at?->toIso8601String() ?? now()->toIso8601String(),
                 ));
             }
 

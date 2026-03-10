@@ -189,7 +189,7 @@ class BackfillFiscalHashesCommand extends Command
             ->first();
 
         $previousHash = $lastHashedDoc?->fiscal_hash;
-        $chainSequence = ($lastHashedDoc?->chain_sequence ?? 0);
+        $chainSequence = $lastHashedDoc !== null ? $lastHashedDoc->chain_sequence : 0;
 
         foreach ($documents as $document) {
             try {

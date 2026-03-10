@@ -20,7 +20,10 @@ class CreateDraftCountingRequest extends FormRequest
     public function authorize(): bool
     {
         // Only managers and admins can create counting operations
-        return $this->user()?->hasRole(['manager', 'admin']) ?? false;
+        /** @var \App\Modules\Identity\Domain\User|null $user */
+        $user = $this->user();
+
+        return $user?->hasRole(['manager', 'admin']) ?? false;
     }
 
     /**
@@ -53,6 +56,7 @@ class CreateDraftCountingRequest extends FormRequest
         ];
     }
 
+    /** @return array<string, string> */
     public function messages(): array
     {
         return [

@@ -30,8 +30,11 @@ class UnitConversionService
         // Convert to base unit first, then to target unit
         // Formula: target_qty = source_qty × (source_factor / target_factor)
 
+        /** @var numeric-string $quantityBc */
         $quantityBc = $quantity;
+        /** @var numeric-string $fromFactor */
         $fromFactor = $fromUnit->conversion_factor;
+        /** @var numeric-string $toFactor */
         $toFactor = $toUnit->conversion_factor;
 
         // Use bcmath for precision
@@ -59,7 +62,12 @@ class UnitConversionService
             return '0';
         }
 
-        return bcdiv($fromUnit->conversion_factor, $toUnit->conversion_factor, 10);
+        /** @var numeric-string $fromFactor */
+        $fromFactor = $fromUnit->conversion_factor;
+        /** @var numeric-string $toFactor */
+        $toFactor = $toUnit->conversion_factor;
+
+        return bcdiv($fromFactor, $toFactor, 10);
     }
 
     /**
@@ -67,8 +75,11 @@ class UnitConversionService
      */
     private function round(string $value, int $decimalPlaces, RoundingMethod $method): string
     {
+        /** @var numeric-string $multiplier */
         $multiplier = bcpow('10', (string) $decimalPlaces, 0);
-        $scaled = bcmul($value, $multiplier, 10);
+        /** @var numeric-string $numericValue */
+        $numericValue = $value;
+        $scaled = bcmul($numericValue, $multiplier, 10);
 
         $rounded = match ($method) {
             RoundingMethod::HalfUp => round((float) $scaled),

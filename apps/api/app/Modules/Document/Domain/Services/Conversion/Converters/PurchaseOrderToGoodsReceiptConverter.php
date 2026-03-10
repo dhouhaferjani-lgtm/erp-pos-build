@@ -141,10 +141,18 @@ final class PurchaseOrderToGoodsReceiptConverter implements DocumentConverterInt
 
         // Dispatch conversion event for audit trail
         Event::dispatch(new DocumentConverted(
-            sourceDocument: $source,
-            targetDocument: $updatedDocument,
-            converterClass: self::class,
-            isPartialConversion: $receivedQuantities !== null,
+            sourceDocumentId: $source->id,
+            targetDocumentId: $updatedDocument->id,
+            companyId: $source->company_id,
+            tenantId: $source->tenant_id,
+            sourceDocumentNumber: $source->document_number,
+            targetDocumentNumber: $updatedDocument->document_number,
+            sourceType: $source->type->value,
+            targetType: $updatedDocument->type->value,
+            userId: null,
+            convertedAt: now()->toIso8601String(),
+            isPartial: $receivedQuantities !== null,
+            metadata: ['converter_class' => self::class],
         ));
 
         return $updatedDocument;

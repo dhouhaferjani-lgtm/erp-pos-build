@@ -8,23 +8,26 @@ use App\Modules\Product\Domain\Enums\AgeRestriction;
 use App\Modules\Product\Domain\Enums\DosageForm;
 use App\Modules\Product\Domain\Enums\ParapharmacyCategory;
 use App\Modules\Product\Domain\ParapharmacyProductMetadata;
-use Spatie\LaravelData\Attributes\DataCollectionOf;
+use Illuminate\Database\Eloquent\Relations\Pivot;
 use Spatie\LaravelData\Data;
-use Spatie\LaravelData\DataCollection;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 #[TypeScript]
 class ParapharmacyProductMetadataData extends Data
 {
+    /**
+     * @param  array<int, ProductIngredientData>|null  $ingredients
+     * @param  array<int, ProductKeyComponentData>|null  $key_components
+     * @param  array<int, ProductHealthClaimData>|null  $health_claims
+     * @param  array<int, ProductCertificationData>|null  $certifications
+     */
     public function __construct(
         public string $id,
         public string $product_id,
         public ParapharmacyCategory $category,
         public ?DosageForm $dosage_form,
-        #[DataCollectionOf(ProductIngredientData::class)]
-        public ?DataCollection $ingredients,
-        #[DataCollectionOf(ProductKeyComponentData::class)]
-        public ?DataCollection $key_components,
+        public ?array $ingredients,
+        public ?array $key_components,
         public ?string $usage_instructions,
         public ?string $warnings,
         public ?string $contraindications,
@@ -32,10 +35,8 @@ class ParapharmacyProductMetadataData extends Data
         public ?AgeRestriction $age_restriction,
         public bool $requires_consultation,
         public ?string $regulatory_code,
-        #[DataCollectionOf(ProductHealthClaimData::class)]
-        public ?DataCollection $health_claims,
-        #[DataCollectionOf(ProductCertificationData::class)]
-        public ?DataCollection $certifications,
+        public ?array $health_claims,
+        public ?array $certifications,
         public ?string $storage_requirements,
         public string $created_at,
         public ?string $updated_at,
@@ -57,25 +58,61 @@ class ParapharmacyProductMetadataData extends Data
             $metadata->load('certifications');
         }
 
+        /** @var array<int, ProductIngredientData>|null $ingredientsList */
+        $ingredientsList = $metadata->ingredients->isNotEmpty()
+            ? $metadata->ingredients->map(function (\Illuminate\Database\Eloquent\Model $model): ProductIngredientData {
+                /** @var \App\Modules\Product\Domain\Ingredient $ingredient */
+                $ingredient = $model;
+                /** @var Pivot $pivot */
+                $pivot = $ingredient->getRelation('pivot');
+
+                return ProductIngredientData::fromPivot($ingredient, $pivot);
+            })->values()->all()
+            : null;
+
+        /** @var array<int, ProductKeyComponentData>|null $keyComponentsList */
+        $keyComponentsList = $metadata->keyComponents->isNotEmpty()
+            ? $metadata->keyComponents->map(function (\Illuminate\Database\Eloquent\Model $model): ProductKeyComponentData {
+                /** @var \App\Modules\Product\Domain\KeyComponent $component */
+                $component = $model;
+                /** @var Pivot $pivot */
+                $pivot = $component->getRelation('pivot');
+
+                return ProductKeyComponentData::fromPivot($component, $pivot);
+            })->values()->all()
+            : null;
+
+        /** @var array<int, ProductHealthClaimData>|null $healthClaimsList */
+        $healthClaimsList = $metadata->healthClaims->isNotEmpty()
+            ? $metadata->healthClaims->map(function (\Illuminate\Database\Eloquent\Model $model): ProductHealthClaimData {
+                /** @var \App\Modules\Product\Domain\HealthClaim $healthClaim */
+                $healthClaim = $model;
+                /** @var Pivot $pivot */
+                $pivot = $healthClaim->getRelation('pivot');
+
+                return ProductHealthClaimData::fromPivot($healthClaim, $pivot);
+            })->values()->all()
+            : null;
+
+        /** @var array<int, ProductCertificationData>|null $certificationsList */
+        $certificationsList = $metadata->certifications->isNotEmpty()
+            ? $metadata->certifications->map(function (\Illuminate\Database\Eloquent\Model $model): ProductCertificationData {
+                /** @var \App\Modules\Product\Domain\Certification $certification */
+                $certification = $model;
+                /** @var Pivot $pivot */
+                $pivot = $certification->getRelation('pivot');
+
+                return ProductCertificationData::fromPivot($certification, $pivot);
+            })->values()->all()
+            : null;
+
         return new self(
             id: $metadata->id,
             product_id: $metadata->product_id,
             category: $metadata->category,
             dosage_form: $metadata->dosage_form,
-            ingredients: $metadata->ingredients?->isNotEmpty()
-                ? ProductIngredientData::collection(
-                    $metadata->ingredients->map(function ($ingredient) {
-                        return ProductIngredientData::fromPivot($ingredient, $ingredient->pivot);
-                    })
-                )
-                : null,
-            key_components: $metadata->keyComponents?->isNotEmpty()
-                ? ProductKeyComponentData::collection(
-                    $metadata->keyComponents->map(function ($component) {
-                        return ProductKeyComponentData::fromPivot($component, $component->pivot);
-                    })
-                )
-                : null,
+            ingredients: $ingredientsList,
+            key_components: $keyComponentsList,
             usage_instructions: $metadata->usage_instructions,
             warnings: $metadata->warnings,
             contraindications: $metadata->contraindications,
@@ -83,20 +120,8 @@ class ParapharmacyProductMetadataData extends Data
             age_restriction: $metadata->age_restriction,
             requires_consultation: $metadata->requires_consultation,
             regulatory_code: $metadata->regulatory_code,
-            health_claims: $metadata->healthClaims?->isNotEmpty()
-                ? ProductHealthClaimData::collection(
-                    $metadata->healthClaims->map(function ($healthClaim) {
-                        return ProductHealthClaimData::fromPivot($healthClaim, $healthClaim->pivot);
-                    })
-                )
-                : null,
-            certifications: $metadata->certifications?->isNotEmpty()
-                ? ProductCertificationData::collection(
-                    $metadata->certifications->map(function ($certification) {
-                        return ProductCertificationData::fromPivot($certification, $certification->pivot);
-                    })
-                )
-                : null,
+            health_claims: $healthClaimsList,
+            certifications: $certificationsList,
             storage_requirements: $metadata->storage_requirements,
             created_at: $metadata->created_at?->toIso8601String() ?? '',
             updated_at: $metadata->updated_at?->toIso8601String(),

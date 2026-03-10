@@ -27,6 +27,10 @@ final class InvoiceService
             $tenant = $subscription->tenant;
             $plan = $subscription->plan;
 
+            if ($tenant === null || $plan === null) {
+                throw new \RuntimeException('Subscription must have a tenant and plan to generate an invoice');
+            }
+
             // Generate invoice number
             $number = $this->generateInvoiceNumber();
 
@@ -338,12 +342,14 @@ final class InvoiceService
      */
     private function getBillingAddress(Tenant $tenant): array
     {
+        $address = $tenant->address;
+
         return [
-            'line1' => $tenant->address ?? '',
-            'line2' => '',
-            'city' => $tenant->city ?? '',
-            'postal_code' => $tenant->postal_code ?? '',
-            'country' => $tenant->country ?? '',
+            'line1' => $address['line1'] ?? $address['street'] ?? '',
+            'line2' => $address['line2'] ?? '',
+            'city' => $address['city'] ?? '',
+            'postal_code' => $address['postal_code'] ?? '',
+            'country' => $tenant->country_code ?? '',
         ];
     }
 

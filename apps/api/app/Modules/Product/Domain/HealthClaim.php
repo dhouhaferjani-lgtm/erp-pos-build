@@ -17,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $regulatory_status
  * @property string|null $efsa_reference
  * @property string|null $fda_reference
- * @property array|null $country_restrictions
+ * @property array<string, bool>|null $country_restrictions
  * @property bool $requires_disclaimer
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
@@ -50,7 +50,7 @@ class HealthClaim extends Model
     /**
      * Get all translations for this health claim.
      *
-     * @return HasMany<HealthClaimTranslation>
+     * @return HasMany<HealthClaimTranslation, $this>
      */
     public function translations(): HasMany
     {
@@ -76,7 +76,7 @@ class HealthClaim extends Model
     /**
      * Products with this health claim.
      *
-     * @return BelongsToMany<ParapharmacyProductMetadata>
+     * @return BelongsToMany<ParapharmacyProductMetadata, $this>
      */
     public function products(): BelongsToMany
     {

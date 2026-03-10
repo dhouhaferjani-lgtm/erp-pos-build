@@ -99,8 +99,9 @@ class RefundService
                 'type' => DocumentType::CreditNote,
                 'status' => DocumentStatus::Draft,
                 'document_number' => $numberingService->generateNumber(
-                    $invoice->company_id,
-                    DocumentType::CreditNote
+                    tenantId: $invoice->tenant_id,
+                    companyId: $invoice->company_id,
+                    type: DocumentType::CreditNote
                 ),
                 'document_date' => now(),
                 'currency' => $invoice->currency,
@@ -137,10 +138,8 @@ class RefundService
                     'discount_percent' => $line->discount_percent,
                     'discount_amount' => $line->discount_amount,
                     'tax_rate' => $line->tax_rate,
-                    'tax_amount' => $line->tax_amount,
-                    'subtotal' => $line->subtotal,
-                    'total' => $line->total,
-                    'sort_order' => $line->sort_order,
+                    'line_total' => $line->line_total,
+                    'line_number' => $line->line_number,
                 ]);
             }
 
@@ -161,7 +160,9 @@ class RefundService
     }
 
     /**
-     * Create a partial credit note from a posted invoice
+     * Create a partial credit note from a posted invoice.
+     *
+     * @param  array<int, array<string, mixed>>  $lineItems
      */
     public function createPartialCreditNote(
         Document $invoice,
@@ -190,8 +191,9 @@ class RefundService
                 'type' => DocumentType::CreditNote,
                 'status' => DocumentStatus::Draft,
                 'document_number' => $numberingService->generateNumber(
-                    $invoice->company_id,
-                    DocumentType::CreditNote
+                    tenantId: $invoice->tenant_id,
+                    companyId: $invoice->company_id,
+                    type: DocumentType::CreditNote
                 ),
                 'document_date' => now(),
                 'currency' => $invoice->currency,
@@ -228,15 +230,14 @@ class RefundService
                     'discount_percent' => $item['discount_percent'] ?? '0.00',
                     'discount_amount' => $item['discount_amount'] ?? '0.00',
                     'tax_rate' => $item['tax_rate'] ?? '0.00',
-                    'tax_amount' => $item['tax_amount'] ?? '0.00',
-                    'subtotal' => $item['subtotal'],
-                    'total' => $item['total'],
-                    'sort_order' => $item['sort_order'] ?? 0,
+                    'line_total' => $item['line_total'] ?? $item['total'] ?? '0.00',
+                    'line_number' => $item['line_number'] ?? $item['sort_order'] ?? 0,
                 ]);
 
-                $subtotal = bcadd($subtotal, $item['subtotal'], 2);
+                $lineTotal = $item['line_total'] ?? $item['total'] ?? '0.00';
+                $subtotal = bcadd($subtotal, $lineTotal, 2);
                 $taxAmount = bcadd($taxAmount, $item['tax_amount'] ?? '0.00', 2);
-                $total = bcadd($total, $item['total'], 2);
+                $total = bcadd($total, $lineTotal, 2);
             }
 
             // Update credit note totals
@@ -298,7 +299,9 @@ class RefundService
     }
 
     /**
-     * Get credit note summary for an invoice
+     * Get credit note summary for an invoice.
+     *
+     * @return array<string, mixed>
      */
     public function getCreditNoteSummary(Document $invoice): array
     {

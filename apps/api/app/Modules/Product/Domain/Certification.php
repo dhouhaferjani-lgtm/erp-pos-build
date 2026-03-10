@@ -55,7 +55,7 @@ class Certification extends Model
     /**
      * Get all translations for this certification.
      *
-     * @return HasMany<CertificationTranslation>
+     * @return HasMany<CertificationTranslation, $this>
      */
     public function translations(): HasMany
     {
@@ -73,7 +73,7 @@ class Certification extends Model
     /**
      * Products with this certification.
      *
-     * @return BelongsToMany<ParapharmacyProductMetadata>
+     * @return BelongsToMany<ParapharmacyProductMetadata, $this>
      */
     public function products(): BelongsToMany
     {

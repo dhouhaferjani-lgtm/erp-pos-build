@@ -120,9 +120,11 @@ class LandedCostService
                     // Check if this line's tax rate is non-recoverable
                     $lineTaxRate = (string) $line->tax_rate;
                     foreach ($taxResult->taxes as $tax) {
+                        /** @var numeric-string $taxRate */
+                        $taxRate = (string) $tax->rate;
                         if (! $tax->isRecoverable
                             && $tax->appliesTo === TaxApplicationLevel::LineItems
-                            && bccomp((string) $tax->rate, $lineTaxRate, 2) === 0) {
+                            && bccomp($taxRate, $lineTaxRate, 2) === 0) {
                             // Calculate this line's portion of the non-recoverable tax
                             $lineSubtotal = bcmul((string) $line->quantity, (string) $line->unit_price, 3);
                             $lineNonRecoverableTax = (float) bcmul(
@@ -146,7 +148,7 @@ class LandedCostService
 
                 // Update line
                 $line->allocated_costs = (string) $allocatedCost;
-                $line->non_recoverable_tax = (string) round($totalLineTax, $this->scale());
+                $line->non_recoverable_tax = round($totalLineTax, $this->scale());
 
                 // Calculate landed unit cost: (line_total + allocated_costs + non_recoverable_tax) / quantity
                 $totalCost = (float) $line->line_total + $allocatedCost + $totalLineTax;
@@ -208,7 +210,7 @@ class LandedCostService
     /**
      * Get breakdown of cost allocation for display
      *
-     * @return array<int, array{line_id: string, product_name: string, quantity: numeric-string, unit_price: numeric-string, line_total: numeric-string, allocated_costs: numeric-string, non_recoverable_tax: numeric-string, landed_unit_cost: numeric-string}>
+     * @return array<int, array{line_id: string, product_name: string, quantity: numeric-string, unit_price: numeric-string, line_total: numeric-string, allocated_costs: numeric-string, non_recoverable_tax: numeric-string|float, landed_unit_cost: numeric-string}>
      */
     public function getAllocationBreakdown(Document $purchaseOrder): array
     {

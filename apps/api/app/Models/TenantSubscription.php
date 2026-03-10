@@ -43,14 +43,18 @@ class TenantSubscription extends Model
 
     /**
      * Get the tenant that owns the subscription.
+     *
+     * @return BelongsTo<\App\Modules\Tenant\Domain\Tenant, $this>
      */
     public function tenant(): BelongsTo
     {
-        return $this->belongsTo(Tenant::class);
+        return $this->belongsTo(\App\Modules\Tenant\Domain\Tenant::class);
     }
 
     /**
      * Get the plan for the subscription.
+     *
+     * @return BelongsTo<Plan, $this>
      */
     public function plan(): BelongsTo
     {
@@ -62,9 +66,14 @@ class TenantSubscription extends Model
      */
     public function isOnTrial(): bool
     {
-        return $this->status === 'trial'
-            && $this->trial_ends_at !== null
-            && $this->trial_ends_at->isFuture();
+        if ($this->status !== 'trial' || $this->trial_ends_at === null) {
+            return false;
+        }
+
+        /** @var \Illuminate\Support\Carbon $trialEndsAt */
+        $trialEndsAt = $this->trial_ends_at;
+
+        return $trialEndsAt->isFuture();
     }
 
     /**
@@ -92,6 +101,6 @@ class TenantSubscription extends Model
             return 0;
         }
 
-        return max(0, now()->diffInDays($this->trial_ends_at, false));
+        return (int) max(0, now()->diffInDays($this->trial_ends_at, false));
     }
 }

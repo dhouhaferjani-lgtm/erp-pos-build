@@ -410,7 +410,9 @@ class InventoryCountingController extends Controller
     public function createDraft(CreateDraftCountingRequest $request): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
-        $userId = $request->user()->id;
+        /** @var \App\Modules\Identity\Domain\User $user */
+        $user = $request->user();
+        $userId = (string) $user->id;
 
         $counting = new InventoryCounting;
         $counting->id = (string) \Illuminate\Support\Str::uuid();
@@ -431,7 +433,7 @@ class InventoryCountingController extends Controller
         $counting->count_3_user_id = $request->input('count_3_user_id');
         $counting->scheduled_start = $request->input('scheduled_start');
         $counting->scheduled_end = $request->input('scheduled_end');
-        $counting->last_modified_at = now();
+        $counting->last_modified_at = now()->toDateTimeString();
         $counting->last_modified_by_user_id = $userId;
 
         $counting->save();
@@ -447,7 +449,9 @@ class InventoryCountingController extends Controller
     public function myDrafts(Request $request): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
-        $userId = $request->user()->id;
+        /** @var \App\Modules\Identity\Domain\User $user */
+        $user = $request->user();
+        $userId = (string) $user->id;
 
         $drafts = InventoryCounting::forCompany($companyId)
             ->where('status', CountingStatus::Draft)
@@ -457,18 +461,16 @@ class InventoryCountingController extends Controller
             ->get();
 
         return response()->json([
-            'data' => $drafts->map(function ($counting) {
-                return [
-                    'id' => $counting->id,
-                    'uuid' => $counting->id,
-                    'title' => $counting->title,
-                    'status' => $counting->status->value,
-                    'scope_type' => $counting->scope_type->value,
-                    'product_count' => count($counting->scope_filters['product_ids'] ?? []),
-                    'created_at' => $counting->created_at->toIso8601String(),
-                    'last_modified_at' => $counting->last_modified_at?->toIso8601String(),
-                ];
-            })->all(),
+            'data' => $drafts->map(fn (InventoryCounting $counting): array => [
+                'id' => $counting->id,
+                'uuid' => $counting->id,
+                'title' => $counting->title,
+                'status' => $counting->status->value,
+                'scope_type' => $counting->scope_type->value,
+                'product_count' => count($counting->scope_filters['product_ids'] ?? []),
+                'created_at' => $counting->created_at?->toIso8601String(),
+                'last_modified_at' => $counting->last_modified_at,
+            ])->all(),
         ]);
     }
 
@@ -479,6 +481,7 @@ class InventoryCountingController extends Controller
     {
         $companyId = $this->companyContext->requireCompanyId();
 
+        /** @var InventoryCounting $counting */
         $counting = InventoryCounting::forCompany($companyId)->findOrFail($id);
 
         // Only drafts can have products added incrementally
@@ -489,7 +492,9 @@ class InventoryCountingController extends Controller
         }
 
         // Check authorization - must be creator or admin
-        if ($counting->created_by_user_id !== $request->user()->id && ! $request->user()->hasRole('admin')) {
+        /** @var \App\Modules\Identity\Domain\User $authUser */
+        $authUser = $request->user();
+        if ($counting->created_by_user_id !== (string) $authUser->id && ! $authUser->hasRole('admin')) {
             return response()->json([
                 'error' => 'Unauthorized to modify this counting operation',
             ], 403);
@@ -526,12 +531,13 @@ class InventoryCountingController extends Controller
         $productIds[] = $productId;
         $scopeFilters['product_ids'] = $productIds;
         $counting->scope_filters = $scopeFilters;
-        $counting->last_modified_at = now();
-        $counting->last_modified_by_user_id = $request->user()->id;
+        $counting->last_modified_at = now()->toDateTimeString();
+        $counting->last_modified_by_user_id = (string) $authUser->id;
         $counting->save();
 
         // Load product details for response
-        $product = \App\Modules\Product\Domain\Product::find($productId);
+        /** @var \App\Modules\Product\Domain\Product $product */
+        $product = \App\Modules\Product\Domain\Product::findOrFail($productId);
 
         return response()->json([
             'data' => [
@@ -554,6 +560,7 @@ class InventoryCountingController extends Controller
     {
         $companyId = $this->companyContext->requireCompanyId();
 
+        /** @var InventoryCounting $counting */
         $counting = InventoryCounting::forCompany($companyId)->findOrFail($id);
 
         // Only drafts can have products removed
@@ -564,7 +571,9 @@ class InventoryCountingController extends Controller
         }
 
         // Check authorization
-        if ($counting->created_by_user_id !== $request->user()->id && ! $request->user()->hasRole('admin')) {
+        /** @var \App\Modules\Identity\Domain\User $authUser */
+        $authUser = $request->user();
+        if ($counting->created_by_user_id !== (string) $authUser->id && ! $authUser->hasRole('admin')) {
             return response()->json([
                 'error' => 'Unauthorized to modify this counting operation',
             ], 403);
@@ -576,8 +585,8 @@ class InventoryCountingController extends Controller
         $productIds = array_values(array_filter($productIds, fn ($id) => $id !== $productId));
         $scopeFilters['product_ids'] = $productIds;
         $counting->scope_filters = $scopeFilters;
-        $counting->last_modified_at = now();
-        $counting->last_modified_by_user_id = $request->user()->id;
+        $counting->last_modified_at = now()->toDateTimeString();
+        $counting->last_modified_by_user_id = (string) $authUser->id;
         $counting->save();
 
         return response()->json(null, 204);
@@ -590,6 +599,7 @@ class InventoryCountingController extends Controller
     {
         $companyId = $this->companyContext->requireCompanyId();
 
+        /** @var InventoryCounting $counting */
         $counting = InventoryCounting::forCompany($companyId)->findOrFail($id);
 
         // Only drafts can be updated via this endpoint
@@ -600,7 +610,9 @@ class InventoryCountingController extends Controller
         }
 
         // Check authorization
-        if ($counting->created_by_user_id !== $request->user()->id && ! $request->user()->hasRole('admin')) {
+        /** @var \App\Modules\Identity\Domain\User $authUser */
+        $authUser = $request->user();
+        if ($counting->created_by_user_id !== (string) $authUser->id && ! $authUser->hasRole('admin')) {
             return response()->json([
                 'error' => 'Unauthorized to modify this counting operation',
             ], 403);
@@ -641,8 +653,8 @@ class InventoryCountingController extends Controller
             $counting->scheduled_end = $request->input('scheduled_end');
         }
 
-        $counting->last_modified_at = now();
-        $counting->last_modified_by_user_id = $request->user()->id;
+        $counting->last_modified_at = now()->toDateTimeString();
+        $counting->last_modified_by_user_id = (string) $authUser->id;
         $counting->save();
 
         return response()->json([
@@ -657,6 +669,7 @@ class InventoryCountingController extends Controller
     {
         $companyId = $this->companyContext->requireCompanyId();
 
+        /** @var InventoryCounting $counting */
         $counting = InventoryCounting::forCompany($companyId)->findOrFail($id);
 
         // Only drafts can be activated
@@ -667,7 +680,9 @@ class InventoryCountingController extends Controller
         }
 
         // Check authorization
-        if ($counting->created_by_user_id !== $request->user()->id && ! $request->user()->hasRole('admin')) {
+        /** @var \App\Modules\Identity\Domain\User $authUser */
+        $authUser = $request->user();
+        if ($counting->created_by_user_id !== (string) $authUser->id && ! $authUser->hasRole('admin')) {
             return response()->json([
                 'error' => 'Unauthorized to activate this counting operation',
             ], 403);
@@ -757,8 +772,8 @@ class InventoryCountingController extends Controller
                     $counting->count_1_user_id = $draftData['count1UserId'] ?? null;
                     $counting->count_2_user_id = $draftData['count2UserId'] ?? null;
                     $counting->count_3_user_id = $draftData['count3UserId'] ?? null;
-                    $counting->scheduled_start = isset($draftData['scheduledStart']) ? new \DateTime($draftData['scheduledStart']) : null;
-                    $counting->scheduled_end = isset($draftData['scheduledEnd']) ? new \DateTime($draftData['scheduledEnd']) : null;
+                    $counting->scheduled_start = isset($draftData['scheduledStart']) ? \Illuminate\Support\Carbon::parse($draftData['scheduledStart']) : null;
+                    $counting->scheduled_end = isset($draftData['scheduledEnd']) ? \Illuminate\Support\Carbon::parse($draftData['scheduledEnd']) : null;
                     $counting->last_modified_at = now()->toDateTimeString();
                     $counting->last_modified_by_user_id = $userId;
 
@@ -805,6 +820,7 @@ class InventoryCountingController extends Controller
             'products.*.productId' => 'required_without:products.*.barcode|string',
         ]);
 
+        /** @var InventoryCounting $counting */
         $counting = InventoryCounting::forCompany($companyId)->findOrFail($id);
 
         // Only drafts can have products added incrementally
@@ -926,6 +942,7 @@ class InventoryCountingController extends Controller
         \DB::transaction(function () use ($user, $companyId, $userId, $request, &$results, &$errors): void {
             foreach ($request->input('updates') as $updateData) {
                 try {
+                    /** @var InventoryCounting $counting */
                     $counting = InventoryCounting::forCompany($companyId)->findOrFail($updateData['id']);
 
                     // Only drafts can be updated
@@ -981,10 +998,10 @@ class InventoryCountingController extends Controller
                         $counting->count_3_user_id = $data['count3UserId'];
                     }
                     if (isset($data['scheduledStart'])) {
-                        $counting->scheduled_start = new \DateTime($data['scheduledStart']);
+                        $counting->scheduled_start = \Illuminate\Support\Carbon::parse($data['scheduledStart']);
                     }
                     if (isset($data['scheduledEnd'])) {
-                        $counting->scheduled_end = new \DateTime($data['scheduledEnd']);
+                        $counting->scheduled_end = \Illuminate\Support\Carbon::parse($data['scheduledEnd']);
                     }
 
                     $counting->last_modified_at = now()->toDateTimeString();

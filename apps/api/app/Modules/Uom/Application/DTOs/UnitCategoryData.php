@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Uom\Application\DTOs;
 
+use App\Modules\Uom\Domain\Entities\Unit;
 use App\Modules\Uom\Domain\Entities\UnitCategory;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
@@ -29,7 +30,7 @@ class UnitCategoryData extends Data
     {
         // Check if units relationship is loaded
         $units = $category->relationLoaded('units')
-            ? $category->units->map(fn ($unit) => UnitData::fromModel($unit))->all()
+            ? $category->units->map(fn (Unit $unit) => UnitData::fromModel($unit))->all()
             : [];
 
         return new self(

@@ -27,7 +27,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $reference_type
  * @property string|null $reference_id
  * @property int $sort_order
- * @property array $metadata
+ * @property array<string, mixed> $metadata
  * @property \Carbon\Carbon $created_at
  * @property \Carbon\Carbon $updated_at
  */
@@ -77,7 +77,7 @@ final class InvoiceItem extends Model
     }
 
     /**
-     * @return BelongsTo<Invoice, InvoiceItem>
+     * @return BelongsTo<Invoice, $this>
      */
     public function invoice(): BelongsTo
     {

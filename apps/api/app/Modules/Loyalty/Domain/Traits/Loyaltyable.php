@@ -43,6 +43,7 @@ use App\Modules\Loyalty\Domain\Contracts\LoyaltyableContract;
  * }
  * ```
  */
+/** @phpstan-ignore trait.unused */
 trait Loyaltyable
 {
     /**

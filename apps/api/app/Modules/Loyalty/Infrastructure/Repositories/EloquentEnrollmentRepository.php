@@ -64,7 +64,10 @@ final readonly class EloquentEnrollmentRepository implements EnrollmentRepositor
     {
         $enrollment->save();
 
-        return $enrollment->fresh();
+        /** @var Enrollment $freshEnrollment */
+        $freshEnrollment = $enrollment->fresh();
+
+        return $freshEnrollment;
     }
 
     /**

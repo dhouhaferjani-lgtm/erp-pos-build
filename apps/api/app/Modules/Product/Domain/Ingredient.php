@@ -52,7 +52,7 @@ class Ingredient extends Model
     /**
      * Get all translations for this ingredient.
      *
-     * @return HasMany<IngredientTranslation>
+     * @return HasMany<IngredientTranslation, $this>
      */
     public function translations(): HasMany
     {
@@ -70,7 +70,7 @@ class Ingredient extends Model
     /**
      * Products using this ingredient.
      *
-     * @return BelongsToMany<ParapharmacyProductMetadata>
+     * @return BelongsToMany<ParapharmacyProductMetadata, $this>
      */
     public function products(): BelongsToMany
     {

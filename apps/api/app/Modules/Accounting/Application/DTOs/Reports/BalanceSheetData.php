@@ -115,9 +115,9 @@ final class BalanceSheetData extends Data
      * Converts the array output from BalanceSheetService into a typed DTO.
      *
      * @param array{
-     *     assets: list<array>,
-     *     liabilities: list<array>,
-     *     equity: list<array>,
+     *     assets: list<array{account_code: string, account_name: string, account_type: string, amount: string, level: int, is_parent: bool}>,
+     *     liabilities: list<array{account_code: string, account_name: string, account_type: string, amount: string, level: int, is_parent: bool}>,
+     *     equity: list<array{account_code: string, account_name: string, account_type: string, amount: string, level: int, is_parent: bool}>,
      *     total_assets: numeric-string,
      *     total_liabilities: numeric-string,
      *     total_equity: numeric-string,
@@ -200,9 +200,9 @@ final class BalanceSheetData extends Data
      */
     public function isEmpty(): bool
     {
-        return $this->assets->isEmpty()
-            && $this->liabilities->isEmpty()
-            && $this->equity->isEmpty();
+        return $this->assets->count() === 0
+            && $this->liabilities->count() === 0
+            && $this->equity->count() === 0;
     }
 
     /**

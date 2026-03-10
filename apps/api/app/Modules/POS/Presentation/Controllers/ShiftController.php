@@ -6,11 +6,11 @@ namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Exceptions\ShiftAlreadyOpenException;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
-use App\Modules\POS\Domain\Services\ShiftManagementService;
-use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Receipt;
+use App\Modules\POS\Domain\Services\ShiftManagementService;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Presentation\Requests\CloseShiftRequest;
@@ -51,10 +51,12 @@ final class ShiftController extends Controller
 
         try {
             $cashierId = $request->validated('cashier_id');
+            /** @var \App\Modules\Identity\Domain\User $currentUser */
+            $currentUser = $request->user();
             $cashier = $cashierId
                 ? User::findOrFail($cashierId)
-                : $request->user();
-
+                : $currentUser;
+            /** @var User $cashier */
             $shift = $this->shiftManagementService->openShift(
                 $terminal,
                 $cashier,
@@ -96,10 +98,12 @@ final class ShiftController extends Controller
         }
 
         try {
+            /** @var \App\Modules\Identity\Domain\User $user */
+            $user = $request->user();
             $closedShift = $this->shiftManagementService->closeShift(
                 $shift,
                 $request->validated('actual_cash'),
-                $request->user()
+                $user
             );
 
             return response()->json([
@@ -178,8 +182,8 @@ final class ShiftController extends Controller
         Gate::authorize('pos.operate_terminal');
 
         $query = Shift::query()
-            ->whereHas('terminal', function ($q) {
-                $q->where('company_id', $this->companyContext->getCompanyId());
+            ->whereHas('terminal', function (\Illuminate\Database\Eloquent\Builder $q) {
+                $q->whereRaw('company_id = ?', [$this->companyContext->requireCompanyId()]);
             })
             ->with(['terminal', 'cashier', 'closedBy']);
 

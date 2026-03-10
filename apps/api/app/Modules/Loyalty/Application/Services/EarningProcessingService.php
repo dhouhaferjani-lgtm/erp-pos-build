@@ -132,8 +132,8 @@ final readonly class EarningProcessingService
             $transaction = $this->transactionRepository->save($transaction);
 
             // Update enrollment balances
-            $enrollment->current_balance += $points;
-            $enrollment->lifetime_earned += $points;
+            $enrollment->current_balance = bcadd($enrollment->current_balance, (string) $points, 3);
+            $enrollment->lifetime_earned = bcadd($enrollment->lifetime_earned, (string) $points, 3);
             $enrollment->last_transaction_at = now();
 
             $enrollment = $this->enrollmentRepository->save($enrollment);

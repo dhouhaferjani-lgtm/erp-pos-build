@@ -33,13 +33,16 @@ class MultiPaymentController extends Controller
             'splits.*.reference' => 'nullable|string|max:255',
         ]);
 
+        /** @var Document $document */
         $document = Document::findOrFail($documentId);
 
         try {
+            /** @var string|null $userId */
+            $userId = $request->user()?->id;
             $payments = $this->multiPaymentService->createSplitPayment(
                 $document,
                 $request->input('splits'),
-                $request->user()?->id
+                $userId !== null ? (string) $userId : null
             );
 
             return response()->json([
@@ -73,6 +76,7 @@ class MultiPaymentController extends Controller
         ]);
 
         try {
+            /** @var \App\Modules\Identity\Domain\User $user */
             $user = $request->user();
             $deposit = $this->multiPaymentService->recordDeposit(
                 $user->tenant_id,
@@ -85,7 +89,7 @@ class MultiPaymentController extends Controller
                 $request->input('instrument_id'),
                 $request->input('reference'),
                 $request->input('notes'),
-                $user->id
+                (string) $user->id
             );
 
             return response()->json([
@@ -109,7 +113,9 @@ class MultiPaymentController extends Controller
             'amount' => 'required|numeric|min:0.01',
         ]);
 
+        /** @var Payment $payment */
         $payment = Payment::findOrFail($paymentId);
+        /** @var Document $document */
         $document = Document::findOrFail($request->input('document_id'));
 
         try {
@@ -173,6 +179,7 @@ class MultiPaymentController extends Controller
         ]);
 
         try {
+            /** @var \App\Modules\Identity\Domain\User $user */
             $user = $request->user();
             $result = $this->multiPaymentService->recordPaymentOnAccount(
                 $user->tenant_id,
@@ -182,7 +189,7 @@ class MultiPaymentController extends Controller
                 $request->input('currency'),
                 $request->input('reference'),
                 $request->input('notes'),
-                $user->id
+                (string) $user->id
             );
 
             return response()->json([

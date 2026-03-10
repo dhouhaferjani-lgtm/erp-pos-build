@@ -13,6 +13,7 @@ class CreateBatchRequest extends FormRequest
         return $this->user()?->can('batches.create') ?? false;
     }
 
+    /** @return array<string, array<int, mixed>> */
     public function rules(): array
     {
         return [
@@ -24,6 +25,7 @@ class CreateBatchRequest extends FormRequest
         ];
     }
 
+    /** @return array<string, string> */
     public function messages(): array
     {
         return [

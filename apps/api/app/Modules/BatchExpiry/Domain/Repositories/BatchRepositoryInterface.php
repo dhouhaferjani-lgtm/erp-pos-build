@@ -15,12 +15,19 @@ interface BatchRepositoryInterface
 
     public function findByBatchNumber(string $companyId, string $productId, string $batchNumber): ?Batch;
 
+    /** @return Collection<int, Batch> */
     public function getByProduct(string $productId, bool $activeOnly = true): Collection;
 
+    /**
+     * @param  array<string, mixed>  $filters
+     * @return Collection<int, Batch>
+     */
     public function getByCompany(string $companyId, array $filters = []): Collection;
 
+    /** @param  array<string, mixed>  $data */
     public function create(array $data): Batch;
 
+    /** @param  array<string, mixed>  $data */
     public function update(Batch $batch, array $data): bool;
 
     public function delete(Batch $batch): bool;

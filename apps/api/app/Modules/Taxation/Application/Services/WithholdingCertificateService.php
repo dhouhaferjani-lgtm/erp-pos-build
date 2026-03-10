@@ -18,7 +18,6 @@ use App\Modules\Taxation\Domain\Repositories\WithholdingCertificateRepositoryInt
 use App\Modules\Taxation\Domain\Services\WithholdingCalculationService;
 use App\Modules\Treasury\Domain\Payment;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 /**
  * Withholding Certificate Service
@@ -49,7 +48,7 @@ class WithholdingCertificateService
                 $calculation = $this->calculationService->calculateWithOverride(
                     $data->grossAmount,
                     $data->currency,
-                    $data->manualRatePercentage,
+                    $data->manualRatePercentage ?? 0.0,
                     $data->overrideReason ?? 'Manual override',
                     $data->transactionType
                 );
@@ -139,7 +138,7 @@ class WithholdingCertificateService
                 );
 
                 // If no rule matched, return without creating certificate
-                if (!$calculation) {
+                if (! $calculation) {
                     throw new \DomainException('No applicable withholding rule found for this payment');
                 }
             }
@@ -200,7 +199,7 @@ class WithholdingCertificateService
                 $certificate->direction
             );
 
-            $chainSequence = ($lastCertificate?->chain_sequence ?? 0) + 1;
+            $chainSequence = ($lastCertificate !== null ? $lastCertificate->chain_sequence : 0) + 1;
             $issuedAt = now();
 
             // Temporarily set issued_at for hash calculation
@@ -222,7 +221,7 @@ class WithholdingCertificateService
                 'issued_by' => $userId,
             ]);
 
-            $certificate = $certificate->fresh();
+            $certificate->refresh();
 
             // Dispatch event
             event(new WithholdingCertificateIssued($certificate, $userId));
@@ -252,7 +251,7 @@ class WithholdingCertificateService
                 'status' => CertificateStatus::VOIDED,
             ]);
 
-            $certificate = $certificate->fresh();
+            $certificate->refresh();
 
             // Dispatch event
             event(new WithholdingCertificateVoided($certificate, $reason, $userId));
@@ -284,7 +283,7 @@ class WithholdingCertificateService
                 'tej_submitted_at' => now(),
             ]);
 
-            $certificate = $certificate->fresh();
+            $certificate->refresh();
 
             // Dispatch event
             event(new WithholdingSubmittedToTEJ($certificate, $tejReference, $userId));

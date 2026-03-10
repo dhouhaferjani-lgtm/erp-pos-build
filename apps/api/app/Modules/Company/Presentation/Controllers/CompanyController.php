@@ -327,7 +327,7 @@ class CompanyController extends Controller
             'status' => $company->status->value,
             'default_tax_rate' => $company->default_tax_rate,
             'default_tax_configuration_id' => $company->default_tax_configuration_id,
-            'tax_status' => $company->tax_status?->value,
+            'tax_status' => $company->tax_status->value,
             'created_at' => $company->created_at->toIso8601String(),
             'updated_at' => $company->updated_at->toIso8601String(),
         ];

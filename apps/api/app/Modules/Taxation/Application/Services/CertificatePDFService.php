@@ -71,7 +71,7 @@ class CertificatePDFService
             // Company (withholder)
             'company_name' => $company->name,
             'company_tax_id' => $company->tax_id,
-            'company_address' => $company->address,
+            'company_address' => $company->getFullAddressAttribute(),
             'company_country' => $company->country_code,
 
             // Partner (beneficiary)
@@ -93,8 +93,8 @@ class CertificatePDFService
             'override_reason' => $certificate->override_reason,
 
             // Payment info
-            'payment_date' => $payment?->payment_date?->format('d/m/Y'),
-            'payment_reference' => $payment?->reference,
+            'payment_date' => $certificate->payment?->payment_date?->format('d/m/Y'),
+            'payment_reference' => $certificate->payment?->reference,
 
             // GL account
             'gl_account' => $certificate->getGLAccountCode(),
@@ -120,10 +120,10 @@ class CertificatePDFService
             'issued_at' => $certificate->issued_at?->format('Y-m-d'),
         ];
 
-        $data = json_encode($verificationData);
+        $data = json_encode($verificationData) ?: '{}';
 
         $qrCode = new QrCode($data);
-        $writer = new PngWriter();
+        $writer = new PngWriter;
         $result = $writer->write($qrCode);
 
         return base64_encode($result->getString());
@@ -131,8 +131,6 @@ class CertificatePDFService
 
     /**
      * Generate PDF and return the PDF object.
-     *
-     * @return \Barryvdh\DomPDF\PDF
      */
     public function generatePDF(WithholdingCertificate $certificate): \Barryvdh\DomPDF\PDF
     {
@@ -167,8 +165,6 @@ class CertificatePDFService
 
     /**
      * Stream PDF to browser for download.
-     *
-     * @return \Illuminate\Http\Response
      */
     public function streamPDF(WithholdingCertificate $certificate): \Illuminate\Http\Response
     {

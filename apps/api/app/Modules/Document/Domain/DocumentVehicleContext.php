@@ -31,7 +31,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class DocumentVehicleContext extends Model
 {
+    /** @use HasFactory<DocumentVehicleContextFactory> */
     use HasFactory;
+
     use HasUuids;
 
     /**

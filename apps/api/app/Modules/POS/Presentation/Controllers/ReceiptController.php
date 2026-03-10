@@ -7,8 +7,8 @@ namespace App\Modules\POS\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Application\Services\ReceiptCreationService;
-use App\Modules\POS\Application\Services\ReceiptPdfService;
 use App\Modules\POS\Application\Services\ReceiptPaymentService;
+use App\Modules\POS\Application\Services\ReceiptPdfService;
 use App\Modules\POS\Application\Services\ReceiptReturnService;
 use App\Modules\POS\Application\Services\ReceiptVoidService;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
@@ -24,7 +24,6 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * POS Receipt Controller
@@ -66,7 +65,7 @@ final class ReceiptController extends Controller
         }
 
         if ($request->filled('receipt_number')) {
-            $query->where('receipt_number', 'like', '%' . $request->input('receipt_number') . '%');
+            $query->where('receipt_number', 'like', '%'.$request->input('receipt_number').'%');
         }
 
         if ($request->filled('customer_id')) {
@@ -90,7 +89,7 @@ final class ReceiptController extends Controller
         }
 
         if ($request->filled('to_date')) {
-            $query->where('posted_at', '<=', $request->input('to_date') . ' 23:59:59');
+            $query->where('posted_at', '<=', $request->input('to_date').' 23:59:59');
         }
 
         $receipts = $query->orderByDesc('posted_at')
@@ -101,11 +100,11 @@ final class ReceiptController extends Controller
             return [
                 'id' => $receipt->id,
                 'receipt_number' => $receipt->receipt_number,
-                'receipt_type' => $receipt->receipt_type?->value ?? 'sale',
+                'receipt_type' => $receipt->receipt_type->value ?? 'sale',
                 'original_receipt_id' => $receipt->original_receipt_id,
                 'return_reason' => $receipt->return_reason?->value,
                 'terminal_id' => $receipt->terminal_id,
-                'terminal_code' => $receipt->terminal?->code ?? '',
+                'terminal_code' => $receipt->terminal->code ?? '',
                 'cashier_name' => $receipt->cashier_name,
                 'subtotal' => $receipt->subtotal,
                 'tax_amount' => $receipt->tax_amount,
@@ -114,7 +113,7 @@ final class ReceiptController extends Controller
                 'customer_name' => $receipt->customer_name,
                 'partner_id' => $receipt->partner_id,
                 'contact_id' => $receipt->contact_id,
-                'posted_at' => $receipt->posted_at?->toISOString(),
+                'posted_at' => $receipt->posted_at->toISOString(),
                 'is_voided' => $receipt->is_voided,
                 'void_reason' => $receipt->void_reason,
             ];
@@ -222,7 +221,7 @@ final class ReceiptController extends Controller
                     'tax_amount' => $returnReceipt->tax_amount,
                     'total' => $returnReceipt->total,
                     'currency' => $returnReceipt->currency,
-                    'posted_at' => $returnReceipt->posted_at?->toISOString(),
+                    'posted_at' => $returnReceipt->posted_at->toISOString(),
                     'lines' => $returnReceipt->lines->map(fn ($line) => [
                         'product_name' => $line->product_name,
                         'quantity' => $line->quantity,
@@ -408,7 +407,7 @@ final class ReceiptController extends Controller
      *
      * Opens in browser print dialog instead of downloading.
      */
-    public function streamPdf(string $id): StreamedResponse
+    public function streamPdf(string $id): \Illuminate\Http\Response
     {
         Gate::authorize('pos.view_receipts');
 

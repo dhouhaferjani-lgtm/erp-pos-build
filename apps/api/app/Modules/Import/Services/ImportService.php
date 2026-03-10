@@ -83,7 +83,7 @@ final class ImportService
     public function addRowsBatch(ImportJob $job, array $rows, int $batchSize = 1000): void
     {
         $now = now();
-        $batches = array_chunk($rows, $batchSize, true);
+        $batches = array_chunk($rows, max($batchSize, 1), true);
 
         foreach ($batches as $batch) {
             $insertData = [];
@@ -328,6 +328,7 @@ final class ImportService
             ImportType::Products => $this->importProduct($job->tenant_id, $row->data, $companyId),
             ImportType::StockLevels => $this->importStockLevel($job->tenant_id, $row->data, $companyId),
             ImportType::OpeningBalances => $this->importOpeningBalance($job->tenant_id, $row->data, $companyId),
+            ImportType::ProductImages => throw new RuntimeException('Product image import is not yet supported'),
         };
     }
 
@@ -341,7 +342,7 @@ final class ImportService
      */
     private function importPartner(string $tenantId, array $data, ?string $companyId = null): string
     {
-        $companyId ??= $this->companyContext->getCompanyId();
+        $companyId ??= $this->companyContext->requireCompanyId();
 
         return $this->partnerService->upsertWithTypeMerge($tenantId, $companyId, $data);
     }
@@ -354,7 +355,7 @@ final class ImportService
      */
     private function importProduct(string $tenantId, array $data, ?string $companyId = null): string
     {
-        $companyId ??= $this->companyContext->getCompanyId();
+        $companyId ??= $this->companyContext->requireCompanyId();
 
         return $this->productService->upsert($tenantId, $companyId, $data);
     }
@@ -367,7 +368,7 @@ final class ImportService
      */
     private function importStockLevel(string $tenantId, array $data, ?string $companyId = null): string
     {
-        $companyId ??= $this->companyContext->getCompanyId();
+        $companyId ??= $this->companyContext->requireCompanyId();
 
         // Find product by SKU
         $productId = $this->productService->findIdBySku($tenantId, $companyId, $data['product_sku']);
@@ -398,7 +399,7 @@ final class ImportService
      */
     private function importOpeningBalance(string $tenantId, array $data, ?string $companyId = null): string
     {
-        $companyId ??= $this->companyContext->getCompanyId();
+        $companyId ??= $this->companyContext->requireCompanyId();
 
         // Find account by code
         $accountId = $this->accountingService->findAccountIdByCode($tenantId, $companyId, $data['account_code']);

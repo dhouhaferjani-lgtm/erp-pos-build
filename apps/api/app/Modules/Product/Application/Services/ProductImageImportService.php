@@ -28,7 +28,7 @@ class ProductImageImportService
     /**
      * Process a ZIP import for product images.
      *
-     * @return array<int, array{filename: string, sku: string, product_id: string, image_id: string, success: bool, error?: string}>
+     * @return list<array<string, mixed>>
      */
     public function processZipImport(ImportJob $job, string $zipPath): array
     {

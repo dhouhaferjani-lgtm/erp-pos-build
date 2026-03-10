@@ -155,7 +155,7 @@ final class DocumentPostingService
         $previousHash = $previousDoc?->fiscal_hash;
         $genesisSeed = $previousHash === null ? $this->getCompanyGenesisSeed($document) : null;
 
-        $chainSequence = ($previousDoc?->chain_sequence ?? 0) + 1;
+        $chainSequence = ($previousDoc !== null ? $previousDoc->chain_sequence : 0) + 1;
         $postedAt = now();
 
         // Calculate fiscal hash using the compliance service
@@ -254,13 +254,8 @@ final class DocumentPostingService
      */
     private function getCompanyGenesisSeed(Document $document): string
     {
+        /** @var \App\Modules\Company\Domain\Company $company */
         $company = $document->company;
-
-        if ($company === null) {
-            throw new \RuntimeException(
-                'Document must have an associated company for fiscal chain'
-            );
-        }
 
         if ($company->fiscal_chain_seed === null) {
             throw new \RuntimeException(

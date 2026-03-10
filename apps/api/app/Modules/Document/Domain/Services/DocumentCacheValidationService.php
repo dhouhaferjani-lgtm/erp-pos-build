@@ -132,7 +132,7 @@ final class DocumentCacheValidationService
     /**
      * Validate cache for all companies.
      *
-     * @return Collection<int, array{company_id: string, ...}>
+     * @return Collection<int, array{company_id: string, total_invoices: int, accurate_invoices: int, inconsistent_invoices: int, accuracy_percentage: float, max_difference: string}>
      */
     public function validateAllCompanies(): Collection
     {

@@ -192,7 +192,7 @@ class PaymentRepositoryController extends Controller
                 'currency' => $payment->currency,
                 'payment_date' => $payment->payment_date->toDateString(),
                 'status' => $payment->status->value,
-                'payment_type' => $payment->payment_type?->value,
+                'payment_type' => $payment->payment_type->value,
                 'reference' => $payment->reference,
                 'notes' => $payment->notes,
                 'allocations' => $payment->allocations->map(fn (PaymentAllocation $allocation) => [

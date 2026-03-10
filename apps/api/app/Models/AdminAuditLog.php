@@ -27,6 +27,9 @@ class AdminAuditLog extends Model
         'notes',
     ];
 
+    /**
+     * @return array<string, string>
+     */
     protected function casts(): array
     {
         return [
@@ -36,13 +39,15 @@ class AdminAuditLog extends Model
         ];
     }
 
+    /** @return BelongsTo<SuperAdmin, $this> */
     public function superAdmin(): BelongsTo
     {
         return $this->belongsTo(SuperAdmin::class);
     }
 
+    /** @return BelongsTo<\App\Modules\Tenant\Domain\Tenant, $this> */
     public function tenant(): BelongsTo
     {
-        return $this->belongsTo(Tenant::class);
+        return $this->belongsTo(\App\Modules\Tenant\Domain\Tenant::class);
     }
 }

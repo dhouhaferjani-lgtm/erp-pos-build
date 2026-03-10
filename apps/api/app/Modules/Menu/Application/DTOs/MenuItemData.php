@@ -32,12 +32,14 @@ class MenuItemData extends Data
 
     public static function fromPivot(CompositeItem $item): self
     {
-        $overridePrice = $item->pivot->override_price ?? null;
+        /** @var \Illuminate\Database\Eloquent\Relations\Pivot|null $pivot */
+        $pivot = $item->getAttribute('pivot');
+        $overridePrice = $pivot?->getAttribute('override_price') ?? null;
         $basePrice = (string) $item->base_price;
         $effectivePrice = $overridePrice !== null ? (string) $overridePrice : $basePrice;
 
         return new self(
-            id: $item->pivot->id,
+            id: $pivot?->getAttribute('id') ?? '',
             composite_item_id: $item->id,
             name: $item->name,
             code: $item->code,
@@ -45,8 +47,8 @@ class MenuItemData extends Data
             override_price: $overridePrice !== null ? number_format((float) $overridePrice, 4, '.', '') : null,
             effective_price: number_format((float) $effectivePrice, 4, '.', ''),
             tax_rate: $item->tax_rate !== null ? (string) $item->tax_rate : null,
-            display_order: (int) ($item->pivot->display_order ?? 0),
-            is_available: (bool) ($item->pivot->is_available ?? true),
+            display_order: (int) ($pivot?->getAttribute('display_order') ?? 0),
+            is_available: (bool) ($pivot?->getAttribute('is_available') ?? true),
             image_url: $item->image_url,
             modifier_groups: $item->relationLoaded('modifierGroups')
                 ? $item->modifierGroups

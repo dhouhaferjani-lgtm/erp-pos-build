@@ -10,6 +10,9 @@ use Illuminate\Http\Request;
 
 trait PaginatesResults
 {
+    /**
+     * @return array{per_page: int, cursor: string|null}
+     */
     protected function getPaginationParams(Request $request): array
     {
         return [
@@ -21,7 +24,8 @@ trait PaginatesResults
     /**
      * Format cursor paginated response (for backward compatibility).
      *
-     * @param  string|null  $dataClass  DTO class with fromModel() method
+     * @param  CursorPaginator<int, mixed>  $paginator
+     * @param  class-string|null  $dataClass  DTO class with fromModel() method
      * @return array{data: array<mixed>, meta: array{per_page: int, has_more: bool}, links: array{next: string|null, prev: string|null}}
      */
     protected function formatPaginatedResponse(CursorPaginator $paginator, ?string $dataClass = null): array
@@ -30,7 +34,9 @@ trait PaginatesResults
 
         // Transform items if DTO class provided
         if ($dataClass && method_exists($dataClass, 'fromModel')) {
-            $items = collect($items)->map(fn ($item) => $dataClass::fromModel($item))->all();
+            /** @var array<int, mixed> $collected */
+            $collected = collect($items)->map(fn (mixed $item): mixed => $dataClass::fromModel($item))->all();
+            $items = $collected;
         }
 
         return [
@@ -38,8 +44,6 @@ trait PaginatesResults
             'meta' => [
                 'per_page' => $paginator->perPage(),
                 'has_more' => $paginator->hasMorePages(),
-                // Note: cursor pagination doesn't provide total by default
-                // Include only if explicitly requested and query is simple
             ],
             'links' => [
                 'next' => $paginator->nextCursor()?->encode(),
@@ -51,7 +55,8 @@ trait PaginatesResults
     /**
      * Format offset paginated response with optional aggregates.
      *
-     * @param  string|null  $dataClass  DTO class with fromModel() method
+     * @param  LengthAwarePaginator<int, mixed>  $paginator
+     * @param  class-string|null  $dataClass  DTO class with fromModel() method
      * @param  array<string, mixed>|null  $aggregates  Optional aggregate data
      * @return array{data: array<mixed>, meta: array{current_page: int, last_page: int, per_page: int, total: int, from: int|null, to: int|null}, aggregates?: array<string, mixed>}
      */
@@ -64,7 +69,9 @@ trait PaginatesResults
 
         // Transform items if DTO class provided
         if ($dataClass && method_exists($dataClass, 'fromModel')) {
-            $items = collect($items)->map(fn ($item) => $dataClass::fromModel($item))->all();
+            /** @var array<int, mixed> $collected */
+            $collected = collect($items)->map(fn (mixed $item): mixed => $dataClass::fromModel($item))->all();
+            $items = $collected;
         }
 
         $response = [

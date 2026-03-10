@@ -97,8 +97,8 @@ final readonly class RedemptionProcessingService
             $transaction = $this->transactionRepository->save($transaction);
 
             // Update enrollment balances
-            $enrollment->current_balance -= $pointsRequired;
-            $enrollment->lifetime_redeemed += $pointsRequired;
+            $enrollment->current_balance = bcsub($enrollment->current_balance, (string) $pointsRequired, 3);
+            $enrollment->lifetime_redeemed = bcadd($enrollment->lifetime_redeemed, (string) $pointsRequired, 3);
             $enrollment->last_transaction_at = now();
 
             $enrollment = $this->enrollmentRepository->save($enrollment);

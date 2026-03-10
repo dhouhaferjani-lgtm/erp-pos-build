@@ -57,6 +57,7 @@ final class GoodsReceiptService
             $hasReceivedItems = false;
 
             foreach ($purchaseOrder->lines as $line) {
+                /** @var numeric-string $qtyToReceive */
                 $qtyToReceive = $receivedQuantities[$line->id] ?? '0.00';
 
                 if (bccomp($qtyToReceive, '0.00', 4) <= 0) {
@@ -64,6 +65,7 @@ final class GoodsReceiptService
                 }
 
                 // Validate not over-receiving
+                /** @var numeric-string $alreadyReceived */
                 $alreadyReceived = (string) ($line->quantity_received ?? '0.00');
                 $remaining = bcsub((string) $line->quantity, $alreadyReceived, 4);
 
@@ -121,7 +123,7 @@ final class GoodsReceiptService
                 }
 
                 // Update line's received quantity
-                $line->quantity_received = (float) bcadd($alreadyReceived, $qtyToReceive, 4);
+                $line->quantity_received = bcadd($alreadyReceived, $qtyToReceive, 4);
                 $line->save();
 
                 $hasReceivedItems = true;
@@ -144,7 +146,10 @@ final class GoodsReceiptService
                 ]),
             ]);
 
-            return $purchaseOrder->fresh(['lines']);
+            /** @var Document $freshOrder */
+            $freshOrder = $purchaseOrder->fresh(['lines']);
+
+            return $freshOrder;
         });
     }
 
@@ -173,7 +178,7 @@ final class GoodsReceiptService
     /**
      * Get receipt status for a purchase order.
      *
-     * @return array{status: string, total_ordered: string, total_received: string, percentage: float, lines: array}
+     * @return array{status: string, total_ordered: string, total_received: string, percentage: float, lines: array<int, array<string, mixed>>}
      */
     public function getReceiptStatus(Document $purchaseOrder): array
     {
@@ -191,7 +196,7 @@ final class GoodsReceiptService
 
             $lineStatus[] = [
                 'line_id' => $line->id,
-                'product_name' => $line->product?->name ?? $line->description,
+                'product_name' => $line->product->name ?? $line->description,
                 'quantity_ordered' => $qty,
                 'quantity_received' => $received,
                 'quantity_remaining' => $remaining,

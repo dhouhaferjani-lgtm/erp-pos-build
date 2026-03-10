@@ -47,8 +47,8 @@ class WithholdingRuleResource extends JsonResource
             'is_effective_now' => $this->isEffectiveOn(now()),
 
             // Metadata
-            'created_at' => $this->created_at->toIso8601String(),
-            'updated_at' => $this->updated_at->toIso8601String(),
+            'created_at' => $this->created_at?->toIso8601String(),
+            'updated_at' => $this->updated_at?->toIso8601String(),
         ];
     }
 }

@@ -11,6 +11,10 @@ use Illuminate\Support\Str;
 
 class AdminAuditService
 {
+    /**
+     * @param  array<string, mixed>|null  $oldValues
+     * @param  array<string, mixed>|null  $newValues
+     */
     public function log(
         SuperAdmin $admin,
         string $action,
@@ -36,6 +40,10 @@ class AdminAuditService
         ]);
     }
 
+    /**
+     * @param  array<string, mixed>|null  $oldValues
+     * @param  array<string, mixed>|null  $newValues
+     */
     public function logTenantAction(
         SuperAdmin $admin,
         Tenant $tenant,

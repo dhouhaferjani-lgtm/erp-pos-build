@@ -101,7 +101,10 @@ final readonly class EloquentRewardRepository implements RewardRepositoryInterfa
     {
         $reward->save();
 
-        return $reward->fresh();
+        /** @var Reward $freshReward */
+        $freshReward = $reward->fresh();
+
+        return $freshReward;
     }
 
     /**

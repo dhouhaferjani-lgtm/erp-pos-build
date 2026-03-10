@@ -35,7 +35,7 @@ class IngredientData extends Data
             allergen_code: $ingredient->allergen_code,
             regulatory_status: $ingredient->regulatory_status,
             notes: $ingredient->notes,
-            name: $ingredient->name, // Uses HasTranslations trait accessor
+            name: $ingredient->name ?? '', // Uses HasTranslations trait accessor
             description: $ingredient->description, // Uses HasTranslations trait accessor
             created_at: $ingredient->created_at?->toIso8601String() ?? '',
             updated_at: $ingredient->updated_at?->toIso8601String(),

@@ -69,7 +69,7 @@ final class ReceiptCreationService
      * Create a new POS receipt.
      *
      * @param  string  $terminalId  Terminal UUID or code
-     * @param  array<int, array{product_id?: string, composite_item_id?: string, quantity: string, unit_price: string, modifiers?: array<int, array{modifier_id: string, modifier_group_id: string, price_adjustment: string}>, discount_amount?: string, discount_type?: string, discount_percent?: string, discount_reason?: string}>  $lines
+     * @param  array<int, array{product_id?: string, composite_item_id?: string, quantity: string, unit_price: string, modifiers?: array<int, array{modifier_id: string, modifier_group_id: string, price_adjustment: string}>, discount_amount?: string, discount_type?: string, discount_percent?: string, discount_reason?: string, discount_authorized_by?: string}>  $lines
      * @param  string|null  $customerId  Optional partner ID
      * @param  string|null  $contactId  Optional contact ID
      * @param  string|null  $notes  Optional notes
@@ -164,6 +164,7 @@ final class ReceiptCreationService
 
             foreach ($lines as $index => $lineData) {
                 $isCompositeItem = ! empty($lineData['composite_item_id']);
+                $compositeItem = null;
 
                 if ($isCompositeItem) {
                     /** @var CompositeItem $compositeItem */
@@ -175,8 +176,9 @@ final class ReceiptCreationService
                     $taxRate = (string) ($compositeItem->tax_rate ?? '0.00');
                     $sellableDescription = null;
                 } else {
+                    $productId = $lineData['product_id'] ?? '';
                     /** @var Product $product */
-                    $product = $products->get($lineData['product_id']);
+                    $product = $products->get($productId);
                     $sellableName = $product->name;
                     $sellableCode = $product->sku ?? $product->barcode ?? '';
                     $sellableUnit = $product->unitOfMeasure->symbol ?? $product->unit ?? 'pc';
@@ -192,7 +194,7 @@ final class ReceiptCreationService
 
                 // Process modifiers for composite item lines
                 $modifiersSnapshot = null;
-                if ($isCompositeItem && ! empty($lineData['modifiers'])) {
+                if ($isCompositeItem && ! empty($lineData['modifiers']) && $compositeItem !== null) {
                     $modifiersSnapshot = $this->processModifiers(
                         $compositeItem,
                         $lineData['modifiers'],
@@ -224,8 +226,8 @@ final class ReceiptCreationService
 
                 $receiptLines[] = [
                     'line_number' => $index + 1,
-                    'product_id' => $isCompositeItem ? null : ($lineData['product_id'] ?? null),
-                    'composite_item_id' => $isCompositeItem ? $lineData['composite_item_id'] : null,
+                    'product_id' => $compositeItem !== null ? null : ($lineData['product_id'] ?? null),
+                    'composite_item_id' => $compositeItem !== null ? ($lineData['composite_item_id'] ?? null) : null,
                     'product_code' => $sellableCode,
                     'product_name' => $sellableName,
                     'product_description' => $sellableDescription,
@@ -258,11 +260,16 @@ final class ReceiptCreationService
             // 4a-fix. Recalculate VAT aggregates from aggregated net_amount
             // to satisfy DB constraint: vat_amount = round(net_amount * tax_rate / 100, 2)
             // Per-line rounding then summing causes drift vs computing from aggregate.
+            /** @var numeric-string $totalTax */
             $totalTax = '0.00';
             foreach ($vatAggregates as &$vatData) {
                 $vatData['vat_amount'] = $this->roundVat($vatData['net_amount'], $vatData['tax_rate']);
-                $vatData['gross_amount'] = bcadd($vatData['net_amount'], $vatData['vat_amount'], $this->scale());
-                $totalTax = bcadd($totalTax, $vatData['vat_amount'], $this->scale());
+                /** @var numeric-string $vatNetAmount */
+                $vatNetAmount = $vatData['net_amount'];
+                /** @var numeric-string $vatAmount */
+                $vatAmount = $vatData['vat_amount'];
+                $vatData['gross_amount'] = bcadd($vatNetAmount, $vatAmount, $this->scale());
+                $totalTax = bcadd($totalTax, $vatAmount, $this->scale());
             }
             unset($vatData);
 
@@ -309,15 +316,19 @@ final class ReceiptCreationService
                     $isComposite = ! empty($lineData['composite_item_id']);
                     /** @var numeric-string $itemUnitPrice */
                     $itemUnitPrice = (string) $lineData['unit_price'];
+                    /** @var numeric-string $itemQty */
+                    $itemQty = (string) $lineData['quantity'];
                     /** @var numeric-string $itemLineTotal */
-                    $itemLineTotal = bcmul((string) $lineData['quantity'], $itemUnitPrice, $this->scale());
+                    $itemLineTotal = bcmul($itemQty, $itemUnitPrice, $this->scale());
 
-                    $itemId = $isComposite ? $lineData['composite_item_id'] : $lineData['product_id'];
+                    $itemProductId = $lineData['product_id'] ?? '';
+                    $itemCompositeId = $lineData['composite_item_id'] ?? '';
+                    $itemId = $isComposite ? $itemCompositeId : $itemProductId;
                     $categoryId = null;
-                    if (! $isComposite && $products->has($lineData['product_id'])) {
-                        $categoryId = $products->get($lineData['product_id'])->category_id ?? null;
-                    } elseif ($isComposite && $compositeItems->has($lineData['composite_item_id'])) {
-                        $categoryId = $compositeItems->get($lineData['composite_item_id'])->category_id ?? null;
+                    if (! $isComposite && $products->has($itemProductId)) {
+                        $categoryId = $products->get($itemProductId)->category_id ?? null;
+                    } elseif ($isComposite && $compositeItems->has($itemCompositeId)) {
+                        $categoryId = $compositeItems->get($itemCompositeId)->category_id ?? null;
                     }
 
                     $cartItems[] = new CartItemContext(
@@ -343,7 +354,7 @@ final class ReceiptCreationService
                     manualDiscountReason: $discountReason,
                     couponCode: $couponCode,
                     customerId: $customerId,
-                    loyaltyDiscountAmount: $loyaltyDiscountAmount,
+                    loyaltyDiscountAmount: $loyaltyDiscountAmount !== null ? number_format((float) $loyaltyDiscountAmount, $this->scale(), '.', '') : null,
                     loyaltyRewardId: $loyaltyRewardId,
                 );
 
@@ -503,12 +514,15 @@ final class ReceiptCreationService
             }
 
             // Return fresh receipt with relations
-            return $receipt->fresh([
+            /** @var Receipt $freshReceipt */
+            $freshReceipt = $receipt->fresh([
                 'lines.product',
                 'vatDetails',
                 'terminal',
                 'cashier',
             ]);
+
+            return $freshReceipt;
         });
     }
 
@@ -585,7 +599,7 @@ final class ReceiptCreationService
             $snapshot[] = [
                 'modifier_id' => $mod['modifier_id'],
                 'modifier_group_id' => $mod['modifier_group_id'],
-                'name' => $modifier?->name ?? 'Unknown',
+                'name' => $modifier->name ?? 'Unknown',
                 'group_name' => $group->name,
                 'price_adjustment' => (string) $mod['price_adjustment'],
             ];
@@ -636,18 +650,21 @@ final class ReceiptCreationService
             return;
         }
 
+        /** @var numeric-string $available */
         $available = $stockLevel->getAvailableQuantity();
-
+        /** @var numeric-string $quantity */
         if (bccomp($available, $quantity, 4) < 0) {
             $product = Product::find($productId);
-            $productName = $product?->name ?? $productId;
+            $productName = $product->name ?? $productId;
             throw new \RuntimeException(
                 "Insufficient stock for '{$productName}'. Available: {$available}, Requested: {$quantity}"
             );
         }
 
         $quantityBefore = $stockLevel->quantity;
-        $quantityAfter = bcsub($stockLevel->quantity, $quantity, 2);
+        /** @var numeric-string $stockQty */
+        $stockQty = $stockLevel->quantity;
+        $quantityAfter = bcsub($stockQty, $quantity, 2);
 
         // Update stock level
         $stockLevel->quantity = $quantityAfter;
@@ -692,7 +709,7 @@ final class ReceiptCreationService
      * Handles both percentage-based and fixed-amount discounts.
      * Validates against terminal/cashier limits when discount > 0.
      *
-     * @param  array{product_id: string, quantity: string, unit_price: string, discount_amount?: string, discount_type?: string, discount_percent?: string, discount_reason?: string}  $lineData
+     * @param  array{product_id?: string, composite_item_id?: string, quantity: string, unit_price: string, discount_amount?: string, discount_type?: string, discount_percent?: string, discount_reason?: string}  $lineData
      * @param  numeric-string  $grossLineTotal  The gross line total before discount
      * @param  Terminal  $terminal  The terminal for limit checks
      * @param  User  $cashier  The cashier for permission/limit checks

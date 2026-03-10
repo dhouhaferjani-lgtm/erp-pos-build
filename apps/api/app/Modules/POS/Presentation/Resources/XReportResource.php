@@ -25,7 +25,7 @@ final class XReportResource extends JsonResource
             'terminal_id' => $this->terminal_id,
             'shift_id' => $this->shift_id,
             'generated_by' => $this->generated_by,
-            'generated_at' => $this->generated_at?->toIso8601String(),
+            'generated_at' => $this->generated_at->toIso8601String(),
 
             // Snapshot data (parsed from JSONB)
             'sales_count' => $this->getSalesCount(),

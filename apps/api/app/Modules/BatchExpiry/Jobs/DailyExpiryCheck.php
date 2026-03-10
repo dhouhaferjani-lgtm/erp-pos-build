@@ -132,7 +132,8 @@ class DailyExpiryCheck implements ShouldQueue
         $batchesByCompany = $criticalBatches->groupBy('company_id');
 
         foreach ($batchesByCompany as $companyId => $batches) {
-            $company = $batches->first()->company;
+            $firstBatch = $batches->first();
+            $company = $firstBatch?->company;
 
             Log::info('Critical batches found for company', [
                 'company_id' => $companyId,
@@ -146,7 +147,7 @@ class DailyExpiryCheck implements ShouldQueue
                 ])->toArray(),
             ]);
 
-            $admins = User::where('company_id', $companyId)
+            $admins = User::whereRaw('company_id = ?', [$companyId])
                 ->permission('batches.view')
                 ->get();
 

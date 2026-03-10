@@ -28,7 +28,7 @@ final class ZReportResource extends JsonResource
             'fiscal_hash' => $this->fiscal_hash,
             'previous_z_hash' => $this->previous_z_hash,
             'generated_by' => $this->generated_by,
-            'generated_at' => $this->generated_at?->toIso8601String(),
+            'generated_at' => $this->generated_at->toIso8601String(),
 
             // Helper methods
             'is_first_z_report' => $this->isFirstZReport(),

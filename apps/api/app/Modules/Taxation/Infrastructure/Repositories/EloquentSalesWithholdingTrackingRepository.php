@@ -58,6 +58,9 @@ class EloquentSalesWithholdingTrackingRepository implements SalesWithholdingTrac
 
         $tracking->update($data);
 
-        return $tracking->fresh(['document', 'customer', 'payment']);
+        /** @var SalesWithholdingTracking $freshTracking */
+        $freshTracking = $tracking->fresh(['document', 'customer', 'payment']);
+
+        return $freshTracking;
     }
 }

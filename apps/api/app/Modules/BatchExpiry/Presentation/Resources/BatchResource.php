@@ -13,13 +13,16 @@ use Illuminate\Http\Resources\Json\JsonResource;
  */
 class BatchResource extends JsonResource
 {
+    /**
+     * @return array<string, mixed>
+     */
     public function toArray(Request $request): array
     {
         return [
             'id' => $this->id,
             'uuid' => $this->uuid,
             'product_id' => $this->product_id,
-            'product_variant_id' => $this->product_variant_id,
+            'product_variant_id' => $this->getAttribute('product_variant_id'),
             'batch_number' => $this->batch_number,
             'manufacturing_date' => $this->manufacturing_date?->toDateString(),
             'expiry_date' => $this->expiry_date->toDateString(),
@@ -34,11 +37,16 @@ class BatchResource extends JsonResource
             'can_be_sold' => $this->canBeSold(),
             'total_quantity' => $this->total_quantity ?? 0,
             'available_quantity' => $this->available_quantity ?? 0,
-            'product' => $this->whenLoaded('product', fn () => [
-                'id' => $this->product->id,
-                'name' => $this->product->name,
-                'sku' => $this->product->sku,
-            ]),
+            'product' => $this->whenLoaded('product', function () {
+                /** @var \App\Modules\Product\Domain\Product $product */
+                $product = $this->product;
+
+                return [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'sku' => $product->sku,
+                ];
+            }),
             'batch_stock' => $this->whenLoaded('batchStock', fn () => $this->batchStock->map(fn ($stock) => [
                 'location_id' => $stock->location_id,
                 'quantity' => $stock->quantity,
@@ -46,8 +54,8 @@ class BatchResource extends JsonResource
                 'available_quantity' => $stock->available_quantity,
             ])
             ),
-            'created_at' => $this->created_at->toIso8601String(),
-            'updated_at' => $this->updated_at->toIso8601String(),
+            'created_at' => $this->created_at?->toIso8601String(),
+            'updated_at' => $this->updated_at?->toIso8601String(),
         ];
     }
 }

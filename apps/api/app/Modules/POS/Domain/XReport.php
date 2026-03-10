@@ -22,7 +22,7 @@ use Illuminate\Support\Carbon;
  * @property string $terminal_id
  * @property string|null $shift_id
  * @property string $generated_by User who generated the report
- * @property array $snapshot_data JSONB snapshot of shift totals
+ * @property array<string, mixed> $snapshot_data JSONB snapshot of shift totals
  * @property Carbon $generated_at
  * @property-read Terminal $terminal
  * @property-read Shift|null $shift

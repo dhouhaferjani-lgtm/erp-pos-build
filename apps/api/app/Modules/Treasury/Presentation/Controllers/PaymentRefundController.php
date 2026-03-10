@@ -29,13 +29,15 @@ class PaymentRefundController extends Controller
             'reason' => 'required|string|max:500',
         ]);
 
+        /** @var Payment $payment */
         $payment = Payment::findOrFail($id);
 
         try {
+            $userId = $request->user()?->id !== null ? (string) $request->user()->id : null;
             $refund = $this->refundService->refundPayment(
                 $payment,
                 (string) $request->input('reason'),
-                $request->user()?->id
+                $userId
             );
 
             return response()->json([
@@ -59,14 +61,16 @@ class PaymentRefundController extends Controller
             'reason' => 'required|string|max:500',
         ]);
 
+        /** @var Payment $payment */
         $payment = Payment::findOrFail($id);
 
         try {
+            $userId = $request->user()?->id !== null ? (string) $request->user()->id : null;
             $refund = $this->refundService->partialRefund(
                 $payment,
                 (string) $request->input('amount'),
                 (string) $request->input('reason'),
-                $request->user()?->id
+                $userId
             );
 
             return response()->json([
@@ -89,13 +93,15 @@ class PaymentRefundController extends Controller
             'reason' => 'required|string|max:500',
         ]);
 
+        /** @var Payment $payment */
         $payment = Payment::findOrFail($id);
 
         try {
+            $userId = $request->user()?->id !== null ? (string) $request->user()->id : null;
             $this->refundService->reversePayment(
                 $payment,
                 (string) $request->input('reason'),
-                $request->user()?->id
+                $userId
             );
 
             return response()->json([

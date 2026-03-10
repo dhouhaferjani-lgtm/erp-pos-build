@@ -59,7 +59,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 class Partner extends Model
 {
+    /** @use HasFactory<\Database\Factories\PartnerFactory> */
     use HasFactory;
+
     use HasUuids;
     use SoftDeletes;
 
@@ -215,7 +217,10 @@ class Partner extends Model
      */
     public function hasOutstandingBalance(): bool
     {
-        return bccomp($this->net_balance, '0', 4) !== 0;
+        /** @var numeric-string $netBalance */
+        $netBalance = $this->net_balance;
+
+        return bccomp($netBalance, '0', 4) !== 0;
     }
 
     /**

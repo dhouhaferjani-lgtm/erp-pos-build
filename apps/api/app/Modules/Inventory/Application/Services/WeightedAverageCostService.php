@@ -125,6 +125,7 @@ class WeightedAverageCostService
 
             // Capture data for events BEFORE afterCommit
             $movementSnapshot = $movement;
+            /** @var Product $productSnapshot */
             $productSnapshot = $product->fresh();
             $locationSnapshot = $location;
             $newStockLevelSnapshot = $stockLevel->quantity;
@@ -359,6 +360,7 @@ class WeightedAverageCostService
 
             // Capture data for events BEFORE afterCommit
             $movementSnapshot = $movement;
+            /** @var Product $productSnapshot */
             $productSnapshot = $product->fresh();
             $locationSnapshot = $location;
             $newStockLevelSnapshot = $stockLevel->quantity;

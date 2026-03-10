@@ -19,6 +19,7 @@ class EloquentWithholdingCertificateRepository implements WithholdingCertificate
             ->find($id);
     }
 
+    /** @return CursorPaginator<int, WithholdingCertificate> */
     public function findByCompany(string $companyId, array $filters = []): CursorPaginator
     {
         $query = WithholdingCertificate::where('company_id', $companyId)
@@ -139,7 +140,10 @@ class EloquentWithholdingCertificateRepository implements WithholdingCertificate
 
         $certificate->update($data);
 
-        return $certificate->fresh();
+        /** @var WithholdingCertificate $freshCertificate */
+        $freshCertificate = $certificate->fresh();
+
+        return $freshCertificate;
     }
 
     public function delete(string $id): bool
@@ -151,6 +155,6 @@ class EloquentWithholdingCertificateRepository implements WithholdingCertificate
             throw new \DomainException('Only draft certificates can be deleted');
         }
 
-        return $certificate->delete();
+        return $certificate->delete() ?? false;
     }
 }

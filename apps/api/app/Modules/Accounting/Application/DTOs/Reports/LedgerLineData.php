@@ -86,20 +86,7 @@ final class LedgerLineData extends Data
      *
      * Converts the array output from GeneralLedgerReportService into a typed DTO.
      *
-     * @param array{
-     *     id: string,
-     *     date: string,
-     *     entry_number: string,
-     *     description: string,
-     *     account_code: string,
-     *     account_name: string,
-     *     partner_name: string|null,
-     *     debit: numeric-string,
-     *     credit: numeric-string,
-     *     balance: numeric-string,
-     *     source_type: string|null,
-     *     source_id: string|null
-     * } $data
+     * @param  array<string, mixed>  $data
      */
     public static function fromArray(array $data): self
     {

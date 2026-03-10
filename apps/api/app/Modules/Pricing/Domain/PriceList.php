@@ -33,21 +33,25 @@ class PriceList extends Model
         'valid_until' => 'date',
     ];
 
+    /** @return BelongsTo<\App\Modules\Tenant\Domain\Tenant, $this> */
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(\App\Modules\Tenant\Domain\Tenant::class);
     }
 
+    /** @return BelongsTo<\App\Modules\Company\Domain\Company, $this> */
     public function company(): BelongsTo
     {
         return $this->belongsTo(\App\Modules\Company\Domain\Company::class);
     }
 
+    /** @return HasMany<PriceListItem, $this> */
     public function items(): HasMany
     {
         return $this->hasMany(PriceListItem::class);
     }
 
+    /** @return HasMany<PartnerPriceList, $this> */
     public function partnerPriceLists(): HasMany
     {
         return $this->hasMany(PartnerPriceList::class);

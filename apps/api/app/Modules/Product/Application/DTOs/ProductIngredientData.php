@@ -25,13 +25,13 @@ class ProductIngredientData extends Data
     {
         return new self(
             ingredient: IngredientData::fromModel($ingredient),
-            concentration: $pivot->concentration,
-            concentration_numeric: $pivot->concentration_numeric !== null
-                ? (float) $pivot->concentration_numeric
+            concentration: $pivot->getAttribute('concentration'),
+            concentration_numeric: $pivot->getAttribute('concentration_numeric') !== null
+                ? (float) $pivot->getAttribute('concentration_numeric')
                 : null,
-            concentration_unit: $pivot->concentration_unit,
-            order: $pivot->order ?? 0,
-            notes: $pivot->notes,
+            concentration_unit: $pivot->getAttribute('concentration_unit'),
+            order: $pivot->getAttribute('order') ?? 0,
+            notes: $pivot->getAttribute('notes'),
         );
     }
 }

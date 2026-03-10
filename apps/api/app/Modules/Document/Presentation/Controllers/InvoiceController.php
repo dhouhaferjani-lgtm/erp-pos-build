@@ -666,7 +666,7 @@ class InvoiceController extends Controller
      *
      * Returns array with status and details, or null if all checks pass.
      *
-     * @return array{status: string, message: string, draft_dns?: array, can_auto_confirm?: bool}|null
+     * @return array{status: string, message: string, draft_dns?: array<int, mixed>, can_auto_confirm?: bool}|null
      */
     private function checkDeliveryNotesDelivered(Document $invoice): ?array
     {

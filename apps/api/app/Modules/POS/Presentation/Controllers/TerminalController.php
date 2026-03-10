@@ -19,7 +19,6 @@ use App\Modules\POS\Presentation\Resources\TerminalResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Str;
 
 /**
  * Controller for POS Terminal management.
@@ -46,7 +45,7 @@ final class TerminalController extends Controller
     {
         Gate::authorize('pos.manage_terminals');
 
-        $terminals = Terminal::forCompany($this->companyContext->getCompanyId())
+        $terminals = Terminal::forCompany($this->companyContext->requireCompanyId())
             ->with(['location'])
             ->withCount(['receipts', 'shifts'])
             ->orderBy('created_at', 'desc')
@@ -68,7 +67,7 @@ final class TerminalController extends Controller
             abort(403);
         }
 
-        $terminal = Terminal::forCompany($this->companyContext->getCompanyId())
+        $terminal = Terminal::forCompany($this->companyContext->requireCompanyId())
             ->with(['location'])
             ->findOrFail($id);
 
@@ -124,7 +123,7 @@ final class TerminalController extends Controller
     {
         Gate::authorize('pos.manage_terminals');
 
-        $terminal = Terminal::forCompany($this->companyContext->getCompanyId())
+        $terminal = Terminal::forCompany($this->companyContext->requireCompanyId())
             ->findOrFail($id);
 
         $terminal->update($request->validated());
@@ -145,7 +144,7 @@ final class TerminalController extends Controller
     {
         Gate::authorize('pos.manage_terminals');
 
-        $terminal = Terminal::forCompany($this->companyContext->getCompanyId())
+        $terminal = Terminal::forCompany($this->companyContext->requireCompanyId())
             ->findOrFail($id);
 
         if ($terminal->shifts()->where('status', ShiftStatus::Open)->exists()) {
@@ -173,7 +172,7 @@ final class TerminalController extends Controller
     {
         Gate::authorize('pos.manage_terminals');
 
-        $terminal = Terminal::forCompany($this->companyContext->getCompanyId())
+        $terminal = Terminal::forCompany($this->companyContext->requireCompanyId())
             ->findOrFail($id);
 
         if ($terminal->receipts()->exists() || $terminal->shifts()->exists()) {
@@ -199,7 +198,7 @@ final class TerminalController extends Controller
     {
         Gate::authorize('pos.manage_terminals');
 
-        $terminal = Terminal::forCompany($this->companyContext->getCompanyId())
+        $terminal = Terminal::forCompany($this->companyContext->requireCompanyId())
             ->findOrFail($id);
 
         $terminal->update([
@@ -235,7 +234,7 @@ final class TerminalController extends Controller
             'reason' => 'nullable|string|max:255',
         ]);
 
-        $terminal = Terminal::forCompany($this->companyContext->getCompanyId())
+        $terminal = Terminal::forCompany($this->companyContext->requireCompanyId())
             ->findOrFail($id);
 
         $terminal->update([
@@ -258,7 +257,7 @@ final class TerminalController extends Controller
     {
         Gate::authorize('pos.operate_terminal');
 
-        $terminals = Terminal::forCompany($this->companyContext->getCompanyId())
+        $terminals = Terminal::forCompany($this->companyContext->requireCompanyId())
             ->physical()
             ->active()
             ->whereNull('hardware_identifier')
@@ -282,7 +281,7 @@ final class TerminalController extends Controller
 
         $data = $request->validated();
 
-        $terminal = Terminal::forCompany($this->companyContext->getCompanyId())
+        $terminal = Terminal::forCompany($this->companyContext->requireCompanyId())
             ->where('id', $data['terminal_id'])
             ->firstOrFail();
 
@@ -391,8 +390,8 @@ final class TerminalController extends Controller
             'company_id' => $company->id,
             'location_id' => $locationId,
             'type' => TerminalType::Web,
-            'code' => 'WEB-' . strtoupper($locationCode),
-            'name' => 'Web POS - ' . $location->name,
+            'code' => 'WEB-'.strtoupper($locationCode),
+            'name' => 'Web POS - '.$location->name,
             'genesis_seed' => bin2hex(random_bytes(32)),
             'current_sequence' => 1,
             'current_year' => (int) now()->format('Y'),
@@ -414,7 +413,7 @@ final class TerminalController extends Controller
     {
         Gate::authorize('pos.operate_terminal');
 
-        $terminal = Terminal::forCompany($this->companyContext->getCompanyId())
+        $terminal = Terminal::forCompany($this->companyContext->requireCompanyId())
             ->where('hardware_identifier', $hardwareIdentifier)
             ->with(['location'])
             ->first();
@@ -435,7 +434,7 @@ final class TerminalController extends Controller
      */
     private function generateTerminalCode(): string
     {
-        $companyId = $this->companyContext->getCompanyId();
+        $companyId = $this->companyContext->requireCompanyId();
         $count = Terminal::withTrashed()->forCompany($companyId)->count();
 
         return 'POS'.str_pad((string) ($count + 1), 2, '0', STR_PAD_LEFT);

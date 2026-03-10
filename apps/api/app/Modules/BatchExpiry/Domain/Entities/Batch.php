@@ -52,16 +52,19 @@ class Batch extends Model
         'recalled_at' => 'datetime',
     ];
 
+    /** @return BelongsTo<\App\Modules\Product\Domain\Product, $this> */
     public function product(): BelongsTo
     {
         return $this->belongsTo(\App\Modules\Product\Domain\Product::class);
     }
 
+    /** @return BelongsTo<\App\Modules\Company\Domain\Company, $this> */
     public function company(): BelongsTo
     {
         return $this->belongsTo(\App\Modules\Company\Domain\Company::class);
     }
 
+    /** @return HasMany<BatchStock, $this> */
     public function batchStock(): HasMany
     {
         return $this->hasMany(BatchStock::class, 'batch_id');
@@ -121,11 +124,11 @@ class Batch extends Model
 
     public function getTotalQuantityAttribute(): float
     {
-        return $this->batchStock()->sum('quantity');
+        return (float) $this->batchStock()->sum('quantity');
     }
 
     public function getAvailableQuantityAttribute(): float
     {
-        return $this->batchStock()->sum('available_quantity');
+        return (float) $this->batchStock()->sum('available_quantity');
     }
 }

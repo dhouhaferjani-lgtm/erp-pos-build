@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Billing\Domain;
 
-use App\Modules\Admin\Domain\SuperAdmin;
+use App\Models\SuperAdmin;
 use App\Modules\Billing\Domain\Enums\PaymentStatus;
 use App\Modules\Billing\Domain\ValueObjects\Money;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -26,7 +26,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $error_code
  * @property string|null $error_message
  * @property \Carbon\Carbon|null $refunded_at
- * @property array $metadata
+ * @property array<string, mixed> $metadata
  * @property \Carbon\Carbon $created_at
  * @property \Carbon\Carbon $updated_at
  */
@@ -65,7 +65,7 @@ final class Refund extends Model
     }
 
     /**
-     * @return BelongsTo<Payment, Refund>
+     * @return BelongsTo<Payment, $this>
      */
     public function payment(): BelongsTo
     {
@@ -73,7 +73,7 @@ final class Refund extends Model
     }
 
     /**
-     * @return BelongsTo<SuperAdmin, Refund>
+     * @return BelongsTo<SuperAdmin, $this>
      */
     public function initiator(): BelongsTo
     {
@@ -99,7 +99,9 @@ final class Refund extends Model
         ]);
 
         // Update parent payment's refunded amount
-        $this->payment->recordRefund((float) $this->amount);
+        /** @var Payment $payment */
+        $payment = $this->payment;
+        $payment->recordRefund((float) $this->amount);
     }
 
     /**

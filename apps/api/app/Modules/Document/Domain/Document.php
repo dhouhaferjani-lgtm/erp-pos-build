@@ -85,7 +85,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Document extends Model
 {
     use HasUuids;
+
+    /** @use \Illuminate\Database\Eloquent\Factories\HasFactory<\Database\Factories\DocumentFactory> */
     use \Illuminate\Database\Eloquent\Factories\HasFactory;
+
     use SoftDeletes;
 
     /**
@@ -539,9 +542,9 @@ class Document extends Model
 
         $this->update([
             'subtotal' => $subtotal,
-            'line_tax_amount' => $taxResult->lineTaxAmount,
-            'stamp_duty_amount' => $taxResult->stampDutyAmount,
-            'tax_amount' => $taxResult->totalTaxAmount,  // Total of line_tax + stamp_duty
+            'line_tax_amount' => $taxResult->lineItemsTaxTotal,
+            'stamp_duty_amount' => $taxResult->documentTaxTotal,
+            'tax_amount' => $taxResult->totalTax,  // Total of line_tax + stamp_duty
             'total' => $taxResult->total,
         ]);
     }
@@ -619,11 +622,11 @@ class Document extends Model
 
         // Sum all payment allocations
         /** @var numeric-string $paid */
-        $paid = (string) ($this->allocations()->sum('amount') ?? '0');
+        $paid = (string) $this->allocations()->sum('amount');
 
         // Sum all credit note allocations
         /** @var numeric-string $credited */
-        $credited = (string) ($this->creditNoteAllocations()->sum('amount') ?? '0');
+        $credited = (string) $this->creditNoteAllocations()->sum('amount');
 
         // Calculate: Total - Paid - Credited
         $outstanding = bcsub(bcsub($total, $paid, $scale), $credited, $scale);
@@ -654,7 +657,7 @@ class Document extends Model
 
         // Check if any payments are pending bank reconciliation
         $hasPendingPayments = $this->allocations()
-            ->whereHas('payment', fn ($q) => $q->where('status', '!=', 'reconciled'))
+            ->whereHas('payment', fn (\Illuminate\Database\Eloquent\Builder $q) => $q->whereRaw("status != 'reconciled'"))
             ->exists();
 
         return match (true) {
@@ -698,7 +701,7 @@ class Document extends Model
         if ($deliveryNotes->isEmpty()) {
             // Check if any lines require physical delivery
             $hasPhysicalProducts = $this->lines()
-                ->whereHas('product', fn ($q) => $q->where('is_physical', true))
+                ->whereHas('product', fn (\Illuminate\Database\Eloquent\Builder $q) => $q->whereRaw('is_physical = true'))
                 ->exists();
 
             return $hasPhysicalProducts
@@ -747,6 +750,7 @@ class Document extends Model
     /**
      * Create a new factory instance for the model.
      */
+    /** @return \Database\Factories\DocumentFactory */
     protected static function newFactory(): \Illuminate\Database\Eloquent\Factories\Factory
     {
         return \Database\Factories\DocumentFactory::new();

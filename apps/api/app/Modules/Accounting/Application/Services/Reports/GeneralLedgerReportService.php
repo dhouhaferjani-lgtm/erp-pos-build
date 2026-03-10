@@ -278,7 +278,9 @@ class GeneralLedgerReportService
                 'COALESCE(SUM(jl.debit), 0) - COALESCE(SUM(jl.credit), 0) as balance'
             )->first();
 
-            $historicalBalance = bcadd('0.0000', (string) ($result->balance ?? 0), self::DECIMAL_SCALE);
+            /** @var numeric-string $resultBalance */
+            $resultBalance = (string) ($result->balance ?? 0);
+            $historicalBalance = bcadd('0.0000', $resultBalance, self::DECIMAL_SCALE);
         }
 
         // Part 2: Calculate balance from prior pages (transactions in date range before current offset)
@@ -314,8 +316,12 @@ class GeneralLedgerReportService
 
             // Sum up the prior pages' debits and credits
             foreach ($priorTransactions as $transaction) {
-                $priorPagesBalance = bcadd($priorPagesBalance, (string) $transaction->debit, self::DECIMAL_SCALE);
-                $priorPagesBalance = bcsub($priorPagesBalance, (string) $transaction->credit, self::DECIMAL_SCALE);
+                /** @var numeric-string $txDebit */
+                $txDebit = (string) $transaction->debit;
+                /** @var numeric-string $txCredit */
+                $txCredit = (string) $transaction->credit;
+                $priorPagesBalance = bcadd($priorPagesBalance, $txDebit, self::DECIMAL_SCALE);
+                $priorPagesBalance = bcsub($priorPagesBalance, $txCredit, self::DECIMAL_SCALE);
             }
         }
 
@@ -353,20 +359,7 @@ class GeneralLedgerReportService
      * @param  string|null  $partnerId  Optional partner UUID filter
      * @param  int  $offset  Number of records to skip (for pagination)
      * @param  int|null  $limit  Max records to return (null = no limit)
-     * @return \Illuminate\Support\Collection<int, object{
-     *     line_id: string,
-     *     entry_date: string,
-     *     entry_number: string,
-     *     entry_description: string|null,
-     *     line_description: string|null,
-     *     account_code: string,
-     *     account_name: string,
-     *     partner_name: string|null,
-     *     debit: numeric-string,
-     *     credit: numeric-string,
-     *     source_type: string|null,
-     *     source_id: string|null
-     * }>
+     * @return \Illuminate\Support\Collection<int, \stdClass>
      */
     private function queryJournalLines(
         string $companyId,
@@ -456,7 +449,7 @@ class GeneralLedgerReportService
      * Transaction 3: +100.00 debit  → Balance: 1400.00
      * ```
      *
-     * @param  \Illuminate\Support\Collection  $lines  Raw journal lines from query
+     * @param  \Illuminate\Support\Collection<int, \stdClass>  $lines  Raw journal lines from query
      * @param  numeric-string  $openingBalance  Starting balance before transactions
      * @return list<array{
      *     id: string,

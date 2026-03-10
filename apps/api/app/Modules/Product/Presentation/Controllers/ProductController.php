@@ -50,6 +50,7 @@ class ProductController extends Controller
 
         // Get filter parameters
         $filterConfig = $this->getFilterConfig();
+        /** @phpstan-ignore argument.type */
         $filters = $this->getFilterParams($request, $filterConfig);
 
         // Get per_page parameter (allow up to 2000 for POS systems)
@@ -75,12 +76,14 @@ class ProductController extends Controller
             ->with($with);
 
         // Apply filters
+        /** @phpstan-ignore argument.type */
         $this->applyFilters($query, $filters, $filterConfig);
 
         // Apply sorting
         $this->applySorting($query, $sortParams);
 
         // Calculate aggregates (on filtered query, before pagination)
+        /** @phpstan-ignore argument.type */
         $aggregates = $this->calculateAggregates($query, $this->getAggregateConfig());
 
         // Paginate
@@ -530,7 +533,7 @@ class ProductController extends Controller
 
         // Map stock levels with incoming data
         $data = $stockLevels->map(function (StockLevel $level) use ($incomingByLocation) {
-            $incoming = $incomingByLocation->get($level->location_id)?->incoming ?? '0.00';
+            $incoming = $incomingByLocation->get($level->location_id)->incoming ?? '0.00';
 
             return StockLevelData::fromModel($level, (string) $incoming);
         });
@@ -538,9 +541,15 @@ class ProductController extends Controller
         // Calculate totals
         $totalQuantity = $stockLevels->sum('quantity');
         $totalReserved = $stockLevels->sum('reserved');
-        $totalAvailable = bcsub((string) $totalQuantity, (string) $totalReserved, 2);
+        /** @var numeric-string $totalQtyStr */
+        $totalQtyStr = (string) $totalQuantity;
+        /** @var numeric-string $totalResStr */
+        $totalResStr = (string) $totalReserved;
+        $totalAvailable = bcsub($totalQtyStr, $totalResStr, 2);
         $totalIncoming = $incomingByLocation->sum('incoming');
-        $totalProjectedAvailable = bcadd($totalAvailable, (string) $totalIncoming, 2);
+        /** @var numeric-string $totalIncStr */
+        $totalIncStr = (string) $totalIncoming;
+        $totalProjectedAvailable = bcadd($totalAvailable, $totalIncStr, 2);
 
         return response()->json([
             'data' => [

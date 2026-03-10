@@ -25,15 +25,16 @@ class BatchStock extends Model
         'available_quantity' => 'decimal:4',
     ];
 
-    protected $appends = [
-        'available_quantity',
-    ];
+    /** @var list<string> */
+    protected $appends = [];  // available_quantity is a computed accessor, not an appended attribute
 
+    /** @return BelongsTo<Batch, $this> */
     public function batch(): BelongsTo
     {
         return $this->belongsTo(Batch::class);
     }
 
+    /** @return BelongsTo<\App\Modules\Company\Domain\Location, $this> */
     public function location(): BelongsTo
     {
         return $this->belongsTo(\App\Modules\Company\Domain\Location::class);

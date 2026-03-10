@@ -7,9 +7,9 @@ namespace App\Modules\PlatformIntegration\Domain\ValueObjects;
 final readonly class PlatformArticle
 {
     /**
-     * @param array<int, array{type: string, number: string, manufacturer_name: string|null}> $crossReferences
-     * @param array<int, array{vehicle_type: string, vehicle_id: string, display: string, year_from: int|null, year_to: int|null}> $vehicleLinkages
-     * @param array<int, array{key: string, label: string, value: string, unit: string|null}> $criteria
+     * @param  array<int, array{type: string, number: string, manufacturer_name: string|null}>  $crossReferences
+     * @param  array<int, array{vehicle_type: string, vehicle_id: string, display: string, year_from: int|null, year_to: int|null}>  $vehicleLinkages
+     * @param  array<int, array{key: string, label: string, value: string, unit: string|null}>  $criteria
      */
     public function __construct(
         public string $id,
@@ -20,6 +20,7 @@ final readonly class PlatformArticle
         public ?string $barcode,
         public ?string $brandQualityTier,
         public ?string $weightKg,
+        /** @var array<string, mixed>|null */
         public ?array $dimensions,
         public array $crossReferences,
         public array $vehicleLinkages,
@@ -27,7 +28,7 @@ final readonly class PlatformArticle
     ) {}
 
     /**
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     public static function fromApiResponse(array $data): self
     {

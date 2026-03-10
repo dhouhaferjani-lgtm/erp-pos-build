@@ -61,7 +61,7 @@ final class BatchWriteOffService
                 productId: $productId,
                 locationId: $locationId,
                 quantity: $quantity,
-                reference: "Write-off: Batch {$batch->batch_number}" . ($notes !== null ? " - {$notes}" : ''),
+                reference: "Write-off: Batch {$batch->batch_number}".($notes !== null ? " - {$notes}" : ''),
                 userId: $userId,
                 batchId: (int) $batch->id,
             );
@@ -88,7 +88,7 @@ final class BatchWriteOffService
                 );
             } catch (\RuntimeException $e) {
                 // GL accounts may not be configured — log but don't block
-                Log::warning('Could not create GL entry for batch write-off: ' . $e->getMessage(), [
+                Log::warning('Could not create GL entry for batch write-off: '.$e->getMessage(), [
                     'batch_id' => $batch->id,
                     'quantity' => $quantity,
                     'reason' => $movementReason->value,
@@ -111,7 +111,9 @@ final class BatchWriteOffService
             return '0.00';
         }
 
+        /** @var numeric-string $unitCost */
         $unitCost = (string) ($product->weighted_average_cost ?? $product->cost_price ?? '0.00');
+        /** @var numeric-string $quantity */
 
         return bcmul($quantity, $unitCost, 2);
     }

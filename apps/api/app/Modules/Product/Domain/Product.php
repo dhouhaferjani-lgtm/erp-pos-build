@@ -7,6 +7,8 @@ namespace App\Modules\Product\Domain;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Domain\Entities\Unit;
+use App\Shared\Contracts\SellableContract;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -15,8 +17,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use App\Modules\Uom\Domain\Entities\Unit;
-use App\Shared\Contracts\SellableContract;
 
 /**
  * @property string $id
@@ -53,7 +53,9 @@ use App\Shared\Contracts\SellableContract;
  */
 class Product extends Model implements SellableContract
 {
+    /** @use HasFactory<\Database\Factories\ProductFactory> */
     use HasFactory;
+
     use HasUuids;
     use SoftDeletes;
 
@@ -222,7 +224,7 @@ class Product extends Model implements SellableContract
     /**
      * Get all images for this product, ordered by sort_order.
      *
-     * @return HasMany<ProductImage>
+     * @return HasMany<ProductImage, $this>
      */
     public function images(): HasMany
     {
@@ -232,7 +234,7 @@ class Product extends Model implements SellableContract
     /**
      * Get the primary image for this product.
      *
-     * @return HasOne<ProductImage>
+     * @return HasOne<ProductImage, $this>
      */
     public function primaryImage(): HasOne
     {
@@ -252,7 +254,7 @@ class Product extends Model implements SellableContract
     /**
      * Get parapharmacy-specific metadata for this product.
      *
-     * @return HasOne<ParapharmacyProductMetadata>
+     * @return HasOne<ParapharmacyProductMetadata, $this>
      */
     public function parapharmacyMetadata(): HasOne
     {
@@ -262,7 +264,7 @@ class Product extends Model implements SellableContract
     /**
      * Get automotive-specific metadata for this product.
      *
-     * @return HasOne<AutomotiveProductMetadata>
+     * @return HasOne<AutomotiveProductMetadata, $this>
      */
     public function automotiveMetadata(): HasOne
     {
@@ -272,7 +274,7 @@ class Product extends Model implements SellableContract
     /**
      * Get all stock levels for this product across all locations.
      *
-     * @return HasMany<\App\Modules\Inventory\Domain\StockLevel>
+     * @return HasMany<\App\Modules\Inventory\Domain\StockLevel, $this>
      */
     public function stockLevels(): HasMany
     {

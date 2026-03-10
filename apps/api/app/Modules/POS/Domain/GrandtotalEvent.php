@@ -23,8 +23,8 @@ use Illuminate\Support\Carbon;
  * @property string $event_type DAILY, MONTHLY, or YEARLY
  * @property Carbon $period_start
  * @property Carbon $period_end
- * @property array $period_totals JSONB: Totals for this period (reset)
- * @property array $perpetual_totals JSONB: Cumulative totals (never reset)
+ * @property array<string, mixed> $period_totals JSONB: Totals for this period (reset)
+ * @property array<string, mixed> $perpetual_totals JSONB: Cumulative totals (never reset)
  * @property string $fiscal_hash SHA-256 hash of this event
  * @property string|null $previous_hash Hash of previous event of same type
  * @property int $sequence_number Sequential number per event_type
@@ -178,7 +178,7 @@ class GrandtotalEvent extends Model
      */
     public function getPeriodDurationDays(): int
     {
-        return $this->period_start->diffInDays($this->period_end);
+        return (int) $this->period_start->diffInDays($this->period_end);
     }
 
     /**

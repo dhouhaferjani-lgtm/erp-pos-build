@@ -60,7 +60,7 @@ class DraftController extends Controller
     {
         /** @var \App\Modules\Identity\Domain\User|null $user */
         $user = $request->user();
-        $tenantId = $user?->tenant_id ?? '';
+        $tenantId = $user->tenant_id ?? '';
         $companyId = $this->companyContext->requireCompanyId();
         $userId = (string) Auth::id();
 

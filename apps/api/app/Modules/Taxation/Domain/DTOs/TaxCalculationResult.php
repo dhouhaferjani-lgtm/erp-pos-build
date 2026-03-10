@@ -16,6 +16,7 @@ readonly class TaxCalculationResult
         public string $documentTaxTotal,
         public string $totalTax,
         public string $total,
+        /** @var array<string, mixed>|null */
         public ?array $exemptionInfo = null,
     ) {}
 
@@ -33,6 +34,7 @@ readonly class TaxCalculationResult
         };
     }
 
+    /** @return array<string, mixed> */
     public function toArray(): array
     {
         return [

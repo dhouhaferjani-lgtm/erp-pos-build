@@ -50,6 +50,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Payment extends Model
 {
     use HasUuids;
+
+    /** @use \Illuminate\Database\Eloquent\Factories\HasFactory<\Database\Factories\PaymentFactory> */
     use \Illuminate\Database\Eloquent\Factories\HasFactory;
 
     protected $table = 'payments';
@@ -290,6 +292,7 @@ class Payment extends Model
     /**
      * Create a new factory instance for the model.
      */
+    /** @return \Database\Factories\PaymentFactory */
     protected static function newFactory(): \Illuminate\Database\Eloquent\Factories\Factory
     {
         return \Database\Factories\PaymentFactory::new();

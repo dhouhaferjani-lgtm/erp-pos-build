@@ -166,6 +166,7 @@ final class AdminBillingController extends Controller
             'due_date' => 'nullable|date|after:today',
         ]);
 
+        /** @var \App\Modules\Tenant\Domain\Tenant $tenant */
         $tenant = Tenant::findOrFail($validated['tenant_id']);
 
         $invoice = $this->invoiceService->createManualInvoice(
@@ -220,6 +221,9 @@ final class AdminBillingController extends Controller
      */
     public function recordPayment(Request $request): JsonResponse
     {
+        /** @var \App\Models\SuperAdmin $admin */
+        $admin = $request->user();
+
         $validated = $request->validate([
             'tenant_id' => 'required|uuid|exists:tenants,id',
             'invoice_id' => 'nullable|uuid|exists:billing_invoices,id',
@@ -231,7 +235,7 @@ final class AdminBillingController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        return DB::transaction(function () use ($validated, $request): JsonResponse {
+        return DB::transaction(function () use ($validated, $admin): JsonResponse {
             $payment = Payment::create([
                 'tenant_id' => $validated['tenant_id'],
                 'invoice_id' => $validated['invoice_id'] ?? null,
@@ -245,7 +249,7 @@ final class AdminBillingController extends Controller
                 'payment_method_type' => $validated['provider'],
                 'reference_number' => $validated['reference_number'] ?? null,
                 'payment_date' => $validated['payment_date'] ?? now(),
-                'recorded_by' => $request->user()->id,
+                'recorded_by' => $admin->id,
                 'paid_at' => now(),
                 'metadata' => [
                     'notes' => $validated['notes'] ?? null,
@@ -254,7 +258,7 @@ final class AdminBillingController extends Controller
             ]);
 
             // Update invoice if linked
-            if ($payment->invoice_id) {
+            if ($payment->invoice_id && $payment->invoice !== null) {
                 $payment->invoice->recordPayment((float) $payment->amount);
             }
 
@@ -267,6 +271,9 @@ final class AdminBillingController extends Controller
      */
     public function refundPayment(Request $request, string $id): JsonResponse
     {
+        /** @var \App\Models\SuperAdmin $admin */
+        $admin = $request->user();
+
         $payment = Payment::findOrFail($id);
 
         if (! $payment->isRefundable()) {
@@ -289,7 +296,7 @@ final class AdminBillingController extends Controller
         if (! $payment->isManual()) {
             $provider = $this->providerManager->provider($payment->provider);
             $result = $provider->refund(
-                $payment->provider_payment_id,
+                $payment->provider_payment_id ?? '',
                 new \App\Modules\Billing\Domain\ValueObjects\Money($amount, $payment->currency)
             );
 
@@ -310,7 +317,7 @@ final class AdminBillingController extends Controller
             'amount' => $amount,
             'currency' => $payment->currency,
             'reason' => $validated['reason'] ?? null,
-            'initiated_by' => $request->user()->id,
+            'initiated_by' => $admin->id,
             'refunded_at' => now(),
         ]);
 
@@ -337,6 +344,7 @@ final class AdminBillingController extends Controller
                 'active' => $subscription->activate(),
                 'paused' => $subscription->pause(),
                 'cancelled' => $subscription->cancel(true),
+                default => null,
             };
         }
 

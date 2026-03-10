@@ -31,7 +31,7 @@ use Illuminate\Support\Carbon;
  * @property numeric-string $line_total
  * @property numeric-string $tax_rate
  * @property numeric-string $tax_amount
- * @property array|null $modifiers JSONB: Future menu item modifiers
+ * @property array<string, mixed>|null $modifiers JSONB: Future menu item modifiers
  * @property numeric-string $discount_amount
  * @property string|null $discount_reason
  * @property string|null $notes

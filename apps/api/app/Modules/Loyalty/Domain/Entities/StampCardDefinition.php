@@ -28,7 +28,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class StampCardDefinition extends Model
 {
+    /** @use HasFactory<\Illuminate\Database\Eloquent\Factories\Factory<static>> */
     use HasFactory;
+
     use HasUuids;
 
     protected $fillable = [
@@ -54,6 +56,8 @@ class StampCardDefinition extends Model
 
     /**
      * Get the program for this card definition
+     *
+     * @return BelongsTo<LoyaltyProgram, $this>
      */
     public function program(): BelongsTo
     {
@@ -62,6 +66,8 @@ class StampCardDefinition extends Model
 
     /**
      * Get the reward for completing this card
+     *
+     * @return BelongsTo<Reward, $this>
      */
     public function reward(): BelongsTo
     {
@@ -70,6 +76,8 @@ class StampCardDefinition extends Model
 
     /**
      * Get all member cards for this definition
+     *
+     * @return HasMany<MemberStampCard, $this>
      */
     public function memberCards(): HasMany
     {

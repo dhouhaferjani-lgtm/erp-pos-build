@@ -157,7 +157,10 @@ final class ReportGenerationService
             // Z report generation and shift closing are separate operations to allow
             // for actual cash counting after Z report is printed
 
-            return $zReport->fresh();
+            /** @var ZReport $freshReport */
+            $freshReport = $zReport->fresh();
+
+            return $freshReport;
         });
     }
 
@@ -169,7 +172,7 @@ final class ReportGenerationService
      * @param  Terminal  $terminal  The terminal to calculate for
      * @param  \Illuminate\Support\Carbon  $startTime  Period start
      * @param  \Illuminate\Support\Carbon  $endTime  Period end
-     * @return array Snapshot data array
+     * @return array<string, mixed> Snapshot data array
      */
     private function calculateShiftTotals(Terminal $terminal, $startTime, $endTime): array
     {

@@ -374,7 +374,7 @@ class DocumentController extends Controller
                     'credit_note_id' => $allocation->credit_note_id,
                     'credit_note_number' => $allocation->creditNote->document_number,
                     'credit_note_date' => $allocation->creditNote->document_date->toDateString(),
-                    'credit_note_reason' => $allocation->creditNote->credit_note_reason?->value,
+                    'credit_note_reason' => $allocation->creditNote->credit_note_reason,
                     'amount' => $allocation->amount,
                     'allocated_by' => $allocation->allocatedBy ? [
                         'id' => $allocation->allocatedBy->id,

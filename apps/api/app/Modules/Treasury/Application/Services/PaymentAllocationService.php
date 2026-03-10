@@ -140,7 +140,9 @@ class PaymentAllocationService
 
                 // Update document status to Paid if fully paid (only for types that support it)
                 // (balance_due was just updated by trigger)
-                if (bccomp($document->balance_due, '0.00', $this->scale()) === 0 && $document->type->canTransitionToPaid()) {
+                /** @var numeric-string $balanceDue */
+                $balanceDue = $document->balance_due ?? '0.00';
+                if (bccomp($balanceDue, '0.00', $this->scale()) === 0 && $document->type->canTransitionToPaid()) {
                     $document->status = DocumentStatus::Paid;
                     $fullyPaidDocuments[] = [
                         'documentId' => $document->id,
@@ -161,16 +163,20 @@ class PaymentAllocationService
             $journalEntryId = null;
             if ($payment->repository && $payment->repository->account_id && bccomp($totalAllocated, '0', 4) > 0) {
                 // Check if any allocations are to sales orders (prepayments)
+                /** @var numeric-string $allocatedToOrders */
                 $allocatedToOrders = '0.00';
+                /** @var numeric-string $allocatedToInvoices */
                 $allocatedToInvoices = '0.00';
 
                 foreach ($preview['allocations'] as $allocation) {
                     /** @var Document $doc */
                     $doc = Document::find($allocation['document_id']);
-                    if ($doc && $doc->type === DocumentType::SalesOrder) {
-                        $allocatedToOrders = bcadd($allocatedToOrders, $allocation['amount'], $this->scale());
+                    /** @var numeric-string $allocAmount */
+                    $allocAmount = $allocation['amount'];
+                    if ($doc->type === DocumentType::SalesOrder) {
+                        $allocatedToOrders = bcadd($allocatedToOrders, $allocAmount, $this->scale());
                     } else {
-                        $allocatedToInvoices = bcadd($allocatedToInvoices, $allocation['amount'], $this->scale());
+                        $allocatedToInvoices = bcadd($allocatedToInvoices, $allocAmount, $this->scale());
                     }
                 }
 

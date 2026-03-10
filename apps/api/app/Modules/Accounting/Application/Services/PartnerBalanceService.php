@@ -53,7 +53,9 @@ class PartnerBalanceService
             COUNT(*) as transaction_count
         ')->first();
 
+        /** @var numeric-string $debitTotal */
         $debitTotal = (string) ($result->debit_total ?? '0');
+        /** @var numeric-string $creditTotal */
         $creditTotal = (string) ($result->credit_total ?? '0');
         $balance = bcsub($debitTotal, $creditTotal, 4);
 
@@ -185,7 +187,9 @@ class PartnerBalanceService
      */
     public function reconcileSubledger(string $companyId, SystemAccountPurpose $purpose): array
     {
+        /** @var numeric-string $subledgerTotal */
         $subledgerTotal = $this->getSubledgerTotal($companyId, $purpose);
+        /** @var numeric-string $controlBalance */
         $controlBalance = $this->getControlAccountBalance($companyId, $purpose);
         $difference = bcsub($controlBalance, $subledgerTotal, 4);
 
@@ -256,12 +260,17 @@ class PartnerBalanceService
 
         // Add running balance
         $transactions = $query->get();
+        /** @var numeric-string $runningBalance */
         $runningBalance = '0';
 
         return $transactions->map(function (object $tx) use (&$runningBalance): object {
+            /** @var numeric-string $credit */
+            $credit = (string) ($tx->credit ?? '0');
+            /** @var numeric-string $debit */
+            $debit = (string) ($tx->debit ?? '0');
             $runningBalance = bcadd(
-                bcsub($runningBalance, (string) ($tx->credit ?? '0'), 4),
-                (string) ($tx->debit ?? '0'),
+                bcsub($runningBalance, $credit, 4),
+                $debit,
                 4
             );
             $tx->running_balance = $runningBalance;

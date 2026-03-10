@@ -45,6 +45,8 @@ class CountryTaxRate extends Model
 
     /**
      * Get the country that owns the tax rate.
+     *
+     * @return BelongsTo<Country, $this>
      */
     public function country(): BelongsTo
     {

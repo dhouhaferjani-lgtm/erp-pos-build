@@ -101,7 +101,7 @@ class StockReservationController extends Controller
             'is_expired' => $reservation->isExpired(),
             'time_until_expiry' => $reservation->getTimeUntilExpiry(),
             'created_by' => $reservation->createdBy?->name,
-            'created_at' => $reservation->created_at->toIso8601String(),
+            'created_at' => $reservation->created_at?->toIso8601String(),
         ]);
 
         return response()->json([
@@ -153,7 +153,7 @@ class StockReservationController extends Controller
                 'time_until_expiry' => $reservation->getTimeUntilExpiry(),
                 'total_value' => $reservation->getTotalValue(),
                 'created_by' => $reservation->createdBy?->name,
-                'created_at' => $reservation->created_at->toIso8601String(),
+                'created_at' => $reservation->created_at?->toIso8601String(),
             ],
         ]);
     }
@@ -200,7 +200,7 @@ class StockReservationController extends Controller
                     'source_type' => $reservation->source_type->value,
                     'source_id' => $reservation->source_id,
                     'expires_at' => $reservation->expires_at?->toIso8601String(),
-                    'created_at' => $reservation->created_at->toIso8601String(),
+                    'created_at' => $reservation->created_at?->toIso8601String(),
                 ],
                 'message' => 'Reservation created successfully',
             ], 201);
@@ -278,7 +278,7 @@ class StockReservationController extends Controller
             'expires_at' => $reservation->expires_at?->toIso8601String(),
             'time_until_expiry' => $reservation->getTimeUntilExpiry(),
             'created_by' => $reservation->createdBy?->name,
-            'created_at' => $reservation->created_at->toIso8601String(),
+            'created_at' => $reservation->created_at?->toIso8601String(),
         ]);
 
         $totalReserved = $reservations->sum('quantity');

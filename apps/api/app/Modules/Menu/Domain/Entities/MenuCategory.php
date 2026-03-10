@@ -69,7 +69,7 @@ class MenuCategory extends Model
     }
 
     /**
-     * @return BelongsToMany<CompositeItem, $this>
+     * @return BelongsToMany<CompositeItem, $this, MenuCategoryItem, 'pivot'>
      */
     public function items(): BelongsToMany
     {

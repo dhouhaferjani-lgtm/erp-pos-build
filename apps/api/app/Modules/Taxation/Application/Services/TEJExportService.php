@@ -78,8 +78,9 @@ class TEJExportService
         $declarant->addChild('MatriculeFiscal', htmlspecialchars((string) $company->tax_id));
         $declarant->addChild('RaisonSociale', htmlspecialchars($company->name));
 
-        if ($company->address) {
-            $declarant->addChild('Adresse', htmlspecialchars($company->address));
+        $companyAddress = $company->getFullAddressAttribute();
+        if ($companyAddress !== null) {
+            $declarant->addChild('Adresse', htmlspecialchars($companyAddress));
         }
     }
 
@@ -93,8 +94,8 @@ class TEJExportService
         // Use issued_at or created_at for period
         $date = $certificate->issued_at ?? $certificate->created_at;
 
-        $periode->addChild('Mois', $date->format('m'));
-        $periode->addChild('Annee', $date->format('Y'));
+        $periode->addChild('Mois', $date?->format('m') ?? '01');
+        $periode->addChild('Annee', $date?->format('Y') ?? (string) now()->year);
     }
 
     /**
@@ -124,8 +125,8 @@ class TEJExportService
         $retenue->addChild('MontantRetenu', number_format((float) $certificate->withholding_amount, 3, '.', ''));
 
         // Payment date
-        $paymentDate = $payment?->payment_date ?? $certificate->created_at;
-        $retenue->addChild('DatePaiement', $paymentDate->format('Y-m-d'));
+        $paymentDate = $payment->payment_date ?? $certificate->created_at;
+        $retenue->addChild('DatePaiement', $paymentDate?->format('Y-m-d') ?? now()->format('Y-m-d'));
 
         // Certificate number
         $retenue->addChild('NumeroCertificat', htmlspecialchars($certificate->certificate_number));
@@ -144,9 +145,13 @@ class TEJExportService
         $dom = new \DOMDocument('1.0', 'UTF-8');
         $dom->preserveWhiteSpace = false;
         $dom->formatOutput = true;
-        $dom->loadXML($xml->asXML());
+        $xmlString = $xml->asXML();
+        if ($xmlString === false) {
+            return '';
+        }
+        $dom->loadXML($xmlString);
 
-        return $dom->saveXML();
+        return $dom->saveXML() ?: '';
     }
 
     /**
@@ -159,7 +164,7 @@ class TEJExportService
 
         $prefix = $isBatch ? 'TEJ_BATCH' : 'TEJ';
         $companyCode = str_replace(' ', '_', $company->code ?? $company->id);
-        $timestamp = $date->format('Ymd_His');
+        $timestamp = $date?->format('Ymd_His') ?? now()->format('Ymd_His');
 
         return sprintf('%s_%s_%s.xml', $prefix, $companyCode, $timestamp);
     }

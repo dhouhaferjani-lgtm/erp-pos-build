@@ -100,7 +100,7 @@ final class DeliveryNoteService
         $previousHash = $previousDoc?->fiscal_hash;
         $genesisSeed = $previousHash === null ? $this->getCompanyGenesisSeed($deliveryNote) : null;
 
-        $chainSequence = ($previousDoc?->chain_sequence ?? 0) + 1;
+        $chainSequence = ($previousDoc !== null ? $previousDoc->chain_sequence : 0) + 1;
         $confirmedAt = now();
 
         // Calculate fiscal hash using the compliance service
@@ -205,13 +205,8 @@ final class DeliveryNoteService
      */
     private function getCompanyGenesisSeed(Document $deliveryNote): string
     {
+        /** @var \App\Modules\Company\Domain\Company $company */
         $company = $deliveryNote->company;
-
-        if ($company === null) {
-            throw new \RuntimeException(
-                'Delivery note must have an associated company for fiscal chain'
-            );
-        }
 
         if ($company->fiscal_chain_seed === null) {
             throw new \RuntimeException(
@@ -236,6 +231,10 @@ final class DeliveryNoteService
             }
 
             $location = $line->location ?? $deliveryNote->location;
+
+            if ($location === null) {
+                continue; // Skip if no location available
+            }
 
             // Record stock sale with audit trail
             $this->wacService->recordSale(

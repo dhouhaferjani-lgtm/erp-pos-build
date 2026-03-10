@@ -42,7 +42,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class Location extends Model
 {
+    /** @use HasFactory<\Database\Factories\LocationFactory> */
     use HasFactory;
+
     use HasUuids;
 
     /**

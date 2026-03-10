@@ -39,6 +39,7 @@ final class CashDrawerController extends Controller
     {
         Gate::authorize('pos.operate_terminal');
 
+        /** @var Shift $shift */
         $shift = Shift::findOrFail($request->validated('shift_id'));
 
         // Verify shift belongs to current company
@@ -61,10 +62,13 @@ final class CashDrawerController extends Controller
             ], 409);
         }
 
+        /** @var \App\Modules\Identity\Domain\User $user */
+        $user = $request->user();
+
         $operation = $this->cashDrawerService->recordDeposit(
             $shift,
             $request->validated('amount'),
-            $request->user(),
+            $user,
             $request->validated('reason')
         );
 
@@ -82,6 +86,7 @@ final class CashDrawerController extends Controller
     {
         Gate::authorize('pos.operate_terminal');
 
+        /** @var Shift $shift */
         $shift = Shift::findOrFail($request->validated('shift_id'));
 
         // Verify shift belongs to current company
@@ -104,10 +109,13 @@ final class CashDrawerController extends Controller
             ], 409);
         }
 
+        /** @var \App\Modules\Identity\Domain\User $user */
+        $user = $request->user();
+
         $operation = $this->cashDrawerService->recordPayout(
             $shift,
             $request->validated('amount'),
-            $request->user(),
+            $user,
             $request->validated('reason')
         );
 

@@ -21,7 +21,14 @@ class PlanLimitsService
             return false;
         }
 
-        $limits = $subscription->plan->limits;
+        $plan = $subscription->plan;
+
+        if ($plan === null) {
+            return false;
+        }
+
+        /** @var array<string, mixed> $limits */
+        $limits = $plan->limits;
         $usage = $this->getUsage($tenant);
 
         $limitKey = 'max_'.$resource;
@@ -45,7 +52,8 @@ class PlanLimitsService
     {
         if (! $this->checkLimit($tenant, $resource)) {
             $subscription = $this->getActiveSubscription($tenant);
-            $limits = $subscription?->plan->limits ?? [];
+            /** @var array<string, mixed> $limits */
+            $limits = $subscription !== null && $subscription->plan !== null ? $subscription->plan->limits : [];
             $limitKey = 'max_'.$resource;
             $maxAllowed = $limits[$limitKey] ?? 0;
 
@@ -95,7 +103,8 @@ class PlanLimitsService
     {
         $subscription = $this->getActiveSubscription($tenant);
         $usage = $this->getUsage($tenant);
-        $limits = $subscription?->plan->limits ?? [];
+        /** @var array<string, mixed> $limits */
+        $limits = $subscription !== null && $subscription->plan !== null ? $subscription->plan->limits : [];
 
         return [
             'subscription' => $subscription,

@@ -24,7 +24,7 @@ use Illuminate\Support\Carbon;
  * @property int $z_number Sequential Z report number (never resets)
  * @property string $fiscal_hash SHA-256 hash of this Z report
  * @property string|null $previous_z_hash Hash of previous Z report
- * @property array $report_data JSONB: Complete Z report content
+ * @property array<string, mixed> $report_data JSONB: Complete Z report content
  * @property string $generated_by User who generated the report
  * @property Carbon $generated_at
  * @property-read Terminal $terminal
@@ -184,6 +184,7 @@ class ZReport extends Model
      */
     public function hasVariance(int $scale = 3): bool
     {
+        /** @var numeric-string $variance */
         $variance = $this->getVariance();
 
         return bccomp($variance, '0', $scale) !== 0;

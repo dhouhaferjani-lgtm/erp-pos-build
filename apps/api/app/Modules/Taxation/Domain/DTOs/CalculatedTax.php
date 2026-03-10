@@ -24,6 +24,7 @@ readonly class CalculatedTax
         public TaxApplicationLevel $appliesTo,
     ) {}
 
+    /** @return array<string, mixed> */
     public function toArray(): array
     {
         return [

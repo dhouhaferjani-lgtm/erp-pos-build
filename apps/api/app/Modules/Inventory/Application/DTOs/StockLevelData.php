@@ -27,7 +27,9 @@ class StockLevelData extends Data
 
     public static function fromModel(StockLevel $stockLevel, string $incoming = '0.00'): self
     {
+        /** @var numeric-string $available */
         $available = $stockLevel->getAvailableQuantity();
+        /** @var numeric-string $incoming */
         $projectedAvailable = bcadd($available, $incoming, 2);
 
         return new self(

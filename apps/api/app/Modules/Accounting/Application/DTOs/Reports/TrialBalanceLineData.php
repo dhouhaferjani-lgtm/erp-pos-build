@@ -49,7 +49,7 @@ final class TrialBalanceLineData extends Data
     /**
      * Create from array (typically from TrialBalanceService output).
      *
-     * @param  array{account_code: string, account_name: string, account_type: string, debit: numeric-string, credit: numeric-string, level: int, is_parent: bool}  $data
+     * @param  array<string, mixed>  $data
      */
     public static function fromArray(array $data): self
     {

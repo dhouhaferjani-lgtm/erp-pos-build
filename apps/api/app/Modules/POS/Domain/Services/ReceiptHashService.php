@@ -82,7 +82,14 @@ final class ReceiptHashService
     public function hashVATBreakdown(array $vatDetails): string
     {
         // Sort by tax rate for consistent hashing
-        usort($vatDetails, fn ($a, $b) => bccomp((string) $a['tax_rate'], (string) $b['tax_rate'], 2));
+        usort($vatDetails, function ($a, $b) {
+            /** @var numeric-string $rateA */
+            $rateA = (string) $a['tax_rate'];
+            /** @var numeric-string $rateB */
+            $rateB = (string) $b['tax_rate'];
+
+            return bccomp($rateA, $rateB, 2);
+        });
 
         $breakdown = collect($vatDetails)
             ->map(fn ($detail) => implode(':', [

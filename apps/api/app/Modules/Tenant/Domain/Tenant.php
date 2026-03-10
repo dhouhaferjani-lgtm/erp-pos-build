@@ -53,7 +53,7 @@ use Stancl\Tenancy\Database\Models\Tenant as BaseTenant;
  * @property Carbon $updated_at
  * @property Carbon|null $trial_ends_at
  * @property Carbon|null $subscription_ends_at
- * @property string $vertical Business vertical (mechanic, pharmacy, etc.)
+ * @property \App\Enums\Vertical $vertical Business vertical (mechanic, pharmacy, etc.)
  * @property array<int, string>|null $enabled_extras Enabled optional modules
  * @property string|null $signup_source Signup attribution source
  * @property array<string, mixed>|null $signup_tracking Signup tracking metadata

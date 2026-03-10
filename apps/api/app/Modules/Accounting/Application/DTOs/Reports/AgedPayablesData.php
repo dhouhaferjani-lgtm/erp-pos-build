@@ -19,7 +19,7 @@ final class AgedPayablesData extends Data
 {
     /**
      * @param  string  $as_of_date  The snapshot date for the aging report (YYYY-MM-DD)
-     * @param  DataCollection<AgedPayablesLineData>  $lines  Vendor aging lines
+     * @param  DataCollection<int, AgedPayablesLineData>|array<int, AgedPayablesLineData>  $lines  Vendor aging lines
      * @param  string  $total_current  Total of all current (0-30 days) balances
      * @param  string  $total_days_30  Total of all 31-60 days balances
      * @param  string  $total_days_60  Total of all 61-90 days balances

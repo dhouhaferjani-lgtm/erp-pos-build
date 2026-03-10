@@ -89,7 +89,7 @@ final class LedgerData extends Data
         #[DataCollectionOf(LedgerLineData::class)]
         public readonly DataCollection $lines,
         public readonly ?string $date_from,
-        public readonly string $date_to,
+        public readonly ?string $date_to,
         public readonly ?string $account_filter,
         public readonly ?string $partner_filter,
     ) {}
@@ -104,9 +104,9 @@ final class LedgerData extends Data
      *     closing_balance: numeric-string,
      *     total_debits: numeric-string,
      *     total_credits: numeric-string,
-     *     lines: list<array>,
+     *     lines: list<array<string, mixed>>,
      *     date_from: string|null,
-     *     date_to: string,
+     *     date_to: string|null,
      *     account_filter: string|null,
      *     partner_filter: string|null
      * } $data
@@ -165,7 +165,7 @@ final class LedgerData extends Data
      */
     public function isEmpty(): bool
     {
-        return $this->lines->isEmpty();
+        return $this->lines->count() === 0;
     }
 
     /**

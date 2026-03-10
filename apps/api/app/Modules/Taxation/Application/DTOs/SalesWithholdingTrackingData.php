@@ -55,8 +55,8 @@ class SalesWithholdingTrackingData extends Data
             certificateReceived: $tracking->certificate_received,
             certificateReceivedAt: $tracking->certificate_received_at?->toISOString(),
             notes: $tracking->notes,
-            createdAt: $tracking->created_at->toISOString(),
-            updatedAt: $tracking->updated_at->toISOString(),
+            createdAt: $tracking->created_at->toISOString() ?? '',
+            updatedAt: $tracking->updated_at->toISOString() ?? '',
         );
     }
 }

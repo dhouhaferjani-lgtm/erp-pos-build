@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Pricing\Domain\Services;
 
-use App\Modules\Catalog\Domain\Product;
-use App\Modules\Partner\Domain\Partner;
 use App\Modules\Pricing\Domain\PriceList;
 use App\Modules\Pricing\Domain\PriceListItem;
+use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class PricingService
@@ -24,9 +22,9 @@ class PricingService
     }
 
     /**
-     * Get price for a product based on partner, quantity, and date
+     * Get price for a product based on partner, quantity, and date.
      *
-     * @return array ['price' => string, 'source' => string, 'price_list_id' => string|null]
+     * @return array{price: string, source: string, price_list_id: string|null}
      */
     public function getPrice(
         string $productId,
@@ -63,16 +61,16 @@ class PricingService
         $product = Product::findOrFail($productId);
 
         return [
-            'price' => $product->price,
+            'price' => $product->sale_price ?? '0.00',
             'source' => 'base_price',
             'price_list_id' => null,
         ];
     }
 
     /**
-     * Get partner-specific price
+     * Get partner-specific price.
      *
-     * @return array|null ['price' => string, 'price_list_id' => string]
+     * @return array{price: string, price_list_id: string}|null
      */
     private function getPartnerPrice(
         string $partnerId,
@@ -110,7 +108,7 @@ class PricingService
 
         // Try each price list in priority order
         foreach ($partnerPriceLists as $priceListId) {
-            $price = $this->getPriceFromList($priceListId, $productId, $quantity);
+            $price = $this->getPriceFromList((string) $priceListId, $productId, $quantity);
             if ($price !== null) {
                 return [
                     'price' => $price,
@@ -123,9 +121,9 @@ class PricingService
     }
 
     /**
-     * Get price from default price list
+     * Get price from default price list.
      *
-     * @return array|null ['price' => string, 'price_list_id' => string]
+     * @return array{price: string, price_list_id: string}|null
      */
     private function getDefaultPriceListPrice(
         string $productId,
@@ -150,7 +148,9 @@ class PricingService
             return null;
         }
 
-        $price = $this->getPriceFromList($priceList->id, $productId, $quantity);
+        /** @var string $priceListId */
+        $priceListId = $priceList->id;
+        $price = $this->getPriceFromList($priceListId, $productId, $quantity);
 
         if ($price === null) {
             return null;
@@ -158,7 +158,7 @@ class PricingService
 
         return [
             'price' => $price,
-            'price_list_id' => $priceList->id,
+            'price_list_id' => $priceListId,
         ];
     }
 
@@ -181,9 +181,9 @@ class PricingService
     }
 
     /**
-     * Calculate line subtotal with discounts
+     * Calculate line subtotal with discounts.
      *
-     * @return array ['subtotal' => string, 'discount_amount' => string, 'total' => string]
+     * @return array{subtotal: string, discount_amount: string, total: string}
      */
     public function calculateLineTotal(
         string $unitPrice,
@@ -191,19 +191,30 @@ class PricingService
         ?string $discountPercent = null,
         ?string $discountAmount = null
     ): array {
+        /** @var numeric-string $unitPrice */
+        /** @var numeric-string $quantity */
         $subtotal = bcmul($unitPrice, $quantity, $this->scale());
 
+        /** @var numeric-string $totalDiscount */
         $totalDiscount = '0';
 
         // Apply percentage discount
-        if ($discountPercent !== null && bccomp($discountPercent, '0', $this->scale()) > 0) {
-            $percentDiscount = bcmul($subtotal, bcdiv($discountPercent, '100', 4), $this->scale());
-            $totalDiscount = bcadd($totalDiscount, $percentDiscount, $this->scale());
+        if ($discountPercent !== null) {
+            /** @var numeric-string $discountPct */
+            $discountPct = $discountPercent;
+            if (bccomp($discountPct, '0', $this->scale()) > 0) {
+                $percentDiscount = bcmul($subtotal, bcdiv($discountPct, '100', 4), $this->scale());
+                $totalDiscount = bcadd($totalDiscount, $percentDiscount, $this->scale());
+            }
         }
 
         // Apply fixed amount discount
-        if ($discountAmount !== null && bccomp($discountAmount, '0', $this->scale()) > 0) {
-            $totalDiscount = bcadd($totalDiscount, $discountAmount, $this->scale());
+        if ($discountAmount !== null) {
+            /** @var numeric-string $discountAmt */
+            $discountAmt = $discountAmount;
+            if (bccomp($discountAmt, '0', $this->scale()) > 0) {
+                $totalDiscount = bcadd($totalDiscount, $discountAmt, $this->scale());
+            }
         }
 
         // Discount cannot exceed subtotal
@@ -221,24 +232,34 @@ class PricingService
     }
 
     /**
-     * Apply document-level discount
+     * Apply document-level discount.
      *
-     * @return array ['discount_amount' => string, 'total' => string]
+     * @return array{discount_amount: string, total: string}
      */
     public function applyDocumentDiscount(
         string $subtotal,
         ?string $discountPercent = null,
         ?string $discountAmount = null
     ): array {
+        /** @var numeric-string $subtotal */
+        /** @var numeric-string $totalDiscount */
         $totalDiscount = '0';
 
-        if ($discountPercent !== null && bccomp($discountPercent, '0', $this->scale()) > 0) {
-            $percentDiscount = bcmul($subtotal, bcdiv($discountPercent, '100', 4), $this->scale());
-            $totalDiscount = bcadd($totalDiscount, $percentDiscount, $this->scale());
+        if ($discountPercent !== null) {
+            /** @var numeric-string $discountPct */
+            $discountPct = $discountPercent;
+            if (bccomp($discountPct, '0', $this->scale()) > 0) {
+                $percentDiscount = bcmul($subtotal, bcdiv($discountPct, '100', 4), $this->scale());
+                $totalDiscount = bcadd($totalDiscount, $percentDiscount, $this->scale());
+            }
         }
 
-        if ($discountAmount !== null && bccomp($discountAmount, '0', $this->scale()) > 0) {
-            $totalDiscount = bcadd($totalDiscount, $discountAmount, $this->scale());
+        if ($discountAmount !== null) {
+            /** @var numeric-string $discountAmt */
+            $discountAmt = $discountAmount;
+            if (bccomp($discountAmt, '0', $this->scale()) > 0) {
+                $totalDiscount = bcadd($totalDiscount, $discountAmt, $this->scale());
+            }
         }
 
         if (bccomp($totalDiscount, $subtotal, $this->scale()) > 0) {
@@ -254,9 +275,11 @@ class PricingService
     }
 
     /**
-     * Get all quantity breaks for a product in a price list
+     * Get all quantity breaks for a product in a price list.
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, PriceListItem>
      */
-    public function getQuantityBreaks(string $priceListId, string $productId): Collection
+    public function getQuantityBreaks(string $priceListId, string $productId): \Illuminate\Database\Eloquent\Collection
     {
         return PriceListItem::where('price_list_id', $priceListId)
             ->where('product_id', $productId)
@@ -265,9 +288,10 @@ class PricingService
     }
 
     /**
-     * Bulk price lookup for multiple products
+     * Bulk price lookup for multiple products.
      *
-     * @return array Keyed by product_id
+     * @param  array<int, string>  $productIds
+     * @return array<string, array{price: string, source: string, price_list_id: string|null}>
      */
     public function getBulkPrices(
         array $productIds,

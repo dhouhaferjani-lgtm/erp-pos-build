@@ -56,6 +56,8 @@ class Country extends Model
 
     /**
      * Get the tax rates for the country.
+     *
+     * @return HasMany<CountryTaxRate, $this>
      */
     public function taxRates(): HasMany
     {
@@ -64,6 +66,8 @@ class Country extends Model
 
     /**
      * Get the payment settings for the country.
+     *
+     * @return HasOne<CountryPaymentSettings, $this>
      */
     public function paymentSettings(): HasOne
     {

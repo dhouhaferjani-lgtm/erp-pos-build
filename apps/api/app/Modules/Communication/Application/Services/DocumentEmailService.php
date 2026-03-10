@@ -143,9 +143,6 @@ final class DocumentEmailService
         }
 
         $partner = $document->partner;
-        if ($partner === null) {
-            return null;
-        }
 
         return $partner->email;
     }

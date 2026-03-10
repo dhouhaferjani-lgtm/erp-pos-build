@@ -95,7 +95,7 @@ final class StripePaymentProvider implements PaymentProviderInterface
                 return PaymentResult::requiresAction(
                     paymentId: $paymentIntent->id,
                     clientSecret: $paymentIntent->client_secret ?? '',
-                    actionUrl: $paymentIntent->next_action?->redirect_to_url?->url ?? '',
+                    actionUrl: $paymentIntent->next_action?->redirect_to_url->url ?? '',
                 );
             }
 
@@ -358,6 +358,8 @@ final class StripePaymentProvider implements PaymentProviderInterface
 
     /**
      * Create a subscription in Stripe.
+     *
+     * @return array<string, mixed>|null
      */
     public function createSubscription(
         string $customerId,
@@ -382,10 +384,21 @@ final class StripePaymentProvider implements PaymentProviderInterface
 
             $subscription = \Stripe\Subscription::create($params);
 
+            $latestInvoice = $subscription->latest_invoice;
+            $clientSecret = null;
+            if ($latestInvoice instanceof \Stripe\Invoice) {
+                /** @phpstan-ignore property.notFound */
+                $paymentIntent = $latestInvoice->payment_intent;
+                if ($paymentIntent instanceof \Stripe\PaymentIntent) {
+                    $clientSecret = $paymentIntent->client_secret;
+                }
+            }
+
             return [
                 'subscription_id' => $subscription->id,
                 'status' => $subscription->status,
-                'client_secret' => $subscription->latest_invoice?->payment_intent?->client_secret,
+                'client_secret' => $clientSecret,
+                /** @phpstan-ignore property.notFound */
                 'current_period_end' => $subscription->current_period_end,
             ];
         } catch (ApiErrorException $e) {

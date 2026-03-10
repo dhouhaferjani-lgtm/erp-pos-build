@@ -35,7 +35,9 @@ use Illuminate\Support\Str;
  */
 class Category extends Model
 {
+    /** @use HasFactory<\Database\Factories\CategoryFactory> */
     use HasFactory;
+
     use SoftDeletes;
 
     protected $fillable = [
@@ -120,7 +122,7 @@ class Category extends Model
     }
 
     /**
-     * @return HasMany<Category>
+     * @return HasMany<Category, $this>
      */
     public function children(): HasMany
     {
@@ -128,7 +130,7 @@ class Category extends Model
     }
 
     /**
-     * @return HasMany<Product>
+     * @return HasMany<Product, $this>
      */
     public function products(): HasMany
     {
@@ -141,8 +143,13 @@ class Category extends Model
     {
         if ($this->parent_id) {
             $parent = $this->parent;
-            $this->path = $parent->path ? "{$parent->path}/{$this->id}" : (string) $this->id;
-            $this->depth = $parent->depth + 1;
+            if ($parent === null) {
+                $this->path = (string) $this->id;
+                $this->depth = 0;
+            } else {
+                $this->path = $parent->path ? "{$parent->path}/{$this->id}" : (string) $this->id;
+                $this->depth = $parent->depth + 1;
+            }
         } else {
             $this->path = (string) $this->id;
             $this->depth = 0;

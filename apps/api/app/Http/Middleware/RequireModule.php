@@ -43,6 +43,10 @@ class RequireModule
             throw new \RuntimeException('User must be authenticated to check module access');
         }
 
+        if (! $user instanceof \App\Modules\Identity\Domain\User) {
+            throw new \RuntimeException('Module access requires a tenant user, not a super admin');
+        }
+
         // Get tenant from authenticated user
         $tenant = $user->tenant;
 

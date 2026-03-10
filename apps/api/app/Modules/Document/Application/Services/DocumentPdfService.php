@@ -195,7 +195,10 @@ final class DocumentPdfService
         $carbon = $date instanceof Carbon ? $date : Carbon::parse($date);
 
         // Use locale-aware formatting
-        return $carbon->locale($locale)->isoFormat($format);
+        /** @var Carbon $localizedCarbon */
+        $localizedCarbon = $carbon->locale($locale);
+
+        return $localizedCarbon->isoFormat($format);
     }
 
     /**

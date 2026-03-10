@@ -33,7 +33,7 @@ final class PosAuthController extends Controller
             ->get();
 
         foreach ($users as $user) {
-            if (Hash::check($pin, $user->pos_pin)) {
+            if ($user->pos_pin !== null && Hash::check($pin, $user->pos_pin)) {
                 return response()->json([
                     'data' => [
                         'id' => $user->id,
@@ -80,7 +80,7 @@ final class PosAuthController extends Controller
             ->get();
 
         foreach ($existingUsers as $existingUser) {
-            if (Hash::check($pin, $existingUser->pos_pin)) {
+            if ($existingUser->pos_pin !== null && Hash::check($pin, $existingUser->pos_pin)) {
                 throw ValidationException::withMessages([
                     'pin' => ['This PIN is already used by another user.'],
                 ]);

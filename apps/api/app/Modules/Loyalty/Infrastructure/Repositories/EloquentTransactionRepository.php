@@ -76,7 +76,10 @@ final readonly class EloquentTransactionRepository implements TransactionReposit
     {
         $transaction->save();
 
-        return $transaction->fresh();
+        /** @var Transaction $freshTransaction */
+        $freshTransaction = $transaction->fresh();
+
+        return $freshTransaction;
     }
 
     /**

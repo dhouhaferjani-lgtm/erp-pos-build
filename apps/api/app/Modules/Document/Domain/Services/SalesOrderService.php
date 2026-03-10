@@ -83,10 +83,8 @@ final class SalesOrderService
         $confirmedBy = auth()->id();
 
         // Get company for reservation settings
+        /** @var \App\Modules\Company\Domain\Company $company */
         $company = $salesOrder->company;
-        if ($company === null) {
-            throw new \RuntimeException('Sales order must have an associated company');
-        }
 
         // Check if auto-reservation is enabled
         $settings = $company->getReservationSettings();
@@ -115,7 +113,7 @@ final class SalesOrderService
         $reservations = [];
         foreach ($salesOrder->lines as $line) {
             // Skip service lines (non-physical products)
-            if ($line->product?->is_service ?? false) {
+            if ($line->product->is_service ?? false) {
                 continue;
             }
 
@@ -130,6 +128,11 @@ final class SalesOrderService
                 throw new \DomainException(
                     "Cannot reserve stock: no location specified for line {$line->id}"
                 );
+            }
+
+            // Skip lines without product_id
+            if ($line->product_id === null) {
+                continue;
             }
 
             // Reserve stock for this line
@@ -238,7 +241,7 @@ final class SalesOrderService
     /**
      * Dispatch the SalesOrderConfirmed event for audit trail.
      *
-     * @param  array<int, array{line_id: string, product_id: string, quantity: string, location_id: string}>  $reservations
+     * @param  list<array{line_id: string, product_id: string, quantity: string, location_id: string}>  $reservations
      */
     private function dispatchConfirmedEvent(Document $salesOrder, array $reservations, string $confirmedAt): void
     {

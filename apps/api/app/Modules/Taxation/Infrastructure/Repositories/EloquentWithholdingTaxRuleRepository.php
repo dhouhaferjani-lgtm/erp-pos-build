@@ -89,7 +89,10 @@ class EloquentWithholdingTaxRuleRepository implements WithholdingTaxRuleReposito
         $rule = WithholdingTaxRule::findOrFail($id);
         $rule->update($data);
 
-        return $rule->fresh();
+        /** @var WithholdingTaxRule $freshRule */
+        $freshRule = $rule->fresh();
+
+        return $freshRule;
     }
 
     public function deactivate(string $id): bool
@@ -104,6 +107,6 @@ class EloquentWithholdingTaxRuleRepository implements WithholdingTaxRuleReposito
     {
         $rule = WithholdingTaxRule::findOrFail($id);
 
-        return $rule->delete();
+        return $rule->delete() ?? false;
     }
 }

@@ -360,7 +360,7 @@ final class AccountingService implements AccountingServiceInterface
         // If product_id is set, check product type
         if ($line->product_id !== null && $line->product !== null) {
             // Service type products use service revenue account
-            if ($line->product->type->value === 'service') {
+            if ($line->product->type?->value === 'service') {
                 return $serviceRevenueAccount;
             }
         }

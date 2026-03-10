@@ -269,6 +269,7 @@ final class MigrationWizardService
                     'reference' => 'OB-2025',
                 ],
             ],
+            ImportType::ProductImages => [],
         };
 
         $rows = [];
@@ -347,6 +348,11 @@ final class MigrationWizardService
                 'type' => $type->value,
                 'label' => 'Opening Balances',
                 'description' => 'Import accounting opening balances. Requires chart of accounts to exist.',
+            ],
+            ImportType::ProductImages => [
+                'type' => $type->value,
+                'label' => 'Product Images',
+                'description' => 'Import product images via ZIP file. Requires products to exist.',
             ],
         };
     }

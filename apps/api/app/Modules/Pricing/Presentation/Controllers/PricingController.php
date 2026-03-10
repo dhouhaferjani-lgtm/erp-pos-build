@@ -71,6 +71,7 @@ class PricingController extends Controller
             'valid_until' => 'nullable|date|after:valid_from',
         ]);
 
+        /** @var \App\Modules\Identity\Domain\User $user */
         $user = $request->user();
 
         $priceList = PriceList::create([
@@ -365,11 +366,15 @@ class PricingController extends Controller
             'sell_price' => 'required|numeric|min:0',
         ]);
 
+        /** @var Product $product */
         $product = Product::findOrFail($validated['product_id']);
         $sellPrice = (float) $validated['sell_price'];
 
+        /** @var \App\Modules\Identity\Domain\User $user */
+        $user = $request->user();
+
         $marginLevel = $this->marginService->getMarginLevel($product, $sellPrice);
-        $canSell = $this->marginService->canSellAtPrice($product, $sellPrice, $request->user());
+        $canSell = $this->marginService->canSellAtPrice($product, $sellPrice, $user);
         $suggestedPrice = $this->marginService->getSuggestedPrice($product);
 
         return response()->json([

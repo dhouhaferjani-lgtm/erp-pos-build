@@ -29,8 +29,6 @@ final readonly class AgedPayablesService
 {
     private const DECIMAL_SCALE = 4;
 
-    private const ZERO_THRESHOLD = '0.0001';
-
     /**
      * Generate aged payables report.
      *
@@ -88,7 +86,7 @@ final readonly class AgedPayablesService
      * - Have a remaining balance > 0
      * - Invoice date <= as_of_date
      *
-     * @return Collection<Document>
+     * @return Collection<int, Document>
      */
     private function getOutstandingInvoices(string $companyId, Carbon $asOfDate): Collection
     {
@@ -115,15 +113,17 @@ final readonly class AgedPayablesService
      * - days_90: 91-120 days
      * - over_90: >120 days
      *
-     * @param  Collection<Document>  $invoices
-     * @return Collection<array>
+     * @param  Collection<int, Document>  $invoices
+     * @return Collection<int|string, array{vendor_id: string, vendor_name: string, current: string, days_30: string, days_60: string, days_90: string, over_90: string, total: string}>
      */
     private function calculateVendorAging(Collection $invoices, Carbon $asOfDate): Collection
     {
         return $invoices
             ->groupBy('partner_id')
             ->map(function (Collection $vendorInvoices, string $partnerId) use ($asOfDate) {
-                $vendor = $vendorInvoices->first()->partner;
+                /** @var \App\Modules\Document\Domain\Document $firstInvoice */
+                $firstInvoice = $vendorInvoices->first();
+                $vendor = $firstInvoice->partner;
 
                 $buckets = [
                     'current' => '0.0000',
@@ -200,6 +200,7 @@ final readonly class AgedPayablesService
      */
     private function calculateTotals(array $lines): array
     {
+        /** @var array<string, numeric-string> $totals */
         $totals = [
             'current' => '0.0000',
             'days_30' => '0.0000',
@@ -210,12 +211,24 @@ final readonly class AgedPayablesService
         ];
 
         foreach ($lines as $line) {
-            $totals['current'] = bcadd($totals['current'], $line->current, self::DECIMAL_SCALE);
-            $totals['days_30'] = bcadd($totals['days_30'], $line->days_30, self::DECIMAL_SCALE);
-            $totals['days_60'] = bcadd($totals['days_60'], $line->days_60, self::DECIMAL_SCALE);
-            $totals['days_90'] = bcadd($totals['days_90'], $line->days_90, self::DECIMAL_SCALE);
-            $totals['over_90'] = bcadd($totals['over_90'], $line->over_90, self::DECIMAL_SCALE);
-            $totals['total'] = bcadd($totals['total'], $line->total, self::DECIMAL_SCALE);
+            /** @var numeric-string $lineCurrent */
+            $lineCurrent = $line->current;
+            /** @var numeric-string $lineDays30 */
+            $lineDays30 = $line->days_30;
+            /** @var numeric-string $lineDays60 */
+            $lineDays60 = $line->days_60;
+            /** @var numeric-string $lineDays90 */
+            $lineDays90 = $line->days_90;
+            /** @var numeric-string $lineOver90 */
+            $lineOver90 = $line->over_90;
+            /** @var numeric-string $lineTotal */
+            $lineTotal = $line->total;
+            $totals['current'] = bcadd($totals['current'], $lineCurrent, self::DECIMAL_SCALE);
+            $totals['days_30'] = bcadd($totals['days_30'], $lineDays30, self::DECIMAL_SCALE);
+            $totals['days_60'] = bcadd($totals['days_60'], $lineDays60, self::DECIMAL_SCALE);
+            $totals['days_90'] = bcadd($totals['days_90'], $lineDays90, self::DECIMAL_SCALE);
+            $totals['over_90'] = bcadd($totals['over_90'], $lineOver90, self::DECIMAL_SCALE);
+            $totals['total'] = bcadd($totals['total'], $lineTotal, self::DECIMAL_SCALE);
         }
 
         return $totals;

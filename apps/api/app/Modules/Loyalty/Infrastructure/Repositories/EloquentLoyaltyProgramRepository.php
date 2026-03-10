@@ -84,7 +84,10 @@ final readonly class EloquentLoyaltyProgramRepository implements LoyaltyProgramR
     {
         $program->save();
 
-        return $program->fresh();
+        /** @var LoyaltyProgram $freshProgram */
+        $freshProgram = $program->fresh();
+
+        return $freshProgram;
     }
 
     /**

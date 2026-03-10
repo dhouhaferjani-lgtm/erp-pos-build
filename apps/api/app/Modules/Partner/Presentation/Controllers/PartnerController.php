@@ -280,9 +280,9 @@ class PartnerController extends Controller
             'full_name' => $contact->full_name,
             'email' => $contact->email,
             'phone' => $contact->phone,
-            'job_title' => $contact->pivot->job_title,
-            'department' => $contact->pivot->department,
-            'is_primary' => (bool) $contact->pivot->is_primary,
+            'job_title' => $contact->getAttribute('pivot')?->getAttribute('job_title'),
+            'department' => $contact->getAttribute('pivot')?->getAttribute('department'),
+            'is_primary' => (bool) ($contact->getAttribute('pivot')?->getAttribute('is_primary') ?? false),
         ]);
 
         return response()->json([

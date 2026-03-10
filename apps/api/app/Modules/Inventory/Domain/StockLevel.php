@@ -189,8 +189,8 @@ class StockLevel extends Model
      */
     public function recalculateReserved(): void
     {
-        /** @var string $total */
-        $total = StockReservation::where('product_id', $this->product_id)
+        /** @var numeric-string $total */
+        $total = (string) StockReservation::where('product_id', $this->product_id)
             ->where('location_id', $this->location_id)
             ->active()
             ->sum('quantity');

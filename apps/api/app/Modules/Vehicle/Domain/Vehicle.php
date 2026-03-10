@@ -42,7 +42,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 class Vehicle extends Model
 {
+    /** @use HasFactory<\Database\Factories\VehicleFactory> */
     use HasFactory;
+
     use HasUuids;
     use SoftDeletes;
 

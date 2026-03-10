@@ -80,7 +80,10 @@ final class ShiftManagementService
             // Record opening cash drawer operation
             $this->cashDrawerService->recordOpening($shift, $openingCash, $cashier);
 
-            return $shift->fresh();
+            /** @var Shift $freshShift */
+            $freshShift = $shift->fresh();
+
+            return $freshShift;
         });
     }
 
@@ -110,9 +113,11 @@ final class ShiftManagementService
 
         return DB::transaction(function () use ($shift, $actualCash, $closedBy) {
             // Calculate expected cash
+            /** @var numeric-string $expectedCash */
             $expectedCash = $this->cashDrawerService->calculateExpectedCash($shift);
 
             // Calculate variance
+            /** @var numeric-string $actualCash */
             $variance = bcsub($actualCash, $expectedCash, $this->scale());
 
             // Update shift
@@ -128,7 +133,10 @@ final class ShiftManagementService
             // Record closing cash drawer operation
             $this->cashDrawerService->recordClosing($shift, $actualCash, $closedBy);
 
-            return $shift->fresh();
+            /** @var Shift $freshShift */
+            $freshShift = $shift->fresh();
+
+            return $freshShift;
         });
     }
 

@@ -52,7 +52,9 @@ class SuperAdminAuthController extends Controller
 
     public function logout(Request $request): JsonResponse
     {
-        $request->user()->currentAccessToken()->delete();
+        /** @var \App\Models\SuperAdmin $admin */
+        $admin = $request->user();
+        $admin->currentAccessToken()->delete();
 
         return response()->json(['message' => 'Logged out successfully']);
     }

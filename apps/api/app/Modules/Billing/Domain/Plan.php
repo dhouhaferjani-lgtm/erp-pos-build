@@ -16,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $code
  * @property string $name
  * @property string|null $description
- * @property array $limits
+ * @property array<string, mixed> $limits
  * @property string|null $price_monthly
  * @property string|null $price_yearly
  * @property string $currency
@@ -69,7 +69,7 @@ final class Plan extends Model
     }
 
     /**
-     * @return HasMany<TenantSubscription>
+     * @return HasMany<TenantSubscription, $this>
      */
     public function subscriptions(): HasMany
     {

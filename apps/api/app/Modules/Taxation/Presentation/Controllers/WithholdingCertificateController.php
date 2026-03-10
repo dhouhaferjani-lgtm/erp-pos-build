@@ -96,8 +96,10 @@ class WithholdingCertificateController extends Controller
      */
     public function store(CreateWithholdingCertificateRequest $request): JsonResponse
     {
+        /** @var Partner $partner */
         $partner = Partner::findOrFail($request->input('partner_id'));
-        $tenantId = $this->companyContext->requireTenantId();
+        $company = $this->companyContext->requireCompany();
+        $tenantId = $company->tenant_id;
 
         $data = CreateWithholdingCertificateData::fromArray(
             array_merge($request->validated(), [
@@ -128,7 +130,9 @@ class WithholdingCertificateController extends Controller
     public function issue(string $id, Request $request): JsonResponse
     {
         try {
-            $userId = $request->user()->id;
+            /** @var \App\Modules\Identity\Domain\User $user */
+            $user = $request->user();
+            $userId = (string) $user->id;
             $certificate = $this->certificateService->issue($id, $userId);
 
             return response()->json([
@@ -151,7 +155,9 @@ class WithholdingCertificateController extends Controller
     public function void(string $id, VoidCertificateRequest $request): JsonResponse
     {
         try {
-            $userId = $request->user()->id;
+            /** @var \App\Modules\Identity\Domain\User $user */
+            $user = $request->user();
+            $userId = (string) $user->id;
             $certificate = $this->certificateService->void(
                 $id,
                 $request->input('reason'),
@@ -178,7 +184,9 @@ class WithholdingCertificateController extends Controller
     public function submitTEJ(string $id, SubmitToTEJRequest $request): JsonResponse
     {
         try {
-            $userId = $request->user()->id;
+            /** @var \App\Modules\Identity\Domain\User $user */
+            $user = $request->user();
+            $userId = (string) $user->id;
             $certificate = $this->certificateService->submitToTEJ(
                 $id,
                 $request->input('tej_reference'),
@@ -216,7 +224,7 @@ class WithholdingCertificateController extends Controller
     /**
      * Download TEJ XML for single certificate.
      */
-    public function downloadTEJXML(string $id): StreamedResponse
+    public function downloadTEJXML(string $id): \Symfony\Component\HttpFoundation\StreamedResponse
     {
         $certificate = $this->certificateRepository->findById($id);
 
@@ -237,7 +245,7 @@ class WithholdingCertificateController extends Controller
     /**
      * Download batch TEJ XML for multiple certificates.
      */
-    public function downloadBatchTEJXML(Request $request): StreamedResponse
+    public function downloadBatchTEJXML(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
 
@@ -257,9 +265,11 @@ class WithholdingCertificateController extends Controller
             abort(404, 'No certificates found for export');
         }
 
-        $certificatesCollection = collect($certificates);
+        $certificatesCollection = collect(array_values($certificates));
         $xml = $this->tejExportService->generateBatchXML($certificatesCollection);
-        $filename = $this->tejExportService->generateFilename($certificatesCollection->first(), true);
+        /** @var \App\Modules\Taxation\Domain\Entities\WithholdingCertificate $firstCertificate */
+        $firstCertificate = $certificatesCollection->first();
+        $filename = $this->tejExportService->generateFilename($firstCertificate, true);
 
         return response()->streamDownload(function () use ($xml) {
             echo $xml;

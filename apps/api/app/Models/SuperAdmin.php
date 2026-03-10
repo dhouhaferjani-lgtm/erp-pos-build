@@ -31,6 +31,9 @@ class SuperAdmin extends Authenticatable
         'password',
     ];
 
+    /**
+     * @return array<string, string>
+     */
     protected function casts(): array
     {
         return [
@@ -41,6 +44,7 @@ class SuperAdmin extends Authenticatable
         ];
     }
 
+    /** @return HasMany<AdminAuditLog, $this> */
     public function auditLogs(): HasMany
     {
         return $this->hasMany(AdminAuditLog::class);

@@ -190,8 +190,8 @@ final class GrandtotalService
      * @param  int  $sequenceNumber  Sequence number for this event type
      * @param  Carbon  $periodStart  Period start timestamp
      * @param  Carbon  $periodEnd  Period end timestamp
-     * @param  array  $periodTotals  Period totals array
-     * @param  array  $perpetualTotals  Perpetual totals array
+     * @param  array<string, mixed>  $periodTotals  Period totals array
+     * @param  array<string, mixed>  $perpetualTotals  Perpetual totals array
      * @param  string|null  $previousHash  Previous event hash (null for first)
      * @return string SHA-256 hash (64 characters)
      */

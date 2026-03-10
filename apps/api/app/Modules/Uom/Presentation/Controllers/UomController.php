@@ -92,6 +92,7 @@ class UomController extends Controller
      */
     public function showUnit(Request $request, string $id): JsonResponse
     {
+        /** @var Unit $unit */
         $unit = Unit::with('category')->findOrFail($id);
 
         return response()->json([
@@ -147,6 +148,7 @@ class UomController extends Controller
     {
         Gate::authorize('uom.edit');
 
+        /** @var Unit $unit */
         $unit = Unit::findOrFail($id);
 
         if ($unit->is_system) {
@@ -183,6 +185,7 @@ class UomController extends Controller
     {
         Gate::authorize('uom.delete');
 
+        /** @var Unit $unit */
         $unit = Unit::findOrFail($id);
 
         if ($unit->is_system) {
@@ -229,7 +232,9 @@ class UomController extends Controller
             'to_unit_id' => 'required|uuid|exists:units,id',
         ]);
 
+        /** @var Unit $fromUnit */
         $fromUnit = Unit::with('category')->findOrFail($validated['from_unit_id']);
+        /** @var Unit $toUnit */
         $toUnit = Unit::with('category')->findOrFail($validated['to_unit_id']);
 
         $convertedQty = $this->conversionService->convert(

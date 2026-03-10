@@ -114,7 +114,11 @@ trait FiltersAndSorts
     /**
      * Apply sorting to query builder.
      *
+     * @template TModel of \Illuminate\Database\Eloquent\Model
+     *
+     * @param  Builder<TModel>  $query
      * @param  array{sort_by: string, sort_dir: string}  $sortParams
+     * @return Builder<TModel>
      */
     protected function applySorting(Builder $query, array $sortParams): Builder
     {
@@ -124,8 +128,12 @@ trait FiltersAndSorts
     /**
      * Apply filters to query builder based on configuration.
      *
+     * @template TModel of \Illuminate\Database\Eloquent\Model
+     *
+     * @param  Builder<TModel>  $query
      * @param  array<string, mixed>  $filters
      * @param  array<string, array{type: string, column?: string, columns?: array<string>, enum?: class-string<BackedEnum>, operator?: string, callback?: callable}>  $config
+     * @return Builder<TModel>
      */
     protected function applyFilters(Builder $query, array $filters, array $config): Builder
     {
@@ -193,7 +201,7 @@ trait FiltersAndSorts
 
                 case 'computed':
                     // Use custom callback
-                    if (isset($definition['callback']) && is_callable($definition['callback'])) {
+                    if (isset($definition['callback'])) {
                         $definition['callback']($query, $value);
                     }
                     break;
@@ -210,6 +218,9 @@ trait FiltersAndSorts
     /**
      * Calculate aggregates on the query.
      *
+     * @template TModel of \Illuminate\Database\Eloquent\Model
+     *
+     * @param  Builder<TModel>  $query
      * @param  array<string, array{type: string, column?: string, expression?: string, filter?: array<string, mixed>}>  $config
      * @return array<string, mixed>
      */

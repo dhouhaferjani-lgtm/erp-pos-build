@@ -37,7 +37,7 @@ class CertificationData extends Data
             verification_url: $certification->verification_url,
             is_active: $certification->is_active,
             display_order: $certification->display_order,
-            name: $certification->name, // Uses HasTranslations trait accessor
+            name: $certification->name ?? '', // Uses HasTranslations trait accessor
             description: $certification->description, // Uses HasTranslations trait accessor
             created_at: $certification->created_at?->toIso8601String() ?? '',
             updated_at: $certification->updated_at?->toIso8601String(),

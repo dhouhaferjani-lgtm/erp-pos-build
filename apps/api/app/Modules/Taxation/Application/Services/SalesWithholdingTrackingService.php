@@ -93,7 +93,10 @@ class SalesWithholdingTrackingService
 
             $tracking->markCertificateReceived($certificateNumber);
 
-            return SalesWithholdingTrackingData::fromEntity($tracking->fresh(['document', 'customer', 'payment']));
+            $tracking->refresh();
+            $tracking->load(['document', 'customer', 'payment']);
+
+            return SalesWithholdingTrackingData::fromEntity($tracking);
         });
     }
 

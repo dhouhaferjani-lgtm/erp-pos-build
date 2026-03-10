@@ -122,7 +122,7 @@ class IngredientController extends Controller
         });
 
         return response()->json([
-            'data' => IngredientData::fromModel($ingredient->fresh()),
+            'data' => IngredientData::fromModel($ingredient->refresh()),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
@@ -203,7 +203,7 @@ class IngredientController extends Controller
         });
 
         return response()->json([
-            'data' => IngredientData::fromModel($ingredient->fresh()),
+            'data' => IngredientData::fromModel($ingredient->refresh()),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),

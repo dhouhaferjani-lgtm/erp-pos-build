@@ -26,23 +26,30 @@ class PriceListItem extends Model
         'max_quantity' => 'decimal:2',
     ];
 
+    /** @return BelongsTo<PriceList, $this> */
     public function priceList(): BelongsTo
     {
         return $this->belongsTo(PriceList::class);
     }
 
+    /** @return BelongsTo<\App\Modules\Product\Domain\Product, $this> */
     public function product(): BelongsTo
     {
-        return $this->belongsTo(\App\Modules\Catalog\Domain\Product::class);
+        return $this->belongsTo(\App\Modules\Product\Domain\Product::class);
     }
 
     public function matchesQuantity(string $quantity): bool
     {
-        if (bccomp($quantity, $this->min_quantity, 2) < 0) {
+        /** @var numeric-string $quantity */
+        /** @var numeric-string $minQty */
+        $minQty = $this->min_quantity;
+        if (bccomp($quantity, $minQty, 2) < 0) {
             return false;
         }
 
-        if ($this->max_quantity !== null && bccomp($quantity, $this->max_quantity, 2) > 0) {
+        /** @var numeric-string|null $maxQty */
+        $maxQty = $this->max_quantity;
+        if ($maxQty !== null && bccomp($quantity, $maxQty, 2) > 0) {
             return false;
         }
 

@@ -30,7 +30,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class Unit extends Model
 {
+    /** @use HasFactory<UnitFactory> */
     use HasFactory;
+
     use HasUuids;
 
     protected static function newFactory(): UnitFactory
@@ -52,6 +54,9 @@ class Unit extends Model
         'is_active',
     ];
 
+    /**
+     * @return array<string, string>
+     */
     protected function casts(): array
     {
         return [
@@ -64,28 +69,45 @@ class Unit extends Model
         ];
     }
 
+    /** @return BelongsTo<Tenant, $this> */
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::class);
     }
 
+    /** @return BelongsTo<UnitCategory, $this> */
     public function category(): BelongsTo
     {
         return $this->belongsTo(UnitCategory::class, 'category_id');
     }
 
+    /**
+     * @param  Builder<Unit>  $query
+     * @return Builder<Unit>
+     */
     public function scopeActive(Builder $query): Builder
     {
+        /** @var Builder<Unit> */
         return $query->where('is_active', true);
     }
 
+    /**
+     * @param  Builder<Unit>  $query
+     * @return Builder<Unit>
+     */
     public function scopeForCategory(Builder $query, string $categoryId): Builder
     {
+        /** @var Builder<Unit> */
         return $query->where('category_id', $categoryId);
     }
 
+    /**
+     * @param  Builder<Unit>  $query
+     * @return Builder<Unit>
+     */
     public function scopeSystem(Builder $query): Builder
     {
+        /** @var Builder<Unit> */
         return $query->where('is_system', true);
     }
 }

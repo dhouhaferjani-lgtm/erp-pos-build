@@ -28,7 +28,7 @@ final class CashDrawerOperationResource extends JsonResource
             'user_id' => $this->user_id,
             'reason' => $this->reason,
             'receipt_id' => $this->receipt_id,
-            'created_at' => $this->created_at?->toIso8601String(),
+            'created_at' => $this->created_at->toIso8601String(),
 
             // Helper methods
             'is_addition' => $this->isAddition(),

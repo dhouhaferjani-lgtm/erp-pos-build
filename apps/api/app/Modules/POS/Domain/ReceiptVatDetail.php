@@ -71,9 +71,15 @@ class ReceiptVatDetail extends Model
     /**
      * Get effective VAT rate as decimal
      */
+    /**
+     * @return numeric-string
+     */
     public function getVatRateDecimal(): string
     {
-        return bcdiv($this->tax_rate, '100', 4);
+        /** @var numeric-string $taxRate */
+        $taxRate = $this->tax_rate;
+
+        return bcdiv($taxRate, '100', 4);
     }
 
     /**

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\DTOs\CompanyConfig;
-use App\Enums\Vertical;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Support\Facades\Cache;
 
@@ -37,10 +36,8 @@ class CompanyConfigService
         $cacheKey = "tenant_config:{$tenant->id}";
 
         return Cache::remember($cacheKey, self::CACHE_TTL_SECONDS, function () use ($tenant) {
-            // Get vertical enum from tenant (already cast to enum by Eloquent)
-            $vertical = $tenant->vertical instanceof Vertical
-                ? $tenant->vertical
-                : Vertical::from($tenant->vertical);
+            // Get vertical enum from tenant (already cast to Vertical enum by Eloquent)
+            $vertical = $tenant->vertical;
 
             // Get vertical configuration
             $defaultModules = $this->verticalConfigService->getDefaultModules($vertical);

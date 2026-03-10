@@ -33,7 +33,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property \Carbon\Carbon|null $last_payment_at
  * @property \Carbon\Carbon|null $next_payment_due
  * @property string|null $notes
- * @property array $metadata
+ * @property array<string, mixed> $metadata
  * @property \Carbon\Carbon $created_at
  * @property \Carbon\Carbon $updated_at
  * @property \Carbon\Carbon|null $deleted_at
@@ -85,7 +85,7 @@ final class TenantSubscription extends Model
     }
 
     /**
-     * @return BelongsTo<Tenant, TenantSubscription>
+     * @return BelongsTo<Tenant, $this>
      */
     public function tenant(): BelongsTo
     {
@@ -93,7 +93,7 @@ final class TenantSubscription extends Model
     }
 
     /**
-     * @return BelongsTo<Plan, TenantSubscription>
+     * @return BelongsTo<Plan, $this>
      */
     public function plan(): BelongsTo
     {
@@ -101,7 +101,7 @@ final class TenantSubscription extends Model
     }
 
     /**
-     * @return HasMany<Invoice>
+     * @return HasMany<Invoice, $this>
      */
     public function invoices(): HasMany
     {

@@ -77,7 +77,10 @@ final readonly class EloquentStampCardRepository implements StampCardRepositoryI
     {
         $definition->save();
 
-        return $definition->fresh();
+        /** @var StampCardDefinition $freshDefinition */
+        $freshDefinition = $definition->fresh();
+
+        return $freshDefinition;
     }
 
     /**
@@ -87,7 +90,10 @@ final readonly class EloquentStampCardRepository implements StampCardRepositoryI
     {
         $card->save();
 
-        return $card->fresh();
+        /** @var MemberStampCard $freshCard */
+        $freshCard = $card->fresh();
+
+        return $freshCard;
     }
 
     /**

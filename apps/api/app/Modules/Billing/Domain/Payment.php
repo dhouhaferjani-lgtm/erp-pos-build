@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Billing\Domain;
 
-use App\Modules\Admin\Domain\SuperAdmin;
+use App\Models\SuperAdmin;
 use App\Modules\Billing\Domain\Enums\PaymentProviderCode;
 use App\Modules\Billing\Domain\Enums\PaymentStatus;
 use App\Modules\Billing\Domain\ValueObjects\Money;
@@ -30,7 +30,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string $currency
  * @property string $refunded_amount
  * @property string|null $payment_method_type
- * @property array $payment_method_details
+ * @property array<string, mixed> $payment_method_details
  * @property string|null $reference_number
  * @property \Carbon\Carbon|null $payment_date
  * @property string|null $recorded_by
@@ -40,7 +40,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $error_message
  * @property \Carbon\Carbon|null $paid_at
  * @property \Carbon\Carbon|null $refunded_at
- * @property array $metadata
+ * @property array<string, mixed> $metadata
  * @property \Carbon\Carbon $created_at
  * @property \Carbon\Carbon $updated_at
  * @property \Carbon\Carbon|null $deleted_at
@@ -101,7 +101,7 @@ final class Payment extends Model
     }
 
     /**
-     * @return BelongsTo<Tenant, Payment>
+     * @return BelongsTo<Tenant, $this>
      */
     public function tenant(): BelongsTo
     {
@@ -109,7 +109,7 @@ final class Payment extends Model
     }
 
     /**
-     * @return BelongsTo<Invoice, Payment>
+     * @return BelongsTo<Invoice, $this>
      */
     public function invoice(): BelongsTo
     {
@@ -117,7 +117,7 @@ final class Payment extends Model
     }
 
     /**
-     * @return BelongsTo<SuperAdmin, Payment>
+     * @return BelongsTo<SuperAdmin, $this>
      */
     public function recorder(): BelongsTo
     {
@@ -125,7 +125,7 @@ final class Payment extends Model
     }
 
     /**
-     * @return HasMany<Refund>
+     * @return HasMany<Refund, $this>
      */
     public function refunds(): HasMany
     {
@@ -205,7 +205,7 @@ final class Payment extends Model
         ]);
 
         // Update invoice if linked
-        if ($this->invoice_id) {
+        if ($this->invoice_id && $this->invoice !== null) {
             $this->invoice->recordPayment((float) $this->amount);
         }
     }

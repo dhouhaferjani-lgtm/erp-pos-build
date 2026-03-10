@@ -40,7 +40,7 @@ class HealthClaimData extends Data
             fda_reference: $healthClaim->fda_reference,
             country_restrictions: $healthClaim->country_restrictions,
             requires_disclaimer: $healthClaim->requires_disclaimer,
-            claim: $healthClaim->claim, // Uses HasTranslations trait accessor
+            claim: $healthClaim->claim ?? '', // Uses HasTranslations trait accessor
             disclaimer_text: $healthClaim->disclaimer_text, // Uses HasTranslations trait accessor
             created_at: $healthClaim->created_at?->toIso8601String() ?? '',
             updated_at: $healthClaim->updated_at?->toIso8601String(),

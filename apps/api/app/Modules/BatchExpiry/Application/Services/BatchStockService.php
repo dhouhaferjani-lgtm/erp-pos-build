@@ -114,7 +114,7 @@ final class BatchStockService
                 tenantId: $tenantId,
                 batchId: $batchId,
                 locationId: $locationId,
-                quantity: '-' . $quantity,
+                quantity: bcmul($quantity, '-1', 4),
                 movementId: $movementId,
             );
         });
@@ -155,7 +155,7 @@ final class BatchStockService
                 tenantId: $tenantId,
                 batchId: $batchId,
                 locationId: $fromLocationId,
-                quantity: '-' . $quantity,
+                quantity: bcmul($quantity, '-1', 4),
             );
 
             // Add to destination

@@ -354,7 +354,7 @@ class SuperAdminController extends Controller
             entityType: 'user',
             entityId: $user->id,
             oldValues: ['email_verified_at' => null],
-            newValues: ['email_verified_at' => $user->email_verified_at?->toDateTimeString()],
+            newValues: ['email_verified_at' => now()->toDateTimeString()],
             notes: $request->input('notes') ?? 'Email manually verified by admin'
         );
 

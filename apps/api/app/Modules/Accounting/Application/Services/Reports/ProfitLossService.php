@@ -112,7 +112,7 @@ class ProfitLossService
      *         account_code: string,
      *         account_name: string,
      *         account_type: string,
-     *         amount: numeric-string,
+     *         amount: string,
      *         level: int,
      *         is_parent: bool
      *     }>,
@@ -120,7 +120,7 @@ class ProfitLossService
      *         account_code: string,
      *         account_name: string,
      *         account_type: string,
-     *         amount: numeric-string,
+     *         amount: string,
      *         level: int,
      *         is_parent: bool
      *     }>,
@@ -203,7 +203,7 @@ class ProfitLossService
      * @param  AccountType  $accountType  Type of accounts to query (revenue or expense)
      * @param  Carbon  $dateFrom  Start date
      * @param  Carbon  $dateTo  End date
-     * @return Collection Collection of objects with account_id and balance
+     * @return Collection<int, \stdClass>
      */
     private function queryAccountBalances(
         string $companyId,
@@ -247,8 +247,8 @@ class ProfitLossService
     /**
      * Load Account models and attach calculated balances.
      *
-     * @param  Collection  $balances  Collection from queryAccountBalances
-     * @return Collection<Account> Account models with balance attached
+     * @param  Collection<int, \stdClass>  $balances  Collection from queryAccountBalances
+     * @return \Illuminate\Database\Eloquent\Collection<int, Account>
      */
     private function loadAccountsWithBalances(Collection $balances): \Illuminate\Database\Eloquent\Collection
     {
@@ -278,13 +278,11 @@ class ProfitLossService
     /**
      * Build hierarchical report with account tree and subtotals.
      *
-     * Uses AccountHierarchyService to build the tree structure.
-     *
-     * @param  Collection<Account>  $accounts  Accounts with calculated balances
+     * @param  \Illuminate\Database\Eloquent\Collection<int, Account>  $accounts  Accounts with calculated balances
      * @param  bool  $includeZeroBalances  Whether to include zero-balance accounts
-     * @return list<array> Hierarchical account lines
+     * @return list<array{account_code: string, account_name: string, account_type: string, amount: numeric-string, level: int, is_parent: bool}>
      */
-    private function buildHierarchicalReport(Collection $accounts, bool $includeZeroBalances): array
+    private function buildHierarchicalReport(\Illuminate\Database\Eloquent\Collection $accounts, bool $includeZeroBalances): array
     {
         if ($accounts->isEmpty()) {
             return [];
@@ -318,12 +316,13 @@ class ProfitLossService
     /**
      * Build flat report (no hierarchy, just sorted by code).
      *
-     * @param  Collection<Account>  $accounts  Accounts with calculated balances
+     * @param  \Illuminate\Database\Eloquent\Collection<int, Account>  $accounts  Accounts with calculated balances
      * @param  bool  $includeZeroBalances  Whether to include zero-balance accounts
-     * @return list<array> Flat account lines
+     * @return list<array{account_code: string, account_name: string, account_type: string, amount: string, level: int, is_parent: bool}>
      */
-    private function buildFlatReport(Collection $accounts, bool $includeZeroBalances): array
+    private function buildFlatReport(\Illuminate\Database\Eloquent\Collection $accounts, bool $includeZeroBalances): array
     {
+        /** @var list<array{account_code: string, account_name: string, account_type: string, amount: string, level: int, is_parent: bool}> */
         return $accounts
             ->filter(function (Account $account) use ($includeZeroBalances) {
                 $balance = $account->getAttribute('calculated_balance') ?? '0.0000';
@@ -351,17 +350,20 @@ class ProfitLossService
      *
      * Sums only the leaf accounts (not parent subtotals) to avoid double-counting.
      *
-     * @param  array  $lines  Report lines
+     * @param  list<array{amount: string, is_parent?: bool}>  $lines  Report lines
      * @return numeric-string Total amount
      */
     private function calculateTotal(array $lines): string
     {
+        /** @var numeric-string $total */
         $total = '0.0000';
 
         foreach ($lines as $line) {
             // Only sum leaf accounts (non-parents) to avoid double-counting
             if (! ($line['is_parent'] ?? false)) {
-                $total = bcadd($total, $line['amount'], self::DECIMAL_SCALE);
+                /** @var numeric-string $lineAmount */
+                $lineAmount = $line['amount'];
+                $total = bcadd($total, $lineAmount, self::DECIMAL_SCALE);
             }
         }
 
@@ -376,8 +378,11 @@ class ProfitLossService
      */
     private function isNonZero(string $balance): bool
     {
+        /** @var numeric-string $absBalance */
+        $absBalance = str_replace('-', '', $balance);
+
         return bccomp(
-            str_replace('-', '', $balance), // Use absolute value
+            $absBalance,
             self::ZERO_THRESHOLD,
             self::DECIMAL_SCALE
         ) > 0; // Strictly greater than threshold
@@ -386,13 +391,9 @@ class ProfitLossService
     /**
      * Set calculated balances on Account models for tree building.
      *
-     * AccountHierarchyService reads from $account->balance property,
-     * but we store calculated balances in 'calculated_balance' attribute.
-     * This method copies calculated_balance to the balance property.
-     *
-     * @param  Collection<Account>  $accounts  Accounts with calculated_balance attribute
+     * @param  \Illuminate\Database\Eloquent\Collection<int, Account>  $accounts  Accounts with calculated_balance attribute
      */
-    private function setAccountBalances(Collection $accounts): void
+    private function setAccountBalances(\Illuminate\Database\Eloquent\Collection $accounts): void
     {
         foreach ($accounts as $account) {
             $calculatedBalance = $account->getAttribute('calculated_balance') ?? '0.0000';
@@ -404,26 +405,9 @@ class ProfitLossService
     /**
      * Format an AccountNode into a Profit & Loss line array.
      *
-     * Transforms the hierarchical AccountNode object from AccountHierarchyService
-     * into the array format expected by ProfitLossLineData DTO.
-     *
-     * @param object{
-     *     account: Account,
-     *     balance: numeric-string,
-     *     level: int,
-     *     isParent: bool,
-     *     children: array
-     * } $node AccountNode from hierarchyService
-     * @return array{
-     *     account_code: string,
-     *     account_name: string,
-     *     account_type: string,
-     *     amount: numeric-string,
-     *     level: int,
-     *     is_parent: bool
-     * }
+     * @return array{account_code: string, account_name: string, account_type: string, amount: numeric-string, level: int, is_parent: bool}
      */
-    private function formatProfitLossLine(object $node): array
+    private function formatProfitLossLine(\App\Modules\Accounting\Domain\Services\AccountNode $node): array
     {
         return [
             'account_code' => $node->account->code,

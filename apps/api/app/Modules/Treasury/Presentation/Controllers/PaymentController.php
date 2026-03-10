@@ -284,10 +284,11 @@ class PaymentController extends Controller
             $repository = null;
 
             if ($repositoryId) {
-                /** @var PaymentRepository|null $repository */
-                $repository = PaymentRepository::lockForUpdate()->find($repositoryId);
+                /** @var PaymentRepository|null $repoResult */
+                $repoResult = PaymentRepository::lockForUpdate()->find($repositoryId);
+                $repository = $repoResult;
 
-                if ($repository) {
+                if ($repository instanceof PaymentRepository) {
                     // Increment repository balance by payment amount
                     /** @var numeric-string $currentBalance */
                     $currentBalance = $repository->balance ?? '0.00';
@@ -298,9 +299,13 @@ class PaymentController extends Controller
 
             if ($repositoryId && bccomp($totalAllocatedForGL, '0', $this->scale()) > 0) {
                 // Ensure repository is loaded if not already
-                $repository = $repository ?? PaymentRepository::find($repositoryId);
+                if (! $repository instanceof PaymentRepository) {
+                    /** @var PaymentRepository|null $repoResult */
+                    $repoResult = PaymentRepository::find($repositoryId);
+                    $repository = $repoResult;
+                }
 
-                if ($repository && $repository->account_id) {
+                if ($repository instanceof PaymentRepository && $repository->account_id) {
                     $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
                         companyId: $companyId,
                         partnerId: $validated['partner_id'],
@@ -322,11 +327,13 @@ class PaymentController extends Controller
             $excessAmount = bcsub($paymentAmount, $totalAllocatedForGL, $this->scale());
 
             if (bccomp($excessAmount, '0', $this->scale()) > 0 && $repositoryId) {
-                /** @var PaymentRepository|null $foundRepository */
-                $foundRepository = PaymentRepository::find($repositoryId);
-                $repository = $repository ?? $foundRepository;
+                if (! $repository instanceof PaymentRepository) {
+                    /** @var PaymentRepository|null $foundRepository */
+                    $foundRepository = PaymentRepository::find($repositoryId);
+                    $repository = $foundRepository;
+                }
 
-                if ($repository && $repository->account_id) {
+                if ($repository instanceof PaymentRepository && $repository->account_id) {
                     // Create customer advance GL entry for excess (Dr. Bank, Cr. Customer Advance)
                     $this->glService->createCustomerAdvanceJournalEntry(
                         companyId: $companyId,
@@ -362,9 +369,7 @@ class PaymentController extends Controller
     }
 
     /**
-     * Store multiple payments for a document with excess allocation options
-     *
-     * @param  array<string, mixed>  $validated
+     * Store multiple payments for a document with excess allocation options.
      */
     private function storeMultiple(Request $request, User $user, string $tenantId, string $companyId): JsonResponse
     {
@@ -399,7 +404,9 @@ class PaymentController extends Controller
         /** @var numeric-string $totalPaymentAmount */
         $totalPaymentAmount = '0.00';
         foreach ($validated['payments'] as $paymentLine) {
-            $totalPaymentAmount = bcadd($totalPaymentAmount, (string) $paymentLine['amount'], $this->scale());
+            /** @var numeric-string $lineAmt */
+            $lineAmt = (string) $paymentLine['amount'];
+            $totalPaymentAmount = bcadd($totalPaymentAmount, $lineAmt, $this->scale());
         }
 
         // Calculate excess amount
@@ -417,7 +424,9 @@ class PaymentController extends Controller
             /** @var numeric-string $totalManualAllocation */
             $totalManualAllocation = '0.00';
             foreach ($excessAllocations as $allocation) {
-                $totalManualAllocation = bcadd($totalManualAllocation, (string) $allocation['amount'], $this->scale());
+                /** @var numeric-string $allocAmt */
+                $allocAmt = (string) $allocation['amount'];
+                $totalManualAllocation = bcadd($totalManualAllocation, $allocAmt, $this->scale());
             }
 
             // Manual allocations + advance can be less than or equal to excess
@@ -573,9 +582,10 @@ class PaymentController extends Controller
                 'allocations' => [],
             ];
 
-            if (bccomp($excessAmount, '0', $this->scale()) > 0) {
+            if (bccomp($excessAmount, '0', $this->scale()) > 0 && count($createdPayments) > 0) {
                 // Find the last payment to use for excess allocation
-                $lastPayment = end($createdPayments);
+                /** @var Payment $lastPayment */
+                $lastPayment = $createdPayments[count($createdPayments) - 1];
 
                 if ($excessAllocationMethod === 'advance') {
                     // Keep as customer advance - create GL entry
@@ -772,7 +782,7 @@ class PaymentController extends Controller
             'currency' => $payment->currency,
             'payment_date' => $payment->payment_date->toDateString(),
             'status' => $payment->status->value,
-            'payment_type' => $payment->payment_type?->value,
+            'payment_type' => $payment->payment_type->value,
             'allocated_amount' => $payment->getAllocatedAmount(),
             'unallocated_amount' => $payment->getUnallocatedAmount(),
             'reference' => $payment->reference,

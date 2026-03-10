@@ -34,11 +34,14 @@ class CompanyConfigController
     public function show(Request $request): JsonResponse
     {
         // Get authenticated user (guaranteed by auth:sanctum middleware)
-        $user = $request->user();
+        $requestUser = $request->user();
 
-        if ($user === null) {
+        if (! $requestUser instanceof \App\Modules\Identity\Domain\User) {
             abort(401, 'User must be authenticated');
         }
+
+        /** @var \App\Modules\Identity\Domain\User $user */
+        $user = $requestUser;
 
         // Get tenant from user (refresh to ensure fresh data)
         $tenant = $user->tenant()->first();
@@ -57,9 +60,9 @@ class CompanyConfigController
             ->with('company')
             ->first();
 
-        $currency = $primaryMembership?->company?->currency ?? 'USD';
-        $locale = $primaryMembership?->company?->locale ?? 'en';
-        $countryCode = $primaryMembership?->company?->country_code ?? null;
+        $currency = $primaryMembership?->company->currency ?? 'USD';
+        $locale = $primaryMembership?->company->locale ?? 'en';
+        $countryCode = $primaryMembership?->company->country_code ?? null;
 
         // Return configuration as array
         return response()->json([

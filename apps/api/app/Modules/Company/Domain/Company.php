@@ -81,6 +81,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $compliance_profile Compliance profile identifier
  * @property string|null $parent_company_id UUID of parent company (for chains)
  * @property bool $is_headquarters Whether this is headquarters
+ * @property CompanyTaxStatus $tax_status Tax registration status
  * @property CompanyStatus $status Company status
  * @property Carbon|null $closed_at When company was closed
  * @property string $inventory_costing_method Inventory costing method (weighted_average)
@@ -486,11 +487,10 @@ class Company extends Model
             return new \App\Modules\Company\Domain\ValueObjects\ReservationSettings;
         }
 
-        if (is_array($this->reservation_settings)) {
-            return \App\Modules\Company\Domain\ValueObjects\ReservationSettings::fromArray($this->reservation_settings);
-        }
+        /** @var array<string, mixed> $settings */
+        $settings = $this->reservation_settings;
 
-        return $this->reservation_settings;
+        return \App\Modules\Company\Domain\ValueObjects\ReservationSettings::fromArray($settings);
     }
 
     /**

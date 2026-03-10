@@ -258,9 +258,7 @@ class AuthController extends Controller
 
         // Revoke current token if using token-based auth
         $currentToken = $user->currentAccessToken();
-        if ($currentToken !== null) {
-            $currentToken->delete();
-        }
+        $currentToken->delete();
 
         // Invalidate and regenerate session for SPA auth
         Auth::guard('web')->logout();

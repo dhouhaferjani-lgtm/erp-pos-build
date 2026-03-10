@@ -34,8 +34,8 @@ readonly class WithholdingRuleData
         public Carbon $effectiveFrom,
         public ?Carbon $effectiveTo,
         public bool $isActive,
-        public Carbon $createdAt,
-        public Carbon $updatedAt,
+        public ?Carbon $createdAt,
+        public ?Carbon $updatedAt,
     ) {}
 
     /**
@@ -95,8 +95,8 @@ readonly class WithholdingRuleData
             'effective_to' => $this->effectiveTo?->toDateString(),
             'is_active' => $this->isActive,
             'is_global' => $this->companyId === null,
-            'created_at' => $this->createdAt->toIso8601String(),
-            'updated_at' => $this->updatedAt->toIso8601String(),
+            'created_at' => $this->createdAt?->toIso8601String(),
+            'updated_at' => $this->updatedAt?->toIso8601String(),
         ];
     }
 }

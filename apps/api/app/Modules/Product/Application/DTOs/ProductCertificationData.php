@@ -25,11 +25,11 @@ class ProductCertificationData extends Data
     {
         return new self(
             certification: CertificationData::fromModel($certification),
-            certification_code: $pivot->certification_code,
-            issued_date: $pivot->issued_date?->toDateString(),
-            expiry_date: $pivot->expiry_date?->toDateString(),
-            verification_url: $pivot->verification_url,
-            notes: $pivot->notes,
+            certification_code: $pivot->getAttribute('certification_code'),
+            issued_date: $pivot->getAttribute('issued_date')?->toDateString(),
+            expiry_date: $pivot->getAttribute('expiry_date')?->toDateString(),
+            verification_url: $pivot->getAttribute('verification_url'),
+            notes: $pivot->getAttribute('notes'),
         );
     }
 }

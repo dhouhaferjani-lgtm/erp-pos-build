@@ -104,7 +104,7 @@ final class TrialBalanceData extends Data
      */
     public function isEmpty(): bool
     {
-        return $this->lines->isEmpty();
+        return $this->lines->count() === 0;
     }
 
     /**

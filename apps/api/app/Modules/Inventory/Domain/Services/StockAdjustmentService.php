@@ -124,7 +124,7 @@ final class StockAdjustmentService
                     batchId: $batchId,
                     locationId: $locationId,
                     movementId: $movement->id,
-                    quantity: '-'.$quantity,  // Negative for issue
+                    quantity: bcmul($quantity, '-1', 4),  // Negative for issue
                 );
             }
 

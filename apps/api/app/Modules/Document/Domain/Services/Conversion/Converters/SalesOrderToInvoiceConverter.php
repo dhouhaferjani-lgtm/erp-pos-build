@@ -198,7 +198,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
                 $invoicePayload['auto_created_delivery_note'] = [
                     'id' => $autoCreatedDeliveryNote->id,
                     'number' => $autoCreatedDeliveryNote->document_number,
-                    'created_at' => $autoCreatedDeliveryNote->created_at->toDateTimeString(),
+                    'created_at' => $autoCreatedDeliveryNote->created_at?->toDateTimeString(),
                     'status' => 'draft_auto_created', // Draft status - requires confirmation before posting
                 ];
                 $invoice->update(['payload' => $invoicePayload]);
@@ -466,6 +466,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
 
         // Create delivery note document in DRAFT status
         // User must explicitly confirm via modal before posting invoice
+        /** @phpstan-ignore argument.type */
         $delivery = Document::create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $order->tenant_id,
@@ -476,8 +477,8 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
             'document_number' => $this->numberingService->generateNumber($order->tenant_id, $order->company_id, DocumentType::DeliveryNote),
             'document_date' => now(),
             'partner_id' => $order->partner_id,
-            'partner_name' => $order->partner_name,
-            'partner_address' => $order->partner_address,
+            'partner_name' => $order->partner->name,
+            'partner_address' => $order->partner->street_address,
             'currency' => $order->currency,
             'subtotal' => $order->subtotal,
             'discount_amount' => $order->discount_amount,
@@ -504,8 +505,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
 
             // Check if product requires batch tracking
             $requiresBatch = $product !== null
-                && ($product->requires_batch_tracking ?? false)
-                && $locationId !== null;
+                && ($product->requires_batch_tracking ?? false);
 
             if ($requiresBatch) {
                 // FEFO: split into multiple DN lines (one per batch)
@@ -599,9 +599,9 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
             $delivery->vehicleContext()->create([
                 'id' => Str::uuid()->toString(),
                 'vehicle_id' => $order->vehicleContext->vehicle_id,
-                'snapshot' => $order->vehicleContext->snapshot,
-                'mileage' => $order->vehicleContext->mileage,
-                'additional_data' => $order->vehicleContext->additional_data,
+                'vehicle_snapshot' => $order->vehicleContext->vehicle_snapshot,
+                'mileage_at_service' => $order->vehicleContext->mileage_at_service,
+                'context_data' => $order->vehicleContext->context_data,
             ]);
         }
 

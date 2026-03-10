@@ -71,11 +71,9 @@ class PaymentRefundService
 
             foreach ($originalAllocations as $allocation) {
                 PaymentAllocation::create([
-                    'id' => Str::uuid()->toString(),
                     'payment_id' => $refund->id,
                     'document_id' => $allocation->document_id,
                     'amount' => bcmul($allocation->amount, '-1', $this->scale()), // Negative amount
-                    'notes' => "Refund allocation for {$allocation->document_id}",
                 ]);
             }
 
@@ -103,11 +101,14 @@ class PaymentRefundService
         }
 
         // Validate refund amount
+        /** @var numeric-string $amount */
+        /** @var numeric-string $paymentAmount */
+        $paymentAmount = $payment->amount;
         if (bccomp($amount, '0', $this->scale()) <= 0) {
             throw new \InvalidArgumentException('Refund amount must be greater than zero');
         }
 
-        if (bccomp($amount, $payment->amount, $this->scale()) > 0) {
+        if (bccomp($amount, $paymentAmount, $this->scale()) > 0) {
             throw new \InvalidArgumentException('Refund amount cannot exceed original payment amount');
         }
 
@@ -148,7 +149,9 @@ class PaymentRefundService
     }
 
     /**
-     * Get refund history for a payment
+     * Get refund history for a payment.
+     *
+     * @return array<string, mixed>
      */
     public function getRefundHistory(Payment $payment): array
     {
@@ -159,9 +162,11 @@ class PaymentRefundService
             ->where('reference', 'like', '%'.$payment->reference.'%')
             ->get();
 
+        /** @var numeric-string $totalRefunded */
         $totalRefunded = '0.00';
         foreach ($refunds as $refund) {
             // Remove leading minus sign to get absolute value (stays as string for bcmath)
+            /** @var numeric-string $absAmount */
             $absAmount = ltrim((string) $refund->amount, '-');
             $totalRefunded = bcadd($totalRefunded, $absAmount, $this->scale());
         }

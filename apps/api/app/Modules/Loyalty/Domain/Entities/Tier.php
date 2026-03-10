@@ -28,7 +28,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class Tier extends Model
 {
+    /** @use HasFactory<\Illuminate\Database\Eloquent\Factories\Factory<static>> */
     use HasFactory;
+
     use HasUuids;
 
     protected $table = 'loyalty_tiers';
@@ -61,6 +63,8 @@ class Tier extends Model
 
     /**
      * Get the program for this tier
+     *
+     * @return BelongsTo<LoyaltyProgram, $this>
      */
     public function program(): BelongsTo
     {

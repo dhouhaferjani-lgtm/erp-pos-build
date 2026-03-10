@@ -231,7 +231,7 @@ class BatchController extends Controller
         return response()->json([
             'data' => $stockLevels->map(fn ($stock) => [
                 'location_id' => $stock->location_id,
-                'location_name' => $stock->location->name,
+                'location_name' => $stock->location !== null ? $stock->location->name : 'Unknown',
                 'quantity' => $stock->quantity,
                 'reserved_quantity' => $stock->reserved_quantity,
                 'available_quantity' => $stock->available_quantity,
@@ -291,12 +291,14 @@ class BatchController extends Controller
         $company = $this->companyContext->requireCompany();
 
         try {
+            /** @var numeric-string $transferQty */
+            $transferQty = (string) $request->input('quantity');
             $this->batchStockService->transferBatchStock(
                 tenantId: $company->tenant_id,
                 batchId: (int) $result->id,
                 fromLocationId: (string) $request->input('from_location_id'),
                 toLocationId: (string) $request->input('to_location_id'),
-                quantity: (string) $request->input('quantity'),
+                quantity: $transferQty,
                 reference: "Batch transfer: {$result->batch_number}",
                 userId: (string) auth()->id(),
             );
@@ -329,10 +331,12 @@ class BatchController extends Controller
         }
 
         try {
+            /** @var numeric-string $writeOffQty */
+            $writeOffQty = (string) $request->input('quantity');
             $this->batchWriteOffService->writeOff(
                 batch: $result,
                 locationId: (string) $request->input('location_id'),
-                quantity: (string) $request->input('quantity'),
+                quantity: $writeOffQty,
                 reason: (string) $request->input('reason'),
                 userId: (string) auth()->id(),
                 notes: $request->input('notes'),

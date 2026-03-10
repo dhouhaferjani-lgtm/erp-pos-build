@@ -46,7 +46,7 @@ class KeyComponent extends Model
     /**
      * Get all translations for this key component.
      *
-     * @return HasMany<KeyComponentTranslation>
+     * @return HasMany<KeyComponentTranslation, $this>
      */
     public function translations(): HasMany
     {
@@ -64,7 +64,7 @@ class KeyComponent extends Model
     /**
      * Products using this key component.
      *
-     * @return BelongsToMany<ParapharmacyProductMetadata>
+     * @return BelongsToMany<ParapharmacyProductMetadata, $this>
      */
     public function products(): BelongsToMany
     {

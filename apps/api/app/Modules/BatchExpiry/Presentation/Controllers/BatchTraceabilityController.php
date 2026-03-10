@@ -78,10 +78,10 @@ class BatchTraceabilityController extends Controller
             ->get()
             ->map(fn (ReceiptLineBatchAllocation $alloc): array => [
                 'type' => 'pos_receipt',
-                'receipt_number' => $alloc->receipt->receipt_number ?? null,
-                'sale_date' => $alloc->receipt->created_at?->toDateString(),
-                'customer_name' => $alloc->receipt->customer_name,
-                'customer_identifier' => $alloc->receipt->customer_identifier,
+                'receipt_number' => $alloc->receipt?->receipt_number,
+                'sale_date' => $alloc->receipt?->created_at?->toDateString(),
+                'customer_name' => $alloc->receipt?->customer_name,
+                'customer_identifier' => $alloc->receipt?->customer_identifier,
                 'batch_number' => $alloc->batch_number,
                 'quantity' => $alloc->quantity,
             ]);
@@ -113,9 +113,9 @@ class BatchTraceabilityController extends Controller
         $companyId = $this->companyContext->requireCompanyId();
 
         $query = DocumentLine::whereNotNull('batch_id')
-            ->whereHas('document', function ($q) use ($partnerId, $companyId): void {
-                $q->where('partner_id', $partnerId)
-                    ->where('company_id', $companyId)
+            ->whereHas('document', function (\Illuminate\Database\Eloquent\Builder $q) use ($partnerId, $companyId): void {
+                $q->whereRaw('partner_id = ?', [$partnerId])
+                    ->whereRaw('company_id = ?', [$companyId])
                     ->whereIn('type', [DocumentType::Invoice, DocumentType::DeliveryNote]);
             })
             ->with([
@@ -128,11 +128,11 @@ class BatchTraceabilityController extends Controller
         }
 
         if ($request->has('date_from')) {
-            $query->whereHas('document', fn ($q) => $q->where('document_date', '>=', $request->input('date_from')));
+            $query->whereHas('document', fn (\Illuminate\Database\Eloquent\Builder $q) => $q->whereRaw('document_date >= ?', [$request->input('date_from')]));
         }
 
         if ($request->has('date_to')) {
-            $query->whereHas('document', fn ($q) => $q->where('document_date', '<=', $request->input('date_to')));
+            $query->whereHas('document', fn (\Illuminate\Database\Eloquent\Builder $q) => $q->whereRaw('document_date <= ?', [$request->input('date_to')]));
         }
 
         $lines = $query->get();
@@ -141,8 +141,8 @@ class BatchTraceabilityController extends Controller
             'batch_number' => $line->batch->batch_number ?? null,
             'batch_id' => $line->batch_id,
             'expiry_date' => $line->batch?->expiry_date?->toDateString(),
-            'is_recalled' => $line->batch?->is_recalled ?? false,
-            'is_expired' => $line->batch?->is_expired ?? false,
+            'is_recalled' => $line->batch !== null ? $line->batch->is_recalled : false,
+            'is_expired' => $line->batch !== null ? $line->batch->is_expired : false,
             'product_name' => $line->description,
             'product_id' => $line->product_id,
             'quantity' => $line->quantity,

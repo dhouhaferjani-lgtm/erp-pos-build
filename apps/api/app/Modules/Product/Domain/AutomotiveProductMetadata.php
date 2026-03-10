@@ -143,7 +143,7 @@ class AutomotiveProductMetadata extends Model
     }
 
     /**
-     * @return HasMany<AutomotiveProductCrossReference>
+     * @return HasMany<AutomotiveProductCrossReference, $this>
      */
     public function crossReferences(): HasMany
     {
@@ -151,7 +151,7 @@ class AutomotiveProductMetadata extends Model
     }
 
     /**
-     * @return HasMany<AutomotiveProductVehicle>
+     * @return HasMany<AutomotiveProductVehicle, $this>
      */
     public function vehicles(): HasMany
     {
@@ -159,7 +159,7 @@ class AutomotiveProductMetadata extends Model
     }
 
     /**
-     * @return HasMany<AutomotiveProductCriterion>
+     * @return HasMany<AutomotiveProductCriterion, $this>
      */
     public function criteria(): HasMany
     {

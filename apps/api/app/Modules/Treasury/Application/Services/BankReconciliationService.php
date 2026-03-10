@@ -47,6 +47,10 @@ class BankReconciliationService
         $openingBalance = $repository->last_reconciled_balance ?? '0.00';
 
         return DB::transaction(function () use ($companyId, $tenantId, $userId, $data, $repository, $openingBalance) {
+            /** @var numeric-string $stmtBalance */
+            $stmtBalance = $data['statement_balance'];
+            /** @var numeric-string $repoBalance */
+            $repoBalance = (string) $repository->balance;
             $reconciliation = BankReconciliation::create([
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
@@ -55,7 +59,7 @@ class BankReconciliationService
                 'opening_balance' => $openingBalance,
                 'closing_balance' => $repository->balance,
                 'statement_balance' => $data['statement_balance'],
-                'difference' => bcsub($data['statement_balance'], (string) $repository->balance, $this->scale()),
+                'difference' => bcsub($stmtBalance, $repoBalance, $this->scale()),
                 'status' => ReconciliationStatus::Draft,
                 'created_by' => $userId,
                 'notes' => $data['notes'] ?? null,
@@ -110,7 +114,10 @@ class BankReconciliationService
 
         $this->updateReconciliationDifference($reconciliation);
 
-        return $item->fresh(['payment']);
+        /** @var BankReconciliationItem $freshItem */
+        $freshItem = $item->fresh(['payment']);
+
+        return $freshItem;
     }
 
     /**
@@ -138,7 +145,10 @@ class BankReconciliationService
 
         $this->updateReconciliationDifference($reconciliation);
 
-        return $item->fresh(['payment']);
+        /** @var BankReconciliationItem $freshItem */
+        $freshItem = $item->fresh(['payment']);
+
+        return $freshItem;
     }
 
     /**
@@ -179,7 +189,10 @@ class BankReconciliationService
                 'completed_at' => now(),
             ]);
 
-            return $reconciliation->fresh(['items.payment', 'repository']);
+            /** @var BankReconciliation $freshReconciliation */
+            $freshReconciliation = $reconciliation->fresh(['items.payment', 'repository']);
+
+            return $freshReconciliation;
         });
     }
 
@@ -199,7 +212,10 @@ class BankReconciliationService
             'status' => ReconciliationStatus::Cancelled,
         ]);
 
-        return $reconciliation->fresh();
+        /** @var BankReconciliation $freshReconciliation */
+        $freshReconciliation = $reconciliation->fresh();
+
+        return $freshReconciliation;
     }
 
     /**

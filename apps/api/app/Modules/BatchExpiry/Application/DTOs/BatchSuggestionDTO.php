@@ -17,6 +17,7 @@ readonly class BatchSuggestionDTO
         public ExpiryStatus $expiryStatus,
     ) {}
 
+    /** @return array<string, mixed> */
     public function toArray(): array
     {
         return [

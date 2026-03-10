@@ -514,7 +514,7 @@ class UserController extends Controller
             ->get();
 
         foreach ($existingUsers as $existingUser) {
-            if (Hash::check($pin, $existingUser->pos_pin)) {
+            if ($existingUser->pos_pin !== null && Hash::check($pin, $existingUser->pos_pin)) {
                 return response()->json([
                     'error' => [
                         'code' => 'PIN_ALREADY_IN_USE',

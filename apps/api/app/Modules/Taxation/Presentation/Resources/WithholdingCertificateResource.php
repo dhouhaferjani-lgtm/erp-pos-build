@@ -50,11 +50,11 @@ class WithholdingCertificateResource extends JsonResource
 
             // Rule info
             'withholding_rule_id' => $this->withholding_rule_id,
-            'rule' => $this->whenLoaded('rule', fn () => [
+            'rule' => $this->whenLoaded('rule', fn () => $this->rule !== null ? [
                 'id' => $this->rule->id,
                 'code' => $this->rule->code,
                 'name' => $this->rule->name,
-            ]),
+            ] : null),
             'override_reason' => $this->override_reason,
             'is_manual_override' => $this->isManualOverride(),
 
@@ -74,12 +74,12 @@ class WithholdingCertificateResource extends JsonResource
             // Metadata
             'issued_at' => $this->issued_at?->toIso8601String(),
             'issued_by' => $this->issued_by,
-            'issuer' => $this->whenLoaded('issuer', fn () => [
+            'issuer' => $this->whenLoaded('issuer', fn () => $this->issuer !== null ? [
                 'id' => $this->issuer->id,
                 'name' => $this->issuer->name,
-            ]),
-            'created_at' => $this->created_at->toIso8601String(),
-            'updated_at' => $this->updated_at->toIso8601String(),
+            ] : null),
+            'created_at' => $this->created_at?->toIso8601String(),
+            'updated_at' => $this->updated_at?->toIso8601String(),
 
             // Permissions/actions
             'can_be_modified' => $this->canBeModified(),

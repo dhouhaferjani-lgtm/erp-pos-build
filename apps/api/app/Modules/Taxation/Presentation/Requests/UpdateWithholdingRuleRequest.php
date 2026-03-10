@@ -13,7 +13,7 @@ class UpdateWithholdingRuleRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->can('taxation.withholding_rules.manage');
+        return $this->user()?->can('taxation.withholding_rules.manage') ?? false;
     }
 
     /**

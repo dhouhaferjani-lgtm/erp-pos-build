@@ -30,7 +30,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string $currency
  * @property string $tax_rate
  * @property string|null $tax_number
- * @property array $billing_address
+ * @property array<string, mixed> $billing_address
  * @property string|null $billing_email
  * @property string|null $billing_name
  * @property \Carbon\Carbon $invoice_date
@@ -43,7 +43,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $notes
  * @property string|null $footer_text
  * @property string|null $stripe_invoice_id
- * @property array $metadata
+ * @property array<string, mixed> $metadata
  * @property \Carbon\Carbon $created_at
  * @property \Carbon\Carbon $updated_at
  * @property \Carbon\Carbon|null $deleted_at
@@ -111,7 +111,7 @@ final class Invoice extends Model
     }
 
     /**
-     * @return BelongsTo<Tenant, Invoice>
+     * @return BelongsTo<Tenant, $this>
      */
     public function tenant(): BelongsTo
     {
@@ -119,7 +119,7 @@ final class Invoice extends Model
     }
 
     /**
-     * @return BelongsTo<TenantSubscription, Invoice>
+     * @return BelongsTo<TenantSubscription, $this>
      */
     public function subscription(): BelongsTo
     {
@@ -127,7 +127,7 @@ final class Invoice extends Model
     }
 
     /**
-     * @return HasMany<InvoiceItem>
+     * @return HasMany<InvoiceItem, $this>
      */
     public function items(): HasMany
     {
@@ -135,7 +135,7 @@ final class Invoice extends Model
     }
 
     /**
-     * @return HasMany<Payment>
+     * @return HasMany<Payment, $this>
      */
     public function payments(): HasMany
     {

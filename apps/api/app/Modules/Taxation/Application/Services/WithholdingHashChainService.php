@@ -104,7 +104,8 @@ class WithholdingHashChainService
      */
     public function getChainDetails(string $companyId, string $direction): array
     {
-        $lastCertificate = $this->certificateRepository->getLastInChain($companyId, $direction);
+        $directionEnum = \App\Modules\Taxation\Domain\Enums\WithholdingDirection::from($direction);
+        $lastCertificate = $this->certificateRepository->getLastInChain($companyId, $directionEnum);
 
         $totalCertificates = WithholdingCertificate::where('company_id', $companyId)
             ->where('direction', $direction)

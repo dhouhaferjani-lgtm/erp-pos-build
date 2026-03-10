@@ -114,7 +114,7 @@ class KeyComponentController extends Controller
         });
 
         return response()->json([
-            'data' => KeyComponentData::fromModel($keyComponent->fresh()),
+            'data' => KeyComponentData::fromModel($keyComponent->refresh()),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
@@ -187,7 +187,7 @@ class KeyComponentController extends Controller
         });
 
         return response()->json([
-            'data' => KeyComponentData::fromModel($keyComponent->fresh()),
+            'data' => KeyComponentData::fromModel($keyComponent->refresh()),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),

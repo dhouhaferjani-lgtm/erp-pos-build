@@ -48,8 +48,8 @@ readonly class WithholdingCertificateData
         public ?int $chainSequence,
         public ?Carbon $issuedAt,
         public ?string $issuedBy,
-        public Carbon $createdAt,
-        public Carbon $updatedAt,
+        public ?Carbon $createdAt,
+        public ?Carbon $updatedAt,
     ) {}
 
     /**
@@ -123,8 +123,8 @@ readonly class WithholdingCertificateData
             'chain_sequence' => $this->chainSequence,
             'issued_at' => $this->issuedAt?->toIso8601String(),
             'issued_by' => $this->issuedBy,
-            'created_at' => $this->createdAt->toIso8601String(),
-            'updated_at' => $this->updatedAt->toIso8601String(),
+            'created_at' => $this->createdAt?->toIso8601String(),
+            'updated_at' => $this->updatedAt?->toIso8601String(),
         ];
     }
 }

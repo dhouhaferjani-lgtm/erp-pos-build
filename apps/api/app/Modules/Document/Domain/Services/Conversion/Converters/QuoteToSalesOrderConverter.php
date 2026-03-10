@@ -35,7 +35,8 @@ final class QuoteToSalesOrderConverter implements DocumentConverterInterface
     use CopiesDocumentData;
 
     public function __construct(
-        protected readonly DocumentNumberingService $numberingService
+        protected readonly DocumentNumberingService $numberingService,
+        protected readonly \App\Shared\Contracts\CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     public function sourceType(): DocumentType

@@ -97,8 +97,8 @@ final class ProfitLossData extends Data
      * Converts the array output from ProfitLossService into a typed DTO.
      *
      * @param array{
-     *     revenue: list<array>,
-     *     expenses: list<array>,
+     *     revenue: list<array<string, mixed>>,
+     *     expenses: list<array<string, mixed>>,
      *     total_revenue: numeric-string,
      *     total_expenses: numeric-string,
      *     net_income: numeric-string,
@@ -199,6 +199,6 @@ final class ProfitLossData extends Data
      */
     public function isEmpty(): bool
     {
-        return $this->revenue->isEmpty() && $this->expenses->isEmpty();
+        return $this->revenue->count() === 0 && $this->expenses->count() === 0;
     }
 }

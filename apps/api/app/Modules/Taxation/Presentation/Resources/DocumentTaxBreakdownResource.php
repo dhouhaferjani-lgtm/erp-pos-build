@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace App\Modules\Taxation\Presentation\Resources;
 
-use App\Modules\Taxation\Domain\Services\DocumentTaxCalculationResult;
+use App\Modules\Taxation\Domain\DTOs\CalculatedTax;
+use App\Modules\Taxation\Domain\DTOs\TaxCalculationResult;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * @mixin DocumentTaxCalculationResult
+ * @mixin TaxCalculationResult
  */
 class DocumentTaxBreakdownResource extends JsonResource
 {
@@ -18,21 +19,24 @@ class DocumentTaxBreakdownResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        /** @var TaxCalculationResult $resource */
+        $resource = $this->resource;
+
         return [
-            'line_tax_amount' => $this->lineTaxAmount,
-            'stamp_duty_amount' => $this->stampDutyAmount,
-            'total_tax_amount' => $this->totalTaxAmount,
-            'total' => $this->total,
-            'tax_details' => array_map(function ($detail) {
+            'line_tax_amount' => $resource->lineItemsTaxTotal,
+            'stamp_duty_amount' => $resource->documentTaxTotal,
+            'total_tax_amount' => $resource->totalTax,
+            'total' => $resource->total,
+            'tax_details' => array_map(function (CalculatedTax $detail) {
                 return [
-                    'tax_type' => $detail->taxType->value,
-                    'tax_name' => $detail->taxName,
-                    'tax_base' => $detail->taxBase,
-                    'tax_rate' => $detail->taxRate,
-                    'tax_amount' => $detail->taxAmount,
+                    'tax_type' => $detail->type->value,
+                    'tax_name' => $detail->name,
+                    'tax_base' => $detail->base,
+                    'tax_rate' => $detail->rate,
+                    'tax_amount' => $detail->amount,
                     'is_stamp_duty' => $detail->isStampDuty,
                 ];
-            }, $this->taxDetails),
+            }, $resource->taxes),
         ];
     }
 }

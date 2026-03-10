@@ -47,14 +47,14 @@ class TaxResolutionService
         $category = $product->category()->first();
         if ($category && $category->default_tax_rate !== null) {
             return new TaxResolutionResult(
-                taxRate: $category->default_tax_rate,
+                taxRate: (string) $category->default_tax_rate,
                 source: TaxSource::Category
             );
         }
 
         // 4. Company-level default (fallback)
         return new TaxResolutionResult(
-            taxRate: $company->default_tax_rate ?? '0.00',
+            taxRate: (string) ($company->default_tax_rate ?? '0.00'),
             source: TaxSource::Company
         );
     }
@@ -69,13 +69,14 @@ class TaxResolutionService
         // If category specified, try to get its default tax rate
         if ($categoryId !== null) {
             $category = \DB::table('categories')->find($categoryId);
-            if ($category && $category->default_tax_rate !== null) {
+            /** @var object{default_tax_rate: string|null}|null $category */
+            if ($category !== null && $category->default_tax_rate !== null) {
                 return $category->default_tax_rate;
             }
         }
 
         // Fallback to company default
-        return $company->default_tax_rate ?? '0.00';
+        return (string) ($company->default_tax_rate ?? '0.00');
     }
 }
 

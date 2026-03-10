@@ -36,7 +36,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 class LoyaltyMember extends Model
 {
+    /** @use HasFactory<\Illuminate\Database\Eloquent\Factories\Factory<static>> */
     use HasFactory;
+
     use HasUuids;
     use SoftDeletes;
 
@@ -81,6 +83,8 @@ class LoyaltyMember extends Model
      * Get the customer (partner) associated with this member
      *
      * @deprecated Use loyaltyable() instead. Kept for backward compatibility.
+     *
+     * @return BelongsTo<Partner, $this>
      */
     public function customer(): BelongsTo
     {
@@ -89,6 +93,8 @@ class LoyaltyMember extends Model
 
     /**
      * Get all program enrollments for this member
+     *
+     * @return HasMany<Enrollment, $this>
      */
     public function enrollments(): HasMany
     {

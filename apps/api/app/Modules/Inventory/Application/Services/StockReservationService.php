@@ -80,6 +80,7 @@ class StockReservationService
             $batchId
         ): StockReservation {
             // If batch_id provided, validate batch stock instead of aggregate stock
+            /** @var numeric-string $quantity */
             if ($batchId !== null) {
                 // Lock batch stock to prevent concurrent reservations
                 $batchStock = BatchStock::where('batch_id', $batchId)
@@ -137,16 +138,16 @@ class StockReservationService
             // Update reserved quantities
             if ($batchId !== null) {
                 // Update batch stock reserved quantity
-                $batchStock->increment('reserved_quantity', $quantity);
+                $batchStock->increment('reserved_quantity', (float) $quantity);
             } else {
                 // Update aggregate stock level reserved field
-                $stockLevel->increment('reserved', $quantity);
+                $stockLevel->increment('reserved', (float) $quantity);
             }
 
             // Dispatch event after transaction commits
             DB::afterCommit(function () use ($reservation, $company): void {
                 event(new ReservationCreated(
-                    reservationId: $reservation->id,
+                    reservationId: (string) $reservation->id,
                     companyId: $company->id,
                     productId: $reservation->product_id,
                     locationId: $reservation->location_id,
@@ -157,7 +158,7 @@ class StockReservationService
                     expiresAt: $reservation->expires_at?->toIso8601String(),
                     priority: $reservation->priority,
                     createdBy: (string) $reservation->created_by,
-                    createdAt: $reservation->created_at->toIso8601String(),
+                    createdAt: $reservation->created_at?->toIso8601String() ?? now()->toIso8601String(),
                 ));
             });
 
@@ -198,7 +199,7 @@ class StockReservationService
                     ->lockForUpdate()
                     ->firstOrFail();
 
-                $batchStock->decrement('reserved_quantity', $reservation->quantity);
+                $batchStock->decrement('reserved_quantity', (float) $reservation->quantity);
             } else {
                 // Lock and update aggregate stock level
                 $stockLevel = StockLevel::where('product_id', $reservation->product_id)
@@ -206,13 +207,13 @@ class StockReservationService
                     ->lockForUpdate()
                     ->firstOrFail();
 
-                $stockLevel->decrement('reserved', $reservation->quantity);
+                $stockLevel->decrement('reserved', (float) $reservation->quantity);
             }
 
             // Dispatch event after transaction commits
             DB::afterCommit(function () use ($reservation, $reason, $releasedBy): void {
                 event(new ReservationReleased(
-                    reservationId: $reservation->id,
+                    reservationId: (string) $reservation->id,
                     companyId: $reservation->company_id,
                     productId: $reservation->product_id,
                     locationId: $reservation->location_id,
@@ -221,7 +222,7 @@ class StockReservationService
                     sourceId: $reservation->source_id,
                     releaseReason: $reason->value,
                     releasedBy: $releasedBy ?? (string) auth()->id(),
-                    releasedAt: $reservation->released_at->toIso8601String(),
+                    releasedAt: $reservation->released_at?->toIso8601String() ?? now()->toIso8601String(),
                 ));
             });
         });
@@ -284,7 +285,7 @@ class StockReservationService
                         ->lockForUpdate()
                         ->firstOrFail();
 
-                    $batchStock->decrement('reserved_quantity', $reservation->quantity);
+                    $batchStock->decrement('reserved_quantity', (float) $reservation->quantity);
                 } else {
                     // Lock and update aggregate stock level
                     $stockLevel = StockLevel::where('product_id', $reservation->product_id)
@@ -292,21 +293,21 @@ class StockReservationService
                         ->lockForUpdate()
                         ->firstOrFail();
 
-                    $stockLevel->decrement('reserved', $reservation->quantity);
+                    $stockLevel->decrement('reserved', (float) $reservation->quantity);
                 }
 
                 // Dispatch event after transaction commits
                 DB::afterCommit(function () use ($reservation): void {
                     event(new ReservationExpired(
-                        reservationId: $reservation->id,
+                        reservationId: (string) $reservation->id,
                         companyId: $reservation->company_id,
                         productId: $reservation->product_id,
                         locationId: $reservation->location_id,
                         quantity: (string) $reservation->quantity,
                         sourceType: $reservation->source_type->value,
                         sourceId: $reservation->source_id,
-                        originalExpiresAt: $reservation->expires_at->toIso8601String(),
-                        expiredAt: $reservation->expired_at->toIso8601String(),
+                        originalExpiresAt: $reservation->expires_at?->toIso8601String() ?? '',
+                        expiredAt: $reservation->expired_at?->toIso8601String() ?? now()->toIso8601String(),
                     ));
                 });
             });
@@ -383,8 +384,8 @@ class StockReservationService
 
         // Use FEFO to select batches
         $result = $this->fefoService->suggestBatchesForSale(
-            productId: (int) $product->id,
-            locationId: (int) $locationId,
+            productId: $product->id,
+            locationId: $locationId,
             quantity: (float) $quantity,
         );
 

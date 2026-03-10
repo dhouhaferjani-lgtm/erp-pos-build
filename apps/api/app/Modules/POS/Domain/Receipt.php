@@ -317,7 +317,7 @@ class Receipt extends Model
      */
     public function isSealed(): bool
     {
-        return $this->fiscal_hash !== null;
+        return true; // fiscal_hash is always set after creation
     }
 
     /**

@@ -166,7 +166,7 @@ class TrialBalanceService
      *
      * @param  string  $companyId  UUID of the company
      * @param  Carbon  $asOfDate  Point-in-time cutoff date
-     * @return \Illuminate\Support\Collection<int, object{account_id: string, account_code: string, account_name: string, account_type: string, parent_id: string|null, total_debit: numeric-string, total_credit: numeric-string, balance: numeric-string}>
+     * @return \Illuminate\Support\Collection<int, \stdClass>
      */
     private function queryAccountBalances(string $companyId, Carbon $asOfDate): \Illuminate\Support\Collection
     {
@@ -197,40 +197,28 @@ class TrialBalanceService
     /**
      * Filter out accounts with zero balances.
      *
-     * An account is considered to have a zero balance if:
-     * abs(total_debit - total_credit) < ZERO_THRESHOLD
-     *
-     * This removes accounts that have no activity or whose debits
-     * exactly offset their credits.
-     *
-     * @param  \Illuminate\Support\Collection<int, object>  $accountBalances
-     * @return \Illuminate\Support\Collection<int, object>
+     * @param  \Illuminate\Support\Collection<int, \stdClass>  $accountBalances
+     * @return \Illuminate\Support\Collection<int, \stdClass>
      */
     private function filterZeroBalances(\Illuminate\Support\Collection $accountBalances): \Illuminate\Support\Collection
     {
-        return $accountBalances->filter(function ($account) {
-            $absBalance = bccomp(
-                bcabs((string) $account->balance, self::DECIMAL_SCALE),
-                self::ZERO_THRESHOLD,
-                self::DECIMAL_SCALE
-            );
+        return $accountBalances->filter(function (\stdClass $account): bool {
+            /** @var numeric-string $balance */
+            $balance = (string) $account->balance;
+            /** @var numeric-string $absValue */
+            $absValue = bccomp($balance, '0', self::DECIMAL_SCALE) < 0
+                ? bcmul($balance, '-1', self::DECIMAL_SCALE)
+                : $balance;
 
-            // Keep if abs(balance) > threshold
-            return $absBalance > 0;
+            return bccomp($absValue, self::ZERO_THRESHOLD, self::DECIMAL_SCALE) > 0;
         });
     }
 
     /**
      * Load full Account models for hierarchy building.
      *
-     * We need the full Eloquent models to use the AccountHierarchyService,
-     * which expects Account instances with relationships.
-     *
-     * Note: This creates a temporary in-memory join between query results
-     * and Eloquent models. For very large datasets, consider optimizing.
-     *
      * @param  string  $companyId  UUID of the company
-     * @param  \Illuminate\Support\Collection<int, object>  $balances
+     * @param  \Illuminate\Support\Collection<int, \stdClass>  $balances
      * @return \Illuminate\Database\Eloquent\Collection<int, Account>
      */
     private function loadAccounts(string $companyId, \Illuminate\Support\Collection $balances): \Illuminate\Database\Eloquent\Collection
@@ -313,11 +301,13 @@ class TrialBalanceService
      * without parent-child structure.
      *
      * @param  \Illuminate\Database\Eloquent\Collection<int, Account>  $accounts
-     * @return list<array>
+     * @return list<array<string, mixed>>
      */
     private function buildFlatReport(\Illuminate\Database\Eloquent\Collection $accounts): array
     {
+        /** @var list<array<string, mixed>> */
         return $accounts->map(function (Account $account) {
+            /** @var numeric-string $balance */
             $balance = (string) ($account->getAttribute('calculated_balance') ?? '0.00');
             $totalDebit = (string) ($account->getAttribute('total_debit') ?? '0.00');
             $totalCredit = (string) ($account->getAttribute('total_credit') ?? '0.00');
@@ -389,7 +379,7 @@ class TrialBalanceService
     /**
      * Calculate total debits and credits across all accounts.
      *
-     * @param  \Illuminate\Support\Collection<int, object>  $accountBalances
+     * @param  \Illuminate\Support\Collection<int, \stdClass>  $accountBalances
      * @return array{total_debit: numeric-string, total_credit: numeric-string}
      */
     private function calculateTotals(\Illuminate\Support\Collection $accountBalances): array
@@ -398,8 +388,12 @@ class TrialBalanceService
         $totalCredit = '0.00';
 
         foreach ($accountBalances as $account) {
-            $totalDebit = bcadd($totalDebit, (string) $account->total_debit, self::DECIMAL_SCALE);
-            $totalCredit = bcadd($totalCredit, (string) $account->total_credit, self::DECIMAL_SCALE);
+            /** @var numeric-string $acctDebit */
+            $acctDebit = (string) $account->total_debit;
+            /** @var numeric-string $acctCredit */
+            $acctCredit = (string) $account->total_credit;
+            $totalDebit = bcadd($totalDebit, $acctDebit, self::DECIMAL_SCALE);
+            $totalCredit = bcadd($totalCredit, $acctCredit, self::DECIMAL_SCALE);
         }
 
         return [

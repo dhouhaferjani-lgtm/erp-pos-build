@@ -93,7 +93,7 @@ final class ReturnNoteService
         $previousHash = $previousDoc?->fiscal_hash;
         $genesisSeed = $previousHash === null ? $this->getCompanyGenesisSeed($returnNote) : null;
 
-        $chainSequence = ($previousDoc?->chain_sequence ?? 0) + 1;
+        $chainSequence = ($previousDoc !== null ? $previousDoc->chain_sequence : 0) + 1;
         $confirmedAt = now();
 
         // Calculate fiscal hash using the compliance service
@@ -195,8 +195,8 @@ final class ReturnNoteService
                 ->where('product_id', $line->product_id)
                 ->first();
 
-            if ($sourceLine !== null && $sourceLine->unit_cost !== null) {
-                return (float) $sourceLine->unit_cost;
+            if ($sourceLine !== null && $sourceLine->landed_unit_cost !== null) {
+                return (float) $sourceLine->landed_unit_cost;
             }
         }
 
@@ -230,13 +230,8 @@ final class ReturnNoteService
      */
     private function getCompanyGenesisSeed(Document $returnNote): string
     {
+        /** @var \App\Modules\Company\Domain\Company $company */
         $company = $returnNote->company;
-
-        if ($company === null) {
-            throw new \RuntimeException(
-                'Return note must have an associated company for fiscal chain'
-            );
-        }
 
         if ($company->fiscal_chain_seed === null) {
             throw new \RuntimeException(

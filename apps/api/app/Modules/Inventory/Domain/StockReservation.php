@@ -63,10 +63,10 @@ class StockReservation extends Model
         return $this->belongsTo(Product::class);
     }
 
-    /** @return BelongsTo<Location, $this> */
+    /** @return BelongsTo<\App\Modules\Company\Domain\Location, $this> */
     public function location(): BelongsTo
     {
-        return $this->belongsTo(Location::class);
+        return $this->belongsTo(\App\Modules\Company\Domain\Location::class);
     }
 
     /** @return BelongsTo<User, $this> */
@@ -157,11 +157,11 @@ class StockReservation extends Model
             return null;
         }
 
-        return max(0, now()->diffInSeconds($this->expires_at, false));
+        return (int) max(0, now()->diffInSeconds($this->expires_at, false));
     }
 
     public function getTotalValue(): float
     {
-        return (float) $this->quantity * ($this->product?->cost_price ?? 0);
+        return (float) $this->quantity * (float) ($this->product->cost_price ?? '0');
     }
 }

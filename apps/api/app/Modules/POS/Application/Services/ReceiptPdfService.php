@@ -103,8 +103,12 @@ final class ReceiptPdfService
 
         // Calculate change given if any
         $totalPaid = $receipt->payments->sum('amount');
+        /** @var numeric-string $totalPaidStr */
+        $totalPaidStr = (string) $totalPaid;
+        /** @var numeric-string $receiptTotal */
+        $receiptTotal = (string) $receipt->total;
         $changeGiven = (float) $totalPaid > (float) $receipt->total
-            ? bcsub((string) $totalPaid, (string) $receipt->total, $this->scale())
+            ? bcsub($totalPaidStr, $receiptTotal, $this->scale())
             : number_format(0, $this->scale(), '.', '');
 
         $isReturn = $receipt->receipt_type === ReceiptType::Return;
@@ -160,7 +164,10 @@ final class ReceiptPdfService
 
         $carbon = $date instanceof Carbon ? $date : Carbon::parse($date);
 
-        return $carbon->locale($locale)->isoFormat('L');
+        /** @var Carbon $localizedCarbon */
+        $localizedCarbon = $carbon->locale($locale);
+
+        return $localizedCarbon->isoFormat('L');
     }
 
     /**
@@ -174,7 +181,10 @@ final class ReceiptPdfService
 
         $carbon = $date instanceof Carbon ? $date : Carbon::parse($date);
 
-        return $carbon->locale($locale)->isoFormat('L LT');
+        /** @var Carbon $localizedCarbon */
+        $localizedCarbon = $carbon->locale($locale);
+
+        return $localizedCarbon->isoFormat('L LT');
     }
 
     /**

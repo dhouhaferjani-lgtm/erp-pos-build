@@ -107,7 +107,7 @@ final class DraftPersistenceService
         // Eager load partner before event
         $document->load('partner');
         $partner = $document->partner;
-        $partnerName = $partner?->name;
+        $partnerName = $partner->name;
         event(new DraftDocumentCreated(
             documentId: $document->id,
             tenantId: $tenantId,
@@ -145,8 +145,8 @@ final class DraftPersistenceService
         $existingLineIds = $document->lines->pluck('id')->toArray();
 
         // Get new line IDs (those that have 'id' field)
-        /** @var array<string> */
-        $newLineIds = collect($newLines)
+        /** @var array<int, string> $newLineIds */
+        $newLineIds = collect(array_values($newLines))
             ->filter(fn (array $line): bool => isset($line['id']))
             ->pluck('id')
             ->toArray();
@@ -192,17 +192,18 @@ final class DraftPersistenceService
         string $userId,
         array $lineData
     ): DocumentLine {
-        /** @var Product|null */
+        /** @var Product|null $product */
         $product = Product::find($lineData['product_id']);
 
         $quantity = (float) ($lineData['quantity'] ?? 1);
         $unitPrice = (float) ($lineData['unit_price'] ?? 0);
         $lineTotal = (string) ($quantity * $unitPrice);
+        $productName = $product !== null ? $product->name : '';
 
         $line = $document->lines()->create([
             'product_id' => $lineData['product_id'] ?? '',
             'line_number' => $document->lines()->count() + 1,
-            'description' => $product?->name ?? '',
+            'description' => $productName,
             'quantity' => $quantity,
             'unit_price' => $unitPrice,
             'tax_rate' => $lineData['tax_rate'] ?? 0,
@@ -216,7 +217,7 @@ final class DraftPersistenceService
             companyId: $companyId,
             userId: $userId,
             productId: $line->product_id ?? '',
-            productName: $product?->name ?? '',
+            productName: $productName,
             quantity: (float) $line->quantity,
             unitPrice: (float) $line->unit_price,
             lineTotal: (float) $line->line_total,
@@ -342,13 +343,14 @@ final class DraftPersistenceService
             $quantity = (float) ($lineData['quantity'] ?? 1);
             $unitPrice = (float) ($lineData['unit_price'] ?? 0);
             $lineTotal = $quantity * $unitPrice;
+            $batchProductName = $product !== null ? $product->name : '';
 
             $insertData = [
                 'id' => (string) \Str::uuid(),
                 'document_id' => $document->id,
                 'product_id' => $lineData['product_id'] ?? '',
                 'line_number' => $currentLineNumber,
-                'description' => $product?->name ?? '',
+                'description' => $batchProductName,
                 'quantity' => $quantity,
                 'unit_price' => $unitPrice,
                 'tax_rate' => $lineData['tax_rate'] ?? 0,
@@ -361,7 +363,7 @@ final class DraftPersistenceService
             $lineInsertData[] = [
                 'id' => $insertData['id'],
                 'product_id' => $insertData['product_id'],
-                'product_name' => $product?->name ?? '',
+                'product_name' => $batchProductName,
                 'quantity' => $quantity,
                 'unit_price' => $unitPrice,
                 'line_total' => $lineTotal,

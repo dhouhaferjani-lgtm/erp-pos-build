@@ -22,11 +22,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property bool $is_system
  * @property bool $is_active
  * @property-read Unit|null $baseUnit
- * @property-read \Illuminate\Database\Eloquent\Collection<Unit> $units
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, Unit> $units
  */
 class UnitCategory extends Model
 {
+    /** @use HasFactory<UnitCategoryFactory> */
     use HasFactory;
+
     use HasUuids;
 
     protected static function newFactory(): UnitCategoryFactory
@@ -44,6 +46,9 @@ class UnitCategory extends Model
         'is_active',
     ];
 
+    /**
+     * @return array<string, string>
+     */
     protected function casts(): array
     {
         return [
@@ -52,21 +57,25 @@ class UnitCategory extends Model
         ];
     }
 
+    /** @return BelongsTo<Tenant, $this> */
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::class);
     }
 
+    /** @return BelongsTo<Unit, $this> */
     public function baseUnit(): BelongsTo
     {
         return $this->belongsTo(Unit::class, 'base_unit_id');
     }
 
+    /** @return HasMany<Unit, $this> */
     public function units(): HasMany
     {
         return $this->hasMany(Unit::class, 'category_id');
     }
 
+    /** @return HasMany<Unit, $this> */
     public function activeUnits(): HasMany
     {
         return $this->units()->where('is_active', true);

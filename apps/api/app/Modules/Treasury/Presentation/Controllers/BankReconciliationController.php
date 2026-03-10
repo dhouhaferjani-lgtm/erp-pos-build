@@ -75,7 +75,9 @@ class BankReconciliationController extends Controller
         $companyId = $this->companyContext->requireCompanyId();
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
-        $userId = $request->user()->id;
+        /** @var \App\Modules\Identity\Domain\User $user */
+        $user = $request->user();
+        $userId = (string) $user->id;
 
         $validated = $request->validate([
             'repository_id' => ['required', 'uuid', 'exists:payment_repositories,id'],
@@ -103,7 +105,9 @@ class BankReconciliationController extends Controller
     {
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
-        $userId = $request->user()->id;
+        /** @var \App\Modules\Identity\Domain\User $user */
+        $user = $request->user();
+        $userId = (string) $user->id;
 
         // Verify reconciliation belongs to tenant
         BankReconciliation::query()
@@ -155,7 +159,9 @@ class BankReconciliationController extends Controller
     {
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
-        $userId = $request->user()->id;
+        /** @var \App\Modules\Identity\Domain\User $user */
+        $user = $request->user();
+        $userId = (string) $user->id;
 
         // Verify reconciliation belongs to tenant
         BankReconciliation::query()
@@ -217,14 +223,14 @@ class BankReconciliationController extends Controller
         return [
             'id' => $reconciliation->id,
             'repository_id' => $reconciliation->repository_id,
-            'repository_name' => $reconciliation->repository?->name,
+            'repository_name' => $reconciliation->repository->name,
             'statement_date' => $reconciliation->statement_date->toDateString(),
             'opening_balance' => $reconciliation->opening_balance,
             'closing_balance' => $reconciliation->closing_balance,
             'statement_balance' => $reconciliation->statement_balance,
             'difference' => $reconciliation->difference,
             'status' => $reconciliation->status->value,
-            'created_by' => $reconciliation->creator?->name,
+            'created_by' => $reconciliation->creator->name,
             'completed_by' => $reconciliation->completer?->name,
             'completed_at' => $reconciliation->completed_at?->toIso8601String(),
             'notes' => $reconciliation->notes,

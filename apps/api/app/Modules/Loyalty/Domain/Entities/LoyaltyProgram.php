@@ -37,7 +37,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class LoyaltyProgram extends Model
 {
+    /** @use HasFactory<\Database\Factories\Loyalty\LoyaltyProgramFactory> */
     use HasFactory;
+
     use HasUuids;
 
     /**
@@ -83,6 +85,8 @@ class LoyaltyProgram extends Model
 
     /**
      * Get enrollments for this program
+     *
+     * @return HasMany<Enrollment, $this>
      */
     public function enrollments(): HasMany
     {
@@ -91,6 +95,8 @@ class LoyaltyProgram extends Model
 
     /**
      * Get earning rules for this program
+     *
+     * @return HasMany<EarningRule, $this>
      */
     public function earningRules(): HasMany
     {
@@ -99,6 +105,8 @@ class LoyaltyProgram extends Model
 
     /**
      * Get rewards for this program
+     *
+     * @return HasMany<Reward, $this>
      */
     public function rewards(): HasMany
     {
@@ -107,6 +115,8 @@ class LoyaltyProgram extends Model
 
     /**
      * Get tiers for this program
+     *
+     * @return HasMany<Tier, $this>
      */
     public function tiers(): HasMany
     {

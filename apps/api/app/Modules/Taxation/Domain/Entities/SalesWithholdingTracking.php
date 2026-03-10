@@ -34,13 +34,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $notes
  * @property \Carbon\Carbon $created_at
  * @property \Carbon\Carbon $updated_at
- *
  * @property-read Document $document
  * @property-read Payment|null $payment
  * @property-read Partner $customer
  */
 class SalesWithholdingTracking extends Model
 {
+    /** @use HasFactory<\Illuminate\Database\Eloquent\Factories\Factory<static>> */
     use HasFactory, HasUuids;
 
     protected $table = 'sales_withholding_tracking';
@@ -70,6 +70,8 @@ class SalesWithholdingTracking extends Model
 
     /**
      * Get the document this tracking record is for.
+     *
+     * @return BelongsTo<Document, $this>
      */
     public function document(): BelongsTo
     {
@@ -78,6 +80,8 @@ class SalesWithholdingTracking extends Model
 
     /**
      * Get the payment (if recorded).
+     *
+     * @return BelongsTo<Payment, $this>
      */
     public function payment(): BelongsTo
     {
@@ -86,6 +90,8 @@ class SalesWithholdingTracking extends Model
 
     /**
      * Get the customer who withheld the tax.
+     *
+     * @return BelongsTo<Partner, $this>
      */
     public function customer(): BelongsTo
     {

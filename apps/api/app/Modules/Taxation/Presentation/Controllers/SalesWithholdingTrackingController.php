@@ -51,11 +51,12 @@ class SalesWithholdingTrackingController extends Controller
             array_merge($request->validated(), ['document_id' => $documentId])
         );
 
+        $company = $this->companyContext->requireCompany();
         $tracking = $this->service->recordWithholding(
             $document,
             $data,
-            $this->companyContext->getCompanyId(),
-            $this->companyContext->getTenantId()
+            $company->id,
+            $company->tenant_id
         );
 
         return response()->json([
@@ -71,7 +72,7 @@ class SalesWithholdingTrackingController extends Controller
      */
     public function index(): JsonResponse
     {
-        $companyId = $this->companyContext->getCompanyId();
+        $companyId = $this->companyContext->requireCompanyId();
 
         // Check for filter parameter
         $filter = request()->query('filter');

@@ -30,10 +30,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property-read Product $product
- * @property-read \Illuminate\Database\Eloquent\Collection<Ingredient> $ingredients
- * @property-read \Illuminate\Database\Eloquent\Collection<Certification> $certifications
- * @property-read \Illuminate\Database\Eloquent\Collection<HealthClaim> $healthClaims
- * @property-read \Illuminate\Database\Eloquent\Collection<KeyComponent> $keyComponents
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, Ingredient> $ingredients
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, Certification> $certifications
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, HealthClaim> $healthClaims
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, KeyComponent> $keyComponents
  */
 class ParapharmacyProductMetadata extends Model
 {
@@ -106,7 +106,7 @@ class ParapharmacyProductMetadata extends Model
     /**
      * Get all ingredients for this product.
      *
-     * @return BelongsToMany<Ingredient>
+     * @return BelongsToMany<Ingredient, $this>
      */
     public function ingredients(): BelongsToMany
     {
@@ -124,7 +124,7 @@ class ParapharmacyProductMetadata extends Model
     /**
      * Get all certifications for this product.
      *
-     * @return BelongsToMany<Certification>
+     * @return BelongsToMany<Certification, $this>
      */
     public function certifications(): BelongsToMany
     {
@@ -141,7 +141,7 @@ class ParapharmacyProductMetadata extends Model
     /**
      * Get all health claims for this product.
      *
-     * @return BelongsToMany<HealthClaim>
+     * @return BelongsToMany<HealthClaim, $this>
      */
     public function healthClaims(): BelongsToMany
     {
@@ -159,7 +159,7 @@ class ParapharmacyProductMetadata extends Model
     /**
      * Get all key components for this product.
      *
-     * @return BelongsToMany<KeyComponent>
+     * @return BelongsToMany<KeyComponent, $this>
      */
     public function keyComponents(): BelongsToMany
     {

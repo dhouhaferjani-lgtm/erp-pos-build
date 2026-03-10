@@ -28,11 +28,13 @@ class PartnerPriceList extends Model
         'priority' => 'integer',
     ];
 
+    /** @return BelongsTo<\App\Modules\Partner\Domain\Partner, $this> */
     public function partner(): BelongsTo
     {
         return $this->belongsTo(\App\Modules\Partner\Domain\Partner::class);
     }
 
+    /** @return BelongsTo<PriceList, $this> */
     public function priceList(): BelongsTo
     {
         return $this->belongsTo(PriceList::class);

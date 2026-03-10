@@ -85,7 +85,6 @@ final class ProcessProductImageImport implements ShouldQueue
                 'processed_rows' => $totalProcessed,
                 'total_rows' => $totalProcessed,
                 'completed_at' => now(),
-                'progress_percentage' => 100,
             ]);
 
             // Store error details if any failures
@@ -97,8 +96,8 @@ final class ProcessProductImageImport implements ShouldQueue
                     $rowsData[] = [
                         'row_number' => $index + 1,
                         'data' => [
-                            'filename' => $error['filename'] ?? 'unknown',
-                            'sku' => $error['sku'] ?? 'unknown',
+                            'filename' => $error['filename'],
+                            'sku' => $error['sku'],
                         ],
                         'is_valid' => false,
                         'errors' => ['file' => [$error['error'] ?? 'Unknown error']],

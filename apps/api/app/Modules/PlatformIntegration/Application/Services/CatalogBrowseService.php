@@ -163,20 +163,22 @@ final class CatalogBrowseService
             })
             ->with(['automotiveMetadata', 'stockLevels'])
             ->get()
-            ->keyBy(fn (Product $p) => $p->automotiveMetadata?->platform_article_id);
+            ->keyBy(fn (Product $p): string => (string) ($p->automotiveMetadata->platform_article_id ?? ''));
 
         foreach ($articles as &$article) {
             $articleId = $article['id'] ?? null;
             $localProduct = $articleId !== null ? $localProducts->get($articleId) : null;
 
             if ($localProduct !== null) {
-                $totalStock = $localProduct->stockLevels->sum('quantity');
-                $totalReserved = $localProduct->stockLevels->sum('reserved');
+                /** @var numeric-string $totalStock */
+                $totalStock = (string) $localProduct->stockLevels->sum('quantity');
+                /** @var numeric-string $totalReserved */
+                $totalReserved = (string) $localProduct->stockLevels->sum('reserved');
                 $article['local_inventory'] = [
                     'in_stock' => true,
                     'product_id' => $localProduct->id,
-                    'quantity' => (string) $totalStock,
-                    'available' => (string) bcsub((string) $totalStock, (string) $totalReserved, 2),
+                    'quantity' => $totalStock,
+                    'available' => bcsub($totalStock, $totalReserved, 2),
                     'sale_price' => $localProduct->sale_price,
                 ];
             } else {

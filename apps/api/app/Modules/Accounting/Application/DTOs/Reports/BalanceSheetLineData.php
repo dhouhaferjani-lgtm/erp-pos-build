@@ -45,7 +45,7 @@ final class BalanceSheetLineData extends Data
      * @param  string  $account_code  Account code (e.g., "100", "200", "300")
      * @param  string  $account_name  Account name (e.g., "Cash", "Accounts Payable", "Capital Stock")
      * @param  string  $account_type  Account type ('asset', 'liability', or 'equity')
-     * @param  numeric-string  $amount  Balance as of the reporting date
+     * @param  string  $amount  Balance as of the reporting date
      * @param  int  $level  Hierarchy depth (0 = root, 1 = child, etc.)
      * @param  bool  $is_parent  Whether this account has children (subtotal row)
      */
@@ -67,7 +67,7 @@ final class BalanceSheetLineData extends Data
      *     account_code: string,
      *     account_name: string,
      *     account_type: string,
-     *     amount: numeric-string,
+     *     amount: string,
      *     level: int,
      *     is_parent: bool
      * } $data
@@ -99,6 +99,7 @@ final class BalanceSheetLineData extends Data
      */
     public function getAbsoluteAmount(): string
     {
+        /** @var numeric-string */
         return ltrim($this->amount, '-');
     }
 

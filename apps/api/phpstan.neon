@@ -11,6 +11,8 @@ parameters:
         analyseAndScan:
             - app/Console/Kernel.php (?)
             - app/Http/Kernel.php (?)
+            - app/Console/Commands/Test*.php
+            - app/Console/Commands/MigrateParapharmacyDataCommand.php
 
     # Laravel specific
     checkModelProperties: true

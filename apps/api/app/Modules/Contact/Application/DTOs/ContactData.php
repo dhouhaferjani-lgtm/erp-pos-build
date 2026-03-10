@@ -43,9 +43,9 @@ class ContactData extends Data
                     id: $party->id,
                     name: $party->name,
                     type: $party->type->value,
-                    job_title: $party->pivot->job_title,
-                    department: $party->pivot->department,
-                    is_primary: (bool) $party->pivot->is_primary,
+                    job_title: $party->getAttribute('pivot')?->getAttribute('job_title'),
+                    department: $party->getAttribute('pivot')?->getAttribute('department'),
+                    is_primary: (bool) ($party->getAttribute('pivot')?->getAttribute('is_primary') ?? false),
                 );
             }
         }

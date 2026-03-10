@@ -25,7 +25,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class MemberStampCard extends Model
 {
+    /** @use HasFactory<\Illuminate\Database\Eloquent\Factories\Factory<static>> */
     use HasFactory;
+
     use HasUuids;
 
     protected $fillable = [
@@ -53,6 +55,8 @@ class MemberStampCard extends Model
 
     /**
      * Get the card definition
+     *
+     * @return BelongsTo<StampCardDefinition, $this>
      */
     public function cardDefinition(): BelongsTo
     {
@@ -61,6 +65,8 @@ class MemberStampCard extends Model
 
     /**
      * Get the enrollment for this card
+     *
+     * @return BelongsTo<Enrollment, $this>
      */
     public function enrollment(): BelongsTo
     {

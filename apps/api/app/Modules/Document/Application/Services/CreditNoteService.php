@@ -30,7 +30,7 @@ class CreditNoteService
     ): Document {
         return DB::transaction(function () use ($sourceInvoiceId, $amount, $reason, $notes): Document {
             // 1. Lock the invoice row FIRST (pessimistic locking)
-            /** @var Document|null $invoice */
+            /** @var Document $invoice */
             $invoice = Document::with('lines')
                 ->lockForUpdate()
                 ->findOrFail($sourceInvoiceId);
@@ -121,7 +121,7 @@ class CreditNoteService
     ): Document {
         return DB::transaction(function () use ($sourceInvoiceId, $lines, $reason, $notes): Document {
             // 1. Lock the invoice row FIRST (pessimistic locking)
-            /** @var Document|null $invoice */
+            /** @var Document $invoice */
             $invoice = Document::with('lines')
                 ->lockForUpdate()
                 ->findOrFail($sourceInvoiceId);

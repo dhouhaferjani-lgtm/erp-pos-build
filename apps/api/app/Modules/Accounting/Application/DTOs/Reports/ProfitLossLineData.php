@@ -63,14 +63,7 @@ final class ProfitLossLineData extends Data
      *
      * Converts the array output from ProfitLossService into a typed DTO.
      *
-     * @param array{
-     *     account_code: string,
-     *     account_name: string,
-     *     account_type: string,
-     *     amount: numeric-string,
-     *     level: int,
-     *     is_parent: bool
-     * } $data
+     * @param  array<string, mixed>  $data
      */
     public static function fromArray(array $data): self
     {
@@ -99,6 +92,7 @@ final class ProfitLossLineData extends Data
      */
     public function getAbsoluteAmount(): string
     {
+        /** @var numeric-string */
         return ltrim($this->amount, '-');
     }
 }

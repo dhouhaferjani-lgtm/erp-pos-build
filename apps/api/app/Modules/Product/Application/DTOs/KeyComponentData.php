@@ -27,7 +27,7 @@ class KeyComponentData extends Data
             id: $keyComponent->id,
             slug: $keyComponent->slug,
             is_allergen: $keyComponent->is_allergen,
-            name: $keyComponent->name, // Uses HasTranslations trait accessor
+            name: $keyComponent->name ?? '', // Uses HasTranslations trait accessor
             description: $keyComponent->description, // Uses HasTranslations trait accessor
             created_at: $keyComponent->created_at?->toIso8601String() ?? '',
             updated_at: $keyComponent->updated_at?->toIso8601String(),

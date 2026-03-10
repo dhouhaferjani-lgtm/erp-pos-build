@@ -50,7 +50,10 @@ final readonly class EloquentTierRepository implements TierRepositoryInterface
     {
         $tier->save();
 
-        return $tier->fresh();
+        /** @var Tier $freshTier */
+        $freshTier = $tier->fresh();
+
+        return $freshTier;
     }
 
     /**

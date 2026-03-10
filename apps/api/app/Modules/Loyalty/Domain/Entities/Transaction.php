@@ -36,7 +36,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class Transaction extends Model
 {
+    /** @use HasFactory<\Illuminate\Database\Eloquent\Factories\Factory<static>> */
     use HasFactory;
+
     use HasUuids;
 
     protected $table = 'loyalty_transactions';
@@ -78,6 +80,8 @@ class Transaction extends Model
 
     /**
      * Get the enrollment for this transaction
+     *
+     * @return BelongsTo<Enrollment, $this>
      */
     public function enrollment(): BelongsTo
     {
@@ -86,6 +90,8 @@ class Transaction extends Model
 
     /**
      * Get the order (document) for this transaction
+     *
+     * @return BelongsTo<Document, $this>
      */
     public function order(): BelongsTo
     {
@@ -94,6 +100,8 @@ class Transaction extends Model
 
     /**
      * Get the reward for this transaction
+     *
+     * @return BelongsTo<Reward, $this>
      */
     public function reward(): BelongsTo
     {
@@ -102,6 +110,8 @@ class Transaction extends Model
 
     /**
      * Get the earning rule for this transaction
+     *
+     * @return BelongsTo<EarningRule, $this>
      */
     public function earningRule(): BelongsTo
     {
@@ -110,6 +120,8 @@ class Transaction extends Model
 
     /**
      * Get the user who created this transaction (for manual adjustments)
+     *
+     * @return BelongsTo<User, $this>
      */
     public function createdBy(): BelongsTo
     {

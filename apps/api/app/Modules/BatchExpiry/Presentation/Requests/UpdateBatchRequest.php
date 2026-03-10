@@ -13,6 +13,7 @@ class UpdateBatchRequest extends FormRequest
         return $this->user()?->can('batches.update') ?? false;
     }
 
+    /** @return array<string, array<int, mixed>> */
     public function rules(): array
     {
         return [
@@ -24,6 +25,7 @@ class UpdateBatchRequest extends FormRequest
         ];
     }
 
+    /** @return array<string, string> */
     public function messages(): array
     {
         return [

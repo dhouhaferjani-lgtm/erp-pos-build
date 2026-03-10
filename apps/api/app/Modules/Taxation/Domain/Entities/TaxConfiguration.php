@@ -107,10 +107,13 @@ class TaxConfiguration extends Model
 
     /**
      * Scope for filtering by document type
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<static>
      */
-    public function scopeForDocumentType($query, string $documentType)
+    public function scopeForDocumentType(\Illuminate\Database\Eloquent\Builder $query, string $documentType): \Illuminate\Database\Eloquent\Builder
     {
-        return $query->where(function ($q) use ($documentType) {
+        return $query->where(function (\Illuminate\Database\Eloquent\Builder $q) use ($documentType): void {
             $q->whereJsonContains('applicable_document_types', $documentType)
                 ->orWhereJsonLength('applicable_document_types', 0);
         });
@@ -118,16 +121,22 @@ class TaxConfiguration extends Model
 
     /**
      * Scope for ordering by sequence
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<static>
      */
-    public function scopeOrdered($query)
+    public function scopeOrdered(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
     {
         return $query->orderBy('sequence_order', 'asc');
     }
 
     /**
      * Scope for active configurations only
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<static>
      */
-    public function scopeActive($query)
+    public function scopeActive(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
     {
         return $query->where('is_active', true);
     }
@@ -144,6 +153,9 @@ class TaxConfiguration extends Model
 
     /**
      * Calculate tax amount based on configuration
+     *
+     * @param  numeric-string  $base
+     * @param  numeric-string|null  $previousTaxesTotal
      */
     public function calculateAmount(string $base, ?string $previousTaxesTotal = null): string
     {
@@ -153,11 +165,13 @@ class TaxConfiguration extends Model
 
         $calculationBase = $base;
 
-        if ($this->stacks_on === StackingBehavior::TOTAL_INCLUDING_PREVIOUS && $previousTaxesTotal) {
-            $calculationBase = bcadd($base, $previousTaxesTotal, 3);
+        if ($this->stacks_on === StackingBehavior::TOTAL_INCLUDING_PREVIOUS && $previousTaxesTotal !== null) {
+            $calculationBase = bcadd($calculationBase, $previousTaxesTotal, 3);
         }
 
-        $rate = bcdiv($this->percentage_rate ?? '0', '100', 6);
+        /** @var numeric-string $percentageRate */
+        $percentageRate = $this->percentage_rate ?? '0';
+        $rate = bcdiv($percentageRate, '100', 6);
 
         return bcmul($calculationBase, $rate, 3);
     }

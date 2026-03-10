@@ -46,6 +46,7 @@ final class ReportController extends Controller
             'terminal_id' => ['required', 'string', 'uuid', 'exists:pos_terminals,id'],
         ]);
 
+        /** @var Terminal $terminal */
         $terminal = Terminal::findOrFail($request->input('terminal_id'));
 
         // Verify terminal belongs to current company
@@ -59,9 +60,11 @@ final class ReportController extends Controller
         }
 
         try {
+            /** @var \App\Modules\Identity\Domain\User $user */
+            $user = $request->user();
             $xReport = $this->reportGenerationService->generateXReport(
                 $terminal,
-                $request->user()
+                $user
             );
 
             return response()->json([
@@ -90,6 +93,7 @@ final class ReportController extends Controller
             'terminal_id' => ['required', 'string', 'uuid', 'exists:pos_terminals,id'],
         ]);
 
+        /** @var Terminal $terminal */
         $terminal = Terminal::findOrFail($request->input('terminal_id'));
 
         // Verify terminal belongs to current company
@@ -103,9 +107,11 @@ final class ReportController extends Controller
         }
 
         try {
+            /** @var \App\Modules\Identity\Domain\User $user */
+            $user = $request->user();
             $zReport = $this->reportGenerationService->generateZReport(
                 $terminal,
-                $request->user()
+                $user
             );
 
             return response()->json([
@@ -170,8 +176,8 @@ final class ReportController extends Controller
 
         $query = ZReport::query()
             ->where('terminal_id', $request->input('terminal_id'))
-            ->whereHas('terminal', function ($q) {
-                $q->where('company_id', $this->companyContext->getCompanyId());
+            ->whereHas('terminal', function (\Illuminate\Database\Eloquent\Builder $q): void {
+                $q->whereRaw('company_id = ?', [$this->companyContext->getCompanyId()]);
             })
             ->with(['terminal', 'shift', 'generatedBy']);
 
@@ -210,6 +216,7 @@ final class ReportController extends Controller
             'terminal_id' => ['required', 'string', 'uuid', 'exists:pos_terminals,id'],
         ]);
 
+        /** @var Terminal $terminal */
         $terminal = Terminal::findOrFail($request->input('terminal_id'));
 
         // Verify terminal belongs to current company
