@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Application\Services;
 
+use App\Modules\Company\Domain\Company;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Receipt;
@@ -15,7 +16,11 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Domain\XReport;
 use App\Modules\POS\Domain\ZReport;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Barryvdh\DomPDF\PDF as DomPdf;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use NumberFormatter;
 
 /**
  * Application service for generating POS reports.
@@ -162,6 +167,131 @@ final class ReportGenerationService
 
             return $freshReport;
         });
+    }
+
+    /**
+     * Generate PDF for a Z report.
+     *
+     * @param  ZReport  $zReport  The Z report to generate PDF for
+     */
+    public function generatePdf(ZReport $zReport): DomPdf
+    {
+        $zReport->load(['terminal', 'generatedBy']);
+
+        /** @var \App\Modules\POS\Domain\Terminal $terminal */
+        $terminal = $zReport->terminal;
+
+        /** @var Company $company */
+        $company = Company::findOrFail($terminal->company_id);
+
+        $data = $this->preparePdfData($zReport, $company);
+
+        $pdf = Pdf::loadView('pos.z-report', $data);
+
+        // A4 paper for Z reports (unlike thermal receipt)
+        $pdf->setPaper('a4', 'portrait');
+
+        $pdf->setOption('isHtml5ParserEnabled', true);
+        $pdf->setOption('isRemoteEnabled', true);
+        $pdf->setOption('defaultFont', 'DejaVu Sans');
+
+        return $pdf;
+    }
+
+    /**
+     * Get filename for the Z report PDF.
+     */
+    public function getZReportFilename(ZReport $zReport): string
+    {
+        return sprintf('z-report-%s.pdf', $zReport->getFormattedZNumber());
+    }
+
+    /**
+     * Prepare data for the Z report PDF template.
+     *
+     * @return array<string, mixed>
+     */
+    private function preparePdfData(ZReport $zReport, Company $company): array
+    {
+        $locale = $company->locale ?? 'en';
+        $currency = $company->currency ?? 'EUR';
+        $reportData = $zReport->report_data;
+        $salesCount = $reportData['sales_count'] ?? 0;
+        $grossSales = $reportData['gross_sales'] ?? '0.00';
+
+        $averageTicket = $salesCount > 0
+            ? bcdiv($grossSales, (string) $salesCount, $this->scale())
+            : '0.00';
+
+        return [
+            'zReport' => $zReport,
+            'company' => $company,
+            'terminal' => $zReport->terminal,
+            'generatedByName' => $zReport->generatedBy->name,
+            'reportData' => $reportData,
+            'vatBreakdown' => $reportData['vat_breakdown'] ?? [],
+            'paymentMethods' => $reportData['payment_methods'] ?? [],
+            'averageTicket' => $averageTicket,
+            'hasVariance' => $zReport->hasVariance($this->scale()),
+            'locale' => $locale,
+            'currency' => $currency,
+            'formatMoney' => fn (string|float|null $amount) => $this->formatMoney($amount, $currency, $locale),
+            'formatDateTime' => fn (Carbon|string|null $date) => $this->formatDateTime($date, $locale),
+            'formatNumber' => fn (string|float|null $number, int $decimals = 2) => $this->formatNumber($number, $decimals, $locale),
+        ];
+    }
+
+    /**
+     * Format money amount with currency.
+     */
+    private function formatMoney(string|float|null $amount, string $currency, string $locale): string
+    {
+        if ($amount === null) {
+            return number_format(0, $this->scale(), '.', '');
+        }
+
+        $amount = is_string($amount) ? (float) $amount : $amount;
+
+        $formatter = new NumberFormatter($locale, NumberFormatter::CURRENCY);
+        $result = $formatter->formatCurrency($amount, $currency);
+
+        return $result !== false ? $result : number_format($amount, $this->scale()).' '.$currency;
+    }
+
+    /**
+     * Format date and time according to locale.
+     */
+    private function formatDateTime(Carbon|string|null $date, string $locale): string
+    {
+        if ($date === null) {
+            return '';
+        }
+
+        $carbon = $date instanceof Carbon ? $date : Carbon::parse($date);
+
+        /** @var Carbon $localizedCarbon */
+        $localizedCarbon = $carbon->locale($locale);
+
+        return $localizedCarbon->isoFormat('L LT');
+    }
+
+    /**
+     * Format number with locale-specific formatting.
+     */
+    private function formatNumber(string|float|null $number, int $decimals, string $locale): string
+    {
+        if ($number === null) {
+            return '0';
+        }
+
+        $number = is_string($number) ? (float) $number : $number;
+
+        $formatter = new NumberFormatter($locale, NumberFormatter::DECIMAL);
+        $formatter->setAttribute(NumberFormatter::FRACTION_DIGITS, $decimals);
+
+        $result = $formatter->format($number);
+
+        return $result !== false ? $result : number_format($number, $decimals);
     }
 
     /**

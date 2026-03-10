@@ -1,6 +1,6 @@
 # POS Go-Live Roadmap
 
-> **Last updated:** 2026-03-09
+> **Last updated:** 2026-03-10
 > **Goal:** Ship a production-ready POS for both Retail and F&B verticals.
 
 ---
@@ -24,10 +24,10 @@
 
 ## Phases
 
-### Phase 1 — Retail MVP (Current Priority)
+### Phase 1 — Retail MVP ✅ COMPLETE
 
 > **Goal:** Close the gaps blocking retail go-live.
-> **Parallelism:** Items 1.1–1.3 are independent and can run in parallel sessions.
+> **Status:** All items done. Camera scanning and GL reversal deferred to later phases.
 
 #### 1.1 Customer Management in POS ✅ DONE
 **Completed** — Migrated and deployed
@@ -42,29 +42,30 @@
 - [x] Extract `selectCustomer()` helper with automatic loyalty lookup
 - [x] Add translations (en/fr) for customer management keys
 
-#### 1.2 Z-Report Frontend ⬜
-**Can run in parallel** — Independent workstream
+#### 1.2 Z-Report Frontend ✅ DONE
+**Completed** — All items implemented
 
-- [ ] Create `ZReportListPage` under `/pos/z-reports`
-- [ ] Z-Report detail view with:
+- [x] Create `ZReportListPage` under `/pos/z-reports`
+- [x] Z-Report detail view with:
   - Sales summary (gross, net, tax, voids)
   - VAT breakdown by rate
   - Payment method distribution
   - Receipt count and average ticket
   - Hash chain verification status
-- [ ] Z-Report PDF download
-- [ ] Wire sidebar link (already in navigation as `zReports`)
-- [ ] Add translations (en/fr)
+- [x] Z-Report PDF download (real backend PDF endpoint via Browsershot)
+- [x] Wire sidebar link (already in navigation as `zReports`)
+- [x] Add translations (en/fr)
 
-#### 1.3 Barcode Scanner Support ⬜
-**Can run in parallel** — Independent workstream
+#### 1.3 Barcode Scanner Support ✅ DONE
+**Completed** — Camera scanning deferred to Tauri POS
 
-- [ ] Add barcode/SKU search input in ProductGrid header
-- [ ] Backend: `GET /pos/products?barcode={code}` endpoint (or use existing product search)
-- [ ] Frontend: Listen for scanner input (rapid keystrokes → barcode pattern detection)
-- [ ] Auto-add to cart when single product matches barcode
-- [ ] Handle no-match and multi-match cases (toast / selection modal)
-- [ ] Support both USB scanners (keyboard wedge) and camera scanning (Tauri)
+- [x] Add barcode/SKU search input in ProductGrid header
+- [x] Backend: `GET /pos/products?barcode={code}` endpoint
+- [x] Frontend: Listen for scanner input (rapid keystrokes → barcode pattern detection)
+- [x] Auto-add to cart when single product matches barcode
+- [x] Handle no-match and multi-match cases (toast / selection modal)
+- [x] Support USB scanners (keyboard wedge)
+- [ ] ~~Camera scanning~~ — **Deferred to Tauri POS** (requires native camera access)
 
 #### 1.4 Return/Exchange Workflow ✅ DONE
 **Completed** — All items except GL reversal (deferred to Phase 5.4)
@@ -85,11 +86,11 @@
 - [x] Backend + frontend tests (10 tests, 28 assertions)
 - [x] Translations (en/fr) for frontend and backend PDF
 
-**Follow-up items (tracked for next iteration):**
-- [ ] **Duplicate product line matching** — `calculateReturnedQuantities()` (in both `ReceiptController` and `ReceiptReturnService`) matches return lines to original lines by `product_id + composite_item_id + product_code` and breaks on first match. If the original receipt has two lines with the same product (e.g., added twice at different prices or with different modifiers), returned quantities are attributed to the first matching line only. **Fix:** Add `original_line_id` FK to `pos_receipt_lines`, populate it during return creation, and use it for matching instead of product attributes.
-- [ ] **Return receipt `discount_amount` always zero** — `ReceiptReturnService` hardcodes receipt-level `discount_amount` to `'0.00'` even though line-level proportional discounts are calculated correctly. Should sum the line-level discounts to set the receipt total.
-- [ ] **Silent stock restore skip** — `ReceiptReturnService::restoreStock()` silently returns if no `StockLevel` record exists for the product/location. Should log a warning so missing stock records are visible in ops.
-- [ ] **Return flow test coverage** — Add tests for: `processReturn` endpoint validation (over-return rejection, voided receipt rejection, return-a-return rejection), multiple sequential returns on same receipt (cumulative quantities), and the duplicate product line edge case.
+**Follow-up items (all resolved):**
+- [x] **Duplicate product line matching** — Added `original_line_id` FK to `pos_receipt_lines`. Return lines now reference their original sale line directly. Falls back to product-attribute matching for legacy data.
+- [x] **Return receipt `discount_amount` always zero** — Now sums line-level proportional discounts instead of hardcoding `'0.00'`.
+- [x] **Silent stock restore skip** — `restoreStock()` now logs a warning when no `StockLevel` record exists.
+- [x] **Return flow test coverage** — 6 integration tests added: happy path, over-return rejection, voided receipt rejection, return-of-return rejection, cumulative quantities, and stock restoration.
 
 #### 1.5 ~~POS PIN Auth Frontend~~ — MOVED TO TAURI POS
 > PIN auth is for shared physical terminals (Tauri POS) where multiple
@@ -313,18 +314,19 @@
 Use this to plan concurrent agent sessions:
 
 ```
-Phase 1 (Retail MVP):
+Phase 1 (Retail MVP) ✅ COMPLETE:
 ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-│  Session A        │  │  Session B        │  │  Session C        │
-│  1.1 Customer  ✅ │  │  1.2 Z-Report     │  │  1.3 Barcode      │
-│  Management       │  │  Frontend         │  │  Scanner           │
-│  DONE             │  │                   │  │                   │
+│  Session A     ✅ │  │  Session B     ✅ │  │  Session C     ✅ │
+│  1.1 Customer     │  │  1.2 Z-Report     │  │  1.3 Barcode      │
+│  Management       │  │  Frontend + PDF   │  │  Scanner (USB)    │
+│  DONE             │  │  DONE             │  │  DONE             │
 └────────┬─────────┘  └──────────────────┘  └──────────────────┘
          │
          ▼
 ┌──────────────────┐
 │  Session D     ✅ │
 │  1.4 Returns      │
+│  + follow-ups     │
 │  DONE             │
 └──────────────────┘
 

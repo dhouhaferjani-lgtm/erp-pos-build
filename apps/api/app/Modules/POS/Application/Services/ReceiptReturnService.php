@@ -24,6 +24,7 @@ use App\Modules\POS\Domain\Terminal;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
@@ -123,6 +124,7 @@ final class ReceiptReturnService
             $vatAggregates = [];
             $subtotal = '0.00';
             $totalTax = '0.00';
+            $totalDiscount = '0.00';
 
             foreach ($validatedLines as $index => $returnLine) {
                 /** @var ReceiptLine $originalLine */
@@ -153,9 +155,11 @@ final class ReceiptReturnService
                 // Proportional discount
                 /** @var numeric-string $discountAmount */
                 $discountAmount = bcmul($ratio, (string) $originalLine->discount_amount, $this->scale());
+                $totalDiscount = bcadd($totalDiscount, $discountAmount, $this->scale());
 
                 $receiptLines[] = [
                     'line_number' => $index + 1,
+                    'original_line_id' => $originalLine->id,
                     'product_id' => $originalLine->product_id,
                     'composite_item_id' => $originalLine->composite_item_id,
                     'product_code' => $originalLine->product_code,
@@ -237,7 +241,7 @@ final class ReceiptReturnService
                 'cashier_name' => $cashier->name ?? 'Unknown',
                 'subtotal' => $subtotal,
                 'tax_amount' => $totalTax,
-                'discount_amount' => '0.00',
+                'discount_amount' => $totalDiscount,
                 'total' => $total,
                 'currency' => $currency,
                 'consumption_mode' => $originalReceipt->consumption_mode,
@@ -387,8 +391,10 @@ final class ReceiptReturnService
      * Calculate already-returned quantities per original line.
      *
      * Sums negative quantities from all non-voided return receipts referencing this original receipt.
+     * Uses original_line_id for precise matching when available, falls back to product attribute
+     * matching for legacy return lines created before original_line_id was added.
      *
-     * @return array<string, string> Map of original line product_id/composite_item_id to returned quantity
+     * @return array<string, string> Map of original line ID to returned quantity
      */
     private function calculateAlreadyReturnedQuantities(Receipt $originalReceipt): array
     {
@@ -403,8 +409,15 @@ final class ReceiptReturnService
                 // Return line quantities are negative, so we take the absolute value
                 $absQuantity = bcmul((string) $returnLine->quantity, '-1', 3);
 
-                // Match return lines to original lines by product_id/composite_item_id + product_code
-                // We need to find which original line this return line corresponds to
+                // Prefer direct FK match when available (new return lines)
+                if ($returnLine->original_line_id !== null) {
+                    $key = $returnLine->original_line_id;
+                    $returned[$key] = bcadd($returned[$key] ?? '0.000', $absQuantity, 3);
+
+                    continue;
+                }
+
+                // Legacy fallback: match by product attributes (breaks on duplicate products)
                 foreach ($originalReceipt->lines as $originalLine) {
                     $sameProduct = (
                         $originalLine->product_id === $returnLine->product_id
@@ -448,6 +461,11 @@ final class ReceiptReturnService
             ->first();
 
         if ($stockLevel === null) {
+            Log::warning('No stock level found for product during return stock restore', [
+                'product_id' => $productId,
+                'location_id' => $locationId,
+            ]);
+
             return;
         }
 

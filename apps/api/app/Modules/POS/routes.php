@@ -55,6 +55,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/pos/reports/x', [ReportController::class, 'generateXReport']);
     Route::post('/pos/reports/z', [ReportController::class, 'generateZReport']);
     Route::get('/pos/reports/z/{zNumber}', [ReportController::class, 'showZReport']);
+    Route::get('/pos/reports/z/{zNumber}/pdf', [ReportController::class, 'downloadPdf']);
     Route::get('/pos/reports/z', [ReportController::class, 'listZReports']);
     Route::post('/pos/reports/z/verify-chain', [ReportController::class, 'verifyZReportChain']);
 

@@ -15,6 +15,7 @@ use App\Modules\POS\Presentation\Resources\XReportResource;
 use App\Modules\POS\Presentation\Resources\ZReportResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Gate;
 
 /**
@@ -201,6 +202,34 @@ final class ReportController extends Controller
                 'total' => $zReports->total(),
             ],
         ]);
+    }
+
+    /**
+     * Download Z report as PDF.
+     *
+     * GET /api/v1/pos/reports/z/{zNumber}/pdf
+     */
+    public function downloadPdf(string $zNumber, Request $request): Response
+    {
+        Gate::authorize('pos.view_reports');
+
+        $request->validate([
+            'terminal_id' => ['required', 'string', 'uuid'],
+        ]);
+
+        $zReport = ZReport::where('terminal_id', $request->input('terminal_id'))
+            ->where('z_number', $zNumber)
+            ->firstOrFail();
+
+        // Verify terminal belongs to current company
+        if ($zReport->terminal->company_id !== $this->companyContext->getCompanyId()) {
+            abort(403, 'Z report does not belong to your company');
+        }
+
+        $pdf = $this->reportGenerationService->generatePdf($zReport);
+        $filename = $this->reportGenerationService->getZReportFilename($zReport);
+
+        return $pdf->download($filename);
     }
 
     /**

@@ -121,6 +121,31 @@ export async function fetchZReport(zNumber: string, terminalId: string): Promise
 }
 
 /**
+ * Download a Z-report as PDF.
+ *
+ * Backend: GET /api/v1/pos/reports/z/{zNumber}/pdf
+ *
+ * Triggers a file download in the browser by fetching the PDF as a blob
+ * and creating a temporary download link.
+ */
+export async function downloadZReportPdf(zNumber: string, terminalId: string): Promise<void> {
+  const response = await api.get(`/pos/reports/z/${zNumber}/pdf`, {
+    params: { terminal_id: terminalId },
+    responseType: 'blob',
+  })
+
+  const blob = new Blob([response.data as BlobPart], { type: 'application/pdf' })
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `z-report-Z${zNumber.padStart(4, '0')}.pdf`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  window.URL.revokeObjectURL(url)
+}
+
+/**
  * Verify the Z-report hash chain integrity for a terminal.
  *
  * Backend: POST /api/v1/pos/reports/z/verify-chain

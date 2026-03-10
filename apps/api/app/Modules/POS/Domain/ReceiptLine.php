@@ -24,6 +24,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $composite_item_id
  * @property string $product_code Product code at time of sale (immutable)
  * @property string $product_name Product name at time of sale (immutable)
+ * @property string|null $original_line_id FK to original sale line (set on return lines)
  * @property string|null $product_description
  * @property numeric-string $quantity
  * @property string $unit
@@ -38,6 +39,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon $created_at
  * @property Carbon $updated_at
  * @property-read Receipt $receipt
+ * @property-read ReceiptLine|null $originalLine
  * @property-read Product|null $product
  * @property-read CompositeItem|null $compositeItem
  */
@@ -55,6 +57,7 @@ class ReceiptLine extends Model
      */
     protected $fillable = [
         'receipt_id',
+        'original_line_id',
         'line_number',
         'product_id',
         'composite_item_id',
@@ -96,6 +99,18 @@ class ReceiptLine extends Model
     public function receipt(): BelongsTo
     {
         return $this->belongsTo(Receipt::class, 'receipt_id');
+    }
+
+    /**
+     * The original sale line this return line was created from.
+     *
+     * Only set on return receipt lines. Null for sale receipt lines.
+     *
+     * @return BelongsTo<ReceiptLine, $this>
+     */
+    public function originalLine(): BelongsTo
+    {
+        return $this->belongsTo(ReceiptLine::class, 'original_line_id');
     }
 
     /**

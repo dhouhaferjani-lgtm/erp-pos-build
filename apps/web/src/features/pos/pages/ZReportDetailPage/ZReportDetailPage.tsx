@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { fetchZReport, verifyZReportChain, type ZReportItem } from '../../api/reportApi'
+import { fetchZReport, verifyZReportChain, downloadZReportPdf, type ZReportItem } from '../../api/reportApi'
 import {
   ArrowLeft,
   Download,
@@ -26,6 +26,13 @@ export function ZReportDetailPage() {
     queryKey: ['pos', 'z-report', zNumber, terminalId],
     queryFn: () => fetchZReport(zNumber!, terminalId),
     enabled: !!zNumber && !!terminalId,
+  })
+
+  const downloadPdfMutation = useMutation({
+    mutationFn: () => downloadZReportPdf(zNumber!, terminalId),
+    onError: () => {
+      toast.error(t('common:errorMessages.generic'))
+    },
   })
 
   const verifyChainMutation = useMutation({
@@ -110,10 +117,15 @@ export function ZReportDetailPage() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => window.print()}
-            className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            onClick={() => downloadPdfMutation.mutate()}
+            disabled={downloadPdfMutation.isPending}
+            className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
           >
-            <Download className="h-4 w-4" />
+            {downloadPdfMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
             {t('pos:zReports.downloadPdf')}
           </button>
           <button

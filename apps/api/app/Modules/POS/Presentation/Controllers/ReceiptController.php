@@ -353,6 +353,8 @@ final class ReceiptController extends Controller
      * Calculate already-returned quantities per original line ID.
      *
      * Sums absolute quantities from non-voided return receipts.
+     * Uses original_line_id for precise matching when available, falls back to
+     * product attribute matching for legacy return lines.
      *
      * @return array<string, string> Map of original line ID to returned quantity
      */
@@ -364,6 +366,15 @@ final class ReceiptController extends Controller
             foreach ($returnReceipt->lines as $returnLine) {
                 $absQuantity = bcmul((string) $returnLine->quantity, '-1', 3);
 
+                // Prefer direct FK match when available (new return lines)
+                if ($returnLine->original_line_id !== null) {
+                    $key = $returnLine->original_line_id;
+                    $returned[$key] = bcadd($returned[$key] ?? '0.000', $absQuantity, 3);
+
+                    continue;
+                }
+
+                // Legacy fallback: match by product attributes
                 foreach ($receipt->lines as $originalLine) {
                     $sameProduct = (
                         $originalLine->product_id === $returnLine->product_id
