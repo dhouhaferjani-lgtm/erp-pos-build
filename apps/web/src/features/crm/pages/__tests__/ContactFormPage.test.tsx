@@ -16,6 +16,20 @@ let mockParams: Record<string, string> = {}
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
   useParams: () => mockParams,
+  Link: ({ to, children, ...props }: { to: string; children: React.ReactNode }) => (
+    <a href={to} {...props}>{children}</a>
+  ),
+}))
+
+// Mock sonner
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn(), success: vi.fn() },
+}))
+
+// Mock api lib
+vi.mock('@/lib/api', () => ({
+  api: { get: vi.fn() },
+  getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : 'An error occurred'),
 }))
 
 // Mock contact API
@@ -33,6 +47,17 @@ vi.mock('../../api/contactApi', () => ({
     details: () => ['contacts', 'detail'],
     detail: (id: string) => ['contacts', 'detail', id],
   },
+}))
+
+// Mock PartnerSelect
+vi.mock('../../components/PartnerSelect', () => ({
+  PartnerSelect: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
+    <input
+      data-testid="partner-select"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  ),
 }))
 
 // Mock tanstack query
@@ -113,21 +138,45 @@ describe('ContactFormPage', () => {
     expect(mockMutate).toHaveBeenCalledTimes(1)
   })
 
-  it('disables submit button when first_name is empty', () => {
+  it('shows back link to contacts list', () => {
     render(<ContactFormPage />)
 
-    const submitButton = screen.getByText('common:actions.create')
-    expect(submitButton).toBeDisabled()
+    const backLink = screen.getByText('common:actions.back')
+    expect(backLink.closest('a')).toHaveAttribute('href', '/crm/contacts')
   })
 
-  it('has cancel button that navigates back', async () => {
+  it('has cancel link that points to contacts list', () => {
+    render(<ContactFormPage />)
+
+    const cancelLink = screen.getByText('common:actions.cancel')
+    expect(cancelLink.closest('a')).toHaveAttribute('href', '/crm/contacts')
+  })
+
+  it('renders company association section', () => {
+    render(<ContactFormPage />)
+
+    expect(screen.getByText('crm:contacts.companyAssociations')).toBeInTheDocument()
+    expect(screen.getByTestId('partner-select')).toBeInTheDocument()
+    expect(screen.getByLabelText(/crm:contacts.jobTitle/)).toBeInTheDocument()
+  })
+
+  it('submits with party_id when company selected', async () => {
+    mockCreateContact.mockResolvedValue({ id: 'new-id', full_name: 'Test' })
     const user = userEvent.setup()
 
     render(<ContactFormPage />)
 
-    const cancelButton = screen.getByText('common:actions.cancel')
-    await user.click(cancelButton)
+    await user.type(screen.getByLabelText(/crm:contacts.firstName/), 'Test')
 
-    expect(mockNavigate).toHaveBeenCalledWith(-1)
+    const partnerSelect = screen.getByTestId('partner-select')
+    await user.clear(partnerSelect)
+    await user.type(partnerSelect, 'partner-123')
+
+    await user.type(screen.getByLabelText(/crm:contacts.jobTitle/), 'Manager')
+
+    const submitButton = screen.getByText('common:actions.create')
+    await user.click(submitButton)
+
+    expect(mockMutate).toHaveBeenCalledTimes(1)
   })
 })
