@@ -397,6 +397,9 @@ final class TerminalController extends Controller
             'current_year' => (int) now()->format('Y'),
             'is_active' => true,
             'activated_at' => now(),
+            'allow_line_discounts' => true,
+            'allow_transaction_discounts' => true,
+            'max_discount_percent' => '20.00',
         ]);
 
         return response()->json([

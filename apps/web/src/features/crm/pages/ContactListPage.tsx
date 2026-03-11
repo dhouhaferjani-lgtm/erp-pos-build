@@ -5,6 +5,9 @@ import { Search, UserPlus } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchContacts, contactKeys } from '../api/contactApi'
 import type { ContactFilters } from '../api/contactApi'
+import { Input } from '@/components/atoms/Input/Input'
+import { Button } from '@/components/atoms/Button/Button'
+import { Badge } from '@/components/atoms/Badge/Badge'
 
 export function ContactListPage() {
   const { t } = useTranslation(['crm', 'common'])
@@ -25,12 +28,11 @@ export function ContactListPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">{t('crm:contacts.title')}</h1>
-        <Link
-          to="/crm/contacts/new"
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          <UserPlus className="h-4 w-4" />
-          {t('crm:contacts.newContact')}
+        <Link to="/crm/contacts/new">
+          <Button variant="primary">
+            <UserPlus className="h-4 w-4 me-2" />
+            {t('crm:contacts.newContact')}
+          </Button>
         </Link>
       </div>
 
@@ -38,12 +40,12 @@ export function ContactListPage() {
       <div className="flex gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <input
+          <Input
             type="text"
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1) }}
             placeholder={t('common:actions.search')}
-            className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="pl-10"
           />
         </div>
       </div>
@@ -88,30 +90,24 @@ export function ContactListPage() {
                 <tr
                   key={contact.id}
                   className="cursor-pointer hover:bg-gray-50"
-                  onClick={() => { navigate(`/crm/contacts/${contact.id}`) }}
+                  onClick={() => { void navigate(`/crm/contacts/${contact.id}`) }}
                 >
                   <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-900">
                     {contact.full_name}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                    {contact.phone ?? '—'}
+                    {contact.phone ?? '\u2014'}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                    {contact.email ?? '—'}
+                    {contact.email ?? '\u2014'}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                    {contact.parties?.[0]?.name ?? '—'}
+                    {contact.parties?.[0]?.name ?? '\u2014'}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm">
-                    <span
-                      className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
-                        contact.is_active
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}
-                    >
+                    <Badge variant={contact.is_active ? 'success' : 'default'}>
                       {contact.is_active ? t('crm:contacts.filters.active') : t('crm:contacts.filters.inactive')}
-                    </span>
+                    </Badge>
                   </td>
                 </tr>
               ))
@@ -131,22 +127,22 @@ export function ContactListPage() {
             })}
           </p>
           <div className="flex gap-2">
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => { setPage(Math.max(1, page - 1)) }}
               disabled={page === 1}
-              className="rounded-lg border border-gray-300 px-3 py-1 text-sm disabled:opacity-50"
             >
               {t('common:actions.previous')}
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => { setPage(page + 1) }}
               disabled={page >= meta.last_page}
-              className="rounded-lg border border-gray-300 px-3 py-1 text-sm disabled:opacity-50"
             >
               {t('common:actions.next')}
-            </button>
+            </Button>
           </div>
         </div>
       )}

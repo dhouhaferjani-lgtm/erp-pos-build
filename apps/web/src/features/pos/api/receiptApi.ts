@@ -43,8 +43,13 @@ export interface CreateReceiptRequest {
     discount_reason?: string
   }>
   customer_id?: string
+  contact_id?: string
+  notes?: string
   transaction_discount_amount?: string
   transaction_discount_reason?: string
+  coupon_code?: string
+  loyalty_discount_amount?: string
+  loyalty_reward_id?: string
   consumption_mode?: string
 }
 

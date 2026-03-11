@@ -4,8 +4,8 @@ import type { Product } from '../molecules/ProductCard/ProductCard'
 import type { MenuModifierGroup } from './useActiveMenu'
 
 export interface FnBProduct extends Product {
-  sellableType: 'composite_item'
-  compositeItemId: string
+  sellableType: 'product' | 'composite_item'
+  compositeItemId?: string
   modifierGroups?: MenuModifierGroup[]
 }
 
@@ -28,14 +28,16 @@ export function useFnBProducts(options?: { enabled?: boolean }) {
 
       for (const item of category.items) {
         const fnbProduct: FnBProduct = {
-          id: item.composite_item_id,
+          id: item.sellable_id,
           name: item.name,
           sku: item.code,
           sale_price: item.effective_price,
           stock_quantity: 999, // F&B items are typically made-to-order
           category: category.name,
-          sellableType: 'composite_item',
-          compositeItemId: item.composite_item_id,
+          sellableType: item.sellable_type,
+        }
+        if (item.sellable_type === 'composite_item') {
+          fnbProduct.compositeItemId = item.sellable_id
         }
         if (item.image_url) {
           fnbProduct.image_url = item.image_url

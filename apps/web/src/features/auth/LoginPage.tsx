@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { LogIn, AlertCircle } from 'lucide-react'
 import { api, ensureCsrfCookie } from '../../lib/api'
 import { useAuthStore } from '../../stores/authStore'
+import { useProductConfig } from '../../contexts/ProductConfigContext'
 
 interface LoginFormData {
   email: string
@@ -39,6 +40,7 @@ export function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const setAuth = useAuthStore((state) => state.setAuth)
+  const { productName } = useProductConfig()
 
   const [formData, setFormData] = useState<LoginFormData>({
     email: '',
@@ -115,7 +117,7 @@ export function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <div>
-          <h1 className="text-3xl font-bold text-center text-gray-900">{t('common:appName')}</h1>
+          <h1 className="text-3xl font-bold text-center text-gray-900">{productName}</h1>
           <h2 className="mt-6 text-center text-xl font-semibold text-gray-700">
             {t('login.subtitle')}
           </h2>

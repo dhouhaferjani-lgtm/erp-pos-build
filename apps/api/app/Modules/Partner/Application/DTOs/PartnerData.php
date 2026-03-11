@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Partner\Application\DTOs;
 
+use App\Modules\Partner\Domain\Enums\ConsolidationFrequency;
 use App\Modules\Partner\Domain\Enums\CustomerCategory;
 use App\Modules\Partner\Domain\Enums\PartnerType;
+use App\Modules\Partner\Domain\Enums\PaymentTerms;
 use App\Modules\Partner\Domain\Partner;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
@@ -18,6 +20,14 @@ class PartnerData extends Data
         public string $name,
         public PartnerType $type,
         public ?CustomerCategory $customer_category,
+        public ?string $company_legal_name,
+        public ?string $business_registration_number,
+        public ?PaymentTerms $payment_terms,
+        public ?int $payment_terms_days,
+        public ?string $credit_limit,
+        public ?string $discount_percentage,
+        public bool $invoice_consolidation,
+        public ?ConsolidationFrequency $consolidation_frequency,
         public ?string $code,
         public ?string $email,
         public ?string $phone,
@@ -46,6 +56,14 @@ class PartnerData extends Data
             name: $partner->name,
             type: $partner->type,
             customer_category: $partner->customer_category,
+            company_legal_name: $partner->company_legal_name,
+            business_registration_number: $partner->business_registration_number,
+            payment_terms: $partner->payment_terms,
+            payment_terms_days: $partner->payment_terms_days,
+            credit_limit: $partner->credit_limit,
+            discount_percentage: $partner->discount_percentage,
+            invoice_consolidation: (bool) $partner->invoice_consolidation,
+            consolidation_frequency: $partner->consolidation_frequency,
             code: $partner->code,
             email: $partner->email,
             phone: $partner->phone,

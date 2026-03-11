@@ -3,18 +3,21 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import {
   X, CheckCircle, Loader2, Trash2, AlertTriangle,
-  Banknote, CreditCard, FileText, Building2, Wallet,
+  Banknote, CreditCard, FileText, Building2, Wallet, Tag,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
 import { POSButton } from '../../atoms/POSButton'
 import { ReceiptPrintButton } from '../../components/ReceiptPrintButton'
 import { useCompanySettings } from '../../hooks'
+import { useDiscountPermissions } from '../../hooks/useDiscountPermissions'
 import { useCurrency } from '@/hooks/useCurrency'
 import { fetchPaymentMethods } from '../../api/paymentMethodApi'
 import { fetchPaymentRepositories } from '../../api/paymentRepositoryApi'
 import type { CartItem } from '../../molecules/CartLineItem'
+import { TransactionDiscountInput, CouponCodeInput } from '../../molecules'
 import { LoyaltyRewardSelector } from '../../components/LoyaltyRewardSelector'
+import { Modal } from '@/components/organisms/Modal/Modal'
 import type { PaymentMethod as PaymentMethodType } from '../../api/paymentMethodApi'
 import type { PaymentRepository as PaymentRepositoryType } from '../../api/paymentRepositoryApi'
 
@@ -71,6 +74,14 @@ export interface AdvancedPaymentsModalProps {
   onComplete: (paymentData: PaymentData) => Promise<{ receiptId: string; receiptNumber: string }>
   touchOptimized?: boolean | undefined
   loyaltyEnrollmentId?: string | undefined
+  transactionDiscountAmount?: string | undefined
+  terminalCode?: string | undefined
+  transactionDiscount?: { amount: string; reason?: string } | undefined
+  onTransactionDiscountChange?: (discount?: { amount: string; reason?: string }) => void
+  couponCode?: string | null | undefined
+  onCouponApplied?: (code: string, discountAmount: string, promotionName: string) => void
+  onCouponRemoved?: () => void
+  selectedCustomerId?: string | undefined
 }
 
 export interface OverpaymentHandling {
@@ -107,12 +118,20 @@ export function AdvancedPaymentsModal({
   onComplete,
   touchOptimized = false,
   loyaltyEnrollmentId,
+  transactionDiscountAmount = '0',
+  terminalCode,
+  transactionDiscount,
+  onTransactionDiscountChange,
+  couponCode,
+  onCouponApplied,
+  onCouponRemoved,
+  selectedCustomerId,
 }: AdvancedPaymentsModalProps) {
   const { t } = useTranslation('pos')
   const { autoPrintReceipts } = useCompanySettings()
   const { currency, toFixed: toFixedCurrency } = useCurrency()
-  const [_discount, _setDiscount] = useState<DiscountData | null>(null)
-  const [_voucherCode, _setVoucherCode] = useState('')
+  const { permissions } = useDiscountPermissions(terminalCode)
+  const [showDiscountModal, setShowDiscountModal] = useState(false)
   const [completedReceipt, setCompletedReceipt] = useState<{ receiptId: string; receiptNumber: string } | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
 
@@ -140,31 +159,26 @@ export function AdvancedPaymentsModal({
 
   const isLoadingData = isLoadingMethods || isLoadingRepos
 
-  const { subtotal, tax, total } = useMemo(() => {
+  const { subtotal, discount, tax, total } = useMemo(() => {
     const subtotal = cartItems.reduce(
       (sum, item) => sum + parseFloat(item.line_total),
       0
     )
+    const discount = parseFloat(transactionDiscountAmount || '0')
+    const subtotalAfterDiscount = subtotal - discount
     const tax = cartItems.reduce(
       (sum, item) => sum + parseFloat(item.tax_amount || '0'),
       0
     )
-    let total = subtotal + tax
-
-    if (_discount) {
-      if (_discount.type === 'percentage') {
-        total = total * (1 - _discount.value / 100)
-      } else {
-        total = total - _discount.value
-      }
-    }
+    const total = subtotalAfterDiscount + tax
 
     return {
       subtotal: toFixedCurrency(subtotal),
+      discount: toFixedCurrency(discount),
       tax: toFixedCurrency(tax),
       total: toFixedCurrency(total),
     }
-  }, [cartItems, _discount, toFixedCurrency])
+  }, [cartItems, transactionDiscountAmount, toFixedCurrency])
 
   const activePaymentMethods = useMemo(
     () => paymentMethods.filter(m => m.is_active),
@@ -322,8 +336,7 @@ export function AdvancedPaymentsModal({
       })
 
     const paymentData: PaymentData = { methods }
-    if (_discount) paymentData.discount = _discount
-    if (_voucherCode) paymentData.voucherCode = _voucherCode
+    if (couponCode) paymentData.voucherCode = couponCode
     if (computedOverpaymentHandling) paymentData.overpaymentHandling = computedOverpaymentHandling
 
     void onComplete(paymentData)
@@ -674,7 +687,7 @@ export function AdvancedPaymentsModal({
                       </h3>
                       <LoyaltyRewardSelector
                         enrollmentId={loyaltyEnrollmentId}
-                        onRewardRedeemed={(rewardValue, rewardName) => {
+                        onRewardRedeemed={(rewardValue, rewardName, _rewardId) => {
                           void rewardName
                           void rewardValue
                         }}
@@ -770,7 +783,7 @@ export function AdvancedPaymentsModal({
 
               {/* Right: Order Summary */}
               <div className={cn(
-                'w-72 shrink-0 flex flex-col border-l',
+                'w-80 shrink-0 flex flex-col border-l',
                 colors.white,
                 borderColors.light
               )}>
@@ -779,7 +792,8 @@ export function AdvancedPaymentsModal({
                     {t('advancedPayments.cartSummary')}
                   </h3>
                 </div>
-                <div className="flex-1 overflow-y-auto px-4 py-3">
+                <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+                  {/* Cart Items */}
                   <div className="space-y-2">
                     {cartItems.map((item) => (
                       <div key={item.id} className="flex justify-between text-sm gap-2">
@@ -793,6 +807,61 @@ export function AdvancedPaymentsModal({
                       </div>
                     ))}
                   </div>
+
+                  {/* Transaction Discount */}
+                  {permissions?.canApplyTransactionDiscounts && onTransactionDiscountChange && (
+                    <div className={cn('border-t pt-3', borderColors.light)}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Tag className="w-3.5 h-3.5 text-gray-500" />
+                          <span className={cn('text-xs font-medium', textColors.secondary)}>
+                            {t('cart.transactionDiscount')}
+                          </span>
+                        </div>
+                        {transactionDiscount && parseFloat(transactionDiscount.amount) > 0 ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-red-600">
+                              -{toFixedCurrency(parseFloat(transactionDiscount.amount))} {currency}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => { setShowDiscountModal(true) }}
+                              className={cn('text-xs px-2 py-0.5 rounded border', borderColors.default, 'hover:bg-gray-50')}
+                            >
+                              {t('common:edit', { defaultValue: 'Edit' })}
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => { setShowDiscountModal(true) }}
+                            className={cn(
+                              'flex items-center gap-1 text-xs px-2 py-1 rounded-md border transition-colors',
+                              borderColors.default,
+                              'hover:bg-gray-50',
+                              textColors.secondary,
+                            )}
+                          >
+                            <Tag className="w-3 h-3" />
+                            {t('cart.addDiscount')}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Coupon Code */}
+                  {onCouponApplied && onCouponRemoved && (
+                    <div className={cn('border-t pt-3', borderColors.light)}>
+                      <CouponCodeInput
+                        subtotal={subtotal}
+                        {...(selectedCustomerId ? { customerId: selectedCustomerId } : {})}
+                        couponCode={couponCode ?? null}
+                        onCouponApplied={onCouponApplied}
+                        onCouponRemoved={onCouponRemoved}
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className={cn('px-4 py-3 border-t space-y-1.5', borderColors.light, colors.neutral[50])}>
                   <div className="flex justify-between text-xs">
@@ -803,11 +872,11 @@ export function AdvancedPaymentsModal({
                     <span className={textColors.tertiary}>{t('advancedPayments.tax')}</span>
                     <span className={cn('font-medium', textColors.primary)}>{tax} {currency}</span>
                   </div>
-                  {_discount && (
-                    <div className={cn('flex justify-between text-xs', textColors.success)}>
-                      <span>{t('advancedPayments.discount')}</span>
-                      <span className="font-medium">
-                        -{_discount.type === 'percentage' ? `${_discount.value.toString()}%` : `${_discount.value.toString()} ${currency}`}
+                  {parseFloat(discount) > 0 && (
+                    <div className="flex justify-between text-xs">
+                      <span className={textColors.tertiary}>{t('advancedPayments.discount')}</span>
+                      <span className="font-medium text-red-600">
+                        -{discount} {currency}
                       </span>
                     </div>
                   )}
@@ -876,6 +945,35 @@ export function AdvancedPaymentsModal({
           )}
         </div>
       </div>
+
+      {/* Transaction Discount Modal */}
+      {showDiscountModal && permissions && onTransactionDiscountChange && (
+        <Modal
+          isOpen={showDiscountModal}
+          onClose={() => { setShowDiscountModal(false) }}
+          title={t('cart.transactionDiscount')}
+          size="md"
+        >
+          <div className="p-4">
+            <TransactionDiscountInput
+              currentAmount={transactionDiscount?.amount ?? ''}
+              currentReason={transactionDiscount?.reason ?? ''}
+              subtotal={subtotal}
+              effectiveLimit={permissions.effectiveLimit}
+              requiresReason={permissions.requiresReason}
+              onApply={(amount, reason) => {
+                onTransactionDiscountChange({ amount, ...(reason ? { reason } : {}) })
+                setShowDiscountModal(false)
+              }}
+              onClear={() => {
+                onTransactionDiscountChange(undefined)
+                setShowDiscountModal(false)
+              }}
+              touchOptimized={touchOptimized}
+            />
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

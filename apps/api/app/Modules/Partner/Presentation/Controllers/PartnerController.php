@@ -9,6 +9,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Application\DTOs\PartnerData;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Partner\Domain\Services\TaxIdValidationService;
 use App\Modules\Partner\Presentation\Requests\CreatePartnerRequest;
 use App\Modules\Partner\Presentation\Requests\UpdatePartnerRequest;
 use App\Support\Traits\FiltersAndSorts;
@@ -25,6 +26,7 @@ class PartnerController extends Controller
 
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly TaxIdValidationService $taxIdValidationService,
     ) {}
 
     /**
@@ -283,10 +285,61 @@ class PartnerController extends Controller
             'job_title' => $contact->getAttribute('pivot')?->getAttribute('job_title'),
             'department' => $contact->getAttribute('pivot')?->getAttribute('department'),
             'is_primary' => (bool) ($contact->getAttribute('pivot')?->getAttribute('is_primary') ?? false),
+            'is_invoice_contact' => (bool) ($contact->getAttribute('pivot')?->getAttribute('is_invoice_contact') ?? false),
+            'is_delivery_contact' => (bool) ($contact->getAttribute('pivot')?->getAttribute('is_delivery_contact') ?? false),
         ]);
 
         return response()->json([
             'data' => $contacts,
+            'meta' => [
+                'timestamp' => now()->toIso8601String(),
+                'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
+            ],
+        ]);
+    }
+
+    /**
+     * Validate a partner's business registration / tax ID number.
+     */
+    public function validateTaxId(Request $request, string $partner): JsonResponse
+    {
+        $partnerModel = Partner::where('company_id', $this->companyContext->requireCompanyId())
+            ->where('id', $partner)
+            ->first();
+
+        if (! $partnerModel) {
+            return response()->json([
+                'error' => [
+                    'code' => 'PARTNER_NOT_FOUND',
+                    'message' => 'Partner not found',
+                ],
+                'meta' => [
+                    'timestamp' => now()->toIso8601String(),
+                    'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
+                ],
+            ], 404);
+        }
+
+        $countryCode = $partnerModel->country_code;
+        $registrationNumber = $partnerModel->business_registration_number;
+
+        if ($countryCode === null || $registrationNumber === null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'MISSING_DATA',
+                    'message' => 'Partner must have both country_code and business_registration_number set.',
+                ],
+                'meta' => [
+                    'timestamp' => now()->toIso8601String(),
+                    'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
+                ],
+            ], 422);
+        }
+
+        $result = $this->taxIdValidationService->validate($countryCode, $registrationNumber);
+
+        return response()->json([
+            'data' => $result->toArray(),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),

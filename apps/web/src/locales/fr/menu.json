@@ -36,5 +36,9 @@
   "confirmRemoveItem": "Retirer cet article de la catégorie ?",
   "allDay": "Toute la journee",
   "breakfast": "Petit-dejeuner",
-  "summer": "Ete"
+  "summer": "Ete",
+  "prepared": "Prepare",
+  "retail": "Vente directe",
+  "menuItems": "Articles du menu",
+  "products": "Produits"
 }

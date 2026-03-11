@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Partner\Presentation\Requests;
 
+use App\Modules\Partner\Domain\Enums\ConsolidationFrequency;
 use App\Modules\Partner\Domain\Enums\CustomerCategory;
 use App\Modules\Partner\Domain\Enums\PartnerType;
+use App\Modules\Partner\Domain\Enums\PaymentTerms;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Enum;
@@ -62,6 +64,24 @@ class CreatePartnerRequest extends FormRequest
                         $fail('The VAT number format is invalid for the selected country.');
                     }
                 },
+            ],
+            'company_legal_name' => ['nullable', 'string', 'max:255'],
+            'business_registration_number' => ['nullable', 'string', 'max:100'],
+            'payment_terms' => ['nullable', new Enum(PaymentTerms::class)],
+            'payment_terms_days' => [
+                'nullable',
+                'integer',
+                'min:1',
+                'max:365',
+                'required_if:payment_terms,custom',
+            ],
+            'credit_limit' => ['nullable', 'numeric', 'min:0', 'max:99999999999.9999'],
+            'discount_percentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'invoice_consolidation' => ['sometimes', 'boolean'],
+            'consolidation_frequency' => [
+                'nullable',
+                new Enum(ConsolidationFrequency::class),
+                Rule::requiredIf(fn (): bool => (bool) $this->input('invoice_consolidation')),
             ],
             'notes' => ['nullable', 'string', 'max:5000'],
             'street_address' => ['nullable', 'string', 'max:255'],

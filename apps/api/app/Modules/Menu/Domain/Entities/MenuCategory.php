@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Menu\Domain\Entities;
 
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
+use App\Modules\Product\Domain\Product;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -22,7 +23,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property-read Menu $menu
- * @property-read \Illuminate\Database\Eloquent\Collection<int, CompositeItem> $items
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, CompositeItem> $compositeItems
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, Product> $products
  */
 class MenuCategory extends Model
 {
@@ -71,9 +73,21 @@ class MenuCategory extends Model
     /**
      * @return BelongsToMany<CompositeItem, $this, MenuCategoryItem, 'pivot'>
      */
-    public function items(): BelongsToMany
+    public function compositeItems(): BelongsToMany
     {
         return $this->belongsToMany(CompositeItem::class, 'menu_category_items')
+            ->using(MenuCategoryItem::class)
+            ->withPivot(['id', 'override_price', 'display_order', 'is_available'])
+            ->withTimestamps()
+            ->orderByPivot('display_order');
+    }
+
+    /**
+     * @return BelongsToMany<Product, $this, MenuCategoryItem, 'pivot'>
+     */
+    public function products(): BelongsToMany
+    {
+        return $this->belongsToMany(Product::class, 'menu_category_items')
             ->using(MenuCategoryItem::class)
             ->withPivot(['id', 'override_price', 'display_order', 'is_available'])
             ->withTimestamps()

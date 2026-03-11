@@ -1,0 +1,220 @@
+{
+  "title": "Loyalty Programs",
+  "subtitle": "Manage loyalty programs, earning rules, rewards, and tiers",
+  "membersTitle": "Loyalty Members",
+  "membersSubtitle": "Manage loyalty program members and enrollments",
+
+  "programs": {
+    "create": "Create Program",
+    "edit": "Edit Program",
+    "detail": "Program Details",
+    "noPrograms": "No loyalty programs yet",
+    "noProgramsDescription": "Create your first loyalty program to start rewarding customers",
+    "deleteConfirm": "Are you sure you want to delete this program? This action cannot be undone.",
+    "activateConfirm": "Are you sure you want to activate this program? It will become available to customers.",
+    "deactivateConfirm": "Are you sure you want to deactivate this program? Customers will no longer earn or redeem points."
+  },
+
+  "members": {
+    "create": "Add Member",
+    "edit": "Edit Member",
+    "detail": "Member Details",
+    "noMembers": "No loyalty members yet",
+    "noMembersDescription": "Add your first member or enroll customers at the POS",
+    "deleteConfirm": "Are you sure you want to remove this member?",
+    "profile": "Profile",
+    "enrollments": "Enrollments",
+    "transactions": "Transaction History",
+    "noTransactions": "No transactions yet",
+    "noEnrollments": "Not enrolled in any programs"
+  },
+
+  "earningRules": {
+    "title": "Earning Rules",
+    "create": "Add Earning Rule",
+    "edit": "Edit Earning Rule",
+    "noRules": "No earning rules configured",
+    "noRulesDescription": "Add earning rules to define how customers earn points",
+    "deleteConfirm": "Are you sure you want to delete this earning rule?",
+    "activateConfirm": "Activate this earning rule?",
+    "deactivateConfirm": "Deactivate this earning rule?"
+  },
+
+  "rewards": {
+    "title": "Rewards",
+    "create": "Add Reward",
+    "edit": "Edit Reward",
+    "noRewards": "No rewards configured",
+    "noRewardsDescription": "Add rewards that customers can redeem with their points",
+    "deleteConfirm": "Are you sure you want to delete this reward?",
+    "activateConfirm": "Activate this reward?",
+    "deactivateConfirm": "Deactivate this reward?"
+  },
+
+  "tiers": {
+    "title": "Tiers",
+    "create": "Add Tier",
+    "edit": "Edit Tier",
+    "noTiers": "No tiers configured",
+    "noTiersDescription": "Add tiers to create different levels of membership",
+    "deleteConfirm": "Are you sure you want to delete this tier?"
+  },
+
+  "stampCards": {
+    "title": "Stamp Cards",
+    "create": "Add Stamp Card",
+    "edit": "Edit Stamp Card",
+    "noCards": "No stamp cards configured",
+    "noCardsDescription": "Add stamp cards for buy-X-get-Y style rewards",
+    "deleteConfirm": "Are you sure you want to delete this stamp card?"
+  },
+
+  "fields": {
+    "name": "Name",
+    "programType": "Program Type",
+    "status": "Status",
+    "currency": "Currency",
+    "startDate": "Start Date",
+    "endDate": "End Date",
+    "termsAndConditions": "Terms & Conditions",
+    "phone": "Phone",
+    "email": "Email",
+    "firstName": "First Name",
+    "lastName": "Last Name",
+    "dateOfBirth": "Date of Birth",
+    "ruleType": "Rule Type",
+    "priority": "Priority",
+    "rewardValue": "Reward Value",
+    "rewardType": "Reward Type",
+    "conditions": "Conditions",
+    "minPurchaseAmount": "Min Purchase Amount",
+    "maxEarnPerTransaction": "Max Earn Per Transaction",
+    "maxEarnPerDay": "Max Earn Per Day",
+    "pointsCost": "Points Cost",
+    "description": "Description",
+    "maxDiscount": "Max Discount",
+    "minOrderValue": "Min Order Value",
+    "quantityAvailable": "Quantity Available",
+    "quantityPerMember": "Per Member Limit",
+    "level": "Level",
+    "qualificationType": "Qualification Type",
+    "qualificationThreshold": "Qualification Threshold",
+    "qualificationPeriodMonths": "Qualification Period (Months)",
+    "earningMultiplier": "Earning Multiplier",
+    "stampsRequired": "Stamps Required",
+    "stampsPerItem": "Stamps Per Item",
+    "rewardId": "Reward",
+    "maxActiveCards": "Max Active Cards",
+    "expiryDays": "Expiry (Days)",
+    "currentBalance": "Balance",
+    "lifetimeEarned": "Lifetime Earned",
+    "lifetimeRedeemed": "Lifetime Redeemed",
+    "enrolledAt": "Enrolled At",
+    "amount": "Amount",
+    "createdAt": "Created"
+  },
+
+  "programTypes": {
+    "points": "Points",
+    "stamps": "Stamps",
+    "visits": "Visits",
+    "cashback": "Cashback",
+    "hybrid": "Hybrid"
+  },
+
+  "statuses": {
+    "draft": "Draft",
+    "active": "Active",
+    "paused": "Paused",
+    "archived": "Archived",
+    "inactive": "Inactive",
+    "suspended": "Suspended",
+    "opted_out": "Opted Out"
+  },
+
+  "ruleTypes": {
+    "spend": "Spend",
+    "item": "Item",
+    "category": "Category",
+    "quantity": "Quantity",
+    "visit": "Visit",
+    "threshold": "Threshold",
+    "time": "Time"
+  },
+
+  "rewardTypes": {
+    "free_item": "Free Item",
+    "discount_amount": "Discount (Amount)",
+    "discount_percent": "Discount (%)",
+    "choice": "Choice",
+    "credit": "Credit",
+    "external": "External"
+  },
+
+  "qualificationTypes": {
+    "spend": "Spend",
+    "points_earned": "Points Earned",
+    "visits": "Visits",
+    "manual": "Manual"
+  },
+
+  "transactions": {
+    "title": "Transaction History",
+    "noTransactions": "No transactions yet",
+    "date": "Date",
+    "type": "Type",
+    "points": "Points",
+    "balanceAfter": "Balance After",
+    "description": "Description"
+  },
+
+  "transactionTypes": {
+    "earn": "Earn",
+    "redeem": "Redeem",
+    "adjust": "Adjustment",
+    "expire": "Expired",
+    "transfer_in": "Transfer In",
+    "transfer_out": "Transfer Out"
+  },
+
+  "actions": {
+    "activate": "Activate",
+    "deactivate": "Deactivate",
+    "delete": "Delete",
+    "enroll": "Enroll in Program",
+    "optOut": "Opt Out",
+    "reactivate": "Reactivate",
+    "adjustPoints": "Adjust Points",
+    "activated": "Successfully activated",
+    "deactivated": "Successfully deactivated",
+    "deleted": "Successfully deleted",
+    "created": "Successfully created",
+    "updated": "Successfully updated",
+    "enrolled": "Successfully enrolled",
+    "optedOut": "Successfully opted out",
+    "reactivated": "Successfully reactivated",
+    "pointsAdjusted": "Points adjusted successfully"
+  },
+
+  "sections": {
+    "overview": "Overview",
+    "basicInfo": "Basic Information",
+    "schedule": "Schedule",
+    "earningRules": "Earning Rules",
+    "rewards": "Rewards",
+    "tiers": "Tiers",
+    "stampCards": "Stamp Cards"
+  },
+
+  "enroll": {
+    "title": "Enroll in Program",
+    "selectProgram": "Select a program",
+    "noActivePrograms": "No active programs available"
+  },
+
+  "adjust": {
+    "title": "Adjust Points",
+    "description": "Reason for adjustment",
+    "positiveForAdd": "Use positive number to add, negative to deduct"
+  }
+}

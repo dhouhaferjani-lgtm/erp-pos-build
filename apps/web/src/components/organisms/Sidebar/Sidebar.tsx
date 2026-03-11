@@ -199,6 +199,8 @@ const navigation: NavModule[] = [
       { key: 'receipts', href: '/pos/receipts', icon: Receipt, module: 'pos' },
       { key: 'promotions', href: '/pos/promotions', icon: Tag, module: 'promotions' },
       { key: 'coupons', href: '/pos/coupons', icon: Ticket, module: 'coupons' },
+      { key: 'loyaltyPrograms', href: '/pos/loyalty/programs', icon: Award, module: 'loyalty' },
+      { key: 'loyaltyMembers', href: '/pos/loyalty/members', icon: Users, module: 'loyalty' },
     ],
   },
   {

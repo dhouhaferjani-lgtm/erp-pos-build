@@ -116,7 +116,12 @@
     "customerEmail": "Email",
     "customerNameRequired": "Customer name is required",
     "customerCreated": "Customer \"{{name}}\" created",
-    "customerCreateFailed": "Failed to create customer"
+    "customerCreateFailed": "Failed to create customer",
+    "couponCode": "Coupon code",
+    "applyCoupon": "Apply",
+    "removeCoupon": "Remove coupon",
+    "couponApplied": "Coupon applied",
+    "totalSavings": "Total savings"
   },
   "products": {
     "searchPlaceholder": "Search by name, SKU, or barcode...",
@@ -144,7 +149,7 @@
     "loadingTerminals": "Loading terminals...",
     "lastUsed": "Last used"
   },
-  "demo": {
+  "transactions": {
     "noLocation": "No Location Selected",
     "noLocationDescription": "Please select a location from the top bar to start using the POS.",
     "loading": {
@@ -167,6 +172,26 @@
     },
     "toasts": {
       "transactionCompleted": "Transaction completed - Receipt #{{number}}"
+    }
+  },
+  "productInfo": {
+    "title": "Product Information",
+    "tabs": {
+      "details": "Details",
+      "stock": "Stock Levels",
+      "parapharmacy": "Product Information"
+    },
+    "fields": {
+      "sku": "SKU",
+      "category": "Category",
+      "price": "Price",
+      "priceWithTax": "Price incl. Tax",
+      "taxRate": "Tax Rate",
+      "stock": "Stock",
+      "available": "Available",
+      "reserved": "Reserved",
+      "total": "Total",
+      "location": "Location"
     }
   },
   "shiftHistory": {
@@ -294,7 +319,10 @@
     "discountExceedsSubtotal": "Discount cannot exceed subtotal",
     "receiptCreationFailed": "Failed to create receipt",
     "paymentProcessingFailed": "Payment processing failed",
-    "invalidPaymentData": "Invalid payment data - please check all fields"
+    "invalidPaymentData": "Invalid payment data - please check all fields",
+    "invalidCoupon": "Invalid coupon code",
+    "expiredCoupon": "This coupon has expired",
+    "couponMinimumNotMet": "Minimum order amount not met for this coupon"
   },
   "xReport": {
     "title": "X Report",
@@ -429,5 +457,101 @@
     "success": "Return processed successfully",
     "error": "Failed to process return",
     "receiptNotFound": "Receipt not found"
+  },
+  "heldOrders": {
+    "title": "Held Orders",
+    "holdOrder": "Hold Order",
+    "recallOrder": "Recall",
+    "discardOrder": "Discard",
+    "label": "Label (optional)",
+    "labelPlaceholder": "e.g., John, Table 5...",
+    "holdSuccess": "Order held successfully",
+    "recallSuccess": "Order recalled to cart",
+    "discardSuccess": "Held order discarded",
+    "holdFailed": "Failed to hold order",
+    "recallFailed": "Failed to recall order",
+    "discardFailed": "Failed to discard order",
+    "confirmDiscard": "Discard this held order?",
+    "noHeldOrders": "No held orders",
+    "noHeldOrdersDescription": "Hold a cart to save it for later",
+    "unnamed": "Unnamed Order",
+    "lineCount": "{{count}} item(s)",
+    "heldAgo": "Held {{time}} ago",
+    "expiresIn": "Expires in {{time}}",
+    "expired": "Expired",
+    "badge": "{{count}} held"
+  },
+  "orders": {
+    "title": "Orders",
+    "newOrder": "New Order",
+    "orderNumber": "Order #{{number}}",
+    "ticketNumber": "Ticket #{{number}}",
+    "status": {
+      "open": "Open",
+      "sent_to_kitchen": "Sent to Kitchen",
+      "ready": "Ready",
+      "closed": "Closed",
+      "cancelled": "Cancelled"
+    },
+    "lineStatus": {
+      "pending": "Pending",
+      "sent": "Sent",
+      "preparing": "Preparing",
+      "ready": "Ready",
+      "served": "Served",
+      "cancelled": "Cancelled"
+    },
+    "actions": {
+      "sendToKitchen": "Send to Kitchen",
+      "closeOrder": "Close Order",
+      "cancelOrder": "Cancel Order",
+      "addLine": "Add Item",
+      "modifyLine": "Modify",
+      "removeLine": "Remove"
+    },
+    "confirmSend": "Send this order to kitchen?",
+    "confirmClose": "Close this order and create receipt?",
+    "confirmCancel": "Cancel this order?",
+    "noOrders": "No active orders",
+    "noOrdersDescription": "Create a new order to get started",
+    "board": {
+      "open": "Open",
+      "sent": "Sent to Kitchen",
+      "ready": "Ready"
+    },
+    "detail": {
+      "customer": "Customer",
+      "cashier": "Cashier",
+      "terminal": "Terminal",
+      "openedAt": "Opened At",
+      "consumption": "Consumption Mode",
+      "notes": "Notes",
+      "items": "Items",
+      "subtotal": "Subtotal",
+      "tax": "Tax",
+      "discount": "Discount",
+      "total": "Total"
+    },
+    "toasts": {
+      "created": "Order created",
+      "lineAdded": "Item added to order",
+      "lineModified": "Item modified",
+      "lineRemoved": "Item removed",
+      "sentToKitchen": "Order sent to kitchen",
+      "closed": "Order closed — Receipt created",
+      "cancelled": "Order cancelled",
+      "createFailed": "Failed to create order",
+      "sendFailed": "Failed to send to kitchen",
+      "closeFailed": "Failed to close order"
+    },
+    "specialInstructions": "Special Instructions",
+    "specialInstructionsPlaceholder": "e.g., No onions, extra cheese...",
+    "modifiers": "Modifiers",
+    "quantity": "Qty",
+    "filters": {
+      "allStatuses": "All Statuses",
+      "terminal": "Terminal",
+      "shift": "Shift"
+    }
   }
 }

@@ -7,9 +7,14 @@ namespace App\Modules\Loyalty\Presentation\Controllers;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Loyalty\Application\DTOs\EnrollmentData;
 use App\Modules\Loyalty\Application\DTOs\LoyaltyMemberData;
+use App\Modules\Loyalty\Application\DTOs\TransactionData;
 use App\Modules\Loyalty\Application\Services\MemberEnrollmentService;
+use App\Modules\Loyalty\Application\Services\PointAdjustmentService;
+use App\Modules\Loyalty\Domain\Entities\Enrollment;
+use App\Modules\Loyalty\Domain\Enums\EnrollmentStatus;
 use App\Modules\Loyalty\Domain\Enums\MemberStatus;
 use App\Modules\Loyalty\Domain\Entities\LoyaltyMember;
+use App\Modules\Loyalty\Presentation\Requests\AdjustPointsRequest;
 use App\Modules\Loyalty\Presentation\Requests\CreateMemberRequest;
 use App\Modules\Loyalty\Presentation\Requests\EnrollMemberRequest;
 use App\Modules\Loyalty\Presentation\Requests\UpdateMemberRequest;
@@ -25,6 +30,7 @@ class LoyaltyMemberController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly MemberEnrollmentService $enrollmentService,
+        private readonly PointAdjustmentService $adjustmentService,
     ) {}
 
     /**
@@ -166,6 +172,70 @@ class LoyaltyMemberController extends Controller
         return response()->json([
             'data' => $member->enrollments->map(fn ($enrollment) => EnrollmentData::fromModel($enrollment)),
         ]);
+    }
+
+    /**
+     * List transactions for an enrollment
+     */
+    public function transactions(Request $request, string $memberId, string $enrollmentId): JsonResponse
+    {
+        $member = LoyaltyMember::findOrFail($memberId);
+        $enrollment = Enrollment::where('id', $enrollmentId)
+            ->where('member_id', $member->id)
+            ->firstOrFail();
+
+        $perPage = min($request->integer('per_page', 20), 100);
+        $transactions = $enrollment->transactions()->latest('created_at')->paginate($perPage);
+
+        return response()->json([
+            'data' => $transactions->map(fn ($tx) => TransactionData::fromModel($tx)),
+            'meta' => [
+                'current_page' => $transactions->currentPage(),
+                'per_page' => $transactions->perPage(),
+                'total' => $transactions->total(),
+                'last_page' => $transactions->lastPage(),
+            ],
+        ]);
+    }
+
+    /**
+     * Adjust points for an enrollment
+     */
+    public function adjust(AdjustPointsRequest $request, string $memberId, string $enrollmentId): JsonResponse
+    {
+        $member = LoyaltyMember::findOrFail($memberId);
+        $enrollment = Enrollment::where('id', $enrollmentId)
+            ->where('member_id', $member->id)
+            ->firstOrFail();
+
+        if ($enrollment->status !== EnrollmentStatus::Active) {
+            return response()->json([
+                'message' => 'Enrollment must be active to adjust points',
+            ], 422);
+        }
+
+        /** @var \App\Modules\Identity\Domain\User $user */
+        $user = $request->user();
+
+        /** @var numeric-string $points */
+        $points = (string) $request->input('points');
+
+        try {
+            $result = $this->adjustmentService->adjust(
+                $enrollment,
+                $points,
+                (string) $request->input('reason'),
+                $user,
+            );
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'data' => $result,
+        ], 201);
     }
 
     /**

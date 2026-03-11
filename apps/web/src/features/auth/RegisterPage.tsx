@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { UserPlus, AlertCircle, Building2, User, CheckCircle, ChevronRight, ChevronLeft, Store } from 'lucide-react'
 import { api, ensureCsrfCookie } from '../../lib/api'
 import { useAuthStore } from '../../stores/authStore'
+import { useProductConfig } from '../../contexts/ProductConfigContext'
 
 interface Country {
   code: string
@@ -68,6 +69,7 @@ export function RegisterPage() {
   const { t } = useTranslation(['auth', 'validation', 'common'])
   const navigate = useNavigate()
   const setAuth = useAuthStore((state) => state.setAuth)
+  const { productName } = useProductConfig()
 
   const [currentStep, setCurrentStep] = useState<WizardStep>('account')
   const [formData, setFormData] = useState<RegisterFormData>({
@@ -567,7 +569,7 @@ export function RegisterPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-2xl w-full space-y-8">
         <div>
-          <h1 className="text-3xl font-bold text-center text-gray-900">{t('common:appName')}</h1>
+          <h1 className="text-3xl font-bold text-center text-gray-900">{productName}</h1>
           <h2 className="mt-6 text-center text-xl font-semibold text-gray-700">
             {t('register.title')}
           </h2>

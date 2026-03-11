@@ -22,7 +22,7 @@ export function CompositeItemListPage() {
         <h1 className="text-2xl font-semibold text-gray-900">{getLabel('compositeItems')}</h1>
         <Link
           to="/catalog/composite-items/new"
-          className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+          className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
         >
           <Plus className="mr-1.5 h-4 w-4" />
           {t('catalog:createCompositeItem')}
@@ -39,7 +39,7 @@ export function CompositeItemListPage() {
           placeholder={t('common:search')}
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-          className="block w-full rounded-md border-gray-300 pl-10 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+          className="block w-full rounded-md border-gray-300 pl-10 text-sm focus:border-blue-500 focus:ring-blue-500"
         />
       </div>
 
@@ -65,7 +65,7 @@ export function CompositeItemListPage() {
               {items.map((item: CompositeItemData) => (
                 <tr key={item.id} className="hover:bg-gray-50">
                   <td className="whitespace-nowrap px-3 py-4 text-sm">
-                    <Link to={`/catalog/composite-items/${item.id}/edit`} className="text-indigo-600 hover:text-indigo-900">
+                    <Link to={`/catalog/composite-items/${item.id}/edit`} className="text-blue-600 hover:text-blue-700">
                       {item.code}
                     </Link>
                   </td>

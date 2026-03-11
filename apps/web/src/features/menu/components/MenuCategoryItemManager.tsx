@@ -1,10 +1,9 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, ChevronDown, ChevronRight, Package } from 'lucide-react'
+import { Plus, Trash2, ChevronDown, ChevronRight, Package, Coffee } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { Input, Button } from '@/components/atoms'
-import { tokens } from '@/lib/designTokens'
 import { api } from '@/lib/api'
 import { useAddMenuCategoryItem, useRemoveMenuCategoryItem } from '../hooks/useMenus'
 import type { MenuCategoryData, MenuItemData } from '../types/menu'
@@ -13,29 +12,36 @@ interface MenuCategoryItemManagerProps {
   category: MenuCategoryData
 }
 
-interface CompositeItemOption {
+interface SellableOption {
   id: string
   name: string
-  code: string
-  base_price: string
+  code?: string
+  sku?: string
+  base_price?: string
+  sale_price?: string | null
 }
 
+type SearchTab = 'composite_item' | 'product'
+
 export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerProps) {
-  const { t } = useTranslation(['menu', 'common'])
+  const { t } = useTranslation(['menu', 'common', 'catalog'])
   const [isExpanded, setIsExpanded] = useState(false)
   const [showAddForm, setShowAddForm] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [overridePrice, setOverridePrice] = useState('')
+  const [searchTab, setSearchTab] = useState<SearchTab>('composite_item')
 
   const addItemMutation = useAddMenuCategoryItem()
   const removeItemMutation = useRemoveMenuCategoryItem()
 
+  const endpoint = searchTab === 'composite_item' ? '/composite-items' : '/products'
+
   const { data: searchResults, isLoading: isSearching } = useQuery({
-    queryKey: ['composite-items-search', searchQuery],
+    queryKey: [searchTab + '-search', searchQuery],
     queryFn: async () => {
       const params = new URLSearchParams({ per_page: '10' })
       if (searchQuery) params.append('search', searchQuery)
-      const response = await api.get<{ data: CompositeItemOption[] }>(`/composite-items?${params}`)
+      const response = await api.get<{ data: SellableOption[] }>(`${endpoint}?${params}`)
       return response.data.data
     },
     enabled: showAddForm,
@@ -43,16 +49,17 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
   })
 
   const items = category.items ?? []
-  const existingItemIds = new Set(items.map((item) => item.composite_item_id))
+  const existingItemIds = new Set(items.map((item) => item.sellable_id))
   const availableItems = (searchResults ?? []).filter((ci) => !existingItemIds.has(ci.id))
 
-  const handleAddItem = (compositeItemId: string) => {
+  const handleAddItem = (sellableId: string) => {
     addItemMutation.mutate(
       {
         categoryId: category.id,
         data: {
-          composite_item_id: compositeItemId,
-          override_price: overridePrice ? Number(overridePrice) : undefined,
+          sellable_type: searchTab,
+          sellable_id: sellableId,
+          override_price: overridePrice ? Number(overridePrice) : null,
         },
       },
       {
@@ -64,10 +71,10 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
     )
   }
 
-  const handleRemoveItem = (compositeItemId: string) => {
+  const handleRemoveItem = (itemId: string) => {
     if (!window.confirm(t('menu:confirmRemoveItem'))) return
     removeItemMutation.mutate(
-      { categoryId: category.id, compositeItemId },
+      { categoryId: category.id, itemId },
       { onSuccess: () => toast.success(t('common:deleted')) }
     )
   }
@@ -107,11 +114,22 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
                   className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2"
                 >
                   <div className="flex items-center gap-3">
-                    <Package className="h-4 w-4 text-gray-400" />
+                    {item.sellable_type === 'composite_item' ? (
+                      <Coffee className="h-4 w-4 text-amber-500" />
+                    ) : (
+                      <Package className="h-4 w-4 text-gray-400" />
+                    )}
                     <div>
                       <span className="text-sm font-medium text-gray-900">{item.name}</span>
                       <span className="ml-2 text-xs text-gray-500">({item.code})</span>
                     </div>
+                    <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-xs ${
+                      item.sellable_type === 'composite_item'
+                        ? 'bg-amber-50 text-amber-700'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {item.sellable_type === 'composite_item' ? t('menu:prepared') : t('menu:retail')}
+                    </span>
                   </div>
                   <div className="flex items-center gap-4">
                     <div className="text-sm text-gray-600">
@@ -135,7 +153,7 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation()
-                        handleRemoveItem(item.composite_item_id)
+                        handleRemoveItem(item.id)
                       }}
                       className="text-gray-400 hover:text-red-500"
                       disabled={removeItemMutation.isPending}
@@ -151,6 +169,34 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
           {/* Add item form */}
           {showAddForm ? (
             <div className="rounded-md border border-blue-200 bg-blue-50 p-3 space-y-3">
+              {/* Type toggle tabs */}
+              <div className="flex gap-1 rounded-md bg-blue-100 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => { setSearchTab('composite_item'); setSearchQuery('') }}
+                  className={`flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors ${
+                    searchTab === 'composite_item'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                >
+                  <Coffee className="mr-1 inline h-3 w-3" />
+                  {t('menu:menuItems')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setSearchTab('product'); setSearchQuery('') }}
+                  className={`flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors ${
+                    searchTab === 'product'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                >
+                  <Package className="mr-1 inline h-3 w-3" />
+                  {t('menu:products')}
+                </button>
+              </div>
+
               <div className="flex items-center gap-2">
                 <Input
                   value={searchQuery}
@@ -183,14 +229,16 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
                     >
                       <span>
                         <span className="font-medium text-gray-900">{ci.name}</span>
-                        <span className="ml-2 text-gray-500">({ci.code})</span>
+                        <span className="ml-2 text-gray-500">({ci.code ?? ci.sku})</span>
                       </span>
-                      <span className="text-gray-600">{ci.base_price}</span>
+                      <span className="text-gray-600">{ci.base_price ?? ci.sale_price}</span>
                     </button>
                   ))}
                 </div>
               ) : searchQuery ? (
-                <p className="text-sm text-gray-500 text-center">{t('catalog:noCompositeItems')}</p>
+                <p className="text-sm text-gray-500 text-center">
+                  {searchTab === 'composite_item' ? t('catalog:noCompositeItems') : t('common:noResults')}
+                </p>
               ) : null}
 
               <div className="flex justify-end">

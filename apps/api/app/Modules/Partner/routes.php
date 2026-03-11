@@ -37,6 +37,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:partners.delete')
         ->name('partners.destroy');
 
+    Route::post('partners/{partner}/validate-tax-id', [PartnerController::class, 'validateTaxId'])
+        ->middleware('can:partners.update')
+        ->name('partners.validate-tax-id');
+
     Route::get('partners/{partner}/tax-status', [PartnerController::class, 'taxStatus'])
         ->middleware('can:partners.view')
         ->name('partners.tax-status');

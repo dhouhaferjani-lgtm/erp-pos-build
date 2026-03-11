@@ -27,6 +27,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Menu\Domain\Entities\Menu;
 use App\Modules\Menu\Domain\Entities\MenuCategory;
+use App\Modules\Menu\Domain\Entities\MenuCategoryItem;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -63,6 +64,9 @@ class CoffeeShopSeeder extends Seeder
 
     /** @var array<string, CompositeItem> */
     private array $compositeItems = [];
+
+    /** @var array<string, Product> */
+    private array $retailProducts = [];
 
     /** @var array<string, ModifierGroup> */
     private array $modifierGroups = [];
@@ -106,6 +110,11 @@ class CoffeeShopSeeder extends Seeder
         $this->command->info('Creating composite items with recipes...');
         $this->seedCompositeItems();
         $this->command->info('Created ' . count($this->compositeItems) . ' composite items');
+
+        // 6b. Retail products (sold as-is, no recipe)
+        $this->command->info('Creating retail products...');
+        $this->seedRetailProducts();
+        $this->command->info('Created ' . count($this->retailProducts) . ' retail products');
 
         // 7. Modifier groups
         $this->command->info('Creating modifier groups...');
@@ -449,6 +458,48 @@ class CoffeeShopSeeder extends Seeder
 
             $this->compositeItems[$data['code']] = $item;
         }
+
+        // Add a recipe-less "Daily Special" composite item
+        $dailySpecial = CompositeItem::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'DAILY',
+            'name' => 'Daily Special',
+            'vertical_type' => VerticalType::Fnb,
+            'base_price' => 8.000,
+            'production_type' => ProductionType::MadeToOrder,
+            'tax_rate' => '7.00',
+            'is_active' => true,
+            'is_available' => true,
+            'display_order' => $order,
+        ]);
+        $this->compositeItems['DAILY'] = $dailySpecial;
+    }
+
+    private function seedRetailProducts(): void
+    {
+        $retailData = [
+            ['code' => 'RET-WATER', 'name' => 'Bottled Water', 'price' => 1.500, 'cost' => 0.600],
+            ['code' => 'RET-JUICE', 'name' => 'Bottled Juice', 'price' => 3.000, 'cost' => 1.500],
+            ['code' => 'RET-ENERGY', 'name' => 'Energy Bar', 'price' => 2.500, 'cost' => 1.200],
+            ['code' => 'RET-BEANS', 'name' => 'Bag of Coffee Beans 250g', 'price' => 25.000, 'cost' => 15.000],
+            ['code' => 'RET-CHOC', 'name' => 'Chocolate Bar', 'price' => 2.000, 'cost' => 0.900],
+        ];
+
+        foreach ($retailData as $data) {
+            $product = Product::create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'name' => $data['name'],
+                'sku' => $data['code'],
+                'is_physical' => true,
+                'purchase_price' => $data['cost'],
+                'sale_price' => $data['price'],
+                'tax_rate' => 7.00,
+                'is_active' => true,
+            ]);
+            $this->retailProducts[$data['code']] = $product;
+        }
     }
 
     private function seedModifierGroups(): void
@@ -673,6 +724,24 @@ class CoffeeShopSeeder extends Seeder
         ]);
         $this->attachItemsToCategory($pastryCat, $pastryCodes);
 
+        // Specials category (with Daily Special composite item)
+        $specialsCat = MenuCategory::create([
+            'menu_id' => $allDayMenu->id,
+            'name' => 'Specials',
+            'icon' => 'star',
+            'display_order' => 3,
+        ]);
+        $this->attachItemsToCategory($specialsCat, ['DAILY']);
+
+        // Shop category (retail products — not composite items)
+        $shopCat = MenuCategory::create([
+            'menu_id' => $allDayMenu->id,
+            'name' => 'Shop',
+            'icon' => 'shopping-bag',
+            'display_order' => 4,
+        ]);
+        $this->attachProductsToCategory($shopCat, array_keys($this->retailProducts));
+
         // 2. Breakfast Menu (6:00-11:00)
         $breakfastMenu = Menu::create([
             'tenant_id' => $this->tenant->id,
@@ -740,8 +809,29 @@ class CoffeeShopSeeder extends Seeder
         $order = 0;
         foreach ($codes as $code) {
             if (isset($this->compositeItems[$code])) {
-                $category->items()->attach($this->compositeItems[$code]->id, [
-                    'id' => Str::uuid()->toString(),
+                MenuCategoryItem::create([
+                    'menu_category_id' => $category->id,
+                    'composite_item_id' => $this->compositeItems[$code]->id,
+                    'product_id' => null,
+                    'display_order' => $order++,
+                    'is_available' => true,
+                ]);
+            }
+        }
+    }
+
+    /**
+     * @param  array<int, string>  $codes
+     */
+    private function attachProductsToCategory(MenuCategory $category, array $codes): void
+    {
+        $order = 0;
+        foreach ($codes as $code) {
+            if (isset($this->retailProducts[$code])) {
+                MenuCategoryItem::create([
+                    'menu_category_id' => $category->id,
+                    'composite_item_id' => null,
+                    'product_id' => $this->retailProducts[$code]->id,
                     'display_order' => $order++,
                     'is_available' => true,
                 ]);
@@ -780,6 +870,8 @@ class CoffeeShopSeeder extends Seeder
             'status' => 'active',
             'email_verified_at' => now(),
             'preferences' => [],
+            'can_discount' => true,
+            'max_discount_percent' => '25.00',
         ]);
 
         UserCompanyMembership::create([
@@ -807,6 +899,8 @@ class CoffeeShopSeeder extends Seeder
             'status' => 'active',
             'email_verified_at' => now(),
             'preferences' => [],
+            'can_discount' => true,
+            'max_discount_percent' => '25.00',
         ]);
 
         UserCompanyMembership::create([

@@ -26,6 +26,7 @@ return [
             'Inventory',
             'Treasury',
             'Accounting',
+            'PlatformIntegration',
         ],
     ],
 
@@ -178,6 +179,7 @@ return [
             'Inventory',
             'Treasury',
             'Accounting',
+            'PlatformIntegration',
         ],
     ],
 
@@ -203,6 +205,7 @@ return [
             'Inventory',
             'Treasury',
             'Accounting',
+            'PlatformIntegration',
         ],
     ],
 
@@ -229,6 +232,7 @@ return [
             'Inventory',
             'Treasury',
             'Accounting',
+            'PlatformIntegration',
         ],
     ],
 
@@ -254,6 +258,7 @@ return [
             'Inventory',
             'Treasury',
             'Accounting',
+            'PlatformIntegration',
         ],
     ],
 
@@ -278,6 +283,7 @@ return [
             'Inventory',
             'Treasury',
             'Accounting',
+            'PlatformIntegration',
         ],
     ],
 

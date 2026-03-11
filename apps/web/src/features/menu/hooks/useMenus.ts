@@ -131,8 +131,8 @@ export function useAddMenuCategoryItem() {
 export function useRemoveMenuCategoryItem() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ categoryId, compositeItemId }: { categoryId: string; compositeItemId: string }) =>
-      removeMenuCategoryItem(categoryId, compositeItemId),
+    mutationFn: ({ categoryId, itemId }: { categoryId: string; itemId: string }) =>
+      removeMenuCategoryItem(categoryId, itemId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: menuKeys.all })
     },

@@ -122,17 +122,17 @@ enum Vertical: string
     public function defaultModules(): array
     {
         return match ($this) {
-            self::Mechanic => ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Workshop', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
+            self::Mechanic => ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Workshop', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'PlatformIntegration'],
             self::Pharmacy => ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'BatchExpiry'],
             self::Restaurant => ['Identity', 'Tenant', 'Catalog', 'Menu', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'Tables'],
             self::CoffeeShop => ['Identity', 'Tenant', 'Catalog', 'Menu', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
             self::Retail => ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
             self::Fashion => ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
-            self::BodyShop => ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Workshop', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
-            self::PartsRetailer => ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
-            self::CarGlass => ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Workshop', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
-            self::TireShop => ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
-            self::ServiceStation => ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
+            self::BodyShop => ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Workshop', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'PlatformIntegration'],
+            self::PartsRetailer => ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'PlatformIntegration'],
+            self::CarGlass => ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Workshop', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'PlatformIntegration'],
+            self::TireShop => ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'PlatformIntegration'],
+            self::ServiceStation => ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'PlatformIntegration'],
             self::Parapharmacy => ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'Parapharmacy'],
         };
     }

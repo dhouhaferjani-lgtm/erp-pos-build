@@ -50,6 +50,9 @@ final class StoreReceiptRequest extends FormRequest
             'notes' => ['nullable', 'string', 'max:500'],
             'transaction_discount_amount' => ['nullable', 'numeric', 'gte:0'],
             'transaction_discount_reason' => ['nullable', 'string', 'max:255'],
+            'coupon_code' => ['nullable', 'string', 'max:50'],
+            'loyalty_discount_amount' => ['nullable', 'numeric', 'gte:0'],
+            'loyalty_reward_id' => ['nullable', 'uuid'],
             'consumption_mode' => ['nullable', 'string', Rule::enum(ConsumptionMode::class)],
         ];
     }

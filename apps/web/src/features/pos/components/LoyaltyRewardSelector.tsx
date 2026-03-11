@@ -9,7 +9,7 @@ import { toast } from 'sonner'
 
 export interface LoyaltyRewardSelectorProps {
   enrollmentId: string
-  onRewardRedeemed: (rewardValue: string, rewardName: string) => void
+  onRewardRedeemed: (rewardValue: string, rewardName: string, rewardId: string) => void
   className?: string
 }
 
@@ -35,7 +35,7 @@ export function LoyaltyRewardSelector({
     mutationFn: (rewardId: string) => redeemReward(enrollmentId, rewardId),
     onSuccess: (result, rewardId) => {
       const reward = data?.rewards.find((r) => r.id === rewardId)
-      onRewardRedeemed(result.reward_value, reward?.name ?? t('pos:loyalty.rewards.title'))
+      onRewardRedeemed(result.reward_value, reward?.name ?? t('pos:loyalty.rewards.title'), rewardId)
       toast.success(t('pos:loyalty.rewards.redeemSuccess'))
     },
     onError: () => {

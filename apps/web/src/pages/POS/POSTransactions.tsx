@@ -95,6 +95,9 @@ export function POSTransactions() {
   const [loyaltyMember, setLoyaltyMember] = useState<LoyaltyMember | null>(null)
   const [loyaltyEnrollment, setLoyaltyEnrollment] = useState<LoyaltyEnrollment | null>(null)
   const [consumptionMode, setConsumptionMode] = useState<ConsumptionMode>('SUR_PLACE')
+  const [couponCode, setCouponCode] = useState<string | null>(null)
+  const [loyaltyRewardValue, setLoyaltyRewardValue] = useState<string | null>(null)
+  const [loyaltyRewardId, setLoyaltyRewardId] = useState<string | null>(null)
 
   // Auto-resolve web terminal for the active location
   const webTerminalMutation = useMutation({
@@ -282,6 +285,9 @@ export function POSTransactions() {
       }),
       ...(transactionDiscount?.amount ? { transaction_discount_amount: transactionDiscount.amount } : {}),
       ...(transactionDiscount?.reason ? { transaction_discount_reason: transactionDiscount.reason } : {}),
+      ...(couponCode ? { coupon_code: couponCode } : {}),
+      ...(loyaltyRewardValue ? { loyalty_discount_amount: loyaltyRewardValue } : {}),
+      ...(loyaltyRewardId ? { loyalty_reward_id: loyaltyRewardId } : {}),
       ...(isFnBVertical ? { consumption_mode: consumptionMode } : {}),
     }
   }
@@ -419,6 +425,9 @@ export function POSTransactions() {
       })
       setCurrentCartItems([])
       setTransactionDiscount(undefined)
+      setCouponCode(null)
+      setLoyaltyRewardValue(null)
+      setLoyaltyRewardId(null)
       setCartVersion((v) => v + 1)
     } catch (err) {
       toast.error(extractApiErrorMessage(err, t('pos:transactions.errors.quickCheckoutFailed')))
@@ -457,6 +466,9 @@ export function POSTransactions() {
     // The modal's "New Transaction" button calls onClose() after the user has seen the receipt.
     setCurrentCartItems([])
     setTransactionDiscount(undefined)
+    setCouponCode(null)
+    setLoyaltyRewardValue(null)
+    setLoyaltyRewardId(null)
     setCartVersion((v) => v + 1)
 
     return result
@@ -527,6 +539,13 @@ export function POSTransactions() {
         loyaltyEnrollment={loyaltyEnrollment}
         consumptionMode={isFnBVertical ? consumptionMode : undefined}
         onConsumptionModeChange={isFnBVertical ? setConsumptionMode : undefined}
+        couponCode={couponCode}
+        onCouponApplied={(code) => { setCouponCode(code) }}
+        onCouponRemoved={() => { setCouponCode(null) }}
+        onLoyaltyRewardRedeemed={(rewardValue, _rewardName, rewardId) => {
+          setLoyaltyRewardValue(rewardValue)
+          setLoyaltyRewardId(rewardId)
+        }}
       />
 
       {/* Advanced Payments Modal */}
@@ -539,6 +558,14 @@ export function POSTransactions() {
         onComplete={handleCompletePayment}
         touchOptimized={false}
         loyaltyEnrollmentId={loyaltyEnrollment?.id}
+        transactionDiscountAmount={transactionDiscount?.amount}
+        terminalCode={terminalCode ?? undefined}
+        transactionDiscount={transactionDiscount}
+        onTransactionDiscountChange={setTransactionDiscount}
+        couponCode={couponCode}
+        onCouponApplied={(code) => { setCouponCode(code) }}
+        onCouponRemoved={() => { setCouponCode(null) }}
+        selectedCustomerId={selectedCustomer?.id}
       />
 
       {/* Cash Tendered Modal */}

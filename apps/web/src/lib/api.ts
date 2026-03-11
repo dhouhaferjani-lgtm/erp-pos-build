@@ -1,6 +1,6 @@
 import axios, { type AxiosError, type AxiosInstance, type AxiosResponse } from 'axios'
 import { useCompanyStore } from '../stores/companyStore'
-import { clearAllAppState } from './clearAppState'
+import { useAuthStore } from '../stores/authStore'
 import { queryClient } from './queryClient'
 
 /**
@@ -140,9 +140,12 @@ function createApiClient(): AxiosInstance {
         if (response.status === 401) {
           const url = error.config?.url ?? ''
           if (!url.includes('/auth/me')) {
-            // For other endpoints, clear all state when session expires
+            // For other endpoints, log out to disable protected queries.
+            // Don't call queryClient.clear() here — it destroys the auth query
+            // cache, triggering a refetch of /auth/me which re-sets isAuthenticated,
+            // re-enabling the failing query in an infinite 401 loop.
             console.warn('Unauthorized request:', url)
-            clearAllAppState(queryClient)
+            useAuthStore.getState().logout()
           }
         }
 

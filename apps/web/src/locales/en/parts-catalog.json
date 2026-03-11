@@ -1,0 +1,184 @@
+{
+  "title": "Parts Catalog",
+  "subtitle": "Search automotive parts by vehicle, part number, or category",
+  "searchModes": {
+    "vehicle": "By Vehicle",
+    "partNumber": "By Part Number",
+    "tireSize": "By Tire Size",
+    "category": "By Category",
+    "vinPlate": "By VIN/Plate"
+  },
+  "vehicle": {
+    "title": "Vehicle Search",
+    "selectManufacturer": "Select manufacturer",
+    "selectModel": "Select model series",
+    "selectVehicle": "Select vehicle",
+    "searchManufacturer": "Search manufacturers...",
+    "searchModel": "Search models...",
+    "allManufacturers": "All manufacturers",
+    "allModels": "All models",
+    "allVehicles": "All vehicles",
+    "noModels": "No model series found",
+    "noVehicles": "No vehicles found",
+    "productionYears": "{{from}} – {{to}}",
+    "power": "{{kw}} kW / {{hp}} hp",
+    "engineCode": "Engine: {{code}}",
+    "selectProductGroup": "Select product group",
+    "browseCategories": "Browse product categories"
+  },
+  "partNumber": {
+    "title": "Part Number Search",
+    "placeholder": "Enter part number, OEM reference, or barcode...",
+    "hint": "Tip: Prefix with brand name (e.g. \"TRW GDB1550\") to filter by supplier",
+    "detectedBrand": "Detected brand: {{brand}}",
+    "searchMethods": "Searched by: {{methods}}",
+    "noResults": "No articles found for \"{{query}}\"",
+    "tryDrillDown": "Try searching by vehicle instead"
+  },
+  "tireSize": {
+    "title": "Tire Size Search",
+    "width": "Width",
+    "aspectRatio": "Aspect Ratio",
+    "rimDiameter": "Rim Diameter",
+    "widthPlaceholder": "e.g. 205",
+    "aspectPlaceholder": "e.g. 55",
+    "rimPlaceholder": "e.g. 16",
+    "searchButton": "Find Tires",
+    "selectWidth": "Select width",
+    "selectAspect": "Select aspect ratio",
+    "selectRim": "Select rim diameter"
+  },
+  "category": {
+    "title": "Category Browser",
+    "rootCategories": "Product Categories",
+    "backToParent": "Back",
+    "articlesInCategory": "{{count}} articles",
+    "noCategories": "No categories found",
+    "browseArticles": "Browse articles"
+  },
+  "results": {
+    "title": "Search Results",
+    "showing": "Showing {{count}} results",
+    "loadMore": "Load more",
+    "loadingMore": "Loading more...",
+    "noResults": "No articles found",
+    "noResultsHint": "Try a different search or adjust your filters",
+    "filterByBrand": "Filter by brand"
+  },
+  "article": {
+    "articleNumber": "Art. No.",
+    "supplier": "Supplier",
+    "productGroup": "Product Group",
+    "viewDetails": "View Details",
+    "copyArticleNumber": "Copy article number",
+    "specifications": "Specifications",
+    "crossReferences": "Cross References",
+    "vehicleCompatibility": "Vehicle Compatibility",
+    "pricing": "Pricing",
+    "yourInventory": "Your Inventory",
+    "description": "Description",
+    "media": "Images"
+  },
+  "inventory": {
+    "inStock": "In Stock",
+    "notInInventory": "Not in inventory",
+    "quantity": "{{available}} of {{total}} available",
+    "salePrice": "Sale price: {{price}}",
+    "purchasePrice": "Purchase price: {{price}}",
+    "editProduct": "Edit product",
+    "addToInventory": "Add to Inventory"
+  },
+  "fitment": {
+    "highConfidence": "Confirmed fit",
+    "mediumConfidence": "{{confidence}}% match",
+    "lowConfidence": "{{confidence}}% — Verify fitment",
+    "dataSource": "Source: {{source}}"
+  },
+  "crossRef": {
+    "oe": "Original Equipment",
+    "oem": "OE Manufacturer",
+    "iam": "Aftermarket",
+    "ean": "EAN / Barcode",
+    "noCrossRefs": "No cross references available"
+  },
+  "addToInventory": {
+    "title": "Add to Inventory",
+    "name": "Product Name",
+    "sku": "SKU",
+    "barcode": "Barcode",
+    "salePrice": "Sale Price",
+    "purchasePrice": "Purchase Price",
+    "taxRate": "Tax Rate",
+    "qualityTier": "Brand Quality Tier",
+    "tiers": {
+      "oe": "OE (Original Equipment)",
+      "oes": "OES (OE Supplier)",
+      "premium_aftermarket": "Premium Aftermarket",
+      "aftermarket": "Aftermarket",
+      "economy": "Economy"
+    },
+    "success": "Article added to inventory",
+    "error": "Failed to add article to inventory"
+  },
+  "panel": {
+    "title": "Parts Catalog",
+    "addToPurchaseOrder": "Add to Purchase Order",
+    "addToSalesOrder": "Add to Sales Order",
+    "addToQuote": "Add to Quote",
+    "quantity": "Qty",
+    "add": "Add"
+  },
+  "stickyBar": {
+    "change": "Change",
+    "clear": "Clear",
+    "clearConfirmTitle": "Clear Vehicle?",
+    "clearConfirmMessage": "This will clear your search results. Continue?",
+    "confirm": "Yes, Clear",
+    "cancel": "Cancel"
+  },
+  "vinPlate": {
+    "title": "VIN / License Plate Lookup",
+    "description": "Enter a VIN or license plate number to identify the vehicle and find compatible parts.",
+    "vinLabel": "VIN (Vehicle Identification Number)",
+    "vinPlaceholder": "e.g. WVWZZZ3CZWE123456",
+    "plateLabel": "License Plate",
+    "platePlaceholder": "e.g. AB-123-CD",
+    "searchButton": "Look Up Vehicle",
+    "comingSoon": "VIN/Plate lookup is coming soon. Use vehicle search in the meantime."
+  },
+  "recentVehicles": {
+    "title": "Recent Vehicles",
+    "empty": "No recent vehicles",
+    "emptyHint": "Vehicles you search for will appear here for quick access.",
+    "lastSearched": "Last searched",
+    "justNow": "just now",
+    "minutesAgo": "{{count}}m ago",
+    "hoursAgo": "{{count}}h ago",
+    "yesterday": "yesterday",
+    "daysAgo": "{{count}}d ago"
+  },
+  "filters": {
+    "title": "Filters",
+    "supplierBrand": "Supplier Brand",
+    "inStockOnly": "In stock only",
+    "confidenceMin": "Min. confidence",
+    "sortBy": "Sort by",
+    "sort": {
+      "relevance": "Relevance",
+      "price_asc": "Price: Low to High",
+      "price_desc": "Price: High to Low",
+      "brand_asc": "Brand: A to Z",
+      "confidence_desc": "Confidence: High to Low"
+    },
+    "openFilters": "Filters",
+    "reset": "Reset Filters",
+    "viewGrid": "Grid view",
+    "viewList": "List view"
+  },
+  "errors": {
+    "loadFailed": "Failed to load data",
+    "searchFailed": "Search failed",
+    "catalogUnavailable": "Parts catalog temporarily unavailable",
+    "retryButton": "Retry"
+  }
+}

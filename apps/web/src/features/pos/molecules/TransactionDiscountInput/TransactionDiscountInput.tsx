@@ -21,25 +21,16 @@ export interface TransactionDiscountInputProps {
  * TransactionDiscountInput Component
  *
  * Input form for applying transaction-level (order) discounts.
- * Unlike line discounts, transaction discounts are FIXED AMOUNT only.
+ * Supports both percentage and fixed amount entry modes.
+ * The output is always a fixed amount (percentage is converted before applying).
  *
  * Features:
- * - Fixed amount discount input (not percentage)
- * - Validates discount as percentage of subtotal against effective limit
+ * - Toggle between percentage and fixed amount input
+ * - Quick preset buttons (5%, 10%, 15%, 20%) in percentage mode
+ * - Validates discount against effective limit
  * - Reason field (required if discount > 10% of subtotal)
  * - Touch-optimized mode for larger inputs
  * - Live preview of subtotal after discount
- *
- * @example
- * ```tsx
- * <TransactionDiscountInput
- *   subtotal="100.000"
- *   effectiveLimit={15}
- *   requiresReason={false}
- *   onApply={(amount, reason) => handleApply(amount, reason)}
- *   onClear={() => handleClear()}
- * />
- * ```
  */
 export function TransactionDiscountInput({
   currentAmount = '',
@@ -53,40 +44,72 @@ export function TransactionDiscountInput({
 }: TransactionDiscountInputProps) {
   const { t } = useTranslation(['pos'])
   const { currency } = useCurrency()
-  const [amount, setAmount] = useState(currentAmount)
+  const [inputMode, setInputMode] = useState<'percentage' | 'fixed'>('fixed')
+  const [value, setValue] = useState(currentAmount)
   const [reason, setReason] = useState(currentReason)
   const [error, setError] = useState<string | null>(null)
 
-  const handleAmountChange = (value: string) => {
-    setAmount(value)
+  const presets = [5, 10, 15, 20]
+
+  const handleValueChange = (newValue: string) => {
+    setValue(newValue)
     setError(null)
   }
 
+  const handleModeChange = (mode: 'percentage' | 'fixed') => {
+    setInputMode(mode)
+    setValue('')
+    setError(null)
+  }
+
+  const handlePresetClick = (percent: number) => {
+    setInputMode('percentage')
+    setValue(percent.toString())
+    setError(null)
+  }
+
+  /** Convert current input to a fixed discount amount */
+  const resolveAmount = (): string => {
+    if (!value || parseFloat(value) <= 0) return '0'
+    if (inputMode === 'fixed') return value
+    // percentage → fixed: amount = subtotal * percent / 100
+    return bcdiv(bcmul(subtotal, value, 3), '100', 3)
+  }
+
+  /** The resolved fixed amount for validation / preview */
+  const amount = resolveAmount()
+
+  /** Discount as a percentage of subtotal */
+  const discountPercent =
+    amount && parseFloat(amount) > 0
+      ? bcdiv(bcmul(amount, '100', 3), subtotal, 2)
+      : '0.00'
+
   const validateDiscount = (): boolean => {
-    const numAmount = parseFloat(amount)
-    if (!amount || Number.isNaN(numAmount) || numAmount <= 0) {
+    const numValue = parseFloat(value)
+    if (!value || Number.isNaN(numValue) || numValue <= 0) {
       setError(t('pos:errors.amountRequired'))
       return false
     }
 
-    // Ensure discount doesn't exceed subtotal
-    if (bccomp(amount, subtotal, 3) > 0) {
+    if (inputMode === 'percentage' && numValue > 100) {
       setError(t('pos:errors.discountExceedsSubtotal'))
       return false
     }
 
-    // Calculate discount as percentage of subtotal
-    const discountPercent = bcdiv(bcmul(amount, '100', 3), subtotal, 2)
+    // Ensure discount doesn't exceed subtotal
+    if (bccomp(amount, subtotal) > 0) {
+      setError(t('pos:errors.discountExceedsSubtotal'))
+      return false
+    }
 
-    if (bccomp(discountPercent, effectiveLimit.toString(), 2) > 0) {
+    if (bccomp(discountPercent, effectiveLimit.toString()) > 0) {
       setError(t('pos:errors.discountExceedsLimit', { limit: effectiveLimit }))
       return false
     }
 
-    // Calculate if discount is > 10% for reason requirement
-    const tenPercent = '10.00'
-    const needsReason = bccomp(discountPercent, tenPercent, 2) > 0
-
+    // Reason required if discount > 10%
+    const needsReason = bccomp(discountPercent, '10.00') > 0
     if ((requiresReason || needsReason) && !reason.trim()) {
       setError(t('pos:errors.reasonRequired'))
       return false
@@ -102,38 +125,78 @@ export function TransactionDiscountInput({
   }
 
   const preview =
-    subtotal && amount && parseFloat(amount) > 0
+    subtotal && parseFloat(amount) > 0
       ? bcsub(subtotal, amount, 3)
       : subtotal
 
-  // Calculate discount as percentage for display
-  const discountPercent =
-    amount && parseFloat(amount) > 0
-      ? bcdiv(bcmul(amount, '100', 3), subtotal, 2)
-      : '0.00'
-
   return (
     <div className="space-y-4">
-      {/* Amount Input */}
+      {/* Discount Mode Toggle */}
+      <div>
+        <label className={tokens.label.base}>{t('pos:cart.discountType')}</label>
+        <div className="mt-2 flex gap-2">
+          <POSButton
+            variant={inputMode === 'percentage' ? 'primary' : 'secondary'}
+            size={touchOptimized ? 'md' : 'sm'}
+            touchOptimized={touchOptimized}
+            onClick={() => handleModeChange('percentage')}
+            fullWidth
+          >
+            {t('pos:cart.percentage')}
+          </POSButton>
+          <POSButton
+            variant={inputMode === 'fixed' ? 'primary' : 'secondary'}
+            size={touchOptimized ? 'md' : 'sm'}
+            touchOptimized={touchOptimized}
+            onClick={() => handleModeChange('fixed')}
+            fullWidth
+          >
+            {t('pos:cart.fixed')}
+          </POSButton>
+        </div>
+      </div>
+
+      {/* Preset Buttons (percentage mode only) */}
+      {inputMode === 'percentage' && (
+        <div>
+          <label className={tokens.label.base}>{t('pos:cart.presets')}</label>
+          <div className="mt-2 grid grid-cols-4 gap-2">
+            {presets.map((percent) => (
+              <POSButton
+                key={percent}
+                variant="secondary"
+                size={touchOptimized ? 'md' : 'sm'}
+                touchOptimized={touchOptimized}
+                onClick={() => handlePresetClick(percent)}
+                disabled={percent > effectiveLimit}
+              >
+                {percent}%
+              </POSButton>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Value Input */}
       <div>
         <label
-          htmlFor="transaction-discount-amount"
+          htmlFor="transaction-discount-value"
           className={cn('block text-sm font-medium mb-1', textColors.secondary)}
         >
-          {t('pos:cart.discountAmount')}
+          {inputMode === 'percentage' ? t('pos:cart.percentage') : t('pos:cart.discountAmount')}
         </label>
         <div className="relative">
           <input
-            id="transaction-discount-amount"
+            id="transaction-discount-value"
             type="number"
-            value={amount}
+            value={value}
             onChange={(e) => {
-              handleAmountChange(e.target.value)
+              handleValueChange(e.target.value)
             }}
-            placeholder="0.000"
-            step="0.001"
+            placeholder={inputMode === 'percentage' ? '0.00' : '0.000'}
+            step={inputMode === 'percentage' ? '0.01' : '0.001'}
             min="0"
-            max={subtotal}
+            max={inputMode === 'percentage' ? effectiveLimit.toString() : subtotal}
             className={cn(
               'w-full px-3 rounded border',
               touchOptimized ? 'py-4 text-lg' : 'py-2',
@@ -141,16 +204,24 @@ export function TransactionDiscountInput({
               error && 'border-red-500',
               'focus:outline-none focus:ring-2 focus:ring-blue-500'
             )}
+            autoFocus
           />
           <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-            <span className={cn(textColors.tertiary, touchOptimized && 'text-lg')}>{currency}</span>
+            <span className={cn(textColors.tertiary, touchOptimized && 'text-lg')}>
+              {inputMode === 'percentage' ? '%' : currency}
+            </span>
           </div>
         </div>
         <p className="text-xs text-gray-500 mt-1">
           {t('pos:cart.maxAllowed')}: {effectiveLimit}%
-          {amount && parseFloat(amount) > 0 && (
+          {parseFloat(amount) > 0 && inputMode === 'fixed' && (
             <span className="ml-2">
               ({t('pos:cart.currentDiscount')}: {discountPercent}%)
+            </span>
+          )}
+          {parseFloat(amount) > 0 && inputMode === 'percentage' && (
+            <span className="ml-2">
+              (= {amount} {currency})
             </span>
           )}
         </p>
@@ -195,7 +266,7 @@ export function TransactionDiscountInput({
       )}
 
       {/* Preview */}
-      {amount && parseFloat(amount) > 0 && !error && (
+      {parseFloat(amount) > 0 && !error && (
         <div className={cn('p-3 rounded-lg', 'bg-blue-50', borderColors.primary)}>
           <p className={cn(textColors.secondary, 'text-sm mb-1')}>
             {t('pos:cart.preview')}:
@@ -242,7 +313,7 @@ export function TransactionDiscountInput({
           size={touchOptimized ? 'md' : 'sm'}
           touchOptimized={touchOptimized}
           onClick={handleApply}
-          disabled={!amount || parseFloat(amount) <= 0}
+          disabled={!value || parseFloat(value) <= 0}
         >
           {t('pos:cart.applyDiscount')}
         </POSButton>

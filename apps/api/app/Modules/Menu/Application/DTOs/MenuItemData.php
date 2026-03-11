@@ -6,6 +6,7 @@ namespace App\Modules\Menu\Application\DTOs;
 
 use App\Modules\Catalog\Application\DTOs\ModifierGroupData;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
+use App\Modules\Product\Domain\Product;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -17,7 +18,8 @@ class MenuItemData extends Data
      */
     public function __construct(
         public string $id,
-        public string $composite_item_id,
+        public string $sellable_id,
+        public string $sellable_type,
         public string $name,
         public string $code,
         public string $base_price,
@@ -30,7 +32,7 @@ class MenuItemData extends Data
         public ?array $modifier_groups,
     ) {}
 
-    public static function fromPivot(CompositeItem $item): self
+    public static function fromCompositeItemPivot(CompositeItem $item): self
     {
         /** @var \Illuminate\Database\Eloquent\Relations\Pivot|null $pivot */
         $pivot = $item->getAttribute('pivot');
@@ -40,7 +42,8 @@ class MenuItemData extends Data
 
         return new self(
             id: $pivot?->getAttribute('id') ?? '',
-            composite_item_id: $item->id,
+            sellable_id: $item->id,
+            sellable_type: 'composite_item',
             name: $item->name,
             code: $item->code,
             base_price: number_format((float) $basePrice, 4, '.', ''),
@@ -57,6 +60,31 @@ class MenuItemData extends Data
                     ->values()
                     ->all()
                 : null,
+        );
+    }
+
+    public static function fromProductPivot(Product $product): self
+    {
+        /** @var \Illuminate\Database\Eloquent\Relations\Pivot|null $pivot */
+        $pivot = $product->getAttribute('pivot');
+        $overridePrice = $pivot?->getAttribute('override_price') ?? null;
+        $basePrice = (string) ($product->sale_price ?? '0');
+        $effectivePrice = $overridePrice !== null ? (string) $overridePrice : $basePrice;
+
+        return new self(
+            id: $pivot?->getAttribute('id') ?? '',
+            sellable_id: $product->id,
+            sellable_type: 'product',
+            name: $product->name,
+            code: $product->sku,
+            base_price: number_format((float) $basePrice, 4, '.', ''),
+            override_price: $overridePrice !== null ? number_format((float) $overridePrice, 4, '.', '') : null,
+            effective_price: number_format((float) $effectivePrice, 4, '.', ''),
+            tax_rate: $product->tax_rate !== null ? (string) $product->tax_rate : null,
+            display_order: (int) ($pivot?->getAttribute('display_order') ?? 0),
+            is_available: (bool) ($pivot?->getAttribute('is_available') ?? true),
+            image_url: null,
+            modifier_groups: null,
         );
     }
 }

@@ -19,15 +19,11 @@ final class CatalogBrowseService
     /**
      * @return array<string, mixed>|null
      */
-    public function getManufacturers(?string $verticalScope = null): ?array
+    public function getManufacturers(?string $verticalScope = null, ?string $countryCode = null): ?array
     {
-        $params = $this->buildVerticalParams($verticalScope);
+        $params = $this->buildBaseParams($verticalScope, $countryCode);
 
-        if ($params === []) {
-            return $this->cachedGet('/api/v1/automotive/manufacturers', 'manufacturers', 86400);
-        }
-
-        $scopeKey = "manufacturers:{$verticalScope}";
+        $scopeKey = $this->scopeKey('manufacturers', $verticalScope, $countryCode);
 
         return $this->cachedGet('/api/v1/automotive/manufacturers', $scopeKey, 86400, $params);
     }
@@ -35,14 +31,13 @@ final class CatalogBrowseService
     /**
      * @return array<string, mixed>|null
      */
-    public function getModelSeries(string $manufacturerId, ?string $verticalScope = null): ?array
+    public function getModelSeries(string $manufacturerId, ?string $verticalScope = null, ?string $countryCode = null): ?array
     {
-        $params = $this->buildVerticalParams($verticalScope);
-        $scopeSuffix = $verticalScope !== null ? ":{$verticalScope}" : '';
+        $params = $this->buildBaseParams($verticalScope, $countryCode);
 
         return $this->cachedGet(
             "/api/v1/automotive/manufacturers/{$manufacturerId}/model-series",
-            "model-series:{$manufacturerId}{$scopeSuffix}",
+            $this->scopeKey("model-series:{$manufacturerId}", $verticalScope, $countryCode),
             86400,
             $params,
         );
@@ -51,14 +46,20 @@ final class CatalogBrowseService
     /**
      * @return array<string, mixed>|null
      */
-    public function getVehicles(string $modelSeriesId, ?string $verticalScope = null): ?array
+    public function getVehicles(string $modelSeriesId, string $vehicleType = 'passenger-cars', ?string $verticalScope = null, ?string $countryCode = null): ?array
     {
-        $params = $this->buildVerticalParams($verticalScope);
-        $scopeSuffix = $verticalScope !== null ? ":{$verticalScope}" : '';
+        $typeSegment = match ($vehicleType) {
+            'pc' => 'passenger-cars',
+            'cv' => 'commercial-vehicles',
+            'mtb' => 'motorbikes',
+            default => $vehicleType,
+        };
+
+        $params = $this->buildBaseParams($verticalScope, $countryCode);
 
         return $this->cachedGet(
-            "/api/v1/automotive/model-series/{$modelSeriesId}/vehicles",
-            "vehicles:{$modelSeriesId}{$scopeSuffix}",
+            "/api/v1/automotive/model-series/{$modelSeriesId}/{$typeSegment}",
+            $this->scopeKey("vehicles:{$modelSeriesId}:{$typeSegment}", $verticalScope, $countryCode),
             86400,
             $params,
         );
@@ -67,9 +68,24 @@ final class CatalogBrowseService
     /**
      * @return array<string, mixed>|null
      */
-    public function getVehicleArticles(string $vehicleType, string $vehicleId, ?string $verticalScope = null): ?array
+    public function getVehicle(string $vehicleType, string $vehicleId, ?string $countryCode = null): ?array
     {
-        $params = $this->buildVerticalParams($verticalScope);
+        $params = $this->buildBaseParams(null, $countryCode);
+
+        return $this->cachedGet(
+            "/api/v1/automotive/vehicles/{$vehicleType}/{$vehicleId}",
+            $this->scopeKey("vehicle:{$vehicleType}:{$vehicleId}", null, $countryCode),
+            86400,
+            $params,
+        );
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getVehicleArticles(string $vehicleType, string $vehicleId, ?string $verticalScope = null, ?string $countryCode = null): ?array
+    {
+        $params = $this->buildBaseParams($verticalScope, $countryCode);
 
         return $this->platformClient->get("/api/v1/automotive/vehicles/{$vehicleType}/{$vehicleId}/articles", $params);
     }
@@ -78,9 +94,9 @@ final class CatalogBrowseService
      * @param  array<string, string>  $params
      * @return array<string, mixed>|null
      */
-    public function searchArticles(array $params, ?string $verticalScope = null): ?array
+    public function searchArticles(array $params, ?string $verticalScope = null, ?string $countryCode = null): ?array
     {
-        $params = array_merge($params, $this->buildVerticalParams($verticalScope));
+        $params = array_merge($params, $this->buildBaseParams($verticalScope, $countryCode));
 
         return $this->platformClient->get('/api/v1/automotive/articles', $params);
     }
@@ -88,30 +104,71 @@ final class CatalogBrowseService
     /**
      * @return array<string, mixed>|null
      */
-    public function getSearchTreeRoots(?string $verticalScope = null): ?array
+    public function getArticle(string $articleId, ?string $countryCode = null): ?array
     {
-        $params = $this->buildVerticalParams($verticalScope);
+        $params = $this->buildBaseParams(null, $countryCode);
 
-        if ($params === []) {
-            return $this->cachedGet('/api/v1/automotive/search-tree/roots', 'search-tree:roots', 86400);
-        }
-
-        $scopeKey = "search-tree:roots:{$verticalScope}";
-
-        return $this->cachedGet('/api/v1/automotive/search-tree/roots', $scopeKey, 86400, $params);
+        return $this->platformClient->get("/api/v1/automotive/articles/{$articleId}", $params);
     }
 
     /**
      * @return array<string, mixed>|null
      */
-    public function getSearchTreeChildren(string $nodeId, ?string $verticalScope = null): ?array
+    public function getArticleLinkages(string $articleId, ?string $countryCode = null): ?array
     {
-        $params = $this->buildVerticalParams($verticalScope);
-        $scopeSuffix = $verticalScope !== null ? ":{$verticalScope}" : '';
+        $params = $this->buildBaseParams(null, $countryCode);
+
+        $data = $this->platformClient->get("/api/v1/automotive/articles/{$articleId}/linkages", $params);
+
+        if ($data === null) {
+            return null;
+        }
+
+        // Platform returns ArticleLink[] with nested vehicles
+        // Frontend expects { vehicles: CompatibleVehicle[] }
+        $links = $data['data'] ?? $data;
+        $vehicles = [];
+
+        foreach ($links as $link) {
+            if (!is_array($link)) {
+                continue;
+            }
+            foreach ($link['vehicles'] ?? [] as $v) {
+                $vehicles[] = [
+                    'vehicle_type' => $v['vehicle_type'] ?? 'pc',
+                    'vehicle_id' => $v['vehicle_id'] ?? '',
+                    'display' => $v['display_string'] ?? '',
+                    'fitment_confidence' => (float) ($v['confidence'] ?? 0),
+                    'data_source' => $v['data_source'] ?? 'tecdoc',
+                ];
+            }
+        }
+
+        return ['vehicles' => $vehicles];
+    }
+
+    /**
+     * @param  array<string, mixed>  $criteria
+     * @return array<string, mixed>|null
+     */
+    public function searchByCriteria(array $criteria, ?string $verticalScope = null, ?string $countryCode = null): ?array
+    {
+        $baseParams = $this->buildBaseParams($verticalScope, $countryCode);
+        $payload = array_merge($criteria, $baseParams);
+
+        return $this->platformClient->post('/api/v1/automotive/articles/search-by-criteria', $payload);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getCriteria(?string $countryCode = null): ?array
+    {
+        $params = $this->buildBaseParams(null, $countryCode);
 
         return $this->cachedGet(
-            "/api/v1/automotive/search-tree/{$nodeId}/children",
-            "search-tree:children:{$nodeId}{$scopeSuffix}",
+            '/api/v1/automotive/criteria',
+            $this->scopeKey('criteria', null, $countryCode),
             86400,
             $params,
         );
@@ -120,25 +177,94 @@ final class CatalogBrowseService
     /**
      * @return array<string, mixed>|null
      */
-    public function getSearchTreeArticles(string $nodeId, ?string $verticalScope = null): ?array
+    public function getSuppliers(?string $countryCode = null): ?array
     {
-        $params = $this->buildVerticalParams($verticalScope);
+        $params = $this->buildBaseParams(null, $countryCode);
+
+        return $this->cachedGet(
+            '/api/v1/automotive/suppliers',
+            $this->scopeKey('suppliers', null, $countryCode),
+            86400,
+            $params,
+        );
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getSearchTreeRoots(?string $verticalScope = null, ?string $countryCode = null): ?array
+    {
+        $params = $this->buildBaseParams($verticalScope, $countryCode);
+
+        return $this->cachedGet(
+            '/api/v1/automotive/search-tree/roots',
+            $this->scopeKey('search-tree:roots', $verticalScope, $countryCode),
+            86400,
+            $params,
+        );
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getSearchTreeChildren(string $nodeId, ?string $verticalScope = null, ?string $countryCode = null): ?array
+    {
+        $params = $this->buildBaseParams($verticalScope, $countryCode);
+
+        return $this->cachedGet(
+            "/api/v1/automotive/search-tree/{$nodeId}/children",
+            $this->scopeKey("search-tree:children:{$nodeId}", $verticalScope, $countryCode),
+            86400,
+            $params,
+        );
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getSearchTreeArticles(string $nodeId, ?string $verticalScope = null, ?string $countryCode = null): ?array
+    {
+        $params = $this->buildBaseParams($verticalScope, $countryCode);
 
         return $this->platformClient->get("/api/v1/automotive/search-tree/{$nodeId}/articles", $params);
     }
 
     /**
-     * Build query parameters for vertical scoping.
+     * Build query parameters for vertical scoping and country code.
      *
      * @return array<string, string>
      */
-    private function buildVerticalParams(?string $verticalScope): array
+    private function buildBaseParams(?string $verticalScope, ?string $countryCode = null): array
     {
-        if ($verticalScope === null) {
-            return [];
+        $params = [];
+
+        if ($verticalScope !== null) {
+            $params['vertical'] = $verticalScope;
         }
 
-        return ['vertical' => $verticalScope];
+        if ($countryCode !== null) {
+            $params['country'] = $countryCode;
+        }
+
+        return $params;
+    }
+
+    /**
+     * Build a scoped cache key incorporating vertical and country.
+     */
+    private function scopeKey(string $base, ?string $verticalScope, ?string $countryCode): string
+    {
+        $key = $base;
+
+        if ($verticalScope !== null) {
+            $key .= ":{$verticalScope}";
+        }
+
+        if ($countryCode !== null) {
+            $key .= ":c:{$countryCode}";
+        }
+
+        return $key;
     }
 
     /**

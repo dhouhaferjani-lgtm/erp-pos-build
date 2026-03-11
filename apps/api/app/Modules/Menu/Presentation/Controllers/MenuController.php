@@ -26,7 +26,7 @@ class MenuController extends Controller
 
         $query = Menu::query()
             ->forCompany($companyId)
-            ->with(['categories.items']);
+            ->with(['categories.compositeItems', 'categories.products']);
 
         if ($request->has('search')) {
             $search = $request->input('search');
@@ -64,7 +64,7 @@ class MenuController extends Controller
 
         $menu = Menu::query()
             ->forCompany($companyId)
-            ->with(['categories.items'])
+            ->with(['categories.compositeItems', 'categories.products'])
             ->findOrFail($id);
 
         return response()->json(['data' => MenuData::fromModel($menu)]);
@@ -89,7 +89,7 @@ class MenuController extends Controller
             'company_id' => $company->id,
         ]);
 
-        $menu->load(['categories.items']);
+        $menu->load(['categories.compositeItems', 'categories.products']);
 
         return response()->json(['data' => MenuData::fromModel($menu)], 201);
     }
@@ -115,7 +115,7 @@ class MenuController extends Controller
         }
 
         $menu->update($validated);
-        $menu->load(['categories.items']);
+        $menu->load(['categories.compositeItems', 'categories.products']);
 
         return response()->json(['data' => MenuData::fromModel($menu)]);
     }

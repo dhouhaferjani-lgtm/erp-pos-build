@@ -36,5 +36,9 @@
   "confirmRemoveItem": "Remove this item from the category?",
   "allDay": "All Day",
   "breakfast": "Breakfast",
-  "summer": "Summer"
+  "summer": "Summer",
+  "prepared": "Prepared",
+  "retail": "Retail",
+  "menuItems": "Menu Items",
+  "products": "Products"
 }

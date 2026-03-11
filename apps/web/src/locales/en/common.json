@@ -220,6 +220,7 @@
     "keyComponents": "Key Components",
     "pos": "Point of Sale",
     "openPos": "Open POS",
+    "posOrders": "Orders",
     "terminals": "Terminals",
     "transactions": "Transactions",
     "shifts": "Shifts",
@@ -234,9 +235,13 @@
     "menus": "Menus",
     "promotions": "Promotions",
     "coupons": "Coupons",
+    "loyaltyPrograms": "Loyalty Programs",
+    "loyaltyMembers": "Loyalty Members",
     "crm": "CRM",
     "companies": "Companies",
-    "contacts": "Contacts"
+    "contacts": "Contacts",
+    "partsCatalog": "Parts Catalog",
+    "parts-catalog": "Parts Catalog"
   },
   "locations": {
     "title": "Location Management",

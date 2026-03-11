@@ -5,3 +5,11 @@ export {
   TransactionDiscountInput,
   type TransactionDiscountInputProps,
 } from './TransactionDiscountInput'
+export {
+  AppliedDiscountsBadge,
+  type AppliedDiscountsBadgeProps,
+} from './AppliedDiscountsBadge/AppliedDiscountsBadge'
+export {
+  CouponCodeInput,
+  type CouponCodeInputProps,
+} from './CouponCodeInput/CouponCodeInput'

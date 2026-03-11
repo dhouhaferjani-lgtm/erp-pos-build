@@ -7,8 +7,10 @@ namespace App\Modules\Partner\Domain;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Contact\Domain\Contact;
 use App\Modules\Contact\Domain\PartyContact;
+use App\Modules\Partner\Domain\Enums\ConsolidationFrequency;
 use App\Modules\Partner\Domain\Enums\CustomerCategory;
 use App\Modules\Partner\Domain\Enums\PartnerType;
+use App\Modules\Partner\Domain\Enums\PaymentTerms;
 use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Builder;
@@ -27,6 +29,14 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string $name
  * @property PartnerType $type
  * @property CustomerCategory|null $customer_category
+ * @property string|null $company_legal_name
+ * @property string|null $business_registration_number
+ * @property PaymentTerms|null $payment_terms
+ * @property int|null $payment_terms_days
+ * @property numeric-string|null $credit_limit
+ * @property numeric-string|null $discount_percentage
+ * @property bool $invoice_consolidation
+ * @property ConsolidationFrequency|null $consolidation_frequency
  * @property numeric-string $receivable_balance
  * @property numeric-string $credit_balance
  * @property numeric-string $payable_balance
@@ -71,6 +81,14 @@ class Partner extends Model
         'name',
         'type',
         'customer_category',
+        'company_legal_name',
+        'business_registration_number',
+        'payment_terms',
+        'payment_terms_days',
+        'credit_limit',
+        'discount_percentage',
+        'invoice_consolidation',
+        'consolidation_frequency',
         'receivable_balance',
         'credit_balance',
         'payable_balance',
@@ -104,6 +122,12 @@ class Partner extends Model
         return [
             'type' => PartnerType::class,
             'customer_category' => CustomerCategory::class,
+            'payment_terms' => PaymentTerms::class,
+            'consolidation_frequency' => ConsolidationFrequency::class,
+            'invoice_consolidation' => 'boolean',
+            'credit_limit' => 'decimal:4',
+            'discount_percentage' => 'decimal:2',
+            'payment_terms_days' => 'integer',
             'tax_status' => PartnerTaxStatus::class,
             'tax_exemption_valid_until' => 'date',
             'withholding_exempt' => 'boolean',
@@ -146,6 +170,26 @@ class Partner extends Model
     public function isSupplier(): bool
     {
         return $this->type === PartnerType::Supplier || $this->type === PartnerType::Both;
+    }
+
+    /**
+     * Check if this partner is a B2B (business) customer.
+     */
+    public function isB2B(): bool
+    {
+        return $this->customer_category === CustomerCategory::Business;
+    }
+
+    /**
+     * Check if this partner has an active (non-null, positive) credit limit.
+     */
+    public function hasActiveCreditLimit(): bool
+    {
+        if ($this->credit_limit === null) {
+            return false;
+        }
+
+        return bccomp($this->credit_limit, '0', 4) > 0;
     }
 
     public function getDisplayName(): string
@@ -309,7 +353,7 @@ class Partner extends Model
     public function contacts(): BelongsToMany
     {
         return $this->belongsToMany(Contact::class, 'party_contacts', 'party_id', 'contact_id')
-            ->withPivot(['job_title', 'department', 'is_primary', 'start_date', 'end_date'])
+            ->withPivot(['job_title', 'department', 'is_primary', 'is_invoice_contact', 'is_delivery_contact', 'start_date', 'end_date'])
             ->withTimestamps();
     }
 

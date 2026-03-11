@@ -275,6 +275,11 @@ final class ReceiptController extends Controller
                 notes: $validated['notes'] ?? null,
                 transactionDiscountAmount: $transactionDiscountAmount,
                 transactionDiscountReason: $validated['transaction_discount_reason'] ?? null,
+                couponCode: $validated['coupon_code'] ?? null,
+                loyaltyDiscountAmount: isset($validated['loyalty_discount_amount'])
+                    ? (string) $validated['loyalty_discount_amount']
+                    : null,
+                loyaltyRewardId: $validated['loyalty_reward_id'] ?? null,
                 consumptionMode: $consumptionMode,
             );
 

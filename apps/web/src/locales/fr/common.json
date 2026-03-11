@@ -162,6 +162,7 @@
     "keyComponents": "Composants clés",
     "pos": "Point de vente",
     "openPos": "Ouvrir la caisse",
+    "posOrders": "Commandes",
     "terminals": "Terminaux",
     "transactions": "Transactions",
     "shifts": "Caisses",
@@ -176,9 +177,13 @@
     "menus": "Menus",
     "promotions": "Promotions",
     "coupons": "Coupons",
+    "loyaltyPrograms": "Programmes Fidélité",
+    "loyaltyMembers": "Membres Fidélité",
     "crm": "CRM",
     "companies": "Entreprises",
-    "contacts": "Contacts"
+    "contacts": "Contacts",
+    "partsCatalog": "Catalogue Pièces",
+    "parts-catalog": "Catalogue Pièces"
   },
   "fields": {
     "totalReceivable": "Total à recevoir",

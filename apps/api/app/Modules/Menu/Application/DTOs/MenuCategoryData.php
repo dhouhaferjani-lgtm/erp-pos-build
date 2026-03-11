@@ -29,6 +29,22 @@ class MenuCategoryData extends Data
 
     public static function fromModel(MenuCategory $category): self
     {
+        $items = collect();
+
+        if ($category->relationLoaded('compositeItems')) {
+            $items = $items->merge(
+                $category->compositeItems->map(fn ($ci) => MenuItemData::fromCompositeItemPivot($ci))
+            );
+        }
+
+        if ($category->relationLoaded('products')) {
+            $items = $items->merge(
+                $category->products->map(fn ($p) => MenuItemData::fromProductPivot($p))
+            );
+        }
+
+        $hasItems = $category->relationLoaded('compositeItems') || $category->relationLoaded('products');
+
         return new self(
             id: $category->id,
             menu_id: $category->menu_id,
@@ -37,8 +53,8 @@ class MenuCategoryData extends Data
             icon: $category->icon,
             display_order: $category->display_order,
             is_active: $category->is_active,
-            items: $category->relationLoaded('items')
-                ? $category->items->map(fn ($item) => MenuItemData::fromPivot($item))->all()
+            items: $hasItems
+                ? $items->sortBy('display_order')->values()->all()
                 : null,
             created_at: $category->created_at?->toIso8601String() ?? '',
             updated_at: $category->updated_at?->toIso8601String(),

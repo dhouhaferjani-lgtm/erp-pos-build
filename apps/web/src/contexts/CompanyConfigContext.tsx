@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '../lib/api'
+import { useAuthStore } from '../stores/authStore'
 
 /**
  * Company configuration from backend
@@ -43,11 +44,14 @@ interface CompanyConfigProviderProps {
  * Configuration is cached for 1 hour as it rarely changes.
  */
 export function CompanyConfigProvider({ children }: CompanyConfigProviderProps) {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+
   const { data, isLoading, error } = useQuery({
     queryKey: ['company-config'],
     queryFn: () => apiGet<CompanyConfig>('/company/config'),
     staleTime: 1000 * 60 * 60, // 1 hour - config doesn't change often
     retry: 1,
+    enabled: isAuthenticated,
   })
 
   const hasModule = useMemo(() => {

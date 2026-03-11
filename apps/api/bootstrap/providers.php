@@ -25,6 +25,8 @@ return [
     App\Modules\Expense\Providers\ExpenseServiceProvider::class,
     App\Modules\Taxation\Providers\TaxationServiceProvider::class,
     App\Modules\POS\Providers\POSServiceProvider::class,
+    App\Modules\POS\Providers\HeldOrderServiceProvider::class,
+    App\Modules\POS\Providers\OrderServiceProvider::class,
     App\Modules\Uom\Infrastructure\Providers\UomServiceProvider::class,
     App\Modules\Loyalty\Providers\LoyaltyServiceProvider::class,
     App\Modules\Catalog\Providers\CatalogServiceProvider::class,

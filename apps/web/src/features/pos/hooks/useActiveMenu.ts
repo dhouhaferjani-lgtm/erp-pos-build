@@ -8,7 +8,8 @@ export interface MenuModifierGroup extends ModifierGroupData {}
 
 export interface MenuItem {
   id: string
-  composite_item_id: string
+  sellable_id: string
+  sellable_type: 'product' | 'composite_item'
   name: string
   code: string
   base_price: string

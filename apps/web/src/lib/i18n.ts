@@ -24,6 +24,8 @@ import enPromotions from '../locales/en/promotions.json'
 import enCoupons from '../locales/en/coupons.json'
 import enCategories from '../locales/en/categories.json'
 import enCrm from '../locales/en/crm.json'
+import enPartsCatalog from '../locales/en/parts-catalog.json'
+import enLoyalty from '../locales/en/loyalty.json'
 
 import frCommon from '../locales/fr/common.json'
 import frAuth from '../locales/fr/auth.json'
@@ -46,6 +48,8 @@ import frPromotions from '../locales/fr/promotions.json'
 import frCoupons from '../locales/fr/coupons.json'
 import frCategories from '../locales/fr/categories.json'
 import frCrm from '../locales/fr/crm.json'
+import frPartsCatalog from '../locales/fr/parts-catalog.json'
+import frLoyalty from '../locales/fr/loyalty.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -78,6 +82,8 @@ const resources = {
     coupons: enCoupons,
     categories: enCategories,
     crm: enCrm,
+    'parts-catalog': enPartsCatalog,
+    loyalty: enLoyalty,
   },
   fr: {
     common: frCommon,
@@ -101,6 +107,8 @@ const resources = {
     coupons: frCoupons,
     categories: frCategories,
     crm: frCrm,
+    'parts-catalog': frPartsCatalog,
+    loyalty: frLoyalty,
   },
   ar: {
     // Arabic falls back to English - translations to be added later
@@ -125,6 +133,8 @@ const resources = {
     coupons: enCoupons,
     categories: enCategories,
     crm: enCrm,
+    'parts-catalog': enPartsCatalog,
+    loyalty: enLoyalty,
   },
 }
 
@@ -135,7 +145,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

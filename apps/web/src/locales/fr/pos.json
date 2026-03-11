@@ -116,7 +116,12 @@
     "customerEmail": "Email",
     "customerNameRequired": "Le nom du client est requis",
     "customerCreated": "Client \"{{name}}\" créé",
-    "customerCreateFailed": "Échec de la création du client"
+    "customerCreateFailed": "Échec de la création du client",
+    "couponCode": "Code promo",
+    "applyCoupon": "Appliquer",
+    "removeCoupon": "Retirer le coupon",
+    "couponApplied": "Coupon appliqué",
+    "totalSavings": "Économies totales"
   },
   "products": {
     "searchPlaceholder": "Rechercher par nom, SKU ou code-barres...",
@@ -164,7 +169,7 @@
     "loadingTerminals": "Chargement des terminaux...",
     "lastUsed": "Dernier utilisé"
   },
-  "demo": {
+  "transactions": {
     "noLocation": "Aucun emplacement sélectionné",
     "noLocationDescription": "Veuillez sélectionner un emplacement dans la barre supérieure pour utiliser la caisse.",
     "loading": {
@@ -314,7 +319,10 @@
     "discountExceedsSubtotal": "La remise ne peut pas dépasser le sous-total",
     "receiptCreationFailed": "Échec de la création du ticket",
     "paymentProcessingFailed": "Échec du traitement du paiement",
-    "invalidPaymentData": "Données de paiement invalides - veuillez vérifier tous les champs"
+    "invalidPaymentData": "Données de paiement invalides - veuillez vérifier tous les champs",
+    "invalidCoupon": "Code promo invalide",
+    "expiredCoupon": "Ce coupon a expiré",
+    "couponMinimumNotMet": "Le montant minimum de commande n'est pas atteint pour ce coupon"
   },
   "xReport": {
     "title": "Rapport X",
@@ -449,5 +457,101 @@
     "success": "Retour traité avec succès",
     "error": "Échec du traitement du retour",
     "receiptNotFound": "Ticket non trouvé"
+  },
+  "heldOrders": {
+    "title": "Commandes en attente",
+    "holdOrder": "Mettre en attente",
+    "recallOrder": "Rappeler",
+    "discardOrder": "Supprimer",
+    "label": "Libellé (optionnel)",
+    "labelPlaceholder": "ex: Jean, Table 5...",
+    "holdSuccess": "Commande mise en attente",
+    "recallSuccess": "Commande rappelée au panier",
+    "discardSuccess": "Commande en attente supprimée",
+    "holdFailed": "Échec de la mise en attente",
+    "recallFailed": "Échec du rappel",
+    "discardFailed": "Échec de la suppression",
+    "confirmDiscard": "Supprimer cette commande en attente ?",
+    "noHeldOrders": "Aucune commande en attente",
+    "noHeldOrdersDescription": "Mettez un panier en attente pour le sauvegarder",
+    "unnamed": "Commande sans nom",
+    "lineCount": "{{count}} article(s)",
+    "heldAgo": "En attente depuis {{time}}",
+    "expiresIn": "Expire dans {{time}}",
+    "expired": "Expirée",
+    "badge": "{{count}} en attente"
+  },
+  "orders": {
+    "title": "Commandes",
+    "newOrder": "Nouvelle Commande",
+    "orderNumber": "Commande #{{number}}",
+    "ticketNumber": "Ticket #{{number}}",
+    "status": {
+      "open": "Ouverte",
+      "sent_to_kitchen": "Envoyée en Cuisine",
+      "ready": "Prête",
+      "closed": "Fermée",
+      "cancelled": "Annulée"
+    },
+    "lineStatus": {
+      "pending": "En attente",
+      "sent": "Envoyée",
+      "preparing": "En préparation",
+      "ready": "Prête",
+      "served": "Servie",
+      "cancelled": "Annulée"
+    },
+    "actions": {
+      "sendToKitchen": "Envoyer en Cuisine",
+      "closeOrder": "Fermer la Commande",
+      "cancelOrder": "Annuler la Commande",
+      "addLine": "Ajouter un Article",
+      "modifyLine": "Modifier",
+      "removeLine": "Supprimer"
+    },
+    "confirmSend": "Envoyer cette commande en cuisine ?",
+    "confirmClose": "Fermer cette commande et créer un ticket ?",
+    "confirmCancel": "Annuler cette commande ?",
+    "noOrders": "Aucune commande active",
+    "noOrdersDescription": "Créez une nouvelle commande pour commencer",
+    "board": {
+      "open": "Ouvertes",
+      "sent": "Envoyées en Cuisine",
+      "ready": "Prêtes"
+    },
+    "detail": {
+      "customer": "Client",
+      "cashier": "Caissier",
+      "terminal": "Terminal",
+      "openedAt": "Ouverte à",
+      "consumption": "Mode de Consommation",
+      "notes": "Notes",
+      "items": "Articles",
+      "subtotal": "Sous-total",
+      "tax": "Taxe",
+      "discount": "Remise",
+      "total": "Total"
+    },
+    "toasts": {
+      "created": "Commande créée",
+      "lineAdded": "Article ajouté à la commande",
+      "lineModified": "Article modifié",
+      "lineRemoved": "Article supprimé",
+      "sentToKitchen": "Commande envoyée en cuisine",
+      "closed": "Commande fermée — Ticket créé",
+      "cancelled": "Commande annulée",
+      "createFailed": "Échec de la création de la commande",
+      "sendFailed": "Échec de l'envoi en cuisine",
+      "closeFailed": "Échec de la fermeture de la commande"
+    },
+    "specialInstructions": "Instructions Spéciales",
+    "specialInstructionsPlaceholder": "ex: Sans oignons, extra fromage...",
+    "modifiers": "Modificateurs",
+    "quantity": "Qté",
+    "filters": {
+      "allStatuses": "Tous les Statuts",
+      "terminal": "Terminal",
+      "shift": "Caisse"
+    }
   }
 }

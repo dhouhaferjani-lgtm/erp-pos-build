@@ -1,0 +1,184 @@
+{
+  "title": "كتالوج القطع",
+  "subtitle": "ابحث عن قطع غيار السيارات حسب المركبة أو رقم القطعة أو الفئة",
+  "searchModes": {
+    "vehicle": "حسب المركبة",
+    "partNumber": "حسب رقم القطعة",
+    "tireSize": "حسب مقاس الإطار",
+    "category": "حسب الفئة",
+    "vinPlate": "حسب VIN/اللوحة"
+  },
+  "vehicle": {
+    "title": "البحث حسب المركبة",
+    "selectManufacturer": "اختر الشركة المصنعة",
+    "selectModel": "اختر سلسلة الطراز",
+    "selectVehicle": "اختر المركبة",
+    "searchManufacturer": "ابحث عن شركة مصنعة...",
+    "searchModel": "ابحث عن طراز...",
+    "allManufacturers": "جميع الشركات المصنعة",
+    "allModels": "جميع الطرازات",
+    "allVehicles": "جميع المركبات",
+    "noModels": "لا توجد سلسلة طرازات",
+    "noVehicles": "لا توجد مركبات",
+    "productionYears": "{{from}} – {{to}}",
+    "power": "{{kw}} كيلوواط / {{hp}} حصان",
+    "engineCode": "المحرك: {{code}}",
+    "selectProductGroup": "اختر مجموعة المنتجات",
+    "browseCategories": "تصفح فئات المنتجات"
+  },
+  "partNumber": {
+    "title": "البحث حسب رقم القطعة",
+    "placeholder": "أدخل رقم القطعة أو مرجع OEM أو الباركود...",
+    "hint": "نصيحة: ابدأ باسم العلامة التجارية (مثل \"TRW GDB1550\") للتصفية حسب المورد",
+    "detectedBrand": "العلامة التجارية المكتشفة: {{brand}}",
+    "searchMethods": "تم البحث بواسطة: {{methods}}",
+    "noResults": "لم يتم العثور على مقالات لـ \"{{query}}\"",
+    "tryDrillDown": "جرب البحث حسب المركبة"
+  },
+  "tireSize": {
+    "title": "البحث حسب مقاس الإطار",
+    "width": "العرض",
+    "aspectRatio": "نسبة الارتفاع",
+    "rimDiameter": "قطر الجنط",
+    "widthPlaceholder": "مثال 205",
+    "aspectPlaceholder": "مثال 55",
+    "rimPlaceholder": "مثال 16",
+    "searchButton": "البحث عن الإطارات",
+    "selectWidth": "اختر العرض",
+    "selectAspect": "اختر نسبة الارتفاع",
+    "selectRim": "اختر قطر الجنط"
+  },
+  "category": {
+    "title": "التصفح حسب الفئة",
+    "rootCategories": "فئات المنتجات",
+    "backToParent": "رجوع",
+    "articlesInCategory": "{{count}} مقالة",
+    "noCategories": "لا توجد فئات",
+    "browseArticles": "تصفح المقالات"
+  },
+  "results": {
+    "title": "نتائج البحث",
+    "showing": "عرض {{count}} نتيجة",
+    "loadMore": "تحميل المزيد",
+    "loadingMore": "جاري التحميل...",
+    "noResults": "لم يتم العثور على مقالات",
+    "noResultsHint": "جرب بحثاً مختلفاً أو عدّل الفلاتر",
+    "filterByBrand": "تصفية حسب العلامة التجارية"
+  },
+  "article": {
+    "articleNumber": "رقم المقالة",
+    "supplier": "المورد",
+    "productGroup": "مجموعة المنتج",
+    "viewDetails": "عرض التفاصيل",
+    "copyArticleNumber": "نسخ رقم المقالة",
+    "specifications": "المواصفات",
+    "crossReferences": "المراجع المتقاطعة",
+    "vehicleCompatibility": "توافق المركبات",
+    "pricing": "التسعير",
+    "yourInventory": "مخزونك",
+    "description": "الوصف",
+    "media": "الصور"
+  },
+  "inventory": {
+    "inStock": "متوفر",
+    "notInInventory": "غير متوفر في المخزون",
+    "quantity": "{{available}} من {{total}} متاح",
+    "salePrice": "سعر البيع: {{price}}",
+    "purchasePrice": "سعر الشراء: {{price}}",
+    "editProduct": "تعديل المنتج",
+    "addToInventory": "إضافة إلى المخزون"
+  },
+  "fitment": {
+    "highConfidence": "توافق مؤكد",
+    "mediumConfidence": "{{confidence}}% تطابق",
+    "lowConfidence": "{{confidence}}% — تحقق من التوافق",
+    "dataSource": "المصدر: {{source}}"
+  },
+  "crossRef": {
+    "oe": "قطع أصلية",
+    "oem": "مصنع أصلي",
+    "iam": "قطع بديلة",
+    "ean": "EAN / باركود",
+    "noCrossRefs": "لا توجد مراجع متقاطعة"
+  },
+  "addToInventory": {
+    "title": "إضافة إلى المخزون",
+    "name": "اسم المنتج",
+    "sku": "رمز المنتج",
+    "barcode": "الباركود",
+    "salePrice": "سعر البيع",
+    "purchasePrice": "سعر الشراء",
+    "taxRate": "معدل الضريبة",
+    "qualityTier": "فئة الجودة",
+    "tiers": {
+      "oe": "OE (قطع أصلية)",
+      "oes": "OES (مورد أصلي)",
+      "premium_aftermarket": "بديل ممتاز",
+      "aftermarket": "بديل",
+      "economy": "اقتصادي"
+    },
+    "success": "تمت إضافة المقالة إلى المخزون",
+    "error": "فشل في إضافة المقالة إلى المخزون"
+  },
+  "panel": {
+    "title": "كتالوج القطع",
+    "addToPurchaseOrder": "إضافة إلى أمر الشراء",
+    "addToSalesOrder": "إضافة إلى أمر البيع",
+    "addToQuote": "إضافة إلى العرض",
+    "quantity": "الكمية",
+    "add": "إضافة"
+  },
+  "stickyBar": {
+    "change": "تغيير",
+    "clear": "مسح",
+    "clearConfirmTitle": "مسح المركبة؟",
+    "clearConfirmMessage": "سيؤدي هذا إلى مسح نتائج البحث. هل تريد المتابعة؟",
+    "confirm": "نعم، مسح",
+    "cancel": "إلغاء"
+  },
+  "vinPlate": {
+    "title": "البحث بـ VIN / لوحة الترخيص",
+    "description": "أدخل رقم VIN أو رقم لوحة الترخيص لتحديد المركبة والعثور على القطع المتوافقة.",
+    "vinLabel": "VIN (رقم تعريف المركبة)",
+    "vinPlaceholder": "مثال WVWZZZ3CZWE123456",
+    "plateLabel": "لوحة الترخيص",
+    "platePlaceholder": "مثال AB-123-CD",
+    "searchButton": "البحث عن المركبة",
+    "comingSoon": "البحث بـ VIN/اللوحة قادم قريباً. استخدم البحث بالمركبة في الوقت الحالي."
+  },
+  "recentVehicles": {
+    "title": "المركبات الأخيرة",
+    "empty": "لا توجد مركبات حديثة",
+    "emptyHint": "ستظهر المركبات التي تبحث عنها هنا للوصول السريع.",
+    "lastSearched": "آخر بحث",
+    "justNow": "الآن",
+    "minutesAgo": "منذ {{count}} دقيقة",
+    "hoursAgo": "منذ {{count}} ساعة",
+    "yesterday": "أمس",
+    "daysAgo": "منذ {{count}} يوم"
+  },
+  "filters": {
+    "title": "الفلاتر",
+    "supplierBrand": "علامة المورد",
+    "inStockOnly": "المتوفر فقط",
+    "confidenceMin": "الحد الأدنى للثقة",
+    "sortBy": "ترتيب حسب",
+    "sort": {
+      "relevance": "الصلة",
+      "price_asc": "السعر: تصاعدي",
+      "price_desc": "السعر: تنازلي",
+      "brand_asc": "العلامة التجارية: أ إلى ي",
+      "confidence_desc": "الثقة: تنازلي"
+    },
+    "openFilters": "الفلاتر",
+    "reset": "إعادة تعيين الفلاتر",
+    "viewGrid": "عرض شبكي",
+    "viewList": "عرض قائمة"
+  },
+  "errors": {
+    "loadFailed": "فشل في تحميل البيانات",
+    "searchFailed": "فشل البحث",
+    "catalogUnavailable": "كتالوج القطع غير متاح مؤقتاً",
+    "retryButton": "إعادة المحاولة"
+  }
+}

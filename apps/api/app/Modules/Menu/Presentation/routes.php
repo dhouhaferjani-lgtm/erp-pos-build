@@ -24,7 +24,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // Menu Category Items
     Route::put('menu-categories/{id}/items', [MenuCategoryController::class, 'syncItems']);
     Route::post('menu-categories/{id}/items', [MenuCategoryController::class, 'addItem']);
-    Route::delete('menu-categories/{categoryId}/items/{compositeItemId}', [MenuCategoryController::class, 'removeItem']);
+    Route::delete('menu-categories/{categoryId}/items/{itemId}', [MenuCategoryController::class, 'removeItem']);
 
     // Active Menu (POS-facing: resolve current menu)
     Route::get('active-menu', ActiveMenuController::class);

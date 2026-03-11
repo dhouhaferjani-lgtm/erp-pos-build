@@ -62,6 +62,54 @@
     },
     "balance": "Solde",
     "hasBalance": "Avec solde en cours",
+    "b2b": {
+      "title": "Informations B2B",
+      "customerCategory": "Catégorie client",
+      "selectCategory": "Sélectionner une catégorie",
+      "individual": "Particulier",
+      "business": "Entreprise",
+      "companyLegalName": "Raison sociale",
+      "registrationNumber": "Numéro d'immatriculation",
+      "paymentTerms": "Conditions de paiement",
+      "selectPaymentTerms": "Sélectionner les conditions",
+      "paymentTermsDays": "Délai de paiement (jours)",
+      "creditLimit": "Plafond de crédit",
+      "discountPercentage": "Pourcentage de remise",
+      "invoiceConsolidation": "Activer la consolidation des factures",
+      "consolidationFrequency": "Fréquence de consolidation",
+      "selectFrequency": "Sélectionner la fréquence",
+      "validateTaxId": "Valider",
+      "taxIdValid": "Valide",
+      "taxIdInvalid": "Invalide",
+      "creditLimitExceeded": "Plafond de crédit dépassé",
+      "creditLimitApproaching": "Plafond de crédit bientôt atteint",
+      "creditLimitUsage": "En cours : {{outstanding}} / Plafond : {{limit}} ({{percentage}}% utilisé)"
+    },
+    "paymentTerms": {
+      "immediate": "Immédiat",
+      "net_15": "Net 15",
+      "net_30": "Net 30",
+      "net_60": "Net 60",
+      "net_90": "Net 90",
+      "custom": "Personnalisé"
+    },
+    "consolidation": {
+      "weekly": "Hebdomadaire",
+      "monthly": "Mensuel"
+    },
+    "contacts": {
+      "title": "Personnes de contact",
+      "add": "Ajouter un contact",
+      "empty": "Aucune personne de contact ajoutée.",
+      "newContact": "Nouveau contact",
+      "firstName": "Prénom",
+      "lastName": "Nom",
+      "jobTitle": "Fonction",
+      "department": "Département",
+      "primaryContact": "Contact principal",
+      "invoiceContact": "Contact facturation",
+      "deliveryContact": "Contact livraison"
+    },
     "empty": {
       "title": "Aucun partenaire",
       "description": "Commencez par ajouter votre premier partenaire."

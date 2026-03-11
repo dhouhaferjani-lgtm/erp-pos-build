@@ -1,0 +1,220 @@
+{
+  "title": "Programmes de Fid\u00e9lit\u00e9",
+  "subtitle": "G\u00e9rer les programmes de fid\u00e9lit\u00e9, r\u00e8gles de gains, r\u00e9compenses et niveaux",
+  "membersTitle": "Membres Fid\u00e9lit\u00e9",
+  "membersSubtitle": "G\u00e9rer les membres et inscriptions aux programmes de fid\u00e9lit\u00e9",
+
+  "programs": {
+    "create": "Cr\u00e9er un Programme",
+    "edit": "Modifier le Programme",
+    "detail": "D\u00e9tails du Programme",
+    "noPrograms": "Aucun programme de fid\u00e9lit\u00e9",
+    "noProgramsDescription": "Cr\u00e9ez votre premier programme de fid\u00e9lit\u00e9 pour commencer \u00e0 r\u00e9compenser vos clients",
+    "deleteConfirm": "\u00cates-vous s\u00fbr de vouloir supprimer ce programme ? Cette action est irr\u00e9versible.",
+    "activateConfirm": "\u00cates-vous s\u00fbr de vouloir activer ce programme ? Il sera disponible pour les clients.",
+    "deactivateConfirm": "\u00cates-vous s\u00fbr de vouloir d\u00e9sactiver ce programme ? Les clients ne pourront plus gagner ni \u00e9changer de points."
+  },
+
+  "members": {
+    "create": "Ajouter un Membre",
+    "edit": "Modifier le Membre",
+    "detail": "D\u00e9tails du Membre",
+    "noMembers": "Aucun membre fid\u00e9lit\u00e9",
+    "noMembersDescription": "Ajoutez votre premier membre ou inscrivez des clients au point de vente",
+    "deleteConfirm": "\u00cates-vous s\u00fbr de vouloir supprimer ce membre ?",
+    "profile": "Profil",
+    "enrollments": "Inscriptions",
+    "transactions": "Historique des Transactions",
+    "noTransactions": "Aucune transaction",
+    "noEnrollments": "Inscrit \u00e0 aucun programme"
+  },
+
+  "earningRules": {
+    "title": "R\u00e8gles de Gains",
+    "create": "Ajouter une R\u00e8gle",
+    "edit": "Modifier la R\u00e8gle",
+    "noRules": "Aucune r\u00e8gle configur\u00e9e",
+    "noRulesDescription": "Ajoutez des r\u00e8gles pour d\u00e9finir comment les clients gagnent des points",
+    "deleteConfirm": "\u00cates-vous s\u00fbr de vouloir supprimer cette r\u00e8gle ?",
+    "activateConfirm": "Activer cette r\u00e8gle ?",
+    "deactivateConfirm": "D\u00e9sactiver cette r\u00e8gle ?"
+  },
+
+  "rewards": {
+    "title": "R\u00e9compenses",
+    "create": "Ajouter une R\u00e9compense",
+    "edit": "Modifier la R\u00e9compense",
+    "noRewards": "Aucune r\u00e9compense configur\u00e9e",
+    "noRewardsDescription": "Ajoutez des r\u00e9compenses que les clients peuvent \u00e9changer avec leurs points",
+    "deleteConfirm": "\u00cates-vous s\u00fbr de vouloir supprimer cette r\u00e9compense ?",
+    "activateConfirm": "Activer cette r\u00e9compense ?",
+    "deactivateConfirm": "D\u00e9sactiver cette r\u00e9compense ?"
+  },
+
+  "tiers": {
+    "title": "Niveaux",
+    "create": "Ajouter un Niveau",
+    "edit": "Modifier le Niveau",
+    "noTiers": "Aucun niveau configur\u00e9",
+    "noTiersDescription": "Ajoutez des niveaux pour cr\u00e9er diff\u00e9rents paliers d'adh\u00e9sion",
+    "deleteConfirm": "\u00cates-vous s\u00fbr de vouloir supprimer ce niveau ?"
+  },
+
+  "stampCards": {
+    "title": "Cartes \u00e0 Tampon",
+    "create": "Ajouter une Carte",
+    "edit": "Modifier la Carte",
+    "noCards": "Aucune carte configur\u00e9e",
+    "noCardsDescription": "Ajoutez des cartes \u00e0 tampon pour les r\u00e9compenses de type achetez-X-obtenez-Y",
+    "deleteConfirm": "\u00cates-vous s\u00fbr de vouloir supprimer cette carte ?"
+  },
+
+  "fields": {
+    "name": "Nom",
+    "programType": "Type de Programme",
+    "status": "Statut",
+    "currency": "Devise",
+    "startDate": "Date de D\u00e9but",
+    "endDate": "Date de Fin",
+    "termsAndConditions": "Conditions G\u00e9n\u00e9rales",
+    "phone": "T\u00e9l\u00e9phone",
+    "email": "Email",
+    "firstName": "Pr\u00e9nom",
+    "lastName": "Nom",
+    "dateOfBirth": "Date de Naissance",
+    "ruleType": "Type de R\u00e8gle",
+    "priority": "Priorit\u00e9",
+    "rewardValue": "Valeur de R\u00e9compense",
+    "rewardType": "Type de R\u00e9compense",
+    "conditions": "Conditions",
+    "minPurchaseAmount": "Montant Minimum d'Achat",
+    "maxEarnPerTransaction": "Gain Max par Transaction",
+    "maxEarnPerDay": "Gain Max par Jour",
+    "pointsCost": "Co\u00fbt en Points",
+    "description": "Description",
+    "maxDiscount": "R\u00e9duction Maximum",
+    "minOrderValue": "Commande Minimum",
+    "quantityAvailable": "Quantit\u00e9 Disponible",
+    "quantityPerMember": "Limite par Membre",
+    "level": "Niveau",
+    "qualificationType": "Type de Qualification",
+    "qualificationThreshold": "Seuil de Qualification",
+    "qualificationPeriodMonths": "P\u00e9riode de Qualification (Mois)",
+    "earningMultiplier": "Multiplicateur de Gains",
+    "stampsRequired": "Tampons Requis",
+    "stampsPerItem": "Tampons par Article",
+    "rewardId": "R\u00e9compense",
+    "maxActiveCards": "Cartes Actives Max",
+    "expiryDays": "Expiration (Jours)",
+    "currentBalance": "Solde",
+    "lifetimeEarned": "Total Gagn\u00e9",
+    "lifetimeRedeemed": "\u00c9chang\u00e9",
+    "enrolledAt": "Inscrit le",
+    "amount": "Montant",
+    "createdAt": "Cr\u00e9\u00e9 le"
+  },
+
+  "programTypes": {
+    "points": "Points",
+    "stamps": "Tampons",
+    "visits": "Visites",
+    "cashback": "Cashback",
+    "hybrid": "Hybride"
+  },
+
+  "statuses": {
+    "draft": "Brouillon",
+    "active": "Actif",
+    "paused": "En Pause",
+    "archived": "Archiv\u00e9",
+    "inactive": "Inactif",
+    "suspended": "Suspendu",
+    "opted_out": "D\u00e9sinscrit"
+  },
+
+  "ruleTypes": {
+    "spend": "D\u00e9pense",
+    "item": "Article",
+    "category": "Cat\u00e9gorie",
+    "quantity": "Quantit\u00e9",
+    "visit": "Visite",
+    "threshold": "Seuil",
+    "time": "Horaire"
+  },
+
+  "rewardTypes": {
+    "free_item": "Article Gratuit",
+    "discount_amount": "R\u00e9duction (Montant)",
+    "discount_percent": "R\u00e9duction (%)",
+    "choice": "Choix",
+    "credit": "Cr\u00e9dit",
+    "external": "Externe"
+  },
+
+  "qualificationTypes": {
+    "spend": "D\u00e9pense",
+    "points_earned": "Points Gagn\u00e9s",
+    "visits": "Visites",
+    "manual": "Manuel"
+  },
+
+  "transactions": {
+    "title": "Historique des transactions",
+    "noTransactions": "Aucune transaction",
+    "date": "Date",
+    "type": "Type",
+    "points": "Points",
+    "balanceAfter": "Solde apr\u00e8s",
+    "description": "Description"
+  },
+
+  "transactionTypes": {
+    "earn": "Gain",
+    "redeem": "\u00c9change",
+    "adjust": "Ajustement",
+    "expire": "Expir\u00e9",
+    "transfer_in": "Transfert Entrant",
+    "transfer_out": "Transfert Sortant"
+  },
+
+  "actions": {
+    "activate": "Activer",
+    "deactivate": "D\u00e9sactiver",
+    "delete": "Supprimer",
+    "enroll": "Inscrire au Programme",
+    "optOut": "D\u00e9sinscrire",
+    "reactivate": "R\u00e9activer",
+    "adjustPoints": "Ajuster les Points",
+    "activated": "Activ\u00e9 avec succ\u00e8s",
+    "deactivated": "D\u00e9sactiv\u00e9 avec succ\u00e8s",
+    "deleted": "Supprim\u00e9 avec succ\u00e8s",
+    "created": "Cr\u00e9\u00e9 avec succ\u00e8s",
+    "updated": "Mis \u00e0 jour avec succ\u00e8s",
+    "enrolled": "Inscrit avec succ\u00e8s",
+    "optedOut": "D\u00e9sinscrit avec succ\u00e8s",
+    "reactivated": "R\u00e9activ\u00e9 avec succ\u00e8s",
+    "pointsAdjusted": "Points ajust\u00e9s avec succ\u00e8s"
+  },
+
+  "sections": {
+    "overview": "Aper\u00e7u",
+    "basicInfo": "Informations G\u00e9n\u00e9rales",
+    "schedule": "Planification",
+    "earningRules": "R\u00e8gles de Gains",
+    "rewards": "R\u00e9compenses",
+    "tiers": "Niveaux",
+    "stampCards": "Cartes \u00e0 Tampon"
+  },
+
+  "enroll": {
+    "title": "Inscrire au Programme",
+    "selectProgram": "S\u00e9lectionnez un programme",
+    "noActivePrograms": "Aucun programme actif disponible"
+  },
+
+  "adjust": {
+    "title": "Ajuster les Points",
+    "description": "Raison de l'ajustement",
+    "positiveForAdd": "Utilisez un nombre positif pour ajouter, n\u00e9gatif pour d\u00e9duire"
+  }
+}

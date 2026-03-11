@@ -62,6 +62,54 @@
     },
     "balance": "Balance",
     "hasBalance": "Has outstanding balance",
+    "b2b": {
+      "title": "B2B Information",
+      "customerCategory": "Customer Category",
+      "selectCategory": "Select category",
+      "individual": "Individual",
+      "business": "Business",
+      "companyLegalName": "Company Legal Name",
+      "registrationNumber": "Business Registration Number",
+      "paymentTerms": "Payment Terms",
+      "selectPaymentTerms": "Select payment terms",
+      "paymentTermsDays": "Payment Terms (Days)",
+      "creditLimit": "Credit Limit",
+      "discountPercentage": "Discount Percentage",
+      "invoiceConsolidation": "Enable Invoice Consolidation",
+      "consolidationFrequency": "Consolidation Frequency",
+      "selectFrequency": "Select frequency",
+      "validateTaxId": "Validate",
+      "taxIdValid": "Valid",
+      "taxIdInvalid": "Invalid",
+      "creditLimitExceeded": "Credit limit exceeded",
+      "creditLimitApproaching": "Approaching credit limit",
+      "creditLimitUsage": "Outstanding: {{outstanding}} / Limit: {{limit}} ({{percentage}}% used)"
+    },
+    "paymentTerms": {
+      "immediate": "Immediate",
+      "net_15": "Net 15",
+      "net_30": "Net 30",
+      "net_60": "Net 60",
+      "net_90": "Net 90",
+      "custom": "Custom"
+    },
+    "consolidation": {
+      "weekly": "Weekly",
+      "monthly": "Monthly"
+    },
+    "contacts": {
+      "title": "Contact Persons",
+      "add": "Add Contact",
+      "empty": "No contact persons added yet.",
+      "newContact": "New Contact",
+      "firstName": "First Name",
+      "lastName": "Last Name",
+      "jobTitle": "Job Title",
+      "department": "Department",
+      "primaryContact": "Primary Contact",
+      "invoiceContact": "Invoice Contact",
+      "deliveryContact": "Delivery Contact"
+    },
     "empty": {
       "title": "No partners yet",
       "description": "Get started by adding your first partner."

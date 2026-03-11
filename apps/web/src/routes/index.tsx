@@ -91,6 +91,10 @@ const CountingDetailPage = lazy(() => import('../features/inventory-counting/pag
 const CountingReviewPage = lazy(() => import('../features/inventory-counting/pages/CountingReviewPage').then((m) => ({ default: m.CountingReviewPage })))
 const DiscrepancyReportPage = lazy(() => import('../features/inventory-counting/pages/DiscrepancyReportPage').then((m) => ({ default: m.DiscrepancyReportPage })))
 
+// Parts Catalog module
+const PartsCatalogPage = lazy(() => import('../features/parts-catalog/pages/PartsCatalogPage').then((m) => ({ default: m.PartsCatalogPage })))
+const ArticleDetailPageCatalog = lazy(() => import('../features/parts-catalog/pages/ArticleDetailPage').then((m) => ({ default: m.ArticleDetailPage })))
+
 // Vehicles module
 const VehicleListPage = lazy(() => import('../features/vehicles/VehicleListPage').then((m) => ({ default: m.VehicleListPage })))
 const VehicleDetailPage = lazy(() => import('../features/vehicles/VehicleDetailPage').then((m) => ({ default: m.VehicleDetailPage })))
@@ -191,6 +195,15 @@ const ShiftHistoryPage = lazy(() => import('../features/pos/pages/ShiftHistoryPa
 const ZReportListPage = lazy(() => import('../features/pos/pages/ZReportListPage/ZReportListPage').then((m) => ({ default: m.ZReportListPage })))
 const ZReportDetailPage = lazy(() => import('../features/pos/pages/ZReportDetailPage/ZReportDetailPage').then((m) => ({ default: m.ZReportDetailPage })))
 const ReceiptSearchPage = lazy(() => import('../features/pos/pages/ReceiptSearchPage/ReceiptSearchPage').then((m) => ({ default: m.ReceiptSearchPage })))
+const OrdersPage = lazy(() => import('../features/pos/pages/OrdersPage').then((m) => ({ default: m.OrdersPage })))
+
+// Loyalty module
+const LoyaltyProgramListPage = lazy(() => import('../features/loyalty').then((m) => ({ default: m.ProgramListPage })))
+const LoyaltyProgramFormPage = lazy(() => import('../features/loyalty').then((m) => ({ default: m.ProgramFormPage })))
+const LoyaltyProgramDetailPage = lazy(() => import('../features/loyalty').then((m) => ({ default: m.ProgramDetailPage })))
+const LoyaltyMemberListPage = lazy(() => import('../features/loyalty').then((m) => ({ default: m.MemberListPage })))
+const LoyaltyMemberFormPage = lazy(() => import('../features/loyalty').then((m) => ({ default: m.MemberFormPage })))
+const LoyaltyMemberDetailPage = lazy(() => import('../features/loyalty').then((m) => ({ default: m.MemberDetailPage })))
 
 function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   return (
@@ -961,6 +974,32 @@ export function AppRoutes() {
             }
           />
         </Route>
+
+        {/* Parts Catalog */}
+        <Route
+          path="parts-catalog"
+          element={
+            <ModuleGuard module="PlatformIntegration">
+              <RequirePermission moduleKey="parts_catalog">
+                <SuspenseWrapper>
+                  <PartsCatalogPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            </ModuleGuard>
+          }
+        />
+        <Route
+          path="parts-catalog/:articleId"
+          element={
+            <ModuleGuard module="PlatformIntegration">
+              <RequirePermission moduleKey="parts_catalog">
+                <SuspenseWrapper>
+                  <ArticleDetailPageCatalog />
+                </SuspenseWrapper>
+              </RequirePermission>
+            </ModuleGuard>
+          }
+        />
 
         {/* Vehicles */}
         <Route
@@ -1925,6 +1964,17 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
+          {/* Orders */}
+          <Route
+            path="orders"
+            element={
+              <RequirePermission permission="pos.operate_terminal">
+                <SuspenseWrapper>
+                  <OrdersPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
           {/* Promotions */}
           <Route
             path="promotions"
@@ -1987,6 +2037,88 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
+          {/* Loyalty Programs */}
+          <Route
+            path="loyalty/programs"
+            element={
+              <RequirePermission permission="loyalty.view">
+                <SuspenseWrapper>
+                  <LoyaltyProgramListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="loyalty/programs/new"
+            element={
+              <RequirePermission permission="loyalty.manage">
+                <SuspenseWrapper>
+                  <LoyaltyProgramFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="loyalty/programs/:id"
+            element={
+              <RequirePermission permission="loyalty.view">
+                <SuspenseWrapper>
+                  <LoyaltyProgramDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="loyalty/programs/:id/edit"
+            element={
+              <RequirePermission permission="loyalty.manage">
+                <SuspenseWrapper>
+                  <LoyaltyProgramFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          {/* Loyalty Members */}
+          <Route
+            path="loyalty/members"
+            element={
+              <RequirePermission permission="loyalty.view">
+                <SuspenseWrapper>
+                  <LoyaltyMemberListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="loyalty/members/new"
+            element={
+              <RequirePermission permission="loyalty.manage">
+                <SuspenseWrapper>
+                  <LoyaltyMemberFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="loyalty/members/:id"
+            element={
+              <RequirePermission permission="loyalty.view">
+                <SuspenseWrapper>
+                  <LoyaltyMemberDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="loyalty/members/:id/edit"
+            element={
+              <RequirePermission permission="loyalty.manage">
+                <SuspenseWrapper>
+                  <LoyaltyMemberFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
         </Route>
 
         {/* Legacy redirects for backward compatibility */}
@@ -2013,8 +2145,6 @@ export function AppRoutes() {
           </RequireAuth>
         }
       />
-      {/* Legacy redirect for /pos/demo */}
-      <Route path="/pos/demo" element={<Navigate to="/pos/transactions" replace />} />
       <Route
         path="/pos/shifts"
         element={

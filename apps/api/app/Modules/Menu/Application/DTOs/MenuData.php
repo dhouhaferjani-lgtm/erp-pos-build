@@ -42,8 +42,11 @@ class MenuData extends Data
         if ($menu->relationLoaded('categories')) {
             $categoriesCount = $menu->categories->count();
             foreach ($menu->categories as $category) {
-                if ($category->relationLoaded('items')) {
-                    $itemsCount += $category->items->count();
+                if ($category->relationLoaded('compositeItems')) {
+                    $itemsCount += $category->compositeItems->count();
+                }
+                if ($category->relationLoaded('products')) {
+                    $itemsCount += $category->products->count();
                 }
             }
         }

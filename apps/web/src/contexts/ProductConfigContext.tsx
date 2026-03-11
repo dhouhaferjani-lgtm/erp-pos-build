@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react'
 
 /**
  * Supported product variants
@@ -91,6 +91,10 @@ export function ProductConfigProvider({ children }: ProductConfigProviderProps) 
       productDescription: info.description,
     }
   }, [])
+
+  useEffect(() => {
+    document.title = value.productName
+  }, [value.productName])
 
   return <ProductConfigContext.Provider value={value}>{children}</ProductConfigContext.Provider>
 }

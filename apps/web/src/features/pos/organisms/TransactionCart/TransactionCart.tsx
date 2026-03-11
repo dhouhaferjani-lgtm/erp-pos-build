@@ -1,16 +1,18 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
-import { CartLineItem, type CartItem, TransactionDiscountInput, DiscountInput } from '../../molecules'
+import { CartLineItem, type CartItem, TransactionDiscountInput, DiscountInput, AppliedDiscountsBadge, CouponCodeInput } from '../../molecules'
 import { POSButton } from '../../atoms'
-import { ShoppingCart, Trash2, User, UserPlus, Tag } from 'lucide-react'
+import { ShoppingCart, Trash2, User, UserPlus, Tag, Sparkles } from 'lucide-react'
 import { PaymentPanel } from '../PaymentPanel/PaymentPanel'
 import { Modal } from '@/components/organisms/Modal/Modal'
 import { useDiscountPermissions } from '../../hooks/useDiscountPermissions'
 import { useCurrency } from '@/hooks/useCurrency'
 import { LoyaltyMemberBadge } from '../../components/LoyaltyMemberBadge'
+import { LoyaltyRewardSelector } from '../../components/LoyaltyRewardSelector'
 import { EarnPointsPreview } from '../../components/EarnPointsPreview'
 import type { LoyaltyMember, LoyaltyEnrollment } from '../../api/loyaltyApi'
+import type { DiscountBreakdownData } from '../../api/discountApi'
 
 export interface Customer {
   id: string
@@ -39,6 +41,12 @@ export interface TransactionCartProps {
   onUpdateTransactionDiscount?: (discount?: { amount: string; reason?: string }) => void
   loyaltyMember?: LoyaltyMember | null
   loyaltyEnrollment?: LoyaltyEnrollment | null
+  discountBreakdown?: DiscountBreakdownData | null
+  discountSavings?: string
+  couponCode?: string | null
+  onCouponApplied?: (code: string, discountAmount: string, promotionName: string) => void
+  onCouponRemoved?: () => void
+  onLoyaltyRewardRedeemed?: (rewardValue: string, rewardName: string, rewardId: string) => void
 }
 
 export function TransactionCart({
@@ -59,6 +67,12 @@ export function TransactionCart({
   onUpdateTransactionDiscount,
   loyaltyMember,
   loyaltyEnrollment,
+  discountBreakdown,
+  discountSavings,
+  couponCode,
+  onCouponApplied,
+  onCouponRemoved,
+  onLoyaltyRewardRedeemed,
 }: TransactionCartProps) {
   const { t } = useTranslation(['pos', 'common'])
   const { currency, toFixed: toFixedCurrency } = useCurrency()
@@ -175,6 +189,12 @@ export function TransactionCart({
             member={loyaltyMember}
             enrollment={loyaltyEnrollment}
           />
+          {!isEmpty && onLoyaltyRewardRedeemed && (
+            <LoyaltyRewardSelector
+              enrollmentId={loyaltyEnrollment.id}
+              onRewardRedeemed={onLoyaltyRewardRedeemed}
+            />
+          )}
           {!isEmpty && (
             <EarnPointsPreview
               enrollmentId={loyaltyEnrollment.id}
@@ -264,6 +284,41 @@ export function TransactionCart({
               </POSButton>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Coupon Code Input */}
+      {!isEmpty && onCouponApplied && onCouponRemoved && (
+        <div className="border-t border-gray-200 pt-3 pb-3">
+          <CouponCodeInput
+            subtotal={subtotal}
+            {...(selectedCustomer?.id ? { customerId: selectedCustomer.id } : {})}
+            couponCode={couponCode ?? null}
+            onCouponApplied={onCouponApplied}
+            onCouponRemoved={onCouponRemoved}
+          />
+        </div>
+      )}
+
+      {/* Applied Discounts (promotions, coupons, loyalty — not manual) */}
+      {!isEmpty && discountBreakdown && discountBreakdown.lines.filter((l) => l.source !== 'manual').length > 0 && (
+        <div className="border-t border-gray-200 pt-3 pb-3 space-y-2">
+          {discountBreakdown.lines
+            .filter((l) => l.source !== 'manual')
+            .map((line, idx) => (
+              <AppliedDiscountsBadge key={`${line.source}-${idx}`} line={line} />
+            ))}
+          {parseFloat(discountSavings ?? '0') > 0 && (
+            <div className="flex items-center justify-between px-3 py-1.5 text-sm">
+              <span className="flex items-center gap-1.5 text-green-700 font-medium">
+                <Sparkles className="w-4 h-4" />
+                {t('pos:cart.totalSavings')}
+              </span>
+              <span className="font-semibold text-green-700">
+                -{toFixedCurrency(parseFloat(discountSavings ?? '0'))} {currency}
+              </span>
+            </div>
+          )}
         </div>
       )}
 

@@ -14,6 +14,7 @@ import { useBarcodeLookup } from '../../hooks/useBarcodeLookup'
 import { ConsumptionModeToggle, type ConsumptionMode } from '../../atoms/ConsumptionModeToggle/ConsumptionModeToggle'
 import { toast } from 'sonner'
 import type { POSProduct } from '../../api/productApi'
+import { useDiscountPreview } from '../../hooks/useDiscountPreview'
 
 export interface POSPageProps {
   products: Product[]
@@ -34,6 +35,10 @@ export interface POSPageProps {
   loyaltyEnrollment?: import('../../api/loyaltyApi').LoyaltyEnrollment | null
   consumptionMode?: ConsumptionMode
   onConsumptionModeChange?: (mode: ConsumptionMode) => void
+  couponCode?: string | null
+  onCouponApplied?: (code: string, discountAmount: string, promotionName: string) => void
+  onCouponRemoved?: () => void
+  onLoyaltyRewardRedeemed?: (rewardValue: string, rewardName: string, rewardId: string) => void
 }
 
 export function POSPage({
@@ -55,6 +60,10 @@ export function POSPage({
   loyaltyEnrollment,
   consumptionMode,
   onConsumptionModeChange,
+  couponCode,
+  onCouponApplied,
+  onCouponRemoved,
+  onLoyaltyRewardRedeemed,
 }: POSPageProps) {
   const { t } = useTranslation(['common', 'pos'])
   const navigate = useNavigate()
@@ -66,6 +75,20 @@ export function POSPage({
   const [scanFlash, setScanFlash] = useState(false)
   const [barcodeMatchProducts, setBarcodeMatchProducts] = useState<POSProduct[]>([])
   const [barcodeMatchCode, setBarcodeMatchCode] = useState<string | null>(null)
+
+  // Calculate subtotal for discount preview
+  const cartSubtotal = useMemo(() => {
+    return cartItems.reduce((sum, item) => sum + parseFloat(item.line_total), 0).toFixed(decimals)
+  }, [cartItems, decimals])
+
+  // Discount preview — calls backend to resolve promotions, coupons, loyalty
+  const discountPreview = useDiscountPreview({
+    cartItems,
+    subtotal: cartSubtotal,
+    manualDiscountAmount: transactionDiscount?.amount,
+    couponCode: couponCode ?? undefined,
+    customerId: selectedCustomer?.id,
+  })
 
   // Responsive breakpoint: stack vertically on tablets < 768px
   const isNarrowScreen = screenWidth < 768
@@ -474,6 +497,12 @@ export function POSPage({
             onUpdateTransactionDiscount={onTransactionDiscountChange}
             loyaltyMember={loyaltyMember}
             loyaltyEnrollment={loyaltyEnrollment}
+            {...(discountPreview.breakdown ? { discountBreakdown: discountPreview.breakdown } : {})}
+            discountSavings={discountPreview.totalSavings}
+            {...(couponCode != null ? { couponCode } : {})}
+            {...(onCouponApplied ? { onCouponApplied } : {})}
+            {...(onCouponRemoved ? { onCouponRemoved } : {})}
+            {...(onLoyaltyRewardRedeemed ? { onLoyaltyRewardRedeemed } : {})}
           />
         </div>
 

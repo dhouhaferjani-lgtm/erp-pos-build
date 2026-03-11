@@ -94,6 +94,10 @@ export const PERMISSIONS = {
   'coupons.view': ['admin', 'manager'],
   'coupons.manage': ['admin', 'manager'],
 
+  // Loyalty
+  'loyalty.view': ['admin', 'manager'],
+  'loyalty.manage': ['admin', 'manager'],
+
   // Contacts / CRM
   'contacts.view': ['admin', 'manager', 'sales', 'cashier'],
   'contacts.create': ['admin', 'manager', 'sales', 'cashier'],
@@ -124,6 +128,7 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   'modifier-groups': ['modifier-groups.view'],
   promotions: ['promotions.view'],
   coupons: ['coupons.view'],
+  loyalty: ['loyalty.view'],
   contacts: ['contacts.view'],
 }
 

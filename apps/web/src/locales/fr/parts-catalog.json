@@ -1,0 +1,184 @@
+{
+  "title": "Catalogue Pièces",
+  "subtitle": "Rechercher des pièces auto par véhicule, référence ou catégorie",
+  "searchModes": {
+    "vehicle": "Par Véhicule",
+    "partNumber": "Par Référence",
+    "tireSize": "Par Taille Pneu",
+    "category": "Par Catégorie",
+    "vinPlate": "Par VIN/Plaque"
+  },
+  "vehicle": {
+    "title": "Recherche par véhicule",
+    "selectManufacturer": "Sélectionner le constructeur",
+    "selectModel": "Sélectionner la série",
+    "selectVehicle": "Sélectionner le véhicule",
+    "searchManufacturer": "Rechercher un constructeur...",
+    "searchModel": "Rechercher un modèle...",
+    "allManufacturers": "Tous les constructeurs",
+    "allModels": "Tous les modèles",
+    "allVehicles": "Tous les véhicules",
+    "noModels": "Aucune série trouvée",
+    "noVehicles": "Aucun véhicule trouvé",
+    "productionYears": "{{from}} – {{to}}",
+    "power": "{{kw}} kW / {{hp}} ch",
+    "engineCode": "Moteur : {{code}}",
+    "selectProductGroup": "Sélectionner un groupe produit",
+    "browseCategories": "Parcourir les catégories"
+  },
+  "partNumber": {
+    "title": "Recherche par référence",
+    "placeholder": "Saisir la référence, numéro OEM ou code-barres...",
+    "hint": "Astuce : Préfixez avec la marque (ex. « TRW GDB1550 ») pour filtrer par fournisseur",
+    "detectedBrand": "Marque détectée : {{brand}}",
+    "searchMethods": "Recherché par : {{methods}}",
+    "noResults": "Aucun article trouvé pour « {{query}} »",
+    "tryDrillDown": "Essayez la recherche par véhicule"
+  },
+  "tireSize": {
+    "title": "Recherche par taille de pneu",
+    "width": "Largeur",
+    "aspectRatio": "Série",
+    "rimDiameter": "Diamètre jante",
+    "widthPlaceholder": "ex. 205",
+    "aspectPlaceholder": "ex. 55",
+    "rimPlaceholder": "ex. 16",
+    "searchButton": "Rechercher les pneus",
+    "selectWidth": "Sélectionner la largeur",
+    "selectAspect": "Sélectionner la série",
+    "selectRim": "Sélectionner le diamètre"
+  },
+  "category": {
+    "title": "Parcourir par catégorie",
+    "rootCategories": "Catégories de produits",
+    "backToParent": "Retour",
+    "articlesInCategory": "{{count}} articles",
+    "noCategories": "Aucune catégorie trouvée",
+    "browseArticles": "Parcourir les articles"
+  },
+  "results": {
+    "title": "Résultats de recherche",
+    "showing": "{{count}} résultats affichés",
+    "loadMore": "Charger plus",
+    "loadingMore": "Chargement...",
+    "noResults": "Aucun article trouvé",
+    "noResultsHint": "Essayez une autre recherche ou modifiez vos filtres",
+    "filterByBrand": "Filtrer par marque"
+  },
+  "article": {
+    "articleNumber": "Réf.",
+    "supplier": "Fournisseur",
+    "productGroup": "Groupe produit",
+    "viewDetails": "Voir les détails",
+    "copyArticleNumber": "Copier le numéro d'article",
+    "specifications": "Caractéristiques",
+    "crossReferences": "Références croisées",
+    "vehicleCompatibility": "Compatibilité véhicule",
+    "pricing": "Tarification",
+    "yourInventory": "Votre stock",
+    "description": "Description",
+    "media": "Images"
+  },
+  "inventory": {
+    "inStock": "En stock",
+    "notInInventory": "Pas en stock",
+    "quantity": "{{available}} sur {{total}} disponibles",
+    "salePrice": "Prix de vente : {{price}}",
+    "purchasePrice": "Prix d'achat : {{price}}",
+    "editProduct": "Modifier le produit",
+    "addToInventory": "Ajouter au stock"
+  },
+  "fitment": {
+    "highConfidence": "Compatibilité confirmée",
+    "mediumConfidence": "{{confidence}}% de correspondance",
+    "lowConfidence": "{{confidence}}% — Vérifier la compatibilité",
+    "dataSource": "Source : {{source}}"
+  },
+  "crossRef": {
+    "oe": "Équipement d'origine",
+    "oem": "Fabricant d'origine",
+    "iam": "Pièce de rechange",
+    "ean": "EAN / Code-barres",
+    "noCrossRefs": "Aucune référence croisée disponible"
+  },
+  "addToInventory": {
+    "title": "Ajouter au stock",
+    "name": "Nom du produit",
+    "sku": "Référence interne",
+    "barcode": "Code-barres",
+    "salePrice": "Prix de vente",
+    "purchasePrice": "Prix d'achat",
+    "taxRate": "Taux de TVA",
+    "qualityTier": "Gamme qualité",
+    "tiers": {
+      "oe": "OE (Première monte)",
+      "oes": "OES (Fournisseur OE)",
+      "premium_aftermarket": "Rechange Premium",
+      "aftermarket": "Rechange",
+      "economy": "Économique"
+    },
+    "success": "Article ajouté au stock",
+    "error": "Erreur lors de l'ajout au stock"
+  },
+  "panel": {
+    "title": "Catalogue Pièces",
+    "addToPurchaseOrder": "Ajouter au bon de commande",
+    "addToSalesOrder": "Ajouter au bon de livraison",
+    "addToQuote": "Ajouter au devis",
+    "quantity": "Qté",
+    "add": "Ajouter"
+  },
+  "stickyBar": {
+    "change": "Changer",
+    "clear": "Effacer",
+    "clearConfirmTitle": "Effacer le véhicule ?",
+    "clearConfirmMessage": "Cela effacera vos résultats de recherche. Continuer ?",
+    "confirm": "Oui, effacer",
+    "cancel": "Annuler"
+  },
+  "vinPlate": {
+    "title": "Recherche par VIN / Plaque",
+    "description": "Saisissez un VIN ou un numéro de plaque d'immatriculation pour identifier le véhicule et trouver les pièces compatibles.",
+    "vinLabel": "VIN (Numéro d'identification du véhicule)",
+    "vinPlaceholder": "ex. WVWZZZ3CZWE123456",
+    "plateLabel": "Plaque d'immatriculation",
+    "platePlaceholder": "ex. AB-123-CD",
+    "searchButton": "Rechercher le véhicule",
+    "comingSoon": "La recherche par VIN/Plaque arrive bientôt. Utilisez la recherche par véhicule en attendant."
+  },
+  "recentVehicles": {
+    "title": "Véhicules récents",
+    "empty": "Aucun véhicule récent",
+    "emptyHint": "Les véhicules recherchés apparaîtront ici pour un accès rapide.",
+    "lastSearched": "Dernière recherche",
+    "justNow": "à l'instant",
+    "minutesAgo": "il y a {{count}}min",
+    "hoursAgo": "il y a {{count}}h",
+    "yesterday": "hier",
+    "daysAgo": "il y a {{count}}j"
+  },
+  "filters": {
+    "title": "Filtres",
+    "supplierBrand": "Marque fournisseur",
+    "inStockOnly": "En stock uniquement",
+    "confidenceMin": "Confiance min.",
+    "sortBy": "Trier par",
+    "sort": {
+      "relevance": "Pertinence",
+      "price_asc": "Prix : croissant",
+      "price_desc": "Prix : décroissant",
+      "brand_asc": "Marque : A à Z",
+      "confidence_desc": "Confiance : décroissant"
+    },
+    "openFilters": "Filtres",
+    "reset": "Réinitialiser les filtres",
+    "viewGrid": "Vue grille",
+    "viewList": "Vue liste"
+  },
+  "errors": {
+    "loadFailed": "Échec du chargement",
+    "searchFailed": "La recherche a échoué",
+    "catalogUnavailable": "Le catalogue de pièces est temporairement indisponible",
+    "retryButton": "Réessayer"
+  }
+}

@@ -184,6 +184,17 @@ class RolesAndPermissionsSeeder extends Seeder
             'pos.view_receipts',
             'pos.process_returns',
 
+            // POS Orders
+            'pos_orders.view',
+            'pos_orders.create',
+            'pos_orders.update',
+            'pos_orders.delete',
+
+            // POS Held Orders
+            'pos_held_orders.view',
+            'pos_held_orders.create',
+            'pos_held_orders.delete',
+
             // Batch/Expiry Management
             'batches.view',
             'batches.create',
@@ -275,6 +286,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'users.view',
             'pos.manage_terminals', 'pos.operate_terminal', 'pos.manage_shifts',
             'pos.view_reports', 'pos.void_receipts', 'pos.view_receipts', 'pos.process_returns',
+            'pos_orders.view', 'pos_orders.create', 'pos_orders.update', 'pos_orders.delete',
+            'pos_held_orders.view', 'pos_held_orders.create', 'pos_held_orders.delete',
             'batches.view', 'batches.create', 'batches.update', 'batches.delete',
             'batches.recall', 'batches.write-off', 'batches.traceability',
             'withholding.view',
@@ -310,6 +323,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'instruments.view', 'instruments.create',
             'work-orders.view',
             'pos.operate_terminal', 'pos.view_receipts',
+            'pos_orders.view', 'pos_orders.create', 'pos_orders.update',
+            'pos_held_orders.view', 'pos_held_orders.create', 'pos_held_orders.delete',
             'batches.view',
             'composite-items.view',
             'modifier-groups.view',

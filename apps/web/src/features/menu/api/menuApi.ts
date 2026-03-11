@@ -55,8 +55,8 @@ export async function addMenuCategoryItem(categoryId: string, data: AddMenuCateg
   return apiPost(`/menu-categories/${categoryId}/items`, data)
 }
 
-export async function removeMenuCategoryItem(categoryId: string, compositeItemId: string): Promise<void> {
-  return apiDelete(`/menu-categories/${categoryId}/items/${compositeItemId}`)
+export async function removeMenuCategoryItem(categoryId: string, itemId: string): Promise<void> {
+  return apiDelete(`/menu-categories/${categoryId}/items/${itemId}`)
 }
 
 // Active Menu (POS-facing)

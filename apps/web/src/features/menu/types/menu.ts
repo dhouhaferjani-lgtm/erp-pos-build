@@ -32,7 +32,8 @@ export interface MenuCategoryData {
 
 export interface MenuItemData {
   id: string
-  composite_item_id: string
+  sellable_id: string
+  sellable_type: 'product' | 'composite_item'
   name: string
   code: string
   base_price: string
@@ -81,7 +82,8 @@ export interface UpdateMenuCategoryData extends Partial<CreateMenuCategoryData> 
 
 export interface SyncMenuCategoryItemsData {
   items: Array<{
-    composite_item_id: string
+    sellable_type: 'product' | 'composite_item'
+    sellable_id: string
     override_price?: number | null
     display_order?: number
     is_available?: boolean
@@ -89,7 +91,8 @@ export interface SyncMenuCategoryItemsData {
 }
 
 export interface AddMenuCategoryItemData {
-  composite_item_id: string
+  sellable_type: 'product' | 'composite_item'
+  sellable_id: string
   override_price?: number | null
   display_order?: number
   is_available?: boolean

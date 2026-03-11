@@ -5,12 +5,22 @@ import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
 import { api, apiPost, apiPatch } from '../../lib/api'
+import { B2BFieldsSection } from './components/B2BFieldsSection'
 import type { PartnerType } from './PartnerListPage'
 
 interface Partner {
   id: string
   name: string
   type: 'customer' | 'supplier' | 'both'
+  customer_category: 'individual' | 'business' | null
+  company_legal_name: string | null
+  business_registration_number: string | null
+  payment_terms: string | null
+  payment_terms_days: number | null
+  credit_limit: string | null
+  discount_percentage: string | null
+  invoice_consolidation: boolean
+  consolidation_frequency: string | null
   email: string | null
   phone: string | null
   address: string | null
@@ -28,6 +38,15 @@ interface Partner {
 interface PartnerFormData {
   name: string
   type: 'customer' | 'supplier' | 'both' | ''
+  customer_category: 'individual' | 'business' | ''
+  company_legal_name: string
+  business_registration_number: string
+  payment_terms: string
+  payment_terms_days: string
+  credit_limit: string
+  discount_percentage: string
+  invoice_consolidation: boolean
+  consolidation_frequency: string
   email: string
   phone: string
   address: string
@@ -86,6 +105,15 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
     defaultValues: {
       name: '',
       type: defaultType,
+      customer_category: '',
+      company_legal_name: '',
+      business_registration_number: '',
+      payment_terms: '',
+      payment_terms_days: '',
+      credit_limit: '',
+      discount_percentage: '',
+      invoice_consolidation: false,
+      consolidation_frequency: '',
       email: '',
       phone: '',
       address: '',
@@ -101,6 +129,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
   })
 
   const taxStatus = watch('tax_status')
+  const customerCategory = watch('customer_category')
 
   // Fetch partner data when editing
   const { data: partner, isLoading } = useQuery({
@@ -118,6 +147,15 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
       reset({
         name: partner.name,
         type: partner.type,
+        customer_category: partner.customer_category ?? '',
+        company_legal_name: partner.company_legal_name ?? '',
+        business_registration_number: partner.business_registration_number ?? '',
+        payment_terms: partner.payment_terms ?? '',
+        payment_terms_days: partner.payment_terms_days != null ? String(partner.payment_terms_days) : '',
+        credit_limit: partner.credit_limit ?? '',
+        discount_percentage: partner.discount_percentage ?? '',
+        invoice_consolidation: partner.invoice_consolidation,
+        consolidation_frequency: partner.consolidation_frequency ?? '',
         email: partner.email ?? '',
         phone: partner.phone ?? '',
         address: partner.address ?? '',
@@ -227,6 +265,25 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
               {errors.type && (
                 <p className="mt-1 text-sm text-red-600">{errors.type.message}</p>
               )}
+            </div>
+
+            {/* Customer Category */}
+            <div>
+              <label
+                htmlFor="customer_category"
+                className="block text-sm font-medium text-gray-700"
+              >
+                {t('sales:partners.b2b.customerCategory')}
+              </label>
+              <select
+                id="customer_category"
+                {...register('customer_category')}
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="">{t('sales:partners.b2b.selectCategory')}</option>
+                <option value="individual">{t('sales:partners.b2b.individual')}</option>
+                <option value="business">{t('sales:partners.b2b.business')}</option>
+              </select>
             </div>
 
             {/* Email */}
@@ -356,6 +413,20 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
               </>
             )}
 
+          </div>
+        </div>
+
+        {/* B2B Fields Section — shown only when customer_category is 'business' */}
+        {customerCategory === 'business' && (
+          <B2BFieldsSection
+            register={register as never}
+            watch={watch as never}
+            partnerId={isEditing ? id : undefined}
+          />
+        )}
+
+        <div className="rounded-lg border border-gray-200 bg-white p-6">
+          <div className="grid gap-6 sm:grid-cols-2">
             {/* Address */}
             <div className="sm:col-span-2">
               <label

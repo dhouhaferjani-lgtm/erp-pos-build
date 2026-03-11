@@ -237,5 +237,13 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         Route::post('/{memberId}/enrollments/{enrollmentId}/reactivate', [LoyaltyMemberController::class, 'reactivate'])
             ->middleware('can:loyalty.manage')
             ->name('loyalty.members.enrollments.reactivate');
+
+        Route::get('/{memberId}/enrollments/{enrollmentId}/transactions', [LoyaltyMemberController::class, 'transactions'])
+            ->middleware('can:loyalty.view')
+            ->name('loyalty.members.enrollments.transactions');
+
+        Route::post('/{memberId}/enrollments/{enrollmentId}/adjust', [LoyaltyMemberController::class, 'adjust'])
+            ->middleware('can:loyalty.manage')
+            ->name('loyalty.members.enrollments.adjust');
     });
 });

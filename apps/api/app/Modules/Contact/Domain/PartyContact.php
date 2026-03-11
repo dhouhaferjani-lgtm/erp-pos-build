@@ -16,6 +16,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $job_title
  * @property string|null $department
  * @property bool $is_primary
+ * @property bool $is_invoice_contact
+ * @property bool $is_delivery_contact
  * @property \Illuminate\Support\Carbon|null $start_date
  * @property \Illuminate\Support\Carbon|null $end_date
  * @property \Illuminate\Support\Carbon|null $created_at
@@ -35,6 +37,8 @@ class PartyContact extends Model
         'job_title',
         'department',
         'is_primary',
+        'is_invoice_contact',
+        'is_delivery_contact',
         'start_date',
         'end_date',
     ];
@@ -46,6 +50,8 @@ class PartyContact extends Model
     {
         return [
             'is_primary' => 'boolean',
+            'is_invoice_contact' => 'boolean',
+            'is_delivery_contact' => 'boolean',
             'start_date' => 'date',
             'end_date' => 'date',
         ];

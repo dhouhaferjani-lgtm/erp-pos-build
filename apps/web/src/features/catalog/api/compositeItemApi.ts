@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api'
+import { api, apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api'
 import type {
   CompositeItemData,
   CreateCompositeItemData,
@@ -19,7 +19,8 @@ export async function getCompositeItems(params?: {
   if (params?.is_active !== undefined) queryParams['is_active'] = String(params.is_active)
   if (params?.per_page) queryParams['per_page'] = String(params.per_page)
   if (params?.page) queryParams['page'] = String(params.page)
-  return apiGet('/composite-items', queryParams)
+  const response = await api.get<PaginatedResponse<CompositeItemData>>('/composite-items', { params: queryParams })
+  return response.data
 }
 
 export async function getCompositeItem(id: string): Promise<CompositeItemData> {
