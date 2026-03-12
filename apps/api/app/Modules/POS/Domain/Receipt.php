@@ -152,6 +152,7 @@ class Receipt extends Model
         'void_receipt_id',
         'synced_at',
         'sync_error',
+        'idempotency_key',
         'discount_breakdown',
         'notes',
     ];

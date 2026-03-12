@@ -155,4 +155,11 @@ export const migrations: Migration[] = [
       );
     `,
   },
+  {
+    version: 7,
+    name: 'add_retry_count_to_offline_receipts',
+    sql: `
+      ALTER TABLE offline_receipts ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ];

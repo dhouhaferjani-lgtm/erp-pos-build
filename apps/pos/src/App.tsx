@@ -5,6 +5,8 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useOperatorStore } from '@/stores/operatorStore';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { isTauriEnvironment } from '@/lib/printing';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AppShell } from '@/components/AppShell';
 import { LoginPage } from '@/pages/LoginPage';
@@ -124,6 +126,24 @@ function AppRouter() {
 }
 
 export function App() {
+  const fullscreen = useSettingsStore((s) => s.fullscreen);
+
+  // Apply fullscreen on startup if the setting is enabled
+  useEffect(() => {
+    if (!fullscreen) return;
+    const applyFullscreen = async () => {
+      try {
+        if (isTauriEnvironment()) {
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          await getCurrentWindow().setFullscreen(true);
+        }
+      } catch {
+        // Ignore — not critical
+      }
+    };
+    void applyFullscreen();
+  }, [fullscreen]);
+
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>

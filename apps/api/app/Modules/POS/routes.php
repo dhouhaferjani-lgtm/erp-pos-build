@@ -9,6 +9,7 @@ use App\Modules\POS\Presentation\Controllers\PosAuthController;
 use App\Modules\POS\Presentation\Controllers\ReceiptController;
 use App\Modules\POS\Presentation\Controllers\ReportController;
 use App\Modules\POS\Presentation\Controllers\ShiftController;
+use App\Modules\POS\Presentation\Controllers\SyncController;
 use App\Modules\POS\Presentation\Controllers\TerminalController;
 use Illuminate\Support\Facades\Route;
 
@@ -58,6 +59,12 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/pos/reports/z/{zNumber}/pdf', [ReportController::class, 'downloadPdf']);
     Route::get('/pos/reports/z', [ReportController::class, 'listZReports']);
     Route::post('/pos/reports/z/verify-chain', [ReportController::class, 'verifyZReportChain']);
+
+    // Sync endpoints (offline POS terminal synchronization)
+    Route::post('/pos/receipts/sync', [SyncController::class, 'syncReceipts']);
+    Route::get('/pos/sync/pull', [SyncController::class, 'pull']);
+    Route::get('/pos/sync/menu', [SyncController::class, 'menu']);
+    Route::post('/pos/shifts/{id}/sync-close', [SyncController::class, 'syncCloseShift']);
 
     // Receipts (collection routes BEFORE parameterized)
     Route::get('/pos/receipts', [ReceiptController::class, 'index']);

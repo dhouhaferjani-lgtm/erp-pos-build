@@ -71,7 +71,7 @@ class OrderData extends Data
             currency: $order->currency,
             consumption_mode: $order->consumption_mode,
             notes: $order->notes,
-            opened_at: $order->opened_at->toISOString(),
+            opened_at: $order->opened_at->toIso8601String(),
             sent_at: $order->sent_at?->toISOString(),
             closed_at: $order->closed_at?->toISOString(),
             cancelled_at: $order->cancelled_at?->toISOString(),

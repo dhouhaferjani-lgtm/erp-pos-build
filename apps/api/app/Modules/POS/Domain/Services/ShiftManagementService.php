@@ -99,19 +99,21 @@ final class ShiftManagementService
      * @param  Shift  $shift  The shift to close
      * @param  string  $actualCash  Counted cash amount (decimal string)
      * @param  User  $closedBy  User closing the shift
+     * @param  \Illuminate\Support\Carbon|null  $closedAt  Optional offline close timestamp (defaults to now)
      *
      * @throws ShiftNotOpenException If shift is not in OPEN status
      */
     public function closeShift(
         Shift $shift,
         string $actualCash,
-        User $closedBy
+        User $closedBy,
+        ?\Illuminate\Support\Carbon $closedAt = null,
     ): Shift {
         if (! $shift->isOpen()) {
             throw ShiftNotOpenException::forShift($shift->id);
         }
 
-        return DB::transaction(function () use ($shift, $actualCash, $closedBy) {
+        return DB::transaction(function () use ($shift, $actualCash, $closedBy, $closedAt) {
             // Calculate expected cash
             /** @var numeric-string $expectedCash */
             $expectedCash = $this->cashDrawerService->calculateExpectedCash($shift);
@@ -126,7 +128,7 @@ final class ShiftManagementService
                 'expected_cash' => $expectedCash,
                 'actual_cash' => $actualCash,
                 'variance' => $variance,
-                'closed_at' => now(),
+                'closed_at' => $closedAt ?? now(),
                 'closed_by' => $closedBy->id,
             ]);
 

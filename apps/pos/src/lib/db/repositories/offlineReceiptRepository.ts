@@ -27,6 +27,7 @@ export interface OfflineReceipt {
   payment_method_id: string;
   payment_repository_id: string;
   status: OfflineReceiptStatus;
+  retry_count: number;
   created_at: string;
   synced_at: string | null;
   sync_error: string | null;
@@ -34,7 +35,7 @@ export interface OfflineReceipt {
 
 export async function insertOfflineReceipt(
   db: Database,
-  receipt: Omit<OfflineReceipt, 'created_at' | 'synced_at' | 'sync_error'>,
+  receipt: Omit<OfflineReceipt, 'created_at' | 'synced_at' | 'sync_error' | 'retry_count'>,
 ): Promise<void> {
   await execute(
     db,
@@ -93,6 +94,36 @@ export async function updateReceiptStatus(
       [status, syncError ?? null, id]
     );
   }
+}
+
+export const MAX_SYNC_RETRIES = 5;
+
+export async function getPendingReceiptsForSync(db: Database): Promise<OfflineReceipt[]> {
+  return queryAll<OfflineReceipt>(
+    db,
+    `SELECT * FROM offline_receipts
+     WHERE status IN ('pending', 'failed') AND retry_count < $1
+     ORDER BY hash_sequence ASC`,
+    [MAX_SYNC_RETRIES]
+  );
+}
+
+export async function incrementRetryCount(db: Database, id: string): Promise<void> {
+  await execute(
+    db,
+    'UPDATE offline_receipts SET retry_count = retry_count + 1 WHERE id = $1',
+    [id]
+  );
+}
+
+export async function getStuckReceipts(db: Database): Promise<OfflineReceipt[]> {
+  return queryAll<OfflineReceipt>(
+    db,
+    `SELECT * FROM offline_receipts
+     WHERE status = 'failed' AND retry_count >= $1
+     ORDER BY hash_sequence ASC`,
+    [MAX_SYNC_RETRIES]
+  );
 }
 
 export async function getReceiptByIdempotencyKey(

@@ -417,6 +417,9 @@ final class OrderManagementService
      *
      * @return array{line_total: string, tax_amount: string, discount_amount: string}
      */
+    /**
+     * @return array{line_total: numeric-string, tax_amount: numeric-string, discount_amount: numeric-string}
+     */
     private function calculateLineTotals(
         string $quantity,
         string $unitPrice,
@@ -425,13 +428,22 @@ final class OrderManagementService
     ): array {
         $scale = $this->scale();
 
+        /** @var numeric-string $qty */
+        $qty = $quantity;
+        /** @var numeric-string $price */
+        $price = $unitPrice;
+        /** @var numeric-string $rate */
+        $rate = $taxRate;
+
         // Gross = quantity * unit_price
-        $grossTotal = bcmul($quantity, $unitPrice, $scale);
+        $grossTotal = bcmul($qty, $price, $scale);
 
         // Apply discount
+        /** @var numeric-string $discountStr */
+        $discountStr = $discountAmount ?? '0.0000';
         /** @var numeric-string $discount */
-        $discount = ($discountAmount !== null && bccomp($discountAmount, '0', $scale) > 0)
-            ? $discountAmount
+        $discount = (bccomp($discountStr, '0', $scale) > 0)
+            ? $discountStr
             : '0.0000';
 
         // Ensure discount does not exceed gross total
@@ -443,7 +455,7 @@ final class OrderManagementService
         $lineTotal = bcsub($grossTotal, $discount, $scale);
 
         // Calculate tax (tax-inclusive): net = lineTotal / (1 + taxRate/100), tax = lineTotal - net
-        $taxRateDecimal = bcdiv($taxRate, '100', 6);
+        $taxRateDecimal = bcdiv($rate, '100', 6);
         $divisor = bcadd('1', $taxRateDecimal, 6);
         $netAmount = bcdiv($lineTotal, $divisor, $scale);
         $taxAmount = bcsub($lineTotal, $netAmount, $scale);

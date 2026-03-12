@@ -189,11 +189,12 @@ class HeldOrder extends Model
         $total = '0.000';
 
         foreach ($lines as $line) {
-            $lineTotal = bcmul(
-                (string) ($line['quantity'] ?? '0'),
-                (string) ($line['unit_price'] ?? '0'),
-                3
-            );
+            /** @var numeric-string $qty */
+            $qty = (string) ($line['quantity'] ?? '0');
+            /** @var numeric-string $price */
+            $price = (string) ($line['unit_price'] ?? '0');
+            $lineTotal = bcmul($qty, $price, 3);
+            /** @var numeric-string $discount */
             $discount = (string) ($line['discount_amount'] ?? '0');
             $lineTotal = bcsub($lineTotal, $discount, 3);
             $total = bcadd($total, $lineTotal, 3);

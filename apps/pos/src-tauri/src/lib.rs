@@ -1,4 +1,5 @@
 mod commands;
+mod printing;
 
 use tauri::Manager;
 
@@ -14,6 +15,10 @@ pub fn run() {
         .plugin(tauri_plugin_log::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             commands::greet,
+            commands::printing::discover_printers,
+            commands::printing::print_receipt,
+            commands::printing::print_test_page,
+            commands::printing::open_cash_drawer,
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();

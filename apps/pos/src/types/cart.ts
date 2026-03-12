@@ -19,7 +19,8 @@ export interface CartItem {
   quantity: number;
   unit_price: string;
   line_total: string;
-  tax_amount?: string;
+  tax_rate: string;
+  tax_amount: string;
   discount_type?: 'percentage' | 'fixed' | null;
   discount_percent?: string;
   discount_amount?: string;

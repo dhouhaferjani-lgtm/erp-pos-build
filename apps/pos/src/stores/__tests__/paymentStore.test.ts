@@ -54,6 +54,7 @@ const mockCartItems: CartItem[] = [
     quantity: 2,
     unit_price: '25.00',
     line_total: '50.00',
+    tax_rate: '0',
     tax_amount: '0.00',
   },
 ];

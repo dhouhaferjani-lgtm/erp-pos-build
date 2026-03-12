@@ -61,7 +61,7 @@ class OrderLineData extends Data
             status: $line->status,
             sent_at: $line->sent_at?->toISOString(),
             prepared_at: $line->prepared_at?->toISOString(),
-            created_at: $line->created_at->toISOString(),
+            created_at: $line->created_at->toIso8601String(),
         );
     }
 }

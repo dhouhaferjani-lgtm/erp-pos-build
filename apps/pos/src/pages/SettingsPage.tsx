@@ -1,11 +1,35 @@
+import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Monitor, Image, Globe } from 'lucide-react';
+import { ArrowLeft, Monitor, Image, Globe, Printer, Search, CheckCircle, AlertCircle, Loader2, Hand, Maximize } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSettingsStore, SUPPORTED_LANGUAGES } from '@/stores/settingsStore';
+import { usePrinterStore } from '@/stores/printerStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useConnectivityStore } from '@/stores/connectivityStore';
+import {
+  discoverPrinters,
+  printTestPage,
+  openCashDrawer,
+  isTauriEnvironment,
+} from '@/lib/printing';
+import type { PrinterInfo, PrinterConfig } from '@/lib/printing';
+
+async function toggleFullscreen(enabled: boolean): Promise<void> {
+  try {
+    if (isTauriEnvironment()) {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      await getCurrentWindow().setFullscreen(enabled);
+    } else if (enabled) {
+      await document.documentElement.requestFullscreen?.();
+    } else if (document.fullscreenElement) {
+      await document.exitFullscreen?.();
+    }
+  } catch {
+    // Fullscreen may be blocked by browser policy — ignore
+  }
+}
 
 export function SettingsPage() {
   const { t } = useTranslation('pos');
@@ -13,8 +37,12 @@ export function SettingsPage() {
 
   const displayMode = useSettingsStore((s) => s.displayMode);
   const language = useSettingsStore((s) => s.language);
+  const touchMode = useSettingsStore((s) => s.touchMode);
+  const fullscreen = useSettingsStore((s) => s.fullscreen);
   const setDisplayMode = useSettingsStore((s) => s.setDisplayMode);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
+  const setTouchMode = useSettingsStore((s) => s.setTouchMode);
+  const setFullscreen = useSettingsStore((s) => s.setFullscreen);
 
   const terminal = useTerminalStore((s) => s.terminal);
   const shift = useTerminalStore((s) => s.shift);
@@ -22,6 +50,86 @@ export function SettingsPage() {
   const serverUrl = useAuthStore((s) => s.serverUrl);
 
   const isOnline = useConnectivityStore((s) => s.isOnline);
+
+  const printerConfig = usePrinterStore((s) => s.printerConfig);
+  const autoPrint = usePrinterStore((s) => s.autoPrint);
+  const setPrinterConfig = usePrinterStore((s) => s.setPrinterConfig);
+  const setAutoPrint = usePrinterStore((s) => s.setAutoPrint);
+  const clearPrinterConfig = usePrinterStore((s) => s.clearPrinterConfig);
+
+  const [discoveredPrinters, setDiscoveredPrinters] = useState<PrinterInfo[]>([]);
+  const [isDiscovering, setIsDiscovering] = useState(false);
+  const [isPrintingTest, setIsPrintingTest] = useState(false);
+  const [isOpeningDrawer, setIsOpeningDrawer] = useState(false);
+  const [printerStatus, setPrinterStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [printerMessage, setPrinterMessage] = useState('');
+  const isTauri = isTauriEnvironment();
+
+  const handleDiscoverPrinters = useCallback(async () => {
+    setIsDiscovering(true);
+    setPrinterStatus('idle');
+    setPrinterMessage('');
+    try {
+      const printers = await discoverPrinters();
+      setDiscoveredPrinters(printers);
+      if (printers.length === 0) {
+        setPrinterStatus('error');
+        setPrinterMessage(t('settings.noPrintersFound'));
+      }
+    } catch (err: unknown) {
+      setPrinterStatus('error');
+      setPrinterMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsDiscovering(false);
+    }
+  }, [t]);
+
+  const handleSelectPrinter = useCallback(
+    (printer: PrinterInfo) => {
+      const config: PrinterConfig = {
+        connection_type: printer.connection_type,
+        address: printer.address,
+        name: printer.name,
+      };
+      setPrinterConfig(config);
+      setPrinterStatus('success');
+      setPrinterMessage(t('settings.printerConnected'));
+    },
+    [setPrinterConfig, t],
+  );
+
+  const handleTestPrint = useCallback(async () => {
+    if (!printerConfig) return;
+    setIsPrintingTest(true);
+    setPrinterStatus('idle');
+    setPrinterMessage('');
+    try {
+      await printTestPage(printerConfig);
+      setPrinterStatus('success');
+      setPrinterMessage(t('settings.testPrintSent'));
+    } catch (err: unknown) {
+      setPrinterStatus('error');
+      setPrinterMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsPrintingTest(false);
+    }
+  }, [printerConfig, t]);
+
+  const handleOpenDrawer = useCallback(async () => {
+    if (!printerConfig) return;
+    setIsOpeningDrawer(true);
+    setPrinterStatus('idle');
+    try {
+      await openCashDrawer(printerConfig);
+      setPrinterStatus('success');
+      setPrinterMessage(t('settings.drawerOpened'));
+    } catch (err: unknown) {
+      setPrinterStatus('error');
+      setPrinterMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsOpeningDrawer(false);
+    }
+  }, [printerConfig, t]);
 
   return (
     <div className="flex h-full flex-col bg-gray-50">
@@ -101,16 +209,250 @@ export function SettingsPage() {
             </div>
           </section>
 
-          {/* Peripherals */}
+          {/* Touch & Display */}
+          <section className="rounded-xl bg-white p-4 shadow-sm">
+            <h2 className="mb-4 text-base font-bold text-gray-900">
+              {t('settings.touchDisplay')}
+            </h2>
+            <div className="space-y-3">
+              {/* Touch mode toggle */}
+              <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-3">
+                <div className="flex items-center gap-2">
+                  <Hand className="h-4 w-4 text-gray-600" />
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">
+                      {t('settings.touchMode')}
+                    </span>
+                    <p className="text-xs text-gray-500">
+                      {t('settings.touchModeDesc')}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setTouchMode(!touchMode)}
+                  className={cn(
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    touchMode ? 'bg-blue-600' : 'bg-gray-300',
+                  )}
+                  role="switch"
+                  aria-checked={touchMode}
+                >
+                  <span
+                    className={cn(
+                      'inline-block h-4 w-4 rounded-full bg-white transition-transform',
+                      touchMode ? 'translate-x-6' : 'translate-x-1',
+                    )}
+                  />
+                </button>
+              </div>
+
+              {/* Fullscreen toggle */}
+              <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-3">
+                <div className="flex items-center gap-2">
+                  <Maximize className="h-4 w-4 text-gray-600" />
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">
+                      {t('settings.fullscreen')}
+                    </span>
+                    <p className="text-xs text-gray-500">
+                      {t('settings.fullscreenDesc')}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    const next = !fullscreen;
+                    setFullscreen(next);
+                    void toggleFullscreen(next);
+                  }}
+                  className={cn(
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    fullscreen ? 'bg-blue-600' : 'bg-gray-300',
+                  )}
+                  role="switch"
+                  aria-checked={fullscreen}
+                >
+                  <span
+                    className={cn(
+                      'inline-block h-4 w-4 rounded-full bg-white transition-transform',
+                      fullscreen ? 'translate-x-6' : 'translate-x-1',
+                    )}
+                  />
+                </button>
+              </div>
+            </div>
+          </section>
+
+          {/* Receipt Printer */}
+          <section className="rounded-xl bg-white p-4 shadow-sm">
+            <div className="mb-4 flex items-center gap-2">
+              <Printer className="h-5 w-5 text-gray-700" />
+              <h2 className="text-base font-bold text-gray-900">
+                {t('settings.printer')}
+              </h2>
+            </div>
+
+            {!isTauri ? (
+              <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
+                {t('settings.printerDesktopOnly')}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Current printer */}
+                {printerConfig ? (
+                  <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-green-800">
+                          {printerConfig.name}
+                        </p>
+                        <p className="text-xs text-green-600">
+                          {printerConfig.connection_type === 'usb' ? 'USB' : t('settings.networkPrinter')} — {printerConfig.address}
+                        </p>
+                      </div>
+                      <button
+                        onClick={clearPrinterConfig}
+                        className="rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                      >
+                        {t('settings.removePrinter')}
+                      </button>
+                    </div>
+
+                    {/* Actions for configured printer */}
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        onClick={() => void handleTestPrint()}
+                        disabled={isPrintingTest}
+                        className="flex items-center gap-1 rounded-lg bg-white px-3 py-2 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        {isPrintingTest ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Printer className="h-3 w-3" />
+                        )}
+                        {t('settings.testPrint')}
+                      </button>
+                      <button
+                        onClick={() => void handleOpenDrawer()}
+                        disabled={isOpeningDrawer}
+                        className="flex items-center gap-1 rounded-lg bg-white px-3 py-2 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        {isOpeningDrawer && <Loader2 className="h-3 w-3 animate-spin" />}
+                        {t('settings.openDrawer')}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg bg-gray-50 p-3 text-center text-sm text-gray-500">
+                    {t('settings.noPrinterConfigured')}
+                  </div>
+                )}
+
+                {/* Auto-print toggle */}
+                <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-3">
+                  <span className="text-sm font-medium text-gray-900">
+                    {t('settings.autoPrintReceipts')}
+                  </span>
+                  <button
+                    onClick={() => setAutoPrint(!autoPrint)}
+                    className={cn(
+                      'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                      autoPrint ? 'bg-blue-600' : 'bg-gray-300',
+                    )}
+                    role="switch"
+                    aria-checked={autoPrint}
+                  >
+                    <span
+                      className={cn(
+                        'inline-block h-4 w-4 rounded-full bg-white transition-transform',
+                        autoPrint ? 'translate-x-6' : 'translate-x-1',
+                      )}
+                    />
+                  </button>
+                </div>
+
+                {/* Discover printers */}
+                <button
+                  onClick={() => void handleDiscoverPrinters()}
+                  disabled={isDiscovering}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {isDiscovering ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Search className="h-4 w-4" />
+                  )}
+                  {isDiscovering
+                    ? t('settings.scanning')
+                    : t('settings.scanForPrinters')}
+                </button>
+
+                {/* Discovered printers list */}
+                {discoveredPrinters.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium uppercase text-gray-500">
+                      {t('settings.availablePrinters')}
+                    </p>
+                    {discoveredPrinters.map((printer) => (
+                      <button
+                        key={printer.id}
+                        onClick={() => handleSelectPrinter(printer)}
+                        className={cn(
+                          'flex w-full items-center justify-between rounded-lg border px-3 py-3 text-left transition-colors',
+                          printerConfig?.address === printer.address
+                            ? 'border-blue-300 bg-blue-50'
+                            : 'border-gray-200 bg-white hover:bg-gray-50',
+                        )}
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">
+                            {printer.name}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {printer.connection_type === 'usb' ? 'USB' : t('settings.networkPrinter')} — {printer.address}
+                          </p>
+                        </div>
+                        {printerConfig?.address === printer.address && (
+                          <CheckCircle className="h-5 w-5 text-blue-600" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Manual network printer entry */}
+                <ManualPrinterEntry onSelect={handleSelectPrinter} />
+
+                {/* Status message */}
+                {printerStatus !== 'idle' && printerMessage && (
+                  <div
+                    className={cn(
+                      'flex items-center gap-2 rounded-lg p-3 text-sm',
+                      printerStatus === 'success'
+                        ? 'bg-green-50 text-green-700'
+                        : 'bg-red-50 text-red-700',
+                    )}
+                  >
+                    {printerStatus === 'success' ? (
+                      <CheckCircle className="h-4 w-4 flex-shrink-0" />
+                    ) : (
+                      <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                    )}
+                    {printerMessage}
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* Other Peripherals (scanner, kitchen printer) */}
           <section className="rounded-xl bg-white p-4 shadow-sm">
             <h2 className="mb-4 text-base font-bold text-gray-900">
               {t('settings.peripherals')}
             </h2>
             <div className="space-y-3">
               {[
-                { label: t('settings.printer'), status: t('settings.comingSoon') },
                 { label: t('settings.scanner'), status: t('settings.comingSoon') },
-                { label: t('settings.cashDrawer'), status: t('settings.comingSoon') },
                 { label: t('settings.kitchenPrinter'), status: t('settings.comingSoon') },
               ].map((item) => (
                 <div
@@ -193,6 +535,82 @@ export function SettingsPage() {
             {t('settings.back')}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Sub-component for manually entering a network printer address. */
+function ManualPrinterEntry({
+  onSelect,
+}: {
+  onSelect: (printer: PrinterInfo) => void;
+}) {
+  const { t } = useTranslation('pos');
+  const [expanded, setExpanded] = useState(false);
+  const [ipAddress, setIpAddress] = useState('');
+  const [port, setPort] = useState('9100');
+
+  const handleAdd = () => {
+    const trimmedIp = ipAddress.trim();
+    if (!trimmedIp) return;
+    const address = `${trimmedIp}:${port || '9100'}`;
+    onSelect({
+      id: `net:${trimmedIp}`,
+      name: `${t('settings.networkPrinter')} (${trimmedIp})`,
+      connection_type: 'network',
+      address,
+    });
+    setIpAddress('');
+    setExpanded(false);
+  };
+
+  if (!expanded) {
+    return (
+      <button
+        onClick={() => setExpanded(true)}
+        className="w-full text-center text-sm font-medium text-blue-600 hover:text-blue-700"
+      >
+        {t('settings.addManualPrinter')}
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-gray-200 p-3">
+      <p className="mb-2 text-xs font-medium uppercase text-gray-500">
+        {t('settings.manualNetworkPrinter')}
+      </p>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={ipAddress}
+          onChange={(e) => setIpAddress(e.target.value)}
+          placeholder={t('settings.ipAddressPlaceholder')}
+          className="min-h-[44px] flex-1 rounded-lg border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
+        <input
+          type="text"
+          value={port}
+          onChange={(e) => setPort(e.target.value)}
+          placeholder="9100"
+          className="min-h-[44px] w-20 rounded-lg border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
+      </div>
+      <div className="mt-2 flex gap-2">
+        <button
+          onClick={handleAdd}
+          disabled={!ipAddress.trim()}
+          className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {t('settings.addPrinter')}
+        </button>
+        <button
+          onClick={() => setExpanded(false)}
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          {t('settings.cancel')}
+        </button>
       </div>
     </div>
   );

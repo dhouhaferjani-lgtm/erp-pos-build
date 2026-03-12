@@ -8,8 +8,9 @@ import {
 import { upsertOperators } from '@/lib/db/repositories/operatorPinRepository';
 import { upsertTerminalState, type TerminalHashState } from '@/lib/db/repositories/terminalStateRepository';
 import {
-  getPendingReceipts,
+  getPendingReceiptsForSync,
   updateReceiptStatus,
+  incrementRetryCount,
   type OfflineReceipt,
 } from '@/lib/db/repositories/offlineReceiptRepository';
 import { logSyncOperation, getSyncMetadata, setSyncMetadata } from '@/lib/db/repositories/syncLogRepository';
@@ -65,17 +66,38 @@ export interface SyncResult {
   paymentConfigPulled: boolean;
   operatorsPulled: number;
   terminalStatePulled: boolean;
+  chainBreak: boolean;
   errors: string[];
+}
+
+/**
+ * Detect if an error indicates a hash chain break (server-side hash mismatch).
+ * These errors are unrecoverable without operator intervention.
+ */
+function isChainBreakError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    return msg.includes('hash chain') || msg.includes('hash mismatch') || msg.includes('chain break');
+  }
+  return false;
 }
 
 /**
  * Push offline receipts to server.
  * Processes one at a time to maintain hash chain order.
+ * On chain-break conflict, halts sync immediately to preserve chain integrity.
+ * Tracks retry count per receipt; receipts exceeding max retries are skipped.
  */
-export async function pushOfflineReceipts(db: Database): Promise<{ pushed: number; failed: number; errors: string[] }> {
-  const pending = await getPendingReceipts(db);
+export async function pushOfflineReceipts(db: Database): Promise<{
+  pushed: number;
+  failed: number;
+  errors: string[];
+  chainBreak: boolean;
+}> {
+  const pending = await getPendingReceiptsForSync(db);
   let pushed = 0;
   let failed = 0;
+  let chainBreak = false;
   const errors: string[] = [];
 
   for (const receipt of pending) {
@@ -90,14 +112,22 @@ export async function pushOfflineReceipts(db: Database): Promise<{ pushed: numbe
       pushed++;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
+      await incrementRetryCount(db, receipt.id);
       await updateReceiptStatus(db, receipt.id, 'failed', message);
       await logSyncOperation(db, 'push', 'receipt', receipt.id, 'error', message);
       errors.push(`Receipt ${receipt.receipt_number}: ${message}`);
       failed++;
+
+      // On chain-break, halt sync immediately — remaining receipts depend on this one
+      if (isChainBreakError(error)) {
+        chainBreak = true;
+        errors.push('CHAIN_BREAK: Sync halted. Operator must resolve hash chain conflict.');
+        break;
+      }
     }
   }
 
-  return { pushed, failed, errors };
+  return { pushed, failed, errors, chainBreak };
 }
 
 /**
@@ -200,10 +230,10 @@ export async function runFullSync(
   const errors: string[] = [];
 
   // Push first
-  const { pushed, failed, errors: pushErrors } = await pushOfflineReceipts(db);
+  const { pushed, failed, errors: pushErrors, chainBreak } = await pushOfflineReceipts(db);
   errors.push(...pushErrors);
 
-  // Then pull
+  // Then pull (always pull even if push had failures, to keep local data fresh)
   const productsPulled = await pullProducts(db);
   const paymentConfigPulled = await pullPaymentConfig(db);
   const operatorsPulled = await pullOperatorPins(db);
@@ -216,6 +246,7 @@ export async function runFullSync(
     paymentConfigPulled,
     operatorsPulled,
     terminalStatePulled,
+    chainBreak,
     errors,
   };
 }

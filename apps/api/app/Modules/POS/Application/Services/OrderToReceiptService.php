@@ -38,7 +38,7 @@ final class OrderToReceiptService
         }
 
         // Map order lines to ReceiptCreationService format
-        /** @var array<int, array{product_id: string, quantity: string, unit_price: string}> $receiptLines */
+        /** @var array<int, array{product_id?: string, composite_item_id?: string, quantity: string, unit_price: string, modifiers?: array<int, array{modifier_id: string, modifier_group_id: string, price_adjustment: string}>, discount_amount?: string, discount_type?: string}> $receiptLines */
         $receiptLines = [];
 
         /** @var OrderLine $line */
@@ -57,7 +57,9 @@ final class OrderToReceiptService
 
             // Pass through modifiers if present
             if (! empty($line->modifiers)) {
-                $receiptLine['modifiers'] = $line->modifiers;
+                /** @var array<int, array{modifier_id: string, modifier_group_id: string, price_adjustment: string}> $modifiers */
+                $modifiers = $line->modifiers;
+                $receiptLine['modifiers'] = $modifiers;
             }
 
             $receiptLines[] = $receiptLine;

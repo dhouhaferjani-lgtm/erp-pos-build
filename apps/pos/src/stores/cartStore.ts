@@ -26,6 +26,14 @@ type CartStore = CartState & CartActions & CartDerived;
 
 const DECIMALS = 2;
 
+function computeTaxAmount(lineTotal: number, taxRate: string): string {
+  const rate = parseFloat(taxRate);
+  if (rate <= 0) return (0).toFixed(DECIMALS);
+  // line_total is before tax; tax = lineTotal * rate / 100
+  const tax = lineTotal * rate / 100;
+  return tax.toFixed(DECIMALS);
+}
+
 function recalcLineTotal(item: CartItem, newQty: number): CartItem {
   const grossTotal = parseFloat(item.unit_price) * newQty;
   let discountAmount = 0;
@@ -45,6 +53,7 @@ function recalcLineTotal(item: CartItem, newQty: number): CartItem {
       ? { discount_amount: discountAmount.toFixed(DECIMALS) }
       : {}),
     line_total: lineTotal.toFixed(DECIMALS),
+    tax_amount: computeTaxAmount(lineTotal, item.tax_rate),
   };
 }
 
@@ -96,13 +105,15 @@ export const useCartStore = create<CartStore>()((set, get) => ({
         cartProduct.selectedModifiers = selectedModifiers;
       }
 
+      const taxRate = product.tax_rate ?? '0';
       const newItem: CartItem = {
         id: crypto.randomUUID(),
         product: cartProduct,
         quantity: 1,
         unit_price: priceValue,
         line_total: unitPrice.toFixed(DECIMALS),
-        tax_amount: (0).toFixed(DECIMALS),
+        tax_rate: taxRate,
+        tax_amount: computeTaxAmount(unitPrice, taxRate),
       };
 
       return { items: [...state.items, newItem] };

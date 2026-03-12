@@ -386,6 +386,7 @@ export function HomePage() {
           receiptNumber={lastReceipt.receipt_number}
           total={lastReceipt.total}
           changeDue={changeDue}
+          receiptId={lastReceipt.id}
         />
       )}
 

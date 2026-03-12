@@ -34,15 +34,15 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
       {/* Content */}
       <div
         className={cn(
-          'relative z-10 w-full rounded-2xl bg-white shadow-2xl',
-          'max-h-[90vh] overflow-y-auto',
+          'relative z-10 flex w-full flex-col rounded-2xl bg-white shadow-2xl',
+          'max-h-[85vh] overflow-hidden',
           size === 'sm' && 'max-w-sm',
           size === 'md' && 'max-w-md',
           size === 'lg' && 'max-w-lg',
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+        <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-6 py-4">
           <h2 className="text-xl font-bold text-gray-900">{title}</h2>
           <button
             onClick={onClose}
@@ -53,7 +53,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
         </div>
 
         {/* Body */}
-        <div className="px-6 py-4">{children}</div>
+        <div className="overflow-y-auto px-6 py-4">{children}</div>
       </div>
     </div>
   );

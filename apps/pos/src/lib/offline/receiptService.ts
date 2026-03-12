@@ -32,6 +32,11 @@ interface OfflineReceiptResult {
   fiscalHash: string;
 }
 
+interface VatBreakdownEntry {
+  rate: string;
+  amount: string;
+}
+
 function computeLineTotals(cartItems: CartItem[]): {
   subtotal: number;
   taxAmount: number;
@@ -41,10 +46,28 @@ function computeLineTotals(cartItems: CartItem[]): {
 
   for (const item of cartItems) {
     subtotal += parseFloat(item.line_total);
-    taxAmount += parseFloat(item.tax_amount ?? '0');
+    taxAmount += parseFloat(item.tax_amount);
   }
 
   return { subtotal, taxAmount };
+}
+
+function computeVatBreakdown(cartItems: CartItem[]): VatBreakdownEntry[] {
+  const byRate = new Map<string, number>();
+
+  for (const item of cartItems) {
+    const rate = item.tax_rate;
+    const amount = parseFloat(item.tax_amount);
+    if (amount === 0) continue;
+    byRate.set(rate, (byRate.get(rate) ?? 0) + amount);
+  }
+
+  const entries: VatBreakdownEntry[] = [];
+  for (const [rate, total] of byRate) {
+    entries.push({ rate, amount: total.toFixed(2) });
+  }
+
+  return entries.sort((a, b) => a.rate.localeCompare(b.rate));
 }
 
 function generateReceiptNumber(
@@ -77,15 +100,16 @@ export async function createOfflineReceipt(
   const newSequence = terminalState.hash_sequence + 1;
   const receiptNumber = generateReceiptNumber(terminalState.terminal_code, newSequence);
 
-  // 4. Compute fiscal hash
+  // 4. Compute fiscal hash with real VAT breakdown
   const postedAt = new Date().toISOString();
+  const vatBreakdown = computeVatBreakdown(input.cartItems);
   const fiscalHash = await computeFiscalHash({
     previousHash: terminalState.last_hash,
     receiptNumber,
     postedAt,
     total: total.toFixed(2),
     currency: input.currency,
-    vatBreakdown: [], // TODO: compute VAT breakdown from cart items when tax rates are populated
+    vatBreakdown,
     payments: [{ methodCode: 'CASH', amount: total.toFixed(2) }],
   });
 
@@ -111,7 +135,8 @@ export async function createOfflineReceipt(
         quantity: item.quantity,
         unit_price: item.unit_price,
         line_total: item.line_total,
-        tax_amount: item.tax_amount ?? '0',
+        tax_rate: item.tax_rate,
+        tax_amount: item.tax_amount,
         discount_type: item.discount_type ?? null,
         discount_percent: item.discount_percent ?? null,
         discount_amount: item.discount_amount ?? null,
@@ -134,12 +159,20 @@ export async function createOfflineReceipt(
     payment_method_id: input.paymentMethodId,
     payment_repository_id: input.paymentRepositoryId,
     status: 'pending',
+    retry_count: 0,
   };
 
-  await insertOfflineReceipt(db, offlineReceipt);
-
-  // 6. Advance hash chain in SQLite
-  await advanceHashChain(db, input.terminalId, fiscalHash, newSequence);
+  // 5b. Wrap receipt insert + hash chain advance in a transaction
+  //     to prevent inconsistent state if either operation fails
+  await db.execute('BEGIN TRANSACTION');
+  try {
+    await insertOfflineReceipt(db, offlineReceipt);
+    await advanceHashChain(db, input.terminalId, fiscalHash, newSequence);
+    await db.execute('COMMIT');
+  } catch (error) {
+    await db.execute('ROLLBACK');
+    throw error;
+  }
 
   return {
     receiptNumber,

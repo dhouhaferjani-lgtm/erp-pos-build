@@ -4,6 +4,8 @@
 
 AutoERP is a compliance-ready, event-sourced ERP system for automotive service businesses (Otospex), with a generic retail variant (IziPOS). Multi-tenant, multi-country (France, Tunisia, UK, Italy, North Africa), with two-tier hash chains for fiscal compliance and fraud detection.
 
+**Multi-app monorepo** (React + Tauri 2 + Laravel): IziPOS (copper theme) and Otospex (pink theme) are separate verticals with different product scoping. They share the same localhost but have separate CSS variable sets, configs, and vertical-scoped products. Never assume one app's config applies to the other. `localStorage`/auth is shared on localhost — be aware of conflicts.
+
 ---
 
 ## Agent Operational Rules
@@ -19,11 +21,11 @@ Write the test first (PHPUnit backend, Vitest frontend). It must fail (red). Wri
 ### 3. Strict Typing
 PHP: no `mixed` (use DTOs). TypeScript: no `any` (use `unknown` + type guards). JSONB columns must have a corresponding PHP DTO.
 
-### 4. One Task at a Time
-Do not modify files outside the current task scope. Note needed changes in other modules and continue.
+### 4. One Task at a Time — No Scope Creep
+Do not modify files outside the current task scope. Note needed changes in other modules and continue. When auditing or fixing, scope work to exactly what the user specifies — do not audit extra areas, include deferred features, or expand scope without explicit confirmation.
 
-### 5. Verification is Law
-If verification commands fail, do NOT mark the task complete. Debug immediately.
+### 5. Verification is Law — End-to-End
+If verification commands fail, do NOT mark the task complete. Debug immediately. Always verify the end-to-end flow works before considering a task complete — test the critical path (e.g., complete a sale, submit a form) rather than just confirming compilation.
 
 ### 6. Module Boundaries are Sacred
 Cross-module communication only via `Shared/Contracts/` interfaces, Events, or a module's public Service class. Never import models directly across modules.
@@ -38,7 +40,7 @@ Never rename, restructure, or delete an Event class once used. Create versioned 
 No magic strings. Every status, type, or code column must use a PHP Enum.
 
 ### 10. Pre-Flight Before Commit
-Run `./scripts/preflight.sh` (PHPStan, Pint, PHPUnit, TypeScript check, ESLint) before considering any task complete.
+Run `./scripts/preflight.sh` (PHPStan, Pint, PHPUnit, TypeScript check, ESLint) before considering any task complete. When pushing to GitHub: check for build artifacts before committing, verify submodule state, confirm branch name before push. Run `git status` once and act on it — don't spend multiple calls figuring out git state.
 
 ### 11. No Hardcoded Strings in Frontend
 All user-facing text must use `t()` translation keys via react-i18next. See [i18n reference](.claude/context/i18n.md).
@@ -54,6 +56,12 @@ All dependencies via constructor with `private readonly`. Never use `app()` help
 
 ### 15. Session Files Go in `docs/sessions/`
 Never create status/plan/implementation markdown files at the repo root. Use `docs/sessions/` for ephemeral session artifacts (gitignored).
+
+### 16. Plan Then Execute
+After plan mode, immediately proceed to implementation unless explicitly told to wait for feedback. Do not get stuck trying to exit plan mode.
+
+### 17. Testing Pitfalls
+Always use valid UUIDs for FK columns in tests/seeders. Check actual DB schema for required fields before writing seeders/tests. Test rendered HTML output rather than CSS class names.
 
 ---
 
@@ -100,6 +108,7 @@ Read these when working on specific areas:
 | Database | PostgreSQL 16+ (schema-based multi-tenancy) |
 | Cache/Queue | Redis 7+, Laravel Horizon |
 | Search | Meilisearch (infrastructure ready, not yet integrated with Scout) |
+| Desktop | Tauri 2 (IziPOS) |
 | Frontend | React 19 / Vite 7 / TypeScript strict / TanStack Query 5 / Zustand 5 |
 | Styling | Tailwind CSS 4 (custom design system) |
 | Mobile | React Native + Expo (TypeScript) |
