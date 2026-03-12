@@ -1,4 +1,5 @@
 import { fetch } from '@tauri-apps/plugin-http';
+import i18n from '@/lib/i18n';
 import { useAuthStore } from '@/stores/authStore';
 
 export interface ApiResponse<T> {
@@ -28,7 +29,7 @@ export function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
-  return 'An unexpected error occurred';
+  return i18n.t('errors.unexpected', { ns: 'pos' });
 }
 
 export class ApiRequestError extends Error {

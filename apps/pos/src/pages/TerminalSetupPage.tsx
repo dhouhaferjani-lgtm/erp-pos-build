@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiGet, getErrorMessage } from '@/lib/api';
 import { getDeviceId } from '@/lib/device';
 import { useTerminalActivation } from '@/hooks/useTerminalActivation';
@@ -18,6 +19,7 @@ export function TerminalSetupPage() {
 }
 
 function PendingActivationPage({ terminalId }: { terminalId: string }) {
+  const { t } = useTranslation('pos');
   const { checkTerminalStatus } = useTerminalStore();
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +31,7 @@ function PendingActivationPage({ terminalId }: { terminalId: string }) {
     try {
       const terminal = await checkTerminalStatus(terminalId);
       if (!terminal.is_active) {
-        setError('Terminal is still pending activation by an administrator.');
+        setError(t('terminal.stillPending'));
       }
     } catch (err) {
       setError(getErrorMessage(err));
@@ -42,9 +44,9 @@ function PendingActivationPage({ terminalId }: { terminalId: string }) {
     <div className="flex h-screen items-center justify-center bg-gray-50">
       <div className="w-full max-w-lg rounded-lg bg-white p-8 shadow-md">
         <div className="mb-6 text-center">
-          <h2 className="text-xl font-bold text-gray-900">Terminal Setup</h2>
+          <h2 className="text-xl font-bold text-gray-900">{t('terminal.setup')}</h2>
           <p className="mt-1 text-sm text-gray-500">
-            Connect this device to a POS terminal
+            {t('terminal.connectDevice')}
           </p>
         </div>
 
@@ -54,28 +56,28 @@ function PendingActivationPage({ terminalId }: { terminalId: string }) {
 
         <div className="space-y-4 text-center">
           <div className="rounded-md bg-amber-50 p-4">
-            <div className="text-sm font-medium text-amber-800">Pending Activation</div>
+            <div className="text-sm font-medium text-amber-800">{t('terminal.pendingActivation')}</div>
             <p className="mt-1 text-sm text-amber-700">
-              Your terminal request is awaiting activation by an administrator.
+              {t('terminal.pendingMessage')}
             </p>
           </div>
 
           {wsConnected ? (
             <div className="flex items-center justify-center gap-2 text-sm text-green-700">
               <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-green-500" />
-              Listening for activation...
+              {t('terminal.listeningActivation')}
             </div>
           ) : (
             <>
               <p className="text-xs text-gray-500">
-                Auto-checking every 30 seconds...
+                {t('terminal.autoChecking')}
               </p>
               <button
                 onClick={() => void handleCheckStatus()}
                 disabled={checking}
                 className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
               >
-                {checking ? 'Checking...' : 'Check Status'}
+                {checking ? t('terminal.checking') : t('terminal.checkStatus')}
               </button>
             </>
           )}
@@ -86,6 +88,7 @@ function PendingActivationPage({ terminalId }: { terminalId: string }) {
 }
 
 function SetupTabs() {
+  const { t } = useTranslation('pos');
   const [activeTab, setActiveTab] = useState<Tab>('claim');
   const [error, setError] = useState<string | null>(null);
 
@@ -93,9 +96,9 @@ function SetupTabs() {
     <div className="flex h-screen items-center justify-center bg-gray-50">
       <div className="w-full max-w-lg rounded-lg bg-white p-8 shadow-md">
         <div className="mb-6 text-center">
-          <h2 className="text-xl font-bold text-gray-900">Terminal Setup</h2>
+          <h2 className="text-xl font-bold text-gray-900">{t('terminal.setup')}</h2>
           <p className="mt-1 text-sm text-gray-500">
-            Connect this device to a POS terminal
+            {t('terminal.connectDevice')}
           </p>
         </div>
 
@@ -108,7 +111,7 @@ function SetupTabs() {
                 : 'bg-white text-gray-700 hover:bg-gray-50'
             }`}
           >
-            Available Terminals
+            {t('terminal.availableTerminals')}
           </button>
           <button
             onClick={() => { setActiveTab('request'); setError(null); }}
@@ -118,7 +121,7 @@ function SetupTabs() {
                 : 'bg-white text-gray-700 hover:bg-gray-50'
             }`}
           >
-            Request New
+            {t('terminal.requestNew')}
           </button>
         </div>
 
@@ -137,6 +140,7 @@ function SetupTabs() {
 }
 
 function ClaimTab({ onError }: { onError: (msg: string | null) => void }) {
+  const { t } = useTranslation('pos');
   const { fetchAvailable, claimTerminal, isLoading } = useTerminalStore();
   const [terminals, setTerminals] = useState<Terminal[]>([]);
   const [fetching, setFetching] = useState(true);
@@ -165,36 +169,36 @@ function ClaimTab({ onError }: { onError: (msg: string | null) => void }) {
   }
 
   if (fetching) {
-    return <div className="py-8 text-center text-sm text-gray-500">Loading terminals...</div>;
+    return <div className="py-8 text-center text-sm text-gray-500">{t('terminal.loadingTerminals')}</div>;
   }
 
   if (terminals.length === 0) {
     return (
       <div className="rounded-md bg-yellow-50 p-4 text-sm text-yellow-700">
-        No unclaimed terminals available. Ask your admin to create a Physical terminal, or use the "Request New" tab.
+        {t('terminal.noUnclaimed')}
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
-      {terminals.map((t) => (
+      {terminals.map((terminal) => (
         <div
-          key={t.id}
+          key={terminal.id}
           className="flex items-center justify-between rounded-md border border-gray-200 p-4"
         >
           <div>
-            <div className="font-medium text-gray-900">{t.name}</div>
+            <div className="font-medium text-gray-900">{terminal.name}</div>
             <div className="text-sm text-gray-500">
-              {t.code} &middot; {t.location.name}
+              {terminal.code} &middot; {terminal.location.name}
             </div>
           </div>
           <button
-            onClick={() => void handleClaim(t.id)}
+            onClick={() => void handleClaim(terminal.id)}
             disabled={isLoading}
             className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {isLoading ? 'Claiming...' : 'Claim'}
+            {isLoading ? t('terminal.claiming') : t('terminal.claim')}
           </button>
         </div>
       ))}
@@ -203,6 +207,7 @@ function ClaimTab({ onError }: { onError: (msg: string | null) => void }) {
 }
 
 function RequestTab({ onError }: { onError: (msg: string | null) => void }) {
+  const { t } = useTranslation('pos');
   const { requestTerminal, checkTerminalStatus, isLoading } = useTerminalStore();
   const pendingTerminalId = useTerminalStore((s) => s.pendingTerminalId);
   const [locations, setLocations] = useState<Location[]>([]);
@@ -253,7 +258,7 @@ function RequestTab({ onError }: { onError: (msg: string | null) => void }) {
     try {
       const terminal = await checkTerminalStatus(activePendingId);
       if (!terminal.is_active) {
-        onError('Terminal is still pending activation by an administrator.');
+        onError(t('terminal.stillPending'));
       }
     } catch (err) {
       onError(getErrorMessage(err));
@@ -266,33 +271,41 @@ function RequestTab({ onError }: { onError: (msg: string | null) => void }) {
     return (
       <div className="space-y-4 text-center">
         <div className="rounded-md bg-amber-50 p-4">
-          <div className="text-sm font-medium text-amber-800">Pending Activation</div>
+          <div className="text-sm font-medium text-amber-800">{t('terminal.pendingActivation')}</div>
           <p className="mt-1 text-sm text-amber-700">
             {pendingTerminal ? (
-              <>Terminal <strong>{pendingTerminal.name}</strong> ({pendingTerminal.code}) has been requested. </>
+              <span
+                dangerouslySetInnerHTML={{
+                  __html: t('terminal.terminalRequested', {
+                    name: pendingTerminal.name,
+                    code: pendingTerminal.code,
+                    interpolation: { escapeValue: false },
+                  }),
+                }}
+              />
             ) : (
-              <>Your terminal request is awaiting activation. </>
+              <>{t('terminal.awaitingActivation')}</>
             )}
-            An administrator must activate it from the web dashboard.
+            {' '}{t('terminal.adminActivate')}
           </p>
         </div>
 
         {wsConnected ? (
           <div className="flex items-center justify-center gap-2 text-sm text-green-700">
             <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-green-500" />
-            Listening for activation...
+            {t('terminal.listeningActivation')}
           </div>
         ) : (
           <>
             <p className="text-xs text-gray-500">
-              Auto-checking every 30 seconds...
+              {t('terminal.autoChecking')}
             </p>
             <button
               onClick={() => void handleCheckStatus()}
               disabled={checking}
               className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {checking ? 'Checking...' : 'Check Status'}
+              {checking ? t('terminal.checking') : t('terminal.checkStatus')}
             </button>
           </>
         )}
@@ -301,14 +314,14 @@ function RequestTab({ onError }: { onError: (msg: string | null) => void }) {
   }
 
   if (fetchingLocations) {
-    return <div className="py-8 text-center text-sm text-gray-500">Loading locations...</div>;
+    return <div className="py-8 text-center text-sm text-gray-500">{t('terminal.loadingLocations')}</div>;
   }
 
   return (
     <div className="space-y-4">
       <div>
         <label htmlFor="location" className="block text-sm font-medium text-gray-700">
-          Location
+          {t('terminal.location')}
         </label>
         <select
           id="location"
@@ -316,7 +329,7 @@ function RequestTab({ onError }: { onError: (msg: string | null) => void }) {
           onChange={(e) => setSelectedLocationId(e.target.value || null)}
           className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
         >
-          <option value="">Select a location...</option>
+          <option value="">{t('terminal.selectLocation')}</option>
           {locations.map((loc) => (
             <option key={loc.id} value={loc.id}>
               {loc.name} ({loc.code})
@@ -327,14 +340,14 @@ function RequestTab({ onError }: { onError: (msg: string | null) => void }) {
 
       <div>
         <label htmlFor="terminalName" className="block text-sm font-medium text-gray-700">
-          Terminal Name
+          {t('terminal.terminalName')}
         </label>
         <input
           id="terminalName"
           type="text"
           value={terminalName}
           onChange={(e) => setTerminalName(e.target.value)}
-          placeholder="e.g. Front Counter"
+          placeholder={t('terminal.terminalNamePlaceholder')}
           className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
         />
       </div>
@@ -344,7 +357,7 @@ function RequestTab({ onError }: { onError: (msg: string | null) => void }) {
         disabled={isLoading || !selectedLocationId || !terminalName.trim()}
         className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
       >
-        {isLoading ? 'Requesting...' : 'Request Terminal'}
+        {isLoading ? t('terminal.requesting') : t('terminal.requestTerminal')}
       </button>
     </div>
   );

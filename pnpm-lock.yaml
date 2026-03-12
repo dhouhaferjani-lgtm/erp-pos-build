@@ -64,12 +64,18 @@ importers:
       axios:
         specifier: ^1.13.2
         version: 1.13.2
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
       i18next:
-        specifier: ^24
+        specifier: ^24.2.3
         version: 24.2.3(typescript@5.9.3)
       laravel-echo:
         specifier: ^2.2.6
         version: 2.2.6(pusher-js@8.4.0)(socket.io-client@4.8.2)
+      lucide-react:
+        specifier: ^0.555.0
+        version: 0.555.0(react@19.2.0)
       pusher-js:
         specifier: ^8.4.0
         version: 8.4.0
@@ -80,11 +86,14 @@ importers:
         specifier: ^19
         version: 19.2.0(react@19.2.0)
       react-i18next:
-        specifier: ^15
+        specifier: ^15.7.4
         version: 15.7.4(i18next@24.2.3(typescript@5.9.3))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
       react-router-dom:
         specifier: ^7
         version: 7.9.6(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+      tailwind-merge:
+        specifier: ^3.4.0
+        version: 3.4.0
       zustand:
         specifier: ^5
         version: 5.0.8(@types/react@19.2.7)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))
@@ -95,6 +104,12 @@ importers:
       '@tauri-apps/cli':
         specifier: ^2
         version: 2.10.1
+      '@testing-library/jest-dom':
+        specifier: ^6.9.1
+        version: 6.9.1
+      '@testing-library/react':
+        specifier: ^16.3.0
+        version: 16.3.0(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       '@types/react':
         specifier: ^19
         version: 19.2.7
@@ -107,6 +122,9 @@ importers:
       autoprefixer:
         specifier: ^10
         version: 10.4.27(postcss@8.5.6)
+      jsdom:
+        specifier: ^27.2.0
+        version: 27.2.0
       postcss:
         specifier: ^8
         version: 8.5.6
@@ -119,6 +137,9 @@ importers:
       vite:
         specifier: ^6
         version: 6.4.1(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(yaml@2.8.2)
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@24.10.1)(jiti@2.6.1)(jsdom@27.2.0)(lightningcss@1.30.2)(terser@5.44.1)(yaml@2.8.2)
 
   apps/web:
     dependencies:

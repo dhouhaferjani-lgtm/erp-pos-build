@@ -1,137 +1,149 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeftRight, Lock, LogOut, Settings } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useOperatorStore } from '@/stores/operatorStore';
-import { getErrorMessage } from '@/lib/api';
+import { useCartStore } from '@/stores/cartStore';
+import { usePaymentStore } from '@/stores/paymentStore';
+import { useProductStore } from '@/stores/productStore';
+import { useConnectivityStore } from '@/stores/connectivityStore';
+import { useSyncStore } from '@/stores/syncStore';
+import { CloseShiftModal } from '@/components/organisms/CloseShiftModal';
+import { cn } from '@/lib/utils';
 
 export function Header() {
+  const { t } = useTranslation('pos');
+  const navigate = useNavigate();
   const logout = useAuthStore((s) => s.logout);
   const terminal = useTerminalStore((s) => s.terminal);
   const shift = useTerminalStore((s) => s.shift);
-  const closeShift = useTerminalStore((s) => s.closeShift);
 
   const operator = useOperatorStore((s) => s.operator);
   const lockScreen = useOperatorStore((s) => s.lock);
   const clearOperator = useOperatorStore((s) => s.clearOperator);
 
-  const [showCloseShift, setShowCloseShift] = useState(false);
-  const [actualCash, setActualCash] = useState('');
-  const [closing, setClosing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const isOnline = useConnectivityStore((s) => s.isOnline);
+  const pendingReceiptCount = useSyncStore((s) => s.pendingReceiptCount);
+  const isSyncing = useSyncStore((s) => s.isSyncing);
 
-  async function handleCloseShift() {
-    setError(null);
-    setClosing(true);
-    try {
-      await closeShift(actualCash);
-      setShowCloseShift(false);
-      setActualCash('');
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setClosing(false);
-    }
+  const [showCloseShift, setShowCloseShift] = useState(false);
+
+  function handleSwitchOperator() {
+    useCartStore.getState().clearCart();
+    clearOperator();
+  }
+
+  function handleLogout() {
+    useCartStore.getState().clearCart();
+    usePaymentStore.getState().reset();
+    useProductStore.getState().reset();
+    useOperatorStore.getState().clearOperator();
+    logout();
   }
 
   return (
     <>
-      <header className="flex h-12 items-center justify-between border-b border-gray-200 bg-white px-4">
+      <header className="flex h-16 items-center justify-between bg-primary-900 px-4 text-white">
         <div className="flex items-center gap-3">
-          <h1 className="text-lg font-bold text-gray-900">IziPOS</h1>
+          <h1 className="text-xl font-bold text-white">{t('auth.title')}</h1>
           {terminal && (
-            <span className="rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+            <span className="rounded-lg bg-primary-800 px-3 py-1 text-sm font-medium text-primary-200">
               {terminal.name}
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          {/* Connectivity indicator */}
+          <div className="flex items-center gap-1.5" title={isOnline ? t('sync.online') : t('sync.offline')}>
+            <span
+              className={cn(
+                'inline-block h-3 w-3 rounded-full',
+                isSyncing
+                  ? 'animate-pulse bg-yellow-400'
+                  : isOnline
+                    ? 'bg-green-500'
+                    : 'bg-red-500',
+              )}
+            />
+            {!isOnline && (
+              <span className="rounded bg-red-500/20 px-2 py-0.5 text-xs font-medium text-red-300">
+                {t('sync.offline')}
+              </span>
+            )}
+            {pendingReceiptCount > 0 && (
+              <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-xs font-medium text-orange-300">
+                {pendingReceiptCount}
+              </span>
+            )}
+          </div>
+
+          {/* Shift badge */}
           {shift ? (
             <button
               onClick={() => setShowCloseShift(true)}
-              className="rounded bg-green-50 px-2 py-0.5 text-sm text-green-700 hover:bg-green-100"
+              className="flex min-h-[44px] items-center rounded-lg bg-green-500/20 px-3 py-1.5 text-sm font-medium text-green-300 hover:bg-green-500/30"
             >
-              Shift #{shift.shift_number}
+              {t('shift.number', { number: shift.shift_number })}
             </button>
           ) : (
-            <span className="text-sm text-gray-500">No shift open</span>
+            <span className="text-sm text-primary-300">{t('header.noShift')}</span>
           )}
 
+          {/* Operator name */}
           {operator && (
-            <span className="text-sm font-medium text-gray-700">{operator.name}</span>
+            <span className="text-base text-primary-100">{operator.name}</span>
           )}
 
+          {/* Switch operator */}
           <button
-            onClick={clearOperator}
-            className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50"
-            title="Switch operator"
+            onClick={handleSwitchOperator}
+            className="flex min-h-[44px] items-center gap-2 rounded-lg bg-primary-800 px-4 py-2 text-sm font-medium text-primary-200 hover:bg-primary-700"
+            title={t('header.switch')}
           >
-            Switch
+            <ArrowLeftRight className="h-4 w-4" />
+            {t('header.switch')}
           </button>
 
+          {/* Lock */}
           <button
             onClick={lockScreen}
-            className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50"
-            title="Lock screen"
+            className="flex min-h-[44px] items-center gap-2 rounded-lg bg-primary-800 px-4 py-2 text-sm font-medium text-primary-200 hover:bg-primary-700"
+            title={t('header.lock')}
           >
-            Lock
+            <Lock className="h-4 w-4" />
+            {t('header.lock')}
           </button>
 
+          {/* Settings */}
           <button
-            onClick={logout}
-            className="text-sm text-gray-400 hover:text-gray-600"
+            onClick={() => navigate('/settings')}
+            className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary-800 text-primary-200 hover:bg-primary-700"
+            title={t('header.settings')}
           >
-            Logout
+            <Settings className="h-5 w-5" />
+          </button>
+
+          {/* Logout */}
+          <button
+            onClick={handleLogout}
+            className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary-800 text-primary-200 hover:bg-primary-700"
+            title={t('header.logout')}
+          >
+            <LogOut className="h-5 w-5" />
           </button>
         </div>
       </header>
 
       {/* Close Shift Modal */}
-      {showCloseShift && shift && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-bold text-gray-900">Close Shift</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Shift #{shift.shift_number} &middot; Opening: {shift.opening_cash}
-            </p>
-
-            <div className="mt-4">
-              <label htmlFor="actualCash" className="block text-sm font-medium text-gray-700">
-                Actual Cash in Drawer
-              </label>
-              <input
-                id="actualCash"
-                type="number"
-                step="0.01"
-                min="0"
-                value={actualCash}
-                onChange={(e) => setActualCash(e.target.value)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-                autoFocus
-              />
-            </div>
-
-            {error && (
-              <div className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
-            )}
-
-            <div className="mt-4 flex gap-3">
-              <button
-                onClick={() => setShowCloseShift(false)}
-                className="flex-1 rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => void handleCloseShift()}
-                disabled={closing || !actualCash}
-                className="flex-1 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-              >
-                {closing ? 'Closing...' : 'Close Shift'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {shift && (
+        <CloseShiftModal
+          isOpen={showCloseShift}
+          onClose={() => setShowCloseShift(false)}
+          shift={shift}
+        />
       )}
     </>
   );

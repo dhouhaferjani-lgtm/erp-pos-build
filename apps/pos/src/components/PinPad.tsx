@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+
 interface PinPadProps {
   value: string;
   maxLength: number;
@@ -7,6 +9,8 @@ interface PinPadProps {
 }
 
 export function PinPad({ value, maxLength, onChange, onSubmit, disabled }: PinPadProps) {
+  const { t } = useTranslation('pos');
+
   function handleDigit(digit: string) {
     if (disabled) return;
     const next = value + digit;
@@ -45,7 +49,7 @@ export function PinPad({ value, maxLength, onChange, onSubmit, disabled }: PinPa
                   disabled={disabled}
                   className="flex h-16 items-center justify-center rounded-lg bg-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-300 active:bg-gray-400 disabled:opacity-50"
                 >
-                  Clear
+                  {t('pin.clear')}
                 </button>
               );
             }
@@ -82,7 +86,7 @@ export function PinPad({ value, maxLength, onChange, onSubmit, disabled }: PinPa
         disabled={disabled || value.length < 4}
         className="flex h-14 w-full items-center justify-center rounded-lg bg-blue-600 text-lg font-semibold text-white hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50"
       >
-        {disabled ? 'Verifying...' : 'Enter'}
+        {disabled ? t('pin.verifying') : t('pin.enter')}
       </button>
     </div>
   );

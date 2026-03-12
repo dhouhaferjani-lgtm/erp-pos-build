@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore, type Company } from '@/stores/authStore';
 import { getErrorMessage } from '@/lib/api';
 
 export function LoginPage() {
+  const { t } = useTranslation('pos');
   const { login, isLoading, companies, setCompany, companyId } = useAuthStore();
 
   const [email, setEmail] = useState('');
@@ -38,7 +40,7 @@ export function LoginPage() {
       <div className="flex h-screen items-center justify-center bg-gray-50">
         <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-md">
           <h2 className="mb-6 text-center text-xl font-bold text-gray-900">
-            Select Company
+            {t('auth.selectCompany')}
           </h2>
           <div className="space-y-3">
             {companies.map((company) => (
@@ -63,14 +65,14 @@ export function LoginPage() {
     <div className="flex h-screen items-center justify-center bg-gray-50">
       <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-md">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-gray-900">IziPOS</h1>
-          <p className="mt-1 text-sm text-gray-500">Sign in to your account</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t('auth.title')}</h1>
+          <p className="mt-1 text-sm text-gray-500">{t('auth.subtitle')}</p>
         </div>
 
         <form onSubmit={(e) => void handleLogin(e)} className="space-y-4">
           <div>
             <label htmlFor="serverUrl" className="block text-sm font-medium text-gray-700">
-              Server URL
+              {t('auth.serverUrl')}
             </label>
             <input
               id="serverUrl"
@@ -85,7 +87,7 @@ export function LoginPage() {
 
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-              Email
+              {t('auth.email')}
             </label>
             <input
               id="email"
@@ -101,7 +103,7 @@ export function LoginPage() {
 
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-              Password
+              {t('auth.password')}
             </label>
             <input
               id="password"
@@ -124,7 +126,7 @@ export function LoginPage() {
             disabled={isLoading}
             className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:opacity-50"
           >
-            {isLoading ? 'Signing in...' : 'Sign in'}
+            {isLoading ? t('auth.signingIn') : t('auth.signIn')}
           </button>
         </form>
       </div>

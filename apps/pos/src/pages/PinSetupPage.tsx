@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PinPad } from '@/components/PinPad';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { getErrorMessage } from '@/lib/api';
@@ -8,6 +9,7 @@ const MAX_PIN_LENGTH = 6;
 type Step = 'enter' | 'confirm';
 
 export function PinSetupPage() {
+  const { t } = useTranslation('pos');
   const setupPin = useOperatorStore((s) => s.setupPin);
   const [step, setStep] = useState<Step>('enter');
   const [firstPin, setFirstPin] = useState('');
@@ -27,7 +29,7 @@ export function PinSetupPage() {
     if (pin.length < 4) return;
 
     if (pin !== firstPin) {
-      setError('PINs do not match. Try again.');
+      setError(t('pin.mismatch'));
       setPin('');
       setStep('enter');
       setFirstPin('');
@@ -62,12 +64,10 @@ export function PinSetupPage() {
       <div className="w-full max-w-xs">
         <div className="mb-8 text-center">
           <h2 className="text-xl font-bold text-gray-900">
-            {step === 'enter' ? 'Set Your PIN' : 'Confirm Your PIN'}
+            {step === 'enter' ? t('pin.setPin') : t('pin.confirmPin')}
           </h2>
           <p className="mt-1 text-sm text-gray-500">
-            {step === 'enter'
-              ? 'Create a 4-6 digit PIN for quick sign-in'
-              : 'Enter the same PIN again to confirm'}
+            {step === 'enter' ? t('pin.createMessage') : t('pin.confirmMessage')}
           </p>
         </div>
 

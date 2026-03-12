@@ -1,0 +1,21 @@
+{
+  "loading": "Chargement...",
+  "error": "Erreur",
+  "cancel": "Annuler",
+  "confirm": "Confirmer",
+  "save": "Enregistrer",
+  "delete": "Supprimer",
+  "close": "Fermer",
+  "back": "Retour",
+  "next": "Suivant",
+  "previous": "Précédent",
+  "search": "Rechercher",
+  "clear": "Effacer",
+  "subtotal": "Sous-total",
+  "tax": "TVA",
+  "total": "Total",
+  "page": "Page",
+  "of": "de",
+  "noResults": "Aucun résultat trouvé",
+  "retry": "Réessayer"
+}

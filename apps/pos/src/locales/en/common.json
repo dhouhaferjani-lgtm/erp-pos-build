@@ -1,0 +1,21 @@
+{
+  "loading": "Loading...",
+  "error": "Error",
+  "cancel": "Cancel",
+  "confirm": "Confirm",
+  "save": "Save",
+  "delete": "Delete",
+  "close": "Close",
+  "back": "Back",
+  "next": "Next",
+  "previous": "Previous",
+  "search": "Search",
+  "clear": "Clear",
+  "subtotal": "Subtotal",
+  "tax": "Tax",
+  "total": "Total",
+  "page": "Page",
+  "of": "of",
+  "noResults": "No results found",
+  "retry": "Retry"
+}

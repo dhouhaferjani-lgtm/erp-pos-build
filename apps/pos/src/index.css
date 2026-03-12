@@ -8,6 +8,82 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* Primary - Deep Ocean Blue */
+  --theme-primary-50: #E8F4FC;
+  --theme-primary-100: #C5E2F7;
+  --theme-primary-200: #9DCEF1;
+  --theme-primary-300: #6BB5E8;
+  --theme-primary-400: #3E9EDF;
+  --theme-primary-500: #1E7EC3;
+  --theme-primary-600: #1A6FB5;
+  --theme-primary-700: #155C9A;
+  --theme-primary-800: #104A7E;
+  --theme-primary-900: #0C355A;
+  --theme-primary-950: #071F38;
+
+  /* Secondary - Copper */
+  --theme-secondary-50: #FDF3EC;
+  --theme-secondary-100: #F9E0CE;
+  --theme-secondary-200: #F3C6A4;
+  --theme-secondary-300: #EDAB79;
+  --theme-secondary-400: #E49356;
+  --theme-secondary-500: #C2703E;
+  --theme-secondary-600: #A85E33;
+  --theme-secondary-700: #8C4D2A;
+  --theme-secondary-800: #713D21;
+  --theme-secondary-900: #562E19;
+  --theme-secondary-950: #3A1F11;
+
+  /* Neutral - Navy-tinted */
+  --theme-neutral-50: #F7F8FA;
+  --theme-neutral-100: #EBEDF2;
+  --theme-neutral-200: #D5D9E2;
+  --theme-neutral-300: #B8BFC9;
+  --theme-neutral-400: #929DAD;
+  --theme-neutral-500: #6C7A8E;
+  --theme-neutral-600: #556275;
+  --theme-neutral-700: #434E5E;
+  --theme-neutral-800: #343D4A;
+  --theme-neutral-900: #242B35;
+  --theme-neutral-950: #161A22;
+
+  /* Semantic */
+  --theme-success: #1B7F4E;
+  --theme-warning: #D97706;
+  --theme-error: #C53030;
+
+  /* POS-specific */
+  --pos-header-bg: var(--theme-primary-900);
+  --pos-header-text: #FFFFFF;
+  --pos-surface: #FFFFFF;
+  --pos-grid-bg: var(--theme-neutral-50);
+}
+
+@theme {
+  --color-primary-50: var(--theme-primary-50);
+  --color-primary-100: var(--theme-primary-100);
+  --color-primary-200: var(--theme-primary-200);
+  --color-primary-300: var(--theme-primary-300);
+  --color-primary-400: var(--theme-primary-400);
+  --color-primary-500: var(--theme-primary-500);
+  --color-primary-600: var(--theme-primary-600);
+  --color-primary-700: var(--theme-primary-700);
+  --color-primary-800: var(--theme-primary-800);
+  --color-primary-900: var(--theme-primary-900);
+  --color-primary-950: var(--theme-primary-950);
+
+  --color-secondary-50: var(--theme-secondary-50);
+  --color-secondary-100: var(--theme-secondary-100);
+  --color-secondary-200: var(--theme-secondary-200);
+  --color-secondary-300: var(--theme-secondary-300);
+  --color-secondary-400: var(--theme-secondary-400);
+  --color-secondary-500: var(--theme-secondary-500);
+  --color-secondary-600: var(--theme-secondary-600);
+  --color-secondary-700: var(--theme-secondary-700);
+  --color-secondary-800: var(--theme-secondary-800);
+  --color-secondary-900: var(--theme-secondary-900);
+  --color-secondary-950: var(--theme-secondary-950);
 }
 
 html,
@@ -17,4 +93,9 @@ body,
   margin: 0;
   padding: 0;
   overflow: hidden;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--theme-primary-500);
+  outline-offset: 2px;
 }

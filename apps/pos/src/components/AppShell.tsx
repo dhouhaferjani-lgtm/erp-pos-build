@@ -1,8 +1,13 @@
-import { useEffect, useCallback } from 'react';
-import { Route, Routes } from 'react-router-dom';
+import { useEffect, useCallback, lazy, Suspense } from 'react';
+import { Route, Routes, Navigate } from 'react-router-dom';
 import { Header } from './Header';
 import { HomePage } from '@/pages/HomePage';
 import { useOperatorStore } from '@/stores/operatorStore';
+import { useConnectivityStore } from '@/stores/connectivityStore';
+
+const SettingsPage = lazy(() =>
+  import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
+);
 
 export function AppShell() {
   const lockTimeoutMs = useOperatorStore((s) => s.lockTimeoutMs);
@@ -14,10 +19,16 @@ export function AppShell() {
     resetActivityTimer();
   }, [resetActivityTimer]);
 
+  // Start connectivity monitoring
+  useEffect(() => {
+    const stopMonitoring = useConnectivityStore.getState().startMonitoring();
+    return stopMonitoring;
+  }, []);
+
   useEffect(() => {
     if (!operator) return;
 
-    const events = ['mousedown', 'keydown', 'touchstart', 'mousemove'] as const;
+    const events = ['mousedown', 'keydown', 'touchstart'] as const;
     for (const event of events) {
       window.addEventListener(event, handleActivity);
     }
@@ -41,9 +52,13 @@ export function AppShell() {
     <div className="flex h-screen flex-col bg-gray-50">
       <Header />
       <main className="flex-1 overflow-hidden">
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-        </Routes>
+        <Suspense fallback={null}>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </main>
     </div>
   );

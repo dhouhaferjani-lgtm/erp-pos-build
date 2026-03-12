@@ -1,6 +1,6 @@
 # POS Go-Live Roadmap
 
-> **Last updated:** 2026-03-11
+> **Last updated:** 2026-03-12
 > **Goal:** Ship a production-ready POS for both Retail and F&B verticals.
 
 ---
@@ -304,12 +304,47 @@
 
 > **Goal:** Reliability, compliance, and operational readiness.
 
-#### 5.1 Offline Support (Tauri POS) ⬜
+#### 5.0 Tauri POS Desktop App — In Progress
 
-- [ ] Local SQLite cache for products, categories, active menu
-- [ ] Offline receipt queue (create receipts locally, sync when online)
+**Phase 1 — UI Foundation ✅ COMPLETE:**
+- [x] Tauri desktop shell, Vite + React + TypeScript
+- [x] IziPOS theme, branded layout, responsive header
+- [x] Product grid with search, category tabs, grid/visual mode toggle
+- [x] Transaction cart with quantity controls, line totals
+- [x] Cash tendered modal, card payment modal, checkout success modal
+- [x] Quick actions (discount, hold, recall, reports)
+- [x] Hold/recall transactions, quantity numpad
+- [x] Settings page, cash drawer ops, reports menu, void/return modals
+- [x] PIN entry/setup, terminal setup, operator locking
+- [x] Connectivity monitoring, sync status indicator
+
+**Phase 2 — Atomic Design + Feature Completion ✅ COMPLETE:**
+- [x] Component restructure: atoms/molecules/organisms hierarchy
+- [x] Product card text overlap fix (flex-1 layout instead of mt-auto)
+- [x] Cash checkout error display (error prop in CashTenderedModal)
+- [x] Settings language: dropdown instead of toggle buttons
+- [x] Modifier selection modal (single/multiple, required validation, price adjustments)
+- [x] Dual data source: company config → F&B (active menu) vs Retail (products)
+- [x] SQLite fallback: load products from local DB when API unreachable
+- [x] Category navigation with product counts + popular items row
+- [x] Discount UX split: transaction-only in QuickActions, per-item on cart lines
+- [x] LineDiscountModal for per-item discounts
+- [x] Fix "Composite item does not exist" sale flow bug — `flattenMenuToProducts()` was mapping pivot table IDs instead of `sellable_id`, wrong field names (`sku`→`code`, `sale_price`→`effective_price`, `position`→`display_order`), and defaulting to invalid `'menu_item'` sellable type
+
+**Phase 3 — Not Started:**
+- [ ] Receipt printing (ESC/POS thermal printer integration)
+- [ ] Full offline checkout (receipt creation with fiscal hash chain)
+- [ ] Order management integration (F&B table orders)
+- [ ] Barcode scanner (camera via Tauri native)
+
+#### 5.1 Offline Support (Tauri POS) — Partially Done
+
+- [x] Local SQLite cache for products, categories (via productRepository)
+- [x] Offline receipt queue (create receipts locally, sync when online)
+- [x] Sync status indicator in POS header
+- [x] Product fallback: load from SQLite when API fails
+- [ ] Full offline checkout with fiscal hash chain (infrastructure ready)
 - [ ] Conflict resolution strategy
-- [ ] Sync status indicator in POS header
 - [ ] Graceful degradation (what works offline vs requires connection)
 
 #### 5.2 Receipt Printing ⬜

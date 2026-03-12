@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PinPad } from '@/components/PinPad';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { getErrorMessage } from '@/lib/api';
@@ -10,6 +11,7 @@ interface PinEntryPageProps {
 }
 
 export function PinEntryPage({ isLocked }: PinEntryPageProps) {
+  const { t } = useTranslation('pos');
   const verifyPin = useOperatorStore((s) => s.verifyPin);
   const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -35,12 +37,10 @@ export function PinEntryPage({ isLocked }: PinEntryPageProps) {
       <div className="w-full max-w-xs">
         <div className="mb-8 text-center">
           <h2 className="text-xl font-bold text-gray-900">
-            {isLocked ? 'Screen Locked' : 'Enter PIN'}
+            {isLocked ? t('pin.screenLocked') : t('pin.enterPin')}
           </h2>
           <p className="mt-1 text-sm text-gray-500">
-            {isLocked
-              ? 'Enter your PIN to unlock'
-              : 'Enter your 4-6 digit cashier PIN'}
+            {isLocked ? t('pin.unlockMessage') : t('pin.enterMessage')}
           </p>
         </div>
 
