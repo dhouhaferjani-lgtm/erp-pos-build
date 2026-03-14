@@ -179,6 +179,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'pos.manage_terminals',
             'pos.operate_terminal',
             'pos.manage_shifts',
+            'pos.manage_tables',
             'pos.view_reports',
             'pos.void_receipts',
             'pos.view_receipts',
@@ -234,6 +235,11 @@ class RolesAndPermissionsSeeder extends Seeder
             'catalog_cart.marketplace_checkout',
             'catalog_cart.manage_all',
 
+            // Compliance / NF525
+            'compliance.export_jet',
+            'compliance.verify_chains',
+            'compliance.view_reprint_log',
+
             // System
             'settings.view',
             'settings.update',
@@ -284,7 +290,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'reports.financial', 'reports.operational',
             'work-orders.view', 'work-orders.create', 'work-orders.update', 'work-orders.complete',
             'users.view',
-            'pos.manage_terminals', 'pos.operate_terminal', 'pos.manage_shifts',
+            'pos.manage_terminals', 'pos.operate_terminal', 'pos.manage_shifts', 'pos.manage_tables',
             'pos.view_reports', 'pos.void_receipts', 'pos.view_receipts', 'pos.process_returns',
             'pos_orders.view', 'pos_orders.create', 'pos_orders.update', 'pos_orders.delete',
             'pos_held_orders.view', 'pos_held_orders.create', 'pos_held_orders.delete',
@@ -302,6 +308,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'marketplace.browse', 'marketplace.order', 'marketplace.view_orders',
             'catalog_cart.view', 'catalog_cart.create', 'catalog_cart.convert_po', 'catalog_cart.convert_so',
             'catalog_cart.marketplace_checkout',
+            'compliance.export_jet', 'compliance.verify_chains', 'compliance.view_reprint_log',
         ]);
         $this->command->info('Created role: manager');
 
@@ -421,6 +428,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'reports.financial',
             'withholding.view', 'withholding.create', 'withholding.update',
             'audit.view',
+            'compliance.export_jet', 'compliance.verify_chains', 'compliance.view_reprint_log',
         ]);
         $this->command->info('Created role: accountant');
     }

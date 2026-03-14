@@ -19,12 +19,12 @@ export interface ShiftHistoryItem {
 }
 
 export interface ShiftHistoryFilters {
-  terminal_id?: string
-  status?: 'OPEN' | 'CLOSED'
-  from_date?: string
-  to_date?: string
-  page?: number
-  per_page?: number
+  terminal_id?: string | undefined
+  status?: 'OPEN' | 'CLOSED' | undefined
+  from_date?: string | undefined
+  to_date?: string | undefined
+  page?: number | undefined
+  per_page?: number | undefined
 }
 
 export interface PaginatedShifts {

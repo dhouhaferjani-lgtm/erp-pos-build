@@ -1,14 +1,15 @@
 import { useState } from 'react'
+import type { JSX } from 'react'
 import { ChevronRight, ChevronDown, Folder, FolderOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { CategoryTreeNode } from '@/features/catalog/types'
 
 interface CategoryTreeProps {
   categories: CategoryTreeNode[]
-  selectedId?: number | null
+  selectedId?: number | null | undefined
   onSelect: (category: CategoryTreeNode) => void
-  expandedIds?: number[]
-  className?: string
+  expandedIds?: number[] | undefined
+  className?: string | undefined
 }
 
 export function CategoryTree({

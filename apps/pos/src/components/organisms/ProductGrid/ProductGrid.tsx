@@ -20,6 +20,7 @@ export interface ProductGridProps {
   products: POSProduct[];
   categories: string[];
   onAddToCart: (product: POSProduct) => void;
+  onCustomize?: (product: POSProduct) => void;
   cartProductIds: string[];
   isLoading?: boolean;
 }
@@ -30,6 +31,7 @@ export function ProductGrid({
   products,
   categories,
   onAddToCart,
+  onCustomize,
   cartProductIds,
   isLoading = false,
 }: ProductGridProps) {
@@ -277,6 +279,7 @@ export function ProductGrid({
               key={product.id}
               product={product}
               onAddToCart={onAddToCart}
+              onCustomize={onCustomize}
               isInCart={cartProductIds.includes(product.id)}
               displayMode={displayMode}
             />

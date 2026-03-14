@@ -7,6 +7,8 @@ import type {
   VoidCertificateRequest,
   SubmitToTEJRequest,
   CertificateFilters,
+  SalesWithholdingTrackingFilters,
+  MarkCertificateReceivedRequest,
 } from '../types';
 import * as withholdingApi from '../api/withholdingApi';
 
@@ -192,7 +194,7 @@ export function useUpdateWithholdingRule() {
   const { t } = useTranslation('withholding');
 
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) =>
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof withholdingApi.updateWithholdingRule>[1] }) =>
       withholdingApi.updateWithholdingRule(id, data),
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['withholding-rule', id] });
@@ -240,6 +242,47 @@ export function useDeactivateWithholdingRule() {
     },
     onError: (error: Error) => {
       toast.error(error.message || t('messages.ruleDeactivationFailed'));
+    },
+  });
+}
+
+/**
+ * Fetch sales withholding tracking records
+ */
+export function useSalesWithholdingTracking(filters?: SalesWithholdingTrackingFilters) {
+  return useQuery({
+    queryKey: ['sales-withholding-tracking', filters],
+    queryFn: () => withholdingApi.fetchSalesWithholdingTracking(filters),
+  });
+}
+
+/**
+ * Fetch single sales withholding tracking record
+ */
+export function useSalesWithholdingTrackingRecord(id: string) {
+  return useQuery({
+    queryKey: ['sales-withholding-tracking', id],
+    queryFn: () => withholdingApi.fetchSalesWithholdingTrackingRecord(id),
+    enabled: !!id,
+  });
+}
+
+/**
+ * Mark certificate as received for sales withholding tracking
+ */
+export function useMarkCertificateReceived() {
+  const queryClient = useQueryClient();
+  const { t } = useTranslation('withholding');
+
+  return useMutation({
+    mutationFn: ({ id, request }: { id: string; request: MarkCertificateReceivedRequest }) =>
+      withholdingApi.markCertificateReceived(id, request),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales-withholding-tracking'] });
+      toast.success(t('salesWithholding.messages.certificateMarkedReceived'));
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || t('salesWithholding.messages.markReceivedFailed'));
     },
   });
 }

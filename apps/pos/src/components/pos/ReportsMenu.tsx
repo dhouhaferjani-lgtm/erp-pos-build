@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FileText, FileCheck, Clock, Wallet } from 'lucide-react';
+import { FileText, FileCheck, Clock, Wallet, Receipt } from 'lucide-react';
 
 interface ReportsMenuProps {
   isOpen: boolean;
@@ -9,6 +9,7 @@ interface ReportsMenuProps {
   onZReport: () => void;
   onTransactionHistory: () => void;
   onCashDrawerOps: () => void;
+  onTodaySales: () => void;
 }
 
 export function ReportsMenu({
@@ -18,6 +19,7 @@ export function ReportsMenu({
   onZReport,
   onTransactionHistory,
   onCashDrawerOps,
+  onTodaySales,
 }: ReportsMenuProps) {
   const { t } = useTranslation('pos');
   const menuRef = useRef<HTMLDivElement>(null);
@@ -50,6 +52,7 @@ export function ReportsMenu({
     { label: t('reports.zReport'), icon: FileCheck, onClick: onZReport },
     { label: t('reports.transactionHistory'), icon: Clock, onClick: onTransactionHistory },
     { label: t('reports.cashDrawer'), icon: Wallet, onClick: onCashDrawerOps },
+    { label: t('reports.todaySales'), icon: Receipt, onClick: onTodaySales },
   ];
 
   return (

@@ -23,23 +23,23 @@ export interface DocumentActionBarProps {
   basePath: string
   isActionPending: boolean
 
-  onConfirm?: () => void
-  onPost?: () => void
-  onConvert?: () => void
-  onConvertToDelivery?: () => void
-  onReceiveGoods?: () => void
-  onRecordPayment?: () => void
-  onCreateCreditNote?: () => void
-  onCreateReturnNote?: () => void
-  onSendEmail?: () => void
-  onDownloadPdf?: () => void
-  onPreviewPdf?: () => void
-  onPrintPdf?: () => void
+  onConfirm?: (() => void) | undefined
+  onPost?: (() => void) | undefined
+  onConvert?: (() => void) | undefined
+  onConvertToDelivery?: (() => void) | undefined
+  onReceiveGoods?: (() => void) | undefined
+  onRecordPayment?: (() => void) | undefined
+  onCreateCreditNote?: (() => void) | undefined
+  onCreateReturnNote?: (() => void) | undefined
+  onSendEmail?: (() => void) | undefined
+  onDownloadPdf?: (() => void) | undefined
+  onPreviewPdf?: (() => void) | undefined
+  onPrintPdf?: (() => void) | undefined
 
-  isDownloading?: boolean
-  isPreviewing?: boolean
-  isPrinting?: boolean
-  isSendingEmail?: boolean
+  isDownloading?: boolean | undefined
+  isPreviewing?: boolean | undefined
+  isPrinting?: boolean | undefined
+  isSendingEmail?: boolean | undefined
 }
 
 export function DocumentActionBar({
@@ -79,6 +79,7 @@ export function DocumentActionBar({
       window.addEventListener('mousedown', handleClickOutside)
       return () => { window.removeEventListener('mousedown', handleClickOutside) }
     }
+    return undefined
   }, [isDropdownOpen])
 
   // Determine available actions based on status and type

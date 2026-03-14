@@ -8,27 +8,27 @@ interface AutoSaveConfig {
   /**
    * Debounce delay in milliseconds (default: 3000ms = 3 seconds)
    */
-  debounceMs?: number
+  debounceMs?: number | undefined
 
   /**
    * Whether auto-save is enabled (default: true)
    */
-  enabled?: boolean
+  enabled?: boolean | undefined
 
   /**
    * Existing draft ID for updates (when editing existing drafts)
    */
-  existingDraftId?: string
+  existingDraftId?: string | undefined
 
   /**
    * Callback fired when auto-save succeeds
    */
-  onSuccess?: (draftId: string) => void
+  onSuccess?: ((draftId: string) => void) | undefined
 
   /**
    * Callback fired when auto-save fails
    */
-  onError?: (error: Error) => void
+  onError?: ((error: Error) => void) | undefined
 }
 
 /**

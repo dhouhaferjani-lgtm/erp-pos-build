@@ -9,6 +9,7 @@ use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\POS\Domain\Events\ReceiptVoided;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLineBatchAllocation;
 use App\Modules\POS\Domain\Services\CashDrawerService;
@@ -87,6 +88,18 @@ final class ReceiptVoidService
             $this->recordCashDrawerRefund($receipt, $voidedBy);
 
             $receipt->refresh();
+
+            /** @var \Illuminate\Support\Carbon $voidedAtTimestamp */
+            $voidedAtTimestamp = $receipt->voided_at;
+
+            event(new ReceiptVoided(
+                receiptId: $receipt->id,
+                companyId: $receipt->company_id,
+                receiptNumber: $receipt->receipt_number,
+                voidReason: $reason,
+                voidedBy: $voidedBy->id,
+                voidedAt: $voidedAtTimestamp->toIso8601String(),
+            ));
 
             return $receipt;
         });

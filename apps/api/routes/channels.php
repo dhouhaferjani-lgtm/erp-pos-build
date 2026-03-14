@@ -45,3 +45,16 @@ Broadcast::channel('tenant.{tenantId}.company.{companyId}.imports', function (Us
 Broadcast::channel('tenant.{tenantId}.company.{companyId}.pos.terminal.{terminalId}', function (User $user, string $tenantId, string $companyId) {
     return $user->canAccessImportChannel($tenantId, $companyId);
 });
+
+/**
+ * POS Kitchen Display Channel
+ *
+ * Private channel for real-time kitchen display system updates.
+ * Authorization ensures users can only subscribe to kitchen events in their tenant and company.
+ *
+ * Channel pattern: private-tenant.{tenantId}.company.{companyId}.pos.kitchen
+ * Events: order.sent_to_kitchen, order.line_status_changed, order.ready
+ */
+Broadcast::channel('tenant.{tenantId}.company.{companyId}.pos.kitchen', function (User $user, string $tenantId, string $companyId) {
+    return $user->canAccessImportChannel($tenantId, $companyId);
+});

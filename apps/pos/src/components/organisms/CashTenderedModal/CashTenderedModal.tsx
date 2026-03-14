@@ -64,7 +64,7 @@ export function CashTenderedModal({
   const visibleDenoms = DENOMINATIONS.filter((d) => d >= total);
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={t('cashTendered.title')} size="md">
+    <Modal isOpen={isOpen} onClose={onClose} title={t('cashTendered.title')} size={touchMode ? 'lg' : 'md'}>
       <div className={touchMode ? 'space-y-3' : 'space-y-4'}>
         {/* Error display */}
         {error && (

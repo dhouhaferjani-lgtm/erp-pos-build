@@ -3,7 +3,15 @@ import { useTranslation } from 'react-i18next';
 import { useCurrency } from '@/lib/currency';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { usePrinterStore } from '@/stores/printerStore';
-import { printReceipt, printReceiptAsPdf, isTauriEnvironment } from '@/lib/printing';
+import { useCashDrawerStore } from '@/stores/cashDrawerStore';
+import {
+  printReceipt,
+  printReceiptAsPdf,
+  openCashDrawer,
+  getPrintSettingsFromStore,
+  getDrawerSettingsFromStore,
+  isTauriEnvironment,
+} from '@/lib/printing';
 import type { ReceiptData } from '@/lib/printing';
 import { Modal } from './Modal';
 import { CheckCircle, Printer, FileText, Loader2 } from 'lucide-react';
@@ -47,7 +55,8 @@ export function CheckoutSuccessModal({
     setIsPrinting(true);
     setPrintError(null);
     try {
-      await printReceipt(receiptData, printerConfig);
+      const printSettings = getPrintSettingsFromStore();
+      await printReceipt(receiptData, printerConfig, printSettings);
     } catch (err: unknown) {
       setPrintError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -69,7 +78,7 @@ export function CheckoutSuccessModal({
     }
   }, [receiptId]);
 
-  // Auto-print when the modal opens with receipt data
+  // Auto-print when the modal opens with receipt data + auto-open drawer
   useEffect(() => {
     if (
       isOpen &&
@@ -81,6 +90,12 @@ export function CheckoutSuccessModal({
     ) {
       autoPrintTriggered.current = true;
       void handlePrint();
+
+      // Auto-open cash drawer on cash sale
+      const { openOnCashSale } = useCashDrawerStore.getState();
+      if (openOnCashSale) {
+        void openCashDrawer(printerConfig, getDrawerSettingsFromStore());
+      }
     }
     if (!isOpen) {
       autoPrintTriggered.current = false;
@@ -92,7 +107,7 @@ export function CheckoutSuccessModal({
   const canPdfPrint = isOnline && receiptId !== undefined;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={t('payment.success')} size="sm">
+    <Modal isOpen={isOpen} onClose={onClose} title={t('payment.success')} size="md">
       <div className="space-y-6 text-center">
         {/* Success icon */}
         <div className="flex justify-center">

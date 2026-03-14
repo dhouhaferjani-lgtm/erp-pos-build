@@ -23,7 +23,7 @@ vi.mock('@/hooks/useCurrency', () => ({
 }))
 
 describe('ShiftDashboardPage', () => {
-  const mockCurrentShift = {
+  const mockCurrentShift: import('./ShiftDashboardPage').Shift = {
     id: 'shift-1',
     terminal_id: 'terminal-1',
     shift_number: 42,
@@ -35,7 +35,7 @@ describe('ShiftDashboardPage', () => {
     status: 'OPEN',
   }
 
-  const mockTerminal = {
+  const mockTerminal: import('./ShiftDashboardPage').Terminal = {
     id: 'terminal-1',
     code: 'POS-01',
     location_id: 'loc-1',

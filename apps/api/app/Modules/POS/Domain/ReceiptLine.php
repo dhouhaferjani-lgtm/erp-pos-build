@@ -33,6 +33,7 @@ use Illuminate\Support\Carbon;
  * @property numeric-string $tax_rate
  * @property numeric-string $tax_amount
  * @property array<string, mixed>|null $modifiers JSONB: Future menu item modifiers
+ * @property array<int, string>|null $combo_components JSONB: Component names for fixed_bundle combos
  * @property numeric-string $discount_amount
  * @property string|null $discount_reason
  * @property string|null $notes
@@ -71,6 +72,7 @@ class ReceiptLine extends Model
         'tax_rate',
         'tax_amount',
         'modifiers',
+        'combo_components',
         'discount_amount',
         'discount_reason',
         'notes',
@@ -90,6 +92,7 @@ class ReceiptLine extends Model
             'tax_amount' => 'decimal:3',
             'discount_amount' => 'decimal:3',
             'modifiers' => 'array',
+            'combo_components' => 'array',
         ];
     }
 

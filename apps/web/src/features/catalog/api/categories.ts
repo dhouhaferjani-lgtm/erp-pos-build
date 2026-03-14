@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api'
+import { api, apiGet, apiPost, apiPut, apiDelete } from '@/lib/api'
 import type {
   Category,
   CategoryTreeNode,

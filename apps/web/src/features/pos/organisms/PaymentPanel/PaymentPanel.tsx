@@ -10,12 +10,12 @@ export interface PaymentPanelProps {
   items: CartItem[]
   onQuickCheckout: () => void
   onAdvancedPayments: () => void
-  onOpenCalculator?: () => void
-  touchOptimized?: boolean
-  isNarrowScreen?: boolean
-  inline?: boolean
-  className?: string
-  transactionDiscountAmount?: string
+  onOpenCalculator?: (() => void) | undefined
+  touchOptimized?: boolean | undefined
+  isNarrowScreen?: boolean | undefined
+  inline?: boolean | undefined
+  className?: string | undefined
+  transactionDiscountAmount?: string | undefined
 }
 
 /**

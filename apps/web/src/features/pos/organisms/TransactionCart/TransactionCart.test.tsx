@@ -254,10 +254,11 @@ describe('TransactionCart', () => {
   })
 
   it('handles items without tax amounts', () => {
-    const itemsWithoutTax = mockItems.map((item) => ({
-      ...item,
-      tax_amount: undefined,
-    }))
+    const itemsWithoutTax = mockItems.map((item) => {
+      const { tax_amount: _tax, ...rest } = item
+      void _tax
+      return rest
+    })
 
     const { getByText } = renderWithClient(
       <TransactionCart

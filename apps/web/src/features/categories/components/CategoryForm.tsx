@@ -5,10 +5,10 @@ import type { CategoryApiResponse, CreateCategoryInput, UpdateCategoryInput } fr
 import { useCategoryTree } from '../hooks'
 
 interface CategoryFormProps {
-  category?: CategoryApiResponse
+  category?: CategoryApiResponse | undefined
   onSubmit: (data: CreateCategoryInput | UpdateCategoryInput) => void
   onCancel: () => void
-  isSubmitting?: boolean
+  isSubmitting?: boolean | undefined
 }
 
 interface FormData {
@@ -28,7 +28,6 @@ export function CategoryForm({ category, onSubmit, onCancel, isSubmitting = fals
     register,
     handleSubmit,
     formState: { errors },
-    watch,
   } = useForm<FormData>({
     defaultValues: {
       name: category?.name || '',

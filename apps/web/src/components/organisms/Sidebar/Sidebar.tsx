@@ -196,11 +196,13 @@ const navigation: NavModule[] = [
       { key: 'terminals', href: '/pos/terminals', icon: Monitor, module: 'pos' },
       { key: 'shiftHistory', href: '/pos/shift-history', icon: History, module: 'pos' },
       { key: 'zReports', href: '/pos/z-reports', icon: FileCheck, module: 'pos' },
+      { key: 'analytics', href: '/pos/analytics', icon: BarChart3, module: 'pos' },
       { key: 'receipts', href: '/pos/receipts', icon: Receipt, module: 'pos' },
       { key: 'promotions', href: '/pos/promotions', icon: Tag, module: 'promotions' },
       { key: 'coupons', href: '/pos/coupons', icon: Ticket, module: 'coupons' },
       { key: 'loyaltyPrograms', href: '/pos/loyalty/programs', icon: Award, module: 'loyalty' },
       { key: 'loyaltyMembers', href: '/pos/loyalty/members', icon: Users, module: 'loyalty' },
+      { key: 'compliance', href: '/settings/compliance/export', icon: FileCheck, module: 'pos' },
     ],
   },
   {

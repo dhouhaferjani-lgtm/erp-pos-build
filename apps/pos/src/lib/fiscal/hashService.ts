@@ -13,7 +13,7 @@ export interface FiscalHashInput {
   payments: Array<{ methodCode: string; amount: string }>;
 }
 
-async function sha256(input: string): Promise<string> {
+export async function sha256(input: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(input);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);

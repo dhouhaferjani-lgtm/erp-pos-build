@@ -3,7 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Calendar, Building2, FileText, Car, Truck } from 'lucide-react'
+import { ArrowLeft, Calendar, Building2, Car, Truck } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { formatCurrency } from '../../../lib/format'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
@@ -215,7 +215,7 @@ export function DeliveryNoteDetailPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {deliveryNote.lines.map((line) => (
+              {(deliveryNote.lines ?? []).map((line) => (
                 <tr key={line.id}>
                   <td className="px-6 py-4">
                     <div className="text-sm font-medium text-gray-900">{line.description}</div>
@@ -349,7 +349,7 @@ export function DeliveryNoteDetailPage() {
           title={t('returnNotes.create')}
         >
           <CreateReturnNoteForm
-            sourceDocumentId={deliveryNote.id}
+            sourceDocument={deliveryNote as unknown as Parameters<typeof CreateReturnNoteForm>[0]['sourceDocument']}
             sourceType="delivery_note"
             onSuccess={() => {
               setShowReturnNoteForm(false)

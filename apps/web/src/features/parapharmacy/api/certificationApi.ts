@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
+import type { CertificationData } from '../types';
 
 export interface CertificationTranslation {
   id?: string;
@@ -30,7 +31,7 @@ export interface UpdateCertificationInput {
 }
 
 export interface CertificationsListResponse {
-  data: App.Modules.Product.Application.DTOs.CertificationData[];
+  data: CertificationData[];
   meta: {
     current_page: number;
     last_page: number;
@@ -60,16 +61,16 @@ export async function fetchCertifications(params?: {
 
 export async function fetchCertification(
   id: string
-): Promise<App.Modules.Product.Application.DTOs.CertificationData> {
-  return apiGet<App.Modules.Product.Application.DTOs.CertificationData>(
+): Promise<CertificationData> {
+  return apiGet<CertificationData>(
     `/parapharmacy/certifications/${id}`
   );
 }
 
 export async function createCertification(
   data: CreateCertificationInput
-): Promise<App.Modules.Product.Application.DTOs.CertificationData> {
-  return apiPost<App.Modules.Product.Application.DTOs.CertificationData>(
+): Promise<CertificationData> {
+  return apiPost<CertificationData>(
     '/parapharmacy/certifications',
     data
   );
@@ -78,8 +79,8 @@ export async function createCertification(
 export async function updateCertification(
   id: string,
   data: UpdateCertificationInput
-): Promise<App.Modules.Product.Application.DTOs.CertificationData> {
-  return apiPatch<App.Modules.Product.Application.DTOs.CertificationData>(
+): Promise<CertificationData> {
+  return apiPatch<CertificationData>(
     `/parapharmacy/certifications/${id}`,
     data
   );

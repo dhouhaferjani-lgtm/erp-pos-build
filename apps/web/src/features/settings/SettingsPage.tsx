@@ -77,7 +77,7 @@ const sections: SettingsSection[] = [
 ]
 
 export function SettingsPage() {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['settings'])
 
   return (
     <div className="space-y-6">

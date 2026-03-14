@@ -7,6 +7,7 @@ namespace App\Modules\Document\Application\Services;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FacturXProfile;
 use App\Services\CompanyConfigService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -20,6 +21,8 @@ final class DocumentPdfService
     public function __construct(
         private readonly CompanyConfigService $configService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly FacturXService $facturXService,
+        private readonly FacturXPdfGenerator $facturXPdfGenerator,
     ) {}
 
     private function scale(): int
@@ -63,10 +66,34 @@ final class DocumentPdfService
 
     /**
      * Generate and return PDF as binary string.
+     *
+     * If the document is eligible for Factur-X, the XML is generated,
+     * stored on the document, and embedded into the PDF as PDF/A-3.
      */
     public function generateContent(Document $document): string
     {
-        return $this->generate($document)->output();
+        $pdfContent = $this->generate($document)->output();
+
+        // Generate and embed Factur-X XML for eligible B2B invoices
+        if ($this->facturXService->isEligible($document)) {
+            $xml = $this->facturXService->generateXml($document);
+
+            $document->update([
+                'facturx_xml' => $xml,
+                'facturx_profile' => FacturXProfile::BasicWL,
+                'facturx_generated_at' => now(),
+            ]);
+
+            try {
+                $pdfContent = $this->facturXPdfGenerator->embedXmlInPdf($pdfContent, $xml);
+            } catch (\Throwable $e) {
+                // PDF embedding is non-critical; the XML is stored on the document
+                // and can be submitted to PDP independently. Log and continue.
+                report($e);
+            }
+        }
+
+        return $pdfContent;
     }
 
     /**

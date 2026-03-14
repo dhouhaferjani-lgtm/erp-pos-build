@@ -10,7 +10,12 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Events\TerminalActivated;
+use App\Modules\POS\Domain\Events\TerminalActivatedAudit;
+use App\Modules\POS\Domain\Events\TerminalDeactivated;
+use App\Modules\POS\Domain\Events\TerminalSoftwareUpdated;
+use App\Modules\POS\Domain\Events\TerminalTrainingModeChanged;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\POS\Domain\ZReport;
 use App\Modules\POS\Presentation\Requests\ClaimTerminalRequest;
 use App\Modules\POS\Presentation\Requests\CreateTerminalRequest;
 use App\Modules\POS\Presentation\Requests\RequestTerminalRequest;
@@ -126,7 +131,21 @@ final class TerminalController extends Controller
         $terminal = Terminal::forCompany($this->companyContext->requireCompanyId())
             ->findOrFail($id);
 
+        $previousVersion = $terminal->pos_software_version;
+
         $terminal->update($request->validated());
+
+        // Detect software version change and dispatch audit event
+        $newVersion = $terminal->pos_software_version;
+        if ($previousVersion !== $newVersion && $newVersion !== null) {
+            event(new TerminalSoftwareUpdated(
+                terminalId: $terminal->id,
+                terminalCode: $terminal->code,
+                companyId: $terminal->company_id,
+                previousVersion: $previousVersion ?? '',
+                newVersion: $newVersion,
+            ));
+        }
 
         return response()->json([
             'data' => TerminalResource::make($terminal->load('location')),
@@ -216,6 +235,14 @@ final class TerminalController extends Controller
             $terminal->company_id,
         );
 
+        // Dispatch domain event for NF525 audit trail
+        event(new TerminalActivatedAudit(
+            terminalId: $terminal->id,
+            terminalCode: $terminal->code,
+            companyId: $terminal->company_id,
+            activatedBy: (string) auth()->id(),
+        ));
+
         return response()->json([
             'data' => TerminalResource::make($terminal->load('location')),
         ]);
@@ -237,11 +264,22 @@ final class TerminalController extends Controller
         $terminal = Terminal::forCompany($this->companyContext->requireCompanyId())
             ->findOrFail($id);
 
+        $reason = $request->input('reason', '');
+
         $terminal->update([
             'is_active' => false,
             'deactivated_at' => now(),
-            'deactivation_reason' => $request->input('reason'),
+            'deactivation_reason' => $reason,
         ]);
+
+        // Dispatch domain event for NF525 audit trail
+        event(new TerminalDeactivated(
+            terminalId: $terminal->id,
+            terminalCode: $terminal->code,
+            companyId: $terminal->company_id,
+            reason: (string) $reason,
+            deactivatedBy: (string) auth()->id(),
+        ));
 
         return response()->json([
             'data' => TerminalResource::make($terminal->load('location')),
@@ -429,6 +467,90 @@ final class TerminalController extends Controller
 
         return response()->json([
             'data' => TerminalResource::make($terminal),
+        ]);
+    }
+
+    /**
+     * Toggle training mode on a terminal.
+     *
+     * Only allowed when the terminal has no open shift.
+     *
+     * POST /api/v1/pos/terminals/{id}/toggle-training
+     */
+    public function toggleTrainingMode(string $id): JsonResponse
+    {
+        Gate::authorize('pos.manage_terminals');
+
+        $terminal = Terminal::forCompany($this->companyContext->requireCompanyId())
+            ->findOrFail($id);
+
+        if ($terminal->shifts()->where('status', ShiftStatus::Open)->exists()) {
+            return response()->json([
+                'error' => [
+                    'code' => 'TERMINAL_HAS_OPEN_SHIFT',
+                    'message' => 'Cannot toggle training mode while a shift is open. Close the shift first.',
+                ],
+            ], 422);
+        }
+
+        $enabled = ! $terminal->is_training_mode;
+
+        $terminal->update([
+            'is_training_mode' => $enabled,
+        ]);
+
+        event(new TerminalTrainingModeChanged(
+            terminalId: $terminal->id,
+            terminalCode: $terminal->code,
+            companyId: $terminal->company_id,
+            enabled: $enabled,
+            changedBy: (string) auth()->id(),
+        ));
+
+        return response()->json([
+            'data' => TerminalResource::make($terminal->load('location')),
+        ]);
+    }
+
+    /**
+     * Get Z-chain state for a terminal (for recovery after local DB loss).
+     *
+     * Returns the latest Z-report hash, sequence, z_number, and grand totals
+     * so the client can resume its Z-chain from server state.
+     *
+     * GET /api/v1/pos/terminals/{id}/z-chain-state
+     */
+    public function zChainState(string $id): JsonResponse
+    {
+        if (! Gate::any(['pos.manage_terminals', 'pos.operate_terminal'])) {
+            abort(403);
+        }
+
+        $terminal = Terminal::forCompany($this->companyContext->requireCompanyId())
+            ->findOrFail($id);
+
+        $latestZReport = ZReport::forTerminal($terminal->id)
+            ->orderByDesc('z_number')
+            ->first();
+
+        if ($latestZReport === null) {
+            return response()->json([
+                'data' => [
+                    'z_last_hash' => 'GENESIS',
+                    'z_hash_sequence' => 0,
+                    'z_number' => 0,
+                    'grand_totals' => null,
+                ],
+            ]);
+        }
+
+        return response()->json([
+            'data' => [
+                'z_last_hash' => $latestZReport->fiscal_hash,
+                'z_hash_sequence' => ZReport::forTerminal($terminal->id)->count(),
+                'z_number' => $latestZReport->z_number,
+                'grand_totals' => $latestZReport->grand_totals,
+            ],
         ]);
     }
 

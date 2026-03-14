@@ -53,7 +53,11 @@ async function runMigrations(database: Database): Promise<void> {
   // Apply pending migrations in order
   for (const migration of migrations) {
     if (!appliedVersions.has(migration.version)) {
-      await database.execute(migration.sql);
+      if (migration.run) {
+        await migration.run(database);
+      } else if (migration.sql) {
+        await database.execute(migration.sql);
+      }
       await database.execute(
         'INSERT INTO _migrations (version, name) VALUES ($1, $2)',
         [migration.version, migration.name]

@@ -105,8 +105,6 @@ export function ExpenseFormFields({
         <ExpenseCategorySelect
           value={categoryId || ''}
           onChange={(value) => {
-            // react-hook-form has strict typing issues with optional fields
-            // @ts-expect-error - setValue expects exact type match for optional field
             setValue('expense_category_id', value || undefined)
           }}
         />

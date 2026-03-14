@@ -35,7 +35,7 @@ export function WithholdingPreviewModal({
     if (isOpen && partnerId && amount) {
       previewMutation.mutate({
         partner_id: partnerId,
-        gross_amount: amount,
+        amount,
         currency,
         transaction_type: transactionType,
       })
@@ -50,7 +50,7 @@ export function WithholdingPreviewModal({
       const withholdingAmount = (parseFloat(amount) * rate).toFixed(3)
       onApply(withholdingAmount, rate.toFixed(4))
     } else if (preview) {
-      onApply(preview.withholding_amount, preview.withholding_rate)
+      onApply(preview.withholding_amount ?? '', preview.withholding_rate ?? '')
     }
     onClose()
   }
@@ -152,7 +152,7 @@ export function WithholdingPreviewModal({
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-600">
-                      {t('certificates.rate')} ({manualOverride ? manualRate : preview.rate_percentage}%)
+                      {t('certificates.rate')} ({manualOverride ? manualRate : (preview.rate_percentage ?? 0)}%)
                     </span>
                     <span className="font-mono font-semibold text-red-600">
                       - {calculatedWithholding} {currency}
@@ -176,7 +176,7 @@ export function WithholdingPreviewModal({
                     onChange={(e) => {
                       setManualOverride(e.target.checked)
                       if (e.target.checked && preview) {
-                        setManualRate(preview.rate_percentage.toString())
+                        setManualRate((preview.rate_percentage ?? 0).toString())
                       }
                     }}
                     className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -225,7 +225,7 @@ export function WithholdingPreviewModal({
           )}
 
           {/* No Rule Found */}
-          {preview === null && !previewMutation.isPending && !previewMutation.isError && (
+          {!preview && !previewMutation.isPending && !previewMutation.isError && (
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-center">
               <p className="text-sm text-gray-600">{t('preview.noRuleFound')}</p>
               <p className="mt-1 text-xs text-gray-500">

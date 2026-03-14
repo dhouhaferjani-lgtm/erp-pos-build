@@ -59,20 +59,16 @@ const TARGET_COLUMNS: Record<ImportType, { name: string; required: boolean; desc
     { name: 'tax_rate', required: false },
     { name: 'description', required: false },
   ],
-  stock_levels: [
-    { name: 'sku', required: true, description: 'Product SKU' },
-    { name: 'location', required: true, description: 'Warehouse location' },
-    { name: 'quantity', required: true },
-    { name: 'unit_cost', required: false },
-    { name: 'min_stock', required: false },
-    { name: 'max_stock', required: false },
-  ],
   opening_balances: [
     { name: 'account_code', required: true, description: 'GL account code' },
     { name: 'debit', required: false },
     { name: 'credit', required: false },
     { name: 'currency', required: false },
     { name: 'reference', required: false },
+  ],
+  product_images: [
+    { name: 'sku', required: true, description: 'Product SKU' },
+    { name: 'image_url', required: true, description: 'Image URL' },
   ],
 }
 

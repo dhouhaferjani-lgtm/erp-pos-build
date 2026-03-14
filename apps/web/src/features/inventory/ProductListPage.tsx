@@ -155,31 +155,31 @@ export function ProductListPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <SearchFilter
                 label={t('common:search')}
-                value={tableState.filters.search as string | undefined}
+                value={tableState.filters['search'] as string | undefined}
                 onChange={(v) => tableState.setFilter('search', v)}
                 placeholder={t('inventory:products.searchPlaceholder')}
               />
               <BooleanFilter
                 label={t('inventory:products.isPhysical')}
-                value={tableState.filters.is_physical as boolean | undefined}
+                value={tableState.filters['is_physical'] as boolean | undefined}
                 onChange={(v) => tableState.setFilter('is_physical', v)}
               />
               <BooleanFilter
                 label={t('inventory:products.filters.active')}
-                value={tableState.filters.is_active as boolean | undefined}
+                value={tableState.filters['is_active'] as boolean | undefined}
                 onChange={(v) => tableState.setFilter('is_active', v)}
               />
               <RangeFilter
                 label={t('inventory:products.filters.priceRange')}
-                min={tableState.filters.price_min as string | undefined}
-                max={tableState.filters.price_max as string | undefined}
+                min={tableState.filters['price_min'] as string | undefined}
+                max={tableState.filters['price_max'] as string | undefined}
                 onMinChange={(v) => tableState.setFilter('price_min', v)}
                 onMaxChange={(v) => tableState.setFilter('price_max', v)}
                 placeholder={companyCurrency}
               />
               <BooleanFilter
                 label={t('inventory:products.filters.hasStock')}
-                value={tableState.filters.has_stock as boolean | undefined}
+                value={tableState.filters['has_stock'] as boolean | undefined}
                 onChange={(v) => tableState.setFilter('has_stock', v)}
               />
             </div>
@@ -371,8 +371,8 @@ export function ProductListPage() {
           lastPage={data.meta.last_page}
           total={data.meta.total}
           perPage={data.meta.per_page}
-          from={data.meta.from ?? undefined}
-          to={data.meta.to ?? undefined}
+          from={data.meta.from ?? null}
+          to={data.meta.to ?? null}
           onPageChange={tableState.setPage}
           onPerPageChange={tableState.setPerPage}
         />

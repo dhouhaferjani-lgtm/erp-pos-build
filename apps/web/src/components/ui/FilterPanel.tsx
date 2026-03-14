@@ -34,7 +34,7 @@ export function FilterPanel({
           aria-controls="filter-panel-content"
         >
           <Filter className="w-4 h-4" />
-          <span>{t('filters')}</span>
+          <span>{t('filtersLabel')}</span>
           {hasActiveFilters && activeFilterCount !== undefined && (
             <span className="ms-2 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-medium bg-blue-600 text-white">
               {activeFilterCount}

@@ -111,10 +111,10 @@ export function HealthClaimFormPage() {
         : null,
       requires_disclaimer: requiresDisclaimer,
       translations: translations.map((t) => ({
-        id: t.id,
+        id: t.id ?? '',
         locale: t.locale,
-        claim: t.claim as string,
-        disclaimer_text: (t.disclaimer_text as string) || null,
+        claim: t['claim'] as string,
+        disclaimer_text: (t['disclaimer_text'] as string) || null,
       })),
     };
 

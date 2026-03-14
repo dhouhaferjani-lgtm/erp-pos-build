@@ -10,6 +10,9 @@ import type {
   VoidCertificateRequest,
   SubmitToTEJRequest,
   CertificateFilters,
+  SalesWithholdingTrackingRecord,
+  SalesWithholdingTrackingFilters,
+  MarkCertificateReceivedRequest,
 } from '../types';
 
 /**
@@ -187,4 +190,41 @@ export async function deleteWithholdingRule(id: string): Promise<void> {
  */
 export async function deactivateWithholdingRule(id: string): Promise<WithholdingRule> {
   return apiPost<WithholdingRule>(`/withholding/rules/${id}/deactivate`);
+}
+
+/**
+ * Fetch sales withholding tracking records
+ */
+export async function fetchSalesWithholdingTracking(
+  filters?: SalesWithholdingTrackingFilters
+): Promise<SalesWithholdingTrackingRecord[]> {
+  const params = new URLSearchParams();
+
+  if (filters?.filter) params.append('filter', filters.filter);
+
+  const url = `/sales-withholding${params.toString() ? `?${params.toString()}` : ''}`;
+
+  return apiGet<SalesWithholdingTrackingRecord[]>(url);
+}
+
+/**
+ * Fetch a single sales withholding tracking record
+ */
+export async function fetchSalesWithholdingTrackingRecord(
+  id: string
+): Promise<SalesWithholdingTrackingRecord> {
+  return apiGet<SalesWithholdingTrackingRecord>(`/sales-withholding/${id}`);
+}
+
+/**
+ * Mark a certificate as received for a sales withholding tracking record
+ */
+export async function markCertificateReceived(
+  id: string,
+  request: MarkCertificateReceivedRequest
+): Promise<SalesWithholdingTrackingRecord> {
+  return apiPatch<SalesWithholdingTrackingRecord>(
+    `/sales-withholding/${id}/certificate-received`,
+    request
+  );
 }

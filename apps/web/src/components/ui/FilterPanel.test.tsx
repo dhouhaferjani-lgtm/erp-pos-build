@@ -40,7 +40,7 @@ describe('FilterPanel', () => {
   })
 
   it('renders filter icon', () => {
-    const { container } = render(
+    render(
       <FilterPanel
         isOpen={false}
         onToggle={onToggleMock}

@@ -104,7 +104,7 @@ export function IngredientFormPage() {
       regulatory_status: regulatoryStatus,
       notes: notes || null,
       translations: translations.map((t) => ({
-        id: t.id,
+        id: t.id ?? '',
         locale: t.locale,
         name: t.name,
         description: t.description || null,

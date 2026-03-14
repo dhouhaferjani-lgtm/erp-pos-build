@@ -50,7 +50,7 @@ interface ProductConfigProviderProps {
  * Defaults to 'izipos' if not set or invalid.
  */
 function getCurrentProduct(): Product {
-  const envProduct = import.meta.env.VITE_APP_PRODUCT
+  const envProduct = import.meta.env['VITE_APP_PRODUCT']
 
   if (!envProduct) {
     return 'izipos'

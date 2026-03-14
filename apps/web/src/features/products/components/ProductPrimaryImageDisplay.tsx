@@ -4,8 +4,6 @@ import { useQuery } from '@tanstack/react-query'
 import { Search, ImageOff, Images } from 'lucide-react'
 import { getProductImages, getProductImageDownloadUrl } from '../api/productImages'
 import { ImageGalleryModal } from './ImageGalleryModal'
-import type { ProductImage } from '../types'
-
 interface ProductPrimaryImageDisplayProps {
   productId: string
 }

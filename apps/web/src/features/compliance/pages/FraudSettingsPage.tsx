@@ -69,11 +69,11 @@ export function FraudSettingsPage() {
     const newErrors: Record<string, string> = {}
 
     if ((formData.abandoned_draft_threshold ?? 0) < 1 || (formData.abandoned_draft_threshold ?? 0) > 100) {
-      newErrors.abandoned_draft_threshold = t('compliance:fraudSettings.errors.thresholdRange')
+      newErrors['abandoned_draft_threshold'] = t('compliance:fraudSettings.errors.thresholdRange')
     }
 
     if ((formData.time_window_days ?? 0) < 1 || (formData.time_window_days ?? 0) > 365) {
-      newErrors.time_window_days = t('compliance:fraudSettings.errors.timeWindowRange')
+      newErrors['time_window_days'] = t('compliance:fraudSettings.errors.timeWindowRange')
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -92,12 +92,12 @@ export function FraudSettingsPage() {
 
     // Basic email validation
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setErrors({ ...errors, email: t('compliance:fraudSettings.errors.invalidEmail') })
+      setErrors({ ...errors, ['email']: t('compliance:fraudSettings.errors.invalidEmail') })
       return
     }
 
     if (formData.alert_emails?.includes(email)) {
-      setErrors({ ...errors, email: t('compliance:fraudSettings.errors.duplicateEmail') })
+      setErrors({ ...errors, ['email']: t('compliance:fraudSettings.errors.duplicateEmail') })
       return
     }
 
@@ -106,7 +106,7 @@ export function FraudSettingsPage() {
       alert_emails: [...(formData.alert_emails || []), email],
     })
     setEmailInput('')
-    setErrors({ ...errors, email: '' })
+    setErrors({ ...errors, ['email']: '' })
   }
 
   const handleRemoveEmail = (email: string) => {
@@ -203,8 +203,8 @@ export function FraudSettingsPage() {
               <p className="text-sm text-gray-500 mt-1">
                 {t('compliance:fraudSettings.fields.threshold.hint')}
               </p>
-              {errors.abandoned_draft_threshold && (
-                <p className="text-sm text-red-600 mt-1">{errors.abandoned_draft_threshold}</p>
+              {errors['abandoned_draft_threshold'] && (
+                <p className="text-sm text-red-600 mt-1">{errors['abandoned_draft_threshold']}</p>
               )}
             </div>
 
@@ -224,8 +224,8 @@ export function FraudSettingsPage() {
               <p className="text-sm text-gray-500 mt-1">
                 {t('compliance:fraudSettings.fields.timeWindow.hint')}
               </p>
-              {errors.time_window_days && (
-                <p className="text-sm text-red-600 mt-1">{errors.time_window_days}</p>
+              {errors['time_window_days'] && (
+                <p className="text-sm text-red-600 mt-1">{errors['time_window_days']}</p>
               )}
             </div>
           </div>
@@ -277,8 +277,8 @@ export function FraudSettingsPage() {
               <p className="text-sm text-gray-500 mt-1">
                 {t('compliance:fraudSettings.fields.emails.hint')}
               </p>
-              {errors.email && (
-                <p className="text-sm text-red-600 mt-1">{errors.email}</p>
+              {errors['email'] && (
+                <p className="text-sm text-red-600 mt-1">{errors['email']}</p>
               )}
             </div>
 

@@ -16,13 +16,13 @@ export interface TransactionCartProps {
   onRemoveItem: (itemId: string) => void;
   onClearCart: () => void;
   onPayCash: () => void;
-  onPayCard?: () => void;
+  onAdvancedPayments?: () => void;
   onQuantityTap?: (itemId: string) => void;
   onDiscount?: () => void;
   onHold?: () => void;
   onRecall?: () => void;
-  onReports?: () => void;
   onLineDiscount?: (itemId: string) => void;
+  onEditModifiers?: (itemId: string) => void;
   paymentMethods?: PaymentMethod[];
   shiftNumber: number;
   openingCash: string;
@@ -38,13 +38,13 @@ export function TransactionCart({
   onRemoveItem,
   onClearCart,
   onPayCash,
-  onPayCard,
+  onAdvancedPayments,
   onQuantityTap,
   onDiscount,
   onHold,
   onRecall,
-  onReports,
   onLineDiscount,
+  onEditModifiers,
   paymentMethods,
   shiftNumber,
   openingCash,
@@ -77,12 +77,11 @@ export function TransactionCart({
       </div>
 
       {/* Quick actions */}
-      {onDiscount && onHold && onRecall && onReports && (
+      {onDiscount && onHold && onRecall && (
         <QuickActions
           onDiscount={onDiscount}
           onHold={onHold}
           onRecall={onRecall}
-          onReports={onReports}
           hasItems={items.length > 0}
         />
       )}
@@ -105,6 +104,7 @@ export function TransactionCart({
                 onRemove={onRemoveItem}
                 onQuantityTap={onQuantityTap}
                 onDiscount={onLineDiscount}
+                onEditModifiers={onEditModifiers}
               />
             ))}
           </div>
@@ -119,7 +119,7 @@ export function TransactionCart({
             taxAmount={taxAmount}
             total={total}
             onPayCash={onPayCash}
-            onPayCard={onPayCard}
+            onAdvancedPayments={onAdvancedPayments}
             paymentMethods={paymentMethods}
           />
         )}

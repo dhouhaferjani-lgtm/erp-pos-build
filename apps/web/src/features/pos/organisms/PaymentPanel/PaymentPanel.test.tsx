@@ -42,8 +42,8 @@ describe('PaymentPanel', () => {
       product: {
         id: 'p1',
         name: 'Product A',
+        sku: 'PA-001',
         price: '25.000',
-        stock_quantity: 10,
       },
       quantity: 2,
       unit_price: '25.000',
@@ -55,8 +55,8 @@ describe('PaymentPanel', () => {
       product: {
         id: 'p2',
         name: 'Product B',
+        sku: 'PB-002',
         price: '50.000',
-        stock_quantity: 5,
       },
       quantity: 1,
       unit_price: '50.000',
@@ -239,7 +239,7 @@ describe('PaymentPanel', () => {
       const itemsWithoutTax: CartItem[] = [
         {
           id: '1',
-          product: { id: 'p1', name: 'Product', price: '100.000', stock_quantity: 10 },
+          product: { id: 'p1', name: 'Product', sku: 'P-001', price: '100.000' },
           quantity: 1,
           unit_price: '100.000',
           line_total: '100.000',

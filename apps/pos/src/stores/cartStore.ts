@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { CartItem, SelectedModifier } from '@/types/cart';
 import type { POSProduct } from '@/types/product';
+import { getCurrencyDecimals } from '@/lib/currency';
+import { useAuthStore } from '@/stores/authStore';
 
 interface CartState {
   items: CartItem[];
@@ -9,7 +11,9 @@ interface CartState {
 
 interface CartActions {
   addItem: (product: POSProduct, selectedModifiers?: SelectedModifier[]) => void;
+  addItemWithDefaults: (product: POSProduct) => void;
   updateQuantity: (itemId: string, quantity: number) => void;
+  updateLineModifiers: (lineId: string, newModifiers: SelectedModifier[]) => void;
   removeItem: (itemId: string) => void;
   clearCart: () => void;
   setTransactionDiscount: (discount: { amount: string; reason?: string } | undefined) => void;
@@ -24,17 +28,22 @@ interface CartDerived {
 
 type CartStore = CartState & CartActions & CartDerived;
 
-const DECIMALS = 2;
+function getDecimals(): number {
+  const state = useAuthStore.getState();
+  const company = state.companies.find((c) => c.id === state.companyId);
+  return getCurrencyDecimals(company?.currency ?? 'EUR');
+}
 
 function computeTaxAmount(lineTotal: number, taxRate: string): string {
+  const decimals = getDecimals();
   const rate = parseFloat(taxRate);
-  if (rate <= 0) return (0).toFixed(DECIMALS);
-  // line_total is before tax; tax = lineTotal * rate / 100
+  if (rate <= 0) return (0).toFixed(decimals);
   const tax = lineTotal * rate / 100;
-  return tax.toFixed(DECIMALS);
+  return tax.toFixed(decimals);
 }
 
 function recalcLineTotal(item: CartItem, newQty: number): CartItem {
+  const decimals = getDecimals();
   const grossTotal = parseFloat(item.unit_price) * newQty;
   let discountAmount = 0;
 
@@ -50,11 +59,41 @@ function recalcLineTotal(item: CartItem, newQty: number): CartItem {
     ...item,
     quantity: newQty,
     ...(item.discount_type === 'percentage'
-      ? { discount_amount: discountAmount.toFixed(DECIMALS) }
+      ? { discount_amount: discountAmount.toFixed(decimals) }
       : {}),
-    line_total: lineTotal.toFixed(DECIMALS),
+    line_total: lineTotal.toFixed(decimals),
     tax_amount: computeTaxAmount(lineTotal, item.tax_rate),
   };
+}
+
+function resolveDefaultModifiers(product: POSProduct): SelectedModifier[] {
+  if (!product.modifier_groups?.length) return [];
+  const defaults: SelectedModifier[] = [];
+  for (const group of product.modifier_groups) {
+    const activeModifiers = group.modifiers.filter((m) => m.is_active);
+    const defaultMods = activeModifiers.filter((m) => m.is_default);
+    if (defaultMods.length > 0) {
+      for (const mod of defaultMods) {
+        defaults.push({
+          modifier_id: mod.id,
+          modifier_group_id: group.id,
+          name: mod.name,
+          group_name: group.name,
+          price_adjustment: mod.price_adjustment,
+        });
+      }
+    } else if (group.is_required && activeModifiers.length > 0) {
+      const first = activeModifiers[0]!;
+      defaults.push({
+        modifier_id: first.id,
+        modifier_group_id: group.id,
+        name: first.name,
+        group_name: group.name,
+        price_adjustment: first.price_adjustment,
+      });
+    }
+  }
+  return defaults;
 }
 
 const initialState: CartState = {
@@ -92,7 +131,8 @@ export const useCartStore = create<CartStore>()((set, get) => ({
         ? selectedModifiers.reduce((sum, m) => sum + parseFloat(m.price_adjustment), 0)
         : 0;
       const unitPrice = basePrice + modifierAdjustment;
-      const priceValue = unitPrice.toFixed(DECIMALS);
+      const decimals = getDecimals();
+      const priceValue = unitPrice.toFixed(decimals);
 
       const cartProduct: CartItem['product'] = {
         id: product.id,
@@ -111,13 +151,18 @@ export const useCartStore = create<CartStore>()((set, get) => ({
         product: cartProduct,
         quantity: 1,
         unit_price: priceValue,
-        line_total: unitPrice.toFixed(DECIMALS),
+        line_total: unitPrice.toFixed(decimals),
         tax_rate: taxRate,
         tax_amount: computeTaxAmount(unitPrice, taxRate),
       };
 
       return { items: [...state.items, newItem] };
     });
+  },
+
+  addItemWithDefaults: (product: POSProduct) => {
+    const defaults = resolveDefaultModifiers(product);
+    get().addItem(product, defaults.length > 0 ? defaults : undefined);
   },
 
   updateQuantity: (itemId: string, quantity: number) => {
@@ -130,6 +175,28 @@ export const useCartStore = create<CartStore>()((set, get) => ({
       items: state.items.map((item) =>
         item.id === itemId ? recalcLineTotal(item, quantity) : item,
       ),
+    }));
+  },
+
+  updateLineModifiers: (lineId: string, newModifiers: SelectedModifier[]) => {
+    set((state) => ({
+      items: state.items.map((item) => {
+        if (item.id !== lineId) return item;
+        const decimals = getDecimals();
+        const basePrice = parseFloat(item.product.price) -
+          (item.product.selectedModifiers?.reduce((s, m) => s + parseFloat(m.price_adjustment), 0) ?? 0);
+        const newAdjustment = newModifiers.reduce((s, m) => s + parseFloat(m.price_adjustment), 0);
+        const newUnitPrice = basePrice + newAdjustment;
+        const priceValue = newUnitPrice.toFixed(decimals);
+        const lineTotal = newUnitPrice * item.quantity;
+        return {
+          ...item,
+          product: { ...item.product, selectedModifiers: newModifiers, price: priceValue },
+          unit_price: priceValue,
+          line_total: lineTotal.toFixed(decimals),
+          tax_amount: computeTaxAmount(lineTotal, item.tax_rate),
+        };
+      }),
     }));
   },
 

@@ -1,9 +1,10 @@
 {
   "identifier": "default",
   "description": "Default capabilities for IziPOS",
-  "windows": ["main"],
+  "windows": ["main", "customer-display"],
   "permissions": [
     "core:default",
+    "core:event:default",
     "sql:default",
     "sql:allow-execute",
     "sql:allow-select",

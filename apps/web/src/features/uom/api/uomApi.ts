@@ -1,18 +1,49 @@
 import { apiGet, apiPost, apiPut, apiDelete } from '../../../lib/api'
 
-/**
- * Import generated types from backend DTOs
- */
-import type {
-  App_Modules_Uom_Application_DTOs_UnitCategoryData,
-  App_Modules_Uom_Application_DTOs_UnitData,
-  App_Modules_Uom_Application_DTOs_ConversionResultData,
-} from '@mecanospex/shared/types/generated'
+export interface UnitCategory {
+  id: string
+  name: string
+  code: string
+  description: string | null
+  base_unit_id: string | null
+  is_active: boolean
+  units?: Unit[]
+}
 
-// Type aliases for cleaner usage
-export type UnitCategory = App_Modules_Uom_Application_DTOs_UnitCategoryData
-export type Unit = App_Modules_Uom_Application_DTOs_UnitData
-export type ConversionResult = App_Modules_Uom_Application_DTOs_ConversionResultData
+export interface Unit {
+  id: string
+  category_id: string
+  categoryId?: string
+  code: string
+  name: string
+  symbol: string
+  conversion_factor: string
+  conversionFactor?: string
+  decimal_places: number
+  decimalPlaces?: number
+  rounding_method: 'half_up' | 'floor' | 'ceil'
+  roundingMethod?: 'half_up' | 'floor' | 'ceil'
+  is_base_unit: boolean
+  isBaseUnit?: boolean
+  is_active: boolean
+  is_system: boolean
+  isSystem?: boolean
+  category?: {
+    id: string
+    name: string
+    code: string
+  }
+}
+
+export interface ConversionResult {
+  from_unit_id: string
+  to_unit_id: string
+  input_quantity: number
+  converted_quantity: string
+  convertedQuantity?: string
+  conversion_factor: string
+  conversionFactor?: string
+}
 
 /**
  * Create Unit Input

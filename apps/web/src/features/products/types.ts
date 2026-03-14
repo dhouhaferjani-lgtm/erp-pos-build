@@ -46,6 +46,7 @@ export interface Product {
 
 export interface GetProductsParams {
   search?: string | undefined
+  type?: string | undefined
   is_physical?: boolean
   active?: boolean
   per_page?: number

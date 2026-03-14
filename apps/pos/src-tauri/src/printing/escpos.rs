@@ -263,6 +263,27 @@ impl EscPosBuilder {
         self
     }
 
+    /// ESC p m t1 t2 — Cash drawer kick with custom pulse timing.
+    /// `pin`: 0 = Pin 2, 1 = Pin 5. `t1`/`t2` in 2ms units (0-255).
+    pub fn cash_drawer_kick_custom(&mut self, pin: u8, t1: u8, t2: u8) -> &mut Self {
+        let m = if pin >= 1 { 1 } else { 0 };
+        self.buffer.extend_from_slice(&[0x1B, 0x70, m, t1, t2]);
+        self
+    }
+
+    /// BEL — Send audible beep (0x07).
+    pub fn beep(&mut self) -> &mut Self {
+        self.buffer.push(0x07);
+        self
+    }
+
+    /// ESC t n — Select character code page.
+    /// Common values: 0 = CP437, 19 = CP858, 16 = CP1252.
+    pub fn set_code_page(&mut self, page: u8) -> &mut Self {
+        self.buffer.extend_from_slice(&[0x1B, 0x74, page]);
+        self
+    }
+
     /// GS H n — Set HRI (human-readable interpretation) print position for barcodes.
     /// 0=none, 1=above, 2=below, 3=both
     pub fn barcode_hri_position(&mut self, position: u8) -> &mut Self {
@@ -415,5 +436,36 @@ mod tests {
         assert_eq!(data[cmd_start + 2], 0); // pin 2
         assert_eq!(data[cmd_start + 3], 50);
         assert_eq!(data[cmd_start + 4], 50);
+    }
+
+    #[test]
+    fn test_cash_drawer_kick_custom() {
+        let mut builder = EscPosBuilder::new();
+        builder.cash_drawer_kick_custom(1, 100, 75);
+        let data = builder.build();
+        let cmd_start = 2;
+        assert_eq!(data[cmd_start], 0x1B);
+        assert_eq!(data[cmd_start + 1], 0x70);
+        assert_eq!(data[cmd_start + 2], 1); // pin 5
+        assert_eq!(data[cmd_start + 3], 100);
+        assert_eq!(data[cmd_start + 4], 75);
+    }
+
+    #[test]
+    fn test_beep() {
+        let mut builder = EscPosBuilder::new();
+        builder.beep();
+        let data = builder.build();
+        assert_eq!(data[2], 0x07);
+    }
+
+    #[test]
+    fn test_set_code_page() {
+        let mut builder = EscPosBuilder::new();
+        builder.set_code_page(19); // CP858
+        let data = builder.build();
+        assert_eq!(data[2], 0x1B);
+        assert_eq!(data[3], 0x74);
+        assert_eq!(data[4], 19);
     }
 }

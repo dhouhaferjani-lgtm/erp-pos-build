@@ -8,6 +8,10 @@ use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Domain\Entities\Modifier;
+use App\Modules\Catalog\Domain\Entities\Recipe;
+use App\Modules\Catalog\Domain\Entities\RecipeLine;
+use App\Modules\Catalog\Domain\Enums\ComponentType;
+use App\Modules\Catalog\Domain\Enums\PricingMode;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
@@ -17,6 +21,7 @@ use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
+use App\Modules\POS\Domain\Events\ReceiptCreated;
 use App\Modules\POS\Domain\Exceptions\DiscountExceedsLimitException;
 use App\Modules\POS\Domain\Exceptions\DiscountNotAllowedException;
 use App\Modules\POS\Domain\Receipt;
@@ -140,7 +145,7 @@ final class ReceiptCreationService
                 : collect();
 
             $compositeItems = count($compositeItemIds) > 0
-                ? CompositeItem::with(['unitOfMeasure', 'modifierGroups.modifiers' => function ($query): void {
+                ? CompositeItem::with(['unitOfMeasure', 'activeRecipe.lines.product', 'activeRecipe.lines.compositeItemComponent', 'modifierGroups.modifiers' => function ($query): void {
                     $query->where('is_active', true);
                 }])->whereIn('id', $compositeItemIds)->get()->keyBy('id')
                 : collect();
@@ -215,14 +220,68 @@ final class ReceiptCreationService
                 // line_total = (qty * unit_price) - discount
                 $lineTotal = bcsub($grossLineTotal, $discountAmount, $this->scale());
 
-                // Calculate tax: net = lineTotal / (1 + taxRate/100), tax = lineTotal - net
-                $taxRateDecimal = bcdiv($taxRate, '100', 6);
-                $divisor = bcadd('1', $taxRateDecimal, 6);
-                $netAmount = bcdiv($lineTotal, $divisor, $this->scale());
-                $taxAmount = bcsub($lineTotal, $netAmount, $this->scale());
+                // Check if this is a fixed_bundle composite item with mixed VAT rates
+                $isFixedBundle = $compositeItem !== null
+                    && ($compositeItem->pricing_mode ?? null) === PricingMode::FixedBundle;
 
-                $subtotal = bcadd($subtotal, $netAmount, $this->scale());
-                $totalTax = bcadd($totalTax, $taxAmount, $this->scale());
+                $comboComponents = null;
+
+                if ($isFixedBundle) {
+                    /** @var CompositeItem $compositeItem (guaranteed non-null by $isFixedBundle check) */
+                    // Decompose VAT across components with different rates
+                    $vatDecomposition = $this->decomposeFixedBundleVat($compositeItem, $lineTotal);
+
+                    if (count($vatDecomposition) > 0) {
+                        /** @var numeric-string $lineNetAmount */
+                        $lineNetAmount = '0';
+                        /** @var numeric-string $lineTaxAmount */
+                        $lineTaxAmount = '0';
+                        $comboComponents = [];
+
+                        foreach ($vatDecomposition as $decomp) {
+                            /** @var numeric-string $decompNet */
+                            $decompNet = $decomp['net_amount'];
+                            /** @var numeric-string $decompTax */
+                            $decompTax = $decomp['tax_amount'];
+                            /** @var numeric-string $decompShare */
+                            $decompShare = $decomp['share'];
+
+                            $lineNetAmount = bcadd($lineNetAmount, $decompNet, $this->scale());
+                            $lineTaxAmount = bcadd($lineTaxAmount, $decompTax, $this->scale());
+                            $comboComponents[] = $decomp['name'];
+
+                            // Aggregate VAT by rate
+                            $rateKey = $decomp['tax_rate'];
+                            $this->aggregateVat($vatAggregates, $rateKey, $decompNet, $decompTax, $decompShare);
+                        }
+
+                        $netAmount = $lineNetAmount;
+                        $taxAmount = $lineTaxAmount;
+                        $subtotal = bcadd($subtotal, $netAmount, $this->scale());
+                        $totalTax = bcadd($totalTax, $taxAmount, $this->scale());
+                    } else {
+                        // Fallback: use composite item's own tax rate
+                        $taxRateDecimal = bcdiv($taxRate, '100', 6);
+                        $divisor = bcadd('1', $taxRateDecimal, 6);
+                        $netAmount = bcdiv($lineTotal, $divisor, $this->scale());
+                        $taxAmount = bcsub($lineTotal, $netAmount, $this->scale());
+                        $subtotal = bcadd($subtotal, $netAmount, $this->scale());
+                        $totalTax = bcadd($totalTax, $taxAmount, $this->scale());
+
+                        $this->aggregateVat($vatAggregates, $taxRate, $netAmount, $taxAmount, $lineTotal);
+                    }
+                } else {
+                    // Standard VAT calculation
+                    $taxRateDecimal = bcdiv($taxRate, '100', 6);
+                    $divisor = bcadd('1', $taxRateDecimal, 6);
+                    $netAmount = bcdiv($lineTotal, $divisor, $this->scale());
+                    $taxAmount = bcsub($lineTotal, $netAmount, $this->scale());
+
+                    $subtotal = bcadd($subtotal, $netAmount, $this->scale());
+                    $totalTax = bcadd($totalTax, $taxAmount, $this->scale());
+
+                    $this->aggregateVat($vatAggregates, $taxRate, $netAmount, $taxAmount, $lineTotal);
+                }
 
                 $receiptLines[] = [
                     'line_number' => $index + 1,
@@ -240,21 +299,8 @@ final class ReceiptCreationService
                     'modifiers' => $modifiersSnapshot,
                     'discount_amount' => $discountAmount,
                     'discount_reason' => $lineData['discount_reason'] ?? null,
+                    'combo_components' => $comboComponents,
                 ];
-
-                // Aggregate VAT by rate
-                $rateKey = $taxRate;
-                if (! isset($vatAggregates[$rateKey])) {
-                    $vatAggregates[$rateKey] = [
-                        'tax_rate' => $taxRate,
-                        'net_amount' => '0.00',
-                        'vat_amount' => '0.00',
-                        'gross_amount' => '0.00',
-                    ];
-                }
-                $vatAggregates[$rateKey]['net_amount'] = bcadd($vatAggregates[$rateKey]['net_amount'], $netAmount, $this->scale());
-                $vatAggregates[$rateKey]['vat_amount'] = bcadd($vatAggregates[$rateKey]['vat_amount'], $taxAmount, $this->scale());
-                $vatAggregates[$rateKey]['gross_amount'] = bcadd($vatAggregates[$rateKey]['gross_amount'], $lineTotal, $this->scale());
             }
 
             // 4a-fix. Recalculate VAT aggregates from aggregated net_amount
@@ -368,6 +414,7 @@ final class ReceiptCreationService
             }
 
             // 5. Generate receipt number and sequence
+            $isTraining = $terminal->is_training_mode;
             $currentYear = (int) now()->format('Y');
             if ($terminal->needsSequenceReset()) {
                 $terminal->current_year = $currentYear;
@@ -375,7 +422,9 @@ final class ReceiptCreationService
             }
 
             $sequence = $terminal->current_sequence;
-            $receiptNumber = $this->generateReceiptNumber($terminal, $currentYear, $sequence);
+            $receiptNumber = $isTraining
+                ? $this->generateTrainingReceiptNumber($terminal, $currentYear, $sequence)
+                : $this->generateReceiptNumber($terminal, $currentYear, $sequence);
 
             // 6. Calculate VAT and payment hashes (payment hash is empty initially)
             $vatHash = $this->receiptHashService->hashVATBreakdown(array_values($vatAggregates));
@@ -383,7 +432,8 @@ final class ReceiptCreationService
 
             // 7. Create receipt with previous_hash set immediately
             $now = Carbon::now();
-            $previousHash = $terminal->last_hash;
+            // Training receipts skip hash chain — no fiscal_hash, previous_hash, or chain_sequence
+            $previousHash = $isTraining ? null : $terminal->last_hash;
             $currency = $company->currency ?? 'TND';
 
             // 6a. Resolve customer info before receipt creation (must be set at INSERT time,
@@ -427,7 +477,7 @@ final class ReceiptCreationService
                 'terminal_id' => $terminal->id,
                 'receipt_number' => $receiptNumber,
                 'receipt_type' => \App\Modules\POS\Domain\Enums\ReceiptType::Sale,
-                'chain_sequence' => $sequence,
+                'chain_sequence' => $isTraining ? 0 : $sequence,
                 'receipt_year' => $currentYear,
                 'previous_hash' => $previousHash,
                 'posted_at' => $now,
@@ -445,6 +495,7 @@ final class ReceiptCreationService
                 'partner_id' => $partnerId,
                 'contact_id' => $resolvedContactId,
                 'is_voided' => false,
+                'is_training' => $isTraining,
                 'vat_breakdown_hash' => $vatHash,
                 'payment_methods_hash' => $paymentHash,
                 'consumption_mode' => $consumptionMode,
@@ -455,8 +506,15 @@ final class ReceiptCreationService
             // 7b. Calculate fiscal hash before saving (fiscal_hash is NOT NULL)
             $receipt->id = $receiptId;
             $receipt->setRelation('terminal', $terminal);
-            $fiscalHash = $this->receiptHashService->calculateHash($receipt, $previousHash);
-            $receipt->fiscal_hash = $fiscalHash;
+
+            if ($isTraining) {
+                // Training receipts get a placeholder hash — not part of the fiscal chain
+                $receipt->fiscal_hash = hash('sha256', 'TRAINING-' . $receiptId);
+            } else {
+                $fiscalHash = $this->receiptHashService->calculateHash($receipt, $previousHash);
+                $receipt->fiscal_hash = $fiscalHash;
+            }
+
             $receipt->save();
 
             // 8. Create receipt lines
@@ -475,10 +533,12 @@ final class ReceiptCreationService
                 ]));
             }
 
-            // Update terminal sequence and hash chain
-            $terminal->current_sequence = $sequence + 1;
-            $terminal->last_hash = $fiscalHash;
-            $terminal->save();
+            // Update terminal sequence and hash chain (skip for training receipts)
+            if (! $isTraining) {
+                $terminal->current_sequence = $sequence + 1;
+                $terminal->last_hash = $receipt->fiscal_hash;
+                $terminal->save();
+            }
 
             // 11. Decrement stock for each line (with pessimistic locking)
             // Also collect receipt line IDs for batch allocation
@@ -487,8 +547,8 @@ final class ReceiptCreationService
             foreach ($receiptLines as $index => $lineData) {
                 $receiptLineModel = $createdReceiptLines[$index] ?? null;
 
-                // Only decrement stock for product lines (composite items handle their own inventory)
                 if ($lineData['product_id'] !== null) {
+                    // Direct product line — decrement stock
                     $this->decrementStock(
                         tenantId: $terminal->tenant_id,
                         companyId: $companyId,
@@ -510,6 +570,17 @@ final class ReceiptCreationService
                             receiptLineId: $receiptLineModel->id,
                         );
                     }
+                } elseif ($lineData['composite_item_id'] !== null) {
+                    // Composite item line — recursively deduct leaf-level product stock
+                    $this->deductCompositeItemStock(
+                        compositeItemId: $lineData['composite_item_id'],
+                        saleQuantity: $lineData['quantity'],
+                        tenantId: $terminal->tenant_id,
+                        companyId: $companyId,
+                        locationId: $terminal->location_id,
+                        receiptId: $receipt->id,
+                        cashierId: $shift->cashier_id,
+                    );
                 }
             }
 
@@ -521,6 +592,18 @@ final class ReceiptCreationService
                 'terminal',
                 'cashier',
             ]);
+
+            event(new ReceiptCreated(
+                receiptId: $freshReceipt->id,
+                companyId: $freshReceipt->company_id,
+                terminalId: $freshReceipt->terminal_id,
+                receiptNumber: $freshReceipt->receipt_number,
+                total: (string) $freshReceipt->total,
+                currency: $freshReceipt->currency,
+                fiscalHash: $freshReceipt->fiscal_hash,
+                chainSequence: $freshReceipt->chain_sequence,
+                postedAt: $freshReceipt->posted_at->toIso8601String(),
+            ));
 
             return $freshReceipt;
         });
@@ -620,6 +703,20 @@ final class ReceiptCreationService
         $sequenceStr = str_pad((string) $sequence, 8, '0', STR_PAD_LEFT);
 
         return "{$terminalCode}-{$year}-{$sequenceStr}";
+    }
+
+    /**
+     * Generate training receipt number with TRN- prefix.
+     *
+     * Format: TRN-{terminal_code}-{year}-{sequence}
+     * Example: TRN-POS01-2026-00000001
+     */
+    private function generateTrainingReceiptNumber(Terminal $terminal, int $year, int $sequence): string
+    {
+        $terminalCode = $terminal->code;
+        $sequenceStr = str_pad((string) $sequence, 8, '0', STR_PAD_LEFT);
+
+        return "TRN-{$terminalCode}-{$year}-{$sequenceStr}";
     }
 
     /**
@@ -774,6 +871,192 @@ final class ReceiptCreationService
         }
 
         return '0.00';
+    }
+
+    /**
+     * Aggregate VAT amounts by rate.
+     *
+     * @param  array<string, array{tax_rate: string, net_amount: string, vat_amount: string, gross_amount: string}>  $vatAggregates
+     * @param  numeric-string  $netAmount
+     * @param  numeric-string  $taxAmount
+     * @param  numeric-string  $lineTotal
+     */
+    private function aggregateVat(array &$vatAggregates, string $taxRate, string $netAmount, string $taxAmount, string $lineTotal): void
+    {
+        $rateKey = $taxRate;
+        if (! isset($vatAggregates[$rateKey])) {
+            $vatAggregates[$rateKey] = [
+                'tax_rate' => $taxRate,
+                'net_amount' => '0.00',
+                'vat_amount' => '0.00',
+                'gross_amount' => '0.00',
+            ];
+        }
+        /** @var numeric-string $existingNet */
+        $existingNet = $vatAggregates[$rateKey]['net_amount'];
+        /** @var numeric-string $existingVat */
+        $existingVat = $vatAggregates[$rateKey]['vat_amount'];
+        /** @var numeric-string $existingGross */
+        $existingGross = $vatAggregates[$rateKey]['gross_amount'];
+
+        $vatAggregates[$rateKey]['net_amount'] = bcadd($existingNet, $netAmount, $this->scale());
+        $vatAggregates[$rateKey]['vat_amount'] = bcadd($existingVat, $taxAmount, $this->scale());
+        $vatAggregates[$rateKey]['gross_amount'] = bcadd($existingGross, $lineTotal, $this->scale());
+    }
+
+    /**
+     * Recursively deduct stock for a composite item by exploding its recipe
+     * down to leaf-level products.
+     */
+    private function deductCompositeItemStock(
+        string $compositeItemId,
+        string $saleQuantity,
+        string $tenantId,
+        string $companyId,
+        string $locationId,
+        string $receiptId,
+        string $cashierId,
+        int $depth = 0,
+    ): void {
+        if ($depth > 10) {
+            return;
+        }
+
+        $compositeItem = CompositeItem::with('activeRecipe.lines')->find($compositeItemId);
+        if ($compositeItem === null || $compositeItem->activeRecipe === null) {
+            return;
+        }
+
+        /** @var RecipeLine $line */
+        foreach ($compositeItem->activeRecipe->lines as $line) {
+            // required quantity = recipe line qty * sale quantity
+            $requiredQty = bcmul(
+                number_format((float) $line->quantity, 4, '.', ''),
+                number_format((float) $saleQuantity, 4, '.', ''),
+                4
+            );
+
+            if ($line->component_type === ComponentType::CompositeItem) {
+                $this->deductCompositeItemStock(
+                    compositeItemId: $line->component_id,
+                    saleQuantity: $requiredQty,
+                    tenantId: $tenantId,
+                    companyId: $companyId,
+                    locationId: $locationId,
+                    receiptId: $receiptId,
+                    cashierId: $cashierId,
+                    depth: $depth + 1,
+                );
+            } else {
+                $this->decrementStock(
+                    tenantId: $tenantId,
+                    companyId: $companyId,
+                    locationId: $locationId,
+                    productId: $line->component_id,
+                    quantity: $requiredQty,
+                    receiptId: $receiptId,
+                    cashierId: $cashierId,
+                );
+            }
+        }
+    }
+
+    /**
+     * For a fixed_bundle composite item, decompose the combo price proportionally
+     * across components based on their standalone prices, respecting different VAT rates.
+     *
+     * @return array<int, array{name: string, share: string, tax_rate: string, net_amount: string, tax_amount: string}>
+     */
+    public function decomposeFixedBundleVat(CompositeItem $comboItem, string $comboPrice): array
+    {
+        $recipe = $comboItem->activeRecipe;
+        if ($recipe === null) {
+            return [];
+        }
+
+        $recipe->loadMissing('lines.product', 'lines.compositeItemComponent');
+
+        // Collect standalone prices for each component
+        $components = [];
+        /** @var numeric-string $totalStandalonePrice */
+        $totalStandalonePrice = '0';
+
+        /** @var RecipeLine $line */
+        foreach ($recipe->lines as $line) {
+            $name = '';
+            $standalonePrice = '0';
+            $taxRate = '0';
+
+            if ($line->component_type === ComponentType::CompositeItem && $line->compositeItemComponent !== null) {
+                $name = $line->compositeItemComponent->name;
+                $standalonePrice = (string) $line->compositeItemComponent->base_price;
+                $taxRate = (string) ($line->compositeItemComponent->tax_rate ?? '0');
+            } elseif ($line->product !== null) {
+                $name = $line->product->name;
+                $standalonePrice = (string) ($line->product->sale_price ?? '0');
+                $taxRate = (string) ($line->product->tax_rate ?? '0');
+            }
+
+            $priceStr = number_format((float) $standalonePrice, 4, '.', '');
+            $qtyStr = number_format((float) $line->quantity, 4, '.', '');
+            /** @var numeric-string $priceStr */
+            /** @var numeric-string $qtyStr */
+            $lineStandalone = bcmul($priceStr, $qtyStr, 4);
+            $totalStandalonePrice = bcadd($totalStandalonePrice, $lineStandalone, 4);
+
+            $components[] = [
+                'name' => $name,
+                'standalone_price' => $lineStandalone,
+                'tax_rate' => $taxRate,
+            ];
+        }
+
+        if (bccomp($totalStandalonePrice, '0', 4) <= 0) {
+            return [];
+        }
+
+        $result = [];
+        /** @var numeric-string $allocatedTotal */
+        $allocatedTotal = '0';
+        $lastIndex = count($components) - 1;
+
+        /** @var numeric-string $comboPriceNumeric */
+        $comboPriceNumeric = $comboPrice;
+
+        foreach ($components as $index => $comp) {
+            /** @var numeric-string $compStandalone */
+            $compStandalone = $comp['standalone_price'];
+            /** @var numeric-string $compTaxRate */
+            $compTaxRate = $comp['tax_rate'];
+
+            if ($index === $lastIndex) {
+                // Last component gets remainder to avoid rounding drift
+                $share = bcsub($comboPriceNumeric, $allocatedTotal, $this->scale());
+            } else {
+                $share = bcmul(
+                    $comboPriceNumeric,
+                    bcdiv($compStandalone, $totalStandalonePrice, 10),
+                    $this->scale()
+                );
+            }
+            $allocatedTotal = bcadd($allocatedTotal, $share, $this->scale());
+
+            // Calculate net and tax from the share (price is TTC)
+            $taxRateDecimal = bcdiv($compTaxRate, '100', 6);
+            $divisor = bcadd('1', $taxRateDecimal, 6);
+            $netAmount = bcdiv($share, $divisor, $this->scale());
+            $taxAmount = bcsub($share, $netAmount, $this->scale());
+
+            $result[] = [
+                'name' => $comp['name'],
+                'share' => $share,
+                'tax_rate' => $comp['tax_rate'],
+                'net_amount' => $netAmount,
+                'tax_amount' => $taxAmount,
+            ];
+        }
+
+        return $result;
     }
 
     /**

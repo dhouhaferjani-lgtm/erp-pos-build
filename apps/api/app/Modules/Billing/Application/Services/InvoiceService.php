@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Billing\Application\Services;
 
+use App\Models\CountryTaxRate;
 use App\Modules\Billing\Domain\Enums\InvoiceStatus;
 use App\Modules\Billing\Domain\Invoice;
 use App\Modules\Billing\Domain\InvoiceItem;
@@ -315,24 +316,25 @@ final class InvoiceService
     }
 
     /**
-     * Get tax rate for tenant based on location.
+     * Get default tax rate for tenant based on country.
+     *
+     * Looks up the default tax rate from country_tax_rates table.
+     * Falls back to config value if no rate is found.
      */
     private function getTaxRate(Tenant $tenant): float
     {
-        // Get country from tenant's billing address or default
-        $country = $tenant->country ?? config('billing.default_country', 'FR');
+        $countryCode = $tenant->country_code ?? config('billing.default_country', 'FR');
 
-        // EU VAT rates
-        return match ($country) {
-            'FR' => 20.0,
-            'DE' => 19.0,
-            'IT' => 22.0,
-            'ES' => 21.0,
-            'TN' => 19.0, // Tunisia TVA
-            'MA' => 20.0, // Morocco TVA
-            'DZ' => 19.0, // Algeria TVA
-            default => config('billing.default_tax_rate', 20.0),
-        };
+        $defaultRate = CountryTaxRate::where('country_code', $countryCode)
+            ->where('is_default', true)
+            ->where('is_active', true)
+            ->value('rate');
+
+        if ($defaultRate !== null) {
+            return (float) $defaultRate;
+        }
+
+        return (float) config('billing.default_tax_rate', 20.0);
     }
 
     /**

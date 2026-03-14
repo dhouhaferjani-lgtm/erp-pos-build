@@ -29,6 +29,7 @@ return [
     'return_receipt' => 'RETOUR',
     'original_receipt' => 'Ticket Original',
     'return_reason' => 'Motif',
+    'duplicate_notice' => 'Ceci est un duplicata — ne vaut pas comme original',
     'thank_you' => 'Merci !',
     'powered_by' => 'Propulsé par AutoERP',
 ];

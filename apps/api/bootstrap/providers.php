@@ -27,6 +27,8 @@ return [
     App\Modules\POS\Providers\POSServiceProvider::class,
     App\Modules\POS\Providers\HeldOrderServiceProvider::class,
     App\Modules\POS\Providers\OrderServiceProvider::class,
+    App\Modules\POS\Providers\TableServiceProvider::class,
+    App\Modules\POS\Providers\KitchenServiceProvider::class,
     App\Modules\Uom\Infrastructure\Providers\UomServiceProvider::class,
     App\Modules\Loyalty\Providers\LoyaltyServiceProvider::class,
     App\Modules\Catalog\Providers\CatalogServiceProvider::class,

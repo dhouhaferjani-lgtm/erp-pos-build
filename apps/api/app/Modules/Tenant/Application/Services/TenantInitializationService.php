@@ -11,6 +11,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\FranceChartOfAccountsSeeder;
+use Database\Seeders\GenericChartOfAccountsSeeder;
 use Database\Seeders\PaymentMethodSeeder;
 use Database\Seeders\TunisiaChartOfAccountsSeeder;
 
@@ -114,7 +115,7 @@ class TenantInitializationService
      * Currently supported:
      * - TN (Tunisia): Plan Comptable Tunisien
      * - FR (France): Plan Comptable Général
-     * - Default: France PCG (for other countries)
+     * - Default: Generic international chart of accounts
      */
     private function seedChartOfAccounts(Company $company): void
     {
@@ -123,7 +124,7 @@ class TenantInitializationService
         $seeder = match ($countryCode) {
             'TN' => new TunisiaChartOfAccountsSeeder,
             'FR' => new FranceChartOfAccountsSeeder,
-            default => new FranceChartOfAccountsSeeder,
+            default => new GenericChartOfAccountsSeeder,
         };
 
         $seeder->run($company->id, $company->tenant_id);

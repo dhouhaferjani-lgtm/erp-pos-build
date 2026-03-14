@@ -176,7 +176,7 @@ describe('ActiveFilters', () => {
   })
 
   it('renders X icon in remove button', () => {
-    const { container } = render(
+    render(
       <ActiveFilters
         filters={{ search: 'test' }}
         onRemove={onRemoveMock}

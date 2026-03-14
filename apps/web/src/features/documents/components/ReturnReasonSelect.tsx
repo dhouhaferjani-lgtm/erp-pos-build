@@ -4,12 +4,12 @@ import type { ReturnReason } from '@/types/returnNote'
 export type { ReturnReason }
 
 interface ReturnReasonSelectProps {
-  value?: ReturnReason | ''
+  value?: ReturnReason | '' | undefined
   onChange: (value: ReturnReason) => void
-  required?: boolean
-  disabled?: boolean
-  error?: string
-  className?: string
+  required?: boolean | undefined
+  disabled?: boolean | undefined
+  error?: string | undefined
+  className?: string | undefined
 }
 
 export function ReturnReasonSelect({

@@ -22,6 +22,7 @@ final class UpdateTerminalRequest extends FormRequest
             'name' => ['sometimes', 'required', 'string', 'max:100'],
             'location_id' => ['sometimes', 'required', 'uuid', 'exists:locations,id'],
             'description' => ['nullable', 'string', 'max:500'],
+            'pos_software_version' => ['sometimes', 'nullable', 'string', 'max:20'],
         ];
     }
 

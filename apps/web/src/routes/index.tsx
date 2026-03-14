@@ -65,6 +65,7 @@ const BankReconciliationPage = lazy(() => import('../features/treasury/BankRecon
 // Withholding module
 const WithholdingCertificatesList = lazy(() => import('../features/withholding').then((m) => ({ default: m.WithholdingCertificatesList })))
 const WithholdingCertificateDetail = lazy(() => import('../features/withholding').then((m) => ({ default: m.WithholdingCertificateDetail })))
+const SalesWithholdingTrackingPage = lazy(() => import('../features/withholding/pages/SalesWithholdingTrackingPage').then((m) => ({ default: m.SalesWithholdingTrackingPage })))
 
 // Reports module
 const ReportsPage = lazy(() => import('../features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })))
@@ -154,6 +155,7 @@ const ExpenseCategoryPage = lazy(() => import('../features/expenses/pages/Expens
 // Compliance module
 const FraudSettingsPage = lazy(() => import('../features/compliance/pages/FraudSettingsPage').then((m) => ({ default: m.FraudSettingsPage })))
 const FraudAlertsPage = lazy(() => import('../features/compliance/pages/FraudAlertsPage').then((m) => ({ default: m.FraudAlertsPage })))
+const ComplianceExportPage = lazy(() => import('../features/compliance/pages/ComplianceExportPage').then((m) => ({ default: m.ComplianceExportPage })))
 
 // Catalog module (Composite Items & Modifiers)
 const CompositeItemListPage = lazy(() => import('../features/catalog').then((m) => ({ default: m.CompositeItemListPage })))
@@ -193,9 +195,12 @@ const POSTransactionsPage = lazy(() => import('../pages/POS/POSTransactions').th
 const POSShiftsPage = lazy(() => import('../pages/POS/POSShiftsDashboard').then((m) => ({ default: m.POSShiftsDashboard })))
 const ShiftHistoryPage = lazy(() => import('../features/pos/pages/ShiftHistoryPage/ShiftHistoryPage').then((m) => ({ default: m.ShiftHistoryPage })))
 const ZReportListPage = lazy(() => import('../features/pos/pages/ZReportListPage/ZReportListPage').then((m) => ({ default: m.ZReportListPage })))
+const AnalyticsDashboardPage = lazy(() => import('../features/pos/pages/AnalyticsDashboardPage').then((m) => ({ default: m.AnalyticsDashboardPage })))
 const ZReportDetailPage = lazy(() => import('../features/pos/pages/ZReportDetailPage/ZReportDetailPage').then((m) => ({ default: m.ZReportDetailPage })))
 const ReceiptSearchPage = lazy(() => import('../features/pos/pages/ReceiptSearchPage/ReceiptSearchPage').then((m) => ({ default: m.ReceiptSearchPage })))
 const OrdersPage = lazy(() => import('../features/pos/pages/OrdersPage').then((m) => ({ default: m.OrdersPage })))
+const KitchenDisplayPage = lazy(() => import('../features/pos/pages/KitchenDisplayPage/KitchenDisplayPage').then((m) => ({ default: m.KitchenDisplayPage })))
+const TableManagementPage = lazy(() => import('../features/pos/pages/TableManagementPage/TableManagementPage').then((m) => ({ default: m.TableManagementPage })))
 
 // Loyalty module
 const LoyaltyProgramListPage = lazy(() => import('../features/loyalty').then((m) => ({ default: m.ProgramListPage })))
@@ -1299,6 +1304,18 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
+
+          {/* Sales Withholding Tracking */}
+          <Route
+            path="sales-withholding-tracking"
+            element={
+              <RequirePermission permission="withholding.view">
+                <SuspenseWrapper>
+                  <SalesWithholdingTrackingPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
         </Route>
 
         {/* Reports */}
@@ -1630,6 +1647,16 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
+          <Route
+            path="compliance/export"
+            element={
+              <RequirePermission moduleKey="pos">
+                <SuspenseWrapper>
+                  <ComplianceExportPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
         </Route>
 
         {/* Catalog Module (Composite Items & Modifiers) */}
@@ -1953,6 +1980,17 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
+          {/* Analytics */}
+          <Route
+            path="analytics"
+            element={
+              <RequirePermission permission="pos.view_reports">
+                <SuspenseWrapper>
+                  <AnalyticsDashboardPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
           {/* Receipt Search */}
           <Route
             path="receipts"
@@ -1971,6 +2009,17 @@ export function AppRoutes() {
               <RequirePermission permission="pos.operate_terminal">
                 <SuspenseWrapper>
                   <OrdersPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          {/* Table Management */}
+          <Route
+            path="tables"
+            element={
+              <RequirePermission permission="pos.manage_tables">
+                <SuspenseWrapper>
+                  <TableManagementPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -2152,6 +2201,19 @@ export function AppRoutes() {
             <RequirePermission permission="pos.manage_shifts">
               <SuspenseWrapper>
                 <POSShiftsPage />
+              </SuspenseWrapper>
+            </RequirePermission>
+          </RequireAuth>
+        }
+      />
+      {/* KDS - Fullscreen Kitchen Display (Outside Layout) */}
+      <Route
+        path="/pos/kitchen"
+        element={
+          <RequireAuth>
+            <RequirePermission permission="pos.operate_terminal">
+              <SuspenseWrapper>
+                <KitchenDisplayPage />
               </SuspenseWrapper>
             </RequirePermission>
           </RequireAuth>

@@ -63,7 +63,7 @@ export function LineDiscountModal({
   }, [isValid, discountType, value, reason, onApply, onClose]);
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={t('cart.itemDiscount')} size="sm">
+    <Modal isOpen={isOpen} onClose={onClose} title={t('cart.itemDiscount')} size="md">
       <div className="space-y-4">
         {/* Item name */}
         <div className="rounded-lg bg-gray-50 px-3 py-2 text-center text-sm font-medium text-gray-700">

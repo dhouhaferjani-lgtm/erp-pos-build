@@ -39,15 +39,15 @@ interface DocumentSearchConfig<T extends BaseDocument> {
 }
 
 interface DocumentSearchSelectProps<T extends BaseDocument> {
-  value?: T | null
+  value?: T | null | undefined
   onChange: (document: T | null) => void
   config: DocumentSearchConfig<T>
-  partnerId?: string
-  required?: boolean
-  disabled?: boolean
-  className?: string
-  label?: string
-  error?: string
+  partnerId?: string | undefined
+  required?: boolean | undefined
+  disabled?: boolean | undefined
+  className?: string | undefined
+  label?: string | undefined
+  error?: string | undefined
 }
 
 export function DocumentSearchSelect<T extends BaseDocument>({

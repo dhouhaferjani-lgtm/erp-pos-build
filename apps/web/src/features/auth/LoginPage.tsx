@@ -189,6 +189,12 @@ export function LoginPage() {
             </div>
           </div>
 
+          <div className="flex justify-end">
+            <Link to="/forgot-password" className="text-sm font-medium text-blue-600 hover:text-blue-500">
+              {t('login.forgotPassword')}
+            </Link>
+          </div>
+
           <button
             type="submit"
             disabled={loginMutation.isPending}
@@ -201,7 +207,7 @@ export function LoginPage() {
           </button>
 
           <p className="text-center text-sm text-gray-600 mt-4">
-            {t('register.alreadyHaveAccount', { defaultValue: "Don't have an account?" })}{' '}
+            {t('login.dontHaveAccount', { defaultValue: "Don't have an account?" })}{' '}
             <Link to="/register" className="font-medium text-blue-600 hover:text-blue-500">
               {t('login.signUp', { defaultValue: 'Sign up' })}
             </Link>

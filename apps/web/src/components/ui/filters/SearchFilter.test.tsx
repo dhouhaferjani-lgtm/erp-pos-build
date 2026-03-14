@@ -174,7 +174,7 @@ describe('SearchFilter', () => {
   })
 
   it('clear button shows X icon', () => {
-    const { container } = render(
+    render(
       <SearchFilter
         value="test"
         onChange={onChangeMock}

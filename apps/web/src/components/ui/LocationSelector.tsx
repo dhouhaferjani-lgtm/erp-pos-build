@@ -4,15 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Search, X, ChevronDown, MapPin } from 'lucide-react'
 import { api } from '../../lib/api'
 import { getLocations } from '../../features/locations/api/locations'
-
-interface Location {
-  id: string
-  name: string
-  code: string
-  address?: string
-  is_default: boolean
-  is_active: boolean
-}
+import type { Location } from '../../features/locations/types'
 
 interface LocationSelectorProps {
   value: string
@@ -242,12 +234,12 @@ export function LocationSelector({
                           <div className="text-sm font-medium text-gray-900 truncate">
                             {location.name}
                           </div>
-                          {location.is_default && (
+                          {location.isDefault && (
                             <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
                               {t('common.default', 'Default')}
                             </span>
                           )}
-                          {!location.is_active && (
+                          {!location.isActive && (
                             <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800">
                               {t('common.inactive', 'Inactive')}
                             </span>
@@ -255,8 +247,8 @@ export function LocationSelector({
                         </div>
                         <div className="text-xs text-gray-500 truncate">
                           {location.code && <span className="font-mono">{location.code}</span>}
-                          {location.code && location.address && ' • '}
-                          {location.address}
+                          {location.code && (location.addressStreet || location.addressCity) && ' • '}
+                          {[location.addressStreet, location.addressCity].filter(Boolean).join(', ')}
                         </div>
                       </div>
                       {location.id === value && (

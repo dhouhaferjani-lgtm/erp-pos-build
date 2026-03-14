@@ -4,7 +4,7 @@ import { AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { fetchTaxBreakdown, type TaxBreakdown } from '../api/taxApi'
 
-interface DocumentTotalsProps {
+export interface DocumentTotalsProps {
   documentId: string
   documentType: 'invoice' | 'quote' | 'sales_order' | 'credit_note'
   currency: string
@@ -27,7 +27,7 @@ interface DocumentTotalsProps {
  */
 export function DocumentTotals({
   documentId,
-  documentType,
+  documentType: _documentType,
   currency,
   showBalanceDue = false,
   balanceDue,

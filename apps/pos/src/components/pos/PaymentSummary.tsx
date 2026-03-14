@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useCurrency } from '@/lib/currency';
-import { Banknote, CreditCard } from 'lucide-react';
+import { Banknote, Wallet } from 'lucide-react';
 import type { PaymentMethod } from '@/types/payment';
 
 interface PaymentSummaryProps {
@@ -8,7 +8,7 @@ interface PaymentSummaryProps {
   taxAmount: number;
   total: number;
   onPayCash: () => void;
-  onPayCard?: () => void;
+  onAdvancedPayments?: () => void;
   paymentMethods?: PaymentMethod[];
   disabled?: boolean;
 }
@@ -18,18 +18,15 @@ export function PaymentSummary({
   taxAmount,
   total,
   onPayCash,
-  onPayCard,
+  onAdvancedPayments,
   paymentMethods = [],
   disabled = false,
 }: PaymentSummaryProps) {
   const { t } = useTranslation(['common', 'pos']);
   const { format } = useCurrency();
 
-  // Card button shows if there's an active card-type payment method
-  // (not physical, no maturity, requires third party)
-  const hasCardMethod = paymentMethods.some(
-    (m) => !m.is_physical && !m.has_maturity && m.requires_third_party && m.is_active,
-  );
+  // Show advanced payments button when there are 2+ active payment methods
+  const hasMultipleMethods = paymentMethods.filter((m) => m.is_active).length >= 2;
 
   return (
     <div className="space-y-3 border-t border-gray-200 pt-4">
@@ -64,14 +61,14 @@ export function PaymentSummary({
           {t('pos:payment.cashPayment')}
         </button>
 
-        {hasCardMethod && onPayCard && (
+        {hasMultipleMethods && onAdvancedPayments && (
           <button
-            onClick={onPayCard}
+            onClick={onAdvancedPayments}
             disabled={disabled}
             className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 px-6 py-4 text-lg font-semibold text-white transition-colors hover:bg-primary-700 active:bg-primary-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <CreditCard className="h-6 w-6" />
-            {t('pos:payment.cardPayment')}
+            <Wallet className="h-6 w-6" />
+            {t('pos:payment.advancedPayments')}
           </button>
         )}
       </div>

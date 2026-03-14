@@ -27,29 +27,29 @@ export interface CategoryTreeNode extends Category {
 }
 
 export interface CreateCategoryData {
-  parent_id?: number | null
+  parent_id?: number | null | undefined
   name: string
-  slug?: string
-  description?: string
-  sort_order?: number
-  is_active?: boolean
+  slug?: string | undefined
+  description?: string | undefined
+  sort_order?: number | undefined
+  is_active?: boolean | undefined
 }
 
 export interface UpdateCategoryData {
-  parent_id?: number | null
-  name?: string
-  slug?: string
-  description?: string
-  sort_order?: number
-  is_active?: boolean
+  parent_id?: number | null | undefined
+  name?: string | undefined
+  slug?: string | undefined
+  description?: string | undefined
+  sort_order?: number | undefined
+  is_active?: boolean | undefined
 }
 
 export interface GetCategoriesParams {
-  per_page?: number
-  cursor?: string | null
-  parent_id?: number | 'root' | null
-  search?: string
-  is_active?: boolean
+  per_page?: number | undefined
+  cursor?: string | null | undefined
+  parent_id?: number | 'root' | null | undefined
+  search?: string | undefined
+  is_active?: boolean | undefined
 }
 
 export interface PaginatedCategoriesResponse {

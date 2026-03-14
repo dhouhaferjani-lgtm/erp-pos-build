@@ -34,6 +34,11 @@ vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
   upsertTerminalState: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('@/lib/db/repositories/zReportRepository', () => ({
+  getUnsyncedZReports: vi.fn().mockResolvedValue([]),
+  markZReportSynced: vi.fn().mockResolvedValue(undefined),
+}));
+
 import {
   pushOfflineReceipts,
   pullProducts,

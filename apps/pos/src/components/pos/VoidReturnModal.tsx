@@ -127,7 +127,7 @@ export function VoidReturnModal({ isOpen, onClose }: VoidReturnModalProps) {
   }, [onClose]);
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title={t('voidReturn.title')} size="lg">
+    <Modal isOpen={isOpen} onClose={handleClose} title={t('voidReturn.title')} size="xl">
       <div className="space-y-4">
         {/* Search */}
         <div className="flex gap-2">
@@ -209,6 +209,7 @@ export function VoidReturnModal({ isOpen, onClose }: VoidReturnModalProps) {
                 <p className="text-sm font-medium text-gray-700">
                   {t('voidReturn.selectLines')}
                 </p>
+                <div className="max-h-[30vh] space-y-2 overflow-y-auto">
                 {receipt.lines.map((line) => (
                   <label
                     key={line.id}
@@ -238,6 +239,7 @@ export function VoidReturnModal({ isOpen, onClose }: VoidReturnModalProps) {
                     </span>
                   </label>
                 ))}
+                </div>
               </div>
             )}
 

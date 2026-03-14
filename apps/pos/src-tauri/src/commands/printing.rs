@@ -1,6 +1,6 @@
 use crate::printing::{
     self, PrintError, PrinterConnectionType, PrinterInfo,
-    receipt_template::{self, ReceiptData},
+    receipt_template::{self, DrawerKickSettings, PrintSettings, ReceiptData},
 };
 
 /// Discover available printers (USB + network).
@@ -29,18 +29,29 @@ pub async fn print_receipt(
     receipt: ReceiptData,
     connection_type: PrinterConnectionType,
     address: String,
+    print_settings: Option<PrintSettings>,
 ) -> Result<(), PrintError> {
-    let data = receipt_template::format_receipt(&receipt);
+    let data = receipt_template::format_receipt_with_settings(
+        &receipt,
+        print_settings.as_ref(),
+    );
+
+    let copies = print_settings.as_ref().map_or(1, |s| s.copies.max(1));
 
     log::info!(
-        "Printing receipt {} ({} bytes) to {:?}:{}",
+        "Printing receipt {} ({} bytes, {} copies) to {:?}:{}",
         receipt.receipt_number,
         data.len(),
+        copies,
         connection_type,
         address,
     );
 
-    printing::send_to_printer(&connection_type, &address, &data).await
+    for _ in 0..copies {
+        printing::send_to_printer(&connection_type, &address, &data).await?;
+    }
+
+    Ok(())
 }
 
 /// Print a test/alignment page to verify printer configuration.
@@ -48,12 +59,14 @@ pub async fn print_receipt(
 pub async fn print_test_page(
     connection_type: PrinterConnectionType,
     address: String,
+    columns: Option<u8>,
 ) -> Result<(), PrintError> {
-    let data = receipt_template::format_test_page();
+    let data = receipt_template::format_test_page_with_columns(columns);
 
     log::info!(
-        "Printing test page ({} bytes) to {:?}:{}",
+        "Printing test page ({} bytes, {} cols) to {:?}:{}",
         data.len(),
+        columns.unwrap_or(42),
         connection_type,
         address,
     );
@@ -66,8 +79,9 @@ pub async fn print_test_page(
 pub async fn open_cash_drawer(
     connection_type: PrinterConnectionType,
     address: String,
+    drawer_settings: Option<DrawerKickSettings>,
 ) -> Result<(), PrintError> {
-    let data = receipt_template::format_drawer_kick();
+    let data = receipt_template::format_drawer_kick_with_settings(drawer_settings.as_ref());
 
     log::info!(
         "Opening cash drawer via {:?}:{}",

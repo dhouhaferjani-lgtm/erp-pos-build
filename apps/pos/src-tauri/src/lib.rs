@@ -19,6 +19,10 @@ pub fn run() {
             commands::printing::print_receipt,
             commands::printing::print_test_page,
             commands::printing::open_cash_drawer,
+            commands::display::list_monitors,
+            commands::display::open_customer_display,
+            commands::display::close_customer_display,
+            commands::display::send_to_customer_display,
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();

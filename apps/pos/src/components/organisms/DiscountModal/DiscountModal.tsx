@@ -62,7 +62,7 @@ export function DiscountModal({
   }, [isValid, value, reason, onApplyTransactionDiscount, onClose]);
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={t('discount.transactionDiscount')} size="md">
+    <Modal isOpen={isOpen} onClose={onClose} title={t('discount.transactionDiscount')} size="lg">
       <div className="space-y-4">
         {/* Discount type toggle: percentage vs fixed */}
         <div className="flex rounded-lg bg-gray-100 p-1">

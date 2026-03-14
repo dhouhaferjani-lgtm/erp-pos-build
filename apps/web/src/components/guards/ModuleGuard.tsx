@@ -13,7 +13,7 @@ interface ModuleGuardProps {
    * Path to redirect to if module is not enabled
    * @default "/dashboard"
    */
-  fallback?: string
+  fallback?: string | undefined
 
   /**
    * Content to render if module is enabled

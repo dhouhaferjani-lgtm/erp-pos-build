@@ -481,6 +481,60 @@
     "expired": "Expirée",
     "badge": "{{count}} en attente"
   },
+  "analytics": {
+    "title": "Analytique",
+    "tabs": {
+      "summary": "Résumé",
+      "products": "Produits",
+      "cashiers": "Caissiers",
+      "discounts": "Remises",
+      "customers": "Clients",
+      "fnb": "F&B"
+    },
+    "presets": {
+      "today": "Aujourd'hui",
+      "thisWeek": "Cette semaine",
+      "thisMonth": "Ce mois",
+      "last30Days": "30 derniers jours"
+    },
+    "totalReceipts": "Total tickets",
+    "grossSales": "Ventes brutes",
+    "netSales": "Ventes nettes",
+    "taxTotal": "Total taxes",
+    "averageTicket": "Ticket moyen",
+    "refunds": "Remboursements",
+    "voided": "Annulés",
+    "sales": "Ventes",
+    "count": "Nombre",
+    "receiptCount": "Tickets",
+    "salesOverTime": "Ventes dans le temps",
+    "salesByCategory": "Ventes par catégorie",
+    "topProducts": "Meilleurs produits",
+    "product": "Produit",
+    "quantity": "Qté",
+    "total": "Total",
+    "cashierPerformance": "Performance caissiers",
+    "cashier": "Caissier",
+    "receipts": "Tickets",
+    "totalSales": "Ventes totales",
+    "totalDiscounts": "Total remises",
+    "discountedLines": "Lignes remisées",
+    "discountsByReason": "Remises par motif",
+    "topDiscountedProducts": "Produits les plus remisés",
+    "discountAmount": "Montant remise",
+    "uniqueCustomers": "Clients uniques",
+    "returningCustomers": "Clients fidèles",
+    "returningRate": "Taux de retour",
+    "topCustomers": "Meilleurs clients",
+    "customer": "Client",
+    "totalSpent": "Total dépensé",
+    "avgTableTime": "Temps moyen table",
+    "minutes": "min",
+    "avgItemsPerOrder": "Articles moy./commande",
+    "peakHours": "Heures de pointe",
+    "ordersByMode": "Commandes par mode",
+    "noData": "Aucune donnée pour cette période"
+  },
   "orders": {
     "title": "Commandes",
     "newOrder": "Nouvelle Commande",
@@ -505,6 +559,7 @@
       "sendToKitchen": "Envoyer en Cuisine",
       "closeOrder": "Fermer la Commande",
       "cancelOrder": "Annuler la Commande",
+      "markServed": "Marquer Servie",
       "addLine": "Ajouter un Article",
       "modifyLine": "Modifier",
       "removeLine": "Supprimer"
@@ -530,7 +585,10 @@
       "subtotal": "Sous-total",
       "tax": "Taxe",
       "discount": "Remise",
-      "total": "Total"
+      "total": "Total",
+      "table": "Table",
+      "readyAt": "Prête à",
+      "servedAt": "Servie à"
     },
     "toasts": {
       "created": "Commande créée",
@@ -552,6 +610,48 @@
       "allStatuses": "Tous les Statuts",
       "terminal": "Terminal",
       "shift": "Caisse"
+    }
+  },
+  "tables": {
+    "title": "Gestion des Tables",
+    "floors": "Étages",
+    "addFloor": "Ajouter un Étage",
+    "floorNamePlaceholder": "Nom de l'étage...",
+    "tablesCount": "tables",
+    "tablesList": "Tables",
+    "addTable": "Ajouter une Table",
+    "tableNumber": "Table N°",
+    "tableNumberPlaceholder": "ex: T01",
+    "label": "Libellé",
+    "labelPlaceholder": "ex: Coin Fenêtre",
+    "floor": "Étage",
+    "noFloor": "Sans Étage",
+    "seats": "places",
+    "statusLabel": "Statut",
+    "noTables": "Aucune table configurée",
+    "selectTable": "Sélectionner une Table",
+    "clearSelection": "Effacer",
+    "release": "Libérer la Table",
+    "status": {
+      "available": "Disponible",
+      "occupied": "Occupée",
+      "reserved": "Réservée",
+      "cleaning": "Nettoyage"
+    }
+  },
+  "kitchen": {
+    "title": "Écran Cuisine",
+    "activeOrders": "commandes actives",
+    "noOrders": "Aucune commande en cuisine",
+    "waitingForOrders": "Les commandes apparaîtront ici lorsqu'elles seront envoyées en cuisine",
+    "bump": "TERMINÉ",
+    "lineStatus": {
+      "pending": "En attente",
+      "sent": "Envoyée",
+      "preparing": "En préparation",
+      "ready": "Prête",
+      "served": "Servie",
+      "cancelled": "Annulée"
     }
   }
 }

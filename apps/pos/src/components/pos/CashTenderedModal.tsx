@@ -10,6 +10,7 @@ interface CashTenderedModalProps {
   onConfirm: (tenderedAmount: number) => void;
   total: number;
   isProcessing: boolean;
+  error?: string | null;
 }
 
 const DENOMINATIONS = [5, 10, 20, 50, 100];
@@ -22,26 +23,26 @@ export function CashTenderedModal({
   isProcessing,
 }: CashTenderedModalProps) {
   const { t } = useTranslation('pos');
-  const { format } = useCurrency();
+  const { format, decimals } = useCurrency();
   const [tenderedStr, setTenderedStr] = useState('');
 
   useEffect(() => {
     if (isOpen) {
-      setTenderedStr(total.toFixed(2));
+      setTenderedStr(total.toFixed(decimals));
     }
-  }, [isOpen, total]);
+  }, [isOpen, total, decimals]);
 
   const tenderedNum = parseFloat(tenderedStr) || 0;
   const changeDue = Math.max(0, tenderedNum - total);
   const isValid = tenderedNum >= total && tenderedStr !== '';
 
   const handleDenomination = useCallback((amount: number) => {
-    setTenderedStr(amount.toFixed(2));
-  }, []);
+    setTenderedStr(amount.toFixed(decimals));
+  }, [decimals]);
 
   const handleExact = useCallback(() => {
-    setTenderedStr(total.toFixed(2));
-  }, [total]);
+    setTenderedStr(total.toFixed(decimals));
+  }, [total, decimals]);
 
   const handleConfirm = useCallback(() => {
     if (isValid) {

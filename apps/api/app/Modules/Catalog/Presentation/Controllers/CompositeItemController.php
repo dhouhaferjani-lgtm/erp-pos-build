@@ -69,7 +69,7 @@ class CompositeItemController extends Controller
         }
 
         $item = CompositeItem::where('company_id', $companyId)
-            ->with(['category', 'activeRecipe.lines.component', 'activeRecipe.lines.unit', 'variants', 'modifierGroups.modifiers'])
+            ->with(['category', 'activeRecipe.lines.product', 'activeRecipe.lines.compositeItemComponent', 'activeRecipe.lines.unit', 'variants', 'modifierGroups.modifiers'])
             ->findOrFail($id);
 
         return response()->json(['data' => CompositeItemData::fromModel($item)]);
@@ -100,7 +100,7 @@ class CompositeItemController extends Controller
 
         $item = CompositeItem::where('company_id', $companyId)->findOrFail($id);
         $item->update($request->validated());
-        $item->load(['category', 'activeRecipe.lines.component', 'variants', 'modifierGroups.modifiers']);
+        $item->load(['category', 'activeRecipe.lines.product', 'activeRecipe.lines.compositeItemComponent', 'variants', 'modifierGroups.modifiers']);
 
         return response()->json(['data' => CompositeItemData::fromModel($item)]);
     }
@@ -159,7 +159,7 @@ class CompositeItemController extends Controller
             $newVariant->save();
         }
 
-        $newItem->load(['category', 'activeRecipe.lines.component', 'variants']);
+        $newItem->load(['category', 'activeRecipe.lines.product', 'activeRecipe.lines.compositeItemComponent', 'variants']);
 
         return response()->json(['data' => CompositeItemData::fromModel($newItem)], 201);
     }
@@ -178,7 +178,7 @@ class CompositeItemController extends Controller
         }
 
         $item = CompositeItem::where('company_id', $companyId)
-            ->with(['activeRecipe.lines.component'])
+            ->with(['activeRecipe.lines.product', 'activeRecipe.lines.compositeItemComponent'])
             ->findOrFail($id);
 
         $availability = $this->availabilityService->checkAvailability($item, $locationId);

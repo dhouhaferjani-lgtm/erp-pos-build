@@ -6,9 +6,12 @@ import { useAuthStore } from '@/stores/authStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useCustomerDisplayStore } from '@/stores/customerDisplayStore';
 import { isTauriEnvironment } from '@/lib/printing';
+import { openCustomerDisplay, sendIdleScreen } from '@/lib/customerDisplay';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AppShell } from '@/components/AppShell';
+import { CustomerDisplayPage } from '@/pages/CustomerDisplayPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { TerminalSetupPage } from '@/pages/TerminalSetupPage';
 import { PinEntryPage } from '@/pages/PinEntryPage';
@@ -22,6 +25,9 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+/** Detect if this window is the customer display (secondary window). */
+const isCustomerDisplayWindow = window.location.pathname === '/customer-display';
 
 function AppRouter() {
   const { t } = useTranslation('common');
@@ -126,7 +132,20 @@ function AppRouter() {
 }
 
 export function App() {
+  // Customer display window — render directly without auth/providers
+  if (isCustomerDisplayWindow) {
+    return <CustomerDisplayPage />;
+  }
+
+  return <MainApp />;
+}
+
+function MainApp() {
   const fullscreen = useSettingsStore((s) => s.fullscreen);
+  const cfdEnabled = useCustomerDisplayStore((s) => s.enabled);
+  const cfdMonitorIndex = useCustomerDisplayStore((s) => s.monitorIndex);
+  const cfdIdleImagePath = useCustomerDisplayStore((s) => s.idleImagePath);
+  const setIsOpen = useCustomerDisplayStore((s) => s.setIsOpen);
 
   // Apply fullscreen on startup if the setting is enabled
   useEffect(() => {
@@ -143,6 +162,21 @@ export function App() {
     };
     void applyFullscreen();
   }, [fullscreen]);
+
+  // Auto-open customer display on startup if enabled
+  useEffect(() => {
+    if (!cfdEnabled || !isTauriEnvironment()) return;
+    const autoOpen = async () => {
+      try {
+        await openCustomerDisplay(cfdMonitorIndex ?? undefined);
+        setIsOpen(true);
+        await sendIdleScreen(cfdIdleImagePath);
+      } catch {
+        // Non-critical — display may not be connected
+      }
+    };
+    void autoOpen();
+  }, [cfdEnabled, cfdMonitorIndex, cfdIdleImagePath, setIsOpen]);
 
   return (
     <ErrorBoundary>

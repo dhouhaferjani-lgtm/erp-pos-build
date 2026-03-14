@@ -24,6 +24,7 @@ export interface CartItem {
     price: string
     sellableType?: 'product' | 'composite_item'
     selectedModifiers?: SelectedModifier[]
+    comboComponents?: string[]
   }
   quantity: number
   unit_price: string
@@ -148,6 +149,17 @@ export function CartLineItem({
           >
             {item.product.selectedModifiers.map((m) => m.name).join(', ')}
           </p>
+        )}
+
+        {/* Combo Components (fixed bundle) */}
+        {item.product.comboComponents && item.product.comboComponents.length > 0 && (
+          <div className={cn('mt-1 space-y-0.5', touchOptimized ? 'text-sm' : 'text-xs')}>
+            {item.product.comboComponents.map((name, idx) => (
+              <p key={idx} className={cn(textColors.tertiary, 'pl-2')}>
+                &bull; {name}
+              </p>
+            ))}
+          </div>
         )}
 
         {/* Price and Quantity */}

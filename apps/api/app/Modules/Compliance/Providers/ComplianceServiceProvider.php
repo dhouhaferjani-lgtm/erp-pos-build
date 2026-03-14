@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Compliance\Providers;
 
+use App\Modules\Compliance\Commands\ExportNf525JetCommand;
 use App\Modules\Compliance\Commands\VerifyFiscalChainsCommand;
 use App\Modules\Compliance\Listeners\DomainEventSubscriber;
 use App\Modules\Compliance\Services\AnomalyDetectionService;
@@ -45,6 +46,7 @@ class ComplianceServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 VerifyFiscalChainsCommand::class,
+                ExportNf525JetCommand::class,
             ]);
         }
 
@@ -62,9 +64,8 @@ class ComplianceServiceProvider extends ServiceProvider
 
     private function registerRoutes(): void
     {
-        // Load module routes
-        Route::middleware('web')
-            ->group(base_path('app/Modules/Compliance/Presentation/routes.php'));
+        // Load module routes (routes.php defines its own middleware)
+        $this->loadRoutesFrom(base_path('app/Modules/Compliance/Presentation/routes.php'));
 
         // Legacy audit routes (keeping for backward compatibility)
         Route::middleware(['api', 'auth:sanctum'])

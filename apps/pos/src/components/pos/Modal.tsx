@@ -7,7 +7,7 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: ReactNode;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
 }
 
 export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
@@ -34,11 +34,12 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
       {/* Content */}
       <div
         className={cn(
-          'relative z-10 flex w-full flex-col rounded-2xl bg-white shadow-2xl',
-          'max-h-[85vh] overflow-hidden',
-          size === 'sm' && 'max-w-sm',
-          size === 'md' && 'max-w-md',
-          size === 'lg' && 'max-w-lg',
+          'relative z-10 flex w-full flex-col rounded-2xl bg-white shadow-2xl overflow-hidden',
+          size === 'sm' && 'max-w-sm h-[45vh]',
+          size === 'md' && 'max-w-md h-[55vh]',
+          size === 'lg' && 'max-w-lg h-[70vh]',
+          size === 'xl' && 'max-w-2xl h-[80vh]',
+          size === 'full' && 'max-w-4xl h-[85vh]',
         )}
       >
         {/* Header */}
@@ -53,7 +54,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
         </div>
 
         {/* Body */}
-        <div className="overflow-y-auto px-6 py-4">{children}</div>
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4">{children}</div>
       </div>
     </div>
   );

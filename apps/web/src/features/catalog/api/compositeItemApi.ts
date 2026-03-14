@@ -7,11 +7,11 @@ import type {
 } from '../types/compositeItem'
 
 export async function getCompositeItems(params?: {
-  search?: string
-  vertical_type?: string
-  is_active?: boolean
-  per_page?: number
-  page?: number
+  search?: string | undefined
+  vertical_type?: string | undefined
+  is_active?: boolean | undefined
+  per_page?: number | undefined
+  page?: number | undefined
 }): Promise<PaginatedResponse<CompositeItemData>> {
   const queryParams: Record<string, string> = {}
   if (params?.search) queryParams['search'] = params.search

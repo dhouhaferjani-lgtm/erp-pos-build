@@ -108,7 +108,7 @@ describe('POSLayout', () => {
     })
 
     it('should have content area that fills remaining height', () => {
-      const { container } = renderWithClient(
+      renderWithClient(
         <POSLayout onExitPOS={mockOnExitPOS}>
           <div data-testid="pos-content">Test Content</div>
         </POSLayout>

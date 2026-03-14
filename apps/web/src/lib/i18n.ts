@@ -26,6 +26,7 @@ import enCategories from '../locales/en/categories.json'
 import enCrm from '../locales/en/crm.json'
 import enPartsCatalog from '../locales/en/parts-catalog.json'
 import enLoyalty from '../locales/en/loyalty.json'
+import enCompliance from '../locales/en/compliance.json'
 
 import frCommon from '../locales/fr/common.json'
 import frAuth from '../locales/fr/auth.json'
@@ -50,6 +51,7 @@ import frCategories from '../locales/fr/categories.json'
 import frCrm from '../locales/fr/crm.json'
 import frPartsCatalog from '../locales/fr/parts-catalog.json'
 import frLoyalty from '../locales/fr/loyalty.json'
+import frCompliance from '../locales/fr/compliance.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -84,6 +86,7 @@ const resources = {
     crm: enCrm,
     'parts-catalog': enPartsCatalog,
     loyalty: enLoyalty,
+    compliance: enCompliance,
   },
   fr: {
     common: frCommon,
@@ -109,6 +112,7 @@ const resources = {
     crm: frCrm,
     'parts-catalog': frPartsCatalog,
     loyalty: frLoyalty,
+    compliance: frCompliance,
   },
   ar: {
     // Arabic falls back to English - translations to be added later
@@ -135,6 +139,7 @@ const resources = {
     crm: enCrm,
     'parts-catalog': enPartsCatalog,
     loyalty: enLoyalty,
+    compliance: enCompliance,
   },
 }
 
@@ -145,7 +150,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

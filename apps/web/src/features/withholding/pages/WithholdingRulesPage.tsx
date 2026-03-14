@@ -149,7 +149,7 @@ export function WithholdingRulesPage() {
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <span className="text-sm text-gray-600">
-                        {rule.partner_tax_regime ? t(`taxRegimes.${rule.partner_tax_regime}`) : '-'}
+                        {rule.partner_tax_status ? t(`taxRegimes.${rule.partner_tax_status}`) : '-'}
                       </span>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-end">
@@ -159,7 +159,7 @@ export function WithholdingRulesPage() {
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-end">
                       <span className="text-sm font-mono text-gray-600">
-                        {rule.min_amount ? `${parseFloat(rule.min_amount).toFixed(0)} ${rule.currency || 'TND'}` : '-'}
+                        {rule.min_amount ? `${parseFloat(rule.min_amount).toFixed(0)} TND` : '-'}
                       </span>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-center">

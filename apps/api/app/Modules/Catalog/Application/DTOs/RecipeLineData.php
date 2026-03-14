@@ -32,17 +32,28 @@ class RecipeLineData extends Data
 
     public static function fromModel(RecipeLine $line): self
     {
+        $componentName = null;
+        $componentSku = null;
+
+        if ($line->component_type === ComponentType::CompositeItem) {
+            if ($line->relationLoaded('compositeItemComponent') && $line->compositeItemComponent !== null) {
+                $componentName = $line->compositeItemComponent->name;
+                $componentSku = $line->compositeItemComponent->code;
+            }
+        } else {
+            if ($line->relationLoaded('product') && $line->product !== null) {
+                $componentName = $line->product->name;
+                $componentSku = $line->product->sku;
+            }
+        }
+
         return new self(
             id: $line->id,
             recipe_id: $line->recipe_id,
             component_type: $line->component_type,
             component_id: $line->component_id,
-            component_name: $line->relationLoaded('component') && $line->component !== null
-                ? $line->component->name
-                : null,
-            component_sku: $line->relationLoaded('component') && $line->component !== null
-                ? $line->component->sku
-                : null,
+            component_name: $componentName,
+            component_sku: $componentSku,
             quantity: number_format((float) $line->quantity, 4, '.', ''),
             unit_id: $line->unit_id,
             unit_name: $line->relationLoaded('unit') && $line->unit !== null

@@ -10,11 +10,11 @@ export interface CheckoutSuccessDialogProps {
   isOpen: boolean
   onClose: () => void
   receiptId: string | null
-  receiptNumber?: string
-  total?: string
-  changeDue?: number
-  autoPrint?: boolean
-  loyaltyPointsEarned?: number
+  receiptNumber?: string | undefined
+  total?: string | undefined
+  changeDue?: number | undefined
+  autoPrint?: boolean | undefined
+  loyaltyPointsEarned?: number | undefined
 }
 
 /**

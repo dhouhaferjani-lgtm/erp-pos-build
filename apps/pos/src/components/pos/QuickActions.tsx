@@ -1,12 +1,11 @@
 import { useTranslation } from 'react-i18next';
-import { Tag, Pause, ClipboardList, BarChart3 } from 'lucide-react';
+import { Tag, Pause, ClipboardList } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface QuickActionsProps {
   onDiscount: () => void;
   onHold: () => void;
   onRecall: () => void;
-  onReports: () => void;
   hasItems: boolean;
 }
 
@@ -14,7 +13,6 @@ export function QuickActions({
   onDiscount,
   onHold,
   onRecall,
-  onReports,
   hasItems,
 }: QuickActionsProps) {
   const { t } = useTranslation('pos');
@@ -36,12 +34,6 @@ export function QuickActions({
       label: t('quickActions.recall'),
       icon: ClipboardList,
       onClick: onRecall,
-      disabled: false,
-    },
-    {
-      label: t('quickActions.reports'),
-      icon: BarChart3,
-      onClick: onReports,
       disabled: false,
     },
   ];

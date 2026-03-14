@@ -540,7 +540,7 @@ export function ShiftDashboardPage({
 function Modal({
   title,
   children,
-  onClose,
+  onClose: _onClose,
   touchOptimized = false,
 }: {
   title: string

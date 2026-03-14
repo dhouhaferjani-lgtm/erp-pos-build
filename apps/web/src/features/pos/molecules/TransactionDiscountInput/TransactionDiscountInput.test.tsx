@@ -41,7 +41,7 @@ vi.mock('react-i18next', () => ({
         'pos:cart.applyDiscount': 'Apply Discount',
         'pos:errors.amountRequired': 'Discount amount is required',
         'pos:errors.discountExceedsSubtotal': 'Discount cannot exceed subtotal',
-        'pos:errors.discountExceedsLimit': `Discount exceeds maximum allowed (${params?.limit}%)`,
+        'pos:errors.discountExceedsLimit': `Discount exceeds maximum allowed (${params?.['limit']}%)`,
         'pos:errors.reasonRequired': 'Reason is required for discounts above 10%',
       }
       return translations[key] || key

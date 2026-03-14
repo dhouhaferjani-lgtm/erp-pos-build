@@ -1,14 +1,14 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
-import { ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { ProductConfigProvider, useProductConfig } from '../ProductConfigContext'
 
 describe('ProductConfigContext', () => {
-  const originalEnv = import.meta.env.VITE_APP_PRODUCT
+  const originalEnv = import.meta.env['VITE_APP_PRODUCT']
 
   afterEach(() => {
     // Restore original env
-    import.meta.env.VITE_APP_PRODUCT = originalEnv
+    import.meta.env['VITE_APP_PRODUCT'] = originalEnv
   })
 
   const wrapper = ({ children }: { children: ReactNode }) => (
@@ -16,7 +16,7 @@ describe('ProductConfigContext', () => {
   )
 
   it('provides IziPOS product config when VITE_APP_PRODUCT=izipos', () => {
-    import.meta.env.VITE_APP_PRODUCT = 'izipos'
+    import.meta.env['VITE_APP_PRODUCT'] = 'izipos'
 
     const { result } = renderHook(() => useProductConfig(), { wrapper })
 
@@ -26,7 +26,7 @@ describe('ProductConfigContext', () => {
   })
 
   it('provides Otospex product config when VITE_APP_PRODUCT=otospex', () => {
-    import.meta.env.VITE_APP_PRODUCT = 'otospex'
+    import.meta.env['VITE_APP_PRODUCT'] = 'otospex'
 
     const { result } = renderHook(() => useProductConfig(), { wrapper })
 
@@ -36,7 +36,7 @@ describe('ProductConfigContext', () => {
   })
 
   it('defaults to IziPOS when VITE_APP_PRODUCT is not set', () => {
-    delete import.meta.env.VITE_APP_PRODUCT
+    delete import.meta.env['VITE_APP_PRODUCT']
 
     const { result } = renderHook(() => useProductConfig(), { wrapper })
 
@@ -46,7 +46,7 @@ describe('ProductConfigContext', () => {
   })
 
   it('provides product name', () => {
-    import.meta.env.VITE_APP_PRODUCT = 'izipos'
+    import.meta.env['VITE_APP_PRODUCT'] = 'izipos'
 
     const { result } = renderHook(() => useProductConfig(), { wrapper })
 
@@ -54,7 +54,7 @@ describe('ProductConfigContext', () => {
   })
 
   it('provides product name for Otospex', () => {
-    import.meta.env.VITE_APP_PRODUCT = 'otospex'
+    import.meta.env['VITE_APP_PRODUCT'] = 'otospex'
 
     const { result } = renderHook(() => useProductConfig(), { wrapper })
 
@@ -62,7 +62,7 @@ describe('ProductConfigContext', () => {
   })
 
   it('provides product description for IziPOS', () => {
-    import.meta.env.VITE_APP_PRODUCT = 'izipos'
+    import.meta.env['VITE_APP_PRODUCT'] = 'izipos'
 
     const { result } = renderHook(() => useProductConfig(), { wrapper })
 
@@ -71,7 +71,7 @@ describe('ProductConfigContext', () => {
   })
 
   it('provides product description for Otospex', () => {
-    import.meta.env.VITE_APP_PRODUCT = 'otospex'
+    import.meta.env['VITE_APP_PRODUCT'] = 'otospex'
 
     const { result } = renderHook(() => useProductConfig(), { wrapper })
 
@@ -86,7 +86,7 @@ describe('ProductConfigContext', () => {
   })
 
   it('handles case-insensitive product values', () => {
-    import.meta.env.VITE_APP_PRODUCT = 'IZIPOS'
+    import.meta.env['VITE_APP_PRODUCT'] = 'IZIPOS'
 
     const { result } = renderHook(() => useProductConfig(), { wrapper })
 
@@ -95,7 +95,7 @@ describe('ProductConfigContext', () => {
   })
 
   it('handles invalid product values by defaulting to IziPOS', () => {
-    import.meta.env.VITE_APP_PRODUCT = 'invalid_product'
+    import.meta.env['VITE_APP_PRODUCT'] = 'invalid_product'
 
     const { result } = renderHook(() => useProductConfig(), { wrapper })
 

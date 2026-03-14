@@ -6,14 +6,19 @@ import {
   upsertPaymentRepositories,
 } from '@/lib/db/repositories/paymentRepository';
 import { upsertOperators } from '@/lib/db/repositories/operatorPinRepository';
-import { upsertTerminalState, type TerminalHashState } from '@/lib/db/repositories/terminalStateRepository';
+import { upsertTerminalState, upsertZChainState, type TerminalHashState } from '@/lib/db/repositories/terminalStateRepository';
 import {
   getPendingReceiptsForSync,
   updateReceiptStatus,
   incrementRetryCount,
   type OfflineReceipt,
 } from '@/lib/db/repositories/offlineReceiptRepository';
+import {
+  getUnsyncedZReports,
+  markZReportSynced,
+} from '@/lib/db/repositories/zReportRepository';
 import { logSyncOperation, getSyncMetadata, setSyncMetadata } from '@/lib/db/repositories/syncLogRepository';
+import type { LocalZReport } from '@/lib/offline/types';
 import type { POSProduct } from '@/types/product';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 
@@ -62,6 +67,8 @@ interface TerminalStateResponse {
 export interface SyncResult {
   receiptsPushed: number;
   receiptsFailed: number;
+  zReportsPushed: number;
+  zReportsFailed: number;
   productsPulled: number;
   paymentConfigPulled: boolean;
   operatorsPulled: number;
@@ -128,6 +135,62 @@ export async function pushOfflineReceipts(db: Database): Promise<{
   }
 
   return { pushed, failed, errors, chainBreak };
+}
+
+/**
+ * Push unsynced Z-reports to server.
+ * Processes sequentially to maintain Z-report chain order.
+ */
+export async function pushZReports(db: Database): Promise<{
+  pushed: number;
+  failed: number;
+  errors: string[];
+}> {
+  const unsynced = await getUnsyncedZReports(db);
+  let pushed = 0;
+  let failed = 0;
+  const errors: string[] = [];
+
+  for (const zReport of unsynced) {
+    try {
+      await apiPost('/pos/reports/z/sync', zReportToSyncPayload(zReport));
+      await markZReportSynced(db, zReport.id, new Date().toISOString());
+      await logSyncOperation(db, 'push', 'z_report', zReport.id, 'success');
+      pushed++;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      await logSyncOperation(db, 'push', 'z_report', zReport.id, 'error', message);
+      errors.push(`Z-Report ${zReport.formatted_z_number}: ${message}`);
+      failed++;
+
+      // On chain-break, halt
+      if (isChainBreakError(error)) {
+        errors.push('Z-REPORT CHAIN_BREAK: Sync halted.');
+        break;
+      }
+    }
+  }
+
+  return { pushed, failed, errors };
+}
+
+function zReportToSyncPayload(report: LocalZReport): Record<string, unknown> {
+  return {
+    id: report.id,
+    terminal_id: report.terminal_id,
+    shift_id: report.shift_id,
+    z_number: report.z_number,
+    formatted_z_number: report.formatted_z_number,
+    generated_at: report.generated_at,
+    fiscal_hash: report.fiscal_hash,
+    previous_hash: report.previous_hash,
+    hash_sequence: report.hash_sequence,
+    report_data: report.report_data,
+    opening_cash: report.opening_cash,
+    expected_cash: report.expected_cash,
+    receipt_snapshots: report.receipt_snapshots,
+    grand_totals: report.grand_totals,
+  };
 }
 
 /**
@@ -220,6 +283,39 @@ export async function pullTerminalState(
   }
 }
 
+interface ZChainStateResponse {
+  z_last_hash: string;
+  z_hash_sequence: number;
+  z_number: number;
+  grand_totals: {
+    cumulative_sales: number;
+    cumulative_tax: number;
+    cumulative_refunds: number;
+    perpetual_grand_total: number;
+    receipt_count_lifetime: number;
+  } | null;
+}
+
+/**
+ * Pull Z-chain state from server (for recovery after local DB loss).
+ * Updates only Z-chain columns in terminal_state without affecting receipt chain.
+ */
+export async function pullZChainState(
+  db: Database,
+  terminalId: string,
+): Promise<boolean> {
+  try {
+    const state = await apiGet<ZChainStateResponse>(`/pos/terminals/${terminalId}/z-chain-state`);
+    await upsertZChainState(db, terminalId, state);
+    await logSyncOperation(db, 'pull', 'z_chain_state', terminalId, 'success');
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    await logSyncOperation(db, 'pull', 'z_chain_state', terminalId, 'error', message);
+    return false;
+  }
+}
+
 /**
  * Full sync: push then pull.
  */
@@ -229,19 +325,26 @@ export async function runFullSync(
 ): Promise<SyncResult> {
   const errors: string[] = [];
 
-  // Push first
+  // Push receipts first (order matters for chain)
   const { pushed, failed, errors: pushErrors, chainBreak } = await pushOfflineReceipts(db);
   errors.push(...pushErrors);
+
+  // Push Z-reports after receipts (Z-reports reference receipt data)
+  const { pushed: zPushed, failed: zFailed, errors: zErrors } = await pushZReports(db);
+  errors.push(...zErrors);
 
   // Then pull (always pull even if push had failures, to keep local data fresh)
   const productsPulled = await pullProducts(db);
   const paymentConfigPulled = await pullPaymentConfig(db);
   const operatorsPulled = await pullOperatorPins(db);
   const terminalStatePulled = await pullTerminalState(db, terminalId);
+  await pullZChainState(db, terminalId);
 
   return {
     receiptsPushed: pushed,
     receiptsFailed: failed,
+    zReportsPushed: zPushed,
+    zReportsFailed: zFailed,
     productsPulled,
     paymentConfigPulled,
     operatorsPulled,

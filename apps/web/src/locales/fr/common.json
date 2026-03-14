@@ -169,6 +169,7 @@
     "shiftHistory": "Historique des postes",
     "zReports": "Rapports Z",
     "receipts": "Tickets",
+    "analytics": "Analytique",
     "settings": "Paramètres",
     "locations": "Emplacements",
     "catalog": "Catalogue",
@@ -183,7 +184,8 @@
     "companies": "Entreprises",
     "contacts": "Contacts",
     "partsCatalog": "Catalogue Pièces",
-    "parts-catalog": "Catalogue Pièces"
+    "parts-catalog": "Catalogue Pièces",
+    "compliance": "Export de Conformité"
   },
   "fields": {
     "totalReceivable": "Total à recevoir",
@@ -312,6 +314,7 @@
     "grid": "Vue grille"
   },
   "more": "de plus",
+  "filtersLabel": "Filtres",
   "filters": {
     "all": "Tous",
     "active": "Actif",

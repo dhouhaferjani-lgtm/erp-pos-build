@@ -87,7 +87,7 @@ export function DiscountModal({
   ]);
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={t('discount.title')} size="md">
+    <Modal isOpen={isOpen} onClose={onClose} title={t('discount.title')} size="lg">
       <div className="space-y-4">
         {/* Tabs */}
         <div className="flex rounded-lg bg-gray-100 p-1">

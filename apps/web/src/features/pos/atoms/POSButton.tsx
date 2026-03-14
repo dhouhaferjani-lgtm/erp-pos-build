@@ -1,4 +1,5 @@
-import { forwardRef, ButtonHTMLAttributes, ReactNode } from 'react'
+import { forwardRef } from 'react'
+import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 export interface POSButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

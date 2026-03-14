@@ -72,10 +72,10 @@ export const useCompanyStore = create<CompanyStore>()(
               const stored = localStorage.getItem('autoerp-company-selection')
               if (stored) {
                 currentCompanyId = stored
-                console.log('[CompanyStore] Restored currentCompanyId from localStorage:', currentCompanyId)
+                // Restored from localStorage
               }
-            } catch (error) {
-              console.error('[CompanyStore] Failed to restore from localStorage:', error)
+            } catch {
+              // Failed to restore from localStorage
             }
           }
 
@@ -84,10 +84,10 @@ export const useCompanyStore = create<CompanyStore>()(
             const companyStillExists = companies.find((c) => c.id === currentCompanyId)
             if (!companyStillExists) {
               // Previous company no longer exists, clear selection
-              console.log('[CompanyStore] Previously selected company no longer exists, clearing')
+              // Previously selected company no longer exists
               currentCompanyId = null
             } else {
-              console.log('[CompanyStore] Preserving company selection:', currentCompanyId)
+              // Preserving existing company selection
             }
           }
 
@@ -108,9 +108,9 @@ export const useCompanyStore = create<CompanyStore>()(
           // Manually persist to separate key to avoid Zustand persist middleware conflicts
           try {
             localStorage.setItem('autoerp-company-selection', companyId)
-            console.log('[CompanyStore] Persisted company selection:', companyId)
-          } catch (error) {
-            console.error('[CompanyStore] Failed to persist company selection:', error)
+            // Persisted successfully
+          } catch {
+            // Failed to persist company selection
           }
         }
       },

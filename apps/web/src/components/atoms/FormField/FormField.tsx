@@ -6,12 +6,12 @@ export interface FormFieldProps {
   /**
    * Label text for the form field
    */
-  label?: string
+  label?: string | undefined
 
   /**
    * Whether the field is required (shows asterisk)
    */
-  required?: boolean
+  required?: boolean | undefined
 
   /**
    * Error message to display below the field
@@ -21,7 +21,7 @@ export interface FormFieldProps {
   /**
    * Helper text to display below the field
    */
-  helperText?: string
+  helperText?: string | undefined
 
   /**
    * The input/select/textarea component
@@ -31,12 +31,12 @@ export interface FormFieldProps {
   /**
    * HTML id for the input (links label to input)
    */
-  htmlFor?: string
+  htmlFor?: string | undefined
 
   /**
    * Additional CSS classes for the wrapper
    */
-  className?: string
+  className?: string | undefined
 }
 
 /**

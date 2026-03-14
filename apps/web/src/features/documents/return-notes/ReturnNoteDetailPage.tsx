@@ -163,7 +163,11 @@ export function ReturnNoteDetailPage() {
       )}
 
       {/* Return Note Metadata */}
-      <ReturnNoteMetadata documentId={returnNote.id} />
+      {returnNote.payload && (
+        <ReturnNoteMetadata
+          metadata={returnNote.payload as Parameters<typeof ReturnNoteMetadata>[0]['metadata']}
+        />
+      )}
 
       {/* Document Info */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
@@ -230,7 +234,7 @@ export function ReturnNoteDetailPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {returnNote.lines.map((line) => (
+              {(returnNote.lines ?? []).map((line) => (
                 <tr key={line.id}>
                   <td className="px-6 py-4">
                     <div className="text-sm font-medium text-gray-900">{line.description}</div>

@@ -18,27 +18,27 @@ import { useDiscountPreview } from '../../hooks/useDiscountPreview'
 
 export interface POSPageProps {
   products: Product[]
-  categories?: string[]
+  categories?: string[] | undefined
   onQuickCheckout: (items: CartItem[]) => void
   onAdvancedPayments: (items: CartItem[]) => void
   onProductInfo: (product: Product) => void
-  selectedCustomer?: Customer | null
-  onChangeCustomer?: () => void
-  touchOptimized?: boolean
-  isLoading?: boolean
-  className?: string
-  terminalCode?: string
-  transactionDiscount?: { amount: string; reason?: string }
-  onTransactionDiscountChange?: (discount: { amount: string; reason?: string } | undefined) => void
-  onEditLineDiscount?: (productId: string, discount: { type: 'percentage' | 'fixed'; value: string; reason?: string } | undefined) => void
-  loyaltyMember?: import('../../api/loyaltyApi').LoyaltyMember | null
-  loyaltyEnrollment?: import('../../api/loyaltyApi').LoyaltyEnrollment | null
-  consumptionMode?: ConsumptionMode
-  onConsumptionModeChange?: (mode: ConsumptionMode) => void
-  couponCode?: string | null
-  onCouponApplied?: (code: string, discountAmount: string, promotionName: string) => void
-  onCouponRemoved?: () => void
-  onLoyaltyRewardRedeemed?: (rewardValue: string, rewardName: string, rewardId: string) => void
+  selectedCustomer?: Customer | null | undefined
+  onChangeCustomer?: (() => void) | undefined
+  touchOptimized?: boolean | undefined
+  isLoading?: boolean | undefined
+  className?: string | undefined
+  terminalCode?: string | undefined
+  transactionDiscount?: { amount: string; reason?: string | undefined } | undefined
+  onTransactionDiscountChange?: ((discount: { amount: string; reason?: string | undefined } | undefined) => void) | undefined
+  onEditLineDiscount?: ((productId: string, discount: { type: 'percentage' | 'fixed'; value: string; reason?: string | undefined } | undefined) => void) | undefined
+  loyaltyMember?: import('../../api/loyaltyApi').LoyaltyMember | null | undefined
+  loyaltyEnrollment?: import('../../api/loyaltyApi').LoyaltyEnrollment | null | undefined
+  consumptionMode?: ConsumptionMode | undefined
+  onConsumptionModeChange?: ((mode: ConsumptionMode) => void) | undefined
+  couponCode?: string | null | undefined
+  onCouponApplied?: ((code: string, discountAmount: string, promotionName: string) => void) | undefined
+  onCouponRemoved?: (() => void) | undefined
+  onLoyaltyRewardRedeemed?: ((rewardValue: string, rewardName: string, rewardId: string) => void) | undefined
 }
 
 export function POSPage({
@@ -354,7 +354,7 @@ export function POSPage({
   // Edit line discount
   const handleEditLineDiscount = (
     productId: string,
-    discount: { type: 'percentage' | 'fixed'; value: string; reason?: string } | undefined,
+    discount: { type: 'percentage' | 'fixed'; value: string; reason?: string | undefined } | undefined,
   ) => {
     if (externalEditLineDiscount) {
       externalEditLineDiscount(productId, discount)

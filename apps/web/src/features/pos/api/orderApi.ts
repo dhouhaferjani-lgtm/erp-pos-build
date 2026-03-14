@@ -24,6 +24,13 @@ export interface OrderLineData {
   created_at: string
 }
 
+export interface OrderTableData {
+  id: string
+  table_number: string
+  label: string | null
+  floor_name: string | null
+}
+
 export interface OrderData {
   id: string
   terminal_id: string
@@ -45,9 +52,12 @@ export interface OrderData {
   notes: string | null
   opened_at: string
   sent_at: string | null
+  ready_at: string | null
+  served_at: string | null
   closed_at: string | null
   cancelled_at: string | null
   receipt_id: string | null
+  table?: OrderTableData
   lines: OrderLineData[]
 }
 

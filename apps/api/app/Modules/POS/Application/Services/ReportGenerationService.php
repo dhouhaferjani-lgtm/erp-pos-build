@@ -6,6 +6,7 @@ namespace App\Modules\POS\Application\Services;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Events\ZReportGenerated;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Services\CashDrawerService;
@@ -165,6 +166,15 @@ final class ReportGenerationService
             /** @var ZReport $freshReport */
             $freshReport = $zReport->fresh();
 
+            event(new ZReportGenerated(
+                zReportId: $freshReport->id,
+                companyId: $terminal->company_id,
+                terminalId: $terminal->id,
+                zNumber: $freshReport->z_number,
+                fiscalHash: $freshReport->fiscal_hash,
+                generatedAt: $freshReport->generated_at->toIso8601String(),
+            ));
+
             return $freshReport;
         });
     }
@@ -306,8 +316,9 @@ final class ReportGenerationService
      */
     private function calculateShiftTotals(Terminal $terminal, $startTime, $endTime): array
     {
-        // Get all receipts in period
+        // Get all production receipts in period (exclude training)
         $receipts = Receipt::where('terminal_id', $terminal->id)
+            ->where('is_training', false)
             ->whereBetween('created_at', [$startTime, $endTime])
             ->get();
 

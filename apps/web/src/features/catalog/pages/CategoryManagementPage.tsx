@@ -91,7 +91,7 @@ export function CategoryManagementPage() {
     return categories.flatMap((cat) => [cat, ...flattenCategories(cat.children || [])])
   }
 
-  const allCategories = categoryTree ? flattenCategories(categoryTree.data) : []
+  const allCategories = categoryTree ? flattenCategories(categoryTree) : []
 
   if (isLoading) {
     return (
@@ -126,10 +126,10 @@ export function CategoryManagementPage() {
         </div>
 
         <div className="border border-gray-200 rounded-lg overflow-hidden">
-          {categoryTree && categoryTree.data.length > 0 ? (
+          {categoryTree && categoryTree.length > 0 ? (
             <div className="max-h-[600px] overflow-y-auto">
               <CategoryTree
-                categories={categoryTree.data}
+                categories={categoryTree}
                 selectedId={selectedCategory?.id}
                 onSelect={(cat) => { setSelectedCategory(cat); }}
               />
@@ -161,12 +161,12 @@ export function CategoryManagementPage() {
                 )}
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => { handleOpenEdit(selectedCategory); }}>
+                <Button variant="secondary" size="sm" onClick={() => { handleOpenEdit(selectedCategory); }}>
                   <Edit2 className="h-4 w-4 me-2" />
                   {t('common:actions.edit')}
                 </Button>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={() => { handleOpenDelete(selectedCategory); }}
                   className="text-red-600 hover:text-red-700 hover:border-red-300"
@@ -232,7 +232,7 @@ export function CategoryManagementPage() {
           </div>
 
           <div className="flex justify-end gap-2 mt-6">
-            <Button variant="outline" onClick={() => { setIsCreateModalOpen(false); }}>
+            <Button variant="secondary" onClick={() => { setIsCreateModalOpen(false); }}>
               {t('common:actions.cancel')}
             </Button>
             <Button onClick={handleCreate} disabled={createMutation.isPending || !formData.name}>
@@ -296,7 +296,7 @@ export function CategoryManagementPage() {
           </div>
 
           <div className="flex justify-end gap-2 mt-6">
-            <Button variant="outline" onClick={() => { setIsEditModalOpen(false); }}>
+            <Button variant="secondary" onClick={() => { setIsEditModalOpen(false); }}>
               {t('common:actions.cancel')}
             </Button>
             <Button onClick={handleUpdate} disabled={updateMutation.isPending || !formData.name}>
@@ -325,14 +325,14 @@ export function CategoryManagementPage() {
           )}
 
           <div className="flex justify-end gap-2 mt-6">
-            <Button variant="outline" onClick={() => { setIsDeleteDialogOpen(false); }}>
+            <Button variant="secondary" onClick={() => { setIsDeleteDialogOpen(false); }}>
               {t('common:actions.cancel')}
             </Button>
             <Button
               onClick={handleDelete}
               disabled={
                 deleteMutation.isPending ||
-                (selectedCategory?.products_count !== null && selectedCategory.products_count > 0)
+                (selectedCategory?.products_count != null && selectedCategory.products_count > 0)
               }
               className="bg-red-600 hover:bg-red-700"
             >

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { getEcho, disconnectEcho } from '../lib/echo'
+import { getEcho } from '../lib/echo'
 import type Echo from 'laravel-echo'
 
 export interface WebSocketConnectionState {
   /** Laravel Echo instance (null if not connected) */
-  echo: Echo | null
+  echo: Echo<'reverb'> | null
   /** Whether the WebSocket is currently connected */
   isConnected: boolean
   /** Whether the WebSocket is attempting to connect */
@@ -37,7 +37,7 @@ export function useWebSocketConnection(): WebSocketConnectionState {
   })
 
   useEffect(() => {
-    let echo: Echo | null = null
+    let echo: Echo<'reverb'> | null = null
     let isMounted = true
 
     try {

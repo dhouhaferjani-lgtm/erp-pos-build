@@ -481,6 +481,60 @@
     "expired": "Expired",
     "badge": "{{count}} held"
   },
+  "analytics": {
+    "title": "Analytics",
+    "tabs": {
+      "summary": "Summary",
+      "products": "Products",
+      "cashiers": "Cashiers",
+      "discounts": "Discounts",
+      "customers": "Customers",
+      "fnb": "F&B"
+    },
+    "presets": {
+      "today": "Today",
+      "thisWeek": "This Week",
+      "thisMonth": "This Month",
+      "last30Days": "Last 30 Days"
+    },
+    "totalReceipts": "Total Receipts",
+    "grossSales": "Gross Sales",
+    "netSales": "Net Sales",
+    "taxTotal": "Tax Total",
+    "averageTicket": "Average Ticket",
+    "refunds": "Refunds",
+    "voided": "Voided",
+    "sales": "Sales",
+    "count": "Count",
+    "receiptCount": "Receipts",
+    "salesOverTime": "Sales Over Time",
+    "salesByCategory": "Sales by Category",
+    "topProducts": "Top Products",
+    "product": "Product",
+    "quantity": "Qty",
+    "total": "Total",
+    "cashierPerformance": "Cashier Performance",
+    "cashier": "Cashier",
+    "receipts": "Receipts",
+    "totalSales": "Total Sales",
+    "totalDiscounts": "Total Discounts",
+    "discountedLines": "Discounted Lines",
+    "discountsByReason": "Discounts by Reason",
+    "topDiscountedProducts": "Top Discounted Products",
+    "discountAmount": "Discount Amount",
+    "uniqueCustomers": "Unique Customers",
+    "returningCustomers": "Returning Customers",
+    "returningRate": "Returning Rate",
+    "topCustomers": "Top Customers",
+    "customer": "Customer",
+    "totalSpent": "Total Spent",
+    "avgTableTime": "Avg Table Time",
+    "minutes": "min",
+    "avgItemsPerOrder": "Avg Items/Order",
+    "peakHours": "Peak Hours",
+    "ordersByMode": "Orders by Mode",
+    "noData": "No data for this period"
+  },
   "orders": {
     "title": "Orders",
     "newOrder": "New Order",
@@ -505,6 +559,7 @@
       "sendToKitchen": "Send to Kitchen",
       "closeOrder": "Close Order",
       "cancelOrder": "Cancel Order",
+      "markServed": "Mark Served",
       "addLine": "Add Item",
       "modifyLine": "Modify",
       "removeLine": "Remove"
@@ -530,7 +585,10 @@
       "subtotal": "Subtotal",
       "tax": "Tax",
       "discount": "Discount",
-      "total": "Total"
+      "total": "Total",
+      "table": "Table",
+      "readyAt": "Ready At",
+      "servedAt": "Served At"
     },
     "toasts": {
       "created": "Order created",
@@ -552,6 +610,48 @@
       "allStatuses": "All Statuses",
       "terminal": "Terminal",
       "shift": "Shift"
+    }
+  },
+  "tables": {
+    "title": "Table Management",
+    "floors": "Floors",
+    "addFloor": "Add Floor",
+    "floorNamePlaceholder": "Floor name...",
+    "tablesCount": "tables",
+    "tablesList": "Tables",
+    "addTable": "Add Table",
+    "tableNumber": "Table #",
+    "tableNumberPlaceholder": "e.g. T01",
+    "label": "Label",
+    "labelPlaceholder": "e.g. Window Seat",
+    "floor": "Floor",
+    "noFloor": "No Floor",
+    "seats": "seats",
+    "statusLabel": "Status",
+    "noTables": "No tables configured",
+    "selectTable": "Select Table",
+    "clearSelection": "Clear",
+    "release": "Release Table",
+    "status": {
+      "available": "Available",
+      "occupied": "Occupied",
+      "reserved": "Reserved",
+      "cleaning": "Cleaning"
+    }
+  },
+  "kitchen": {
+    "title": "Kitchen Display",
+    "activeOrders": "active orders",
+    "noOrders": "No orders in kitchen",
+    "waitingForOrders": "Orders will appear here when sent to kitchen",
+    "bump": "BUMP",
+    "lineStatus": {
+      "pending": "Pending",
+      "sent": "Sent",
+      "preparing": "Preparing",
+      "ready": "Ready",
+      "served": "Served",
+      "cancelled": "Cancelled"
     }
   }
 }

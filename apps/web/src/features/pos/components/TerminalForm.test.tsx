@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TerminalForm } from './TerminalForm'
-import type { Terminal, CreateTerminalInput } from '../hooks/useTerminals'
+import type { Terminal } from '../hooks/useTerminals'
 
 // Mock translation hook
 vi.mock('react-i18next', () => ({
@@ -26,12 +26,14 @@ const mockLocations = [
 
 const mockTerminal: Terminal = {
   id: '1',
+  type: 'web',
   code: 'POS01',
   name: 'Main Counter Terminal',
   description: 'Primary checkout terminal',
   location_id: 'loc-1',
   location: mockLocations[0],
   is_active: true,
+  has_history: false,
   activated_at: '2025-01-01T00:00:00Z',
   deactivated_at: null,
   deactivation_reason: null,
@@ -73,8 +75,6 @@ describe('TerminalForm', () => {
 
     it('populates location dropdown with provided locations', () => {
       render(<TerminalForm {...defaultProps} />)
-
-      const locationSelect = screen.getByLabelText(/pos\.terminal\.location/)
 
       // Check that options are present
       expect(screen.getByText('Main Store (MAIN)')).toBeInTheDocument()

@@ -49,21 +49,21 @@ export interface CategoriesListResponse {
  */
 export interface CreateCategoryInput {
   name: string
-  parentId?: number | null
-  description?: string
-  image?: File
-  isActive?: boolean
+  parentId?: number | null | undefined
+  description?: string | undefined
+  image?: File | undefined
+  isActive?: boolean | undefined
 }
 
 /**
  * Input for updating a category
  */
 export interface UpdateCategoryInput {
-  name?: string
-  parentId?: number | null
-  description?: string
-  image?: File
-  isActive?: boolean
+  name?: string | undefined
+  parentId?: number | null | undefined
+  description?: string | undefined
+  image?: File | undefined
+  isActive?: boolean | undefined
 }
 
 /**
@@ -71,7 +71,7 @@ export interface UpdateCategoryInput {
  */
 export interface ReorderCategoryInput {
   id: number
-  parentId?: number | null
+  parentId?: number | null | undefined
   sortOrder: number
 }
 
@@ -80,22 +80,22 @@ export interface ReorderCategoryInput {
  */
 interface CreateCategoryPayload {
   name: string
-  parent_id?: number | null
-  description?: string
-  is_active?: boolean
+  parent_id?: number | null | undefined
+  description?: string | undefined
+  is_active?: boolean | undefined
 }
 
 interface UpdateCategoryPayload {
-  name?: string
-  parent_id?: number | null
-  description?: string
-  is_active?: boolean
+  name?: string | undefined
+  parent_id?: number | null | undefined
+  description?: string | undefined
+  is_active?: boolean | undefined
 }
 
 interface ReorderCategoryPayload {
   categories: Array<{
     id: number
-    parent_id?: number | null
+    parent_id?: number | null | undefined
     sort_order: number
   }>
 }

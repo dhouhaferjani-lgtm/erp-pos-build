@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
+import type { KeyComponentData } from '../types';
 
 export interface KeyComponentTranslation {
   id?: string;
@@ -20,7 +21,7 @@ export interface UpdateKeyComponentInput {
 }
 
 export interface KeyComponentsListResponse {
-  data: App.Modules.Product.Application.DTOs.KeyComponentData[];
+  data: KeyComponentData[];
   meta: {
     current_page: number;
     last_page: number;
@@ -50,16 +51,16 @@ export async function fetchKeyComponents(params?: {
 
 export async function fetchKeyComponent(
   id: string
-): Promise<App.Modules.Product.Application.DTOs.KeyComponentData> {
-  return apiGet<App.Modules.Product.Application.DTOs.KeyComponentData>(
+): Promise<KeyComponentData> {
+  return apiGet<KeyComponentData>(
     `/parapharmacy/key-components/${id}`
   );
 }
 
 export async function createKeyComponent(
   data: CreateKeyComponentInput
-): Promise<App.Modules.Product.Application.DTOs.KeyComponentData> {
-  return apiPost<App.Modules.Product.Application.DTOs.KeyComponentData>(
+): Promise<KeyComponentData> {
+  return apiPost<KeyComponentData>(
     '/parapharmacy/key-components',
     data
   );
@@ -68,8 +69,8 @@ export async function createKeyComponent(
 export async function updateKeyComponent(
   id: string,
   data: UpdateKeyComponentInput
-): Promise<App.Modules.Product.Application.DTOs.KeyComponentData> {
-  return apiPatch<App.Modules.Product.Application.DTOs.KeyComponentData>(
+): Promise<KeyComponentData> {
+  return apiPatch<KeyComponentData>(
     `/parapharmacy/key-components/${id}`,
     data
   );

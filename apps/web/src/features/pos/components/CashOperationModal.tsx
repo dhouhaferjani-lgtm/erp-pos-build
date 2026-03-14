@@ -127,7 +127,9 @@ export function CashOperationModal({
     setAmount(value)
     // Clear amount validation error when user types
     if (validationErrors.amount) {
-      setValidationErrors((prev) => ({ ...prev, amount: undefined }))
+      const { amount: _amount, ...rest } = validationErrors
+      void _amount
+      setValidationErrors(rest)
     }
   }
 
@@ -135,7 +137,9 @@ export function CashOperationModal({
     setReason(e.target.value)
     // Clear reason validation error when user types
     if (validationErrors.reason) {
-      setValidationErrors((prev) => ({ ...prev, reason: undefined }))
+      const { reason: _reason, ...rest } = validationErrors
+      void _reason
+      setValidationErrors(rest)
     }
   }
 
@@ -148,8 +152,6 @@ export function CashOperationModal({
   ) : (
     <TrendingDown className="h-5 w-5 text-red-600" />
   )
-
-  const modalColor = isDeposit ? 'green' : 'red'
 
   const infoText = isDeposit
     ? t('common:pos.depositInfo')

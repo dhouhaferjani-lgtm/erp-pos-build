@@ -95,12 +95,13 @@ export function IngredientListPage() {
                     <EmptyState
                       title={t('parapharmacy:noIngredients')}
                       description={t('parapharmacy:noIngredientsDescription')}
-                      action={{
-                        label: t('parapharmacy:addIngredient'),
-                        onClick: () => navigate('/parapharmacy/ingredients/new'),
-                        icon: Plus,
-                      }}
                     />
+                    <div className="flex justify-center mt-4">
+                      <Button onClick={() => navigate('/parapharmacy/ingredients/new')}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        {t('parapharmacy:addIngredient')}
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -178,10 +179,13 @@ export function IngredientListPage() {
       {data?.meta && (
         <OffsetPagination
           currentPage={page}
-          totalPages={Math.ceil(
-            data.meta.total / data.meta.per_page
-          )}
+          lastPage={Math.ceil(data.meta.total / data.meta.per_page)}
+          total={data.meta.total}
+          perPage={data.meta.per_page}
+          from={data.meta.from ?? null}
+          to={data.meta.to ?? null}
           onPageChange={setPage}
+          onPerPageChange={() => {}}
         />
       )}
 
@@ -192,7 +196,7 @@ export function IngredientListPage() {
         title={t('parapharmacy:confirmDeleteIngredient')}
         message={t('parapharmacy:confirmDeleteIngredientDescription')}
         confirmText={t('common:delete')}
-        confirmVariant="danger"
+        variant="danger"
         isLoading={deleteMutation.isPending}
       />
     </div>

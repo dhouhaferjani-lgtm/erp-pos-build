@@ -8,6 +8,8 @@ use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Application\Services\ReportGenerationService;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
+use App\Modules\POS\Domain\Receipt;
+use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Services\ZReportHashService;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Domain\ZReport;
@@ -32,6 +34,7 @@ final class ReportController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly ReportGenerationService $reportGenerationService,
         private readonly ZReportHashService $zReportHashService,
+        private readonly ReceiptHashService $receiptHashService,
     ) {}
 
     /**
@@ -260,24 +263,102 @@ final class ReportController extends Controller
 
         $isValid = $this->zReportHashService->verifyZReportChain($terminal);
 
+        $chainLength = ZReport::where('terminal_id', $terminal->id)->count();
+        $firstZ = ZReport::where('terminal_id', $terminal->id)->orderBy('z_number')->first();
+        $lastZ = ZReport::where('terminal_id', $terminal->id)->orderByDesc('z_number')->first();
+
+        $brokenReport = null;
         if (! $isValid) {
             $brokenReport = $this->zReportHashService->findChainBreak($terminal);
-
-            return response()->json([
-                'data' => [
-                    'is_valid' => false,
-                    'broken_at_z_number' => $brokenReport?->z_number,
-                    'broken_at_id' => $brokenReport?->id,
-                ],
-            ], 200);
         }
 
         return response()->json([
             'data' => [
-                'is_valid' => true,
-                'broken_at_z_number' => null,
-                'broken_at_id' => null,
+                'is_valid' => $isValid,
+                'chain_length' => $chainLength,
+                'first_z_number' => $firstZ?->z_number,
+                'last_z_number' => $lastZ?->z_number,
+                'broken_at_z_number' => $brokenReport?->z_number,
+                'broken_at_id' => $brokenReport?->id,
+                'verified_at' => now()->toIso8601String(),
             ],
         ]);
+    }
+
+    /**
+     * Verify receipt hash chain integrity for a terminal
+     *
+     * POST /api/v1/pos/reports/receipts/verify-chain
+     */
+    public function verifyReceiptChain(Request $request): JsonResponse
+    {
+        Gate::authorize('pos.view_reports');
+
+        $request->validate([
+            'terminal_id' => ['required', 'string', 'uuid', 'exists:pos_terminals,id'],
+        ]);
+
+        /** @var Terminal $terminal */
+        $terminal = Terminal::findOrFail($request->input('terminal_id'));
+
+        // Verify terminal belongs to current company
+        if ($terminal->company_id !== $this->companyContext->getCompanyId()) {
+            return response()->json([
+                'error' => [
+                    'code' => 'FORBIDDEN',
+                    'message' => 'Terminal does not belong to your company',
+                ],
+            ], 403);
+        }
+
+        $isValid = $this->receiptHashService->verifyTerminalChain($terminal);
+
+        $chainLength = Receipt::where('terminal_id', $terminal->id)
+            ->where('is_voided', false)
+            ->count();
+        $firstReceipt = Receipt::where('terminal_id', $terminal->id)
+            ->where('is_voided', false)
+            ->orderBy('chain_sequence')
+            ->first();
+        $lastReceipt = Receipt::where('terminal_id', $terminal->id)
+            ->where('is_voided', false)
+            ->orderByDesc('chain_sequence')
+            ->first();
+
+        $response = [
+            'is_valid' => $isValid,
+            'chain_length' => $chainLength,
+            'first_receipt' => $firstReceipt?->receipt_number,
+            'last_receipt' => $lastReceipt?->receipt_number,
+            'broken_at_sequence' => null,
+            'verified_at' => now()->toIso8601String(),
+        ];
+
+        if (! $isValid) {
+            $allReceipts = Receipt::where('terminal_id', $terminal->id)
+                ->where('is_voided', false)
+                ->orderBy('chain_sequence')
+                ->get();
+
+            $previousHash = null;
+            foreach ($allReceipts as $receipt) {
+                if ($receipt->previous_hash !== $previousHash) {
+                    $response['broken_at_sequence'] = $receipt->chain_sequence;
+
+                    break;
+                }
+
+                $expectedHash = $this->receiptHashService->calculateHash($receipt, $previousHash);
+                if ($expectedHash !== $receipt->fiscal_hash) {
+                    $response['broken_at_sequence'] = $receipt->chain_sequence;
+
+                    break;
+                }
+
+                $previousHash = $receipt->fiscal_hash;
+            }
+        }
+
+        return response()->json(['data' => $response]);
     }
 }

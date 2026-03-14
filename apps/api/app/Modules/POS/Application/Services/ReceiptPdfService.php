@@ -38,7 +38,7 @@ final class ReceiptPdfService
      * @param  Receipt  $receipt  The receipt to generate PDF for
      * @param  bool  $stream  Whether to return stream or download response
      */
-    public function generate(Receipt $receipt, bool $stream = false): DomPdf
+    public function generate(Receipt $receipt, bool $stream = false, int $copyNumber = 1): DomPdf
     {
         $relations = [
             'company',
@@ -57,7 +57,7 @@ final class ReceiptPdfService
         $receipt->load($relations);
 
         $company = $receipt->company;
-        $data = $this->prepareData($receipt, $company);
+        $data = $this->prepareData($receipt, $company, $copyNumber);
 
         $pdf = Pdf::loadView('pos.receipt', $data);
 
@@ -96,7 +96,7 @@ final class ReceiptPdfService
      *
      * @return array<string, mixed>
      */
-    private function prepareData(Receipt $receipt, Company $company): array
+    private function prepareData(Receipt $receipt, Company $company, int $copyNumber = 1): array
     {
         $locale = $company->locale ?? 'en';
         $currency = $receipt->currency ?? $company->currency;
@@ -129,6 +129,9 @@ final class ReceiptPdfService
             'isReturn' => $isReturn,
             'originalReceiptNumber' => $isReturn ? $receipt->originalReceipt?->receipt_number : null,
             'returnReason' => $isReturn ? $receipt->return_reason?->label() : null,
+            'copyNumber' => $copyNumber,
+            'isDuplicate' => $copyNumber >= 2,
+            'duplicateLabel' => $copyNumber >= 2 ? "DUPLICATA #{$copyNumber}" : null,
             'formatMoney' => fn (string|float|null $amount) => $this->formatMoney($amount, $currency, $locale),
             'formatDate' => fn (Carbon|string|null $date) => $this->formatDate($date, $locale),
             'formatDateTime' => fn (Carbon|string|null $date) => $this->formatDateTime($date, $locale),

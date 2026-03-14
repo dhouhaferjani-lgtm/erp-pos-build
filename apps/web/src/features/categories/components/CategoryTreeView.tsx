@@ -1,21 +1,21 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronRight, ChevronDown, FolderOpen, Folder, MoreVertical, Edit, Trash2, Plus } from 'lucide-react'
+import { ChevronRight, ChevronDown, FolderOpen, Folder, Edit, Trash2, Plus } from 'lucide-react'
 import type { CategoryApiResponse } from '../api'
 
 interface CategoryTreeViewProps {
   categories: CategoryApiResponse[]
-  onEdit?: (category: CategoryApiResponse) => void
-  onDelete?: (category: CategoryApiResponse) => void
-  onAddSubcategory?: (parentCategory: CategoryApiResponse) => void
+  onEdit?: ((category: CategoryApiResponse) => void) | undefined
+  onDelete?: ((category: CategoryApiResponse) => void) | undefined
+  onAddSubcategory?: ((parentCategory: CategoryApiResponse) => void) | undefined
 }
 
 interface CategoryNodeProps {
   category: CategoryApiResponse
   level: number
-  onEdit?: (category: CategoryApiResponse) => void
-  onDelete?: (category: CategoryApiResponse) => void
-  onAddSubcategory?: (parentCategory: CategoryApiResponse) => void
+  onEdit?: ((category: CategoryApiResponse) => void) | undefined
+  onDelete?: ((category: CategoryApiResponse) => void) | undefined
+  onAddSubcategory?: ((parentCategory: CategoryApiResponse) => void) | undefined
 }
 
 function CategoryNode({ category, level, onEdit, onDelete, onAddSubcategory }: CategoryNodeProps) {

@@ -5,7 +5,7 @@
  */
 
 import { useState, useMemo } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -19,11 +19,9 @@ import { DeliveryNoteSearchSelect } from '@/components/ui/DeliveryNoteSearchSele
 import { ReturnReasonSelect } from './components/ReturnReasonSelect'
 import { ReturnConditionSelect } from './components/ReturnConditionSelect'
 import { RefundMethodSelect } from './components/RefundMethodSelect'
-import type { ReturnReason } from './components/ReturnReasonSelect'
-import type { ReturnCondition } from './components/ReturnConditionSelect'
-import type { RefundMethod } from './components/RefundMethodSelect'
-import type { Invoice } from '@/types/invoice'
-import type { DeliveryNote } from '@/types/delivery-note'
+import type { Invoice } from '@/components/ui/InvoiceSearchSelect'
+import type { DeliveryNote } from '@/components/ui/DeliveryNoteSearchSelect'
+import type { ReturnReason } from '@/types/returnNote'
 
 // Source type for return note
 type SourceType = 'delivery_note' | 'invoice'
@@ -33,9 +31,9 @@ type LineMode = 'all' | 'partial'
 const returnNoteSchema = z.object({
   source_invoice_id: z.string().optional(),
   source_delivery_note_id: z.string().optional(),
-  return_reason: z.enum(['defective', 'wrongItem', 'customerRegret', 'damagedInTransit', 'warranty', 'exchange', 'other']),
+  return_reason: z.enum(['defective', 'wrong_item', 'customer_regret', 'damaged_in_transit', 'warranty', 'exchange', 'other']),
   return_condition: z.enum(['unopened', 'used', 'damaged', 'unusable']).optional(),
-  refund_method: z.enum(['originalPayment', 'storeCredit', 'exchange', 'none']).optional(),
+  refund_method: z.enum(['original_payment', 'store_credit', 'exchange', 'none']).optional(),
   notes: z.string().optional(),
   auto_create_credit_note: z.boolean().default(false),
 }).refine(
@@ -46,7 +44,15 @@ const returnNoteSchema = z.object({
   }
 )
 
-type ReturnNoteFormData = z.infer<typeof returnNoteSchema>
+type ReturnNoteFormData = {
+  return_reason: 'defective' | 'wrong_item' | 'customer_regret' | 'damaged_in_transit' | 'warranty' | 'exchange' | 'other'
+  source_invoice_id?: string | undefined
+  source_delivery_note_id?: string | undefined
+  return_condition?: 'unopened' | 'used' | 'damaged' | 'unusable' | undefined
+  refund_method?: 'original_payment' | 'store_credit' | 'exchange' | 'none' | undefined
+  notes?: string | undefined
+  auto_create_credit_note: boolean
+}
 
 interface DocumentLine {
   id: string
@@ -63,7 +69,6 @@ export function CreateReturnNotePage() {
   const { t } = useTranslation(['sales', 'common'])
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [searchParams] = useSearchParams()
 
   // Form state
   const [sourceType, setSourceType] = useState<SourceType>('delivery_note')
@@ -80,18 +85,26 @@ export function CreateReturnNotePage() {
     setValue,
     formState: { errors },
   } = useForm<ReturnNoteFormData>({
-    resolver: zodResolver(returnNoteSchema),
+    resolver: zodResolver(returnNoteSchema) as never,
     defaultValues: {
       return_reason: 'defective',
       auto_create_credit_note: false,
     },
   })
 
+  type DocumentDetailResponse = {
+    document_number: string
+    document_date: string
+    partner?: { id: string; name: string } | null
+    total: string
+    lines: DocumentLine[]
+  }
+
   // Fetch selected invoice details
   const { data: invoiceDetails } = useQuery({
     queryKey: ['invoice', selectedInvoice?.id],
     queryFn: async () => {
-      const response = await api.get<{ data: Invoice & { lines: DocumentLine[] } }>(`/invoices/${selectedInvoice?.id}`)
+      const response = await api.get<{ data: DocumentDetailResponse }>(`/invoices/${selectedInvoice?.id}`)
       return response.data.data
     },
     enabled: !!selectedInvoice?.id && sourceType === 'invoice',
@@ -101,7 +114,7 @@ export function CreateReturnNotePage() {
   const { data: deliveryNoteDetails } = useQuery({
     queryKey: ['delivery-note', selectedDeliveryNote?.id],
     queryFn: async () => {
-      const response = await api.get<{ data: DeliveryNote & { lines: DocumentLine[] } }>(`/delivery-notes/${selectedDeliveryNote?.id}`)
+      const response = await api.get<{ data: DocumentDetailResponse }>(`/delivery-notes/${selectedDeliveryNote?.id}`)
       return response.data.data
     },
     enabled: !!selectedDeliveryNote?.id && sourceType === 'delivery_note',
@@ -531,7 +544,7 @@ export function CreateReturnNotePage() {
                 control={control}
                 render={({ field }) => (
                   <ReturnReasonSelect
-                    value={field.value}
+                    value={field.value as ReturnReason | '' | undefined}
                     onChange={field.onChange}
                     required
                     disabled={isSubmitting}

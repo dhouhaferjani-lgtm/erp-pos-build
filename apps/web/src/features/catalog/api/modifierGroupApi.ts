@@ -9,10 +9,10 @@ import type {
 
 // Modifier Groups
 export async function getModifierGroups(params?: {
-  search?: string
-  is_active?: boolean
-  per_page?: number
-  page?: number
+  search?: string | undefined
+  is_active?: boolean | undefined
+  per_page?: number | undefined
+  page?: number | undefined
 }): Promise<PaginatedResponse<ModifierGroupData>> {
   const queryParams: Record<string, string> = {}
   if (params?.search) queryParams['search'] = params.search

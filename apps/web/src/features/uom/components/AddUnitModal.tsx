@@ -35,9 +35,8 @@ const unitFormSchema = z.object({
     .int()
     .min(0, 'Decimal places must be 0 or greater')
     .max(10, 'Decimal places must be 10 or less')
-    .optional()
     .default(2),
-  roundingMethod: z.enum(['half_up', 'floor', 'ceil']).optional().default('half_up'),
+  roundingMethod: z.enum(['half_up', 'floor', 'ceil']).default('half_up'),
 })
 
 export type UnitFormData = z.infer<typeof unitFormSchema>
@@ -56,12 +55,12 @@ interface AddUnitModalProps {
   /**
    * Unit to edit (if editing existing unit)
    */
-  unit?: Unit
+  unit?: Unit | undefined
 
   /**
    * Pre-select category (for "Add Unit" from category view)
    */
-  categoryId?: string
+  categoryId?: string | undefined
 }
 
 /**
@@ -99,7 +98,7 @@ export function AddUnitModal({ isOpen, onClose, unit, categoryId }: AddUnitModal
     reset,
     formState: { errors, isSubmitting },
   } = useForm<UnitFormData>({
-    resolver: zodResolver(unitFormSchema),
+    resolver: zodResolver(unitFormSchema) as never,
     defaultValues: {
       categoryId: categoryId || unit?.categoryId || '',
       code: unit?.code || '',

@@ -16,7 +16,6 @@ export function GeneralLedgerPage() {
 
   const handleExport = () => {
     // Export functionality to be implemented
-    console.log('Export ledger')
   }
 
   if (isLoading) {

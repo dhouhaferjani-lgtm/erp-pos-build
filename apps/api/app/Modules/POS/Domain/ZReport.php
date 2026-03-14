@@ -54,6 +54,8 @@ class ZReport extends Model
         'fiscal_hash',
         'previous_z_hash',
         'report_data',
+        'receipt_snapshots',
+        'grand_totals',
         'generated_by',
         'generated_at',
     ];
@@ -71,6 +73,8 @@ class ZReport extends Model
         return [
             'z_number' => 'integer',
             'report_data' => 'array',
+            'receipt_snapshots' => 'array',
+            'grand_totals' => 'array',
             'generated_at' => 'datetime',
         ];
     }

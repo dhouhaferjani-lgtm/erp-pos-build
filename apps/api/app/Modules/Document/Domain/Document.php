@@ -10,6 +10,7 @@ use App\Modules\Document\Domain\Enums\CreditNoteReason;
 use App\Modules\Document\Domain\Enums\DeliveryStatus;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FacturXProfile;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\PaymentStatus;
@@ -46,6 +47,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property numeric-string|null $total
  * @property numeric-string|null $balance_due
  * @property string|null $fiscal_hash
+ * @property string|null $facturx_xml
+ * @property FacturXProfile|null $facturx_profile
+ * @property \Illuminate\Support\Carbon|null $facturx_generated_at
  * @property string|null $previous_hash
  * @property int|null $chain_sequence
  * @property string|null $notes
@@ -119,6 +123,9 @@ class Document extends Model
         'total',
         'balance_due',
         'fiscal_hash',
+        'facturx_xml',
+        'facturx_profile',
+        'facturx_generated_at',
         'previous_hash',
         'chain_sequence',
         'notes',
@@ -152,6 +159,8 @@ class Document extends Model
             'due_date' => 'date',
             'valid_until' => 'date',
             'external_document_date' => 'date',
+            'facturx_profile' => FacturXProfile::class,
+            'facturx_generated_at' => 'datetime',
             'confirmed_at' => 'datetime',
             'cancelled_at' => 'datetime',
             'subtotal' => 'decimal:3',

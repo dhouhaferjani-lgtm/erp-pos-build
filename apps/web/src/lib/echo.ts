@@ -4,7 +4,7 @@ import Pusher from 'pusher-js'
 declare global {
   interface Window {
     Pusher: typeof Pusher
-    Echo: Echo | null
+    Echo: Echo<'reverb'> | null
   }
 }
 
@@ -17,16 +17,16 @@ window.Pusher = Pusher
  * Connects to Laravel Reverb server using Pusher protocol.
  * Authentication handled automatically via Sanctum cookies.
  */
-export function createEchoInstance(): Echo {
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8002'
-  const wsHost = import.meta.env.VITE_WS_HOST || 'localhost'
-  const wsPort = parseInt(import.meta.env.VITE_WS_PORT || '8080', 10)
-  const wssPort = parseInt(import.meta.env.VITE_WSS_PORT || '6001', 10)
-  const forceTLS = import.meta.env.VITE_WS_FORCE_TLS === 'true'
+export function createEchoInstance(): Echo<'reverb'> {
+  const apiUrl = import.meta.env['VITE_API_URL'] || 'http://localhost:8002'
+  const wsHost = import.meta.env['VITE_WS_HOST'] || 'localhost'
+  const wsPort = parseInt(import.meta.env['VITE_WS_PORT'] || '8080', 10)
+  const wssPort = parseInt(import.meta.env['VITE_WSS_PORT'] || '6001', 10)
+  const forceTLS = import.meta.env['VITE_WS_FORCE_TLS'] === 'true'
 
   return new Echo({
     broadcaster: 'reverb',
-    key: import.meta.env.VITE_REVERB_APP_KEY || 'local_key',
+    key: import.meta.env['VITE_REVERB_APP_KEY'] || 'local_key',
     wsHost,
     wsPort,
     wssPort,
@@ -41,7 +41,6 @@ export function createEchoInstance(): Echo {
       },
     },
     // Add credentials to enable cookie-based auth
-    // @ts-expect-error - Pusher types don't include withCredentials but it's valid
     withCredentials: true,
   })
 }
@@ -50,7 +49,7 @@ export function createEchoInstance(): Echo {
  * Get or create the global Echo instance.
  * Lazily initializes on first access.
  */
-export function getEcho(): Echo {
+export function getEcho(): Echo<'reverb'> {
   if (!window.Echo) {
     window.Echo = createEchoInstance()
   }

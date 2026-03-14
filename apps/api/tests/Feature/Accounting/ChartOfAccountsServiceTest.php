@@ -101,14 +101,15 @@ class ChartOfAccountsServiceTest extends TestCase
         $this->assertNotEmpty($result['missing_purposes']);
     }
 
-    public function test_throws_for_unsupported_country(): void
+    public function test_seeds_generic_chart_for_country_without_dedicated_seeder(): void
     {
-        $company = $this->createCompany('XX'); // Unsupported country
-
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('No chart of accounts seeder available for country: XX');
+        $company = $this->createCompany('DE'); // No dedicated seeder — uses generic
 
         $this->service->seedForCompany($company);
+
+        // Generic chart should have all required system accounts
+        $result = $this->service->validateCompanyAccounts($company->id);
+        $this->assertTrue($result['valid'], 'Generic chart should satisfy all required system purposes');
     }
 
     public function test_get_account_by_purpose_returns_correct_account(): void
@@ -223,11 +224,12 @@ class ChartOfAccountsServiceTest extends TestCase
         $this->assertNull($account->system_purpose);
     }
 
-    public function test_get_supported_countries_returns_tunisia(): void
+    public function test_get_supported_countries_returns_tunisia_and_france(): void
     {
         $countries = $this->service->getSupportedCountries();
 
         $this->assertContains('TN', $countries);
+        $this->assertContains('FR', $countries);
     }
 
     public function test_get_available_purposes_returns_all_purposes(): void

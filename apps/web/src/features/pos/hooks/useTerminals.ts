@@ -127,7 +127,7 @@ export function useDeactivateTerminal() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data?: DeactivateTerminalInput }) =>
+    mutationFn: ({ id, data }: { id: string; data?: DeactivateTerminalInput | undefined }) =>
       deactivateTerminal(id, data),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: terminalKeys.lists() })

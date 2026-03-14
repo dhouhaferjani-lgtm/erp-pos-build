@@ -151,20 +151,20 @@ export interface PaginatedBatchesResponse {
 export interface CreateBatchInput {
   product_id: string
   batch_number: string
-  manufacturing_date?: string | null
+  manufacturing_date?: string | null | undefined
   expiry_date: string
-  notes?: string | null
+  notes?: string | null | undefined
 }
 
 /**
  * Update batch payload
  */
 export interface UpdateBatchInput {
-  batch_number?: string
-  manufacturing_date?: string | null
-  expiry_date?: string
-  notes?: string | null
-  is_active?: boolean
+  batch_number?: string | undefined
+  manufacturing_date?: string | null | undefined
+  expiry_date?: string | undefined
+  notes?: string | null | undefined
+  is_active?: boolean | undefined
 }
 
 /**

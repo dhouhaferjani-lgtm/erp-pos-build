@@ -46,7 +46,7 @@ describe('ReturnConditionSelect', () => {
     render(<ReturnConditionSelect value="used" onChange={vi.fn()} />)
 
     const select = screen.getByRole('combobox')
-    expect(select.value).toBe('used')
+    expect((select as HTMLSelectElement).value).toBe('used')
   })
 
   it('can be disabled', () => {

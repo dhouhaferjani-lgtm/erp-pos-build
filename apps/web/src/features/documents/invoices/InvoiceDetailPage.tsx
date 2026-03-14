@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -23,6 +23,7 @@ import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentM
 import { useCompany } from '../../../hooks/useCompany'
 import type { Document } from '../../../types/document'
 import type { PaymentStatus } from '../components/PaymentStatusBadge'
+import type { InvoiceForCreditNote } from '../../../types/creditNote'
 
 type ConfirmAction = 'confirm' | 'post' | null
 type ActiveTab = 'related' | 'attachments' | 'creditNotes' | 'payments'
@@ -30,6 +31,7 @@ type ActiveTab = 'related' | 'attachments' | 'creditNotes' | 'payments'
 export function InvoiceDetailPage() {
   const { t } = useTranslation(['sales', 'common'])
   const { id = '' } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { currentCompany } = useCompany()
 
@@ -449,7 +451,7 @@ export function InvoiceDetailPage() {
           {activeTab === 'related' && <RelatedDocumentsTab documentId={invoice.id} />}
           {activeTab === 'attachments' && <DocumentAttachments documentId={invoice.id} />}
           {activeTab === 'creditNotes' && isPosted && (
-            <CreditNoteList creditNotes={creditNotes} invoiceId={invoice.id} />
+            <CreditNoteList creditNotes={creditNotes} onSelect={(cn) => navigate(`/sales/credit-notes/${cn.id}`)} />
           )}
           {activeTab === 'payments' && isConfirmedOrPosted && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -511,7 +513,7 @@ export function InvoiceDetailPage() {
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto">
             <CreateCreditNoteForm
-              invoiceId={invoice.id}
+              invoice={invoice as unknown as InvoiceForCreditNote}
               onSuccess={handleCreditNoteCreated}
               onCancel={() => setShowCreditNoteForm(false)}
             />

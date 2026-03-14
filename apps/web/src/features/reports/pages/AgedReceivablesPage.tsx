@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { fetchAgedReceivables } from '../api/reportsApi'
-import { formatCurrency } from '@/lib/formatters'
+import { formatCurrency } from '@/lib/format'
 
 /**
  * Aged Receivables Report Page

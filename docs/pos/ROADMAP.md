@@ -1,6 +1,6 @@
 # POS Go-Live Roadmap
 
-> **Last updated:** 2026-03-12
+> **Last updated:** 2026-03-13
 > **Goal:** Ship a production-ready POS for both Retail and F&B verticals.
 
 ---
@@ -379,22 +379,41 @@
 - [ ] WhatsApp receipt sharing
 - [ ] QR code on receipt (link to digital copy)
 
-#### 5.3 Reporting & Analytics ⬜
+#### 5.3 Reporting & Analytics ✅ COMPLETE
 
-- [ ] Daily sales summary dashboard
-- [ ] Sales by category, product, time period
-- [ ] Cashier performance comparison
-- [ ] Discount analysis (by source, frequency, amount)
-- [ ] Customer analytics (returning customers, average ticket by customer)
-- [ ] F&B metrics: average table time, items per order, peak hours
+- [x] Daily sales summary dashboard (web back-office at `/pos/analytics` with 6 tabbed sections)
+- [x] Sales by category, product, time period (ECharts pie, table with sparklines, line/area chart)
+- [x] Cashier performance comparison (horizontal bar chart + detail table)
+- [x] Discount analysis (by source, frequency, amount) (KPI cards + bar chart + top products table)
+- [x] Customer analytics (returning customers, average ticket by customer) (KPI cards + top customers table)
+- [x] F&B metrics: average table time, items per order, peak hours (conditional tab for F&B verticals)
+- [x] Backend: 8 GET analytics endpoints with `PosAnalyticsService`, DTOs, validation (90-day max range)
+- [x] Backend: 16 feature tests (75 assertions) — auth, permissions, validation, aggregation, company scoping
+- [x] Tauri POS: "Today's Sales" panel in Reports menu (summary cards, receipt list, line items, reprint)
 
-#### 5.4 Compliance Finalization ⬜
+#### 5.4 Compliance Finalization ✅ COMPLETE
 
-- [ ] NF525 audit trail export (XML)
-- [ ] Z-Report chain verification tool
-- [ ] Factur-X integration for B2B invoices from POS (France)
-- [ ] SDI integration for Italy
-- [ ] Receipt duplicate/reprint audit log
+- [x] NF525 audit trail export (JET XML) — `Nf525JetExportService` + `Nf525XmlBuilder` with all required sections (tickets, voids, returns, reprints, Z-reports, grand totals, cash drawer, technical events, terminal events, training mode, hash chains)
+- [x] JET export CLI command (`nf525:export-jet`) and API endpoint (`POST /compliance/nf525/export`)
+- [x] Z-Report chain verification tool — CLI (`pos:verify-chain`) and API (`GET /compliance/chain-verification/{terminalId}`)
+- [x] Factur-X Basic WL integration for B2B invoices (France) — `FacturXService` with eligibility detection and XML/A-3 PDF embedding
+- [x] Receipt duplicate/reprint audit log — `ReceiptPrint` model, `ReceiptPrintAuditService`, full audit trail in JET export `<Duplicatas>` section
+- [x] NF525 Training Mode — `is_training_mode` on terminals, `is_training` on receipts, excluded from hash chains/grand totals/JET export, `TRN-` receipt prefix, `toggleTrainingMode` endpoint with open-shift guard
+- [x] Terminal lifecycle audit events — `TerminalActivatedAudit`, `TerminalDeactivated`, `TerminalSoftwareUpdated` domain events, all wired to `DomainEventSubscriber` and exported in JET XML `<EvenementsTerminal>` section
+- [x] `Nf525EventType` enum with all NF525 event codes (TICKET, ANNULATION, RETOUR, DUPLICATA, RAPPORT_Z, OUVERTURE/FERMETURE_CAISSE, DEPOT/RETRAIT_ESPECES, ACTIVATION/DESACTIVATION_TERMINAL, MODE_FORMATION, MAJ_LOGICIEL)
+- [x] Receipt PDF DUPLICATA stamp — conditional "DUPLICATA #N" rendering with disclaimer notice (EN/FR)
+- [x] Grand total events (DAILY/MONTHLY/YEARLY) with hash chains, training receipt exclusion
+- [x] Immutability triggers on `pos_receipts` (DB-level protection)
+- [ ] SDI integration for Italy — **Deferred** (separate compliance requirement)
+
+#### 5.5 Withholding Tax System (Tunisia TEJ) ✅ COMPLETE
+
+- [x] Withholding certificate lifecycle: draft → issued → submitted (hash-chained, sequential numbering per year)
+- [x] Certificate PDF generation — `CertificatePDFService` with QR codes and bilingual support
+- [x] TEJ XML export — `TEJExportService` with single/batch certificate export
+- [x] Sales withholding tracking — `SalesWithholdingTrackingController` + `SalesWithholdingTrackingService` (track customer-withheld invoices, mark certificates as received)
+- [x] Frontend: `SalesWithholdingTrackingPage` wired to real API with filters + mark-received modal
+- [x] Tests: TEJ export (8 tests), withholding lifecycle (7 tests), sales tracking tests
 
 ---
 

@@ -6,17 +6,42 @@
 import { useTranslation } from 'react-i18next'
 import { Receipt } from 'lucide-react'
 import { DocumentSearchSelect } from './DocumentSearchSelect'
-import type { Invoice } from '@mecanospex/shared/types/generated'
+
+export interface Invoice {
+  id: string
+  number: string
+  document_date: string
+  total: string
+  balance: string
+  currency: string
+  status: string
+  partner_id: string
+  partner?: {
+    id: string
+    name: string
+  } | null
+  lines?: Array<{
+    id: string
+    product_id: string | null
+    product_code: string | null
+    product_name: string
+    description: string | null
+    quantity: number
+    unit_price: string
+    tax_rate: string
+    total: string
+  }>
+}
 
 interface InvoiceSearchSelectProps {
-  value?: Invoice | null
+  value?: Invoice | null | undefined
   onChange: (invoice: Invoice | null) => void
-  partnerId?: string
-  required?: boolean
-  disabled?: boolean
-  className?: string
-  label?: string
-  error?: string
+  partnerId?: string | undefined
+  required?: boolean | undefined
+  disabled?: boolean | undefined
+  className?: string | undefined
+  label?: string | undefined
+  error?: string | undefined
 }
 
 export function InvoiceSearchSelect(props: InvoiceSearchSelectProps) {

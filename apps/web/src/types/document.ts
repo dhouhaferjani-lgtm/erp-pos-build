@@ -1,24 +1,25 @@
 /**
- * Document types - using generated types from backend DTOs
- * Generated via: php artisan typescript:transform
+ * Document types - local definitions mirroring backend DTOs
  */
 
-import type { App } from '@mecanospex/shared/types/generated'
-
-// Re-export the generated DocumentData as Document for compatibility
-export type Document = App.Modules.Document.Application.DTOs.DocumentData & {
-  // Add computed/extended properties that may be added by frontend
-  issue_date?: string  // Alias for document_date (some endpoints use this)
+export interface VehicleContextData {
+  vehicle_id: string | null
+  display: string | null
+  mileage: number | null
+  license_plate: string | null
+  vehicle_snapshot?: {
+    make: string | null;
+    model: string | null;
+    year: number | null;
+    license_plate: string | null;
+  } | null;
 }
 
-// Re-export VehicleContextData
-export type VehicleContextData = App.Modules.Document.Application.DTOs.VehicleContextData
-
-// DocumentLine type with delivery/receipt tracking fields
-export interface DocumentLine {
+export interface DocumentLineData {
   id: string
   document_id: string
   product_id: string | null
+  product_name: string
   line_number: number
   description: string
   quantity: string  // Formatted number string from backend
@@ -32,6 +33,67 @@ export interface DocumentLine {
   quantity_delivered?: string
   quantity_received?: string
 }
+
+export interface Document {
+  id: string
+  type: string
+  status: string
+  document_number: string
+  document_date: string
+  due_date: string | null
+  valid_until: string | null
+  currency: string
+  subtotal: string
+  tax_amount: string
+  total: string
+  notes: string | null
+  internal_notes: string | null
+
+  // Partner info (denormalized on the resource)
+  partner_id: string | null
+  partner_name: string | null
+  partner_email: string | null
+
+  // Cross-document tracking
+  source_document_id: string | null
+  source_document_number: string | null
+  source_document_type: string | null
+  converted_to_order_id: string | null
+
+  // Fulfillment flags
+  fully_delivered: boolean | null
+  fully_invoiced: boolean | null
+  goods_received: boolean | null
+
+  // Payment tracking
+  payment_status: string | null
+  amount_paid: string | null
+  balance_due: string | null
+  outstanding_amount: string | null
+
+  // External reference
+  external_document_number: string | null
+  external_document_date: string | null
+
+  // Vehicle context (Otospex) — backend sends snake_case, some pages use camelCase
+  vehicle_context: VehicleContextData | null
+  vehicleContext?: VehicleContextData | null
+
+  // Flexible payload for type-specific data
+  payload?: Record<string, unknown> | null
+
+  // Computed/extended properties
+  issue_date?: string  // Alias for document_date (some endpoints use this)
+
+  // Lines (may be eager-loaded)
+  lines?: DocumentLineData[]
+
+  created_at: string
+  updated_at: string
+}
+
+// DocumentLine type with delivery/receipt tracking fields (alias for compatibility)
+export type { DocumentLineData as DocumentLine }
 
 // PaymentRecord from allocations
 export interface PaymentRecord {

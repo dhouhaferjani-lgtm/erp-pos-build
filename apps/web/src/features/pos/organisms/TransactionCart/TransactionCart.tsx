@@ -17,36 +17,36 @@ import type { DiscountBreakdownData } from '../../api/discountApi'
 export interface Customer {
   id: string
   name: string
-  phone?: string
+  phone?: string | undefined
 }
 
 export interface TransactionCartProps {
   items: CartItem[]
   onUpdateQuantity: (productId: string, newQuantity: number) => void
   onRemoveItem: (productId: string) => void
-  onEditLineDiscount?: (productId: string, discount: { type: 'percentage' | 'fixed'; value: string; reason?: string } | undefined) => void
+  onEditLineDiscount?: ((productId: string, discount: { type: 'percentage' | 'fixed'; value: string; reason?: string | undefined } | undefined) => void) | undefined
   onQuickCheckout: () => void
   onAdvancedPayments: () => void
-  onOpenCalculator?: () => void
-  selectedCustomer?: Customer | null
-  onChangeCustomer?: () => void
-  onClearCart?: () => void
-  touchOptimized?: boolean
-  className?: string
-  terminalCode?: string
+  onOpenCalculator?: (() => void) | undefined
+  selectedCustomer?: Customer | null | undefined
+  onChangeCustomer?: (() => void) | undefined
+  onClearCart?: (() => void) | undefined
+  touchOptimized?: boolean | undefined
+  className?: string | undefined
+  terminalCode?: string | undefined
   transactionDiscount?: {
     amount: string
-    reason?: string
-  }
-  onUpdateTransactionDiscount?: (discount?: { amount: string; reason?: string }) => void
-  loyaltyMember?: LoyaltyMember | null
-  loyaltyEnrollment?: LoyaltyEnrollment | null
-  discountBreakdown?: DiscountBreakdownData | null
-  discountSavings?: string
-  couponCode?: string | null
-  onCouponApplied?: (code: string, discountAmount: string, promotionName: string) => void
-  onCouponRemoved?: () => void
-  onLoyaltyRewardRedeemed?: (rewardValue: string, rewardName: string, rewardId: string) => void
+    reason?: string | undefined
+  } | undefined
+  onUpdateTransactionDiscount?: ((discount?: { amount: string; reason?: string | undefined } | undefined) => void) | undefined
+  loyaltyMember?: LoyaltyMember | null | undefined
+  loyaltyEnrollment?: LoyaltyEnrollment | null | undefined
+  discountBreakdown?: DiscountBreakdownData | null | undefined
+  discountSavings?: string | undefined
+  couponCode?: string | null | undefined
+  onCouponApplied?: ((code: string, discountAmount: string, promotionName: string) => void) | undefined
+  onCouponRemoved?: (() => void) | undefined
+  onLoyaltyRewardRedeemed?: ((rewardValue: string, rewardName: string, rewardId: string) => void) | undefined
 }
 
 export function TransactionCart({

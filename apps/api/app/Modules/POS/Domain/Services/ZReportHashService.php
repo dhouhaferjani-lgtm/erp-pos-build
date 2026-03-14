@@ -53,7 +53,8 @@ final class ZReportHashService
     private function serializeForHashing(ZReport $zReport): string
     {
         // Convert report_data to deterministic JSON
-        $reportDataJson = json_encode($zReport->report_data, JSON_UNESCAPED_UNICODE);
+        // Must match JavaScript's JSON.stringify() output — unescaped unicode and slashes
+        $reportDataJson = json_encode($zReport->report_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return sprintf(
             '%d|%s|%s|%s',

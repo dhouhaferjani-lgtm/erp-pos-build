@@ -7,7 +7,10 @@ namespace App\Modules\Accounting\Application\Services;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
+use Database\Seeders\FranceChartOfAccountsSeeder;
+use Database\Seeders\GenericChartOfAccountsSeeder;
 use Database\Seeders\TunisiaChartOfAccountsSeeder;
+use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -24,23 +27,14 @@ class ChartOfAccountsService
     /**
      * Seed chart of accounts for a newly created company.
      * Automatically selects the appropriate seeder based on country.
-     *
-     * @throws RuntimeException When no seeder exists for the country
+     * Falls back to generic international chart for countries without a dedicated seeder.
      */
     public function seedForCompany(Company $company): void
     {
-        $seederClass = $this->getSeederForCountry($company->country_code);
+        $seeder = $this->getSeederForCountry($company->country_code);
 
-        if ($seederClass === null) {
-            throw new RuntimeException(
-                "No chart of accounts seeder available for country: {$company->country_code}. ".
-                'Please create a seeder for this country first.'
-            );
-        }
-
-        DB::transaction(function () use ($company, $seederClass): void {
-            /** @var TunisiaChartOfAccountsSeeder $seeder */
-            $seeder = new $seederClass;
+        DB::transaction(function () use ($company, $seeder): void {
+            /** @var TunisiaChartOfAccountsSeeder|FranceChartOfAccountsSeeder|GenericChartOfAccountsSeeder $seeder */
             $seeder->run($company->id, $company->tenant_id);
         });
     }
@@ -138,30 +132,32 @@ class ChartOfAccountsService
     }
 
     /**
-     * Get the seeder class for a given country.
+     * Get the seeder instance for a given country.
      *
-     * @return class-string|null
+     * Returns country-specific seeders for TN/FR, generic for all others.
+     *
+     * @return TunisiaChartOfAccountsSeeder|FranceChartOfAccountsSeeder|GenericChartOfAccountsSeeder
      */
-    private function getSeederForCountry(string $countryCode): ?string
+    private function getSeederForCountry(string $countryCode): Seeder
     {
-        $seeders = [
-            'TN' => TunisiaChartOfAccountsSeeder::class,
-            // Future seeders:
-            // 'FR' => FranceChartOfAccountsSeeder::class,
-            // 'IT' => ItalyChartOfAccountsSeeder::class,
-        ];
-
-        return $seeders[$countryCode] ?? null;
+        return match (strtoupper($countryCode)) {
+            'TN' => new TunisiaChartOfAccountsSeeder,
+            'FR' => new FranceChartOfAccountsSeeder,
+            default => new GenericChartOfAccountsSeeder,
+        };
     }
 
     /**
-     * Get list of supported countries for COA seeding.
+     * Get list of countries with dedicated chart of accounts seeders.
+     *
+     * All countries are supported via the generic fallback, but these
+     * have country-specific accounting plans.
      *
      * @return list<string>
      */
     public function getSupportedCountries(): array
     {
-        return ['TN'];
+        return ['TN', 'FR'];
     }
 
     /**

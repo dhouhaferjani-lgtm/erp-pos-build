@@ -6,7 +6,7 @@ import { fetchPaymentHistory, type PaymentHistory } from '../api/paymentHistory'
 import { formatCurrency } from '../../../lib/format'
 import { format } from 'date-fns'
 
-interface PaymentHistorySectionProps {
+export interface PaymentHistorySectionProps {
   documentId: string
   currency: string
   className?: string

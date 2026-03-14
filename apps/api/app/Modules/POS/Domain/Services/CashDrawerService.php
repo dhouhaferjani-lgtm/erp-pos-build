@@ -6,6 +6,7 @@ namespace App\Modules\POS\Domain\Services;
 
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\CashDrawerOperation;
+use App\Modules\POS\Domain\Events\CashDrawerOperationRecorded;
 use App\Modules\POS\Domain\Shift;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 
@@ -98,7 +99,7 @@ final class CashDrawerService
         User $user,
         string $reason
     ): CashDrawerOperation {
-        return CashDrawerOperation::create([
+        $operation = CashDrawerOperation::create([
             'shift_id' => $shift->id,
             'operation_type' => 'DEPOSIT',
             'amount' => $amount,
@@ -106,6 +107,10 @@ final class CashDrawerService
             'reason' => $reason,
             'receipt_id' => null,
         ]);
+
+        $this->dispatchOperationEvent($operation, $shift);
+
+        return $operation;
     }
 
     /**
@@ -125,7 +130,7 @@ final class CashDrawerService
         User $user,
         string $reason
     ): CashDrawerOperation {
-        return CashDrawerOperation::create([
+        $operation = CashDrawerOperation::create([
             'shift_id' => $shift->id,
             'operation_type' => 'PAYOUT',
             'amount' => $amount,
@@ -133,6 +138,10 @@ final class CashDrawerService
             'reason' => $reason,
             'receipt_id' => null,
         ]);
+
+        $this->dispatchOperationEvent($operation, $shift);
+
+        return $operation;
     }
 
     /**
@@ -177,7 +186,7 @@ final class CashDrawerService
         User $user,
         string $receiptId
     ): CashDrawerOperation {
-        return CashDrawerOperation::create([
+        $operation = CashDrawerOperation::create([
             'shift_id' => $shift->id,
             'operation_type' => 'REFUND',
             'amount' => $amount,
@@ -185,6 +194,10 @@ final class CashDrawerService
             'reason' => 'Cash refund',
             'receipt_id' => $receiptId,
         ]);
+
+        $this->dispatchOperationEvent($operation, $shift);
+
+        return $operation;
     }
 
     /**
@@ -274,5 +287,30 @@ final class CashDrawerService
             ->sum('amount');
 
         return number_format((float) $total, $this->scale(), '.', '');
+    }
+
+    /**
+     * Dispatch CashDrawerOperationRecorded event for audit trail.
+     *
+     * Only dispatches for DEPOSIT, PAYOUT, and REFUND operations.
+     * OPENING, CLOSING, and SALE are covered by their own domain events.
+     */
+    private function dispatchOperationEvent(CashDrawerOperation $operation, Shift $shift): void
+    {
+        $shift->loadMissing('terminal');
+
+        /** @var \App\Modules\POS\Domain\Terminal $terminal */
+        $terminal = $shift->terminal;
+
+        event(new CashDrawerOperationRecorded(
+            operationId: $operation->id,
+            companyId: $terminal->company_id,
+            shiftId: $shift->id,
+            terminalId: $terminal->id,
+            operationType: $operation->operation_type,
+            amount: (string) $operation->amount,
+            userId: $operation->user_id,
+            recordedAt: $operation->created_at->toIso8601String(),
+        ));
     }
 }

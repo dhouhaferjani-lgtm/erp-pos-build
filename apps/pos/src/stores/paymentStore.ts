@@ -17,6 +17,14 @@ interface PaymentState {
   error: string | null;
 }
 
+export interface AdvancedPaymentLine {
+  payment_method_id: string;
+  amount: number;
+  repository_id: string;
+  card_last_four?: string;
+  transaction_reference?: string;
+}
+
 interface PaymentActions {
   fetchPaymentConfig: () => Promise<void>;
   processCashCheckout: (
@@ -29,6 +37,12 @@ interface PaymentActions {
     terminalId: string,
     cartItems: CartItem[],
     cardData?: { lastFour?: string; reference?: string },
+    transactionDiscount?: { amount: string; reason?: string },
+  ) => Promise<void>;
+  processAdvancedCheckout: (
+    terminalId: string,
+    cartItems: CartItem[],
+    payments: AdvancedPaymentLine[],
     transactionDiscount?: { amount: string; reason?: string },
   ) => Promise<void>;
   reset: () => void;
@@ -47,6 +61,65 @@ const initialState: PaymentState = {
   changeDue: 0,
   error: null,
 };
+
+function buildReceiptData(
+  terminalId: string,
+  cartItems: CartItem[],
+  transactionDiscount?: { amount: string; reason?: string },
+) {
+  return {
+    terminal_id: terminalId,
+    lines: cartItems.map((item) => ({
+      ...(item.product.sellableType === 'composite_item'
+        ? { composite_item_id: item.product.id }
+        : { product_id: item.product.id }),
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      ...(item.product.selectedModifiers?.length
+        ? {
+            modifiers: item.product.selectedModifiers.map((m) => ({
+              modifier_id: m.modifier_id,
+              modifier_group_id: m.modifier_group_id,
+              price_adjustment: m.price_adjustment,
+            })),
+          }
+        : {}),
+      ...(item.discount_type
+        ? {
+            discount_type: item.discount_type,
+            discount_percent: item.discount_percent,
+            discount_amount: item.discount_amount,
+            discount_reason: item.discount_reason,
+          }
+        : {}),
+    })),
+    ...(transactionDiscount
+      ? {
+          transaction_discount_amount: transactionDiscount.amount,
+          transaction_discount_reason: transactionDiscount.reason,
+        }
+      : {}),
+  };
+}
+
+async function getOrCreateReceipt(
+  get: () => PaymentState,
+  set: (partial: Partial<PaymentState>) => void,
+  terminalId: string,
+  cartItems: CartItem[],
+  transactionDiscount?: { amount: string; reason?: string },
+): Promise<CreateReceiptResponse> {
+  const { pendingReceiptId } = get();
+  if (pendingReceiptId && get().lastReceipt) {
+    return get().lastReceipt!;
+  }
+
+  const receiptData = buildReceiptData(terminalId, cartItems, transactionDiscount);
+  console.log('[POS] Creating receipt:', JSON.stringify(receiptData, null, 2));
+  const receipt = await createReceipt(receiptData);
+  set({ lastReceipt: receipt, pendingReceiptId: receipt.id });
+  return receipt;
+}
 
 export const usePaymentStore = create<PaymentStore>()((set, get) => ({
   ...initialState,
@@ -69,7 +142,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     tenderedAmount: number,
     transactionDiscount?: { amount: string; reason?: string },
   ) => {
-    const { paymentMethods, paymentRepositories, pendingReceiptId } = get();
+    const { paymentMethods, paymentRepositories } = get();
 
     // Find cash payment method (physical, no maturity = cash)
     const cashMethod = paymentMethods.find(
@@ -94,54 +167,8 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     set({ isProcessing: true, error: null });
 
     try {
-      let receipt: CreateReceiptResponse;
+      const receipt = await getOrCreateReceipt(get, set, terminalId, cartItems, transactionDiscount);
 
-      // Reuse pending receipt if step 1 succeeded but step 2 failed previously
-      if (pendingReceiptId && get().lastReceipt) {
-        receipt = get().lastReceipt!;
-      } else {
-        // Step 1: Create receipt
-        const receiptData = {
-          terminal_id: terminalId,
-          lines: cartItems.map((item) => ({
-            ...(item.product.sellableType === 'composite_item'
-              ? { composite_item_id: item.product.id }
-              : { product_id: item.product.id }),
-            quantity: item.quantity,
-            unit_price: item.unit_price,
-            ...(item.product.selectedModifiers?.length
-              ? {
-                  modifiers: item.product.selectedModifiers.map((m) => ({
-                    modifier_id: m.modifier_id,
-                    modifier_group_id: m.modifier_group_id,
-                    price_adjustment: m.price_adjustment,
-                  })),
-                }
-              : {}),
-            ...(item.discount_type
-              ? {
-                  discount_type: item.discount_type,
-                  discount_percent: item.discount_percent,
-                  discount_amount: item.discount_amount,
-                  discount_reason: item.discount_reason,
-                }
-              : {}),
-          })),
-          ...(transactionDiscount
-            ? {
-                transaction_discount_amount: transactionDiscount.amount,
-                transaction_discount_reason: transactionDiscount.reason,
-              }
-            : {}),
-        };
-
-        console.log('[POS] Creating receipt:', JSON.stringify(receiptData, null, 2));
-        receipt = await createReceipt(receiptData);
-        // Cache the receipt so we can retry payment without creating a duplicate
-        set({ lastReceipt: receipt, pendingReceiptId: receipt.id });
-      }
-
-      // Step 2: Process payment
       const totalAmount = parseFloat(receipt.total);
       const paymentResponse = await processReceiptPayments(receipt.id, {
         payments: [
@@ -177,9 +204,8 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     cardData?: { lastFour?: string; reference?: string },
     transactionDiscount?: { amount: string; reason?: string },
   ) => {
-    const { paymentMethods, paymentRepositories, pendingReceiptId } = get();
+    const { paymentMethods, paymentRepositories } = get();
 
-    // Find card payment method: non-physical, requires third party, or code === 'card'
     const cardMethod = paymentMethods.find(
       (m) =>
         (m.code === 'card' ||
@@ -192,7 +218,6 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       throw new Error(msg);
     }
 
-    // Find a virtual or bank repository for card payments
     const cardRepo = paymentRepositories.find(
       (r) => (r.type === 'virtual' || r.type === 'bank_account') && r.is_active,
     );
@@ -205,49 +230,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     set({ isProcessing: true, error: null });
 
     try {
-      let receipt: CreateReceiptResponse;
-
-      if (pendingReceiptId && get().lastReceipt) {
-        receipt = get().lastReceipt!;
-      } else {
-        const receiptData = {
-          terminal_id: terminalId,
-          lines: cartItems.map((item) => ({
-            ...(item.product.sellableType === 'composite_item'
-              ? { composite_item_id: item.product.id }
-              : { product_id: item.product.id }),
-            quantity: item.quantity,
-            unit_price: item.unit_price,
-            ...(item.product.selectedModifiers?.length
-              ? {
-                  modifiers: item.product.selectedModifiers.map((m) => ({
-                    modifier_id: m.modifier_id,
-                    modifier_group_id: m.modifier_group_id,
-                    price_adjustment: m.price_adjustment,
-                  })),
-                }
-              : {}),
-            ...(item.discount_type
-              ? {
-                  discount_type: item.discount_type,
-                  discount_percent: item.discount_percent,
-                  discount_amount: item.discount_amount,
-                  discount_reason: item.discount_reason,
-                }
-              : {}),
-          })),
-          ...(transactionDiscount
-            ? {
-                transaction_discount_amount: transactionDiscount.amount,
-                transaction_discount_reason: transactionDiscount.reason,
-              }
-            : {}),
-        };
-
-        console.log('[POS] Creating receipt:', JSON.stringify(receiptData, null, 2));
-        receipt = await createReceipt(receiptData);
-        set({ lastReceipt: receipt, pendingReceiptId: receipt.id });
-      }
+      const receipt = await getOrCreateReceipt(get, set, terminalId, cartItems, transactionDiscount);
 
       const totalAmount = parseFloat(receipt.total);
       const paymentResponse = await processReceiptPayments(receipt.id, {
@@ -267,6 +250,45 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         lastPaymentResponse: paymentResponse,
         pendingReceiptId: null,
         changeDue: 0,
+        isProcessing: false,
+      });
+    } catch (error) {
+      set({
+        isProcessing: false,
+        error: error instanceof Error ? error.message : i18n.t('errors.checkoutFailed', { ns: 'pos' }),
+      });
+      throw error;
+    }
+  },
+
+  processAdvancedCheckout: async (
+    terminalId: string,
+    cartItems: CartItem[],
+    payments: AdvancedPaymentLine[],
+    transactionDiscount?: { amount: string; reason?: string },
+  ) => {
+    set({ isProcessing: true, error: null });
+
+    try {
+      const receipt = await getOrCreateReceipt(get, set, terminalId, cartItems, transactionDiscount);
+
+      const paymentResponse = await processReceiptPayments(receipt.id, {
+        payments: payments.map((p) => ({
+          payment_method_id: p.payment_method_id,
+          amount: p.amount,
+          repository_id: p.repository_id,
+          ...(p.card_last_four ? { card_last_four: p.card_last_four } : {}),
+          ...(p.transaction_reference ? { transaction_reference: p.transaction_reference } : {}),
+        })),
+      });
+
+      const changeDue = parseFloat(paymentResponse.change_due);
+
+      set({
+        lastReceipt: receipt,
+        lastPaymentResponse: paymentResponse,
+        pendingReceiptId: null,
+        changeDue,
         isProcessing: false,
       });
     } catch (error) {

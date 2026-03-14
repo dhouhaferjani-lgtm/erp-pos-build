@@ -97,6 +97,7 @@
     "noVehicles": "No vehicles",
     "noVehiclesDescription": "No vehicles have been linked to this customer yet."
   },
+  "filtersLabel": "Filters",
   "filters": {
     "all": "All",
     "active": "Active",
@@ -227,6 +228,7 @@
     "shiftHistory": "Shift History",
     "zReports": "Z-Reports",
     "receipts": "Receipts",
+    "analytics": "Analytics",
     "settings": "Settings",
     "locations": "Locations",
     "catalog": "Catalog",
@@ -241,7 +243,8 @@
     "companies": "Companies",
     "contacts": "Contacts",
     "partsCatalog": "Parts Catalog",
-    "parts-catalog": "Parts Catalog"
+    "parts-catalog": "Parts Catalog",
+    "compliance": "Compliance Export"
   },
   "locations": {
     "title": "Location Management",

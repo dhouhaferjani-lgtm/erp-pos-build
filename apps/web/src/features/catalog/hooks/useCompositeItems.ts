@@ -19,11 +19,11 @@ export const compositeItemKeys = {
 }
 
 export function useCompositeItems(params?: {
-  search?: string
-  vertical_type?: string
-  is_active?: boolean
-  per_page?: number
-  page?: number
+  search?: string | undefined
+  vertical_type?: string | undefined
+  is_active?: boolean | undefined
+  per_page?: number | undefined
+  page?: number | undefined
 }) {
   return useQuery({
     queryKey: compositeItemKeys.list(params as Record<string, unknown>),

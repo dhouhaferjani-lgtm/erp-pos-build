@@ -1,15 +1,15 @@
-import { InputHTMLAttributes, ChangeEvent } from 'react'
+import type { InputHTMLAttributes, ChangeEvent } from 'react'
 import { cn } from '@/lib/utils'
 import { useCurrency } from '@/hooks/useCurrency'
 
 export interface MoneyInputProps
   extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'type'> {
-  label?: string
+  label?: string | undefined
   value: string
   onChange: (value: string) => void
-  currency?: string
-  touchOptimized?: boolean
-  error?: string
+  currency?: string | undefined
+  touchOptimized?: boolean | undefined
+  error?: string | undefined
 }
 
 export function MoneyInput({

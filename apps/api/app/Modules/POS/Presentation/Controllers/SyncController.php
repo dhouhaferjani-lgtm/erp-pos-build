@@ -69,6 +69,11 @@ final class SyncController extends Controller
             $results,
         );
 
+        // NF525: Offline print logs should be synced via a dedicated endpoint or
+        // as a batch payload field (e.g., 'print_logs' alongside 'receipts').
+        // Each entry must include receipt_id, terminal_id, user_id, print_method,
+        // print_type, copy_number, and printed_at from the offline timestamp.
+
         return response()->json([
             'data' => [
                 'results' => $resultArrays,

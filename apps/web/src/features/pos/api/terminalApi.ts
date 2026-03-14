@@ -13,7 +13,7 @@ export interface Terminal {
   name: string
   description: string | null
   location_id: string
-  location?: Location
+  location?: Location | undefined
   is_active: boolean
   activated_at: string | null
   deactivated_at: string | null
@@ -26,20 +26,20 @@ export interface Terminal {
 }
 
 export interface CreateTerminalInput {
-  code?: string
+  code?: string | undefined
   name: string
   location_id: string
-  description?: string
+  description?: string | undefined
 }
 
 export interface UpdateTerminalInput {
-  name?: string
-  location_id?: string
-  description?: string
+  name?: string | undefined
+  location_id?: string | undefined
+  description?: string | undefined
 }
 
 export interface DeactivateTerminalInput {
-  reason?: string
+  reason?: string | undefined
 }
 
 /**

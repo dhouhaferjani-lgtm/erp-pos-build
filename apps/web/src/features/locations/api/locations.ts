@@ -1,4 +1,4 @@
-import { apiGet } from '@/lib/api'
+import { api, apiGet } from '@/lib/api'
 import type { Location } from '../types'
 
 /**

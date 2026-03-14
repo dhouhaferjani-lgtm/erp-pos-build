@@ -3,9 +3,9 @@ import { useTranslation } from 'react-i18next'
 import type { Terminal, CreateTerminalInput, UpdateTerminalInput } from '../hooks/useTerminals'
 
 interface TerminalFormProps {
-  terminal?: Terminal
+  terminal?: Terminal | undefined
   locations: Array<{ id: string; name: string; code: string }>
-  isSubmitting?: boolean
+  isSubmitting?: boolean | undefined
   onSubmit: (data: CreateTerminalInput | UpdateTerminalInput) => void
   onCancel: () => void
 }
@@ -69,7 +69,7 @@ export function TerminalForm({
             placeholder="POS01"
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
           />
-          {errors.code && (
+          {'code' in errors && errors.code && (
             <p className="mt-1 text-sm text-red-600">{errors.code.message}</p>
           )}
         </div>

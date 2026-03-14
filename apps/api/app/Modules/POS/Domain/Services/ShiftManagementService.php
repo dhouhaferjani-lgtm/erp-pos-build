@@ -6,6 +6,8 @@ namespace App\Modules\POS\Domain\Services;
 
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
+use App\Modules\POS\Domain\Events\ShiftClosed;
+use App\Modules\POS\Domain\Events\ShiftOpened;
 use App\Modules\POS\Domain\Exceptions\ShiftAlreadyOpenException;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Shift;
@@ -83,6 +85,15 @@ final class ShiftManagementService
             /** @var Shift $freshShift */
             $freshShift = $shift->fresh();
 
+            event(new ShiftOpened(
+                shiftId: $freshShift->id,
+                companyId: $terminal->company_id,
+                terminalId: $terminal->id,
+                cashierId: $cashier->id,
+                openingBalance: $openingCash,
+                openedAt: $freshShift->opened_at->toIso8601String(),
+            ));
+
             return $freshShift;
         });
     }
@@ -137,6 +148,23 @@ final class ShiftManagementService
 
             /** @var Shift $freshShift */
             $freshShift = $shift->fresh();
+
+            /** @var \App\Modules\POS\Domain\Terminal $shiftTerminal */
+            $shiftTerminal = $freshShift->terminal;
+
+            /** @var \Illuminate\Support\Carbon $closedAtTimestamp */
+            $closedAtTimestamp = $freshShift->closed_at;
+
+            event(new ShiftClosed(
+                shiftId: $freshShift->id,
+                companyId: $shiftTerminal->company_id,
+                terminalId: $freshShift->terminal_id,
+                cashierId: $freshShift->cashier_id,
+                expectedCash: (string) $freshShift->expected_cash,
+                actualCash: (string) $freshShift->actual_cash,
+                variance: (string) $freshShift->variance,
+                closedAt: $closedAtTimestamp->toIso8601String(),
+            ));
 
             return $freshShift;
         });

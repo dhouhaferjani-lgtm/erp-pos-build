@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
+use App\Modules\POS\Presentation\Controllers\AnalyticsController;
 use App\Modules\POS\Presentation\Controllers\CashDrawerController;
 use App\Modules\POS\Presentation\Controllers\DiscountController;
 use App\Modules\POS\Presentation\Controllers\PosAuthController;
@@ -11,6 +12,7 @@ use App\Modules\POS\Presentation\Controllers\ReportController;
 use App\Modules\POS\Presentation\Controllers\ShiftController;
 use App\Modules\POS\Presentation\Controllers\SyncController;
 use App\Modules\POS\Presentation\Controllers\TerminalController;
+use App\Modules\POS\Presentation\Controllers\ZReportSyncController;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -38,6 +40,8 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::patch('/pos/terminals/{id}/activate', [TerminalController::class, 'activate']);
     Route::patch('/pos/terminals/{id}/deactivate', [TerminalController::class, 'deactivate']);
     Route::patch('/pos/terminals/{id}/archive', [TerminalController::class, 'archive']);
+    Route::post('/pos/terminals/{id}/toggle-training', [TerminalController::class, 'toggleTrainingMode']);
+    Route::get('/pos/terminals/{id}/z-chain-state', [TerminalController::class, 'zChainState']);
 
     // Shift Management
     Route::post('/pos/shifts/open', [ShiftController::class, 'open']);
@@ -52,13 +56,15 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/pos/cash-drawer/{shiftId}/operations', [CashDrawerController::class, 'operations']);
     Route::get('/pos/cash-drawer/{shiftId}/balance', [CashDrawerController::class, 'balance']);
 
-    // Reports
+    // Reports (sync route before parameterized routes)
+    Route::post('/pos/reports/z/sync', [ZReportSyncController::class, 'sync']);
     Route::post('/pos/reports/x', [ReportController::class, 'generateXReport']);
     Route::post('/pos/reports/z', [ReportController::class, 'generateZReport']);
     Route::get('/pos/reports/z/{zNumber}', [ReportController::class, 'showZReport']);
     Route::get('/pos/reports/z/{zNumber}/pdf', [ReportController::class, 'downloadPdf']);
     Route::get('/pos/reports/z', [ReportController::class, 'listZReports']);
     Route::post('/pos/reports/z/verify-chain', [ReportController::class, 'verifyZReportChain']);
+    Route::post('/pos/reports/receipts/verify-chain', [ReportController::class, 'verifyReceiptChain']);
 
     // Sync endpoints (offline POS terminal synchronization)
     Route::post('/pos/receipts/sync', [SyncController::class, 'syncReceipts']);
@@ -82,4 +88,14 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // Discount Permissions & Preview
     Route::get('/pos/discount-permissions', [DiscountController::class, 'getPermissions']);
     Route::post('/pos/cart/preview-discounts', [DiscountController::class, 'previewDiscounts']);
+
+    // Analytics
+    Route::get('/pos/analytics/summary', [AnalyticsController::class, 'summary']);
+    Route::get('/pos/analytics/sales-by-category', [AnalyticsController::class, 'salesByCategory']);
+    Route::get('/pos/analytics/sales-by-product', [AnalyticsController::class, 'salesByProduct']);
+    Route::get('/pos/analytics/sales-by-period', [AnalyticsController::class, 'salesByPeriod']);
+    Route::get('/pos/analytics/cashiers', [AnalyticsController::class, 'cashiers']);
+    Route::get('/pos/analytics/discounts', [AnalyticsController::class, 'discounts']);
+    Route::get('/pos/analytics/customers', [AnalyticsController::class, 'customers']);
+    Route::get('/pos/analytics/fnb', [AnalyticsController::class, 'fnb']);
 });

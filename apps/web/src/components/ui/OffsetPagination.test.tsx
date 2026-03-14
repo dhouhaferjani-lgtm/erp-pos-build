@@ -8,7 +8,7 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, params?: Record<string, unknown>) => {
       const translations: Record<string, string> = {
-        showing: `Showing ${params?.from} to ${params?.to} of ${params?.total}`,
+        showing: `Showing ${params?.['from']} to ${params?.['to']} of ${params?.['total']}`,
         item: 'item',
         items: 'items',
         rowsPerPage: 'Rows per page',

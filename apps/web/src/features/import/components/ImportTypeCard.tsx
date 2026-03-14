@@ -4,6 +4,7 @@ import {
   Users,
   Package,
   Calculator,
+  Image,
   CheckCircle,
   AlertTriangle,
   Lock,
@@ -18,6 +19,7 @@ const typeIcons: Record<ImportType, React.ComponentType<{ className?: string }>>
   partners: Users,
   products: Package,
   opening_balances: Calculator,
+  product_images: Image,
 }
 
 interface ImportTypeCardProps {

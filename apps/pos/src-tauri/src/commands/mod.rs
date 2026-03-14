@@ -1,3 +1,4 @@
+pub mod display;
 pub mod printing;
 
 #[tauri::command]

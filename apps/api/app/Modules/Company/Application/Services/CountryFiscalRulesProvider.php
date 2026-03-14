@@ -4,15 +4,16 @@ declare(strict_types=1);
 
 namespace App\Modules\Company\Application\Services;
 
+use App\Models\Country;
 use App\Modules\Company\Application\DTOs\FiscalYearRules;
 
 /**
  * Central registry of fiscal year rules for each country.
  *
- * To add a new country:
- * 1. Add method: getRulesForXX()
- * 2. Return FiscalYearRules with country configuration
- * 3. Update getAvailableCountries()
+ * Countries with dedicated rules get country-specific configuration (TN, FR).
+ * All other countries use sensible generic defaults (calendar year, monthly periods).
+ *
+ * To add country-specific rules: add a private getRulesForXX() method.
  */
 final class CountryFiscalRulesProvider
 {
@@ -21,8 +22,7 @@ final class CountryFiscalRulesProvider
         $methodName = 'getRulesFor'.strtoupper($countryCode);
 
         if (! method_exists($this, $methodName)) {
-            // Fallback to France rules for undefined countries
-            return $this->getRulesForFR();
+            return $this->getGenericRules($countryCode);
         }
 
         return $this->$methodName();
@@ -65,17 +65,47 @@ final class CountryFiscalRulesProvider
     }
 
     /**
-     * Get list of supported country codes.
+     * Generic default rules for countries without dedicated configuration.
      *
-     * @return array<int, string>
+     * Calendar year, monthly periods, standard auto-lock — works for most countries.
+     */
+    private function getGenericRules(string $countryCode): FiscalYearRules
+    {
+        return new FiscalYearRules(
+            countryCode: strtoupper($countryCode),
+            defaultStartMonth: 1,
+            allowCustomStartMonth: true,
+            pastYearsToCreate: 1,
+            futureYearsToCreate: 1,
+            autoClosePastYears: false,
+            periodAutoLockMonths: 1,
+            periodStructure: 'monthly',
+            notes: 'Generic defaults: calendar year, monthly periods. Customize in Company Settings.'
+        );
+    }
+
+    /**
+     * Get list of all active country codes from the database.
+     *
+     * All countries are supported — those without dedicated rules use generic defaults.
+     *
+     * @return list<string>
      */
     public function getAvailableCountries(): array
     {
-        return ['TN', 'FR'];
+        /** @var list<string> */
+        return Country::where('is_active', true)
+            ->pluck('code')
+            ->all();
     }
 
+    /**
+     * All countries are supported — dedicated rules for some, generic defaults for others.
+     */
     public function isCountrySupported(string $countryCode): bool
     {
-        return in_array(strtoupper($countryCode), $this->getAvailableCountries(), true);
+        return Country::where('code', strtoupper($countryCode))
+            ->where('is_active', true)
+            ->exists();
     }
 }

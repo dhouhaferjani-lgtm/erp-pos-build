@@ -16,7 +16,7 @@ import { VariantEditor } from '../components/VariantEditor'
 import { ModifierGroupAssigner } from '../components/ModifierGroupAssigner'
 import { useVerticalLabels, companyVerticalToCatalog } from '../hooks/useVerticalLabels'
 import { useCompanyConfig } from '@/contexts'
-import type { ProductionType } from '../types/compositeItem'
+import type { ProductionType, PricingMode } from '../types/compositeItem'
 
 type TabValue = 'details' | 'recipeTab' | 'sizesTab' | 'modifiersTab'
 
@@ -56,6 +56,7 @@ export function CompositeItemFormPage() {
     vertical_type: companyVerticalType,
     base_price: '',
     production_type: 'made_to_order' as ProductionType,
+    pricing_mode: 'standard' as PricingMode,
     tax_rate: '',
     is_active: true,
     is_available: true,
@@ -78,6 +79,7 @@ export function CompositeItemFormPage() {
         vertical_type: item.vertical_type,
         base_price: item.base_price,
         production_type: item.production_type,
+        pricing_mode: item.pricing_mode ?? 'standard',
         tax_rate: item.tax_rate ?? '',
         is_active: item.is_active,
         is_available: item.is_available,
@@ -96,6 +98,7 @@ export function CompositeItemFormPage() {
       vertical_type: form.vertical_type,
       base_price: Number(form.base_price),
       production_type: form.production_type,
+      pricing_mode: form.pricing_mode,
       tax_rate: form.tax_rate ? Number(form.tax_rate) : null,
       is_active: form.is_active,
       is_available: form.is_available,
@@ -210,6 +213,18 @@ export function CompositeItemFormPage() {
                       <option value="stock">{t('catalog:productionTypes.stock')}</option>
                     </Select>
                   </FormField>
+                  {(companyVerticalType === 'fnb' || companyVerticalType === 'bakery' || form.vertical_type === 'fnb' || form.vertical_type === 'bakery') && (
+                    <FormField label={t('catalog:pricingMode')} htmlFor="ci-pricing-mode">
+                      <Select
+                        id="ci-pricing-mode"
+                        value={form.pricing_mode}
+                        onChange={(e) => setForm({ ...form, pricing_mode: e.target.value as PricingMode })}
+                      >
+                        <option value="standard">{t('catalog:pricingModes.standard')}</option>
+                        <option value="fixed_bundle">{t('catalog:pricingModes.fixed_bundle')}</option>
+                      </Select>
+                    </FormField>
+                  )}
                   <FormField label={t('catalog:taxRate')} htmlFor="ci-tax">
                     <Input
                       id="ci-tax"

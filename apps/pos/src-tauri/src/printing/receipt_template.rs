@@ -75,9 +75,60 @@ pub struct PaymentLine {
     pub amount: String,
 }
 
+/// Print settings passed from the frontend.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrintSettings {
+    pub columns: u8,
+    pub cut_mode: String,
+    pub encoding: String,
+    pub footer_text: String,
+    pub copies: u32,
+}
+
+/// Cash drawer kick settings passed from the frontend.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DrawerKickSettings {
+    pub pin: u8,
+    pub pulse_on: u8,
+    pub pulse_off: u8,
+    pub beep: bool,
+}
+
+impl PrintSettings {
+    fn code_page(&self) -> u8 {
+        match self.encoding.as_str() {
+            "cp858" => 19,
+            "cp1252" => 16,
+            _ => 0, // cp437
+        }
+    }
+
+    fn cut_mode_enum(&self) -> Option<CutMode> {
+        match self.cut_mode.as_str() {
+            "full" => Some(CutMode::Full),
+            "partial" => Some(CutMode::Partial),
+            _ => None, // "none"
+        }
+    }
+}
+
 /// Format receipt data into ESC/POS commands ready to send to a printer.
 pub fn format_receipt(data: &ReceiptData) -> Vec<u8> {
-    let mut b = EscPosBuilder::new();
+    format_receipt_with_settings(data, None)
+}
+
+/// Format receipt with optional print settings.
+pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintSettings>) -> Vec<u8> {
+    let columns = settings.map_or(42, |s| s.columns);
+    let mut b = EscPosBuilder::with_columns(columns);
+
+    // Set code page if specified (after initialize, which is called in with_columns)
+    if let Some(s) = settings {
+        let page = s.code_page();
+        if page != 0 {
+            b.set_code_page(page);
+        }
+    }
 
     // ── Company Header ──
     b.align(Alignment::Center);
@@ -254,19 +305,33 @@ pub fn format_receipt(data: &ReceiptData) -> Vec<u8> {
     // ── Footer ──
     b.align(Alignment::Center);
     b.empty_line();
-    b.text_line("Thank you for your purchase!");
+    let footer = settings
+        .and_then(|s| if s.footer_text.is_empty() { None } else { Some(s.footer_text.as_str()) })
+        .unwrap_or("Thank you for your purchase!");
+    b.text_line(footer);
     b.empty_line();
 
     // Feed and cut
     b.feed_lines(4);
-    b.cut(CutMode::Partial);
+    let cut = settings.and_then(|s| s.cut_mode_enum());
+    if let Some(mode) = cut {
+        b.cut(mode);
+    } else if settings.map_or(true, |s| s.cut_mode != "none") {
+        b.cut(CutMode::Partial);
+    }
 
     b.build()
 }
 
 /// Format a test page for printer alignment verification.
 pub fn format_test_page() -> Vec<u8> {
-    let mut b = EscPosBuilder::new();
+    format_test_page_with_columns(None)
+}
+
+/// Format a test page with optional column width.
+pub fn format_test_page_with_columns(columns: Option<u8>) -> Vec<u8> {
+    let cols = columns.unwrap_or(42);
+    let mut b = EscPosBuilder::with_columns(cols);
 
     b.align(Alignment::Center);
     b.font_size(FontSize::DoubleWidthHeight);
@@ -343,7 +408,7 @@ pub fn format_test_page() -> Vec<u8> {
     // Column ruler
     b.align(Alignment::Left);
     b.select_font(true);
-    let ruler: String = (0..42).map(|i| char::from(b'0' + (i % 10))).collect();
+    let ruler: String = (0..cols as u32).map(|i| char::from(b'0' + ((i % 10) as u8))).collect();
     b.text_line(&ruler);
     b.select_font(false);
 
@@ -355,7 +420,22 @@ pub fn format_test_page() -> Vec<u8> {
 
 /// Generate a cash drawer kick command only.
 pub fn format_drawer_kick() -> Vec<u8> {
+    format_drawer_kick_with_settings(None)
+}
+
+/// Generate a cash drawer kick command with optional settings.
+pub fn format_drawer_kick_with_settings(settings: Option<&DrawerKickSettings>) -> Vec<u8> {
     let mut b = EscPosBuilder::new();
-    b.cash_drawer_kick(0); // Pin 2
+    match settings {
+        Some(s) => {
+            b.cash_drawer_kick_custom(s.pin, s.pulse_on, s.pulse_off);
+            if s.beep {
+                b.beep();
+            }
+        }
+        None => {
+            b.cash_drawer_kick(0);
+        }
+    }
     b.build()
 }

@@ -11,10 +11,14 @@ import { useConnectivityStore } from '@/stores/connectivityStore';
 import {
   discoverPrinters,
   printTestPage,
-  openCashDrawer,
+  getPrintSettingsFromStore,
   isTauriEnvironment,
 } from '@/lib/printing';
 import type { PrinterInfo, PrinterConfig } from '@/lib/printing';
+import { CashDrawerSettings } from '@/components/settings/CashDrawerSettings';
+import { ScannerSettings } from '@/components/settings/ScannerSettings';
+import { PrinterAdvancedSettings } from '@/components/settings/PrinterAdvancedSettings';
+import { CustomerDisplaySettings } from '@/components/settings/CustomerDisplaySettings';
 
 async function toggleFullscreen(enabled: boolean): Promise<void> {
   try {
@@ -60,7 +64,6 @@ export function SettingsPage() {
   const [discoveredPrinters, setDiscoveredPrinters] = useState<PrinterInfo[]>([]);
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [isPrintingTest, setIsPrintingTest] = useState(false);
-  const [isOpeningDrawer, setIsOpeningDrawer] = useState(false);
   const [printerStatus, setPrinterStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [printerMessage, setPrinterMessage] = useState('');
   const isTauri = isTauriEnvironment();
@@ -104,7 +107,8 @@ export function SettingsPage() {
     setPrinterStatus('idle');
     setPrinterMessage('');
     try {
-      await printTestPage(printerConfig);
+      const ps = getPrintSettingsFromStore();
+      await printTestPage(printerConfig, ps.columns);
       setPrinterStatus('success');
       setPrinterMessage(t('settings.testPrintSent'));
     } catch (err: unknown) {
@@ -112,22 +116,6 @@ export function SettingsPage() {
       setPrinterMessage(err instanceof Error ? err.message : String(err));
     } finally {
       setIsPrintingTest(false);
-    }
-  }, [printerConfig, t]);
-
-  const handleOpenDrawer = useCallback(async () => {
-    if (!printerConfig) return;
-    setIsOpeningDrawer(true);
-    setPrinterStatus('idle');
-    try {
-      await openCashDrawer(printerConfig);
-      setPrinterStatus('success');
-      setPrinterMessage(t('settings.drawerOpened'));
-    } catch (err: unknown) {
-      setPrinterStatus('error');
-      setPrinterMessage(err instanceof Error ? err.message : String(err));
-    } finally {
-      setIsOpeningDrawer(false);
     }
   }, [printerConfig, t]);
 
@@ -332,14 +320,6 @@ export function SettingsPage() {
                         )}
                         {t('settings.testPrint')}
                       </button>
-                      <button
-                        onClick={() => void handleOpenDrawer()}
-                        disabled={isOpeningDrawer}
-                        className="flex items-center gap-1 rounded-lg bg-white px-3 py-2 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
-                      >
-                        {isOpeningDrawer && <Loader2 className="h-3 w-3 animate-spin" />}
-                        {t('settings.openDrawer')}
-                      </button>
                     </div>
                   </div>
                 ) : (
@@ -370,6 +350,9 @@ export function SettingsPage() {
                     />
                   </button>
                 </div>
+
+                {/* Advanced printer settings */}
+                <PrinterAdvancedSettings />
 
                 {/* Discover printers */}
                 <button
@@ -445,24 +428,23 @@ export function SettingsPage() {
             )}
           </section>
 
-          {/* Other Peripherals (scanner, kitchen printer) */}
+          {/* Customer-Facing Display */}
+          <CustomerDisplaySettings />
+
+          {/* Cash Drawer Settings */}
+          <CashDrawerSettings />
+
+          {/* Barcode Scanner Settings */}
+          <ScannerSettings />
+
+          {/* Kitchen Printer (coming soon) */}
           <section className="rounded-xl bg-white p-4 shadow-sm">
             <h2 className="mb-4 text-base font-bold text-gray-900">
-              {t('settings.peripherals')}
+              {t('settings.kitchenPrinter')}
             </h2>
-            <div className="space-y-3">
-              {[
-                { label: t('settings.scanner'), status: t('settings.comingSoon') },
-                { label: t('settings.kitchenPrinter'), status: t('settings.comingSoon') },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-3"
-                >
-                  <span className="text-sm font-medium text-gray-900">{item.label}</span>
-                  <span className="text-xs text-gray-400">{item.status}</span>
-                </div>
-              ))}
+            <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-3">
+              <span className="text-sm font-medium text-gray-900">{t('settings.kitchenPrinter')}</span>
+              <span className="text-xs text-gray-400">{t('settings.comingSoon')}</span>
             </div>
           </section>
 

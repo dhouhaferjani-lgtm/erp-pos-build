@@ -7,12 +7,16 @@ namespace App\Modules\Catalog\Presentation\Controllers;
 use App\Modules\Catalog\Application\DTOs\RecipeLineData;
 use App\Modules\Catalog\Domain\Entities\Recipe;
 use App\Modules\Catalog\Domain\Entities\RecipeLine;
+use App\Modules\Catalog\Domain\Enums\ComponentType;
 use App\Modules\Catalog\Presentation\Requests\StoreRecipeLineRequest;
+use App\Modules\Catalog\Presentation\Rules\NoCircularCompositeItemReference;
 use App\Modules\Company\Services\CompanyContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Enum;
 
 class RecipeLineController extends Controller
 {
@@ -33,6 +37,15 @@ class RecipeLineController extends Controller
             abort(403);
         }
 
+        // Validate circular references for composite_item components
+        $componentType = $request->input('component_type', 'product');
+        if ($componentType === ComponentType::CompositeItem->value) {
+            Validator::make(
+                $request->only('component_id'),
+                ['component_id' => [new NoCircularCompositeItemReference($recipe->composite_item_id)]],
+            )->validate();
+        }
+
         $maxOrder = RecipeLine::where('recipe_id', $recipe->id)->max('display_order') ?? 0;
 
         $line = RecipeLine::create([
@@ -41,7 +54,7 @@ class RecipeLineController extends Controller
             'display_order' => $request->input('display_order', $maxOrder + 1),
         ]);
 
-        $line->load(['component', 'unit']);
+        $line->load(['product', 'compositeItemComponent', 'unit']);
 
         return response()->json(['data' => RecipeLineData::fromModel($line)], 201);
     }
@@ -61,8 +74,16 @@ class RecipeLineController extends Controller
 
         $line = RecipeLine::where('recipe_id', $recipe->id)->findOrFail($lineId);
 
+        $componentType = $request->input('component_type', $line->component_type->value);
+        $existsTable = $componentType === 'composite_item' ? 'composite_items' : 'products';
+
+        $circularRule = $componentType === ComponentType::CompositeItem->value
+            ? [new NoCircularCompositeItemReference($recipe->composite_item_id)]
+            : [];
+
         $validated = $request->validate([
-            'component_id' => ['sometimes', 'uuid', 'exists:products,id'],
+            'component_type' => ['sometimes', new Enum(ComponentType::class)],
+            'component_id' => ['sometimes', 'uuid', "exists:{$existsTable},id", ...$circularRule],
             'quantity' => ['sometimes', 'numeric', 'min:0.0001'],
             'unit_id' => ['nullable', 'uuid', 'exists:units,id'],
             'is_optional' => ['sometimes', 'boolean'],
@@ -72,7 +93,7 @@ class RecipeLineController extends Controller
         ]);
 
         $line->update($validated);
-        $line->load(['component', 'unit']);
+        $line->load(['product', 'compositeItemComponent', 'unit']);
 
         return response()->json(['data' => RecipeLineData::fromModel($line)]);
     }

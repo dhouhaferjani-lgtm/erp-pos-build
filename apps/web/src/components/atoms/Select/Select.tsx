@@ -6,7 +6,7 @@ export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   /**
    * Error state for validation feedback
    */
-  error?: boolean
+  error?: boolean | undefined
 }
 
 /**

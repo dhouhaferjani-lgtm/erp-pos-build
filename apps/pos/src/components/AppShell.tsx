@@ -4,9 +4,14 @@ import { Header } from './Header';
 import { HomePage } from '@/pages/HomePage';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useConnectivityStore } from '@/stores/connectivityStore';
+import { useCustomerDisplaySync } from '@/hooks/useCustomerDisplaySync';
 
 const SettingsPage = lazy(() =>
   import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
+);
+
+const TodaySalesPage = lazy(() =>
+  import('@/components/pos/TodaySalesPanel').then((m) => ({ default: m.TodaySalesPage })),
 );
 
 export function AppShell() {
@@ -14,6 +19,9 @@ export function AppShell() {
   const resetActivityTimer = useOperatorStore((s) => s.resetActivityTimer);
   const lock = useOperatorStore((s) => s.lock);
   const operator = useOperatorStore((s) => s.operator);
+
+  // Sync cart/checkout state to customer-facing display
+  useCustomerDisplaySync();
 
   const handleActivity = useCallback(() => {
     resetActivityTimer();
@@ -56,6 +64,7 @@ export function AppShell() {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/sales" element={<TodaySalesPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

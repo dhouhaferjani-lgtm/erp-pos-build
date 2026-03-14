@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Edit, Package, Calendar, AlertTriangle, Trash2 } from 'lucide-react'
-import { useBatch, useBatchStock, useUpdateBatch, useDeleteBatch, useRecallBatch } from '../hooks/useBatches'
+import { useBatch, useBatchStock, useDeleteBatch, useRecallBatch } from '../hooks/useBatches'
 import { BatchStatusBadge } from '../components/BatchStatusBadge'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 
@@ -23,7 +23,6 @@ export function BatchDetailPage() {
   const { data: stockLevels } = useBatchStock(uuid)
 
   // Mutations
-  const updateMutation = useUpdateBatch()
   const deleteMutation = useDeleteBatch()
   const recallMutation = useRecallBatch()
 
@@ -307,44 +306,50 @@ export function BatchDetailPage() {
         onConfirm={handleDelete}
         title={t('batches:actions.deleteBatch')}
         message={t('batches:form.confirmDelete')}
-        confirmLabel={t('common:actions.delete')}
-        cancelLabel={t('common:actions.cancel')}
+        confirmText={t('common:actions.delete')}
         variant="danger"
       />
 
       {/* Recall Confirmation Dialog */}
-      <ConfirmDialog
-        isOpen={confirmAction === 'recall'}
-        onClose={() => {
-          setConfirmAction(null)
-          setRecallReason('')
-        }}
-        onConfirm={handleRecall}
-        title={t('batches:actions.recallBatch')}
-        message={
-          <div className="space-y-4">
-            <p className="text-sm text-gray-500">
-              {t('batches:form.confirmRecall')}
-            </p>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                {t('batches:fields.recallReason')}
-              </label>
-              <textarea
-                value={recallReason}
-                onChange={(e) => setRecallReason(e.target.value)}
-                rows={3}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                placeholder={t('batches:form.enterRecallReason')}
-              />
+      {confirmAction === 'recall' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50">
+          <div className="relative mx-4 w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900">{t('batches:actions.recallBatch')}</h3>
+            <div className="mt-4 space-y-4">
+              <p className="text-sm text-gray-500">{t('batches:form.confirmRecall')}</p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  {t('batches:fields.recallReason')}
+                </label>
+                <textarea
+                  value={recallReason}
+                  onChange={(e) => setRecallReason(e.target.value)}
+                  rows={3}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  placeholder={t('batches:form.enterRecallReason')}
+                />
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => { setConfirmAction(null); setRecallReason('') }}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                {t('common:actions.cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={handleRecall}
+                disabled={!recallReason.trim()}
+                className="rounded-lg bg-yellow-600 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-700 disabled:opacity-50 transition-colors"
+              >
+                {t('batches:actions.recallBatch')}
+              </button>
             </div>
           </div>
-        }
-        confirmLabel={t('batches:actions.recallBatch')}
-        cancelLabel={t('common:actions.cancel')}
-        variant="warning"
-        confirmDisabled={!recallReason.trim()}
-      />
+        </div>
+      )}
     </div>
   )
 }

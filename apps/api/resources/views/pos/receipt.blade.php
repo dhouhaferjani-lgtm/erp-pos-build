@@ -251,10 +251,37 @@
         .return-details div {
             margin-bottom: 2px;
         }
+
+        /* Duplicate Stamp */
+        .duplicate-stamp {
+            text-align: center;
+            font-size: 14pt;
+            font-weight: bold;
+            padding: 8px 0;
+            margin-bottom: 10px;
+            border: 3px double #000;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+
+        .duplicate-notice {
+            text-align: center;
+            font-size: 8pt;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px dashed #000;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
     <div class="receipt">
+        {{-- Duplicate Stamp (for reprinted copies) --}}
+        @if($isDuplicate ?? false)
+            <div class="duplicate-stamp">{{ $duplicateLabel }}</div>
+            <div class="duplicate-notice">{{ __('pos.duplicate_notice') }}</div>
+        @endif
+
         {{-- Header Section --}}
         <div class="header">
             @if($company->logo_path && $company->receipt_logo ?? false)
@@ -330,6 +357,13 @@
                         </span>
                         <span class="item-total">{{ $formatMoney($line->line_total) }}</span>
                     </div>
+                    @if(!empty($line->combo_components))
+                        <div style="font-size: 7pt; color: #555; margin-top: 2px; padding-left: 10px;">
+                            @foreach($line->combo_components as $componentName)
+                                &bull; {{ $componentName }}<br>
+                            @endforeach
+                        </div>
+                    @endif
                     @if($line->notes)
                         <div style="font-size: 7pt; color: #666; margin-top: 2px;">{{ $line->notes }}</div>
                     @endif

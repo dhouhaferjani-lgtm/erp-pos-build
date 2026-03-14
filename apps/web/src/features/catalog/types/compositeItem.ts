@@ -2,7 +2,8 @@ export type VerticalType = 'fnb' | 'manufacturing' | 'sewing' | 'bakery' | 'gene
 export type ProductionType = 'made_to_order' | 'batch' | 'stock'
 export type PriceAdjustmentType = 'absolute' | 'percentage' | 'override'
 export type SelectionType = 'single' | 'multiple'
-export type ComponentType = 'product'
+export type ComponentType = 'product' | 'composite_item'
+export type PricingMode = 'standard' | 'fixed_bundle'
 
 export interface CompositeItemData {
   id: string
@@ -11,6 +12,7 @@ export interface CompositeItemData {
   vertical_type: VerticalType
   base_price: string
   production_type: ProductionType
+  pricing_mode: PricingMode
   tax_rate: string | null
   is_active: boolean
   is_available: boolean
@@ -134,6 +136,7 @@ export interface CreateCompositeItemData {
   vertical_type?: VerticalType
   base_price: number
   production_type?: ProductionType
+  pricing_mode?: PricingMode
   tax_rate?: number | null
   stock_unit_id?: string | null
   is_active?: boolean
@@ -156,6 +159,7 @@ export interface CreateRecipeData {
 export interface CreateRecipeLineData {
   component_type?: ComponentType
   component_id: string
+  composite_item_id?: string
   quantity: number
   unit_id?: string | null
   is_optional?: boolean

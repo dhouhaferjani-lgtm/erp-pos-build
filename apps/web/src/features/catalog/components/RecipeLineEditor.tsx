@@ -2,12 +2,13 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import { Input, Button, FormField } from '@/components/atoms'
+import { Input, Button, FormField, Select } from '@/components/atoms'
 import { Textarea } from '@/components/atoms/Textarea/Textarea'
 import { Badge } from '@/components/atoms/Badge/Badge'
 import { ProductSearchSelect } from '@/components/ui/ProductSearchSelect'
+import { CompositeItemSearchSelect } from './CompositeItemSearchSelect'
 import { tokens } from '@/lib/designTokens'
-import type { RecipeData, RecipeLineData, RecipeCostData, VerticalType } from '../types/compositeItem'
+import type { RecipeData, RecipeLineData, RecipeCostData, VerticalType, ComponentType } from '../types/compositeItem'
 import { useVerticalLabels } from '../hooks/useVerticalLabels'
 import {
   useCreateRecipeLine,
@@ -30,6 +31,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
   const getLabel = useVerticalLabels(verticalType)
   const [costData, setCostData] = useState<RecipeCostData | null>(null)
   const [newLine, setNewLine] = useState({
+    component_type: 'product' as ComponentType,
     component_id: '',
     quantity: '',
     wastage_percent: '0',
@@ -59,6 +61,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
       {
         recipeId: recipe.id,
         data: {
+          component_type: newLine.component_type,
           component_id: newLine.component_id,
           quantity: Number(newLine.quantity),
           wastage_percent: Number(newLine.wastage_percent),
@@ -67,7 +70,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
       },
       {
         onSuccess: () => {
-          setNewLine({ component_id: '', quantity: '', wastage_percent: '0', is_optional: false })
+          setNewLine({ component_type: 'product', component_id: '', quantity: '', wastage_percent: '0', is_optional: false })
           toast.success(t('common:saved'))
         },
       }
@@ -214,8 +217,13 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
             {lines.map((line: RecipeLineData) => (
               <tr key={line.id}>
                 <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                  {line.component_name ?? line.component_id}
-                  {line.component_sku && <span className="text-gray-500 ml-1">({line.component_sku})</span>}
+                  <div className="flex items-center gap-1.5">
+                    {line.component_type === 'composite_item' && (
+                      <Badge variant="info" className="text-[10px] !px-1 !py-0">{t('catalog:combo')}</Badge>
+                    )}
+                    {line.component_name ?? line.component_id}
+                  </div>
+                  {line.component_sku && <span className="text-gray-500 ml-1 text-xs">({line.component_sku})</span>}
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm">
                   <Input
@@ -264,12 +272,31 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
             {/* Add new line row */}
             <tr className="bg-gray-50">
               <td className="px-3 py-4">
-                <ProductSearchSelect
-                  value={newLine.component_id}
-                  onChange={(id) => setNewLine({ ...newLine, component_id: id })}
-                  placeholder={t(verticalType === 'fnb' || verticalType === 'bakery' ? 'catalog:searchIngredient' : 'catalog:searchComponent')}
-                  className="min-w-[200px]"
-                />
+                <div className="space-y-2">
+                  <Select
+                    value={newLine.component_type}
+                    onChange={(e) => setNewLine({ ...newLine, component_type: e.target.value as ComponentType, component_id: '' })}
+                    className="!mt-0 text-xs"
+                  >
+                    <option value="product">{t('catalog:componentTypes.product')}</option>
+                    <option value="composite_item">{t('catalog:componentTypes.composite_item')}</option>
+                  </Select>
+                  {newLine.component_type === 'product' ? (
+                    <ProductSearchSelect
+                      value={newLine.component_id}
+                      onChange={(id) => setNewLine({ ...newLine, component_id: id })}
+                      placeholder={t(verticalType === 'fnb' || verticalType === 'bakery' ? 'catalog:searchIngredient' : 'catalog:searchComponent')}
+                      className="min-w-[200px]"
+                    />
+                  ) : (
+                    <CompositeItemSearchSelect
+                      value={newLine.component_id}
+                      onChange={(id) => setNewLine({ ...newLine, component_id: id })}
+                      placeholder={t('catalog:searchCompositeItem')}
+                      className="min-w-[200px]"
+                    />
+                  )}
+                </div>
               </td>
               <td className="px-3 py-4">
                 <Input

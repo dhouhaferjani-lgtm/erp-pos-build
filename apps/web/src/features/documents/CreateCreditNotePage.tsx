@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams, Link } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useForm, Controller } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -14,13 +14,12 @@ import { z } from 'zod'
 import { ArrowLeft, Receipt } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
-import { useCompany } from '@/hooks/useCompany'
 import { PartnerSearchSelect } from '@/components/ui/PartnerSearchSelect'
 import { InvoiceSearchSelect } from '@/components/ui/InvoiceSearchSelect'
 import { DocumentLineEditor, type DocumentLine } from '@/components/documents/DocumentLineEditor'
 import { Button } from '@/components/atoms/Button/Button'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
-import type { Invoice } from '@mecanospex/shared/types/generated'
+import type { Invoice } from '@/components/ui/InvoiceSearchSelect'
 
 const creditNoteSchema = z.object({
   partner_id: z.string().min(1, 'Partner is required'),
@@ -46,9 +45,6 @@ export function CreateCreditNotePage() {
   const { t } = useTranslation(['sales', 'common'])
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [searchParams] = useSearchParams()
-  const { currentCompany } = useCompany()
-
   // Mode states
   const [creditMode, setCreditMode] = useState<CreditMode>('invoice')
   const [lineMode, setLineMode] = useState<LineMode>('all')
@@ -102,10 +98,10 @@ export function CreateCreditNotePage() {
       if (invoiceData.lines) {
         const documentLines: DocumentLine[] = invoiceData.lines.map((line) => ({
           id: line.id,
-          product_id: line.product_id,
+          product_id: line.product_id ?? '',
           product_code: line.product_code || '',
           product_name: line.product_name,
-          description: line.description,
+          description: line.description ?? '',
           quantity: line.quantity,
           unit_price: parseFloat(line.unit_price),
           tax_rate: parseFloat(line.tax_rate),
@@ -352,7 +348,7 @@ export function CreateCreditNotePage() {
                   <Controller
                     name="source_invoice_id"
                     control={control}
-                    render={({ field }) => (
+                    render={({ field: _field }) => (
                       <InvoiceSearchSelect
                         value={selectedInvoice}
                         onChange={handleInvoiceSelect}
@@ -372,11 +368,10 @@ export function CreateCreditNotePage() {
                   control={control}
                   render={({ field }) => (
                     <PartnerSearchSelect
-                      value={field.value}
+                      value={field.value ?? ''}
                       onChange={field.onChange}
                       partnerType="customer"
-                      label={t('sales:documents.partner')}
-                      required
+                      placeholder={t('sales:documents.partner')}
                       disabled={creditMode === 'invoice' && !!selectedInvoice}
                       error={errors.partner_id?.message}
                     />
@@ -589,7 +584,6 @@ export function CreateCreditNotePage() {
               <DocumentLineEditor
                 lines={lines}
                 onChange={setLines}
-                partnerId={partnerId}
               />
             </div>
           )}

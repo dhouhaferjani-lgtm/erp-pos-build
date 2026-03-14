@@ -92,12 +92,13 @@ export function HealthClaimListPage() {
                     <EmptyState
                       title={t('parapharmacy:noHealthClaims')}
                       description={t('parapharmacy:noHealthClaimsDescription')}
-                      action={{
-                        label: t('parapharmacy:addHealthClaim'),
-                        onClick: () => navigate('/parapharmacy/health-claims/new'),
-                        icon: Plus,
-                      }}
                     />
+                    <div className="flex justify-center mt-4">
+                      <Button onClick={() => navigate('/parapharmacy/health-claims/new')}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        {t('parapharmacy:addHealthClaim')}
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -168,10 +169,13 @@ export function HealthClaimListPage() {
       {data?.meta && (
         <OffsetPagination
           currentPage={page}
-          totalPages={Math.ceil(
-            data.meta.total / data.meta.per_page
-          )}
+          lastPage={Math.ceil(data.meta.total / data.meta.per_page)}
+          total={data.meta.total}
+          perPage={data.meta.per_page}
+          from={data.meta.from ?? null}
+          to={data.meta.to ?? null}
           onPageChange={setPage}
+          onPerPageChange={() => {}}
         />
       )}
 
@@ -182,7 +186,7 @@ export function HealthClaimListPage() {
         title={t('parapharmacy:confirmDeleteHealthClaim')}
         message={t('parapharmacy:confirmDeleteHealthClaimDescription')}
         confirmText={t('common:delete')}
-        confirmVariant="danger"
+        variant="danger"
         isLoading={deleteMutation.isPending}
       />
     </div>

@@ -80,6 +80,18 @@
   "stock": "Stock",
   "searchIngredient": "Rechercher un ingrédient...",
   "searchComponent": "Rechercher un composant...",
+  "searchCompositeItem": "Rechercher un article composé...",
+  "noCompositeItemsFound": "Aucun article composé trouvé",
+  "pricingMode": "Mode de tarification",
+  "pricingModes": {
+    "standard": "Standard (somme des composants)",
+    "fixed_bundle": "Formule fixe (prix combo)"
+  },
+  "componentTypes": {
+    "product": "Produit",
+    "composite_item": "Article composé"
+  },
+  "combo": "Combo",
   "editModifier": "Modifier le modificateur",
   "inventoryLink": "Lien inventaire",
   "componentQuantity": "Quantité du composant",

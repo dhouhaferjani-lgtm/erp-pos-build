@@ -7,6 +7,7 @@ import type { POSProduct } from '@/types/product';
 export interface ProductCardProps {
   product: POSProduct;
   onAddToCart: (product: POSProduct) => void;
+  onCustomize?: (product: POSProduct) => void;
   isInCart?: boolean;
   displayMode?: 'grid' | 'visual';
 }
@@ -14,6 +15,7 @@ export interface ProductCardProps {
 export function ProductCard({
   product,
   onAddToCart,
+  onCustomize,
   isInCart = false,
   displayMode = 'grid',
 }: ProductCardProps) {
@@ -38,8 +40,22 @@ export function ProductCard({
               : 'border-gray-200 bg-white hover:border-primary-300 hover:shadow-md',
         )}
       >
-        {/* Modifier indicator */}
-        {hasModifiers && (
+        {/* Modifier customize button */}
+        {hasModifiers && onCustomize && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onCustomize(product);
+            }}
+            className="absolute top-1.5 right-1.5 flex h-10 w-10 items-center justify-center rounded-full bg-primary-100/90 text-primary-600 shadow-sm transition-colors hover:bg-primary-200 active:bg-primary-300"
+            title={t('products.customize')}
+          >
+            <SlidersHorizontal className="h-5 w-5" />
+          </button>
+        )}
+        {/* Modifier indicator (no customize handler) */}
+        {hasModifiers && !onCustomize && (
           <div className="absolute top-2 right-2">
             <SlidersHorizontal className="h-4 w-4 text-primary-500" />
           </div>
@@ -106,8 +122,22 @@ export function ProductCard({
             : 'border-gray-200 bg-white hover:border-primary-300 hover:shadow-md',
       )}
     >
-      {/* Modifier indicator */}
-      {hasModifiers && (
+      {/* Modifier customize button */}
+      {hasModifiers && onCustomize && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onCustomize(product);
+          }}
+          className="absolute top-1.5 right-1.5 flex h-10 w-10 items-center justify-center rounded-full bg-primary-100/90 text-primary-600 shadow-sm transition-colors hover:bg-primary-200 active:bg-primary-300"
+          title={t('products.customize')}
+        >
+          <SlidersHorizontal className="h-5 w-5" />
+        </button>
+      )}
+      {/* Modifier indicator (no customize handler) */}
+      {hasModifiers && !onCustomize && (
         <div className="absolute top-2 right-2">
           <SlidersHorizontal className="h-4 w-4 text-primary-500" />
         </div>

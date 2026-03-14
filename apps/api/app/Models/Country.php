@@ -41,6 +41,34 @@ class Country extends Model
     ];
 
     /**
+     * The accessors to append to the model's array form.
+     *
+     * @var list<string>
+     */
+    protected $appends = ['flag'];
+
+    /**
+     * Get the flag emoji for the country code.
+     *
+     * Converts ISO 3166-1 alpha-2 code to regional indicator symbols (flag emoji).
+     * E.g., 'FR' → '🇫🇷', 'TN' → '🇹🇳'
+     */
+    public function getFlagAttribute(): string
+    {
+        $code = strtoupper($this->code);
+
+        if (strlen($code) !== 2) {
+            return '';
+        }
+
+        // Regional indicator symbols start at U+1F1E6 (A) through U+1F1FF (Z)
+        $first = mb_chr(0x1F1E6 + ord($code[0]) - ord('A'));
+        $second = mb_chr(0x1F1E6 + ord($code[1]) - ord('A'));
+
+        return $first . $second;
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>

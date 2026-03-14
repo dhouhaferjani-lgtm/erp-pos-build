@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
+import type { HealthClaimData } from '../types';
 
 export interface HealthClaimTranslation {
   id?: string;
@@ -30,7 +31,7 @@ export interface UpdateHealthClaimInput {
 }
 
 export interface HealthClaimsListResponse {
-  data: App.Modules.Product.Application.DTOs.HealthClaimData[];
+  data: HealthClaimData[];
   meta: {
     current_page: number;
     last_page: number;
@@ -60,16 +61,16 @@ export async function fetchHealthClaims(params?: {
 
 export async function fetchHealthClaim(
   id: string
-): Promise<App.Modules.Product.Application.DTOs.HealthClaimData> {
-  return apiGet<App.Modules.Product.Application.DTOs.HealthClaimData>(
+): Promise<HealthClaimData> {
+  return apiGet<HealthClaimData>(
     `/parapharmacy/health-claims/${id}`
   );
 }
 
 export async function createHealthClaim(
   data: CreateHealthClaimInput
-): Promise<App.Modules.Product.Application.DTOs.HealthClaimData> {
-  return apiPost<App.Modules.Product.Application.DTOs.HealthClaimData>(
+): Promise<HealthClaimData> {
+  return apiPost<HealthClaimData>(
     '/parapharmacy/health-claims',
     data
   );
@@ -78,8 +79,8 @@ export async function createHealthClaim(
 export async function updateHealthClaim(
   id: string,
   data: UpdateHealthClaimInput
-): Promise<App.Modules.Product.Application.DTOs.HealthClaimData> {
-  return apiPatch<App.Modules.Product.Application.DTOs.HealthClaimData>(
+): Promise<HealthClaimData> {
+  return apiPatch<HealthClaimData>(
     `/parapharmacy/health-claims/${id}`,
     data
   );

@@ -11,6 +11,12 @@ interface Country {
   code: string
   name: string
   flag: string
+  native_name: string | null
+  currency_code: string
+  currency_symbol: string | null
+  phone_prefix: string | null
+  tax_id_label: string | null
+  tax_id_regex: string | null
 }
 
 interface RegisterFormData {
@@ -57,7 +63,7 @@ interface FormErrors {
   company_legal_name?: string
   tax_id?: string
   phone?: string
-  vertical?: string
+  vertical?: string | undefined
   acceptTerms?: string
   general?: string
 }
@@ -508,7 +514,7 @@ export function RegisterPage() {
           <div className="flex justify-between">
             <dt className="text-gray-500">{t('register.country')}</dt>
             <dd className="text-gray-900">
-              {selectedCountry ? `${selectedCountry.flag} ${selectedCountry.name}` : '-'}
+              {selectedCountry ? `${selectedCountry.flag ? selectedCountry.flag + ' ' : ''}${selectedCountry.name}` : '-'}
             </dd>
           </div>
           <div className="flex justify-between">

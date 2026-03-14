@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { OrderStatusBadge } from '../../molecules/OrderStatusBadge'
+import { KitchenTimer } from '../../atoms/KitchenTimer'
 import type { OrderData } from '../../api/orderApi'
 
 export interface ActiveOrdersBoardProps {
@@ -38,24 +39,8 @@ const COLUMNS: BoardColumn[] = [
 ]
 
 /**
- * Calculate elapsed time since a date as a human-readable string.
- */
-function getTimeSince(dateStr: string): string {
-  const now = Date.now()
-  const then = new Date(dateStr).getTime()
-  const diffMs = now - then
-
-  const minutes = Math.floor(diffMs / 60000)
-  if (minutes < 1) return '<1m'
-  if (minutes < 60) return `${minutes}m`
-
-  const hours = Math.floor(minutes / 60)
-  const remainingMinutes = minutes % 60
-  return `${hours}h${remainingMinutes > 0 ? ` ${remainingMinutes}m` : ''}`
-}
-
-/**
  * Kanban-style board showing active orders in columns: Open, Sent, Ready.
+ * Shows table number on cards when assigned. Color-coded timer for kitchen orders.
  */
 export function ActiveOrdersBoard({
   orders,
@@ -112,11 +97,18 @@ export function ActiveOrdersBoard({
                     <OrderStatusBadge status={order.status} />
                   </div>
 
-                  {order.customer_name && (
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      {order.customer_name}
-                    </p>
-                  )}
+                  <div className="mt-1 flex items-center gap-2">
+                    {order.table && (
+                      <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
+                        {order.table.table_number}
+                      </span>
+                    )}
+                    {order.customer_name && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        {order.customer_name}
+                      </span>
+                    )}
+                  </div>
 
                   <div className="mt-2 flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
                     <span>
@@ -125,7 +117,13 @@ export function ActiveOrdersBoard({
                         ? t('cart.item')
                         : t('cart.items')}
                     </span>
-                    <span>{getTimeSince(order.opened_at)}</span>
+                    {order.sent_at && (column.key === 'sent' || column.key === 'ready') ? (
+                      <KitchenTimer startTime={order.sent_at} />
+                    ) : (
+                      <span>
+                        {new Date(order.opened_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
                   </div>
 
                   <div className="mt-1 text-right text-sm font-semibold text-gray-900 dark:text-gray-100">

@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Calendar, Building2, FileText, Lock } from 'lucide-react'
+import { ArrowLeft, Calendar, Building2, Car, FileText, Lock, MinusCircle } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { formatCurrency } from '../../../lib/format'
 import { Button } from '../../../components/atoms/Button/Button'
@@ -253,7 +253,7 @@ export function CreditNoteDetailPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {creditNote.lines.map((line) => (
+              {(creditNote.lines ?? []).map((line) => (
                 <tr key={line.id}>
                   <td className="px-6 py-4">
                     <div className="text-sm font-medium text-gray-900">{line.description}</div>

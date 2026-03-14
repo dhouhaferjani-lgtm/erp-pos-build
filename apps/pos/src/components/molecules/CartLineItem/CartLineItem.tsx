@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useCurrency } from '@/lib/currency';
-import { Plus, Minus, Trash2, Tag } from 'lucide-react';
+import { Plus, Minus, Trash2, Tag, SlidersHorizontal } from 'lucide-react';
 import type { CartItem } from '@/types/cart';
 
 export interface CartLineItemProps {
@@ -9,9 +9,10 @@ export interface CartLineItemProps {
   onRemove: (itemId: string) => void;
   onQuantityTap?: (itemId: string) => void;
   onDiscount?: (itemId: string) => void;
+  onEditModifiers?: (itemId: string) => void;
 }
 
-export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, onDiscount }: CartLineItemProps) {
+export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, onDiscount, onEditModifiers }: CartLineItemProps) {
   const { t } = useTranslation();
   const { format } = useCurrency();
 
@@ -44,6 +45,17 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
         <p className="mt-0.5 text-xs italic text-gray-400">
           {item.product.selectedModifiers.map((m) => m.name).join(', ')}
         </p>
+      )}
+
+      {/* Combo Components (fixed bundle) */}
+      {item.product.comboComponents && item.product.comboComponents.length > 0 && (
+        <div className="mt-1 space-y-0.5">
+          {item.product.comboComponents.map((name, idx) => (
+            <p key={idx} className="text-xs text-gray-400 pl-2">
+              &bull; {name}
+            </p>
+          ))}
+        </div>
       )}
 
       {/* Line discount info */}
@@ -87,6 +99,18 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
           >
             <Plus className="h-5 w-5" />
           </button>
+
+          {/* Edit modifiers button */}
+          {onEditModifiers && item.product.selectedModifiers && item.product.selectedModifiers.length > 0 && (
+            <button
+              onClick={() => onEditModifiers(item.id)}
+              className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-blue-600 active:bg-blue-100"
+              aria-label={t('cart.editModifiers')}
+              title={t('cart.editModifiers')}
+            >
+              <SlidersHorizontal className="h-5 w-5" />
+            </button>
+          )}
 
           {/* Line discount button */}
           {onDiscount && (

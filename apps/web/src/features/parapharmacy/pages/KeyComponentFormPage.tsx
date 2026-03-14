@@ -86,7 +86,7 @@ export function KeyComponentFormPage() {
       slug,
       is_allergen: isAllergen,
       translations: translations.map((t) => ({
-        id: t.id,
+        id: t.id ?? '',
         locale: t.locale,
         name: t.name,
         description: t.description || null,

@@ -20,9 +20,12 @@ class StoreRecipeLineRequest extends FormRequest
      */
     public function rules(): array
     {
+        $componentType = $this->input('component_type', 'product');
+        $existsTable = $componentType === 'composite_item' ? 'composite_items' : 'products';
+
         return [
             'component_type' => ['sometimes', new Enum(ComponentType::class)],
-            'component_id' => ['required', 'uuid', 'exists:products,id'],
+            'component_id' => ['required', 'uuid', "exists:{$existsTable},id"],
             'quantity' => ['required', 'numeric', 'min:0.0001'],
             'unit_id' => ['nullable', 'uuid', 'exists:units,id'],
             'is_optional' => ['sometimes', 'boolean'],

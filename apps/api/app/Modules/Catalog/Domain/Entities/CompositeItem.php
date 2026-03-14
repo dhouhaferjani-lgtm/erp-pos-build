@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Catalog\Domain\Entities;
 
+use App\Modules\Catalog\Domain\Enums\PricingMode;
 use App\Modules\Catalog\Domain\Enums\ProductionType;
 use App\Modules\Catalog\Domain\Enums\VerticalType;
 use App\Modules\Company\Domain\Company;
@@ -31,6 +32,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property VerticalType $vertical_type
  * @property string $base_price
  * @property ProductionType $production_type
+ * @property PricingMode $pricing_mode
  * @property string|null $tax_rate
  * @property string|null $default_recipe_id
  * @property string|null $stock_unit_id
@@ -67,6 +69,7 @@ class CompositeItem extends Model implements SellableContract
         'vertical_type',
         'base_price',
         'production_type',
+        'pricing_mode',
         'tax_rate',
         'default_recipe_id',
         'stock_unit_id',
@@ -93,6 +96,7 @@ class CompositeItem extends Model implements SellableContract
         return [
             'vertical_type' => VerticalType::class,
             'production_type' => ProductionType::class,
+            'pricing_mode' => PricingMode::class,
             'is_active' => 'boolean',
             'is_available' => 'boolean',
             'display_order' => 'integer',

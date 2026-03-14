@@ -16,7 +16,6 @@ import {
   Package,
   CreditCard,
   MinusCircle,
-  FileText,
   Download,
   Eye,
   Printer,

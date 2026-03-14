@@ -281,7 +281,7 @@ describe('CreateCreditNoteForm', () => {
       await user.click(fullRefundButton)
 
       const amountInput = screen.getByLabelText('Amount')
-      expect(amountInput.value).toBe('1190.00')
+      expect((amountInput as HTMLInputElement).value).toBe('1190.00')
     }
   })
 

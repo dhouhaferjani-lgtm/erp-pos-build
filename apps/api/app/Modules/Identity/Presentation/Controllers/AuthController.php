@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Identity\Presentation\Controllers;
 
+use App\Models\Country;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\MembershipRole;
@@ -256,9 +257,11 @@ class AuthController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        // Revoke current token if using token-based auth
+        // Revoke current token if using token-based auth (skip for session-based TransientToken)
         $currentToken = $user->currentAccessToken();
-        $currentToken->delete();
+        if ($currentToken instanceof \Laravel\Sanctum\PersonalAccessToken) { // @phpstan-ignore instanceof.alwaysTrue
+            $currentToken->delete();
+        }
 
         // Invalidate and regenerate session for SPA auth
         Auth::guard('web')->logout();
@@ -442,55 +445,43 @@ class AuthController extends Controller
     }
 
     /**
-     * Get default currency for a country code.
+     * Get default currency for a country code from the countries table.
      */
     private function getDefaultCurrency(string $countryCode): string
     {
-        return match (strtoupper($countryCode)) {
-            'FR', 'DE', 'IT', 'ES', 'NL', 'BE', 'AT', 'PT', 'IE', 'FI', 'GR' => 'EUR',
-            'GB' => 'GBP',
-            'US' => 'USD',
-            'TN' => 'TND',
-            'MA' => 'MAD',
-            'DZ' => 'DZD',
-            'SA', 'AE', 'QA', 'KW', 'BH', 'OM' => 'SAR',
-            default => 'EUR',
-        };
+        /** @var Country|null $country */
+        $country = Country::find(strtoupper($countryCode));
+
+        return $country->currency_code ?? 'EUR';
     }
 
     /**
-     * Get default timezone for a country code.
+     * Get default timezone for a country code from the countries table.
      */
     private function getDefaultTimezone(string $countryCode): string
     {
-        return match (strtoupper($countryCode)) {
-            'FR', 'DE', 'IT', 'ES', 'NL', 'BE', 'AT' => 'Europe/Paris',
-            'GB', 'IE', 'PT' => 'Europe/London',
-            'US' => 'America/New_York',
-            'TN' => 'Africa/Tunis',
-            'MA' => 'Africa/Casablanca',
-            'DZ' => 'Africa/Algiers',
-            'SA' => 'Asia/Riyadh',
-            'AE' => 'Asia/Dubai',
-            default => 'UTC',
-        };
+        /** @var Country|null $country */
+        $country = Country::find(strtoupper($countryCode));
+
+        return $country->default_timezone ?? 'UTC';
     }
 
     /**
-     * Get default locale for a country code.
+     * Get default locale for a country code from the countries table.
+     *
+     * Returns the short locale (e.g., 'fr' from 'fr_TN') for i18n compatibility.
      */
     private function getDefaultLocale(string $countryCode): string
     {
-        return match (strtoupper($countryCode)) {
-            'FR', 'BE', 'TN', 'MA', 'DZ' => 'fr',
-            'DE', 'AT' => 'de',
-            'IT' => 'it',
-            'ES' => 'es',
-            'GB', 'US', 'IE' => 'en',
-            'NL' => 'nl',
-            'PT' => 'pt',
-            'SA', 'AE', 'QA', 'KW', 'BH', 'OM' => 'ar',
-            default => 'en',
-        };
+        /** @var Country|null $country */
+        $country = Country::find(strtoupper($countryCode));
+        $locale = $country->default_locale ?? null;
+
+        if ($locale === null) {
+            return 'en';
+        }
+
+        // Return short locale (e.g., 'fr' from 'fr_TN') for i18n compatibility
+        return explode('_', $locale)[0];
     }
 }

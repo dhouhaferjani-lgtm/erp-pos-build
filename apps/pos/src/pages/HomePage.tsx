@@ -6,19 +6,19 @@ import { useProductStore } from '@/stores/productStore';
 import { useCartStore } from '@/stores/cartStore';
 import { usePaymentStore } from '@/stores/paymentStore';
 import { useHoldStore } from '@/stores/holdStore';
+import { useScannerStore } from '@/stores/scannerStore';
+import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { getErrorMessage } from '@/lib/api';
 import { ProductGrid } from '@/components/organisms/ProductGrid';
 import { TransactionCart } from '@/components/organisms/TransactionCart';
 import { CashTenderedModal } from '@/components/organisms/CashTenderedModal';
 import { CheckoutSuccessModal } from '@/components/organisms/CheckoutSuccessModal';
-import { CardPaymentModal } from '@/components/organisms/CardPaymentModal';
+import { AdvancedPaymentsModal } from '@/components/organisms/AdvancedPaymentsModal';
 import { HeldTransactionsModal } from '@/components/organisms/HeldTransactionsModal';
 import { DiscountModal } from '@/components/organisms/DiscountModal';
 import { LineDiscountModal } from '@/components/organisms/LineDiscountModal';
 import { ModifierSelectionModal } from '@/components/organisms/ModifierSelectionModal';
-import { ReportsMenu } from '@/components/organisms/ReportsMenu';
 import { VoidReturnModal } from '@/components/organisms/VoidReturnModal';
-import { CashDrawerModal } from '@/components/organisms/CashDrawerModal';
 import { QuantityNumpad } from '@/components/organisms/QuantityNumpad';
 import type { POSProduct } from '@/types/product';
 import type { SelectedModifier } from '@/types/cart';
@@ -40,6 +40,8 @@ export function HomePage() {
   const cartItems = useCartStore((s) => s.items);
   const transactionDiscount = useCartStore((s) => s.transactionDiscount);
   const addItem = useCartStore((s) => s.addItem);
+  const addItemWithDefaults = useCartStore((s) => s.addItemWithDefaults);
+  const updateLineModifiers = useCartStore((s) => s.updateLineModifiers);
   const updateQuantity = useCartStore((s) => s.updateQuantity);
   const removeItem = useCartStore((s) => s.removeItem);
   const clearCart = useCartStore((s) => s.clearCart);
@@ -52,7 +54,8 @@ export function HomePage() {
   const fetchPaymentConfig = usePaymentStore((s) => s.fetchPaymentConfig);
   const paymentMethods = usePaymentStore((s) => s.paymentMethods);
   const processCashCheckout = usePaymentStore((s) => s.processCashCheckout);
-  const processCardCheckout = usePaymentStore((s) => s.processCardCheckout);
+  const processAdvancedCheckout = usePaymentStore((s) => s.processAdvancedCheckout);
+  const paymentRepositories = usePaymentStore((s) => s.paymentRepositories);
   const isProcessing = usePaymentStore((s) => s.isProcessing);
   const lastReceipt = usePaymentStore((s) => s.lastReceipt);
   const changeDue = usePaymentStore((s) => s.changeDue);
@@ -68,19 +71,46 @@ export function HomePage() {
   // Modal state
   const [showCashModal, setShowCashModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [showCardModal, setShowCardModal] = useState(false);
+  const [showAdvancedModal, setShowAdvancedModal] = useState(false);
   const [showHeldModal, setShowHeldModal] = useState(false);
   const [showDiscountModal, setShowDiscountModal] = useState(false);
-  const [showReportsMenu, setShowReportsMenu] = useState(false);
   const [showVoidReturnModal, setShowVoidReturnModal] = useState(false);
-  const [showCashDrawerModal, setShowCashDrawerModal] = useState(false);
   const [quantityEditItemId, setQuantityEditItemId] = useState<string | null>(null);
 
   // Modifier selection state
   const [modifierProduct, setModifierProduct] = useState<POSProduct | null>(null);
+  const [editingLineId, setEditingLineId] = useState<string | null>(null);
 
   // Line discount state
   const [discountItemId, setDiscountItemId] = useState<string | null>(null);
+
+  // Barcode scanner
+  const [scanMessage, setScanMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  const handleBarcodeScan = useCallback(
+    (barcode: string) => {
+      const product = products.find(
+        (p) => p.barcode === barcode || p.sku === barcode,
+      );
+      if (!product) {
+        setScanMessage({ text: t('barcode.productNotFound', { code: barcode }), type: 'error' });
+        setTimeout(() => setScanMessage(null), 3000);
+        return;
+      }
+      const { autoAddToCart } = useScannerStore.getState();
+      if (autoAddToCart) {
+        addItem(product);
+        setScanMessage({ text: t('barcode.productAdded', { name: product.name }), type: 'success' });
+        setTimeout(() => setScanMessage(null), 2000);
+      }
+    },
+    [products, addItem, t],
+  );
+
+  useBarcodeScanner({
+    onScan: handleBarcodeScan,
+    enabled: !!shift,
+  });
 
   // Fetch products and payment config when shift is open
   useEffect(() => {
@@ -114,24 +144,48 @@ export function HomePage() {
 
   const handleAddToCart = useCallback(
     (product: POSProduct) => {
-      // Products with modifiers open the modifier selection modal
+      // Products with modifiers: quick-add with default selections
       if (product.modifier_groups && product.modifier_groups.length > 0) {
-        setModifierProduct(product);
+        addItemWithDefaults(product);
       } else {
         addItem(product);
       }
     },
-    [addItem],
+    [addItem, addItemWithDefaults],
+  );
+
+  const handleCustomize = useCallback(
+    (product: POSProduct) => {
+      setModifierProduct(product);
+      setEditingLineId(null);
+    },
+    [],
+  );
+
+  const handleEditModifiers = useCallback(
+    (itemId: string) => {
+      const cartItem = cartItems.find((i) => i.id === itemId);
+      if (!cartItem) return;
+      const matchingProduct = products.find((p) => p.id === cartItem.product.id);
+      if (!matchingProduct) return;
+      setModifierProduct(matchingProduct);
+      setEditingLineId(itemId);
+    },
+    [cartItems, products],
   );
 
   const handleModifierConfirm = useCallback(
     (selectedModifiers: SelectedModifier[]) => {
-      if (modifierProduct) {
+      if (!modifierProduct) return;
+      if (editingLineId) {
+        updateLineModifiers(editingLineId, selectedModifiers);
+      } else {
         addItem(modifierProduct, selectedModifiers);
-        setModifierProduct(null);
       }
+      setModifierProduct(null);
+      setEditingLineId(null);
     },
-    [modifierProduct, addItem],
+    [modifierProduct, editingLineId, addItem, updateLineModifiers],
   );
 
   const handlePayCash = useCallback(() => {
@@ -158,28 +212,28 @@ export function HomePage() {
     [terminal, cartItems, transactionDiscount, processCashCheckout],
   );
 
-  const handlePayCard = useCallback(() => {
+  const handleAdvancedPayments = useCallback(() => {
     if (cartItems.length === 0) return;
-    setShowCardModal(true);
+    setShowAdvancedModal(true);
   }, [cartItems.length]);
 
-  const handleCardConfirm = useCallback(
-    async (cardData: { lastFour?: string; reference?: string }) => {
+  const handleAdvancedComplete = useCallback(
+    async (payments: Parameters<typeof processAdvancedCheckout>[2]) => {
       if (!terminal) return;
       try {
-        await processCardCheckout(
+        await processAdvancedCheckout(
           terminal.id,
           cartItems,
-          cardData,
+          payments,
           transactionDiscount,
         );
-        setShowCardModal(false);
+        setShowAdvancedModal(false);
         setShowSuccessModal(true);
       } catch {
         // Error is stored in paymentStore
       }
     },
-    [terminal, cartItems, transactionDiscount, processCardCheckout],
+    [terminal, cartItems, transactionDiscount, processAdvancedCheckout],
   );
 
   const handleHold = useCallback(() => {
@@ -331,13 +385,27 @@ export function HomePage() {
   }
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full relative">
+      {/* Barcode scan feedback */}
+      {scanMessage && (
+        <div
+          className={`absolute left-1/2 top-2 z-50 -translate-x-1/2 rounded-lg px-4 py-2 text-sm font-medium shadow-lg transition-opacity ${
+            scanMessage.type === 'success'
+              ? 'bg-green-600 text-white'
+              : 'bg-red-600 text-white'
+          }`}
+        >
+          {scanMessage.text}
+        </div>
+      )}
+
       {/* Product grid - left panel */}
       <div className="flex flex-[7] flex-col overflow-hidden border-r border-gray-200 bg-gray-50 p-4">
         <ProductGrid
           products={products}
           categories={categories}
           onAddToCart={handleAddToCart}
+          onCustomize={handleCustomize}
           cartProductIds={cartProductIds}
           isLoading={productsLoading}
         />
@@ -355,13 +423,13 @@ export function HomePage() {
           onRemoveItem={removeItem}
           onClearCart={clearCart}
           onPayCash={handlePayCash}
-          onPayCard={handlePayCard}
+          onAdvancedPayments={handleAdvancedPayments}
           onQuantityTap={handleQuantityTap}
           onDiscount={() => setShowDiscountModal(true)}
           onHold={handleHold}
           onRecall={() => setShowHeldModal(true)}
-          onReports={() => setShowReportsMenu(true)}
           onLineDiscount={handleLineDiscount}
+          onEditModifiers={handleEditModifiers}
           shiftNumber={shift.shift_number}
           openingCash={shift.opening_cash}
           paymentMethods={paymentMethods}
@@ -390,13 +458,19 @@ export function HomePage() {
         />
       )}
 
-      {/* Card payment modal */}
-      <CardPaymentModal
-        isOpen={showCardModal}
-        onClose={() => setShowCardModal(false)}
+      {/* Advanced payments modal */}
+      <AdvancedPaymentsModal
+        isOpen={showAdvancedModal}
+        onClose={() => setShowAdvancedModal(false)}
         total={total()}
-        onConfirm={(data) => void handleCardConfirm(data)}
+        subtotal={subtotal()}
+        taxAmount={taxAmount()}
+        itemCount={itemCount()}
+        paymentMethods={paymentMethods}
+        paymentRepositories={paymentRepositories}
+        onComplete={handleAdvancedComplete}
         isProcessing={isProcessing}
+        error={paymentError}
       />
 
       {/* Held transactions modal */}
@@ -429,19 +503,9 @@ export function HomePage() {
       {/* Modifier selection modal */}
       <ModifierSelectionModal
         isOpen={modifierProduct !== null}
-        onClose={() => setModifierProduct(null)}
+        onClose={() => { setModifierProduct(null); setEditingLineId(null); }}
         product={modifierProduct}
         onConfirm={handleModifierConfirm}
-      />
-
-      {/* Reports menu */}
-      <ReportsMenu
-        isOpen={showReportsMenu}
-        onClose={() => setShowReportsMenu(false)}
-        onXReport={() => { /* Reports handled by API */ }}
-        onZReport={() => { /* Reports handled by API */ }}
-        onTransactionHistory={() => { /* Future navigation */ }}
-        onCashDrawerOps={() => { setShowReportsMenu(false); setShowCashDrawerModal(true); }}
       />
 
       {/* Void/Return modal */}
@@ -449,15 +513,6 @@ export function HomePage() {
         isOpen={showVoidReturnModal}
         onClose={() => setShowVoidReturnModal(false)}
       />
-
-      {/* Cash drawer modal */}
-      {shift && (
-        <CashDrawerModal
-          isOpen={showCashDrawerModal}
-          onClose={() => setShowCashDrawerModal(false)}
-          shiftId={shift.id}
-        />
-      )}
 
       {/* Quantity numpad */}
       <QuantityNumpad

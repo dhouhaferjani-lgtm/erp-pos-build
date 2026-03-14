@@ -139,6 +139,7 @@ final class ReceiptHashService
     {
         $receipts = Receipt::where('terminal_id', $terminal->id)
             ->where('is_voided', false)
+            ->where('is_training', false)
             ->orderBy('chain_sequence')
             ->get();
 

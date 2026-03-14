@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { useAuthStore } from '@/stores/authStore';
+import { usePrinterStore } from '@/stores/printerStore';
+import { useCashDrawerStore } from '@/stores/cashDrawerStore';
 
 // ── Types ──
 
@@ -76,6 +78,23 @@ export interface PrinterConfig {
   name: string;
 }
 
+// ── Settings types passed to Rust backend ──
+
+export interface PrintSettings {
+  columns: number;
+  cut_mode: 'partial' | 'full' | 'none';
+  encoding: string;
+  footer_text: string;
+  copies: number;
+}
+
+export interface DrawerKickSettings {
+  pin: number;
+  pulse_on: number;
+  pulse_off: number;
+  beep: boolean;
+}
+
 // ── Tauri Command Wrappers ──
 
 /**
@@ -96,32 +115,65 @@ export async function discoverPrinters(
 export async function printReceipt(
   receipt: ReceiptData,
   printer: PrinterConfig,
+  printSettings?: PrintSettings,
 ): Promise<void> {
   return invoke<void>('print_receipt', {
     receipt,
     connectionType: printer.connection_type,
     address: printer.address,
+    printSettings: printSettings ?? null,
   });
 }
 
 /**
  * Print a test/alignment page to verify printer setup.
  */
-export async function printTestPage(printer: PrinterConfig): Promise<void> {
+export async function printTestPage(
+  printer: PrinterConfig,
+  columns?: number,
+): Promise<void> {
   return invoke<void>('print_test_page', {
     connectionType: printer.connection_type,
     address: printer.address,
+    columns: columns ?? null,
   });
 }
 
 /**
  * Open the cash drawer connected to the specified printer.
  */
-export async function openCashDrawer(printer: PrinterConfig): Promise<void> {
+export async function openCashDrawer(
+  printer: PrinterConfig,
+  drawerSettings?: DrawerKickSettings,
+): Promise<void> {
   return invoke<void>('open_cash_drawer', {
     connectionType: printer.connection_type,
     address: printer.address,
+    drawerSettings: drawerSettings ?? null,
   });
+}
+
+/** Build PrintSettings from the printer store state. */
+export function getPrintSettingsFromStore(): PrintSettings {
+  const { settings } = usePrinterStore.getState();
+  return {
+    columns: settings.paperWidth === '80mm' ? 42 : 32,
+    cut_mode: settings.cutMode,
+    encoding: settings.encoding,
+    footer_text: settings.footerText,
+    copies: settings.copies,
+  };
+}
+
+/** Build DrawerKickSettings from the cash drawer store state. */
+export function getDrawerSettingsFromStore(): DrawerKickSettings {
+  const state = useCashDrawerStore.getState();
+  return {
+    pin: state.pin,
+    pulse_on: state.pulseOnTime,
+    pulse_off: state.pulseOffTime,
+    beep: state.beepOnOpen,
+  };
 }
 
 /**

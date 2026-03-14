@@ -101,7 +101,7 @@ export function CertificationFormPage() {
       is_active: isActive,
       display_order: displayOrder,
       translations: translations.map((t) => ({
-        id: t.id,
+        id: t.id ?? '',
         locale: t.locale,
         name: t.name,
         description: t.description || null,

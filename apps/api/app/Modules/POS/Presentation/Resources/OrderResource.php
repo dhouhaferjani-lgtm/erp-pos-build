@@ -42,9 +42,22 @@ final class OrderResource extends JsonResource
             'notes' => $this->notes,
             'opened_at' => $this->opened_at->toISOString(),
             'sent_at' => $this->sent_at?->toISOString(),
+            'ready_at' => $this->ready_at?->toISOString(),
+            'served_at' => $this->served_at?->toISOString(),
             'closed_at' => $this->closed_at?->toISOString(),
             'cancelled_at' => $this->cancelled_at?->toISOString(),
             'receipt_id' => $this->receipt_id,
+            'table' => $this->when($this->relationLoaded('table') && $this->table !== null, function () {
+                /** @var \App\Modules\POS\Domain\Table $table */
+                $table = $this->table;
+
+                return [
+                    'id' => $table->id,
+                    'table_number' => $table->table_number,
+                    'label' => $table->label,
+                    'floor_name' => $table->floor?->name,
+                ];
+            }),
             'lines' => OrderLineResource::collection($this->whenLoaded('lines')),
         ];
     }

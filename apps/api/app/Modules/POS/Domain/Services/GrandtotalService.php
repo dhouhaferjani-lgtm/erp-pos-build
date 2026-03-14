@@ -120,8 +120,9 @@ final class GrandtotalService
         Carbon $periodStart,
         Carbon $periodEnd
     ): array {
-        // Get all receipts in period
+        // Get all production receipts in period (exclude training)
         $receipts = Receipt::where('terminal_id', $terminal->id)
+            ->where('is_training', false)
             ->whereBetween('created_at', [$periodStart, $periodEnd])
             ->get();
 
@@ -164,9 +165,10 @@ final class GrandtotalService
      */
     public function calculatePerpetualTotals(Terminal $terminal): array
     {
-        // Get ALL receipts for terminal (excluding voids/refunds)
+        // Get ALL production receipts for terminal (excluding voids/refunds and training)
         $totals = Receipt::where('terminal_id', $terminal->id)
             ->where('is_voided', false)
+            ->where('is_training', false)
             ->selectRaw('
                 SUM(total) as lifetime_sales,
                 SUM(tax_amount) as lifetime_tax,

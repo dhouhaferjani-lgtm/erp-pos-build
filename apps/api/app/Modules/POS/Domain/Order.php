@@ -48,6 +48,8 @@ use Illuminate\Support\Carbon;
  * @property string|null $notes
  * @property Carbon $opened_at
  * @property Carbon|null $sent_at
+ * @property Carbon|null $ready_at
+ * @property Carbon|null $served_at
  * @property Carbon|null $closed_at
  * @property Carbon|null $cancelled_at
  * @property string|null $receipt_id
@@ -59,6 +61,7 @@ use Illuminate\Support\Carbon;
  * @property-read Shift $shift
  * @property-read User $cashier
  * @property-read Partner|null $partner
+ * @property-read Table|null $table
  * @property-read Receipt|null $receipt
  * @property-read Collection<int, OrderLine> $lines
  *
@@ -103,6 +106,8 @@ class Order extends Model
         'notes',
         'opened_at',
         'sent_at',
+        'ready_at',
+        'served_at',
         'closed_at',
         'cancelled_at',
         'receipt_id',
@@ -122,6 +127,8 @@ class Order extends Model
             'total' => 'decimal:4',
             'opened_at' => 'datetime',
             'sent_at' => 'datetime',
+            'ready_at' => 'datetime',
+            'served_at' => 'datetime',
             'closed_at' => 'datetime',
             'cancelled_at' => 'datetime',
         ];
@@ -176,6 +183,14 @@ class Order extends Model
     }
 
     /**
+     * @return BelongsTo<Table, $this>
+     */
+    public function table(): BelongsTo
+    {
+        return $this->belongsTo(Table::class, 'table_id');
+    }
+
+    /**
      * @return BelongsTo<Receipt, $this>
      */
     public function receipt(): BelongsTo
@@ -220,6 +235,14 @@ class Order extends Model
             OrderStatus::Ready,
         ], true)
             && $this->lines()->count() > 0;
+    }
+
+    /**
+     * Check if the order can be marked as served.
+     */
+    public function canBeServed(): bool
+    {
+        return $this->status === OrderStatus::Ready;
     }
 
     /**

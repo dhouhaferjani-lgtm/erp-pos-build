@@ -188,6 +188,18 @@
       "step3": "You receive reduced payment (e.g., 985 TND)",
       "step4": "Record the withholding in the system",
       "step5": "Follow up to get the withholding certificate from customer"
+    },
+    "markCertificateReceived": "Mark Certificate Received",
+    "enterCertificateNumber": "Enter the certificate number provided by the customer",
+    "certificateNumberLabel": "Certificate Number",
+    "certificateNumberPlaceholder": "e.g., WHT-2026-001",
+    "withholdingRate": "Withholding Rate",
+    "dateFrom": "Date From",
+    "dateTo": "Date To",
+    "date": "Date",
+    "messages": {
+      "certificateMarkedReceived": "Certificate marked as received successfully",
+      "markReceivedFailed": "Failed to mark certificate as received"
     }
   },
 

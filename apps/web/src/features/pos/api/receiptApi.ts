@@ -28,29 +28,29 @@ export async function getReceipt(id: string): Promise<ReceiptData> {
 export interface CreateReceiptRequest {
   terminal_id: string
   lines: Array<{
-    product_id?: string
-    composite_item_id?: string
+    product_id?: string | undefined
+    composite_item_id?: string | undefined
     quantity: number
     unit_price: string
     modifiers?: Array<{
       modifier_id: string
       modifier_group_id: string
       price_adjustment: string
-    }>
-    discount_type?: 'percentage' | 'fixed' | null
-    discount_percent?: string
-    discount_amount?: string
-    discount_reason?: string
+    }> | undefined
+    discount_type?: 'percentage' | 'fixed' | null | undefined
+    discount_percent?: string | undefined
+    discount_amount?: string | undefined
+    discount_reason?: string | undefined
   }>
-  customer_id?: string
-  contact_id?: string
-  notes?: string
-  transaction_discount_amount?: string
-  transaction_discount_reason?: string
-  coupon_code?: string
-  loyalty_discount_amount?: string
-  loyalty_reward_id?: string
-  consumption_mode?: string
+  customer_id?: string | undefined
+  contact_id?: string | undefined
+  notes?: string | undefined
+  transaction_discount_amount?: string | undefined
+  transaction_discount_reason?: string | undefined
+  coupon_code?: string | undefined
+  loyalty_discount_amount?: string | undefined
+  loyalty_reward_id?: string | undefined
+  consumption_mode?: string | undefined
 }
 
 /**
@@ -83,11 +83,11 @@ export interface ProcessReceiptPaymentsRequest {
     payment_method_id: string
     amount: number
     repository_id: string
-    card_last_four?: string
-    transaction_reference?: string
-    authorization_code?: string
+    card_last_four?: string | undefined
+    transaction_reference?: string | undefined
+    authorization_code?: string | undefined
   }>
-  customer_id?: string
+  customer_id?: string | undefined
 }
 
 /**
@@ -181,7 +181,7 @@ export interface ProcessReturnRequest {
     line_id: string
     quantity: string
   }>
-  notes?: string
+  notes?: string | undefined
 }
 
 /**

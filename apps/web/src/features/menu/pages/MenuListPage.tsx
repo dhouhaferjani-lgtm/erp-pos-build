@@ -19,7 +19,7 @@ export function MenuListPage() {
     syncToURL: true,
   })
 
-  const statusFilter = (tableState.filters.is_active as string) ?? 'all'
+  const statusFilter = (tableState.filters['is_active'] as string) ?? 'all'
 
   const filterTabs = useMemo(() => [
     { value: 'all', label: t('common:filters.all') },
@@ -30,11 +30,11 @@ export function MenuListPage() {
   const queryParams = useMemo(() => {
     const params = tableState.getQueryParams()
     // Map status filter
-    const isActive = tableState.filters.is_active as string | undefined
+    const isActive = tableState.filters['is_active'] as string | undefined
     if (isActive === 'active') {
-      params.is_active = '1'
+      params['is_active'] = '1'
     } else if (isActive === 'inactive') {
-      params.is_active = '0'
+      params['is_active'] = '0'
     }
     return params
   }, [tableState.getQueryParams()])
@@ -94,7 +94,7 @@ export function MenuListPage() {
           onChange={(v) => tableState.setFilter('is_active', v === 'all' ? undefined : v)}
         />
         <SearchFilter
-          value={tableState.filters.search as string | undefined}
+          value={tableState.filters['search'] as string | undefined}
           onChange={(v) => tableState.setFilter('search', v)}
           placeholder={`${t('common:actions.search')} ${t('menu:menus').toLowerCase()}...`}
           className="w-full sm:w-72"

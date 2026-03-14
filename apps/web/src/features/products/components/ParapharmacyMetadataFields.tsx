@@ -2,22 +2,23 @@ import { useTranslation } from 'react-i18next'
 import { useFieldArray, type Control, type UseFormRegister, type FieldErrors } from 'react-hook-form'
 import { Plus, X } from 'lucide-react'
 
-interface ParapharmacyMetadataFieldsProps<T extends Record<string, unknown>> {
-  control: Control<T>
-  register: UseFormRegister<T>
-  errors: FieldErrors<T>
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+interface ParapharmacyMetadataFieldsProps {
+  control: Control<any>
+  register: UseFormRegister<any>
+  errors: FieldErrors<any>
 }
 
-export function ParapharmacyMetadataFields<T extends Record<string, unknown>>({
+export function ParapharmacyMetadataFields({
   control,
   register,
   errors,
-}: ParapharmacyMetadataFieldsProps<T>) {
+}: ParapharmacyMetadataFieldsProps) {
   const { t } = useTranslation(['products'])
 
   const { fields: ingredientFields, append: appendIngredient, remove: removeIngredient } = useFieldArray({
-    control,
-    name: 'parapharmacy_metadata.active_ingredients',
+    control: control as Control<Record<string, unknown>>,
+    name: 'parapharmacy_metadata.active_ingredients' as never,
   })
 
   return (
@@ -46,10 +47,11 @@ export function ParapharmacyMetadataFields<T extends Record<string, unknown>>({
             <option value="sports_nutrition">{t('products:parapharmacy.categories.sports_nutrition')}</option>
             <option value="other">{t('products:parapharmacy.categories.other')}</option>
           </select>
-          {errors.parapharmacy_metadata?.category && (
+          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+          {(errors as any)?.parapharmacy_metadata?.category && (
             <p className="mt-1 text-sm text-red-600">
-              {/* eslint-disable-next-line @typescript-eslint/no-unsafe-member-access */}
-              {errors.parapharmacy_metadata.category.message as string}
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+              {(errors as any).parapharmacy_metadata.category.message}
             </p>
           )}
         </div>
@@ -89,13 +91,13 @@ export function ParapharmacyMetadataFields<T extends Record<string, unknown>>({
               <div key={field.id} className="flex gap-2">
                 <input
                   type="text"
-                  {...register(`parapharmacy_metadata.active_ingredients.${String(index)}.name` as const)}
+                  {...register(`parapharmacy_metadata.active_ingredients.${index}.name`)}
                   placeholder={t('products:parapharmacy.ingredientName')}
                   className="flex-1 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
                 <input
                   type="text"
-                  {...register(`parapharmacy_metadata.active_ingredients.${String(index)}.concentration` as const)}
+                  {...register(`parapharmacy_metadata.active_ingredients.${index}.concentration`)}
                   placeholder={t('products:parapharmacy.concentration')}
                   className="w-40 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />

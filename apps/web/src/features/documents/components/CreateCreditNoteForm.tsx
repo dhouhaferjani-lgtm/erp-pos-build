@@ -33,14 +33,6 @@ const amountBasedSchema = z.object({
   notes: z.string().optional(),
 })
 
-// Line selection state for line-based mode
-interface LineSelection {
-  lineId: string
-  quantity: number
-  maxQuantity: number
-  unitPrice: number
-  description: string
-}
 
 type CreditNoteFormData = z.infer<typeof amountBasedSchema>
 
@@ -149,7 +141,7 @@ export function CreateCreditNoteForm({
   }, [invoice.lines, selectedLines])
 
   // Toggle line selection
-  const handleToggleLine = (lineId: string, maxQuantity: number, unitPrice: number) => {
+  const handleToggleLine = (lineId: string, maxQuantity: number, _unitPrice: number) => {
     setSelectedLines(prev => {
       const newMap = new Map(prev)
       if (newMap.has(lineId)) {

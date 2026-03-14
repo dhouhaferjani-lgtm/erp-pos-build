@@ -57,7 +57,6 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
   const setLoading = useCompanyStore((state) => state.setLoading)
   const reset = useCompanyStore((state) => state.reset)
   const companies = useCompanyStore((state) => state.companies)
-  const currentCompanyId = useCompanyStore((state) => state.currentCompanyId)
   const queryClient = useQueryClient()
 
   // Skip fetching on admin routes - they use separate authentication
@@ -85,13 +84,11 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
       setTimeout(() => {
         const state = useCompanyStore.getState()
         if (!state.currentCompanyId && data.length > 0) {
-          console.log('[CompanyProvider] No company selected, defaulting to first:', data[0].id)
           setCurrentCompany(data[0].id)
         }
       }, 0)
     } else if (isError) {
       // If we can't fetch companies, log error but don't break the app
-      console.error('Failed to fetch companies:', error)
       setLoading(false)
     }
   }, [data, isLoading, isError, error, setCompanies, setLoading, setCurrentCompany])

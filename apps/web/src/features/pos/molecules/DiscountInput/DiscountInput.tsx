@@ -8,24 +8,24 @@ import { useCurrency } from '@/hooks/useCurrency'
 
 export interface DiscountData {
   type: 'percentage' | 'fixed'
-  percent?: string
-  amount?: string
-  reason?: string
+  percent?: string | undefined
+  amount?: string | undefined
+  reason?: string | undefined
 }
 
 export interface DiscountInputProps {
   lineTotal: string
   currentDiscount?: {
     type: 'percentage' | 'fixed' | null
-    percent?: string
-    amount?: string
-    reason?: string
-  }
+    percent?: string | undefined
+    amount?: string | undefined
+    reason?: string | undefined
+  } | undefined
   onApplyDiscount: (discount: DiscountData) => void
   onClearDiscount: () => void
   effectiveLimit: number
   requiresReason: boolean
-  touchOptimized?: boolean
+  touchOptimized?: boolean | undefined
 }
 
 /**

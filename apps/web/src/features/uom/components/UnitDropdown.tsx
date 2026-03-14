@@ -5,14 +5,14 @@ import { FormField } from '../../../components/atoms/FormField/FormField'
 import { useUnits } from '../hooks/useUnits'
 
 interface UnitDropdownProps {
-  value?: string
-  onChange?: (value: string) => void
-  error?: boolean
-  label?: string
-  required?: boolean
-  categoryId?: string
-  disabled?: boolean
-  name?: string
+  value?: string | undefined
+  onChange?: ((value: string) => void) | undefined
+  error?: boolean | undefined
+  label?: string | undefined
+  required?: boolean | undefined
+  categoryId?: string | undefined
+  disabled?: boolean | undefined
+  name?: string | undefined
 }
 
 /**

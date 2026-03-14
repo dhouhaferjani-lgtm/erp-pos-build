@@ -122,6 +122,45 @@
     "description": "Description"
   },
 
+  "salesWithholding": {
+    "title": "Suivi des Retenues sur Ventes",
+    "subtitle": "Suivez les retenues fiscales appliquées par les clients sur les paiements",
+    "noRecords": "Aucun enregistrement de retenue trouvé",
+    "invoiceNumber": "Facture",
+    "customer": "Client",
+    "invoiceAmount": "Montant de la Facture",
+    "withheldAmount": "Montant Retenu",
+    "expectedReceivable": "Créance Attendue",
+    "certificateStatus": "Statut du Certificat",
+    "certificateReceived": "Certificat Reçu",
+    "certificatePending": "Certificat en Attente",
+    "received": "Reçu",
+    "pending": "En Attente",
+    "viewDetails": "Voir les Détails",
+    "infoTitle": "À propos des Retenues sur Ventes",
+    "infoText": "Ceci suit les cas où les clients retiennent des impôts sur les paiements qu'ils vous versent. Vous devez relancer pour recevoir le certificat de retenue du client.",
+    "howItWorks": {
+      "title": "Comment ça marche",
+      "step1": "Vous émettez une facture à un client (ex. : 1 000 TND)",
+      "step2": "Le client retient l'impôt (ex. : 1,5 % = 15 TND)",
+      "step3": "Vous recevez un paiement réduit (ex. : 985 TND)",
+      "step4": "Enregistrez la retenue dans le système",
+      "step5": "Relancez pour obtenir le certificat de retenue du client"
+    },
+    "markCertificateReceived": "Marquer le Certificat comme Reçu",
+    "enterCertificateNumber": "Saisissez le numéro de certificat fourni par le client",
+    "certificateNumberLabel": "Numéro de Certificat",
+    "certificateNumberPlaceholder": "ex. : WHT-2026-001",
+    "withholdingRate": "Taux de Retenue",
+    "dateFrom": "Date Début",
+    "dateTo": "Date Fin",
+    "date": "Date",
+    "messages": {
+      "certificateMarkedReceived": "Certificat marqué comme reçu avec succès",
+      "markReceivedFailed": "Échec du marquage du certificat comme reçu"
+    }
+  },
+
   "messages": {
     "certificateCreated": "Attestation de retenue créée avec succès",
     "certificateIssued": "Attestation émise avec succès",

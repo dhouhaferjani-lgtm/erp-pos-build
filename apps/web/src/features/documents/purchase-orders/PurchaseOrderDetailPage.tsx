@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useParams, useNavigate } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -30,7 +30,6 @@ const receiptStatusColors = {
 export function PurchaseOrderDetailPage() {
   const { t } = useTranslation(['sales', 'common'])
   const { id = '' } = useParams<{ id: string }>()
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { currentCompany } = useCompany()
 
@@ -430,7 +429,7 @@ export function PurchaseOrderDetailPage() {
           {activeTab === 'related' && <RelatedDocumentsTab documentId={purchaseOrder.id} />}
           {activeTab === 'attachments' && <DocumentAttachments documentId={purchaseOrder.id} />}
           {activeTab === 'landedCosts' && purchaseOrder.status === 'received' && (
-            <PurchaseOrderLandedCostBreakdown purchaseOrderId={purchaseOrder.id} />
+            <PurchaseOrderLandedCostBreakdown documentId={purchaseOrder.id} />
           )}
           {activeTab === 'payments' && ['confirmed', 'received'].includes(purchaseOrder.status) && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -46,13 +46,19 @@ class CountryFiscalRulesProviderTest extends TestCase
     }
 
     /** @test */
-    public function it_falls_back_to_france_for_unsupported_country(): void
+    public function it_provides_generic_rules_for_country_without_dedicated_config(): void
     {
         $rules = $this->provider->getRulesForCountry('US');
 
-        // Should get France rules as fallback
-        $this->assertEquals('FR', $rules->countryCode);
+        // Generic rules use the actual country code, not France's
+        $this->assertEquals('US', $rules->countryCode);
         $this->assertEquals(1, $rules->defaultStartMonth);
+        $this->assertTrue($rules->allowCustomStartMonth);
+        $this->assertEquals(1, $rules->pastYearsToCreate);
+        $this->assertEquals(1, $rules->futureYearsToCreate);
+        $this->assertFalse($rules->autoClosePastYears);
+        $this->assertEquals(1, $rules->periodAutoLockMonths);
+        $this->assertEquals('monthly', $rules->periodStructure);
     }
 
     /** @test */
@@ -83,20 +89,6 @@ class CountryFiscalRulesProviderTest extends TestCase
         $this->assertEquals(2025, $years['future']);
     }
 
-    /** @test */
-    public function it_supports_available_countries(): void
-    {
-        $countries = $this->provider->getAvailableCountries();
-
-        $this->assertContains('TN', $countries);
-        $this->assertContains('FR', $countries);
-    }
-
-    /** @test */
-    public function it_checks_if_country_is_supported(): void
-    {
-        $this->assertTrue($this->provider->isCountrySupported('TN'));
-        $this->assertTrue($this->provider->isCountrySupported('FR'));
-        $this->assertFalse($this->provider->isCountrySupported('US'));
-    }
+    // Note: getAvailableCountries() and isCountrySupported() now query the DB
+    // and require a Feature test with RefreshDatabase. See Feature tests.
 }

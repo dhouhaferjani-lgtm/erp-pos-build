@@ -45,7 +45,7 @@ final class OrderController extends Controller
         $companyId = $this->companyContext->getCompanyId();
 
         $query = Order::where('company_id', $companyId)
-            ->with(['lines', 'terminal']);
+            ->with(['lines', 'terminal', 'table.floor']);
 
         if ($request->filled('terminal_id')) {
             $query->where('terminal_id', $request->input('terminal_id'));
@@ -95,7 +95,7 @@ final class OrderController extends Controller
 
         /** @var Order $order */
         $order = Order::where('company_id', $companyId)
-            ->with(['lines', 'terminal'])
+            ->with(['lines', 'terminal', 'table.floor'])
             ->findOrFail($id);
 
         return response()->json([

@@ -6,6 +6,8 @@ function makeSyncResult(overrides: Partial<SyncResult> = {}): SyncResult {
   return {
     receiptsPushed: 3,
     receiptsFailed: 0,
+    zReportsPushed: 0,
+    zReportsFailed: 0,
     productsPulled: 10,
     paymentConfigPulled: true,
     operatorsPulled: 2,

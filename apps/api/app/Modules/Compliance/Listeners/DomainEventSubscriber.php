@@ -21,6 +21,17 @@ use App\Modules\Document\Domain\Events\SalesOrderConfirmed;
 use App\Modules\Inventory\Domain\Events\ReservationCreated;
 use App\Modules\Inventory\Domain\Events\ReservationExpired;
 use App\Modules\Inventory\Domain\Events\ReservationReleased;
+use App\Modules\POS\Domain\Events\CashDrawerOperationRecorded;
+use App\Modules\POS\Domain\Events\ReceiptCreated;
+use App\Modules\POS\Domain\Events\ReceiptPrinted;
+use App\Modules\POS\Domain\Events\ReceiptVoided;
+use App\Modules\POS\Domain\Events\ShiftClosed;
+use App\Modules\POS\Domain\Events\ShiftOpened;
+use App\Modules\POS\Domain\Events\TerminalActivatedAudit;
+use App\Modules\POS\Domain\Events\TerminalDeactivated;
+use App\Modules\POS\Domain\Events\TerminalSoftwareUpdated;
+use App\Modules\POS\Domain\Events\TerminalTrainingModeChanged;
+use App\Modules\POS\Domain\Events\ZReportGenerated;
 use App\Modules\Treasury\Domain\Events\PaymentRecorded;
 use App\Shared\Domain\Events\DomainEvent;
 use Illuminate\Events\Dispatcher;
@@ -439,6 +450,252 @@ final class DomainEventSubscriber
     }
 
     /**
+     * Handle ReceiptCreated events.
+     *
+     * NF525 TICKET event - every receipt creation with fiscal hash.
+     */
+    public function handleReceiptCreated(ReceiptCreated $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Receipt',
+            aggregateId: $event->receiptId,
+            eventType: $event->getEventName(),
+            payload: [
+                'receipt_number' => $event->receiptNumber,
+                'total' => $event->total,
+                'currency' => $event->currency,
+                'fiscal_hash' => $event->fiscalHash,
+                'chain_sequence' => $event->chainSequence,
+                'terminal_id' => $event->terminalId,
+                'posted_at' => $event->postedAt,
+            ]
+        );
+    }
+
+    /**
+     * Handle ReceiptVoided events.
+     *
+     * NF525 ANNULATION event - every void with reason and actor.
+     */
+    public function handleReceiptVoided(ReceiptVoided $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Receipt',
+            aggregateId: $event->receiptId,
+            eventType: $event->getEventName(),
+            payload: [
+                'receipt_number' => $event->receiptNumber,
+                'void_reason' => $event->voidReason,
+                'voided_by' => $event->voidedBy,
+                'voided_at' => $event->voidedAt,
+            ]
+        );
+    }
+
+    /**
+     * Handle ReceiptPrinted events.
+     *
+     * NF525 DUPLICATA event - every receipt print/reprint must be logged.
+     */
+    public function handleReceiptPrinted(ReceiptPrinted $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Receipt',
+            aggregateId: $event->receiptId,
+            eventType: $event->getEventName(),
+            payload: [
+                'terminal_id' => $event->terminalId,
+                'user_id' => $event->userId,
+                'print_type' => $event->printType,
+                'copy_number' => $event->copyNumber,
+                'print_method' => $event->printMethod,
+                'printed_at' => $event->printedAt,
+            ]
+        );
+    }
+
+    /**
+     * Handle ShiftOpened events.
+     *
+     * NF525 OUVERTURE_CAISSE event - shift openings for cash drawer audit trail.
+     */
+    public function handleShiftOpened(ShiftOpened $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Shift',
+            aggregateId: $event->shiftId,
+            eventType: $event->getEventName(),
+            payload: [
+                'terminal_id' => $event->terminalId,
+                'cashier_id' => $event->cashierId,
+                'opening_balance' => $event->openingBalance,
+                'opened_at' => $event->openedAt,
+            ]
+        );
+    }
+
+    /**
+     * Handle ShiftClosed events.
+     *
+     * NF525 FERMETURE_CAISSE event - shift closings with variance for fraud detection.
+     */
+    public function handleShiftClosed(ShiftClosed $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Shift',
+            aggregateId: $event->shiftId,
+            eventType: $event->getEventName(),
+            payload: [
+                'terminal_id' => $event->terminalId,
+                'cashier_id' => $event->cashierId,
+                'expected_cash' => $event->expectedCash,
+                'actual_cash' => $event->actualCash,
+                'variance' => $event->variance,
+                'closed_at' => $event->closedAt,
+            ]
+        );
+    }
+
+    /**
+     * Handle ZReportGenerated events.
+     *
+     * NF525 RAPPORT_Z event - Z reports with hash chain for compliance.
+     */
+    public function handleZReportGenerated(ZReportGenerated $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'ZReport',
+            aggregateId: $event->zReportId,
+            eventType: $event->getEventName(),
+            payload: [
+                'terminal_id' => $event->terminalId,
+                'z_number' => $event->zNumber,
+                'fiscal_hash' => $event->fiscalHash,
+                'generated_at' => $event->generatedAt,
+            ]
+        );
+    }
+
+    /**
+     * Handle CashDrawerOperationRecorded events.
+     *
+     * NF525 cash movement events (DEPOT_ESPECES, RETRAIT_ESPECES, REMBOURSEMENT).
+     */
+    public function handleCashDrawerOperationRecorded(CashDrawerOperationRecorded $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'CashDrawerOperation',
+            aggregateId: $event->operationId,
+            eventType: $event->getEventName(),
+            payload: [
+                'shift_id' => $event->shiftId,
+                'terminal_id' => $event->terminalId,
+                'operation_type' => $event->operationType,
+                'amount' => $event->amount,
+                'user_id' => $event->userId,
+                'recorded_at' => $event->recordedAt,
+            ]
+        );
+    }
+
+    /**
+     * Handle TerminalActivatedAudit events.
+     *
+     * NF525 ACTIVATION_TERMINAL event - terminal activations for JET export.
+     */
+    public function handleTerminalActivatedAudit(TerminalActivatedAudit $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Terminal',
+            aggregateId: $event->terminalId,
+            eventType: $event->getEventName(),
+            payload: [
+                'terminal_code' => $event->terminalCode,
+                'activated_by' => $event->activatedBy,
+            ]
+        );
+    }
+
+    /**
+     * Handle TerminalDeactivated events.
+     *
+     * NF525 DESACTIVATION_TERMINAL event - terminal deactivations for JET export.
+     */
+    public function handleTerminalDeactivated(TerminalDeactivated $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Terminal',
+            aggregateId: $event->terminalId,
+            eventType: $event->getEventName(),
+            payload: [
+                'terminal_code' => $event->terminalCode,
+                'reason' => $event->reason,
+                'deactivated_by' => $event->deactivatedBy,
+            ]
+        );
+    }
+
+    /**
+     * Handle TerminalSoftwareUpdated events.
+     *
+     * NF525 MAJ_LOGICIEL event - software version changes for JET export.
+     */
+    public function handleTerminalSoftwareUpdated(TerminalSoftwareUpdated $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Terminal',
+            aggregateId: $event->terminalId,
+            eventType: $event->getEventName(),
+            payload: [
+                'terminal_code' => $event->terminalCode,
+                'previous_version' => $event->previousVersion,
+                'new_version' => $event->newVersion,
+            ]
+        );
+    }
+
+    /**
+     * Handle TerminalTrainingModeChanged events.
+     *
+     * NF525 training mode toggle - audit trail for training mode changes.
+     */
+    public function handleTerminalTrainingModeChanged(TerminalTrainingModeChanged $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Terminal',
+            aggregateId: $event->terminalId,
+            eventType: $event->getEventName(),
+            payload: [
+                'terminal_code' => $event->terminalCode,
+                'enabled' => $event->enabled,
+                'changed_by' => $event->changedBy,
+            ]
+        );
+    }
+
+    /**
      * Persist an event to the audit log.
      *
      * @param  array<string, mixed>  $payload
@@ -518,6 +775,21 @@ final class DomainEventSubscriber
             DraftLineAdded::class => 'handleDraftLineAdded',
             DraftLineModified::class => 'handleDraftLineModified',
             DraftLineRemoved::class => 'handleDraftLineRemoved',
+
+            // POS events (NF525 compliance)
+            ReceiptCreated::class => 'handleReceiptCreated',
+            ReceiptVoided::class => 'handleReceiptVoided',
+            ReceiptPrinted::class => 'handleReceiptPrinted',
+            ShiftOpened::class => 'handleShiftOpened',
+            ShiftClosed::class => 'handleShiftClosed',
+            ZReportGenerated::class => 'handleZReportGenerated',
+            CashDrawerOperationRecorded::class => 'handleCashDrawerOperationRecorded',
+
+            // Terminal lifecycle events (NF525 compliance)
+            TerminalActivatedAudit::class => 'handleTerminalActivatedAudit',
+            TerminalDeactivated::class => 'handleTerminalDeactivated',
+            TerminalSoftwareUpdated::class => 'handleTerminalSoftwareUpdated',
+            TerminalTrainingModeChanged::class => 'handleTerminalTrainingModeChanged',
         ];
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Catalog\Presentation\Requests;
 
+use App\Modules\Catalog\Domain\Enums\PricingMode;
 use App\Modules\Catalog\Domain\Enums\ProductionType;
 use App\Modules\Catalog\Domain\Enums\VerticalType;
 use App\Modules\Company\Services\CompanyContext;
@@ -37,6 +38,7 @@ class StoreCompositeItemRequest extends FormRequest
             'vertical_type' => ['sometimes', new Enum(VerticalType::class)],
             'base_price' => ['required', 'numeric', 'min:0'],
             'production_type' => ['sometimes', new Enum(ProductionType::class)],
+            'pricing_mode' => ['sometimes', new Enum(PricingMode::class)],
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'stock_unit_id' => ['nullable', 'uuid', 'exists:units,id'],
             'is_active' => ['sometimes', 'boolean'],

@@ -212,8 +212,8 @@ export function useTableState(options: TableStateOptions = {}): TableState {
 
     // Sort
     if (sortColumn) {
-      params.sort_by = sortColumn
-      params.sort_dir = sortDirection
+      params['sort_by'] = sortColumn
+      params['sort_dir'] = sortDirection
     }
 
     // Filters
@@ -224,8 +224,8 @@ export function useTableState(options: TableStateOptions = {}): TableState {
     })
 
     // Pagination
-    params.page = String(page)
-    params.per_page = String(perPage)
+    params['page'] = String(page)
+    params['per_page'] = String(perPage)
 
     return params
   }, [sortColumn, sortDirection, filters, page, perPage])

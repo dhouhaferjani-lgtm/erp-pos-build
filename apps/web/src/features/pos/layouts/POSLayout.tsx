@@ -10,7 +10,7 @@ import { CashOperationModal } from '../components/CashOperationModal'
 interface POSLayoutProps {
   children: React.ReactNode
   onExitPOS: () => void
-  terminalCode?: string
+  terminalCode?: string | undefined
 }
 
 /**

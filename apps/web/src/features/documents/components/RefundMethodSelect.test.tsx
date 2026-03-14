@@ -46,7 +46,7 @@ describe('RefundMethodSelect', () => {
     render(<RefundMethodSelect value="exchange" onChange={vi.fn()} />)
 
     const select = screen.getByRole('combobox')
-    expect(select.value).toBe('exchange')
+    expect((select as HTMLSelectElement).value).toBe('exchange')
   })
 
   it('can be disabled', () => {

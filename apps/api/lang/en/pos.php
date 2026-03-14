@@ -29,6 +29,7 @@ return [
     'return_receipt' => 'RETURN',
     'original_receipt' => 'Original Receipt',
     'return_reason' => 'Reason',
+    'duplicate_notice' => 'This is a duplicate copy — not valid as original',
     'thank_you' => 'Thank You!',
     'powered_by' => 'Powered by AutoERP',
 ];

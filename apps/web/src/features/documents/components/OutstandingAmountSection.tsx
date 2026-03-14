@@ -5,15 +5,15 @@ import { formatCurrency } from '../../../lib/format'
 import { Button } from '../../../components/atoms/Button'
 import type { PaymentStatus } from './PaymentStatusBadge'
 
-interface OutstandingAmountSectionProps {
+export interface OutstandingAmountSectionProps {
   total: number
   amountPaid: number
   creditNotesApplied: number
   outstandingAmount: number
   paymentStatus: PaymentStatus
   currency: string
-  onRecordPayment?: () => void
-  className?: string
+  onRecordPayment?: (() => void) | undefined
+  className?: string | undefined
 }
 
 /**

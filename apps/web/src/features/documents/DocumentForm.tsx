@@ -14,7 +14,7 @@ import { PartnerSearchSelect } from '../../components/ui/PartnerSearchSelect'
 import { useCompany } from '../../hooks/useCompany'
 import { useDraftAutoSave } from '../../hooks/useDraftAutoSave'
 import type { DocumentType } from './DocumentListPage'
-import type { Document, DocumentLine as DocumentApiLine } from '../../types/document'
+import type { Document } from '../../types/document'
 
 // Determine whether to filter by customer or supplier based on document type
 function getPartnerTypeForDocument(docType: DocumentType | undefined): 'customer' | 'supplier' | undefined {
@@ -102,8 +102,6 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
   const [lines, setLines] = useState<DocumentLine[]>([])
   // Partner modal state
   const [showPartnerModal, setShowPartnerModal] = useState(false)
-  // Track auto-save draft ID
-  const [autoSaveDraftId, setAutoSaveDraftId] = useState<string | null>(null)
 
   // Parse URL query parameters for pre-population
   const searchParams = new URLSearchParams(location.search)
@@ -166,17 +164,16 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
   }, [effectiveType, watchedPartnerId, watchedNotes, watchedDocumentDate, watchedDueDate, lines])
 
   // Auto-save hook (works for both new and existing documents)
-  const { draftId, isSaving, lastSavedAt } = useDraftAutoSave(
+  const { draftId: _draftId, isSaving, lastSavedAt } = useDraftAutoSave(
     draftData,
     {
       enabled: true,
       existingDraftId: id || undefined,
-      onSuccess: (savedDraftId) => {
-        setAutoSaveDraftId(savedDraftId)
-        console.log('Draft auto-saved:', savedDraftId)
+      onSuccess: (_savedDraftId) => {
+        // draft ID is tracked internally by the hook
       },
-      onError: (error) => {
-        console.error('Auto-save failed:', error)
+      onError: () => {
+        // Auto-save failed silently
       },
     }
   )
@@ -195,9 +192,9 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
   useEffect(() => {
     if (document) {
       reset({
-        type: document.type,
-        partner_id: document.partner_id,
-        issue_date: document.issue_date,
+        type: document.type as DocumentFormData['type'],
+        partner_id: document.partner_id ?? '',
+        issue_date: document.issue_date ?? '',
         due_date: document.due_date ?? '',
         notes: document.notes ?? '',
         external_document_number: document.external_document_number ?? '',
@@ -220,7 +217,17 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
 
   // Initialize lines from document (only once when document first loads)
   if (document?.lines && !hasInitializedLines) {
-    setLines(document.lines)
+    setLines(document.lines.map((l) => ({
+      id: l.id,
+      product_id: l.product_id ?? '',
+      product_code: '',
+      product_name: l.product_name,
+      description: l.description,
+      quantity: parseFloat(l.quantity),
+      unit_price: parseFloat(l.unit_price),
+      tax_rate: parseFloat(l.tax_rate ?? '0'),
+      line_total: parseFloat(l.line_total),
+    })))
     setHasInitializedLines(true)
   }
 

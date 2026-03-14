@@ -7,14 +7,14 @@ import { bcmul, bcdiv, bccomp, bcsub } from '@/lib/decimal'
 import { useCurrency } from '@/hooks/useCurrency'
 
 export interface TransactionDiscountInputProps {
-  currentAmount?: string
-  currentReason?: string
+  currentAmount?: string | undefined
+  currentReason?: string | undefined
   subtotal: string
   effectiveLimit: number
   requiresReason: boolean
-  onApply: (amount: string, reason?: string) => void
+  onApply: (amount: string, reason?: string | undefined) => void
   onClear: () => void
-  touchOptimized?: boolean
+  touchOptimized?: boolean | undefined
 }
 
 /**

@@ -10,11 +10,15 @@ use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Enums\OrderLineStatus;
 use App\Modules\POS\Domain\Enums\OrderStatus;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
+use App\Modules\POS\Domain\Enums\TableStatus;
 use App\Modules\POS\Domain\Events\OrderClosed;
+use App\Modules\POS\Domain\Events\OrderLineStatusChanged;
+use App\Modules\POS\Domain\Events\OrderReady;
 use App\Modules\POS\Domain\Events\OrderSentToKitchen;
 use App\Modules\POS\Domain\Order;
 use App\Modules\POS\Domain\OrderLine;
 use App\Modules\POS\Domain\Shift;
+use App\Modules\POS\Domain\Table;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -101,6 +105,16 @@ final class OrderManagementService
             $cashierName = $shift->cashier->name ?? 'Unknown';
             $currency = $company->currency ?? 'TND';
 
+            // Validate and lock table if provided
+            if ($tableId !== null) {
+                /** @var Table $table */
+                $table = Table::lockForUpdate()->findOrFail($tableId);
+
+                if (! $table->isAvailable()) {
+                    throw new \RuntimeException('Table is not available for assignment.');
+                }
+            }
+
             /** @var Order $order */
             $order = Order::create([
                 'tenant_id' => $terminal->tenant_id,
@@ -125,6 +139,14 @@ final class OrderManagementService
                 'notes' => $notes,
                 'opened_at' => Carbon::now(),
             ]);
+
+            // Assign table to order
+            if ($tableId !== null) {
+                $table->update([
+                    'status' => TableStatus::Occupied,
+                    'current_order_id' => $order->id,
+                ]);
+            }
 
             return $order->load('lines');
         });
@@ -336,6 +358,14 @@ final class OrderManagementService
                 'receipt_id' => $receipt->id,
             ]);
 
+            // Release table if assigned
+            if ($order->table_id !== null) {
+                Table::where('id', $order->table_id)->update([
+                    'status' => TableStatus::Available,
+                    'current_order_id' => null,
+                ]);
+            }
+
             OrderClosed::dispatch($order->id, $receipt->id);
 
             /** @var Order $freshOrder */
@@ -373,11 +403,185 @@ final class OrderManagementService
 
             $order->update($updateData);
 
+            // Release table if assigned
+            if ($order->table_id !== null) {
+                Table::where('id', $order->table_id)->update([
+                    'status' => TableStatus::Available,
+                    'current_order_id' => null,
+                ]);
+            }
+
             /** @var Order $freshOrder */
             $freshOrder = $order->fresh(['lines']);
 
             return $freshOrder;
         });
+    }
+
+    /**
+     * Update the status of a single order line.
+     *
+     * Validates transitions: Sent→Preparing→Ready, any→Cancelled.
+     * When all non-cancelled lines are Ready, auto-transitions order to Ready.
+     *
+     * @throws \RuntimeException If transition is invalid
+     */
+    public function updateLineStatus(string $orderId, string $lineId, OrderLineStatus $newStatus): OrderLine
+    {
+        return DB::transaction(function () use ($orderId, $lineId, $newStatus): OrderLine {
+            /** @var Order $order */
+            $order = Order::lockForUpdate()->findOrFail($orderId);
+
+            /** @var OrderLine $line */
+            $line = OrderLine::where('order_id', $order->id)->findOrFail($lineId);
+
+            $currentStatus = $line->status;
+
+            // Validate transition
+            $this->validateLineStatusTransition($currentStatus, $newStatus);
+
+            $updateData = ['status' => $newStatus];
+
+            if ($newStatus === OrderLineStatus::Ready) {
+                $updateData['prepared_at'] = Carbon::now();
+            }
+
+            $line->update($updateData);
+
+            $fromStatus = $currentStatus;
+
+            // Check if all non-cancelled lines are Ready → auto-transition order
+            $this->checkAndTransitionOrderToReady($order);
+
+            OrderLineStatusChanged::dispatch($order->id, $lineId, $fromStatus->value, $newStatus->value);
+
+            return $line->fresh() ?? $line;
+        });
+    }
+
+    /**
+     * Mark an order as served.
+     *
+     * Sets served_at and transitions Ready lines to Served.
+     *
+     * @throws \RuntimeException If order cannot be served
+     */
+    public function markOrderServed(string $orderId): Order
+    {
+        return DB::transaction(function () use ($orderId): Order {
+            /** @var Order $order */
+            $order = Order::lockForUpdate()->with('lines')->findOrFail($orderId);
+
+            if (! $order->canBeServed()) {
+                throw new \RuntimeException('Order must be in Ready status to be marked as served.');
+            }
+
+            $now = Carbon::now();
+
+            $order->update([
+                'served_at' => $now,
+            ]);
+
+            // Transition Ready lines to Served
+            OrderLine::where('order_id', $order->id)
+                ->where('status', OrderLineStatus::Ready)
+                ->update([
+                    'status' => OrderLineStatus::Served,
+                ]);
+
+            /** @var Order $freshOrder */
+            $freshOrder = $order->fresh(['lines']);
+
+            return $freshOrder;
+        });
+    }
+
+    /**
+     * Bump an order — mark all Sent/Preparing lines as Ready.
+     *
+     * @throws \RuntimeException If order is not in kitchen
+     */
+    public function bumpOrder(string $orderId): Order
+    {
+        return DB::transaction(function () use ($orderId): Order {
+            /** @var Order $order */
+            $order = Order::lockForUpdate()->with('lines')->findOrFail($orderId);
+
+            if (! in_array($order->status, [OrderStatus::SentToKitchen, OrderStatus::Ready], true)) {
+                throw new \RuntimeException('Order must be sent to kitchen to be bumped.');
+            }
+
+            $now = Carbon::now();
+
+            // Mark all Sent/Preparing lines as Ready
+            OrderLine::where('order_id', $order->id)
+                ->whereIn('status', [OrderLineStatus::Sent, OrderLineStatus::Preparing])
+                ->update([
+                    'status' => OrderLineStatus::Ready,
+                    'prepared_at' => $now,
+                ]);
+
+            // Transition order to Ready
+            if ($order->status !== OrderStatus::Ready) {
+                $order->update([
+                    'status' => OrderStatus::Ready,
+                    'ready_at' => $now,
+                ]);
+            }
+
+            OrderReady::dispatch($order->id);
+
+            /** @var Order $freshOrder */
+            $freshOrder = $order->fresh(['lines']);
+
+            return $freshOrder;
+        });
+    }
+
+    /**
+     * Validate that a line status transition is allowed.
+     */
+    private function validateLineStatusTransition(OrderLineStatus $from, OrderLineStatus $to): void
+    {
+        // Any status can transition to Cancelled
+        if ($to === OrderLineStatus::Cancelled) {
+            return;
+        }
+
+        $allowed = match ($from) {
+            OrderLineStatus::Sent => [OrderLineStatus::Preparing, OrderLineStatus::Ready],
+            OrderLineStatus::Preparing => [OrderLineStatus::Ready],
+            default => [],
+        };
+
+        if (! in_array($to, $allowed, true)) {
+            throw new \RuntimeException("Invalid line status transition from {$from->value} to {$to->value}.");
+        }
+    }
+
+    /**
+     * Check if all non-cancelled lines are Ready and auto-transition order.
+     */
+    private function checkAndTransitionOrderToReady(Order $order): void
+    {
+        $nonCancelledLines = OrderLine::where('order_id', $order->id)
+            ->where('status', '!=', OrderLineStatus::Cancelled)
+            ->get();
+
+        if ($nonCancelledLines->isEmpty()) {
+            return;
+        }
+
+        $allReady = $nonCancelledLines->every(fn (OrderLine $line): bool => $line->status === OrderLineStatus::Ready);
+
+        if ($allReady && $order->status !== OrderStatus::Ready) {
+            $order->update([
+                'status' => OrderStatus::Ready,
+                'ready_at' => Carbon::now(),
+            ]);
+
+            OrderReady::dispatch($order->id);
+        }
     }
 
     /**

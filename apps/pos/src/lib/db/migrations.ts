@@ -2,6 +2,7 @@ export interface Migration {
   version: number;
   name: string;
   sql: string;
+  run?: (db: { execute: (sql: string, params?: unknown[]) => Promise<unknown> }) => Promise<void>;
 }
 
 export const migrations: Migration[] = [
@@ -160,6 +161,67 @@ export const migrations: Migration[] = [
     name: 'add_retry_count_to_offline_receipts',
     sql: `
       ALTER TABLE offline_receipts ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
+  {
+    version: 8,
+    name: 'create_z_reports_table',
+    sql: `
+      CREATE TABLE IF NOT EXISTS z_reports (
+        id TEXT PRIMARY KEY,
+        terminal_id TEXT NOT NULL,
+        shift_id TEXT NOT NULL,
+        z_number INTEGER NOT NULL,
+        formatted_z_number TEXT NOT NULL,
+        generated_at TEXT NOT NULL,
+        fiscal_hash TEXT NOT NULL,
+        previous_hash TEXT NOT NULL,
+        hash_sequence INTEGER NOT NULL,
+        report_data TEXT NOT NULL,
+        opening_cash REAL NOT NULL DEFAULT 0,
+        expected_cash REAL NOT NULL DEFAULT 0,
+        receipt_snapshots TEXT NOT NULL,
+        grand_totals TEXT NOT NULL,
+        synced INTEGER NOT NULL DEFAULT 0,
+        synced_at TEXT,
+        UNIQUE(terminal_id, z_number)
+      );
+      CREATE INDEX IF NOT EXISTS idx_z_reports_sync ON z_reports(synced);
+      CREATE INDEX IF NOT EXISTS idx_z_reports_terminal ON z_reports(terminal_id, z_number);
+    `,
+  },
+  {
+    version: 9,
+    name: 'add_z_chain_columns_to_terminal_state',
+    sql: '',
+    async run(db) {
+      const columns = [
+        "ALTER TABLE terminal_state ADD COLUMN z_last_hash TEXT NOT NULL DEFAULT 'GENESIS'",
+        'ALTER TABLE terminal_state ADD COLUMN z_hash_sequence INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE terminal_state ADD COLUMN z_number INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE terminal_state ADD COLUMN cumulative_sales REAL NOT NULL DEFAULT 0',
+        'ALTER TABLE terminal_state ADD COLUMN cumulative_tax REAL NOT NULL DEFAULT 0',
+        'ALTER TABLE terminal_state ADD COLUMN cumulative_refunds REAL NOT NULL DEFAULT 0',
+        'ALTER TABLE terminal_state ADD COLUMN perpetual_grand_total REAL NOT NULL DEFAULT 0',
+        'ALTER TABLE terminal_state ADD COLUMN receipt_count_lifetime INTEGER NOT NULL DEFAULT 0',
+      ];
+      for (const stmt of columns) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
+  {
+    version: 10,
+    name: 'add_z_reports_shift_unique_index',
+    sql: `
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_z_reports_shift_unique ON z_reports(shift_id);
     `,
   },
 ];

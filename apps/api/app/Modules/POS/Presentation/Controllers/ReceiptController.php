@@ -9,8 +9,10 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Application\Services\ReceiptCreationService;
 use App\Modules\POS\Application\Services\ReceiptPaymentService;
 use App\Modules\POS\Application\Services\ReceiptPdfService;
+use App\Modules\POS\Application\Services\ReceiptPrintAuditService;
 use App\Modules\POS\Application\Services\ReceiptReturnService;
 use App\Modules\POS\Application\Services\ReceiptVoidService;
+use App\Modules\POS\Domain\Enums\PrintMethod;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Exceptions\DiscountExceedsLimitException;
@@ -36,6 +38,7 @@ final class ReceiptController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly ReceiptCreationService $receiptCreationService,
         private readonly ReceiptPdfService $receiptPdfService,
+        private readonly ReceiptPrintAuditService $receiptPrintAuditService,
         private readonly ReceiptPaymentService $receiptPaymentService,
         private readonly ReceiptVoidService $receiptVoidService,
         private readonly ReceiptReturnService $receiptReturnService,
@@ -412,7 +415,17 @@ final class ReceiptController extends Controller
 
         $receipt = Receipt::where('company_id', $companyId)->findOrFail($id);
 
-        $pdf = $this->receiptPdfService->generate($receipt);
+        /** @var \App\Modules\Identity\Domain\User $user */
+        $user = Auth::user();
+
+        $printRecord = $this->receiptPrintAuditService->recordPrint(
+            receiptId: $receipt->id,
+            terminalId: $receipt->terminal_id,
+            userId: $user->id,
+            printMethod: PrintMethod::Pdf,
+        );
+
+        $pdf = $this->receiptPdfService->generate($receipt, copyNumber: $printRecord->copy_number);
         $filename = $this->receiptPdfService->getFilename($receipt);
 
         return $pdf->download($filename);
@@ -431,7 +444,17 @@ final class ReceiptController extends Controller
 
         $receipt = Receipt::where('company_id', $companyId)->findOrFail($id);
 
-        $pdf = $this->receiptPdfService->generate($receipt);
+        /** @var \App\Modules\Identity\Domain\User $user */
+        $user = Auth::user();
+
+        $printRecord = $this->receiptPrintAuditService->recordPrint(
+            receiptId: $receipt->id,
+            terminalId: $receipt->terminal_id,
+            userId: $user->id,
+            printMethod: PrintMethod::Pdf,
+        );
+
+        $pdf = $this->receiptPdfService->generate($receipt, copyNumber: $printRecord->copy_number);
         $filename = $this->receiptPdfService->getFilename($receipt);
 
         return $pdf->stream($filename);

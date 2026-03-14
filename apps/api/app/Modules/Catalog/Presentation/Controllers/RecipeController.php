@@ -33,7 +33,7 @@ class RecipeController extends Controller
 
         $item = CompositeItem::where('company_id', $companyId)->findOrFail($compositeItemId);
         $recipes = Recipe::where('composite_item_id', $item->id)
-            ->with(['lines.component', 'lines.unit'])
+            ->with(['lines.product', 'lines.compositeItemComponent', 'lines.unit'])
             ->orderByDesc('version')
             ->get();
 
@@ -48,7 +48,7 @@ class RecipeController extends Controller
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $recipe = Recipe::with(['lines.component', 'lines.unit', 'compositeItem'])
+        $recipe = Recipe::with(['lines.product', 'lines.compositeItemComponent', 'lines.unit', 'compositeItem'])
             ->findOrFail($id);
 
         // Verify company access
@@ -103,7 +103,7 @@ class RecipeController extends Controller
         }
 
         $recipe->update($request->validated());
-        $recipe->load(['lines.component', 'lines.unit']);
+        $recipe->load(['lines.product', 'lines.compositeItemComponent', 'lines.unit']);
 
         return response()->json(['data' => RecipeData::fromModel($recipe)]);
     }

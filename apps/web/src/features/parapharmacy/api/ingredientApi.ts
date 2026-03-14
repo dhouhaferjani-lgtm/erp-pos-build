@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
+import type { IngredientData } from '../types';
 
 export interface IngredientTranslation {
   id?: string;
@@ -28,7 +29,7 @@ export interface UpdateIngredientInput {
 }
 
 export interface IngredientsListResponse {
-  data: App.Modules.Product.Application.DTOs.IngredientData[];
+  data: IngredientData[];
   meta: {
     current_page: number;
     last_page: number;
@@ -58,16 +59,16 @@ export async function fetchIngredients(params?: {
 
 export async function fetchIngredient(
   id: string
-): Promise<App.Modules.Product.Application.DTOs.IngredientData> {
-  return apiGet<App.Modules.Product.Application.DTOs.IngredientData>(
+): Promise<IngredientData> {
+  return apiGet<IngredientData>(
     `/parapharmacy/ingredients/${id}`
   );
 }
 
 export async function createIngredient(
   data: CreateIngredientInput
-): Promise<App.Modules.Product.Application.DTOs.IngredientData> {
-  return apiPost<App.Modules.Product.Application.DTOs.IngredientData>(
+): Promise<IngredientData> {
+  return apiPost<IngredientData>(
     '/parapharmacy/ingredients',
     data
   );
@@ -76,8 +77,8 @@ export async function createIngredient(
 export async function updateIngredient(
   id: string,
   data: UpdateIngredientInput
-): Promise<App.Modules.Product.Application.DTOs.IngredientData> {
-  return apiPatch<App.Modules.Product.Application.DTOs.IngredientData>(
+): Promise<IngredientData> {
+  return apiPatch<IngredientData>(
     `/parapharmacy/ingredients/${id}`,
     data
   );

@@ -21,7 +21,7 @@ export function ProductStockLevels({
   // Helper to format currency
   const formatAmount = (value: string | null) => {
     if (!value) return '-'
-    return formatCurrency(parseFloat(value), currency, locale)
+    return formatCurrency(parseFloat(value), { currency, locale })
   }
 
   const { data, isLoading } = useQuery({

@@ -37,6 +37,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property int $current_year Year for sequence reset logic
  * @property string|null $last_hash Hash of most recent receipt (for chain continuity)
  * @property bool $is_active
+ * @property bool $is_training_mode
  * @property \Illuminate\Support\Carbon|null $activated_at
  * @property \Illuminate\Support\Carbon|null $deactivated_at
  * @property string|null $deactivation_reason
@@ -57,6 +58,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @method static Builder<static> forCompany(string $companyId)
  * @method static Builder<static> forLocation(string $locationId)
  * @method static Builder<static> active()
+ * @method static Builder<static> production()
+ * @method static Builder<static> training()
  * @method static Builder<static> byCode(string $code)
  * @method static Builder<static> web()
  * @method static Builder<static> physical()
@@ -94,6 +97,7 @@ class Terminal extends Model
         'current_year',
         'last_hash',
         'is_active',
+        'is_training_mode',
         'activated_at',
         'deactivated_at',
         'deactivation_reason',
@@ -114,6 +118,7 @@ class Terminal extends Model
             'current_sequence' => 'integer',
             'current_year' => 'integer',
             'is_active' => 'boolean',
+            'is_training_mode' => 'boolean',
             'activated_at' => 'datetime',
             'deactivated_at' => 'datetime',
             'max_discount_percent' => 'float',
@@ -236,6 +241,28 @@ class Terminal extends Model
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);
+    }
+
+    /**
+     * Scope to filter production (non-training) terminals
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeProduction(Builder $query): Builder
+    {
+        return $query->where('is_training_mode', false);
+    }
+
+    /**
+     * Scope to filter training mode terminals
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeTraining(Builder $query): Builder
+    {
+        return $query->where('is_training_mode', true);
     }
 
     /**

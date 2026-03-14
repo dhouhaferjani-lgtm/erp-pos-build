@@ -55,7 +55,8 @@ export function useProductRealtime(options: UseProductRealtimeOptions): void {
   const { productId, onUpdate, enabled = true } = options
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
-  const { currentCompany } = useCompanyStore()
+  const getCurrentCompany = useCompanyStore((state) => state.getCurrentCompany)
+  const currentCompany = getCurrentCompany()
 
   const handleUpdate = useCallback(
     (data: ProductCostPriceUpdatePayload) => {

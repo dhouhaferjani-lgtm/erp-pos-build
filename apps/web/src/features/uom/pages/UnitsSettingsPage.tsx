@@ -104,7 +104,7 @@ export function UnitsSettingsPage() {
               </div>
               <Button
                 onClick={() => handleAddUnit(category.id)}
-                variant="outline"
+                variant="secondary"
                 size="sm"
               >
                 <Plus className="h-4 w-4 mr-2" />
@@ -220,7 +220,7 @@ export function UnitsSettingsPage() {
         title={t('common:common.confirmDelete', { resource: deleteUnit?.name || '' })}
         message={t('uom:errors.unitInUse')}
         confirmText={t('common:actions.delete')}
-        confirmVariant="danger"
+        variant="danger"
         isLoading={deleteMutation.isPending}
       />
     </div>

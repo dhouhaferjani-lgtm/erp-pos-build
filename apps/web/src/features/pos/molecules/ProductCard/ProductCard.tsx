@@ -7,23 +7,23 @@ export interface Product {
   id: string
   name: string
   sku: string
-  barcode?: string | null
+  barcode?: string | null | undefined
   sale_price: string | null
   stock_quantity: number
-  image_url?: string
-  category?: string
-  sellableType?: 'product' | 'composite_item'
-  modifierGroups?: import('../../hooks/useActiveMenu').MenuModifierGroup[]
+  image_url?: string | undefined
+  category?: string | undefined
+  sellableType?: 'product' | 'composite_item' | undefined
+  modifierGroups?: import('../../hooks/useActiveMenu').MenuModifierGroup[] | undefined
 }
 
 export interface ProductCardProps {
   product: Product
   onAddToCart: (product: Product) => void
   onShowInfo: (product: Product) => void
-  onCustomize?: (product: Product) => void
-  isInCart?: boolean
-  touchOptimized?: boolean
-  className?: string
+  onCustomize?: ((product: Product) => void) | undefined
+  isInCart?: boolean | undefined
+  touchOptimized?: boolean | undefined
+  className?: string | undefined
 }
 
 export function ProductCard({

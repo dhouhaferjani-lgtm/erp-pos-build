@@ -36,14 +36,14 @@ interface ReceiptItem {
 }
 
 interface ReceiptSearchFilters {
-  terminal_id?: string
-  receipt_number?: string
-  receipt_type?: string
-  is_voided?: boolean
-  from_date?: string
-  to_date?: string
-  page?: number
-  per_page?: number
+  terminal_id?: string | undefined
+  receipt_number?: string | undefined
+  receipt_type?: string | undefined
+  is_voided?: boolean | undefined
+  from_date?: string | undefined
+  to_date?: string | undefined
+  page?: number | undefined
+  per_page?: number | undefined
 }
 
 interface PaginatedReceipts {
@@ -59,7 +59,7 @@ interface PaginatedReceipts {
 export function ReceiptSearchPage() {
   const { t } = useTranslation(['pos', 'common'])
   const queryClient = useQueryClient()
-  const { handlePrint } = useReceiptPrint()
+  const { printReceipt } = useReceiptPrint()
   const { currentLocationId } = useLocation()
   const [filters, setFilters] = useState<ReceiptSearchFilters>({ page: 1, per_page: 20 })
   const [searchInput, setSearchInput] = useState('')
@@ -324,7 +324,7 @@ export function ReceiptSearchPage() {
                       <div className="flex items-center justify-end gap-2">
                         <button
                           type="button"
-                          onClick={() => handlePrint(receipt.id)}
+                          onClick={() => { void printReceipt(receipt.id) }}
                           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50"
                           title={t('pos:receipt.print')}
                         >

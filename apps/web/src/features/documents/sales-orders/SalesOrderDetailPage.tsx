@@ -191,7 +191,7 @@ export function SalesOrderDetailPage() {
   }
 
   // Get delivery status from payload
-  const deliveryStatus = order.payload?.delivery_status || 'not_delivered'
+  const deliveryStatus = order.payload?.['delivery_status'] || 'not_delivered'
 
   // Payment computation
   const outstandingAmount = parseFloat(order.outstanding_amount || order.balance_due || '0')

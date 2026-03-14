@@ -121,8 +121,8 @@ export function ConversionCalculator({
 
       try {
         const conversionResult = await convert(parsedQuantity, fromUnitId, toUnitId)
-        setResult(conversionResult.convertedQuantity)
-        setConversionFactor(conversionResult.conversionFactor)
+        setResult(conversionResult.convertedQuantity ?? null)
+        setConversionFactor(conversionResult.conversionFactor ?? null)
       } catch (error) {
         setResult(null)
         setConversionFactor(null)
@@ -137,8 +137,8 @@ export function ConversionCalculator({
     // This handler is mainly for explicit "Convert" button clicks
     try {
       const conversionResult = await convert(parseFloat(data.quantity), data.fromUnitId, data.toUnitId)
-      setResult(conversionResult.convertedQuantity)
-      setConversionFactor(conversionResult.conversionFactor)
+      setResult(conversionResult.convertedQuantity ?? null)
+      setConversionFactor(conversionResult.conversionFactor ?? null)
     } catch (error) {
       setResult(null)
       setConversionFactor(null)

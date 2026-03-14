@@ -55,7 +55,7 @@ function extractApiErrorMessage(err: unknown, fallback: string): string {
 export function POSTransactions() {
   const { t } = useTranslation(['pos', 'common'])
   const queryClient = useQueryClient()
-  const { currentLocationId, currentLocation, isLoading: isLocationLoading } = useLocation()
+  const { currentLocationId, currentLocation: _currentLocation, isLoading: isLocationLoading } = useLocation()
   const { hasModule } = useCompanyConfig()
   const isFnBVertical = hasModule('Menu')
 
@@ -71,7 +71,7 @@ export function POSTransactions() {
   const [currentCartItems, setCurrentCartItems] = useState<CartItem[]>([])
   const [showOpenShift, setShowOpenShift] = useState(false)
   const [productInfoId, setProductInfoId] = useState<string | null>(null)
-  const [isQuickCheckoutPending, setIsQuickCheckoutPending] = useState(false)
+  const [_isQuickCheckoutPending, setIsQuickCheckoutPending] = useState(false)
   const [quickCheckoutResult, setQuickCheckoutResult] = useState<{
     receiptId: string
     receiptNumber: string
@@ -421,7 +421,7 @@ export function POSTransactions() {
         receiptId,
         receiptNumber,
         total,
-        changeDue: changeDue > 0 ? changeDue : undefined,
+        ...(changeDue > 0 ? { changeDue } : {}),
       })
       setCurrentCartItems([])
       setTransactionDiscount(undefined)
@@ -510,7 +510,7 @@ export function POSTransactions() {
         onClose={() => {
           // No-op: modal has inline warning banner explaining shift must be opened
         }}
-        terminalId={terminalCode}
+        terminalId={terminalCode ?? ''}
         onSuccess={() => {
           // Refetch shift data after opening
           queryClient.invalidateQueries({ queryKey: ['pos', 'shift', terminalCode] })
@@ -532,9 +532,9 @@ export function POSTransactions() {
         selectedCustomer={selectedCustomer}
         onChangeCustomer={() => { setShowCustomerSearch(true) }}
         touchOptimized={false}
-        terminalCode={terminalCode}
+        terminalCode={terminalCode ?? undefined}
         transactionDiscount={transactionDiscount}
-        onTransactionDiscountChange={setTransactionDiscount}
+        onTransactionDiscountChange={(d) => { setTransactionDiscount(d as typeof transactionDiscount) }}
         loyaltyMember={loyaltyMember}
         loyaltyEnrollment={loyaltyEnrollment}
         consumptionMode={isFnBVertical ? consumptionMode : undefined}

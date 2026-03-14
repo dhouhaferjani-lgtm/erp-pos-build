@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Providers;
 
+use App\Modules\POS\Commands\VerifyPosChainCommand;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -31,6 +32,13 @@ final class POSServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Register console commands
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                VerifyPosChainCommand::class,
+            ]);
+        }
+
         // Load routes
         $this->loadRoutesFrom(__DIR__.'/../routes.php');
 

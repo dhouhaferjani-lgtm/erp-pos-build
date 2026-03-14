@@ -80,6 +80,18 @@
   "stock": "Stock",
   "searchIngredient": "Search ingredient...",
   "searchComponent": "Search component...",
+  "searchCompositeItem": "Search composite item...",
+  "noCompositeItemsFound": "No composite items found",
+  "pricingMode": "Pricing Mode",
+  "pricingModes": {
+    "standard": "Standard (sum of components)",
+    "fixed_bundle": "Fixed Bundle (combo price)"
+  },
+  "componentTypes": {
+    "product": "Product",
+    "composite_item": "Composite Item"
+  },
+  "combo": "Combo",
   "editModifier": "Edit Modifier",
   "inventoryLink": "Inventory Link",
   "componentQuantity": "Component Quantity",

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Catalog\Application\DTOs;
 
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
+use App\Modules\Catalog\Domain\Enums\PricingMode;
 use App\Modules\Catalog\Domain\Enums\ProductionType;
 use App\Modules\Catalog\Domain\Enums\VerticalType;
 use Spatie\LaravelData\Data;
@@ -24,6 +25,7 @@ class CompositeItemData extends Data
         public VerticalType $vertical_type,
         public string $base_price,
         public ProductionType $production_type,
+        public PricingMode $pricing_mode,
         public ?string $tax_rate,
         public bool $is_active,
         public bool $is_available,
@@ -47,6 +49,7 @@ class CompositeItemData extends Data
             vertical_type: $item->vertical_type,
             base_price: number_format((float) $item->base_price, 4, '.', ''),
             production_type: $item->production_type,
+            pricing_mode: $item->pricing_mode ?? PricingMode::Standard,
             tax_rate: $item->tax_rate !== null ? (string) $item->tax_rate : null,
             is_active: $item->is_active,
             is_available: $item->is_available,

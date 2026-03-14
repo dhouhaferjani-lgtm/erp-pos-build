@@ -61,6 +61,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $partner_id Optional FK to partners for customer queryability
  * @property string|null $contact_id
  * @property bool $is_voided
+ * @property bool $is_training
  * @property Carbon|null $voided_at
  * @property string|null $voided_by
  * @property string|null $void_reason
@@ -92,6 +93,7 @@ use Illuminate\Support\Carbon;
  * @method static Builder<static> forCashier(string $cashierId)
  * @method static Builder<static> notVoided()
  * @method static Builder<static> voided()
+ * @method static Builder<static> production()
  * @method static Builder<static> notSynced()
  * @method static Builder<static> byYear(int $year)
  */
@@ -146,6 +148,7 @@ class Receipt extends Model
         'partner_id',
         'contact_id',
         'is_voided',
+        'is_training',
         'voided_at',
         'voided_by',
         'void_reason',
@@ -174,6 +177,7 @@ class Receipt extends Model
             'total' => 'decimal:3',
             'consumption_mode' => ConsumptionMode::class,
             'is_voided' => 'boolean',
+            'is_training' => 'boolean',
             'voided_at' => 'datetime',
             'synced_at' => 'datetime',
             'discount_breakdown' => 'array',
@@ -433,6 +437,17 @@ class Receipt extends Model
     public function scopeVoided(Builder $query): Builder
     {
         return $query->where('is_voided', true);
+    }
+
+    /**
+     * Scope to filter only production (non-training) receipts
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeProduction(Builder $query): Builder
+    {
+        return $query->where('is_training', false);
     }
 
     /**

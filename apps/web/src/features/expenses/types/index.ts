@@ -1,7 +1,18 @@
-import type {
-  App_Modules_Document_Domain_Enums_DocumentStatus as DocumentStatus,
-  App_Modules_Document_Domain_Enums_DocumentType as DocumentType,
-} from '@mecanospex/shared/types/generated'
+type DocumentStatus =
+  | 'draft'
+  | 'confirmed'
+  | 'posted'
+  | 'cancelled'
+
+type DocumentType =
+  | 'quote'
+  | 'sales_order'
+  | 'purchase_order'
+  | 'invoice'
+  | 'credit_note'
+  | 'delivery_note'
+  | 'return_note'
+  | 'expense'
 
 /**
  * Expense metadata with payment and category information

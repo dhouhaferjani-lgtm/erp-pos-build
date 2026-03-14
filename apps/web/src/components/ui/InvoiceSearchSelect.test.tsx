@@ -3,8 +3,8 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { InvoiceSearchSelect } from './InvoiceSearchSelect'
+import type { Invoice } from './InvoiceSearchSelect'
 import { api } from '../../lib/api'
-import type { Invoice } from '@mecanospex/shared/types/generated'
 
 // Mock the API
 vi.mock('../../lib/api', () => ({
@@ -259,7 +259,7 @@ describe('InvoiceSearchSelect', () => {
     const searchInput = screen.getByPlaceholderText(/Search by invoice number or partner/i)
     await user.type(searchInput, 'INV-00001')
 
-    expect(searchInput.value).toBe('INV-00001')
+    expect((searchInput as HTMLInputElement).value).toBe('INV-00001')
   })
 
   it('clears search when clear search button is clicked', async () => {
@@ -277,7 +277,7 @@ describe('InvoiceSearchSelect', () => {
     const searchInput = screen.getByPlaceholderText(/Search by invoice number or partner/i)
     await user.type(searchInput, 'test')
 
-    expect(searchInput.value).toBe('test')
+    expect((searchInput as HTMLInputElement).value).toBe('test')
 
     // Find and click the clear button in the search input
     const clearButtons = screen.getAllByRole('button')
@@ -287,6 +287,6 @@ describe('InvoiceSearchSelect', () => {
 
     await user.click(searchClearButton!)
 
-    expect(searchInput.value).toBe('')
+    expect((searchInput as HTMLInputElement).value).toBe('')
   })
 })

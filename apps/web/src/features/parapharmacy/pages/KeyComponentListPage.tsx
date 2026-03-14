@@ -89,12 +89,13 @@ export function KeyComponentListPage() {
                     <EmptyState
                       title={t('parapharmacy:noKeyComponents')}
                       description={t('parapharmacy:noKeyComponentsDescription')}
-                      action={{
-                        label: t('parapharmacy:addKeyComponent'),
-                        onClick: () => navigate('/parapharmacy/key-components/new'),
-                        icon: Plus,
-                      }}
                     />
+                    <div className="flex justify-center mt-4">
+                      <Button onClick={() => navigate('/parapharmacy/key-components/new')}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        {t('parapharmacy:addKeyComponent')}
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -150,10 +151,13 @@ export function KeyComponentListPage() {
       {data?.meta && (
         <OffsetPagination
           currentPage={page}
-          totalPages={Math.ceil(
-            data.meta.total / data.meta.per_page
-          )}
+          lastPage={Math.ceil(data.meta.total / data.meta.per_page)}
+          total={data.meta.total}
+          perPage={data.meta.per_page}
+          from={data.meta.from ?? null}
+          to={data.meta.to ?? null}
           onPageChange={setPage}
+          onPerPageChange={() => {}}
         />
       )}
 
@@ -164,7 +168,7 @@ export function KeyComponentListPage() {
         title={t('parapharmacy:confirmDeleteKeyComponent')}
         message={t('parapharmacy:confirmDeleteKeyComponentDescription')}
         confirmText={t('common:delete')}
-        confirmVariant="danger"
+        variant="danger"
         isLoading={deleteMutation.isPending}
       />
     </div>

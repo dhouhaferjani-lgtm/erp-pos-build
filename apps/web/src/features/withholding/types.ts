@@ -1,12 +1,14 @@
-import type {
-  App_Modules_Taxation_Domain_Enums_WithholdingDirection,
-  App_Modules_Taxation_Domain_Enums_CertificateStatus,
-  App_Modules_Taxation_Domain_Enums_TransactionType,
-} from '@shared/types/generated';
-
-export type WithholdingDirection = App_Modules_Taxation_Domain_Enums_WithholdingDirection;
-export type CertificateStatus = App_Modules_Taxation_Domain_Enums_CertificateStatus;
-export type TransactionType = App_Modules_Taxation_Domain_Enums_TransactionType;
+export type WithholdingDirection = 'sales' | 'purchase';
+export type CertificateStatus = 'draft' | 'issued' | 'submitted' | 'voided';
+export type TransactionType =
+  | 'services'
+  | 'goods'
+  | 'rent'
+  | 'honoraria'
+  | 'dividends'
+  | 'interest'
+  | 'royalties'
+  | 'other';
 
 export interface WithholdingCalculation {
   gross_amount: string;
@@ -27,6 +29,16 @@ export interface WithholdingPreviewResponse {
   should_withhold: boolean;
   calculation: WithholdingCalculation | null;
   suggested_rate: number | null;
+  // Flat properties (returned directly by some API variants)
+  withholding_amount?: string;
+  withholding_rate?: string;
+  net_amount?: string;
+  rate_percentage?: number;
+  rule?: {
+    id: string;
+    code: string;
+    name: string;
+  } | null;
 }
 
 export interface WithholdingCertificate {
@@ -137,20 +149,20 @@ export interface WithholdingRule {
 export interface CreateWithholdingCertificateRequest {
   direction: WithholdingDirection;
   partner_id: string;
-  document_id?: string;
-  payment_id?: string;
+  document_id?: string | undefined;
+  payment_id?: string | undefined;
   currency: string;
   gross_amount: string;
-  transaction_type?: TransactionType;
-  manual_rate_percentage?: number;
-  override_reason?: string;
+  transaction_type?: TransactionType | undefined;
+  manual_rate_percentage?: number | undefined;
+  override_reason?: string | undefined;
 }
 
 export interface WithholdingPreviewRequest {
   partner_id: string;
   amount: string;
   currency: string;
-  transaction_type?: TransactionType;
+  transaction_type?: TransactionType | undefined;
 }
 
 export interface VoidCertificateRequest {
@@ -162,38 +174,66 @@ export interface SubmitToTEJRequest {
 }
 
 export interface CertificateFilters {
-  direction?: WithholdingDirection;
-  status?: CertificateStatus;
-  year?: number;
-  partner_id?: string;
-  date_from?: string;
-  date_to?: string;
-  cursor?: string;
+  direction?: WithholdingDirection | undefined;
+  status?: CertificateStatus | undefined;
+  year?: number | undefined;
+  partner_id?: string | undefined;
+  date_from?: string | undefined;
+  date_to?: string | undefined;
+  cursor?: string | undefined;
 }
 
 export interface CreateWithholdingRuleRequest {
   country_code: string;
   code: string;
   name: string;
-  description?: string;
-  transaction_type?: TransactionType;
-  partner_tax_status?: string;
-  min_amount?: string;
+  description?: string | undefined;
+  transaction_type?: TransactionType | undefined;
+  partner_tax_status?: string | undefined;
+  min_amount?: string | undefined;
   rate: number;
   effective_from: string;
-  effective_to?: string;
-  is_active?: boolean;
+  effective_to?: string | undefined;
+  is_active?: boolean | undefined;
 }
 
 export interface UpdateWithholdingRuleRequest {
-  code?: string;
-  name?: string;
-  description?: string;
-  transaction_type?: TransactionType;
-  partner_tax_status?: string;
-  min_amount?: string;
-  rate?: number;
-  effective_from?: string;
-  effective_to?: string;
-  is_active?: boolean;
+  code?: string | undefined;
+  name?: string | undefined;
+  description?: string | undefined;
+  transaction_type?: TransactionType | undefined;
+  partner_tax_status?: string | undefined;
+  min_amount?: string | undefined;
+  rate?: number | undefined;
+  effective_from?: string | undefined;
+  effective_to?: string | undefined;
+  is_active?: boolean | undefined;
+}
+
+export interface SalesWithholdingTrackingRecord {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  documentId: string;
+  paymentId: string | null;
+  customerId: string;
+  customerName: string;
+  invoiceAmount: string;
+  withholdingRate: string;
+  withholdingAmount: string;
+  expectedReceivable: string;
+  certificateNumber: string | null;
+  certificateReceived: boolean;
+  certificateReceivedAt: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SalesWithholdingTrackingFilters {
+  filter?: 'pending';
+}
+
+export interface MarkCertificateReceivedRequest {
+  certificate_number: string;
 }

@@ -23,10 +23,10 @@ export const modifierGroupKeys = {
 }
 
 export function useModifierGroups(params?: {
-  search?: string
-  is_active?: boolean
-  per_page?: number
-  page?: number
+  search?: string | undefined
+  is_active?: boolean | undefined
+  per_page?: number | undefined
+  page?: number | undefined
 }) {
   return useQuery({
     queryKey: modifierGroupKeys.list(params as Record<string, unknown>),

@@ -1,7 +1,6 @@
 import axios, { type AxiosError, type AxiosInstance, type AxiosResponse } from 'axios'
 import { useCompanyStore } from '../stores/companyStore'
 import { useAuthStore } from '../stores/authStore'
-import { queryClient } from './queryClient'
 
 /**
  * API Response Format (per CLAUDE.md)

@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useSendToKitchen, useCloseOrder, useCancelOrder, useRemoveOrderLine } from '../../hooks/useOrders'
+import { useMarkOrderServed } from '../../hooks/useKitchenOrders'
 import { OrderLineItem } from '../../molecules/OrderLineItem'
 import { OrderStatusBadge } from '../../molecules/OrderStatusBadge'
 import { SendToKitchenButton } from '../../components/SendToKitchenButton'
@@ -26,6 +27,7 @@ export function OrderPanel({
   const closeOrder = useCloseOrder()
   const cancelOrder = useCancelOrder()
   const removeLine = useRemoveOrderLine()
+  const markServed = useMarkOrderServed()
 
   const isOpen = order.status === 'open'
   const canSendToKitchen = isOpen && order.lines.length > 0
@@ -35,6 +37,7 @@ export function OrderPanel({
   const canCancel = ['open', 'sent_to_kitchen', 'ready'].includes(
     order.status
   )
+  const canMarkServed = order.status === 'ready'
 
   const handleSendToKitchen = () => {
     sendToKitchen.mutate(order.id, {
@@ -60,6 +63,12 @@ export function OrderPanel({
       { orderId: order.id, lineId },
       { onSuccess: () => onOrderUpdated?.() }
     )
+  }
+
+  const handleMarkServed = () => {
+    markServed.mutate(order.id, {
+      onSuccess: () => onOrderUpdated?.(),
+    })
   }
 
   return (
@@ -91,6 +100,35 @@ export function OrderPanel({
           {order.consumption_mode && (
             <span>
               {t('orders.detail.consumption')}: {order.consumption_mode}
+            </span>
+          )}
+        </div>
+
+        {/* Table info */}
+        {order.table && (
+          <div className="mt-2 flex items-center gap-2">
+            <span className="rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
+              {t('orders.detail.table')}: {order.table.table_number}
+              {order.table.label ? ` - ${order.table.label}` : ''}
+            </span>
+            {order.table.floor_name && (
+              <span className="text-xs text-gray-400 dark:text-gray-500">
+                ({order.table.floor_name})
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Timing */}
+        <div className="mt-2 flex flex-wrap gap-4 text-xs text-gray-400 dark:text-gray-500">
+          {order.ready_at && (
+            <span>
+              {t('orders.detail.readyAt')}: {new Date(order.ready_at).toLocaleTimeString()}
+            </span>
+          )}
+          {order.served_at && (
+            <span>
+              {t('orders.detail.servedAt')}: {new Date(order.served_at).toLocaleTimeString()}
             </span>
           )}
         </div>
@@ -152,7 +190,7 @@ export function OrderPanel({
       </div>
 
       {/* Actions */}
-      {canCancel && (
+      {(canCancel || canMarkServed) && (
         <div className="flex flex-wrap items-center gap-2 border-t border-gray-200 p-4 dark:border-gray-700">
           {canSendToKitchen && (
             <SendToKitchenButton
@@ -160,20 +198,32 @@ export function OrderPanel({
               loading={sendToKitchen.isPending}
             />
           )}
+          {canMarkServed && (
+            <button
+              type="button"
+              onClick={handleMarkServed}
+              disabled={markServed.isPending}
+              className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+            >
+              {t('orders.actions.markServed')}
+            </button>
+          )}
           {canClose && (
             <CloseOrderButton
               onConfirm={handleClose}
               loading={closeOrder.isPending}
             />
           )}
-          <button
-            type="button"
-            onClick={handleCancel}
-            disabled={cancelOrder.isPending}
-            className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
-          >
-            {t('orders.actions.cancelOrder')}
-          </button>
+          {canCancel && (
+            <button
+              type="button"
+              onClick={handleCancel}
+              disabled={cancelOrder.isPending}
+              className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+            >
+              {t('orders.actions.cancelOrder')}
+            </button>
+          )}
         </div>
       )}
     </div>

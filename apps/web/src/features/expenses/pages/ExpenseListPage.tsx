@@ -44,7 +44,7 @@ export function ExpenseListPage() {
       if (value) {
         // TypeScript needs help here because ExpenseFilters has mixed value types
         if (key === 'status') {
-          newFilters[key] = value as ExpenseFilters['status']
+          newFilters[key] = value as NonNullable<ExpenseFilters['status']>
         } else if (key === 'category_id' || key === 'date_from' || key === 'date_to' || key === 'search') {
           newFilters[key] = value
         }

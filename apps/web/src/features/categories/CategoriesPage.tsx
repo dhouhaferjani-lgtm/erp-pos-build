@@ -72,7 +72,7 @@ export function CategoriesPage() {
       } else {
         // For create and create-child modes
         const createData: CreateCategoryInput = {
-          ...data,
+          ...(data as CreateCategoryInput),
           parentId: parentCategory?.id || (data as CreateCategoryInput).parentId,
         }
         await createMutation.mutateAsync(createData)
@@ -222,8 +222,7 @@ export function CategoriesPage() {
             : t('inventory:categories.deleteDialog.description', { name: categoryToDelete?.name })
         }
         confirmText={t('inventory:categories.deleteDialog.confirm')}
-        confirmVariant={categoryToDelete && canDelete(categoryToDelete) ? 'danger' : 'default'}
-        isDisabled={!categoryToDelete || !canDelete(categoryToDelete)}
+        variant={categoryToDelete && canDelete(categoryToDelete) ? 'danger' : 'warning'}
       />
     </div>
   )

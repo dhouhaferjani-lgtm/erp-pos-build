@@ -26,7 +26,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property-read Recipe $recipe
- * @property-read \App\Modules\Product\Domain\Product|null $component
+ * @property-read \App\Modules\Product\Domain\Product|null $product
+ * @property-read CompositeItem|null $compositeItemComponent
+ * @property-read \App\Modules\Product\Domain\Product|CompositeItem|null $component
  * @property-read Unit|null $unit
  */
 class RecipeLine extends Model
@@ -82,13 +84,31 @@ class RecipeLine extends Model
     }
 
     /**
-     * Returns the component product. Currently only supports Product type.
-     *
      * @return BelongsTo<\App\Modules\Product\Domain\Product, $this>
      */
-    public function component(): BelongsTo
+    public function product(): BelongsTo
     {
         return $this->belongsTo(\App\Modules\Product\Domain\Product::class, 'component_id');
+    }
+
+    /**
+     * @return BelongsTo<CompositeItem, $this>
+     */
+    public function compositeItemComponent(): BelongsTo
+    {
+        return $this->belongsTo(CompositeItem::class, 'component_id');
+    }
+
+    /**
+     * Resolves the component based on component_type.
+     */
+    public function getComponentAttribute(): \App\Modules\Product\Domain\Product|CompositeItem|null
+    {
+        if ($this->component_type === ComponentType::CompositeItem) {
+            return $this->compositeItemComponent;
+        }
+
+        return $this->product;
     }
 
     /**

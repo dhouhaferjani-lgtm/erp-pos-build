@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react'
 import { useWebSocketConnection } from './useWebSocketConnection'
-import type Echo from 'laravel-echo'
 import type { Channel } from 'laravel-echo'
 
 export interface UseRealtimeChannelOptions<T> {

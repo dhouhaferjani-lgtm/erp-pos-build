@@ -95,12 +95,13 @@ export function CertificationListPage() {
                     <EmptyState
                       title={t('parapharmacy:noCertifications')}
                       description={t('parapharmacy:noCertificationsDescription')}
-                      action={{
-                        label: t('parapharmacy:addCertification'),
-                        onClick: () => navigate('/parapharmacy/certifications/new'),
-                        icon: Plus,
-                      }}
                     />
+                    <div className="flex justify-center mt-4">
+                      <Button onClick={() => navigate('/parapharmacy/certifications/new')}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        {t('parapharmacy:addCertification')}
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -164,10 +165,13 @@ export function CertificationListPage() {
       {data?.meta && (
         <OffsetPagination
           currentPage={page}
-          totalPages={Math.ceil(
-            data.meta.total / data.meta.per_page
-          )}
+          lastPage={Math.ceil(data.meta.total / data.meta.per_page)}
+          total={data.meta.total}
+          perPage={data.meta.per_page}
+          from={data.meta.from ?? null}
+          to={data.meta.to ?? null}
           onPageChange={setPage}
+          onPerPageChange={() => {}}
         />
       )}
 
@@ -178,7 +182,7 @@ export function CertificationListPage() {
         title={t('parapharmacy:confirmDeleteCertification')}
         message={t('parapharmacy:confirmDeleteCertificationDescription')}
         confirmText={t('common:delete')}
-        confirmVariant="danger"
+        variant="danger"
         isLoading={deleteMutation.isPending}
       />
     </div>
