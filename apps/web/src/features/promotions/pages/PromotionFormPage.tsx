@@ -50,6 +50,8 @@ export function PromotionFormPage() {
   const [categoryIds, setCategoryIds] = useState<number[]>([])
   const [qualifyingProductIds, setQualifyingProductIds] = useState<string[]>([])
   const [comboProductIds, setComboProductIds] = useState<string[]>([])
+  const [rewardProductIds, setRewardProductIds] = useState<string[]>([])
+  const [rewardQty, setRewardQty] = useState('')
 
   // Populate form when editing
   useEffect(() => {
@@ -79,6 +81,8 @@ export function PromotionFormPage() {
       setCategoryIds(Array.isArray(conditions['category_ids']) ? conditions['category_ids'] as number[] : [])
       setQualifyingProductIds(Array.isArray(conditions['qualifying_product_ids']) ? conditions['qualifying_product_ids'] as string[] : [])
       setComboProductIds(Array.isArray(conditions['combo_product_ids']) ? conditions['combo_product_ids'] as string[] : [])
+      setRewardProductIds(Array.isArray(conditions['reward_product_ids']) ? conditions['reward_product_ids'] as string[] : [])
+      setRewardQty(conditions['reward_qty'] ? String(conditions['reward_qty']) : '')
     }
   }, [existingPromotion])
 
@@ -97,6 +101,12 @@ export function PromotionFormPage() {
     }
     if (['buy_x_get_y', 'volume_discount'].includes(type) && qualifyingProductIds.length > 0) {
       conditions['qualifying_product_ids'] = qualifyingProductIds
+    }
+    if (type === 'buy_x_get_y' && rewardProductIds.length > 0) {
+      conditions['reward_product_ids'] = rewardProductIds
+    }
+    if (type === 'buy_x_get_y' && rewardQty) {
+      conditions['reward_qty'] = parseInt(rewardQty, 10)
     }
 
     const payload: CreatePromotionData = {
@@ -316,6 +326,25 @@ export function PromotionFormPage() {
             label={t('promotions:fields.qualifyingProducts')}
             helperText={t('promotions:helpers.qualifyingProducts')}
           />
+        )}
+
+        {type === 'buy_x_get_y' && (
+          <>
+            <ProductSelector
+              value={rewardProductIds}
+              onChange={setRewardProductIds}
+              label={t('promotions:fields.rewardProducts')}
+              helperText={t('promotions:helpers.rewardProducts')}
+            />
+            <FormField label={t('promotions:fields.rewardQuantity')}>
+              <Input
+                type="number"
+                value={rewardQty}
+                onChange={(e) => setRewardQty(e.target.value)}
+                min="1"
+              />
+            </FormField>
+          </>
         )}
       </section>
 

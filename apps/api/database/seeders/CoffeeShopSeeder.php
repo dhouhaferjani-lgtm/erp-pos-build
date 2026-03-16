@@ -14,6 +14,7 @@ use App\Modules\Catalog\Domain\Entities\ModifierGroup;
 use App\Modules\Catalog\Domain\Entities\Recipe;
 use App\Modules\Catalog\Domain\Entities\RecipeLine;
 use App\Modules\Catalog\Domain\Enums\PriceAdjustmentType;
+use App\Modules\Catalog\Domain\Enums\PricingMode;
 use App\Modules\Catalog\Domain\Enums\ProductionType;
 use App\Modules\Catalog\Domain\Enums\SelectionType;
 use App\Modules\Catalog\Domain\Enums\VerticalType;
@@ -29,6 +30,11 @@ use App\Modules\Menu\Domain\Entities\Menu;
 use App\Modules\Menu\Domain\Entities\MenuCategory;
 use App\Modules\Menu\Domain\Entities\MenuCategoryItem;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Promotion\Domain\Entities\Promotion;
+use App\Modules\Promotion\Domain\Enums\DiscountAppliesTo;
+use App\Modules\Promotion\Domain\Enums\DiscountType;
+use App\Modules\Promotion\Domain\Enums\PromotionStatus;
+use App\Modules\Promotion\Domain\Enums\PromotionType;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Seeder;
@@ -111,7 +117,11 @@ class CoffeeShopSeeder extends Seeder
         $this->seedCompositeItems();
         $this->command->info('Created ' . count($this->compositeItems) . ' composite items');
 
-        // 6b. Retail products (sold as-is, no recipe)
+        // 6b. Combo items (fixed_bundle pricing)
+        $this->command->info('Creating combo items (fixed bundles)...');
+        $this->seedCombos();
+
+        // 6c. Retail products (sold as-is, no recipe)
         $this->command->info('Creating retail products...');
         $this->seedRetailProducts();
         $this->command->info('Created ' . count($this->retailProducts) . ' retail products');
@@ -130,7 +140,11 @@ class CoffeeShopSeeder extends Seeder
         $this->command->info('Seeding stock levels...');
         $this->seedStockLevels();
 
-        // 10. Test users
+        // 10. Promotions
+        $this->command->info('Creating demo promotions...');
+        $this->seedPromotions();
+
+        // 11. Test users
         $this->command->info('Creating test users...');
         $this->createTestUsers();
 
@@ -149,15 +163,11 @@ class CoffeeShopSeeder extends Seeder
         if ($existing) {
             $this->command->warn('Tenant cafe-tunis already exists. Deleting and recreating...');
 
-            // Delete POS data that blocks cascade due to restrictOnDelete FKs
-            $userIds = DB::table('users')->where('tenant_id', $existing->id)->pluck('id');
+            // Temporarily disable FK checks for clean tenant deletion
             DB::statement('ALTER TABLE pos_receipts DISABLE TRIGGER enforce_receipt_immutability');
-            $receiptIds = DB::table('pos_receipts')->whereIn('cashier_id', $userIds)->pluck('id');
-            if ($receiptIds->isNotEmpty()) {
-                DB::table('pos_receipt_lines')->whereIn('receipt_id', $receiptIds)->delete();
-                DB::table('pos_receipts')->whereIn('id', $receiptIds)->delete();
-            }
-            DB::table('pos_shifts')->whereIn('cashier_id', $userIds)->delete();
+            DB::statement('SET session_replication_role = replica');
+            $existing->forceDelete();
+            DB::statement('SET session_replication_role = DEFAULT');
             DB::statement('ALTER TABLE pos_receipts ENABLE TRIGGER enforce_receipt_immutability');
 
             $existing->delete();
@@ -318,7 +328,6 @@ class CoffeeShopSeeder extends Seeder
                 'sale_price' => $data['price'],
                 'tax_rate' => 7.00, // 7% Tunisia VAT on food items
                 'is_active' => true,
-                'is_physical' => true,
             ]);
             $this->ingredients[$data['code']] = $product;
         }
@@ -474,6 +483,77 @@ class CoffeeShopSeeder extends Seeder
             'display_order' => $order,
         ]);
         $this->compositeItems['DAILY'] = $dailySpecial;
+    }
+
+    private function seedCombos(): void
+    {
+        $combos = [
+            [
+                'code' => 'COMBO-BF',
+                'name' => 'Breakfast Combo',
+                'price' => 7.500,
+                'components' => ['LAT', 'CRO'], // Latte + Croissant (standalone: 5.5 + 3.0 = 8.5)
+            ],
+            [
+                'code' => 'COMBO-MOC',
+                'name' => 'Mocha & Muffin',
+                'price' => 9.000,
+                'components' => ['MOC', 'MUF'], // Mocha + Muffin (standalone: 6.5 + 4.0 = 10.5)
+            ],
+            [
+                'code' => 'COMBO-ICE',
+                'name' => 'Iced Duo',
+                'price' => 9.500,
+                'components' => ['ICL', 'FRP'], // Iced Latte + Frappuccino (standalone: 6.0 + 7.5 = 13.5)
+            ],
+        ];
+
+        $order = count($this->compositeItems);
+
+        foreach ($combos as $data) {
+            $combo = CompositeItem::create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'code' => $data['code'],
+                'name' => $data['name'],
+                'vertical_type' => VerticalType::Fnb,
+                'base_price' => $data['price'],
+                'production_type' => ProductionType::MadeToOrder,
+                'pricing_mode' => PricingMode::FixedBundle,
+                'tax_rate' => '7.00',
+                'is_active' => true,
+                'is_available' => true,
+                'display_order' => $order++,
+            ]);
+
+            $recipe = Recipe::create([
+                'composite_item_id' => $combo->id,
+                'version' => 1,
+                'version_name' => 'Standard',
+                'is_active' => true,
+                'yield_quantity' => 1,
+            ]);
+
+            $lineOrder = 0;
+            foreach ($data['components'] as $componentCode) {
+                if (isset($this->compositeItems[$componentCode])) {
+                    RecipeLine::create([
+                        'recipe_id' => $recipe->id,
+                        'component_type' => 'composite_item',
+                        'component_id' => $this->compositeItems[$componentCode]->id,
+                        'quantity' => 1,
+                        'is_optional' => false,
+                        'is_scalable' => false,
+                        'display_order' => $lineOrder++,
+                    ]);
+                }
+            }
+
+            $combo->update(['default_recipe_id' => $recipe->id]);
+            $this->compositeItems[$data['code']] = $combo;
+        }
+
+        $this->command->info('Created ' . count($combos) . ' combo items (fixed_bundle)');
     }
 
     private function seedRetailProducts(): void
@@ -731,7 +811,7 @@ class CoffeeShopSeeder extends Seeder
             'icon' => 'star',
             'display_order' => 3,
         ]);
-        $this->attachItemsToCategory($specialsCat, ['DAILY']);
+        $this->attachItemsToCategory($specialsCat, ['DAILY', 'COMBO-BF', 'COMBO-MOC', 'COMBO-ICE']);
 
         // Shop category (retail products — not composite items)
         $shopCat = MenuCategory::create([
@@ -854,6 +934,36 @@ class CoffeeShopSeeder extends Seeder
             $count++;
         }
         $this->command->info("Stock levels created ({$count} products)");
+    }
+
+    private function seedPromotions(): void
+    {
+        $frappId = $this->compositeItems['FRP']->id;
+        $croissantId = $this->compositeItems['CRO']->id;
+
+        Promotion::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Buy Frappuccino, Get Free Croissant',
+            'description' => 'Purchase any Frappuccino and receive a free Croissant',
+            'type' => PromotionType::BuyXGetY,
+            'status' => PromotionStatus::Active,
+            'priority' => 10,
+            'is_exclusive' => false,
+            'stacking_group' => 'default',
+            'discount_type' => DiscountType::FreeItem,
+            'discount_value' => '100',
+            'applies_to' => DiscountAppliesTo::SpecificItem,
+            'conditions' => [
+                'qualifying_product_ids' => [$frappId],
+                'trigger_qty' => 1,
+                'reward_product_ids' => [$croissantId],
+            ],
+            'starts_at' => now(),
+            'ends_at' => now()->addMonths(3),
+        ]);
+
+        $this->command->info('Created "Buy Frappuccino, Get Free Croissant" promotion');
     }
 
     private function createTestUsers(): void

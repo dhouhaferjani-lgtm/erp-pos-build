@@ -31,12 +31,15 @@
     "comboProducts": "Combo Products",
     "triggerQuantity": "Trigger Quantity",
     "minimumQuantity": "Minimum Quantity",
-    "minimumAmount": "Minimum Amount"
+    "minimumAmount": "Minimum Amount",
+    "rewardProducts": "Reward Products",
+    "rewardQuantity": "Reward Quantity"
   },
   "helpers": {
     "categoryIds": "Select the categories this promotion applies to",
     "qualifyingProducts": "Select the products that qualify for this promotion",
-    "comboProducts": "Select the products that must be purchased together"
+    "comboProducts": "Select the products that must be purchased together",
+    "rewardProducts": "Select the products given as rewards. Leave empty to discount the cheapest qualifying item."
   },
   "types": {
     "happy_hour": "Happy Hour",

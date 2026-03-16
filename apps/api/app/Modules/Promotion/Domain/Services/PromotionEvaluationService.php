@@ -92,6 +92,9 @@ final class PromotionEvaluationService
         /** @var array<string> $qualifyingProductIds */
         $qualifyingProductIds = $conditions['qualifying_product_ids'] ?? [];
         $triggerQty = (int) ($conditions['trigger_qty'] ?? 0);
+        /** @var array<string> $rewardProductIds */
+        $rewardProductIds = $conditions['reward_product_ids'] ?? [];
+        $rewardQty = max(1, (int) ($conditions['reward_qty'] ?? 1));
 
         if ($triggerQty <= 0 || count($qualifyingProductIds) === 0) {
             return [];
@@ -105,36 +108,65 @@ final class PromotionEvaluationService
 
         $totalQualifyingQty = array_sum(array_map(fn (CartItemContext $i): int => $i->quantity, $qualifyingItems));
 
-        if ($totalQualifyingQty < $triggerQty) {
+        $triggerCount = intdiv($totalQualifyingQty, $triggerQty);
+        if ($triggerCount < 1) {
             return [];
         }
 
-        // Find the cheapest qualifying item for the discount
-        $cheapestItem = $this->findCheapestItem($qualifyingItems);
-        if ($cheapestItem === null) {
-            return [];
+        // Determine reward target based on whether reward_product_ids is set
+        if (count($rewardProductIds) > 0) {
+            // Reward-product mode: discount applies to specific reward items
+            $rewardItems = array_filter(
+                $cart->items,
+                fn (CartItemContext $item): bool => in_array($item->productId, $rewardProductIds, true)
+            );
+
+            if (count($rewardItems) === 0) {
+                return [];
+            }
+
+            $rewardItem = $this->findCheapestItem($rewardItems);
+            if ($rewardItem === null) {
+                return [];
+            }
+
+            $availableRewardQty = array_sum(array_map(fn (CartItemContext $i): int => $i->quantity, $rewardItems));
+            $totalRewards = min($triggerCount * $rewardQty, $availableRewardQty);
+            $appliesTo = DiscountAppliesTo::SpecificItem;
+        } else {
+            // Backward-compatible mode: cheapest qualifying item
+            $rewardItem = $this->findCheapestItem($qualifyingItems);
+            if ($rewardItem === null) {
+                return [];
+            }
+
+            $availableRewardQty = $rewardItem->quantity;
+            $totalRewards = min($triggerCount * $rewardQty, $availableRewardQty);
+            $appliesTo = DiscountAppliesTo::CheapestItem;
         }
 
         [$discountValue, $maxDiscount] = $this->getPromotionAmounts($promotion);
 
-        $discountAmount = $this->calculateDiscount(
+        $perUnitDiscount = $this->calculateDiscount(
             $promotion->discount_type,
             $discountValue,
-            $cheapestItem->unitPrice,
+            $rewardItem->unitPrice,
             $maxDiscount,
         );
 
-        if (bccomp($discountAmount, '0', $this->scale()) <= 0) {
+        if (bccomp($perUnitDiscount, '0', $this->scale()) <= 0) {
             return [];
         }
+
+        $totalDiscount = bcmul($perUnitDiscount, (string) $totalRewards, $this->scale());
 
         return [
             new PromotionDiscount(
                 promotionId: $promotion->id,
                 promotionName: $promotion->name,
-                discountAmount: $discountAmount,
-                appliesTo: DiscountAppliesTo::CheapestItem,
-                targetProductId: $cheapestItem->productId,
+                discountAmount: $totalDiscount,
+                appliesTo: $appliesTo,
+                targetProductId: $rewardItem->productId,
                 isExclusive: $promotion->is_exclusive,
                 stackingGroup: $promotion->stacking_group,
                 priority: $promotion->priority,
@@ -383,8 +415,8 @@ final class PromotionEvaluationService
     private function getPromotionAmounts(Promotion $promotion): array
     {
         return [
-            $this->toNumeric($promotion->discount_value),
-            $promotion->max_discount_amount !== null ? $this->toNumeric($promotion->max_discount_amount, $this->scale()) : null,
+            $this->toNumeric((string) $promotion->discount_value),
+            $promotion->max_discount_amount !== null ? $this->toNumeric((string) $promotion->max_discount_amount, $this->scale()) : null,
         ];
     }
 

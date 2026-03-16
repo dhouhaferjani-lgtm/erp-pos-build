@@ -12,6 +12,7 @@ use App\Modules\Promotion\Domain\Enums\PromotionType;
 use App\Modules\Promotion\Domain\Services\PromotionEvaluationService;
 use App\Modules\Promotion\Domain\ValueObjects\CartContext;
 use App\Modules\Promotion\Domain\ValueObjects\CartItemContext;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Carbon;
 use PHPUnit\Framework\TestCase;
 
@@ -22,7 +23,9 @@ class PromotionEvaluationServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new PromotionEvaluationService();
+        $scaleResolver = $this->createMock(CurrencyScaleResolverInterface::class);
+        $scaleResolver->method('getScale')->willReturn(2);
+        $this->service = new PromotionEvaluationService($scaleResolver);
     }
 
     private function makeCart(array $items = [], string $subtotal = '100.00'): CartContext
@@ -446,5 +449,184 @@ class PromotionEvaluationServiceTest extends TestCase
         $this->assertTrue($discounts[0]->isExclusive);
         $this->assertEquals('auto_discounts', $discounts[0]->stackingGroup);
         $this->assertEquals(5, $discounts[0]->priority);
+    }
+
+    // -- Buy X Get Y: Reward Products & Repeating Triggers --
+
+    public function test_buy_x_get_y_with_reward_product_discounts_reward_item(): void
+    {
+        $promotion = $this->makePromotion([
+            'type' => PromotionType::BuyXGetY,
+            'discount_type' => DiscountType::FreeItem,
+            'discount_value' => '100',
+            'conditions' => [
+                'qualifying_product_ids' => ['frapp'],
+                'trigger_qty' => 1,
+                'reward_product_ids' => ['croissant'],
+            ],
+        ]);
+
+        $cart = $this->makeCart(items: [
+            $this->makeItem('frapp', quantity: 1, unitPrice: '7.50'),
+            $this->makeItem('croissant', quantity: 1, unitPrice: '3.00'),
+        ], subtotal: '10.50');
+
+        $discounts = $this->service->evaluate($promotion, $cart);
+
+        $this->assertCount(1, $discounts);
+        $this->assertEquals('3.00', $discounts[0]->discountAmount);
+        $this->assertEquals(DiscountAppliesTo::SpecificItem, $discounts[0]->appliesTo);
+        $this->assertEquals('croissant', $discounts[0]->targetProductId);
+    }
+
+    public function test_buy_x_get_y_reward_not_in_cart_returns_empty(): void
+    {
+        $promotion = $this->makePromotion([
+            'type' => PromotionType::BuyXGetY,
+            'discount_type' => DiscountType::FreeItem,
+            'discount_value' => '100',
+            'conditions' => [
+                'qualifying_product_ids' => ['frapp'],
+                'trigger_qty' => 1,
+                'reward_product_ids' => ['croissant'],
+            ],
+        ]);
+
+        $cart = $this->makeCart(items: [
+            $this->makeItem('frapp', quantity: 1, unitPrice: '7.50'),
+        ], subtotal: '7.50');
+
+        $discounts = $this->service->evaluate($promotion, $cart);
+
+        $this->assertCount(0, $discounts);
+    }
+
+    public function test_buy_x_get_y_repeating_trigger_gives_multiple_rewards(): void
+    {
+        $promotion = $this->makePromotion([
+            'type' => PromotionType::BuyXGetY,
+            'discount_type' => DiscountType::FreeItem,
+            'discount_value' => '100',
+            'conditions' => [
+                'qualifying_product_ids' => ['prod-1', 'prod-2'],
+                'trigger_qty' => 3,
+            ],
+        ]);
+
+        $cart = $this->makeCart(items: [
+            $this->makeItem('prod-1', quantity: 4, unitPrice: '20.00'),
+            $this->makeItem('prod-2', quantity: 2, unitPrice: '10.00'),
+        ], subtotal: '100.00');
+
+        $discounts = $this->service->evaluate($promotion, $cart);
+
+        $this->assertCount(1, $discounts);
+        // 6 qualifying / 3 trigger_qty = 2 triggers
+        // Cheapest qualifying = prod-2 @ $10, available qty = 2
+        // 2 triggers * 1 reward * $10 = $20
+        $this->assertEquals('20.00', $discounts[0]->discountAmount);
+    }
+
+    public function test_buy_x_get_y_repeating_with_reward_products(): void
+    {
+        $promotion = $this->makePromotion([
+            'type' => PromotionType::BuyXGetY,
+            'discount_type' => DiscountType::FreeItem,
+            'discount_value' => '100',
+            'conditions' => [
+                'qualifying_product_ids' => ['frapp'],
+                'trigger_qty' => 1,
+                'reward_product_ids' => ['croissant'],
+            ],
+        ]);
+
+        $cart = $this->makeCart(items: [
+            $this->makeItem('frapp', quantity: 2, unitPrice: '7.50'),
+            $this->makeItem('croissant', quantity: 2, unitPrice: '3.00'),
+        ], subtotal: '21.00');
+
+        $discounts = $this->service->evaluate($promotion, $cart);
+
+        $this->assertCount(1, $discounts);
+        // 2 frapps / 1 trigger_qty = 2 triggers, 2 croissants available
+        // 2 * $3.00 = $6.00
+        $this->assertEquals('6.00', $discounts[0]->discountAmount);
+    }
+
+    public function test_buy_x_get_y_reward_qty_capped_at_available(): void
+    {
+        $promotion = $this->makePromotion([
+            'type' => PromotionType::BuyXGetY,
+            'discount_type' => DiscountType::FreeItem,
+            'discount_value' => '100',
+            'conditions' => [
+                'qualifying_product_ids' => ['frapp'],
+                'trigger_qty' => 1,
+                'reward_product_ids' => ['croissant'],
+            ],
+        ]);
+
+        $cart = $this->makeCart(items: [
+            $this->makeItem('frapp', quantity: 3, unitPrice: '7.50'),
+            $this->makeItem('croissant', quantity: 1, unitPrice: '3.00'),
+        ], subtotal: '25.50');
+
+        $discounts = $this->service->evaluate($promotion, $cart);
+
+        $this->assertCount(1, $discounts);
+        // 3 triggers but only 1 croissant available → $3.00
+        $this->assertEquals('3.00', $discounts[0]->discountAmount);
+    }
+
+    public function test_buy_x_get_y_backward_compat_no_reward_ids(): void
+    {
+        // Same as existing free_cheapest test — verify backward compatibility
+        $promotion = $this->makePromotion([
+            'type' => PromotionType::BuyXGetY,
+            'discount_type' => DiscountType::FreeItem,
+            'discount_value' => '100',
+            'conditions' => [
+                'qualifying_product_ids' => ['prod-1', 'prod-2'],
+                'trigger_qty' => 3,
+            ],
+        ]);
+
+        $cart = $this->makeCart(items: [
+            $this->makeItem('prod-1', quantity: 2, unitPrice: '20.00'),
+            $this->makeItem('prod-2', quantity: 1, unitPrice: '10.00'),
+        ], subtotal: '50.00');
+
+        $discounts = $this->service->evaluate($promotion, $cart);
+
+        $this->assertCount(1, $discounts);
+        $this->assertEquals('10.00', $discounts[0]->discountAmount);
+        $this->assertEquals(DiscountAppliesTo::CheapestItem, $discounts[0]->appliesTo);
+        $this->assertEquals('prod-2', $discounts[0]->targetProductId);
+    }
+
+    public function test_buy_x_get_y_percentage_on_reward(): void
+    {
+        $promotion = $this->makePromotion([
+            'type' => PromotionType::BuyXGetY,
+            'discount_type' => DiscountType::Percentage,
+            'discount_value' => '50',
+            'conditions' => [
+                'qualifying_product_ids' => ['frapp'],
+                'trigger_qty' => 1,
+                'reward_product_ids' => ['croissant'],
+            ],
+        ]);
+
+        $cart = $this->makeCart(items: [
+            $this->makeItem('frapp', quantity: 1, unitPrice: '7.50'),
+            $this->makeItem('croissant', quantity: 1, unitPrice: '3.00'),
+        ], subtotal: '10.50');
+
+        $discounts = $this->service->evaluate($promotion, $cart);
+
+        $this->assertCount(1, $discounts);
+        // 50% of $3.00 = $1.50
+        $this->assertEquals('1.50', $discounts[0]->discountAmount);
+        $this->assertEquals(DiscountAppliesTo::SpecificItem, $discounts[0]->appliesTo);
     }
 }

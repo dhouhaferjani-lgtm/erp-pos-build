@@ -319,7 +319,7 @@ final class ReceiptCreationService
             }
             unset($vatData);
 
-            // 4b. Validate and apply transaction-level discount
+            // 4b. Validate manual transaction-level discount
             $validatedTransactionDiscount = '0.00';
             $discountReason = null;
             $discountAuthorizedBy = null;
@@ -328,7 +328,6 @@ final class ReceiptCreationService
             $txDiscountStr = $transactionDiscountAmount ?? '0.00';
 
             if ($transactionDiscountAmount !== null && bccomp($txDiscountStr, '0', $this->scale()) > 0) {
-                // Subtotal for validation is the sum of all line totals (gross before tax split)
                 /** @var numeric-string $grossTotal */
                 $grossTotal = bcadd($subtotal, $totalTax, $this->scale());
 
@@ -349,10 +348,11 @@ final class ReceiptCreationService
                 $discountAuthorizedBy = number_format($effectiveLimit['limit'], 2, '.', '');
             }
 
-            $total = bcsub(bcadd($subtotal, $totalTax, $this->scale()), $validatedTransactionDiscount, $this->scale());
-
-            // 4c. Resolve full discount breakdown via orchestrator (audit-only JSONB)
+            // 4c. Resolve full discount breakdown via orchestrator (promotions + manual + coupon + loyalty)
             $discountBreakdownData = null;
+            /** @var numeric-string $effectiveTransactionDiscount */
+            $effectiveTransactionDiscount = $validatedTransactionDiscount;
+
             try {
                 /** @var numeric-string $grossTotal */
                 $grossTotal = bcadd($subtotal, $totalTax, $this->scale());
@@ -405,13 +405,27 @@ final class ReceiptCreationService
                 );
 
                 $discountBreakdownData = $breakdown->toArray();
+
+                // Apply promotion line discounts to receipt lines
+                $this->applyPromotionLineDiscounts(
+                    $receiptLines,
+                    $breakdown->lineDiscounts,
+                    $subtotal,
+                    $totalTax,
+                    $vatAggregates,
+                );
+
+                // Use orchestrator's resolved transaction discount (includes manual + promo stacking)
+                $effectiveTransactionDiscount = $breakdown->totalTransactionDiscount;
             } catch (\Throwable $e) {
-                // Orchestrator failure must not block receipt creation
+                // Orchestrator failure: fall back to manual-only discount, no line adjustments
                 Log::warning('Discount orchestrator failed during receipt creation', [
                     'error' => $e->getMessage(),
                     'terminal_id' => $terminalId,
                 ]);
             }
+
+            $total = bcsub(bcadd($subtotal, $totalTax, $this->scale()), $effectiveTransactionDiscount, $this->scale());
 
             // 5. Generate receipt number and sequence
             $isTraining = $terminal->is_training_mode;
@@ -485,7 +499,7 @@ final class ReceiptCreationService
                 'cashier_name' => $cashier->name ?? 'Unknown',
                 'subtotal' => $subtotal,
                 'tax_amount' => $totalTax,
-                'discount_amount' => $validatedTransactionDiscount,
+                'discount_amount' => $effectiveTransactionDiscount,
                 'discount_reason' => $discountReason,
                 'discount_authorized_by' => $discountAuthorizedBy,
                 'total' => $total,
@@ -871,6 +885,106 @@ final class ReceiptCreationService
         }
 
         return '0.00';
+    }
+
+    /**
+     * Apply promotion line discounts to receipt lines, recomputing VAT.
+     *
+     * @param  array<int, array<string, mixed>>  $receiptLines
+     * @param  array<string, numeric-string>  $lineDiscounts  Keyed by product_id or composite_item_id
+     * @param  numeric-string  $subtotal
+     * @param  numeric-string  $totalTax
+     * @param  array<string, array{tax_rate: string, net_amount: string, vat_amount: string, gross_amount: string}>  $vatAggregates
+     */
+    private function applyPromotionLineDiscounts(
+        array &$receiptLines,
+        array $lineDiscounts,
+        string &$subtotal,
+        string &$totalTax,
+        array &$vatAggregates,
+    ): void {
+        if (count($lineDiscounts) === 0) {
+            return;
+        }
+
+        // Reset VAT aggregates to recompute from adjusted lines
+        $vatAggregates = [];
+        $subtotal = '0.00';
+        $totalTax = '0.00';
+
+        foreach ($receiptLines as &$lineData) {
+            $lineProductId = $lineData['composite_item_id'] ?? $lineData['product_id'] ?? null;
+
+            if ($lineProductId !== null && isset($lineDiscounts[$lineProductId])) {
+                /** @var numeric-string $promoDiscount */
+                $promoDiscount = $lineDiscounts[$lineProductId];
+
+                // Add promotion discount to existing line discount
+                /** @var numeric-string $existingDiscount */
+                $existingDiscount = $lineData['discount_amount'] ?? '0.00';
+                /** @var numeric-string $newDiscount */
+                $newDiscount = bcadd($existingDiscount, $promoDiscount, $this->scale());
+
+                // Recalculate line_total = (qty * unit_price) - total_discount
+                /** @var numeric-string $qtyStr */
+                $qtyStr = (string) $lineData['quantity'];
+                /** @var numeric-string $upStr */
+                $upStr = (string) $lineData['unit_price'];
+                /** @var numeric-string $grossLineTotal */
+                $grossLineTotal = bcmul($qtyStr, $upStr, $this->scale());
+
+                // Cap discount at gross line total
+                if (bccomp($newDiscount, $grossLineTotal, $this->scale()) > 0) {
+                    $newDiscount = $grossLineTotal;
+                }
+
+                $lineData['discount_amount'] = $newDiscount;
+                $lineData['line_total'] = bcsub($grossLineTotal, $newDiscount, $this->scale());
+
+                // Recalculate VAT for this line
+                /** @var numeric-string $taxRate */
+                $taxRate = $lineData['tax_rate'];
+                $taxRateDecimal = bcdiv($taxRate, '100', 6);
+                $divisor = bcadd('1', $taxRateDecimal, 6);
+                /** @var numeric-string $lineTotal */
+                $lineTotal = $lineData['line_total'];
+                $netAmount = bcdiv($lineTotal, $divisor, $this->scale());
+                $taxAmount = bcsub($lineTotal, $netAmount, $this->scale());
+
+                $lineData['tax_amount'] = $taxAmount;
+            }
+
+            // Recompute aggregates from all lines (including unmodified ones)
+            /** @var numeric-string $lineTaxRate */
+            $lineTaxRate = $lineData['tax_rate'];
+            $lineTaxRateDecimal = bcdiv($lineTaxRate, '100', 6);
+            $lineDivisor = bcadd('1', $lineTaxRateDecimal, 6);
+            /** @var numeric-string $lt */
+            $lt = $lineData['line_total'];
+            $lineNet = bcdiv($lt, $lineDivisor, $this->scale());
+            $lineTax = bcsub($lt, $lineNet, $this->scale());
+
+            $subtotal = bcadd($subtotal, $lineNet, $this->scale());
+            $totalTax = bcadd($totalTax, $lineTax, $this->scale());
+
+            $this->aggregateVat($vatAggregates, $lineTaxRate, $lineNet, $lineTax, $lt);
+        }
+        unset($lineData);
+
+        // Recompute VAT aggregates from aggregated net_amount (same as step 4a-fix)
+        /** @var numeric-string $recomputedTotalTax */
+        $recomputedTotalTax = '0.00';
+        foreach ($vatAggregates as &$vatData) {
+            $vatData['vat_amount'] = $this->roundVat($vatData['net_amount'], $vatData['tax_rate']);
+            /** @var numeric-string $vatNetAmount */
+            $vatNetAmount = $vatData['net_amount'];
+            /** @var numeric-string $vatAmount */
+            $vatAmount = $vatData['vat_amount'];
+            $vatData['gross_amount'] = bcadd($vatNetAmount, $vatAmount, $this->scale());
+            $recomputedTotalTax = bcadd($recomputedTotalTax, $vatAmount, $this->scale());
+        }
+        unset($vatData);
+        $totalTax = $recomputedTotalTax;
     }
 
     /**
