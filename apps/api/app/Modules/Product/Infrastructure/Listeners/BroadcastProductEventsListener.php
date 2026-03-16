@@ -7,6 +7,7 @@ namespace App\Modules\Product\Infrastructure\Listeners;
 use App\Modules\Product\Domain\Events\ProductCostPriceUpdated;
 use App\Modules\Product\Infrastructure\Broadcasting\ProductCostPriceUpdatedBroadcast;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Infrastructure layer listener that bridges domain events to Laravel broadcasting.
@@ -35,6 +36,13 @@ class BroadcastProductEventsListener
      */
     public function handleProductCostUpdated(ProductCostPriceUpdated $event): void
     {
-        event(new ProductCostPriceUpdatedBroadcast($event));
+        try {
+            broadcast(new ProductCostPriceUpdatedBroadcast($event));
+        } catch (\Throwable $e) {
+            Log::warning('Failed to broadcast product cost price updated', [
+                'product_id' => $event->productId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

@@ -7,6 +7,7 @@ import { useLogout } from '../../../features/auth'
 import { languages } from '../../../lib/i18n'
 import { CompanySelector } from '../CompanySelector'
 import { LocationSelector } from '../LocationSelector'
+import { ConnectionStatusIndicator } from '../../molecules/ConnectionStatusIndicator'
 
 interface TopBarProps {
   onMenuClick?: () => void
@@ -124,6 +125,8 @@ export function TopBar({ onMenuClick }: TopBarProps) {
             </div>
           )}
         </div>
+
+        <ConnectionStatusIndicator />
 
         <button
           type="button"

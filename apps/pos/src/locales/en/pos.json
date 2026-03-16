@@ -135,7 +135,8 @@
     "shiftOpening": "Shift #{{number}} · Opening: {{amount}}",
     "actualCash": "Actual Cash in Drawer",
     "closing": "Closing...",
-    "settings": "Settings"
+    "settings": "Settings",
+    "pendingSyncWarning": "You have receipts that haven't been synced yet. Sync before closing to avoid data loss."
   },
   "sync": {
     "online": "Online",
@@ -415,6 +416,24 @@
     "delete": "Remove",
     "orderSummary": "Order Summary",
     "itemsCount": "{{count}} item(s)"
+  },
+  "consumptionMode": {
+    "label": "Consumption Mode",
+    "dineIn": "Dine In",
+    "takeout": "Takeout"
+  },
+  "tables": {
+    "selectTable": "Select Table",
+    "clearSelection": "Clear",
+    "seats": "seats"
+  },
+  "customerDisplay": {
+    "brandName": "IziPOS",
+    "welcome": "Welcome",
+    "yourOrder": "Your Order",
+    "total": "Total",
+    "thankYou": "Thank you!",
+    "receiptLabel": "Receipt #{{number}}"
   },
   "errors": {
     "receiptCreationFailed": "Failed to create receipt",

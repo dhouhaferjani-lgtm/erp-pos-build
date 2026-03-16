@@ -11,6 +11,7 @@ import { SortableTableHeader } from '../../components/ui/SortableTableHeader'
 import { OffsetPagination } from '../../components/ui/OffsetPagination'
 import { useTableState } from '../../hooks/useTableState'
 import { useCompanyStore } from '../../stores/companyStore'
+import { usePartnerBalanceRealtime } from './hooks/usePartnerBalanceRealtime'
 
 type StatusFilter = 'all' | 'active' | 'inactive'
 
@@ -68,6 +69,7 @@ function getNetBalance(partner: Partner, isCustomerView: boolean): number {
 }
 
 export function PartnerListPage({ partnerType }: PartnerListPageProps) {
+  usePartnerBalanceRealtime()
   const { t, i18n } = useTranslation(['common', 'sales'])
   const location = useLocation()
   const currentCompany = useCompanyStore((s) => s.getCurrentCompany())

@@ -9,6 +9,7 @@ import {
   StorageKeys,
 } from '@/lib/storage';
 import { getDeviceId } from '@/lib/device';
+import { useTerminalStore } from '@/stores/terminalStore';
 
 export interface User {
   id: string;
@@ -46,7 +47,7 @@ interface AuthState {
 }
 
 interface AuthActions {
-  login: (email: string, password: string, serverUrl: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   checkSession: () => Promise<void>;
   setCompany: (companyId: string) => void;
@@ -77,22 +78,28 @@ function getTauriPlatform(): string {
   return platformMap[p] ?? 'macos';
 }
 
+function getServerUrl(): string {
+  const envUrl = import.meta.env.VITE_API_URL as string | undefined;
+  if (envUrl) return envUrl.replace(/\/+$/, '');
+  // Fallback for development
+  return 'http://localhost:8002';
+}
+
 export const useAuthStore = create<AuthStore>()((set, get) => ({
   ...initialState,
 
   initialize: async () => {
-    set({ isLoading: true });
+    const serverUrl = getServerUrl();
+    set({ isLoading: true, serverUrl });
     try {
       const token = await getStoredValue<string>(StorageKeys.TOKEN);
-      const serverUrl = await getStoredValue<string>(StorageKeys.SERVER_URL);
       const user = await getStoredValue<User>(StorageKeys.USER);
       const companyId = await getStoredValue<string>(StorageKeys.COMPANY_ID);
       const companies = await getStoredValue<Company[]>(StorageKeys.COMPANIES);
 
-      if (token && serverUrl && user) {
+      if (token && user) {
         set({
           token,
-          serverUrl,
           user,
           companyId,
           companies: companies ?? [],
@@ -103,12 +110,9 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         try {
           await get().checkSession();
         } catch {
-          // Token expired, clear auth but preserve serverUrl
+          // Token expired, clear auth
           get().logout();
         }
-      } else if (serverUrl) {
-        // Preserve serverUrl even without valid auth
-        set({ serverUrl });
       }
     } catch (error) {
       console.error('Failed to initialize auth:', error);
@@ -117,13 +121,11 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
     }
   },
 
-  login: async (email: string, password: string, serverUrl: string) => {
+  login: async (email: string, password: string) => {
+    const serverUrl = getServerUrl();
     set({ isLoading: true, serverUrl });
 
     try {
-      // Persist serverUrl immediately so the API interceptor can use it
-      await setStoredValue(StorageKeys.SERVER_URL, serverUrl);
-
       console.log('[auth] Attempting login to', serverUrl);
 
       const response = await apiPost<{
@@ -189,14 +191,14 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   },
 
   logout: () => {
-    const { serverUrl } = get();
     disconnectEcho();
-    set({ ...initialState, serverUrl, isInitialized: true });
-    // Clear auth data but preserve serverUrl
+    set({ ...initialState, serverUrl: getServerUrl(), isInitialized: true });
     void removeStoredValue(StorageKeys.TOKEN);
     void removeStoredValue(StorageKeys.USER);
     void removeStoredValue(StorageKeys.COMPANY_ID);
     void removeStoredValue(StorageKeys.COMPANIES);
     void removeStoredValue(StorageKeys.TERMINAL);
+    void removeStoredValue(StorageKeys.PENDING_TERMINAL_ID);
+    useTerminalStore.getState().reset();
   },
 }));

@@ -135,7 +135,8 @@
     "shiftOpening": "Service #{{number}} · Ouverture : {{amount}}",
     "actualCash": "Espèces réelles en caisse",
     "closing": "Fermeture...",
-    "settings": "Paramètres"
+    "settings": "Paramètres",
+    "pendingSyncWarning": "Des tickets n'ont pas encore été synchronisés. Synchronisez avant de fermer pour éviter toute perte de données."
   },
   "sync": {
     "online": "En ligne",
@@ -415,6 +416,24 @@
     "delete": "Supprimer",
     "orderSummary": "Résumé de la commande",
     "itemsCount": "{{count}} article(s)"
+  },
+  "consumptionMode": {
+    "label": "Mode de consommation",
+    "dineIn": "Sur place",
+    "takeout": "À emporter"
+  },
+  "tables": {
+    "selectTable": "Sélectionner une table",
+    "clearSelection": "Effacer",
+    "seats": "places"
+  },
+  "customerDisplay": {
+    "brandName": "IziPOS",
+    "welcome": "Bienvenue",
+    "yourOrder": "Votre commande",
+    "total": "Total",
+    "thankYou": "Merci !",
+    "receiptLabel": "Ticket #{{number}}"
   },
   "errors": {
     "receiptCreationFailed": "Échec de la création du ticket",

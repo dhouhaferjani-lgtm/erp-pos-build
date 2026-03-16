@@ -163,6 +163,8 @@
     "pos": "Point de vente",
     "openPos": "Ouvrir la caisse",
     "posOrders": "Commandes",
+    "tables": "Gestion des tables",
+    "kitchen": "Cuisine",
     "terminals": "Terminaux",
     "transactions": "Transactions",
     "shifts": "Caisses",
@@ -1004,5 +1006,10 @@
       "terminalActivated": "Terminal activé avec succès",
       "terminalDeactivated": "Terminal désactivé avec succès"
     }
+  },
+  "realtime": {
+    "connected": "Mises à jour en temps réel actives",
+    "connecting": "Connexion aux mises à jour en temps réel...",
+    "disconnected": "Mises à jour en temps réel indisponibles"
   }
 }

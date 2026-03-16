@@ -26,6 +26,17 @@ vi.mock('react-i18next', () => ({
   }),
 }))
 
+// Mock useProductConfig
+vi.mock('../../../../contexts/ProductConfigContext', () => ({
+  useProductConfig: () => ({
+    product: 'izipos',
+    isIziPOS: true,
+    isOtospex: false,
+    productName: 'IziPOS',
+    productDescription: 'Point of Sale',
+  }),
+}))
+
 describe('Sidebar - Vertical-Based Navigation Filtering', () => {
   let queryClient: QueryClient
 

@@ -94,6 +94,7 @@ async function request<T>(
   if (response.status === 401) {
     const reqUrl = url;
     if (!reqUrl.includes('/auth/me')) {
+      console.warn('[API] 401 on', reqUrl, '— triggering logout');
       useAuthStore.getState().logout();
     }
     throw new ApiRequestError(401, 'Unauthorized', 'UNAUTHORIZED');

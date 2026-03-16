@@ -4,6 +4,7 @@ import { Sidebar } from '../../organisms/Sidebar'
 import { TopBar } from '../../organisms/TopBar'
 import { Breadcrumb } from '../../molecules/Breadcrumb'
 import { EmailVerificationBanner } from '../../organisms/EmailVerificationBanner'
+import { WebSocketReconnectProvider } from '../../../providers/WebSocketReconnectProvider'
 import { useProductConfig } from '../../../contexts/ProductConfigContext'
 
 export function DashboardLayout() {
@@ -16,12 +17,14 @@ export function DashboardLayout() {
       <div className="flex flex-1 flex-col overflow-hidden lg:ps-0">
         <EmailVerificationBanner />
         <TopBar onMenuClick={() => { setSidebarOpen(true) }} />
-        <main className="flex flex-1 flex-col overflow-y-auto p-4 sm:p-6">
-          <Breadcrumb />
-          <div className="flex flex-1 flex-col">
-            <Outlet />
-          </div>
-        </main>
+        <WebSocketReconnectProvider>
+          <main className="flex flex-1 flex-col overflow-y-auto p-4 sm:p-6">
+            <Breadcrumb />
+            <div className="flex flex-1 flex-col">
+              <Outlet />
+            </div>
+          </main>
+        </WebSocketReconnectProvider>
       </div>
     </div>
   )

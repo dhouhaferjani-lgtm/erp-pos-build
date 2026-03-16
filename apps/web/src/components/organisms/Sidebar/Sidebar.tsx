@@ -43,6 +43,8 @@ import {
   Store,
   Monitor,
   History,
+  LayoutGrid,
+  ChefHat,
   PanelLeftClose,
   PanelLeft,
   UtensilsCrossed,
@@ -193,6 +195,8 @@ const navigation: NavModule[] = [
     children: [
       { key: 'openPos', href: '/pos/transactions', icon: Store, module: 'pos' },
       { key: 'posOrders', href: '/pos/orders', icon: ClipboardList, module: 'pos' },
+      { key: 'tables', href: '/pos/tables', icon: LayoutGrid, module: 'pos' },
+      { key: 'kitchen', href: '/pos/kitchen', icon: ChefHat, module: 'pos' },
       { key: 'terminals', href: '/pos/terminals', icon: Monitor, module: 'pos' },
       { key: 'shiftHistory', href: '/pos/shift-history', icon: History, module: 'pos' },
       { key: 'zReports', href: '/pos/z-reports', icon: FileCheck, module: 'pos' },

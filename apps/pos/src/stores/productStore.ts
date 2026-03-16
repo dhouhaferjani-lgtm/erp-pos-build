@@ -45,7 +45,7 @@ function extractCategories(products: POSProduct[]): string[] {
   return Array.from(uniqueCategories).sort();
 }
 
-function hasModule(config: CompanyConfig | null, moduleName: string): boolean {
+export function hasModule(config: CompanyConfig | null, moduleName: string): boolean {
   return config?.all_enabled_modules?.includes(moduleName) ?? false;
 }
 

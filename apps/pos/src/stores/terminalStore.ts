@@ -84,19 +84,22 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
       // 2. Check if there's a pending terminal ID from a previous request
       const pendingId = await getStoredValue<string>(StorageKeys.PENDING_TERMINAL_ID);
       if (pendingId) {
+        console.log('[Terminal] Found stored pending terminal ID:', pendingId);
         set({ pendingTerminalId: pendingId });
         // Check if it was activated while we were away
         try {
           const pending = await apiGet<Terminal>(`/pos/terminals/${pendingId}`);
           if (pending.is_active) {
+            console.log('[Terminal] Pending terminal is now active:', pending.code);
             await setStoredValue(StorageKeys.TERMINAL, pending);
             await removeStoredValue(StorageKeys.PENDING_TERMINAL_ID);
             set({ terminal: pending, pendingTerminalId: null });
             await get().fetchCurrentShift();
             return;
           }
-        } catch {
+        } catch (err) {
           // Terminal may have been deleted, clear pending
+          console.warn('[Terminal] Pending terminal check failed, clearing stale ID:', pendingId, err);
           await removeStoredValue(StorageKeys.PENDING_TERMINAL_ID);
           set({ pendingTerminalId: null });
         }
@@ -148,16 +151,19 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
 
   requestTerminal: async (locationId: string, suggestedName: string, hardwareIdentifier: string) => {
     set({ isLoading: true });
+    console.log('[Terminal] Requesting terminal:', { locationId, suggestedName, hardwareIdentifier });
     try {
       const terminal = await apiPost<Terminal>('/pos/terminals/request', {
         location_id: locationId,
         hardware_identifier: hardwareIdentifier,
         suggested_name: suggestedName,
       });
+      console.log('[Terminal] Request successful, pending ID:', terminal.id);
       await setStoredValue(StorageKeys.PENDING_TERMINAL_ID, terminal.id);
       set({ pendingTerminalId: terminal.id, isLoading: false });
       return terminal;
     } catch (error) {
+      console.error('[Terminal] Request failed:', error);
       set({ isLoading: false });
       throw error;
     }

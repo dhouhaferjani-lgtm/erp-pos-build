@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { AlertTriangle } from 'lucide-react';
 import { getErrorMessage } from '@/lib/api';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useCartStore } from '@/stores/cartStore';
+import { useSyncStore } from '@/stores/syncStore';
 
 interface CloseShiftModalProps {
   isOpen: boolean;
@@ -16,6 +18,7 @@ interface CloseShiftModalProps {
 export function CloseShiftModal({ isOpen, onClose, shift }: CloseShiftModalProps) {
   const { t } = useTranslation(['pos', 'common']);
   const closeShift = useTerminalStore((s) => s.closeShift);
+  const pendingReceiptCount = useSyncStore((s) => s.pendingReceiptCount);
 
   const [actualCash, setActualCash] = useState('');
   const [closing, setClosing] = useState(false);
@@ -45,6 +48,18 @@ export function CloseShiftModal({ isOpen, onClose, shift }: CloseShiftModalProps
         <p className="mt-1 text-sm text-gray-500">
           {t('pos:header.shiftOpening', { number: shift.shift_number, amount: shift.opening_cash })}
         </p>
+
+        {pendingReceiptCount > 0 && (
+          <div className="mt-3 flex items-start gap-2 rounded-md bg-amber-50 border border-amber-200 p-3">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+            <div className="text-sm text-amber-800">
+              <p className="font-medium">{t('pos:header.pendingSyncWarning')}</p>
+              <p className="mt-0.5">
+                {t('pos:sync.pendingCount', { count: pendingReceiptCount })}
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="mt-4">
           <label htmlFor="actualCash" className="block text-sm font-medium text-gray-700">

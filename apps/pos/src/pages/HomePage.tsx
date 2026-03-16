@@ -9,6 +9,9 @@ import { useHoldStore } from '@/stores/holdStore';
 import { useScannerStore } from '@/stores/scannerStore';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { getErrorMessage } from '@/lib/api';
+import { hasModule } from '@/stores/productStore';
+import { ConsumptionModeToggle } from '@/components/atoms/ConsumptionModeToggle';
+import { TableSelector } from '@/components/atoms/TableSelector';
 import { ProductGrid } from '@/components/organisms/ProductGrid';
 import { TransactionCart } from '@/components/organisms/TransactionCart';
 import { CashTenderedModal } from '@/components/organisms/CashTenderedModal';
@@ -20,6 +23,7 @@ import { LineDiscountModal } from '@/components/organisms/LineDiscountModal';
 import { ModifierSelectionModal } from '@/components/organisms/ModifierSelectionModal';
 import { VoidReturnModal } from '@/components/organisms/VoidReturnModal';
 import { QuantityNumpad } from '@/components/organisms/QuantityNumpad';
+import type { ConsumptionMode } from '@/components/atoms/ConsumptionModeToggle';
 import type { POSProduct } from '@/types/product';
 import type { SelectedModifier } from '@/types/cart';
 
@@ -31,6 +35,8 @@ export function HomePage() {
   const [shiftError, setShiftError] = useState<string | null>(null);
 
   // Product store
+  const companyConfig = useProductStore((s) => s.companyConfig);
+  const isFnB = hasModule(companyConfig, 'Menu');
   const products = useProductStore((s) => s.products);
   const categories = useProductStore((s) => s.categories);
   const productsLoading = useProductStore((s) => s.isLoading);
@@ -80,6 +86,10 @@ export function HomePage() {
   // Modifier selection state
   const [modifierProduct, setModifierProduct] = useState<POSProduct | null>(null);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
+
+  // Consumption mode + table selection (F&B only)
+  const [consumptionMode, setConsumptionMode] = useState<ConsumptionMode>('SUR_PLACE');
+  const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
 
   // Line discount state
   const [discountItemId, setDiscountItemId] = useState<string | null>(null);
@@ -142,6 +152,13 @@ export function HomePage() {
     }
   }, [openShift, openingCash, operator?.id]);
 
+  const handleConsumptionModeChange = useCallback((mode: ConsumptionMode) => {
+    setConsumptionMode(mode);
+    if (mode === 'A_EMPORTER') {
+      setSelectedTableId(null);
+    }
+  }, []);
+
   const handleAddToCart = useCallback(
     (product: POSProduct) => {
       // Products with modifiers: quick-add with default selections
@@ -202,6 +219,8 @@ export function HomePage() {
           cartItems,
           tenderedAmount,
           transactionDiscount,
+          isFnB ? consumptionMode : undefined,
+          isFnB ? selectedTableId : undefined,
         );
         setShowCashModal(false);
         setShowSuccessModal(true);
@@ -209,7 +228,7 @@ export function HomePage() {
         // Error is stored in paymentStore and displayed in the modal
       }
     },
-    [terminal, cartItems, transactionDiscount, processCashCheckout],
+    [terminal, cartItems, transactionDiscount, processCashCheckout, isFnB, consumptionMode, selectedTableId],
   );
 
   const handleAdvancedPayments = useCallback(() => {
@@ -226,6 +245,8 @@ export function HomePage() {
           cartItems,
           payments,
           transactionDiscount,
+          isFnB ? consumptionMode : undefined,
+          isFnB ? selectedTableId : undefined,
         );
         setShowAdvancedModal(false);
         setShowSuccessModal(true);
@@ -233,7 +254,7 @@ export function HomePage() {
         // Error is stored in paymentStore
       }
     },
-    [terminal, cartItems, transactionDiscount, processAdvancedCheckout],
+    [terminal, cartItems, transactionDiscount, processAdvancedCheckout, isFnB, consumptionMode, selectedTableId],
   );
 
   const handleHold = useCallback(() => {
@@ -339,6 +360,7 @@ export function HomePage() {
     setShowSuccessModal(false);
     clearCart();
     clearLastReceipt();
+    setSelectedTableId(null);
   }, [clearCart, clearLastReceipt]);
 
   // Open shift screen
@@ -401,6 +423,20 @@ export function HomePage() {
 
       {/* Product grid - left panel */}
       <div className="flex flex-[7] flex-col overflow-hidden border-r border-gray-200 bg-gray-50 p-4">
+        {isFnB && (
+          <div className="mb-4 space-y-3">
+            <ConsumptionModeToggle
+              value={consumptionMode}
+              onChange={handleConsumptionModeChange}
+            />
+            {consumptionMode === 'SUR_PLACE' && (
+              <TableSelector
+                selectedTableId={selectedTableId}
+                onSelectTable={setSelectedTableId}
+              />
+            )}
+          </div>
+        )}
         <ProductGrid
           products={products}
           categories={categories}

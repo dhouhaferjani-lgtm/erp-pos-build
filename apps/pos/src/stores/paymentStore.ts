@@ -32,18 +32,24 @@ interface PaymentActions {
     cartItems: CartItem[],
     tenderedAmount: number,
     transactionDiscount?: { amount: string; reason?: string },
+    consumptionMode?: string,
+    tableId?: string | null,
   ) => Promise<void>;
   processCardCheckout: (
     terminalId: string,
     cartItems: CartItem[],
     cardData?: { lastFour?: string; reference?: string },
     transactionDiscount?: { amount: string; reason?: string },
+    consumptionMode?: string,
+    tableId?: string | null,
   ) => Promise<void>;
   processAdvancedCheckout: (
     terminalId: string,
     cartItems: CartItem[],
     payments: AdvancedPaymentLine[],
     transactionDiscount?: { amount: string; reason?: string },
+    consumptionMode?: string,
+    tableId?: string | null,
   ) => Promise<void>;
   reset: () => void;
   clearLastReceipt: () => void;
@@ -66,6 +72,8 @@ function buildReceiptData(
   terminalId: string,
   cartItems: CartItem[],
   transactionDiscount?: { amount: string; reason?: string },
+  consumptionMode?: string,
+  tableId?: string | null,
 ) {
   return {
     terminal_id: terminalId,
@@ -99,6 +107,8 @@ function buildReceiptData(
           transaction_discount_reason: transactionDiscount.reason,
         }
       : {}),
+    ...(consumptionMode ? { consumption_mode: consumptionMode } : {}),
+    ...(tableId ? { table_id: tableId } : {}),
   };
 }
 
@@ -108,13 +118,15 @@ async function getOrCreateReceipt(
   terminalId: string,
   cartItems: CartItem[],
   transactionDiscount?: { amount: string; reason?: string },
+  consumptionMode?: string,
+  tableId?: string | null,
 ): Promise<CreateReceiptResponse> {
   const { pendingReceiptId } = get();
   if (pendingReceiptId && get().lastReceipt) {
     return get().lastReceipt!;
   }
 
-  const receiptData = buildReceiptData(terminalId, cartItems, transactionDiscount);
+  const receiptData = buildReceiptData(terminalId, cartItems, transactionDiscount, consumptionMode, tableId);
   console.log('[POS] Creating receipt:', JSON.stringify(receiptData, null, 2));
   const receipt = await createReceipt(receiptData);
   set({ lastReceipt: receipt, pendingReceiptId: receipt.id });
@@ -141,6 +153,8 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     cartItems: CartItem[],
     tenderedAmount: number,
     transactionDiscount?: { amount: string; reason?: string },
+    consumptionMode?: string,
+    tableId?: string | null,
   ) => {
     const { paymentMethods, paymentRepositories } = get();
 
@@ -167,7 +181,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     set({ isProcessing: true, error: null });
 
     try {
-      const receipt = await getOrCreateReceipt(get, set, terminalId, cartItems, transactionDiscount);
+      const receipt = await getOrCreateReceipt(get, set, terminalId, cartItems, transactionDiscount, consumptionMode, tableId);
 
       const totalAmount = parseFloat(receipt.total);
       const paymentResponse = await processReceiptPayments(receipt.id, {
@@ -203,6 +217,8 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     cartItems: CartItem[],
     cardData?: { lastFour?: string; reference?: string },
     transactionDiscount?: { amount: string; reason?: string },
+    consumptionMode?: string,
+    tableId?: string | null,
   ) => {
     const { paymentMethods, paymentRepositories } = get();
 
@@ -230,7 +246,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     set({ isProcessing: true, error: null });
 
     try {
-      const receipt = await getOrCreateReceipt(get, set, terminalId, cartItems, transactionDiscount);
+      const receipt = await getOrCreateReceipt(get, set, terminalId, cartItems, transactionDiscount, consumptionMode, tableId);
 
       const totalAmount = parseFloat(receipt.total);
       const paymentResponse = await processReceiptPayments(receipt.id, {
@@ -266,11 +282,13 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     cartItems: CartItem[],
     payments: AdvancedPaymentLine[],
     transactionDiscount?: { amount: string; reason?: string },
+    consumptionMode?: string,
+    tableId?: string | null,
   ) => {
     set({ isProcessing: true, error: null });
 
     try {
-      const receipt = await getOrCreateReceipt(get, set, terminalId, cartItems, transactionDiscount);
+      const receipt = await getOrCreateReceipt(get, set, terminalId, cartItems, transactionDiscount, consumptionMode, tableId);
 
       const paymentResponse = await processReceiptPayments(receipt.id, {
         payments: payments.map((p) => ({

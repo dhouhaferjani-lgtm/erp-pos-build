@@ -58,9 +58,11 @@ class ParapharmacyProductMetadataData extends Data
             $metadata->load('certifications');
         }
 
+        /** @var \Illuminate\Database\Eloquent\Collection<int, \App\Modules\Product\Domain\Ingredient>|null $ingredients */
+        $ingredients = $metadata->ingredients;
         /** @var array<int, ProductIngredientData>|null $ingredientsList */
-        $ingredientsList = $metadata->ingredients->isNotEmpty()
-            ? $metadata->ingredients->map(function (\Illuminate\Database\Eloquent\Model $model): ProductIngredientData {
+        $ingredientsList = $ingredients !== null && $ingredients->isNotEmpty()
+            ? $ingredients->map(function (\Illuminate\Database\Eloquent\Model $model): ProductIngredientData {
                 /** @var \App\Modules\Product\Domain\Ingredient $ingredient */
                 $ingredient = $model;
                 /** @var Pivot $pivot */
@@ -70,9 +72,11 @@ class ParapharmacyProductMetadataData extends Data
             })->values()->all()
             : null;
 
+        /** @var \Illuminate\Database\Eloquent\Collection<int, \App\Modules\Product\Domain\KeyComponent>|null $keyComponents */
+        $keyComponents = $metadata->keyComponents;
         /** @var array<int, ProductKeyComponentData>|null $keyComponentsList */
-        $keyComponentsList = $metadata->keyComponents->isNotEmpty()
-            ? $metadata->keyComponents->map(function (\Illuminate\Database\Eloquent\Model $model): ProductKeyComponentData {
+        $keyComponentsList = $keyComponents !== null && $keyComponents->isNotEmpty()
+            ? $keyComponents->map(function (\Illuminate\Database\Eloquent\Model $model): ProductKeyComponentData {
                 /** @var \App\Modules\Product\Domain\KeyComponent $component */
                 $component = $model;
                 /** @var Pivot $pivot */
@@ -82,9 +86,11 @@ class ParapharmacyProductMetadataData extends Data
             })->values()->all()
             : null;
 
+        /** @var \Illuminate\Database\Eloquent\Collection<int, \App\Modules\Product\Domain\HealthClaim>|null $healthClaims */
+        $healthClaims = $metadata->healthClaims;
         /** @var array<int, ProductHealthClaimData>|null $healthClaimsList */
-        $healthClaimsList = $metadata->healthClaims->isNotEmpty()
-            ? $metadata->healthClaims->map(function (\Illuminate\Database\Eloquent\Model $model): ProductHealthClaimData {
+        $healthClaimsList = $healthClaims !== null && $healthClaims->isNotEmpty()
+            ? $healthClaims->map(function (\Illuminate\Database\Eloquent\Model $model): ProductHealthClaimData {
                 /** @var \App\Modules\Product\Domain\HealthClaim $healthClaim */
                 $healthClaim = $model;
                 /** @var Pivot $pivot */
@@ -94,9 +100,11 @@ class ParapharmacyProductMetadataData extends Data
             })->values()->all()
             : null;
 
+        /** @var \Illuminate\Database\Eloquent\Collection<int, \App\Modules\Product\Domain\Certification>|null $certifications */
+        $certifications = $metadata->certifications;
         /** @var array<int, ProductCertificationData>|null $certificationsList */
-        $certificationsList = $metadata->certifications->isNotEmpty()
-            ? $metadata->certifications->map(function (\Illuminate\Database\Eloquent\Model $model): ProductCertificationData {
+        $certificationsList = $certifications !== null && $certifications->isNotEmpty()
+            ? $certifications->map(function (\Illuminate\Database\Eloquent\Model $model): ProductCertificationData {
                 /** @var \App\Modules\Product\Domain\Certification $certification */
                 $certification = $model;
                 /** @var Pivot $pivot */

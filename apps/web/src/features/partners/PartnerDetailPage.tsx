@@ -21,6 +21,7 @@ import {
 import { api } from '../../lib/api'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
+import { usePartnerBalanceRealtime } from './hooks/usePartnerBalanceRealtime'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/Tabs'
 import { AddVehicleModal } from '../../components/organisms'
 
@@ -119,6 +120,7 @@ const statusColors: Record<string, string> = {
 }
 
 export function PartnerDetailPage() {
+  usePartnerBalanceRealtime()
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { id = '' } = useParams<{ id: string }>()

@@ -30,7 +30,20 @@ Broadcast::channel('tenant.{tenantId}.company.{companyId}.product.{productId}', 
  * Events: import.progress, import.completed
  */
 Broadcast::channel('tenant.{tenantId}.company.{companyId}.imports', function (User $user, string $tenantId, string $companyId) {
-    return $user->canAccessImportChannel($tenantId, $companyId);
+    return $user->canAccessCompanyChannel($tenantId, $companyId);
+});
+
+/**
+ * Partner Balance Update Channel
+ *
+ * Private channel for real-time partner balance updates.
+ * Company-level channel — all partner balance updates for the company.
+ *
+ * Channel pattern: private-tenant.{tenantId}.company.{companyId}.partners
+ * Event: partner.balance-updated
+ */
+Broadcast::channel('tenant.{tenantId}.company.{companyId}.partners', function (User $user, string $tenantId, string $companyId) {
+    return $user->canAccessCompanyChannel($tenantId, $companyId);
 });
 
 /**
@@ -43,7 +56,7 @@ Broadcast::channel('tenant.{tenantId}.company.{companyId}.imports', function (Us
  * Event: terminal.activated
  */
 Broadcast::channel('tenant.{tenantId}.company.{companyId}.pos.terminal.{terminalId}', function (User $user, string $tenantId, string $companyId) {
-    return $user->canAccessImportChannel($tenantId, $companyId);
+    return $user->canAccessCompanyChannel($tenantId, $companyId);
 });
 
 /**
@@ -56,5 +69,5 @@ Broadcast::channel('tenant.{tenantId}.company.{companyId}.pos.terminal.{terminal
  * Events: order.sent_to_kitchen, order.line_status_changed, order.ready
  */
 Broadcast::channel('tenant.{tenantId}.company.{companyId}.pos.kitchen', function (User $user, string $tenantId, string $companyId) {
-    return $user->canAccessImportChannel($tenantId, $companyId);
+    return $user->canAccessCompanyChannel($tenantId, $companyId);
 });

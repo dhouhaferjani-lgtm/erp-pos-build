@@ -237,12 +237,13 @@ class User extends Authenticatable
     }
 
     /**
-     * Check if user can access the import progress channel.
+     * Check if user can access a company-scoped broadcast channel.
      *
-     * Used for WebSocket channel authorization for real-time import updates.
+     * Used for WebSocket channel authorization for real-time updates
+     * (imports, POS terminals, kitchen display, etc.).
      * Verifies that user belongs to tenant and has company membership.
      */
-    public function canAccessImportChannel(string $tenantId, string $companyId): bool
+    public function canAccessCompanyChannel(string $tenantId, string $companyId): bool
     {
         // User must belong to the tenant
         if ($this->tenant_id !== $tenantId) {
@@ -259,5 +260,13 @@ class User extends Authenticatable
             ->where('company_id', $companyId)
             ->where('status', 'active')
             ->exists();
+    }
+
+    /**
+     * @deprecated Use canAccessCompanyChannel() instead
+     */
+    public function canAccessImportChannel(string $tenantId, string $companyId): bool
+    {
+        return $this->canAccessCompanyChannel($tenantId, $companyId);
     }
 }

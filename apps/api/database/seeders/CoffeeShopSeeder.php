@@ -5,6 +5,12 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Enums\Vertical;
+use App\Modules\Accounting\Application\Services\PartnerBalanceService;
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Billing\Domain\Enums\SubscriptionStatus;
 use App\Modules\Billing\Domain\Plan;
 use App\Modules\Billing\Domain\TenantSubscription;
@@ -29,6 +35,8 @@ use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Menu\Domain\Entities\Menu;
 use App\Modules\Menu\Domain\Entities\MenuCategory;
 use App\Modules\Menu\Domain\Entities\MenuCategoryItem;
+use App\Modules\Partner\Domain\Enums\PartnerType;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Promotion\Domain\Entities\Promotion;
 use App\Modules\Promotion\Domain\Enums\DiscountAppliesTo;
@@ -144,7 +152,11 @@ class CoffeeShopSeeder extends Seeder
         $this->command->info('Creating demo promotions...');
         $this->seedPromotions();
 
-        // 11. Test users
+        // 11. Partner transactions (GL entries for non-zero balances)
+        $this->command->info('Creating partner transactions...');
+        $this->seedPartnerTransactions();
+
+        // 12. Test users
         $this->command->info('Creating test users...');
         $this->createTestUsers();
 
@@ -964,6 +976,139 @@ class CoffeeShopSeeder extends Seeder
         ]);
 
         $this->command->info('Created "Buy Frappuccino, Get Free Croissant" promotion');
+    }
+
+    private function seedPartnerTransactions(): void
+    {
+        $companyId = $this->company->id;
+        $tenantId = $this->tenant->id;
+
+        // Create customer partners
+        $customers = [
+            ['name' => 'Cafe Central', 'code' => 'CUST-001', 'email' => 'contact@cafecentral.tn'],
+            ['name' => 'Restaurant Le Jardin', 'code' => 'CUST-002', 'email' => 'info@lejardin.tn'],
+            ['name' => 'Hotel Meridien', 'code' => 'CUST-003', 'email' => 'purchase@meridien.tn'],
+        ];
+
+        $partnerIds = [];
+        foreach ($customers as $data) {
+            $partner = Partner::firstOrCreate(
+                ['company_id' => $companyId, 'code' => $data['code']],
+                [
+                    'tenant_id' => $tenantId,
+                    'name' => $data['name'],
+                    'type' => PartnerType::Customer,
+                    'email' => $data['email'],
+                    'is_active' => true,
+                ]
+            );
+            $partnerIds[$data['code']] = $partner->id;
+        }
+
+        // Create supplier partner
+        $supplier = Partner::firstOrCreate(
+            ['company_id' => $companyId, 'code' => 'SUPP-001'],
+            [
+                'tenant_id' => $tenantId,
+                'name' => 'Coffee Bean Wholesale',
+                'type' => PartnerType::Supplier,
+                'email' => 'orders@coffeebeans.tn',
+                'is_active' => true,
+            ]
+        );
+        $partnerIds['SUPP-001'] = $supplier->id;
+
+        // Lookup GL accounts
+        $receivableAccount = Account::where('company_id', $companyId)
+            ->where('system_purpose', SystemAccountPurpose::CustomerReceivable->value)
+            ->firstOrFail();
+        $revenueAccount = Account::where('company_id', $companyId)
+            ->where('system_purpose', SystemAccountPurpose::ProductRevenue->value)
+            ->firstOrFail();
+        $vatAccount = Account::where('company_id', $companyId)
+            ->where('system_purpose', SystemAccountPurpose::VatCollected->value)
+            ->firstOrFail();
+        $cashAccount = Account::where('company_id', $companyId)
+            ->where('system_purpose', SystemAccountPurpose::Cash->value)
+            ->firstOrFail();
+        $payableAccount = Account::where('company_id', $companyId)
+            ->where('system_purpose', SystemAccountPurpose::SupplierPayable->value)
+            ->firstOrFail();
+
+        $entrySeq = 9000;
+
+        // Helper to create and post a journal entry
+        $createEntry = function (string $description, string $sourceType, array $lines) use ($companyId, $tenantId, &$entrySeq): void {
+            $entry = JournalEntry::create([
+                'tenant_id' => $tenantId,
+                'company_id' => $companyId,
+                'entry_number' => 'SEED-' . $entrySeq++,
+                'entry_date' => now()->subDays(rand(1, 30))->toDateString(),
+                'description' => $description,
+                'status' => JournalEntryStatus::Posted,
+                'source_type' => $sourceType,
+                'posted_at' => now(),
+            ]);
+
+            $lineOrder = 0;
+            foreach ($lines as $line) {
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $line['account_id'],
+                    'partner_id' => $line['partner_id'] ?? null,
+                    'debit' => $line['debit'],
+                    'credit' => $line['credit'],
+                    'description' => $line['description'],
+                    'line_order' => $lineOrder++,
+                ]);
+            }
+        };
+
+        // Customer 1: Invoice 500 TND (Cafe Central)
+        $createEntry('Invoice INV-SEED-001 - Cafe Central', 'invoice', [
+            ['account_id' => $receivableAccount->id, 'partner_id' => $partnerIds['CUST-001'], 'debit' => '500.000', 'credit' => '0', 'description' => 'Accounts receivable'],
+            ['account_id' => $revenueAccount->id, 'debit' => '0', 'credit' => '467.290', 'description' => 'Sales revenue'],
+            ['account_id' => $vatAccount->id, 'debit' => '0', 'credit' => '32.710', 'description' => 'VAT collected'],
+        ]);
+
+        // Customer 1: Partial payment 200 TND (leaves 300 outstanding)
+        $createEntry('Payment PAY-SEED-001 - Cafe Central', 'payment', [
+            ['account_id' => $cashAccount->id, 'debit' => '200.000', 'credit' => '0', 'description' => 'Cash received'],
+            ['account_id' => $receivableAccount->id, 'partner_id' => $partnerIds['CUST-001'], 'debit' => '0', 'credit' => '200.000', 'description' => 'Receivable cleared'],
+        ]);
+
+        // Customer 2: Invoice 1200 TND (Restaurant Le Jardin)
+        $createEntry('Invoice INV-SEED-002 - Restaurant Le Jardin', 'invoice', [
+            ['account_id' => $receivableAccount->id, 'partner_id' => $partnerIds['CUST-002'], 'debit' => '1200.000', 'credit' => '0', 'description' => 'Accounts receivable'],
+            ['account_id' => $revenueAccount->id, 'debit' => '0', 'credit' => '1121.495', 'description' => 'Sales revenue'],
+            ['account_id' => $vatAccount->id, 'debit' => '0', 'credit' => '78.505', 'description' => 'VAT collected'],
+        ]);
+
+        // Customer 3: Invoice 800 TND, fully paid (Hotel Meridien)
+        $createEntry('Invoice INV-SEED-003 - Hotel Meridien', 'invoice', [
+            ['account_id' => $receivableAccount->id, 'partner_id' => $partnerIds['CUST-003'], 'debit' => '800.000', 'credit' => '0', 'description' => 'Accounts receivable'],
+            ['account_id' => $revenueAccount->id, 'debit' => '0', 'credit' => '747.664', 'description' => 'Sales revenue'],
+            ['account_id' => $vatAccount->id, 'debit' => '0', 'credit' => '52.336', 'description' => 'VAT collected'],
+        ]);
+        $createEntry('Payment PAY-SEED-002 - Hotel Meridien', 'payment', [
+            ['account_id' => $cashAccount->id, 'debit' => '800.000', 'credit' => '0', 'description' => 'Cash received'],
+            ['account_id' => $receivableAccount->id, 'partner_id' => $partnerIds['CUST-003'], 'debit' => '0', 'credit' => '800.000', 'description' => 'Receivable cleared'],
+        ]);
+
+        // Supplier: Purchase 2500 TND (Coffee Bean Wholesale)
+        $createEntry('Purchase PO-SEED-001 - Coffee Bean Wholesale', 'purchase', [
+            ['account_id' => $payableAccount->id, 'partner_id' => $partnerIds['SUPP-001'], 'debit' => '0', 'credit' => '2500.000', 'description' => 'Supplier payable'],
+            ['account_id' => $revenueAccount->id, 'debit' => '2500.000', 'credit' => '0', 'description' => 'Purchase cost'],
+        ]);
+
+        // Refresh cached balances for all seeded partners
+        /** @var PartnerBalanceService $balanceService */
+        $balanceService = app(PartnerBalanceService::class);
+        foreach ($partnerIds as $partnerId) {
+            $balanceService->refreshPartnerBalance($companyId, $partnerId);
+        }
+
+        $this->command->info('Created 4 partners with GL entries and non-zero balances');
     }
 
     private function createTestUsers(): void

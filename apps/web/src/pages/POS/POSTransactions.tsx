@@ -98,6 +98,7 @@ export function POSTransactions() {
   const [couponCode, setCouponCode] = useState<string | null>(null)
   const [loyaltyRewardValue, setLoyaltyRewardValue] = useState<string | null>(null)
   const [loyaltyRewardId, setLoyaltyRewardId] = useState<string | null>(null)
+  const [selectedTableId, setSelectedTableId] = useState<string | null>(null)
 
   // Auto-resolve web terminal for the active location
   const webTerminalMutation = useMutation({
@@ -289,6 +290,7 @@ export function POSTransactions() {
       ...(loyaltyRewardValue ? { loyalty_discount_amount: loyaltyRewardValue } : {}),
       ...(loyaltyRewardId ? { loyalty_reward_id: loyaltyRewardId } : {}),
       ...(isFnBVertical ? { consumption_mode: consumptionMode } : {}),
+      ...(selectedTableId ? { table_id: selectedTableId } : {}),
     }
   }
 
@@ -428,6 +430,7 @@ export function POSTransactions() {
       setCouponCode(null)
       setLoyaltyRewardValue(null)
       setLoyaltyRewardId(null)
+      setSelectedTableId(null)
       setCartVersion((v) => v + 1)
     } catch (err) {
       toast.error(extractApiErrorMessage(err, t('pos:transactions.errors.quickCheckoutFailed')))
@@ -469,6 +472,7 @@ export function POSTransactions() {
     setCouponCode(null)
     setLoyaltyRewardValue(null)
     setLoyaltyRewardId(null)
+    setSelectedTableId(null)
     setCartVersion((v) => v + 1)
 
     return result
@@ -538,7 +542,14 @@ export function POSTransactions() {
         loyaltyMember={loyaltyMember}
         loyaltyEnrollment={loyaltyEnrollment}
         consumptionMode={isFnBVertical ? consumptionMode : undefined}
-        onConsumptionModeChange={isFnBVertical ? setConsumptionMode : undefined}
+        onConsumptionModeChange={isFnBVertical ? (mode: ConsumptionMode) => {
+          setConsumptionMode(mode)
+          if (mode !== 'SUR_PLACE') {
+            setSelectedTableId(null)
+          }
+        } : undefined}
+        selectedTableId={isFnBVertical ? selectedTableId : undefined}
+        onSelectedTableIdChange={isFnBVertical ? setSelectedTableId : undefined}
         couponCode={couponCode}
         onCouponApplied={(code) => { setCouponCode(code) }}
         onCouponRemoved={() => { setCouponCode(null) }}

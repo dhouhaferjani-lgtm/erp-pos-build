@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { listen } from '@tauri-apps/api/event';
 import type { CartDisplayItem } from '@/lib/customerDisplay';
 
@@ -20,6 +21,8 @@ function formatAmount(amount: string, currency: string): string {
 }
 
 function IdleScreen({ imageUrl }: { imageUrl: string }) {
+  const { t } = useTranslation('pos');
+
   return (
     <div className="flex h-full w-full items-center justify-center bg-gray-950">
       {imageUrl ? (
@@ -31,10 +34,10 @@ function IdleScreen({ imageUrl }: { imageUrl: string }) {
       ) : (
         <div className="text-center">
           <div className="text-6xl font-bold tracking-tight text-white/90">
-            IziPOS
+            {t('customerDisplay.brandName')}
           </div>
           <div className="mt-4 text-xl text-white/40">
-            Welcome
+            {t('customerDisplay.welcome')}
           </div>
         </div>
       )}
@@ -51,11 +54,13 @@ function CartScreen({
   total: string;
   currency: string;
 }) {
+  const { t } = useTranslation('pos');
+
   return (
     <div className="flex h-full w-full flex-col bg-gray-950 text-white">
       {/* Header */}
       <div className="border-b border-white/10 px-8 py-6">
-        <h1 className="text-2xl font-bold text-white/90">Your Order</h1>
+        <h1 className="text-2xl font-bold text-white/90">{t('customerDisplay.yourOrder')}</h1>
       </div>
 
       {/* Items list */}
@@ -83,7 +88,7 @@ function CartScreen({
       {/* Total */}
       <div className="border-t border-white/20 bg-white/5 px-8 py-6">
         <div className="flex items-center justify-between">
-          <span className="text-2xl font-bold text-white/70">Total</span>
+          <span className="text-2xl font-bold text-white/70">{t('customerDisplay.total')}</span>
           <span className="text-4xl font-bold text-white">
             {formatAmount(total, currency)}
           </span>
@@ -102,6 +107,8 @@ function ThankYouScreen({
   total: string;
   currency: string;
 }) {
+  const { t } = useTranslation('pos');
+
   return (
     <div className="flex h-full w-full items-center justify-center bg-gray-950">
       <div className="text-center">
@@ -122,14 +129,14 @@ function ThankYouScreen({
           </svg>
         </div>
 
-        <h1 className="text-5xl font-bold text-white/90">Thank you!</h1>
+        <h1 className="text-5xl font-bold text-white/90">{t('customerDisplay.thankYou')}</h1>
 
         <div className="mt-6 text-3xl font-semibold text-white/60">
           {formatAmount(total, currency)}
         </div>
 
         <div className="mt-4 text-lg text-white/40">
-          Receipt #{receiptNumber}
+          {t('customerDisplay.receiptLabel', { number: receiptNumber })}
         </div>
       </div>
     </div>

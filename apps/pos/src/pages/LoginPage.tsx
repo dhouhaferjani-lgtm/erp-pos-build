@@ -9,7 +9,6 @@ export function LoginPage() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [serverUrl, setServerUrl] = useState('http://localhost:8002');
   const [error, setError] = useState<string | null>(null);
   const [showCompanySelect, setShowCompanySelect] = useState(false);
 
@@ -18,7 +17,7 @@ export function LoginPage() {
     setError(null);
 
     try {
-      await login(email, password, serverUrl.replace(/\/+$/, ''));
+      await login(email, password);
 
       // Check if company selection is needed
       const state = useAuthStore.getState();
@@ -70,21 +69,6 @@ export function LoginPage() {
         </div>
 
         <form onSubmit={(e) => void handleLogin(e)} className="space-y-4">
-          <div>
-            <label htmlFor="serverUrl" className="block text-sm font-medium text-gray-700">
-              {t('auth.serverUrl')}
-            </label>
-            <input
-              id="serverUrl"
-              type="url"
-              value={serverUrl}
-              onChange={(e) => setServerUrl(e.target.value)}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-              placeholder="https://your-server.com"
-              required
-            />
-          </div>
-
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700">
               {t('auth.email')}

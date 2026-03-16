@@ -114,7 +114,8 @@ class ParapharmacyProductMetadata extends Model
             Ingredient::class,
             'product_ingredient',
             'product_id',
-            'ingredient_id'
+            'ingredient_id',
+            'product_id'
         )
             ->withPivot(['concentration', 'concentration_numeric', 'concentration_unit', 'order', 'notes'])
             ->withTimestamps()
@@ -132,7 +133,8 @@ class ParapharmacyProductMetadata extends Model
             Certification::class,
             'certification_product',
             'product_id',
-            'certification_id'
+            'certification_id',
+            'product_id'
         )
             ->withPivot(['certification_code', 'issued_date', 'expiry_date', 'verification_url', 'notes'])
             ->withTimestamps();
@@ -149,7 +151,8 @@ class ParapharmacyProductMetadata extends Model
             HealthClaim::class,
             'health_claim_product',
             'product_id',
-            'health_claim_id'
+            'health_claim_id',
+            'product_id'
         )
             ->withPivot(['display_order'])
             ->withTimestamps()
@@ -167,7 +170,8 @@ class ParapharmacyProductMetadata extends Model
             KeyComponent::class,
             'key_component_product',
             'product_id',
-            'component_id'
+            'component_id',
+            'product_id'
         )
             ->withPivot(['order'])
             ->withTimestamps()

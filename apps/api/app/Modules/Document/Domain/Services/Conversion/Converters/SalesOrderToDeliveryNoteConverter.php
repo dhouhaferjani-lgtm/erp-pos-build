@@ -16,6 +16,7 @@ use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
@@ -273,25 +274,38 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
                     (float) $line->quantity,
                 );
 
-                if (! $result->fullyFulfilled) {
-                    throw new \DomainException(
-                        "Insufficient batch stock for product '{$product->name}'. ".
-                        "Required: {$line->quantity}, Available from non-expired batches: ".
-                        number_format($result->getSuggestedQuantity(), 4).
-                        '. Shortfall: '.number_format($result->shortfall, 4)
-                    );
-                }
+                if ($result->fullyFulfilled) {
+                    foreach ($result->suggestions as $suggestion) {
+                        $lineNumber++;
+                        /** @var numeric-string $batchQty */
+                        $batchQty = (string) $suggestion->quantity;
 
-                foreach ($result->suggestions as $suggestion) {
+                        // Calculate proportional line total
+                        /** @var numeric-string $unitPrice */
+                        $unitPrice = (string) $line->unit_price;
+                        $lineTotal = bcmul($batchQty, $unitPrice, $this->scale());
+
+                        DocumentLine::create([
+                            'id' => Str::uuid()->toString(),
+                            'document_id' => $destination->id,
+                            'line_number' => $lineNumber,
+                            'product_id' => $line->product_id,
+                            'product_code' => $line->product_code,
+                            'description' => $line->description,
+                            'quantity' => $batchQty,
+                            'unit_price' => $line->unit_price,
+                            'discount_percent' => $line->discount_percent,
+                            'discount_amount' => null, // Fixed discount not prorated per batch
+                            'tax_rate' => $line->tax_rate,
+                            'line_total' => $lineTotal,
+                            'notes' => $line->notes,
+                            'source_line_id' => $line->id,
+                            'batch_id' => $suggestion->batch->id,
+                        ]);
+                    }
+                } else {
+                    // Fallback: create single line without batch (insufficient batch stock)
                     $lineNumber++;
-                    /** @var numeric-string $batchQty */
-                    $batchQty = (string) $suggestion->quantity;
-
-                    // Calculate proportional line total
-                    /** @var numeric-string $unitPrice */
-                    $unitPrice = (string) $line->unit_price;
-                    $lineTotal = bcmul($batchQty, $unitPrice, $this->scale());
-
                     DocumentLine::create([
                         'id' => Str::uuid()->toString(),
                         'document_id' => $destination->id,
@@ -299,15 +313,20 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
                         'product_id' => $line->product_id,
                         'product_code' => $line->product_code,
                         'description' => $line->description,
-                        'quantity' => $batchQty,
+                        'quantity' => $line->quantity,
                         'unit_price' => $line->unit_price,
                         'discount_percent' => $line->discount_percent,
-                        'discount_amount' => null, // Fixed discount not prorated per batch
+                        'discount_amount' => $line->discount_amount,
                         'tax_rate' => $line->tax_rate,
-                        'line_total' => $lineTotal,
+                        'line_total' => $line->line_total ?? '0.00',
                         'notes' => $line->notes,
                         'source_line_id' => $line->id,
-                        'batch_id' => $suggestion->batch->id,
+                    ]);
+
+                    Log::warning('FEFO allocation failed for delivery note, falling back to non-batch line', [
+                        'product_id' => $line->product_id,
+                        'quantity' => $line->quantity,
+                        'shortfall' => $result->shortfall,
                     ]);
                 }
             } else {
@@ -377,29 +396,63 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
                     (float) $qtyToDeliver,
                 );
 
-                if (! $result->fullyFulfilled) {
-                    throw new \DomainException(
-                        "Insufficient batch stock for product '{$product->name}'. ".
-                        "Required: {$qtyToDeliver}, Available: ".
-                        number_format($result->getSuggestedQuantity(), 4)
-                    );
-                }
+                if ($result->fullyFulfilled) {
+                    foreach ($result->suggestions as $suggestion) {
+                        $lineNumber++;
+                        /** @var numeric-string $batchQty */
+                        $batchQty = (string) $suggestion->quantity;
 
-                foreach ($result->suggestions as $suggestion) {
+                        /** @var numeric-string $unitPrice */
+                        $unitPrice = (string) $line->unit_price;
+                        $lineTotal = bcmul($batchQty, $unitPrice, $this->scale());
+
+                        // Apply discount if any
+                        if ($line->discount_percent !== null && $line->discount_percent !== '0.00') {
+                            /** @var numeric-string $discountPercent */
+                            $discountPercent = (string) $line->discount_percent;
+                            $discount = bcmul($lineTotal, bcdiv($discountPercent, '100', 4), $this->scale());
+                            $lineTotal = bcsub($lineTotal, $discount, $this->scale());
+                        }
+
+                        DocumentLine::create([
+                            'id' => Str::uuid()->toString(),
+                            'document_id' => $destination->id,
+                            'line_number' => $lineNumber,
+                            'product_id' => $line->product_id,
+                            'product_code' => $line->product_code,
+                            'description' => $line->description,
+                            'quantity' => $batchQty,
+                            'unit_price' => $line->unit_price,
+                            'discount_percent' => $line->discount_percent,
+                            'discount_amount' => null,
+                            'tax_rate' => $line->tax_rate,
+                            'line_total' => $lineTotal,
+                            'notes' => $line->notes,
+                            'source_line_id' => $line->id,
+                            'batch_id' => $suggestion->batch->id,
+                        ]);
+                    }
+                } else {
+                    // Fallback: create single line without batch (insufficient batch stock)
                     $lineNumber++;
-                    /** @var numeric-string $batchQty */
-                    $batchQty = (string) $suggestion->quantity;
 
                     /** @var numeric-string $unitPrice */
                     $unitPrice = (string) $line->unit_price;
-                    $lineTotal = bcmul($batchQty, $unitPrice, $this->scale());
+                    $lineTotal = bcmul($qtyToDeliver, $unitPrice, $this->scale());
 
-                    // Apply discount if any
                     if ($line->discount_percent !== null && $line->discount_percent !== '0.00') {
                         /** @var numeric-string $discountPercent */
                         $discountPercent = (string) $line->discount_percent;
                         $discount = bcmul($lineTotal, bcdiv($discountPercent, '100', 4), $this->scale());
                         $lineTotal = bcsub($lineTotal, $discount, $this->scale());
+                    } elseif ($line->discount_amount !== null && $line->discount_amount !== '0.00') {
+                        /** @var numeric-string $lineQty */
+                        $lineQty = (string) $line->quantity;
+                        /** @var numeric-string $discountAmt */
+                        $discountAmt = (string) $line->discount_amount;
+                        $qtyRatio = bcdiv($qtyToDeliver, $lineQty, 4);
+                        $proratedDiscount = bcmul($discountAmt, $qtyRatio, $this->scale());
+                        $lineTotal = bcsub($lineTotal, $proratedDiscount, $this->scale());
                     }
 
                     DocumentLine::create([
@@ -409,15 +462,20 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
                         'product_id' => $line->product_id,
                         'product_code' => $line->product_code,
                         'description' => $line->description,
-                        'quantity' => $batchQty,
+                        'quantity' => $qtyToDeliver,
                         'unit_price' => $line->unit_price,
                         'discount_percent' => $line->discount_percent,
-                        'discount_amount' => null,
+                        'discount_amount' => $line->discount_amount,
                         'tax_rate' => $line->tax_rate,
                         'line_total' => $lineTotal,
                         'notes' => $line->notes,
                         'source_line_id' => $line->id,
-                        'batch_id' => $suggestion->batch->id,
+                    ]);
+
+                    Log::warning('FEFO allocation failed for partial delivery, falling back to non-batch line', [
+                        'product_id' => $line->product_id,
+                        'quantity' => $qtyToDeliver,
+                        'shortfall' => $result->shortfall,
                     ]);
                 }
             } else {

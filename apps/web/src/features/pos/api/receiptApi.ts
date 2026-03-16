@@ -51,6 +51,7 @@ export interface CreateReceiptRequest {
   loyalty_discount_amount?: string | undefined
   loyalty_reward_id?: string | undefined
   consumption_mode?: string | undefined
+  table_id?: string | undefined
 }
 
 /**

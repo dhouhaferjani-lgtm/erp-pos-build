@@ -12,6 +12,7 @@ import { useCurrency } from '@/hooks/useCurrency'
 import { useBarcodeScanner } from '../../hooks/useBarcodeScanner'
 import { useBarcodeLookup } from '../../hooks/useBarcodeLookup'
 import { ConsumptionModeToggle, type ConsumptionMode } from '../../atoms/ConsumptionModeToggle/ConsumptionModeToggle'
+import { TableSelector } from '../../components/TableSelector'
 import { toast } from 'sonner'
 import type { POSProduct } from '../../api/productApi'
 import { useDiscountPreview } from '../../hooks/useDiscountPreview'
@@ -35,6 +36,8 @@ export interface POSPageProps {
   loyaltyEnrollment?: import('../../api/loyaltyApi').LoyaltyEnrollment | null | undefined
   consumptionMode?: ConsumptionMode | undefined
   onConsumptionModeChange?: ((mode: ConsumptionMode) => void) | undefined
+  selectedTableId?: string | null | undefined
+  onSelectedTableIdChange?: ((tableId: string | null) => void) | undefined
   couponCode?: string | null | undefined
   onCouponApplied?: ((code: string, discountAmount: string, promotionName: string) => void) | undefined
   onCouponRemoved?: (() => void) | undefined
@@ -60,6 +63,8 @@ export function POSPage({
   loyaltyEnrollment,
   consumptionMode,
   onConsumptionModeChange,
+  selectedTableId,
+  onSelectedTableIdChange,
   couponCode,
   onCouponApplied,
   onCouponRemoved,
@@ -456,6 +461,16 @@ export function POSPage({
               <ConsumptionModeToggle
                 value={consumptionMode}
                 onChange={onConsumptionModeChange}
+              />
+            </div>
+          )}
+
+          {/* Table Selector (dine-in only) */}
+          {consumptionMode === 'SUR_PLACE' && onSelectedTableIdChange && (
+            <div className="mb-4">
+              <TableSelector
+                selectedTableId={selectedTableId ?? null}
+                onSelectTable={onSelectedTableIdChange}
               />
             </div>
           )}

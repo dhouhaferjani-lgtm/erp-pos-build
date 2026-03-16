@@ -19,6 +19,8 @@ export interface CreateReceiptRequest {
   notes?: string;
   transaction_discount_amount?: string;
   transaction_discount_reason?: string;
+  consumption_mode?: string;
+  table_id?: string;
 }
 
 export interface CreateReceiptResponse {

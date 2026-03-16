@@ -162,23 +162,21 @@
 ### Phase 3 — F&B MVP
 
 > **Goal:** Table management, orders, and kitchen display for food & beverage.
-> **Parallelism:** 3.1 + 3.2 can run in parallel. 3.3 depends on 3.2. 3.4 is independent.
-> **Status:** 3.2 and 3.4 complete (backend + frontend). 3.1 and 3.3 remain.
+> **Parallelism:** 3.1 + 3.2 can run in parallel. 3.3 depends on 3.2. 3.4 and 3.5 are independent.
+> **Status:** All items complete except 3.6 (deferred). Online Ordering Phase 0 prerequisites (table management + KDS) are now met.
 
-#### 3.1 Table Management ⬜
-**Can run in parallel with 3.3**
+#### 3.1 Table Management ✅ DONE
+**Completed** — Full backend + frontend with tests
 
-- [ ] Create `pos_tables` table:
-  - `id`, `tenant_id`, `company_id`, `location_id`
-  - `table_number` (string, e.g., "T1", "Bar-3")
-  - `section` (string, e.g., "Main Floor", "Terrace", "Bar")
-  - `seats` (int)
-  - `status` enum: `available`, `occupied`, `reserved`, `cleaning`
-  - `current_order_id` (nullable FK)
-- [ ] CRUD API for tables
-- [ ] Table layout view in POS (grid of table cards with status colors)
-- [ ] Tap table → open order for that table
-- [ ] Table status auto-updates (available → occupied on order, occupied → available on close)
+- [x] `pos_tables` and `pos_floors` tables with migration
+- [x] `TableManagementService` with CRUD, status transitions, order assignment
+- [x] Floor/Table CRUD API (`/pos/floors`, `/pos/tables`)
+- [x] Table layout view in POS (grid of table cards with status colors, grouped by floor)
+- [x] `TableSelector` component wired into POSPage for dine-in orders
+- [x] Table status auto-updates (available → occupied on order assign, released on close)
+- [x] `TableStatusBadge` atom, `useFloors` / `useTables` hooks
+- [x] Sidebar navigation link (`/pos/tables`)
+- [x] Translations (en/fr)
 
 #### 3.2 Order Management (Pre-Receipt) ✅ DONE
 **Completed** — Full backend + frontend with tests
@@ -215,20 +213,19 @@
 - [x] Domain events: `OrderSentToKitchen`, `OrderClosed`
 - [x] Tests: `OrderManagementTest` (feature), `OrderManagementServiceTest` (unit)
 
-#### 3.3 Kitchen Display System (KDS) ⬜
-**Depends on 3.2** (order management) — now unblocked
+#### 3.3 Kitchen Display System (KDS) ✅ DONE
+**Completed** — Full backend + frontend with broadcasting
 
-- [ ] Create `pos_kitchen_stations` table:
-  - `id`, `name` (e.g., "Kitchen", "Bar", "Desserts")
-  - `product_category_ids` JSONB (which categories route to this station)
-- [ ] KDS page (`/pos/kitchen`):
-  - Column board layout (like kanban): Pending → Preparing → Ready
-  - Each card shows: order #, table #, line items, elapsed time
-  - Color coding by age (green < 5min, yellow < 10min, red > 10min)
-  - Tap card to advance status
-  - Audio/visual alert on new orders
-- [ ] Station routing: order lines auto-route to correct station based on product category
-- [ ] Bump bar support (keyboard shortcuts for KDS navigation)
+- [x] `pos_kitchen_stations` table with product category routing
+- [x] KDS page (`/pos/kitchen`) with kanban board layout (Pending → Preparing → Ready)
+- [x] Order cards with order #, table #, line items, elapsed time
+- [x] Color coding by age (green < 5min, yellow < 10min, red > 10min)
+- [x] Tap card to advance order line status
+- [x] Real-time updates via broadcast channel (`pos.kitchen`)
+- [x] Broadcast channel authorization fixed (was copy-paste of import channel)
+- [x] Sidebar navigation link (`/pos/kitchen`)
+- [x] Bump bar support (keyboard shortcuts for KDS navigation)
+- [x] Translations (en/fr)
 
 #### 3.4 Order Parking / Hold ✅ DONE
 **Completed** — Full backend + frontend with tests
@@ -246,6 +243,34 @@
 - [x] Visual indicator of held order count in POS header
   - `HeldOrdersBadge` component with count display
 - [x] Tests: `HeldOrderTest` (feature), `HeldOrderServiceTest` (unit)
+
+#### 3.5 F&B Combos / Fixed Bundles ✅ DONE
+
+- [x] `PricingMode` enum: `standard` | `fixed_bundle`
+- [x] `ComponentType` enum expanded: `product` | `composite_item`
+- [x] RecipeLine polymorphic resolution (product or compositeItemComponent)
+- [x] Recursive cost calculation through nested sub-recipes (max depth 10)
+- [x] Recursive availability checking (flattens to leaf products)
+- [x] Recursive stock deduction on receipt creation for fixed bundles
+- [x] VAT decomposition for fixed bundles (proportional split based on standalone prices, remainder-to-last)
+- [x] `combo_components` JSONB stored on receipt lines
+- [x] Circular reference validation (`NoCircularCompositeItemReference` rule)
+- [x] Frontend: CompositeItemSearchSelect, pricing_mode selector, component type toggle in RecipeLineEditor
+- [x] Cart display: combo components shown as indented sub-items (web + Tauri POS)
+- [x] Receipt template: combo component names rendered below combo line
+- [x] Tests: 13 Catalog + 5 POS receipt + 10 frontend (28 total)
+- [x] Translations (en/fr) for all new keys
+
+#### 3.6 F&B Formula with Choices ⬜ DEFERRED
+> "Pick a starter, pick a main, pick a dessert" — customer chooses within each slot.
+> Builds on 3.5 (Fixed Combos). Not planned for current release.
+
+- [ ] `sellable_type` + `sellable_id` on `modifiers` table (modifier choice → CompositeItem)
+- [ ] ModifierGroups as "course slots" with required selection rules
+- [ ] Combo selection UX in POS ModifierSelectionModal
+- [ ] `parent_line_id` on order/receipt lines for proper line grouping
+- [ ] VAT decomposition for customer-selected components
+- [ ] Kitchen ticket routing per selected component
 
 ---
 
@@ -350,8 +375,9 @@
 - [x] Test coverage: 176 tests (152 new) — stores, services, components, utilities
 - [x] 15 backend sync tests (receipt sync, data pull, shift close)
 
-**Phase 4 — Not Started:**
-- [ ] Order management integration (F&B table orders)
+**Phase 4 — In Progress:**
+- [x] Consumption mode toggle + table selection (minimal — table_id in receipt payload)
+- [ ] Full order management integration (F&B table orders with kitchen send)
 - [ ] Barcode scanner (camera via Tauri native)
 - [ ] Email receipt / WhatsApp sharing
 - [ ] Kitchen ticket printing (route to second printer)
@@ -447,19 +473,17 @@ Phase 2 (B2B/B2C) ✅ COMPLETE:
 │  DONE             │  │  DONE             │
 └──────────────────┘  └──────────────────┘
 
-Phase 3 (F&B) — 3.2 + 3.4 DONE, 3.1 + 3.3 remain:
-┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-│  Session A        │  │  Session B     ✅ │  │  Session C     ✅ │
-│  3.1 Tables       │  │  3.2 Orders       │  │  3.4 Order Hold   │
-│  NOT STARTED      │  │  DONE             │  │  DONE             │
-└──────────────────┘  └──────────────────┘  └──────────────────┘
-         │
-         ▼
-┌──────────────────┐
-│  Session D        │
-│  3.3 KDS          │
-│  (needs 3.2 ✅)   │
-│  NOW UNBLOCKED    │
+Phase 3 (F&B) ✅ COMPLETE (except 3.6 deferred):
+┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+│  Session A     ✅ │  │  Session B     ✅ │  │  Session C     ✅ │  │  Session D     ✅ │
+│  3.1 Tables       │  │  3.2 Orders       │  │  3.4 Order Hold   │  │  3.5 Combos       │
+│  DONE             │  │  DONE             │  │  DONE             │  │  DONE             │
+└──────────────────┘  └──────────────────┘  └──────────────────┘  └──────────────────┘
+                                                                    ┌──────────────────┐
+┌──────────────────┐                                                │  3.6 Formula     │
+│  Session E     ✅ │                                                │  with Choices     │
+│  3.3 KDS          │                                                │  DEFERRED         │
+│  DONE             │                                                └──────────────────┘
 └──────────────────┘
 
 Phase 4 (Engagement) ✅ COMPLETE (except 4.4):
@@ -502,3 +526,5 @@ Phase 4 (Engagement) ✅ COMPLETE (except 4.4):
 | Sidebar nav | — | `src/components/organisms/Sidebar/Sidebar.tsx` |
 | Products (POS) | `app/Modules/Catalog/` | `src/features/pos/hooks/usePOSProducts.ts` |
 | Modifiers | `app/Modules/Catalog/` | `src/features/pos/organisms/ModifierSelectionModal/` |
+| Combos | `app/Modules/Catalog/Domain/Enums/PricingMode.php` | `src/features/catalog/components/CompositeItemSearchSelect.tsx` |
+| Combo validation | `app/Modules/Catalog/Presentation/Rules/NoCircularCompositeItemReference.php` | `src/features/catalog/components/RecipeLineEditor.tsx` |

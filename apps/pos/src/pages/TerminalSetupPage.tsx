@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { apiGet, getErrorMessage } from '@/lib/api';
+import { apiGet, getErrorMessage, ApiRequestError } from '@/lib/api';
 import { getDeviceId } from '@/lib/device';
+import { useAuthStore } from '@/stores/authStore';
 import { useTerminalActivation } from '@/hooks/useTerminalActivation';
 import { useTerminalStore, type Location, type Terminal } from '@/stores/terminalStore';
 
@@ -244,6 +245,10 @@ function RequestTab({ onError }: { onError: (msg: string | null) => void }) {
       const terminal = await requestTerminal(selectedLocationId, terminalName.trim(), getDeviceId());
       setPendingTerminal(terminal);
     } catch (err) {
+      console.error('[TerminalSetup] Request failed:', err);
+      // If 401 triggered logout, component will unmount — don't try to set state
+      if (err instanceof ApiRequestError && err.status === 401) return;
+      if (!useAuthStore.getState().isAuthenticated) return;
       onError(getErrorMessage(err));
     }
   }

@@ -99,13 +99,13 @@ describe('authStore', () => {
     });
     vi.mocked(apiGet).mockResolvedValueOnce(mockCompanies);
 
-    await useAuthStore.getState().login('test@example.com', 'password', 'https://api.test.com');
+    await useAuthStore.getState().login('test@example.com', 'password');
 
     const state = useAuthStore.getState();
     expect(state.user).toEqual(mockUser);
     expect(state.token).toBe('jwt-token-123');
     expect(state.isAuthenticated).toBe(true);
-    expect(state.serverUrl).toBe('https://api.test.com');
+    expect(state.serverUrl).toBeTruthy();
     expect(state.companies).toEqual(mockCompanies);
     expect(state.isLoading).toBe(false);
   });
@@ -119,7 +119,7 @@ describe('authStore', () => {
     });
     vi.mocked(apiGet).mockResolvedValueOnce(mockCompanies);
 
-    await useAuthStore.getState().login('test@example.com', 'pass', 'https://api.test.com');
+    await useAuthStore.getState().login('test@example.com', 'pass');
 
     expect(useAuthStore.getState().companyId).toBe('company-1');
   });
@@ -137,7 +137,7 @@ describe('authStore', () => {
     });
     vi.mocked(apiGet).mockResolvedValueOnce(twoCompanies);
 
-    await useAuthStore.getState().login('test@example.com', 'pass', 'https://api.test.com');
+    await useAuthStore.getState().login('test@example.com', 'pass');
 
     expect(useAuthStore.getState().companyId).toBeNull();
   });
@@ -146,7 +146,7 @@ describe('authStore', () => {
     vi.mocked(apiPost).mockRejectedValue(new Error('Invalid credentials'));
 
     await expect(
-      useAuthStore.getState().login('bad@example.com', 'wrong', 'https://api.test.com'),
+      useAuthStore.getState().login('bad@example.com', 'wrong'),
     ).rejects.toThrow('Invalid credentials');
 
     expect(useAuthStore.getState().isLoading).toBe(false);
@@ -157,7 +157,7 @@ describe('authStore', () => {
     expect(useAuthStore.getState().companyId).toBe('company-1');
   });
 
-  it('logs out and preserves serverUrl', () => {
+  it('logs out and sets serverUrl from env', () => {
     useAuthStore.setState({
       user: mockUser,
       token: 'jwt-token-123',
@@ -174,7 +174,7 @@ describe('authStore', () => {
     expect(state.user).toBeNull();
     expect(state.token).toBeNull();
     expect(state.isAuthenticated).toBe(false);
-    expect(state.serverUrl).toBe('https://api.test.com');
+    expect(state.serverUrl).toBeTruthy();
     expect(state.isInitialized).toBe(true);
     expect(disconnectEcho).toHaveBeenCalled();
     expect(removeStoredValue).toHaveBeenCalledWith('auth_token');
@@ -194,7 +194,6 @@ describe('authStore', () => {
   it('initializes from stored values when all present', async () => {
     vi.mocked(getStoredValue)
       .mockResolvedValueOnce('jwt-token-123') // TOKEN
-      .mockResolvedValueOnce('https://api.test.com') // SERVER_URL
       .mockResolvedValueOnce(mockUser) // USER
       .mockResolvedValueOnce('company-1') // COMPANY_ID
       .mockResolvedValueOnce(mockCompanies); // COMPANIES
@@ -211,17 +210,18 @@ describe('authStore', () => {
     expect(state.isLoading).toBe(false);
   });
 
-  it('initializes with only serverUrl when no token stored', async () => {
+  it('initializes with serverUrl from env when no token stored', async () => {
     vi.mocked(getStoredValue)
       .mockResolvedValueOnce(null) // TOKEN
-      .mockResolvedValueOnce('https://api.test.com') // SERVER_URL
-      .mockResolvedValueOnce(null); // USER
+      .mockResolvedValueOnce(null) // USER
+      .mockResolvedValueOnce(null) // COMPANY_ID
+      .mockResolvedValueOnce(null); // COMPANIES
 
     await useAuthStore.getState().initialize();
 
     const state = useAuthStore.getState();
     expect(state.isAuthenticated).toBe(false);
-    expect(state.serverUrl).toBe('https://api.test.com');
+    expect(state.serverUrl).toBeTruthy();
     expect(state.isInitialized).toBe(true);
   });
 });

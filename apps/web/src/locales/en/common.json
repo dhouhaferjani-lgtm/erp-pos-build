@@ -222,6 +222,8 @@
     "pos": "Point of Sale",
     "openPos": "Open POS",
     "posOrders": "Orders",
+    "tables": "Table Management",
+    "kitchen": "Kitchen Display",
     "terminals": "Terminals",
     "transactions": "Transactions",
     "shifts": "Shifts",
@@ -1071,5 +1073,10 @@
       "terminalActivated": "Terminal activated successfully",
       "terminalDeactivated": "Terminal deactivated successfully"
     }
+  },
+  "realtime": {
+    "connected": "Real-time updates active",
+    "connecting": "Connecting to real-time updates...",
+    "disconnected": "Real-time updates unavailable"
   }
 }

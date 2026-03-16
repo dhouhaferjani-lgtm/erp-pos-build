@@ -6,6 +6,7 @@ namespace App\Modules\Accounting\Application\Services;
 
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\Events\PartnerBalanceUpdated;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Partner\Domain\Partner;
 use Illuminate\Support\Collection;
@@ -314,6 +315,19 @@ class PartnerBalanceService
             'payable_balance' => $payableResult['balance'],
             'balance_updated_at' => now(),
         ]);
+
+        /** @var Partner $freshPartner */
+        $freshPartner = $partner->fresh();
+
+        event(new PartnerBalanceUpdated(
+            partnerId: $partnerId,
+            tenantId: $partner->tenant_id,
+            companyId: $partner->company_id,
+            receivableBalance: (string) $receivableResult['balance'],
+            creditBalance: (string) $creditResult['balance'],
+            payableBalance: (string) $payableResult['balance'],
+            netBalance: (string) $freshPartner->net_balance,
+        ));
     }
 
     /**
