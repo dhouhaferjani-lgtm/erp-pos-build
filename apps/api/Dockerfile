@@ -1,6 +1,6 @@
 # =============================================================================
 # AutoERP API - Production Dockerfile
-# Multi-stage build optimized for Dokploy deployment
+# Multi-stage build with dedicated targets for each service
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -30,9 +30,9 @@ RUN composer install \
     --ignore-platform-reqs
 
 # -----------------------------------------------------------------------------
-# Stage 2: Build the production image
+# Stage 2: Base application image (shared by all targets)
 # -----------------------------------------------------------------------------
-FROM php:8.4-fpm-alpine AS production
+FROM php:8.4-fpm-alpine AS base
 
 # Install system dependencies and PHP extensions
 RUN apk add --no-cache \
@@ -62,6 +62,8 @@ RUN apk add --no-cache \
     curl \
     # Netcat for connectivity checks
     netcat-openbsd \
+    # su-exec for dropping privileges in entrypoints
+    su-exec \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) \
         pdo_pgsql \
@@ -101,9 +103,12 @@ COPY docker/nginx/default.conf /etc/nginx/http.d/default.conf
 # Copy Supervisor configuration
 COPY docker/supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Copy entrypoint script
+# Copy all entrypoint scripts
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+COPY docker/entrypoint-worker.sh /usr/local/bin/entrypoint-worker.sh
+COPY docker/entrypoint-scheduler.sh /usr/local/bin/entrypoint-scheduler.sh
+COPY docker/entrypoint-websocket.sh /usr/local/bin/entrypoint-websocket.sh
+RUN chmod +x /usr/local/bin/entrypoint*.sh
 
 # Copy composer binary from composer image
 COPY --from=composer:2.7 /usr/bin/composer /usr/bin/composer
@@ -128,19 +133,51 @@ RUN mkdir -p \
     && chown -R www:www storage bootstrap/cache \
     && chmod -R 775 storage bootstrap/cache
 
-# Note: Laravel cache commands (config:cache, route:cache, view:cache)
-# are run at container startup via entrypoint.sh when environment variables are available
-
 # Create log directory for nginx
 RUN mkdir -p /var/log/nginx && \
     chown -R www:www /var/log/nginx
 
-# Expose port 80
+# -----------------------------------------------------------------------------
+# Target: api (default) — nginx + php-fpm via Supervisor
+# Runs migrations, caches config, and starts the web server.
+# Also supports legacy bundled mode (Horizon/Reverb/Scheduler) via entrypoint.
+# -----------------------------------------------------------------------------
+FROM base AS api
+
 EXPOSE 80
 
-# Health check for container orchestration
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost/health || exit 1
 
-# Start via entrypoint (handles Laravel caches and then starts supervisord)
 CMD ["/usr/local/bin/entrypoint.sh"]
+
+# -----------------------------------------------------------------------------
+# Target: worker — Laravel Horizon queue worker
+# -----------------------------------------------------------------------------
+FROM base AS worker
+
+# No exposed ports needed
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD php artisan horizon:status | grep -q running || exit 1
+
+CMD ["/usr/local/bin/entrypoint-worker.sh"]
+
+# -----------------------------------------------------------------------------
+# Target: scheduler — Laravel task scheduler
+# -----------------------------------------------------------------------------
+FROM base AS scheduler
+
+# No exposed ports, no healthcheck (schedule:work is a long-running loop)
+CMD ["/usr/local/bin/entrypoint-scheduler.sh"]
+
+# -----------------------------------------------------------------------------
+# Target: websocket — Laravel Reverb WebSocket server
+# -----------------------------------------------------------------------------
+FROM base AS websocket
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8080/ || exit 1
+
+CMD ["/usr/local/bin/entrypoint-websocket.sh"]

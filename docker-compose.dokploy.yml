@@ -3,7 +3,46 @@
 # =============================================================================
 # Deploy this file directly in Dokploy as a "Compose" project.
 # Set environment variables in Dokploy's UI or create a .env file.
+#
+# Architecture: One process per container
+#   - api:       nginx + php-fpm (runs migrations on startup)
+#   - worker:    Laravel Horizon queue worker
+#   - scheduler: Laravel task scheduler
+#   - websocket: Laravel Reverb WebSocket server
 # =============================================================================
+
+# Reusable environment block for all Laravel services
+x-api-env: &api-env
+  APP_ENV: production
+  APP_DEBUG: "false"
+  APP_KEY: ${APP_KEY}
+  APP_URL: https://api.erp.otospex.dev
+  DB_HOST: pgbouncer
+  DB_PORT: "6432"
+  DB_PGBOUNCER: "true"
+  DB_DATABASE: autoerp
+  DB_USERNAME: autoerp
+  DB_PASSWORD: ${DB_PASSWORD}
+  REDIS_HOST: redis
+  REDIS_PASSWORD: ${REDIS_PASSWORD}
+  REDIS_PORT: "6379"
+  CACHE_STORE: redis
+  QUEUE_CONNECTION: redis
+  SESSION_DRIVER: redis
+  BROADCAST_CONNECTION: reverb
+  MEILISEARCH_HOST: http://meilisearch:7700
+  MEILISEARCH_KEY: ${MEILISEARCH_KEY}
+  AWS_ENDPOINT: http://minio:9000
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+  AWS_DEFAULT_REGION: us-east-1
+  AWS_BUCKET: autoerp
+  AWS_USE_PATH_STYLE_ENDPOINT: "true"
+  REVERB_APP_ID: ${REVERB_APP_ID:-autoerp}
+  REVERB_APP_KEY: ${REVERB_APP_KEY}
+  REVERB_APP_SECRET: ${REVERB_APP_SECRET}
+  REVERB_SERVER_HOST: websocket
+  REVERB_SERVER_PORT: "8080"
 
 services:
   # ---------------------------------------------------------------------------
@@ -34,7 +73,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -75,38 +114,53 @@ services:
       retries: 5
 
   # ---------------------------------------------------------------------------
-  # API (Laravel)
+  # PgBouncer (connection pooler)
+  # All app containers connect here instead of directly to PostgreSQL.
+  # ---------------------------------------------------------------------------
+  pgbouncer:
+    image: bitnami/pgbouncer:latest
+    restart: unless-stopped
+    environment:
+      POSTGRESQL_HOST: postgres
+      POSTGRESQL_PORT: "5432"
+      POSTGRESQL_DATABASE: autoerp
+      POSTGRESQL_USERNAME: autoerp
+      POSTGRESQL_PASSWORD: ${DB_PASSWORD}
+      PGBOUNCER_POOL_MODE: transaction
+      PGBOUNCER_DEFAULT_POOL_SIZE: "20"
+      PGBOUNCER_MAX_CLIENT_CONN: "200"
+      PGBOUNCER_IGNORE_STARTUP_PARAMETERS: extra_float_digits
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # API (nginx + php-fpm only)
+  # Runs migrations on startup. Other services wait for this to be healthy.
   # ---------------------------------------------------------------------------
   api:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
+      target: api
     restart: unless-stopped
     environment:
-      - APP_ENV=production
-      - APP_DEBUG=false
-      - APP_URL=https://api.erp.otospex.dev
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_DATABASE=autoerp
-      - DB_USERNAME=autoerp
-      - DB_PASSWORD=${DB_PASSWORD}
-      - REDIS_HOST=redis
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - MEILISEARCH_HOST=http://meilisearch:7700
-      - MEILISEARCH_KEY=${MEILISEARCH_KEY}
-      - AWS_ENDPOINT=http://minio:9000
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      <<: *api-env
+      CONTAINER_ROLE: api
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy
       meilisearch:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -116,6 +170,69 @@ services:
       - "traefik.http.routers.api.rule=Host(`api.erp.otospex.dev`)"
       - "traefik.http.routers.api.tls=true"
       - "traefik.http.routers.api.tls.certresolver=letsencrypt"
+
+  # ---------------------------------------------------------------------------
+  # Worker (Laravel Horizon queue worker)
+  # ---------------------------------------------------------------------------
+  worker:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+      target: worker
+    restart: unless-stopped
+    environment:
+      <<: *api-env
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # Scheduler (Laravel task scheduler)
+  # ---------------------------------------------------------------------------
+  scheduler:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+      target: scheduler
+    restart: unless-stopped
+    environment:
+      <<: *api-env
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # WebSocket (Laravel Reverb)
+  # ---------------------------------------------------------------------------
+  websocket:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+      target: websocket
+    restart: unless-stopped
+    environment:
+      <<: *api-env
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.websocket.rule=Host(`api.erp.otospex.dev`) && PathPrefix(`/app`)"
+      - "traefik.http.routers.websocket.tls=true"
+      - "traefik.http.routers.websocket.tls.certresolver=letsencrypt"
+      - "traefik.http.services.websocket.loadbalancer.server.port=8080"
 
   # ---------------------------------------------------------------------------
   # Web (React Frontend)

@@ -20,6 +20,17 @@ echo "API_URL: $API_URL"
 API_HOST=$(echo "$API_URL" | sed -e 's|https\?://||' -e 's|/.*||' -e 's|:.*||')
 echo "API_HOST: $API_HOST"
 
+# WebSocket URL (optional, defaults to API_URL for bundled mode)
+if [ -n "$WS_URL" ]; then
+    WS_HOST=$(echo "$WS_URL" | sed -e 's|https\?://||' -e 's|/.*||' -e 's|:.*||')
+    echo "WS_URL: $WS_URL"
+    echo "WS_HOST: $WS_HOST"
+else
+    WS_URL="$API_URL"
+    WS_HOST="$API_HOST"
+    echo "WS_URL: $WS_URL (same as API, bundled mode)"
+fi
+
 # Generate nginx config with API URL substitution
 echo "Generating nginx configuration..."
 
@@ -91,6 +102,33 @@ server {
     # Sanctum CSRF cookie endpoint
     location /sanctum/ {
         proxy_pass ${API_URL}/sanctum/;
+        proxy_http_version 1.1;
+        proxy_set_header Host ${API_HOST};
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Host \$host;
+    }
+
+    # WebSocket proxy to Reverb
+    # If WS_URL is set, proxy directly to the websocket container.
+    # Otherwise, proxy through the API container (bundled mode).
+    location /app/ {
+        proxy_pass ${WS_URL:-${API_URL}}/app/;
+        proxy_http_version 1.1;
+        proxy_set_header Host ${WS_HOST:-${API_HOST}};
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }
+
+    # Broadcasting auth endpoint proxy
+    location /broadcasting/ {
+        proxy_pass ${API_URL}/broadcasting/;
         proxy_http_version 1.1;
         proxy_set_header Host ${API_HOST};
         proxy_set_header X-Real-IP \$remote_addr;

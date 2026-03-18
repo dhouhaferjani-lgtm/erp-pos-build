@@ -159,13 +159,37 @@ else
     fi
 fi
 
-# Enable Horizon in supervisor config if Redis is available
+# Configure services based on CONTAINER_ROLE
+# In split mode (CONTAINER_ROLE=api), only nginx + php-fpm run.
+# In bundled mode (default, no CONTAINER_ROLE), Horizon/Reverb/Scheduler also run.
+CONTAINER_ROLE="${CONTAINER_ROLE:-bundled}"
 SUPERVISOR_CONFIG="/etc/supervisor/conf.d/supervisord.conf"
-if [ "$REDIS_AVAILABLE" = "true" ]; then
+
+if [ "$CONTAINER_ROLE" = "api" ]; then
     echo ""
-    echo "Enabling Horizon (Redis available)..."
-    # Enable horizon by changing autostart=false to autostart=true for horizon program
-    sed -i '/\[program:horizon\]/,/^\[/{s/autostart=false/autostart=true/}' "$SUPERVISOR_CONFIG" 2>/dev/null || true
+    echo "Running in split-container mode (api only)..."
+    echo "  Horizon, Reverb, and Scheduler run in dedicated containers."
+
+    # Update nginx config if REVERB_SERVER_HOST is set (proxy to external websocket container)
+    if [ -n "${REVERB_SERVER_HOST:-}" ]; then
+        echo "  Reverb proxy → $REVERB_SERVER_HOST:8080"
+        sed -i "s|proxy_pass http://127.0.0.1:8080;|proxy_pass http://${REVERB_SERVER_HOST}:8080;|" /etc/nginx/http.d/default.conf
+    fi
+else
+    echo ""
+    echo "Running in bundled mode (all services in one container)..."
+
+    # Enable Horizon in supervisor config if Redis is available
+    if [ "$REDIS_AVAILABLE" = "true" ]; then
+        echo "  Enabling Horizon (Redis available)..."
+        sed -i '/\[program:horizon\]/,/^\[/{s/autostart=false/autostart=true/}' "$SUPERVISOR_CONFIG" 2>/dev/null || true
+    fi
+
+    # Enable Reverb WebSocket server if BROADCAST_CONNECTION is reverb
+    if [ "${BROADCAST_CONNECTION:-}" = "reverb" ]; then
+        echo "  Enabling Reverb WebSocket server..."
+        sed -i '/\[program:reverb\]/,/^\[/{s/autostart=false/autostart=true/}' "$SUPERVISOR_CONFIG" 2>/dev/null || true
+    fi
 fi
 
 echo ""

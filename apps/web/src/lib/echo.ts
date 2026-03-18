@@ -1,5 +1,6 @@
 import Echo from 'laravel-echo'
 import Pusher from 'pusher-js'
+import { useAuthStore } from '../stores/authStore'
 
 declare global {
   interface Window {
@@ -14,34 +15,28 @@ window.Pusher = Pusher
 /**
  * Laravel Echo configuration for WebSocket connections.
  *
- * Connects to Laravel Reverb server using Pusher protocol.
- * Authentication handled automatically via Sanctum cookies.
+ * Connects through same-origin nginx proxy (/app/ and /broadcasting/auth)
+ * so no separate WS host/port env vars are needed in production.
+ * Authentication uses Bearer token to work behind reverse proxies.
  */
 export function createEchoInstance(): Echo<'reverb'> {
-  const apiUrl = import.meta.env['VITE_API_URL'] || 'http://localhost:8002'
-  const wsHost = import.meta.env['VITE_WS_HOST'] || 'localhost'
-  const wsPort = parseInt(import.meta.env['VITE_WS_PORT'] || '8080', 10)
-  const wssPort = parseInt(import.meta.env['VITE_WSS_PORT'] || '6001', 10)
-  const forceTLS = import.meta.env['VITE_WS_FORCE_TLS'] === 'true'
+  const token = useAuthStore.getState().token
 
   return new Echo({
     broadcaster: 'reverb',
     key: import.meta.env['VITE_REVERB_APP_KEY'] || 'local_key',
-    wsHost,
-    wsPort,
-    wssPort,
-    forceTLS,
+    wsHost: window.location.hostname,
+    wsPort: window.location.port ? parseInt(window.location.port) : 80,
+    wssPort: window.location.port ? parseInt(window.location.port) : 443,
+    forceTLS: window.location.protocol === 'https:',
     enabledTransports: ['ws', 'wss'],
-    // Authentication endpoint for private channels
-    authEndpoint: `${apiUrl}/broadcasting/auth`,
-    // Sanctum uses cookies for auth, so include credentials
+    authEndpoint: '/broadcasting/auth',
     auth: {
       headers: {
         Accept: 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
     },
-    // Add credentials to enable cookie-based auth
-    withCredentials: true,
   })
 }
 
