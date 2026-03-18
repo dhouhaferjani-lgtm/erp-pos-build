@@ -18,7 +18,7 @@ x-api-env: &api-env
   APP_KEY: ${APP_KEY}
   APP_URL: https://api.erp.otospex.dev
   DB_HOST: pgbouncer
-  DB_PORT: "6432"
+  DB_PORT: "5432"
   DB_PGBOUNCER: "true"
   DB_DATABASE: autoerp
   DB_USERNAME: autoerp
@@ -130,7 +130,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432"]
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432"]
       interval: 10s
       timeout: 5s
       retries: 5
