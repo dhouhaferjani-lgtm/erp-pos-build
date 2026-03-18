@@ -103,9 +103,15 @@ function createApiClient(): AxiosInstance {
     xsrfHeaderName: 'X-XSRF-TOKEN', // Header name expected by Sanctum
   })
 
-  // Request interceptor for company context and language (no auth token - using cookies)
+  // Request interceptor for auth token, company context, and language
   client.interceptors.request.use(
     (config) => {
+      // Add Bearer token if available (required for reverse-proxy deployments)
+      const token = useAuthStore.getState().token
+      if (token) {
+        config.headers['Authorization'] = `Bearer ${token}`
+      }
+
       // Add company context header for multi-company support
       const companyId = useCompanyStore.getState().currentCompanyId
       if (companyId) {

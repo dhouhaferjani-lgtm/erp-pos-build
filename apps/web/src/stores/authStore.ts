@@ -16,11 +16,12 @@ interface User {
 /**
  * Auth state interface
  *
- * SECURITY: Token is NOT stored - authentication relies on httpOnly cookies
- * managed by Sanctum. Only user info is persisted for UI display.
+ * Token-based auth: Bearer token from login is stored and sent via Authorization header.
+ * This is required when the frontend is behind a reverse proxy (different Host header).
  */
 interface AuthState {
   user: User | null
+  token: string | null
   isAuthenticated: boolean
   isLoading: boolean
 }
@@ -29,7 +30,7 @@ interface AuthState {
  * Auth actions interface
  */
 interface AuthActions {
-  setAuth: (user: User) => void
+  setAuth: (user: User, token?: string) => void
   setUser: (user: User | null) => void
   setLoading: (loading: boolean) => void
   logout: () => void
@@ -45,6 +46,7 @@ type AuthStore = AuthState & AuthActions
  */
 const initialState: AuthState = {
   user: null,
+  token: null,
   isAuthenticated: false,
   isLoading: true,
 }
@@ -64,12 +66,13 @@ export const useAuthStore = create<AuthStore>()(
     (set) => ({
       ...initialState,
 
-      setAuth: (user) =>
-        set({
+      setAuth: (user, token) =>
+        set((state) => ({
           user,
+          token: token ?? state.token,
           isAuthenticated: true,
           isLoading: false,
-        }),
+        })),
 
       setUser: (user) =>
         set({
@@ -83,6 +86,7 @@ export const useAuthStore = create<AuthStore>()(
       logout: () =>
         set({
           user: null,
+          token: null,
           isAuthenticated: false,
           isLoading: false,
         }),
@@ -93,6 +97,7 @@ export const useAuthStore = create<AuthStore>()(
       // The session cookie determines actual auth status
       partialize: (state) => ({
         user: state.user,
+        token: state.token,
       }),
     }
   )

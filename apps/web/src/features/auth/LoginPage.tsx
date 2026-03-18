@@ -58,7 +58,6 @@ export function LoginPage() {
     },
     onSuccess: (data) => {
       // Map tenantId to tenant_id for store compatibility
-      // Cookie is set automatically by Sanctum - just update UI state
       const user = {
         id: data.user.id,
         name: data.user.name,
@@ -67,7 +66,7 @@ export function LoginPage() {
         roles: data.user.roles,
         email_verified_at: data.user.emailVerifiedAt,
       }
-      setAuth(user)
+      setAuth(user, data.token)
       // Redirect to the page they were trying to access, or home
       const locationState = location.state as { from?: { pathname: string } } | null
       const from = locationState?.from?.pathname ?? '/'

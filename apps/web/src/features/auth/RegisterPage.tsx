@@ -132,7 +132,7 @@ export function RegisterPage() {
         roles: data.user.roles,
         email_verified_at: null, // New users are not verified yet
       }
-      setAuth(user)
+      setAuth(user, data.token)
       void navigate('/', { replace: true })
     },
     onError: (error: unknown) => {
