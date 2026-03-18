@@ -222,11 +222,13 @@ services:
   # ---------------------------------------------------------------------------
   web:
     build:
-      context: ./apps/web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/web/Dockerfile
       args:
         VITE_API_URL: https://api.erp.otospex.dev
     restart: unless-stopped
+    environment:
+      API_URL: https://api.erp.otospex.dev
     depends_on:
       - api
     healthcheck:
