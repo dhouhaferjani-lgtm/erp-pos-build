@@ -12,64 +12,64 @@ interface SettingsSection {
 
 const sections: SettingsSection[] = [
   {
-    titleKey: 'settings.sections.users.title',
-    descriptionKey: 'settings.sections.users.description',
+    titleKey: 'sections.users.title',
+    descriptionKey: 'sections.users.description',
     icon: <Users className="h-6 w-6" />,
     href: '/settings/users',
     color: 'bg-blue-100 text-blue-600',
   },
   {
-    titleKey: 'settings.sections.roles.title',
-    descriptionKey: 'settings.sections.roles.description',
+    titleKey: 'sections.roles.title',
+    descriptionKey: 'sections.roles.description',
     icon: <Shield className="h-6 w-6" />,
     href: '/settings/roles',
     color: 'bg-purple-100 text-purple-600',
   },
   {
-    titleKey: 'settings.sections.company.title',
-    descriptionKey: 'settings.sections.company.description',
+    titleKey: 'sections.company.title',
+    descriptionKey: 'sections.company.description',
     icon: <Building2 className="h-6 w-6" />,
     href: '/settings/company',
     color: 'bg-green-100 text-green-600',
   },
   {
-    titleKey: 'settings.sections.tax.title',
-    descriptionKey: 'settings.sections.tax.description',
+    titleKey: 'sections.tax.title',
+    descriptionKey: 'sections.tax.description',
     icon: <Receipt className="h-6 w-6" />,
     href: '/settings/tax',
     color: 'bg-orange-100 text-orange-600',
   },
   {
-    titleKey: 'settings.sections.inventory.title',
-    descriptionKey: 'settings.sections.inventory.description',
+    titleKey: 'sections.inventory.title',
+    descriptionKey: 'sections.inventory.description',
     icon: <Package className="h-6 w-6" />,
     href: '/settings/inventory',
     color: 'bg-teal-100 text-teal-600',
   },
   {
-    titleKey: 'settings.sections.units.title',
-    descriptionKey: 'settings.sections.units.description',
+    titleKey: 'sections.units.title',
+    descriptionKey: 'sections.units.description',
     icon: <Ruler className="h-6 w-6" />,
     href: '/settings/units',
     color: 'bg-cyan-100 text-cyan-600',
   },
   {
-    titleKey: 'settings.sections.import.title',
-    descriptionKey: 'settings.sections.import.description',
+    titleKey: 'sections.import.title',
+    descriptionKey: 'sections.import.description',
     icon: <Upload className="h-6 w-6" />,
     href: '/settings/import',
     color: 'bg-amber-100 text-amber-600',
   },
   {
-    titleKey: 'settings.sections.openingBalances.title',
-    descriptionKey: 'settings.sections.openingBalances.description',
+    titleKey: 'sections.openingBalances.title',
+    descriptionKey: 'sections.openingBalances.description',
     icon: <Calculator className="h-6 w-6" />,
     href: '/settings/opening-balances',
     color: 'bg-indigo-100 text-indigo-600',
   },
   {
-    titleKey: 'settings.sections.pos.title',
-    descriptionKey: 'settings.sections.pos.description',
+    titleKey: 'sections.pos.title',
+    descriptionKey: 'sections.pos.description',
     icon: <Store className="h-6 w-6" />,
     href: '/pos/terminals',
     color: 'bg-emerald-100 text-emerald-600',
@@ -85,9 +85,9 @@ export function SettingsPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
           <Settings className="h-6 w-6 text-gray-400" />
-          {t('settings.title')}
+          {t('title')}
         </h1>
-        <p className="text-gray-500">{t('settings.description')}</p>
+        <p className="text-gray-500">{t('description')}</p>
       </div>
 
       {/* Settings Sections */}
@@ -118,26 +118,26 @@ export function SettingsPage() {
 
       {/* App Info */}
       <div className="rounded-lg border border-gray-200 bg-gray-50 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('settings.appInfo.title')}</h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('appInfo.title')}</h2>
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <dt className="text-sm font-medium text-gray-500">{t('settings.appInfo.version')}</dt>
+            <dt className="text-sm font-medium text-gray-500">{t('appInfo.version')}</dt>
             <dd className="mt-1 text-sm text-gray-900">1.0.0</dd>
           </div>
           <div>
-            <dt className="text-sm font-medium text-gray-500">{t('settings.appInfo.environment')}</dt>
+            <dt className="text-sm font-medium text-gray-500">{t('appInfo.environment')}</dt>
             <dd className="mt-1 text-sm text-gray-900">
               {import.meta.env.MODE}
             </dd>
           </div>
           <div>
-            <dt className="text-sm font-medium text-gray-500">{t('settings.appInfo.apiUrl')}</dt>
+            <dt className="text-sm font-medium text-gray-500">{t('appInfo.apiUrl')}</dt>
             <dd className="mt-1 text-sm text-gray-900 font-mono text-xs truncate">
-              {(import.meta.env['VITE_API_URL'] as string | undefined) ?? t('settings.appInfo.notConfigured')}
+              {(import.meta.env['VITE_API_URL'] as string | undefined) ?? t('appInfo.notConfigured')}
             </dd>
           </div>
           <div>
-            <dt className="text-sm font-medium text-gray-500">{t('settings.appInfo.buildDate')}</dt>
+            <dt className="text-sm font-medium text-gray-500">{t('appInfo.buildDate')}</dt>
             <dd className="mt-1 text-sm text-gray-900">
               {new Date().toLocaleDateString()}
             </dd>

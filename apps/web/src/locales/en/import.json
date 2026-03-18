@@ -55,6 +55,11 @@
     "product_images": {
       "title": "Product Images",
       "description": "Import product images from a ZIP file. Images should be named with product SKUs (e.g., PROD-001.jpg)"
+    },
+    "composite_items": {
+      "title": "Composite Items",
+      "label": "Composite Items",
+      "description": "Import menu items, kits, and bundles"
     }
   },
   "card": {
@@ -65,7 +70,10 @@
     "continueImport": "Continue"
   },
   "actions": {
-    "viewHistory": "View History"
+    "viewHistory": "View History",
+    "downloadTemplate": "Download Template",
+    "startImport": "Start Import",
+    "importMore": "Import More"
   },
   "status": {
     "pending": "Pending",

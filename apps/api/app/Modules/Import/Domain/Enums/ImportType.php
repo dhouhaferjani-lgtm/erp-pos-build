@@ -11,6 +11,7 @@ enum ImportType: string
     case StockLevels = 'stock_levels';
     case OpeningBalances = 'opening_balances';
     case ProductImages = 'product_images';
+    case CompositeItems = 'composite_items';
 
     /**
      * Get the required columns for this import type
@@ -25,6 +26,7 @@ enum ImportType: string
             self::StockLevels => ['product_sku', 'location_code', 'quantity'],
             self::OpeningBalances => ['account_code', 'debit', 'credit'],
             self::ProductImages => [], // ZIP-based import, not CSV
+            self::CompositeItems => ['code', 'name', 'base_price'],
         };
     }
 
@@ -41,6 +43,7 @@ enum ImportType: string
             self::StockLevels => ['notes'],
             self::OpeningBalances => ['description', 'reference'],
             self::ProductImages => [], // ZIP-based import, not CSV
+            self::CompositeItems => ['vertical_type', 'production_type', 'pricing_mode', 'tax_rate', 'category_name', 'is_active', 'description'],
         };
     }
 
@@ -77,6 +80,16 @@ enum ImportType: string
                 'credit' => ['required_without:debit', 'nullable', 'numeric', 'min:0'],
             ],
             self::ProductImages => [], // ZIP-based import, validation during extraction
+            self::CompositeItems => [
+                'code' => ['required', 'string', 'max:100'],
+                'name' => ['required', 'string', 'max:255'],
+                'base_price' => ['required', 'numeric', 'min:0'],
+                'vertical_type' => ['nullable', 'in:fnb,manufacturing,sewing,bakery,generic'],
+                'production_type' => ['nullable', 'in:made_to_order,batch,stock'],
+                'pricing_mode' => ['nullable', 'in:standard,fixed_bundle'],
+                'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+                'is_active' => ['nullable', 'in:true,false,1,0,yes,no'],
+            ],
         };
     }
 }

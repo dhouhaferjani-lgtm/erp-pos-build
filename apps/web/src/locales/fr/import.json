@@ -55,6 +55,11 @@
     "product_images": {
       "title": "Images de produits",
       "description": "Importez des images de produits à partir d'un fichier ZIP. Les images doivent être nommées avec les références produits (ex : PROD-001.jpg)"
+    },
+    "composite_items": {
+      "title": "Articles composites",
+      "label": "Articles composites",
+      "description": "Importez des articles de menu, kits et lots"
     }
   },
   "card": {
@@ -65,7 +70,10 @@
     "continueImport": "Continuer"
   },
   "actions": {
-    "viewHistory": "Voir l'historique"
+    "viewHistory": "Voir l'historique",
+    "downloadTemplate": "Télécharger le modèle",
+    "startImport": "Commencer l'import",
+    "importMore": "Importer plus"
   },
   "status": {
     "pending": "En attente",

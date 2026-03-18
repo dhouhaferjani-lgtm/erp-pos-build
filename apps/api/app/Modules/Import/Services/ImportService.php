@@ -10,6 +10,7 @@ use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Domain\ImportRow;
 use App\Shared\Contracts\AccountingServiceInterface;
+use App\Shared\Contracts\CompositeItemServiceInterface;
 use App\Shared\Contracts\InventoryServiceInterface;
 use App\Shared\Contracts\LocationServiceInterface;
 use App\Shared\Contracts\PartnerServiceInterface;
@@ -27,7 +28,8 @@ final class ImportService
         private readonly ProductServiceInterface $productService,
         private readonly InventoryServiceInterface $inventoryService,
         private readonly LocationServiceInterface $locationService,
-        private readonly AccountingServiceInterface $accountingService
+        private readonly AccountingServiceInterface $accountingService,
+        private readonly CompositeItemServiceInterface $compositeItemService
     ) {}
 
     /**
@@ -329,6 +331,7 @@ final class ImportService
             ImportType::StockLevels => $this->importStockLevel($job->tenant_id, $row->data, $companyId),
             ImportType::OpeningBalances => $this->importOpeningBalance($job->tenant_id, $row->data, $companyId),
             ImportType::ProductImages => throw new RuntimeException('Product image import is not yet supported'),
+            ImportType::CompositeItems => $this->importCompositeItem($job->tenant_id, $row->data, $companyId),
         };
     }
 
@@ -426,6 +429,19 @@ final class ImportService
             $reference,
             now()
         );
+    }
+
+    /**
+     * Import a composite item row via CompositeItemServiceInterface.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  string|null  $companyId  Company ID for async context (null uses CompanyContext)
+     */
+    private function importCompositeItem(string $tenantId, array $data, ?string $companyId = null): string
+    {
+        $companyId ??= $this->companyContext->requireCompanyId();
+
+        return $this->compositeItemService->upsert($tenantId, $companyId, $data);
     }
 
     /**

@@ -20,6 +20,7 @@ import {
   useImportPreview,
 } from '../api/queries'
 import { importApi } from '../api/importApi'
+import { authenticatedDownload } from '@/lib/api'
 import { useImportProgressStore } from '../../../stores/importProgressStore'
 import type { ImportType } from '../types'
 
@@ -69,6 +70,18 @@ const TARGET_COLUMNS: Record<ImportType, { name: string; required: boolean; desc
   product_images: [
     { name: 'sku', required: true, description: 'Product SKU' },
     { name: 'image_url', required: true, description: 'Image URL' },
+  ],
+  composite_items: [
+    { name: 'code', required: true, description: 'Unique item code' },
+    { name: 'name', required: true },
+    { name: 'base_price', required: true, description: 'Selling price' },
+    { name: 'vertical_type', required: false, description: 'fnb, manufacturing, sewing, bakery, generic' },
+    { name: 'production_type', required: false, description: 'made_to_order, batch, stock' },
+    { name: 'pricing_mode', required: false, description: 'standard or fixed_bundle' },
+    { name: 'tax_rate', required: false },
+    { name: 'category_name', required: false },
+    { name: 'is_active', required: false },
+    { name: 'description', required: false },
   ],
 }
 
@@ -367,13 +380,16 @@ export function ImportWizardPage() {
             )}
 
             <div className="flex items-center justify-between border-t border-gray-200 pt-4">
-              <a
-                href={importApi.downloadTemplateUrl(importType)}
-                download
+              <button
+                type="button"
+                onClick={() => authenticatedDownload(
+                  importApi.downloadTemplateUrl(importType),
+                  `${importType}_template.csv`
+                )}
                 className="text-sm text-blue-600 hover:text-blue-800"
               >
                 {t('wizard.upload.downloadTemplate')}
-              </a>
+              </button>
               <button
                 type="button"
                 onClick={handleUploadComplete}
@@ -682,14 +698,17 @@ export function ImportWizardPage() {
                 {/* Download failed rows CSV */}
                 {importResults?.failed_rows_csv_url && (
                   <div className="mt-4 pt-4 border-t border-gray-200">
-                    <a
-                      href={importResults.failed_rows_csv_url}
-                      download
+                    <button
+                      type="button"
+                      onClick={() => authenticatedDownload(
+                        importResults.failed_rows_csv_url!,
+                        `import_failed_rows.csv`
+                      )}
                       className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-800"
                     >
                       <Download className="h-4 w-4" />
                       {t('wizard.complete.downloadFailedRows')}
-                    </a>
+                    </button>
                   </div>
                 )}
               </div>

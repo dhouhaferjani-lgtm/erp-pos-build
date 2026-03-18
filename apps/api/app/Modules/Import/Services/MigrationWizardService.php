@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Import\Services;
 
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Import\Domain\Enums\ImportType;
@@ -24,6 +25,7 @@ final class MigrationWizardService
         return [
             ImportType::Partners,
             ImportType::Products,
+            ImportType::CompositeItems,
             ImportType::StockLevels,
             ImportType::OpeningBalances,
         ];
@@ -62,6 +64,13 @@ final class MigrationWizardService
                 )->count();
                 if ($locationCount === 0) {
                     $missing[] = 'locations';
+                }
+                break;
+
+            case ImportType::CompositeItems:
+                // No hard dependencies, but warn if no products exist (for future recipe linking)
+                if (Product::where('tenant_id', $tenantId)->count() === 0) {
+                    $warnings[] = 'No products exist. Consider importing products first for recipe ingredients.';
                 }
                 break;
 
@@ -156,6 +165,11 @@ final class MigrationWizardService
             'account_code' => ['account_code', 'account', 'code', 'gl_code'],
             'debit' => ['debit', 'dr', 'debit_amount'],
             'credit' => ['credit', 'cr', 'credit_amount'],
+            'base_price' => ['base_price', 'price', 'unit_price', 'selling_price'],
+            'vertical_type' => ['vertical_type', 'vertical', 'category_type'],
+            'production_type' => ['production_type', 'production', 'prep_type'],
+            'pricing_mode' => ['pricing_mode', 'pricing'],
+            'category_name' => ['category_name', 'category', 'group'],
         ];
     }
 
@@ -269,6 +283,32 @@ final class MigrationWizardService
                     'reference' => 'OB-2025',
                 ],
             ],
+            ImportType::CompositeItems => [
+                [
+                    'code' => 'ESPRESSO',
+                    'name' => 'Espresso',
+                    'base_price' => '2.50',
+                    'vertical_type' => 'fnb',
+                    'production_type' => 'made_to_order',
+                    'pricing_mode' => 'standard',
+                    'tax_rate' => '19',
+                    'category_name' => 'Hot Drinks',
+                    'is_active' => 'true',
+                    'description' => 'Single shot espresso',
+                ],
+                [
+                    'code' => 'CLASSIC-BURGER',
+                    'name' => 'Classic Burger',
+                    'base_price' => '8.90',
+                    'vertical_type' => 'fnb',
+                    'production_type' => 'made_to_order',
+                    'pricing_mode' => 'standard',
+                    'tax_rate' => '19',
+                    'category_name' => 'Food',
+                    'is_active' => 'true',
+                    'description' => 'Beef burger with lettuce, tomato, and cheese',
+                ],
+            ],
             ImportType::ProductImages => [],
         };
 
@@ -298,6 +338,7 @@ final class MigrationWizardService
     {
         $partnerCount = Partner::where('tenant_id', $tenantId)->count();
         $productCount = Product::where('tenant_id', $tenantId)->count();
+        $compositeItemCount = CompositeItem::where('tenant_id', $tenantId)->count();
         $stockCount = StockLevel::where('tenant_id', $tenantId)->count();
         $accountCount = Account::where('tenant_id', $tenantId)->count();
 
@@ -309,6 +350,10 @@ final class MigrationWizardService
             'products' => [
                 'count' => $productCount,
                 'has_data' => $productCount > 0,
+            ],
+            'composite_items' => [
+                'count' => $compositeItemCount,
+                'has_data' => $compositeItemCount > 0,
             ],
             'stock_levels' => [
                 'count' => $stockCount,
@@ -348,6 +393,11 @@ final class MigrationWizardService
                 'type' => $type->value,
                 'label' => 'Opening Balances',
                 'description' => 'Import accounting opening balances. Requires chart of accounts to exist.',
+            ],
+            ImportType::CompositeItems => [
+                'type' => $type->value,
+                'label' => 'Composite Items (Menu Items)',
+                'description' => 'Import composite items like menu items, kits, and bundles.',
             ],
             ImportType::ProductImages => [
                 'type' => $type->value,

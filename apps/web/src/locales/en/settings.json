@@ -39,6 +39,14 @@
       "description": "Manage POS terminals, receipt settings, and cash drawers"
     }
   },
+  "appInfo": {
+    "title": "App Information",
+    "version": "Version",
+    "environment": "Environment",
+    "apiUrl": "API URL",
+    "notConfigured": "Not configured",
+    "buildDate": "Build Date"
+  },
   "tax": {
     "title": "Tax Settings",
     "description": "Configure tax rates and fiscal year settings for your company",

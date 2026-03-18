@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { AlertCircle, Download, Loader2 } from 'lucide-react'
+import { authenticatedDownload } from '@/lib/api'
 import { importApi } from '../api/importApi'
 import { ValidationGrid } from './ValidationGrid'
 import { ValidationResults } from './ValidationResults'
@@ -29,9 +30,11 @@ export function ErrorViewer({ jobId, totalRows }: ErrorViewerProps) {
     enabled: summaryData?.data.has_errors === true,
   })
 
-  const handleDownloadErrors = () => {
-    const url = importApi.downloadFailedRowsUrl(jobId)
-    window.open(url, '_blank')
+  const handleDownloadErrors = async () => {
+    await authenticatedDownload(
+      importApi.downloadFailedRowsUrl(jobId),
+      `import_${jobId}_failed_rows.csv`
+    )
   }
 
   if (summaryLoading) {

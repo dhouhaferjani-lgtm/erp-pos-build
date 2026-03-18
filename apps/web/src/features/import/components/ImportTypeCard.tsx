@@ -5,6 +5,7 @@ import {
   Package,
   Calculator,
   Image,
+  UtensilsCrossed,
   CheckCircle,
   AlertTriangle,
   Lock,
@@ -12,6 +13,7 @@ import {
   ArrowRight,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { authenticatedDownload } from '@/lib/api'
 import type { ImportType, ImportTypeMetadata, DependencyCheck } from '../types'
 import { importApi } from '../api/importApi'
 
@@ -20,6 +22,7 @@ const typeIcons: Record<ImportType, React.ComponentType<{ className?: string }>>
   products: Package,
   opening_balances: Calculator,
   product_images: Image,
+  composite_items: UtensilsCrossed,
 }
 
 interface ImportTypeCardProps {
@@ -41,9 +44,11 @@ export function ImportTypeCard({
   const isCompleted = status && status.imported > 0
   const isLocked = dependencies && !dependencies.can_import
 
-  const handleDownloadTemplate = () => {
-    const url = importApi.downloadTemplateUrl(metadata.type)
-    window.open(url, '_blank')
+  const handleDownloadTemplate = async () => {
+    await authenticatedDownload(
+      importApi.downloadTemplateUrl(metadata.type),
+      `${metadata.type}_template.csv`
+    )
   }
 
   return (

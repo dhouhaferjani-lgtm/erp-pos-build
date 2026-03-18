@@ -39,6 +39,14 @@
       "description": "Gérer les terminaux POS, les paramètres de tickets et les caisses"
     }
   },
+  "appInfo": {
+    "title": "Informations de l'application",
+    "version": "Version",
+    "environment": "Environnement",
+    "apiUrl": "URL de l'API",
+    "notConfigured": "Non configuré",
+    "buildDate": "Date de compilation"
+  },
   "tax": {
     "title": "Paramètres fiscaux",
     "description": "Configurez les taux de taxe et les paramètres de l'exercice fiscal pour votre entreprise",

@@ -224,6 +224,19 @@ export async function apiPut<T>(url: string, data?: unknown): Promise<T> {
 }
 
 /**
+ * Download a file via authenticated request (avoids 401 from window.open)
+ */
+export async function authenticatedDownload(url: string, filename?: string): Promise<void> {
+  const response = await api.get(url, { responseType: 'blob' })
+  const blob = new Blob([response.data as BlobPart])
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = filename ?? url.split('/').pop() ?? 'download'
+  link.click()
+  URL.revokeObjectURL(link.href)
+}
+
+/**
  * Helper for DELETE requests
  */
 export async function apiDelete<T>(url: string): Promise<T> {
