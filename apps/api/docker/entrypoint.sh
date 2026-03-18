@@ -100,8 +100,9 @@ if [ ! -L /var/www/html/public/storage ]; then
     php artisan storage:link 2>/dev/null || true
 fi
 
-# Fix permissions
+# Fix permissions (artisan commands above run as root and may create root-owned files)
 echo "Setting permissions..."
+touch /var/www/html/storage/logs/laravel.log
 chown -R www:www /var/www/html/storage /var/www/html/bootstrap/cache 2>/dev/null || true
 chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache 2>/dev/null || true
 
