@@ -118,18 +118,14 @@ services:
   # All app containers connect here instead of directly to PostgreSQL.
   # ---------------------------------------------------------------------------
   pgbouncer:
-    image: bitnami/pgbouncer:latest
+    image: edoburu/pgbouncer:latest
     restart: unless-stopped
     environment:
-      POSTGRESQL_HOST: postgres
-      POSTGRESQL_PORT: "5432"
-      POSTGRESQL_DATABASE: autoerp
-      POSTGRESQL_USERNAME: autoerp
-      POSTGRESQL_PASSWORD: ${DB_PASSWORD}
-      PGBOUNCER_POOL_MODE: transaction
-      PGBOUNCER_DEFAULT_POOL_SIZE: "20"
-      PGBOUNCER_MAX_CLIENT_CONN: "200"
-      PGBOUNCER_IGNORE_STARTUP_PARAMETERS: extra_float_digits
+      DATABASE_URL: postgres://autoerp:${DB_PASSWORD}@postgres:5432/autoerp
+      POOL_MODE: transaction
+      DEFAULT_POOL_SIZE: "20"
+      MAX_CLIENT_CONN: "200"
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits
     depends_on:
       postgres:
         condition: service_healthy
