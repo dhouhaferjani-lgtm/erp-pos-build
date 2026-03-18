@@ -16,6 +16,10 @@ fi
 
 echo "API_URL: $API_URL"
 
+# Extract hostname from API_URL for proxy Host header (required for Traefik routing)
+API_HOST=$(echo "$API_URL" | sed -e 's|https\?://||' -e 's|/.*||' -e 's|:.*||')
+echo "API_HOST: $API_HOST"
+
 # Generate nginx config with API URL substitution
 echo "Generating nginx configuration..."
 
@@ -59,10 +63,11 @@ server {
     }
 
     # API proxy - forward to backend
+    # Host header must match the API domain so Traefik routes correctly
     location /api/ {
         proxy_pass ${API_URL}/api/;
         proxy_http_version 1.1;
-        proxy_set_header Host \$host;
+        proxy_set_header Host ${API_HOST};
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
@@ -87,10 +92,11 @@ server {
     location /sanctum/ {
         proxy_pass ${API_URL}/sanctum/;
         proxy_http_version 1.1;
-        proxy_set_header Host \$host;
+        proxy_set_header Host ${API_HOST};
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Host \$host;
     }
 
     # SPA fallback - serve index.html for all routes
