@@ -47,6 +47,12 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # Docker embedded DNS resolver — required for resolving Docker service names
+    # at request time (not just startup). valid=30s re-resolves periodically so
+    # nginx picks up container IP changes after redeploys.
+    resolver 127.0.0.11 valid=30s ipv6=off;
+    resolver_timeout 5s;
+
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
@@ -74,10 +80,12 @@ server {
     }
 
     # API proxy - forward to backend
-    # Host header must match the API domain so Traefik routes correctly
+    # Using nginx variable for proxy_pass enables runtime DNS resolution
+    # (hardcoded hostnames are resolved only at startup and cached forever)
     location /api/ {
+        set \$upstream_api ${API_URL};
         client_max_body_size 64M;
-        proxy_pass ${API_URL}/api/;
+        proxy_pass \$upstream_api;
         proxy_http_version 1.1;
         proxy_set_header Host ${API_HOST};
         proxy_set_header X-Real-IP \$remote_addr;
@@ -102,7 +110,8 @@ server {
 
     # Sanctum CSRF cookie endpoint
     location /sanctum/ {
-        proxy_pass ${API_URL}/sanctum/;
+        set \$upstream_sanctum ${API_URL};
+        proxy_pass \$upstream_sanctum;
         proxy_http_version 1.1;
         proxy_set_header Host ${API_HOST};
         proxy_set_header X-Real-IP \$remote_addr;
@@ -115,9 +124,10 @@ server {
     # If WS_URL is set, proxy directly to the websocket container.
     # Otherwise, proxy through the API container (bundled mode).
     location /app/ {
-        proxy_pass ${WS_URL:-${API_URL}}/app/;
+        set \$upstream_ws ${WS_URL};
+        proxy_pass \$upstream_ws;
         proxy_http_version 1.1;
-        proxy_set_header Host ${WS_HOST:-${API_HOST}};
+        proxy_set_header Host ${WS_HOST};
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header X-Real-IP \$remote_addr;
@@ -129,7 +139,8 @@ server {
 
     # Broadcasting auth endpoint proxy
     location /broadcasting/ {
-        proxy_pass ${API_URL}/broadcasting/;
+        set \$upstream_broadcast ${API_URL};
+        proxy_pass \$upstream_broadcast;
         proxy_http_version 1.1;
         proxy_set_header Host ${API_HOST};
         proxy_set_header X-Real-IP \$remote_addr;
