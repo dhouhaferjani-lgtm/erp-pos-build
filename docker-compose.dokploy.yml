@@ -19,9 +19,8 @@ x-api-env: &api-env
   APP_URL: https://api.erp.otospex.dev
   FRONTEND_URL: https://erp.otospex.dev
   DB_CONNECTION: pgsql
-  DB_HOST: pgbouncer
+  DB_HOST: postgres
   DB_PORT: "5432"
-  DB_PGBOUNCER: "true"
   DB_DATABASE: autoerp
   DB_USERNAME: autoerp
   DB_PASSWORD: ${DB_PASSWORD}
@@ -155,7 +154,7 @@ services:
       <<: *api-env
       CONTAINER_ROLE: api
     depends_on:
-      pgbouncer:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
