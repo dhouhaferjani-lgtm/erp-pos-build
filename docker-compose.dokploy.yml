@@ -17,6 +17,8 @@ x-api-env: &api-env
   APP_DEBUG: "false"
   APP_KEY: ${APP_KEY}
   APP_URL: https://api.erp.otospex.dev
+  FRONTEND_URL: https://erp.otospex.dev
+  DB_CONNECTION: pgsql
   DB_HOST: pgbouncer
   DB_PORT: "5432"
   DB_PGBOUNCER: "true"
@@ -43,6 +45,8 @@ x-api-env: &api-env
   REVERB_APP_SECRET: ${REVERB_APP_SECRET}
   REVERB_SERVER_HOST: websocket
   REVERB_SERVER_PORT: "8080"
+  LOG_CHANNEL: stack
+  LOG_LEVEL: debug
   AUTO_SEED: "true"
 
 services:
