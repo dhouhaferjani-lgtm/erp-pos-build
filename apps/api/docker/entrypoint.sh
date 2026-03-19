@@ -187,7 +187,7 @@ if [ "$CONTAINER_ROLE" = "api" ]; then
     # Update nginx config if REVERB_SERVER_HOST is set (proxy to external websocket container)
     if [ -n "${REVERB_SERVER_HOST:-}" ]; then
         echo "  Reverb proxy → $REVERB_SERVER_HOST:8080"
-        sed -i "s|proxy_pass http://127.0.0.1:8080;|proxy_pass http://${REVERB_SERVER_HOST}:8080;|" /etc/nginx/http.d/default.conf
+        sed -i "s|http://127.0.0.1:8080|http://${REVERB_SERVER_HOST}:8080|" /etc/nginx/http.d/default.conf
     fi
 else
     echo ""
