@@ -204,6 +204,10 @@ else
         echo "  Enabling Reverb WebSocket server..."
         sed -i '/\[program:reverb\]/,/^\[/{s/autostart=false/autostart=true/}' "$SUPERVISOR_CONFIG" 2>/dev/null || true
     fi
+
+    # Enable Scheduler in bundled mode
+    echo "  Enabling Scheduler..."
+    sed -i '/\[program:scheduler\]/,/^\[/{s/autostart=false/autostart=true/}' "$SUPERVISOR_CONFIG" 2>/dev/null || true
 fi
 
 echo ""

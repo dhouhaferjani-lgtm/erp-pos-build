@@ -76,6 +76,7 @@ server {
     # API proxy - forward to backend
     # Host header must match the API domain so Traefik routes correctly
     location /api/ {
+        client_max_body_size 64M;
         proxy_pass ${API_URL}/api/;
         proxy_http_version 1.1;
         proxy_set_header Host ${API_HOST};
