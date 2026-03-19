@@ -14,7 +14,7 @@
 # Reusable environment block for all Laravel services
 x-api-env: &api-env
   APP_ENV: production
-  APP_DEBUG: "false"
+  APP_DEBUG: "true"
   APP_KEY: ${APP_KEY}
   APP_URL: https://api.erp.otospex.dev
   FRONTEND_URL: https://erp.otospex.dev
