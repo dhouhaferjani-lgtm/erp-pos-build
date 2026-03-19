@@ -72,27 +72,12 @@ fi
 # Change to app directory
 cd /var/www/html
 
-# Clear and rebuild cache with runtime environment variables
+# Clear any stale caches from the image build
 echo ""
 echo "Clearing Laravel caches..."
 php artisan config:clear 2>/dev/null || true
 php artisan route:clear 2>/dev/null || true
 php artisan view:clear 2>/dev/null || true
-
-# Rebuild caches with actual environment variables
-echo "Building Laravel caches..."
-if ! php artisan config:cache; then
-    echo "ERROR: config:cache failed! Check your environment variables."
-    echo "Continuing without config cache..."
-fi
-
-if ! php artisan route:cache; then
-    echo "WARNING: route:cache failed, continuing without route cache..."
-fi
-
-if ! php artisan view:cache; then
-    echo "WARNING: view:cache failed, continuing without view cache..."
-fi
 
 # Link storage if not linked
 if [ ! -L /var/www/html/public/storage ]; then
@@ -106,12 +91,21 @@ touch /var/www/html/storage/logs/laravel.log
 chown -R www:www /var/www/html/storage /var/www/html/bootstrap/cache 2>/dev/null || true
 chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache 2>/dev/null || true
 
-# Test database connection with retry
+# ---------------------------------------------------------------------------
+# Migrations & Seeding — connect directly to PostgreSQL, not PgBouncer.
+# PgBouncer in transaction mode doesn't support advisory locks used by
+# Laravel's migration runner.  DB_DIRECT_HOST defaults to "postgres"
+# (the docker-compose service name).
+# ---------------------------------------------------------------------------
+DIRECT_DB_HOST="${DB_DIRECT_HOST:-postgres}"
+
 echo ""
-echo "Testing database connection..."
+echo "Testing database connection (direct -> $DIRECT_DB_HOST)..."
 DB_CONNECTED=false
 for i in 1 2 3 4 5; do
-    if php artisan db:monitor --max=1 2>/dev/null; then
+    # No config cache yet, so env() reads live env vars.  Override DB_HOST
+    # so artisan talks to PostgreSQL directly instead of PgBouncer.
+    if DB_HOST="$DIRECT_DB_HOST" php artisan db:monitor --max=1 2>/dev/null; then
         echo "  Database: [connected]"
         DB_CONNECTED=true
         break
@@ -124,10 +118,9 @@ done
 if [ "$DB_CONNECTED" = "false" ]; then
     echo "  Database: [not available - app may have issues until DB is ready]"
 else
-    # Run migrations automatically
     echo ""
-    echo "Running database migrations..."
-    if php artisan migrate --force; then
+    echo "Running database migrations (direct -> $DIRECT_DB_HOST)..."
+    if DB_HOST="$DIRECT_DB_HOST" php artisan migrate --force; then
         echo "  Migrations: [completed successfully]"
     else
         echo "  Migrations: [failed - check logs]"
@@ -138,12 +131,11 @@ else
         echo ""
         echo "Running database seeders..."
 
-        # Check if database is empty (no tenants exist)
-        TENANT_COUNT=$(php artisan tinker --execute="echo \App\Modules\Tenant\Domain\Tenant::count();" 2>/dev/null || echo "0")
+        TENANT_COUNT=$(DB_HOST="$DIRECT_DB_HOST" php artisan tinker --execute="echo \App\Modules\Tenant\Domain\Tenant::count();" 2>/dev/null || echo "0")
 
         if [ "$TENANT_COUNT" = "0" ]; then
             echo "  Database is empty, running initial seed..."
-            if php artisan db:seed --force; then
+            if DB_HOST="$DIRECT_DB_HOST" php artisan db:seed --force; then
                 echo "  Seeding: [completed successfully]"
             else
                 echo "  Seeding: [failed - check logs]"
@@ -158,6 +150,28 @@ else
         echo "  To enable automatic seeding on first deploy, set AUTO_SEED=true"
     fi
 fi
+
+# ---------------------------------------------------------------------------
+# Build config/route/view caches for runtime (with PgBouncer as DB_HOST)
+# ---------------------------------------------------------------------------
+echo ""
+echo "Building Laravel caches..."
+if ! php artisan config:cache; then
+    echo "ERROR: config:cache failed! Check your environment variables."
+    echo "Continuing without config cache..."
+fi
+
+if ! php artisan route:cache; then
+    echo "WARNING: route:cache failed, continuing without route cache..."
+fi
+
+if ! php artisan view:cache; then
+    echo "WARNING: view:cache failed, continuing without view cache..."
+fi
+
+# Fix permissions again after cache rebuild
+chown -R www:www /var/www/html/storage /var/www/html/bootstrap/cache 2>/dev/null || true
+chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache 2>/dev/null || true
 
 # Configure services based on CONTAINER_ROLE
 # In split mode (CONTAINER_ROLE=api), only nginx + php-fpm run.
