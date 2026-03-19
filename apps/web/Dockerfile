@@ -39,6 +39,11 @@ COPY apps/web/ ./apps/web/
 
 # Build the application
 WORKDIR /app/apps/web
+
+# Build arguments for Vite environment variables
+ARG VITE_REVERB_APP_KEY
+ARG VITE_API_URL
+
 RUN pnpm build
 
 # -----------------------------------------------------------------------------
