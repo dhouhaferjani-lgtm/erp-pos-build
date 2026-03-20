@@ -28,6 +28,7 @@ import enPartsCatalog from '../locales/en/parts-catalog.json'
 import enLoyalty from '../locales/en/loyalty.json'
 import enCompliance from '../locales/en/compliance.json'
 import enWithholding from '../locales/en/withholding.json'
+import enMarketing from '../locales/en/marketing.json'
 
 import frCommon from '../locales/fr/common.json'
 import frAuth from '../locales/fr/auth.json'
@@ -54,6 +55,7 @@ import frPartsCatalog from '../locales/fr/parts-catalog.json'
 import frLoyalty from '../locales/fr/loyalty.json'
 import frCompliance from '../locales/fr/compliance.json'
 import frWithholding from '../locales/fr/withholding.json'
+import frMarketing from '../locales/fr/marketing.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -90,6 +92,7 @@ const resources = {
     loyalty: enLoyalty,
     compliance: enCompliance,
     withholding: enWithholding,
+    marketing: enMarketing,
   },
   fr: {
     common: frCommon,
@@ -117,6 +120,7 @@ const resources = {
     loyalty: frLoyalty,
     compliance: frCompliance,
     withholding: frWithholding,
+    marketing: frMarketing,
   },
   ar: {
     // Arabic falls back to English - translations to be added later
@@ -145,6 +149,7 @@ const resources = {
     loyalty: enLoyalty,
     compliance: enCompliance,
     withholding: enWithholding,
+    marketing: enMarketing,
   },
 }
 
@@ -155,7 +160,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

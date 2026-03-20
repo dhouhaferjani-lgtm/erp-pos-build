@@ -1,0 +1,149 @@
+import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import {
+  Plus,
+  FileText,
+  FileCheck,
+  UserPlus,
+  Package,
+  Banknote,
+  Receipt,
+  ShoppingCart,
+  Monitor,
+} from 'lucide-react'
+import { usePermissions, type Permission } from '../../../hooks/usePermissions'
+import type { LucideIcon } from 'lucide-react'
+
+interface QuickCreateAction {
+  labelKey: string
+  path: string
+  permission: Permission
+  icon: LucideIcon
+}
+
+const QUICK_CREATE_ACTIONS: QuickCreateAction[] = [
+  {
+    labelKey: 'common:quickCreate.newInvoice',
+    path: '/sales/invoices/new',
+    permission: 'sales.create',
+    icon: FileText,
+  },
+  {
+    labelKey: 'common:quickCreate.newQuote',
+    path: '/sales/quotes/new',
+    permission: 'sales.create',
+    icon: FileCheck,
+  },
+  {
+    labelKey: 'common:quickCreate.newCustomer',
+    path: '/sales/customers/new',
+    permission: 'sales.create',
+    icon: UserPlus,
+  },
+  {
+    labelKey: 'common:quickCreate.newProduct',
+    path: '/inventory/products/new',
+    permission: 'inventory.create',
+    icon: Package,
+  },
+  {
+    labelKey: 'common:quickCreate.newPayment',
+    path: '/treasury/payments/new',
+    permission: 'treasury.create',
+    icon: Banknote,
+  },
+  {
+    labelKey: 'common:quickCreate.newExpense',
+    path: '/expenses/new',
+    permission: 'treasury.create',
+    icon: Receipt,
+  },
+  {
+    labelKey: 'common:quickCreate.newPurchaseOrder',
+    path: '/purchases/orders/new',
+    permission: 'purchases.create',
+    icon: ShoppingCart,
+  },
+  {
+    labelKey: 'common:quickCreate.openPos',
+    path: '/pos/transactions',
+    permission: 'pos.operate_terminal',
+    icon: Monitor,
+  },
+]
+
+export function QuickCreateButton() {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const { hasPermission } = usePermissions()
+  const [isOpen, setIsOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const visibleActions = QUICK_CREATE_ACTIONS.filter((action) =>
+    hasPermission(action.permission),
+  )
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
+
+  const handleActionClick = (path: string) => {
+    setIsOpen(false)
+    void navigate(path)
+  }
+
+  if (visibleActions.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => {
+          setIsOpen(!isOpen)
+        }}
+        className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+        aria-label={t('common:quickCreate.label')}
+        aria-expanded={isOpen}
+        aria-haspopup="true"
+      >
+        <Plus className="h-4 w-4" />
+      </button>
+
+      {isOpen && (
+        <div className="absolute start-0 z-50 mt-2 w-56 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+          {visibleActions.map((action) => {
+            const Icon = action.icon
+            return (
+              <button
+                key={action.path}
+                type="button"
+                onClick={() => {
+                  handleActionClick(action.path)
+                }}
+                className="flex w-full items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              >
+                <Icon className="h-4 w-4 text-gray-400" />
+                <span>{t(action.labelKey)}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}

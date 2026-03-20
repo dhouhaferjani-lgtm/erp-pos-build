@@ -8,12 +8,14 @@ import { languages } from '../../../lib/i18n'
 import { CompanySelector } from '../CompanySelector'
 import { LocationSelector } from '../LocationSelector'
 import { ConnectionStatusIndicator } from '../../molecules/ConnectionStatusIndicator'
+import { QuickCreateButton } from './QuickCreateButton'
 
 interface TopBarProps {
   onMenuClick?: () => void
+  onSearchClick?: () => void
 }
 
-export function TopBar({ onMenuClick }: TopBarProps) {
+export function TopBar({ onMenuClick, onSearchClick }: TopBarProps) {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const user = useAuthStore((state) => state.user)
@@ -71,15 +73,21 @@ export function TopBar({ onMenuClick }: TopBarProps) {
           </button>
         )}
 
-        {/* Search */}
-        <div className="relative hidden w-96 sm:block">
-          <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder={`${t('actions.search')}...`}
-            className="w-full rounded-lg border border-gray-300 bg-gray-50 py-2 ps-10 pe-4 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-        </div>
+        {/* Search trigger */}
+        <button
+          type="button"
+          onClick={onSearchClick}
+          className="hidden w-96 items-center gap-2 rounded-lg border border-gray-300 bg-gray-50 py-2 ps-3 pe-4 text-sm text-gray-400 hover:border-gray-400 hover:bg-gray-100 sm:flex"
+        >
+          <Search className="h-4 w-4 shrink-0" />
+          <span className="flex-1 text-start">{t('common:commandPalette.searchTrigger')}</span>
+          <kbd className="rounded border border-gray-300 bg-white px-1.5 py-0.5 text-xs font-medium text-gray-500">
+            ⌘K
+          </kbd>
+        </button>
+
+        {/* Quick Create */}
+        <QuickCreateButton />
       </div>
 
       {/* Right side actions */}

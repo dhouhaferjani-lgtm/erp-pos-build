@@ -653,5 +653,37 @@
       "served": "Served",
       "cancelled": "Cancelled"
     }
+  },
+  "hub": {
+    "title": "Point of Sale",
+    "description": "Manage your POS terminals, orders, and sales operations",
+    "openPos": "Open POS",
+    "openPosDescription": "Launch the point of sale terminal to process transactions",
+    "cards": {
+      "orders": {
+        "title": "Orders",
+        "description": "View and manage POS orders"
+      },
+      "tables": {
+        "title": "Tables",
+        "description": "Manage table layout and assignments"
+      },
+      "kitchen": {
+        "title": "Kitchen Display",
+        "description": "Monitor kitchen orders and preparation status"
+      },
+      "terminals": {
+        "title": "Terminals",
+        "description": "Configure and manage POS terminals"
+      },
+      "shiftHistory": {
+        "title": "Shift History",
+        "description": "Review past shifts and cash reconciliation"
+      },
+      "receipts": {
+        "title": "Receipts",
+        "description": "Search and reprint transaction receipts"
+      }
+    }
   }
 }

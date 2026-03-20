@@ -3,7 +3,7 @@ import { usePageTitle } from '../../hooks/usePageTitle'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Plus, Package, Grid, List } from 'lucide-react'
+import { Plus, Package, Grid, List, Upload } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
@@ -118,13 +118,22 @@ export function ProductListPage() {
             {data?.meta.total ?? 0} {data?.meta.total === 1 ? t('inventory:products.singular') : t('inventory:products.plural')} {t('common:total')}
           </p>
         </div>
-        <Link
-          to="/inventory/products/new"
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          {t('inventory:products.new')}
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/settings/import?entity=products"
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            <Upload className="h-4 w-4" />
+            {t('actions.import')}
+          </Link>
+          <Link
+            to="/inventory/products/new"
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            {t('inventory:products.new')}
+          </Link>
+        </div>
       </div>
 
       {/* Aggregate Stats */}

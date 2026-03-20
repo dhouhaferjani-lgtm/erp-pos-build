@@ -683,5 +683,51 @@
       "inactive": "Inactive",
       "withProducts": "With Products"
     }
+  },
+  "hub": {
+    "title": "Inventory",
+    "description": "Manage your products, stock levels, and inventory operations",
+    "cards": {
+      "products": {
+        "title": "Products",
+        "description": "Browse and manage your product catalog"
+      },
+      "categories": {
+        "title": "Categories",
+        "description": "Organize products into categories and subcategories"
+      },
+      "stockLevels": {
+        "title": "Stock Levels",
+        "description": "View current stock across all locations"
+      },
+      "stockMovements": {
+        "title": "Stock Movements",
+        "description": "Track stock ins, outs, transfers, and adjustments"
+      },
+      "inventoryCounting": {
+        "title": "Inventory Counting",
+        "description": "Plan and execute physical inventory counts"
+      },
+      "priceLists": {
+        "title": "Price Lists",
+        "description": "Manage pricing rules and price lists"
+      },
+      "batches": {
+        "title": "Batches",
+        "description": "Track batch numbers and expiry dates"
+      },
+      "compositeItems": {
+        "title": "Composite Items",
+        "description": "Create recipes and bundled products"
+      },
+      "modifierGroups": {
+        "title": "Modifier Groups",
+        "description": "Configure product modifiers and options"
+      },
+      "menus": {
+        "title": "Menus",
+        "description": "Design and manage product menus"
+      }
+    }
   }
 }

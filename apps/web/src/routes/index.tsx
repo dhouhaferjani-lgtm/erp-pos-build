@@ -70,7 +70,11 @@ const WithholdingCertificateDetail = lazy(() => import('../features/withholding'
 const SalesWithholdingTrackingPage = lazy(() => import('../features/withholding/pages/SalesWithholdingTrackingPage').then((m) => ({ default: m.SalesWithholdingTrackingPage })))
 
 // Reports module
-const ReportsPage = lazy(() => import('../features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })))
+// Hub pages
+const InventoryHubPage = lazy(() => import('../features/inventory/pages/InventoryHubPage').then((m) => ({ default: m.InventoryHubPage })))
+const PosHubPage = lazy(() => import('../features/pos/pages/PosHubPage').then((m) => ({ default: m.PosHubPage })))
+const MarketingHubPage = lazy(() => import('../features/marketing').then((m) => ({ default: m.MarketingHubPage })))
+const FinanceHubPage = lazy(() => import('../features/finance/pages/FinanceHubPage').then((m) => ({ default: m.FinanceHubPage })))
 
 // Inventory module
 const ProductListPage = lazy(() => import('../features/inventory/ProductListPage').then((m) => ({ default: m.ProductListPage })))
@@ -765,7 +769,13 @@ export function AppRoutes() {
 
         {/* Inventory Module */}
         <Route path="inventory">
-          <Route index element={<Navigate to="/inventory/products" replace />} />
+          <Route index element={
+            <RequirePermission moduleKey="inventory">
+              <SuspenseWrapper>
+                <InventoryHubPage />
+              </SuspenseWrapper>
+            </RequirePermission>
+          } />
 
           <Route
             path="products"
@@ -1358,20 +1368,28 @@ export function AppRoutes() {
           />
         </Route>
 
-        {/* Reports */}
+        {/* Reports - redirect to Finance hub */}
+        <Route path="reports" element={<Navigate to="/finance" replace />} />
+
+        {/* Marketing Hub */}
         <Route
-          path="reports"
+          path="marketing"
           element={
-            <RequirePermission moduleKey="reports">
-              <SuspenseWrapper>
-                <ReportsPage />
-              </SuspenseWrapper>
-            </RequirePermission>
+            <SuspenseWrapper>
+              <MarketingHubPage />
+            </SuspenseWrapper>
           }
         />
 
         {/* Finance Module */}
         <Route path="finance">
+          <Route index element={
+            <RequirePermission moduleKey="finance">
+              <SuspenseWrapper>
+                <FinanceHubPage />
+              </SuspenseWrapper>
+            </RequirePermission>
+          } />
           <Route
             path="chart-of-accounts"
             element={
@@ -1977,6 +1995,13 @@ export function AppRoutes() {
 
         {/* POS Module - Administrative Pages (Inside Layout) */}
         <Route path="pos">
+          <Route index element={
+            <RequirePermission moduleKey="pos">
+              <SuspenseWrapper>
+                <PosHubPage />
+              </SuspenseWrapper>
+            </RequirePermission>
+          } />
           {/* Terminals - Admin page for managing POS terminals */}
           <Route
             path="terminals"
