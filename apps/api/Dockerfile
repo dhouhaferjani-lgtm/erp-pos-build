@@ -177,7 +177,7 @@ FROM base AS websocket
 
 EXPOSE 8080
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD curl -f http://localhost:8080/ || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD nc -z localhost 8080 || exit 1
 
 CMD ["/usr/local/bin/entrypoint-websocket.sh"]
