@@ -39,6 +39,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'api/v1/auth/login',
             'api/v1/auth/register',
+            'broadcasting/auth',
         ]);
 
         // Enable CORS handling FIRST (must run before other middleware)
