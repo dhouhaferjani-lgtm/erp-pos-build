@@ -1,5 +1,7 @@
 import { useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { useRealtimeChannel } from '../../../hooks/useRealtimeChannel'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
@@ -53,6 +55,7 @@ export interface UseProductRealtimeOptions {
  */
 export function useProductRealtime(options: UseProductRealtimeOptions): void {
   const { productId, onUpdate, enabled = true } = options
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
   const getCurrentCompany = useCompanyStore((state) => state.getCurrentCompany)
@@ -78,8 +81,8 @@ export function useProductRealtime(options: UseProductRealtimeOptions): void {
 
   const handleError = useCallback((error: Error) => {
     console.error('WebSocket subscription error:', error)
-    // In production, you might want to report this to an error tracking service
-  }, [])
+    toast.error(t('common:errors.realtimeConnectionFailed'))
+  }, [t])
 
   // Only subscribe if we have the required auth context
   const shouldSubscribe = Boolean(

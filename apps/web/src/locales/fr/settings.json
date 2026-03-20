@@ -39,6 +39,49 @@
       "description": "Gérer les terminaux POS, les paramètres de tickets et les caisses"
     }
   },
+  "company": {
+    "title": "Paramètres de l'entreprise",
+    "sections": {
+      "information": "Informations de l'entreprise",
+      "contact": "Coordonnées",
+      "branding": "Logo et image de marque",
+      "regional": "Paramètres régionaux"
+    },
+    "fields": {
+      "name": "Nom de l'entreprise *",
+      "legalName": "Raison sociale",
+      "taxId": "Numéro de TVA / Identifiant fiscal",
+      "registrationNumber": "Numéro d'immatriculation",
+      "street": "Adresse",
+      "city": "Ville",
+      "postalCode": "Code postal",
+      "country": "Pays",
+      "phone": "Téléphone",
+      "email": "E-mail",
+      "website": "Site web",
+      "logo": "Logo de l'entreprise",
+      "primaryColor": "Couleur principale",
+      "currency": "Devise",
+      "timezone": "Fuseau horaire",
+      "dateFormat": "Format de date",
+      "language": "Langue"
+    },
+    "actions": {
+      "replaceLogo": "Remplacer"
+    },
+    "messages": {
+      "saved": "Paramètres de l'entreprise enregistrés avec succès.",
+      "logoUploaded": "Logo téléchargé avec succès.",
+      "logoDeleted": "Logo supprimé avec succès.",
+      "logoTooLarge": "Le logo doit faire moins de 2 Mo.",
+      "logoInvalidType": "Le logo doit être au format PNG, JPG ou SVG.",
+      "confirmDeleteLogo": "Êtes-vous sûr de vouloir supprimer le logo de l'entreprise ?",
+      "loadError": "Erreur lors du chargement des paramètres. Veuillez réessayer.",
+      "unsavedChanges": "Vous avez des modifications non enregistrées",
+      "uploadLogo": "Cliquez pour télécharger le logo",
+      "logoFormats": "PNG, JPG, SVG jusqu'à 2 Mo"
+    }
+  },
   "appInfo": {
     "title": "Informations de l'application",
     "version": "Version",

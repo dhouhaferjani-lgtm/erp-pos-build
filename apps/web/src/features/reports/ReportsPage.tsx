@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { usePageTitle } from '../../hooks/usePageTitle'
 import { useTranslation } from 'react-i18next'
 import {
   BarChart3,
@@ -70,6 +71,7 @@ interface PaymentsResponse {
 
 export function ReportsPage() {
   const { t } = useTranslation()
+  usePageTitle('dashboard.title')
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
 
   // Get company currency with fallback

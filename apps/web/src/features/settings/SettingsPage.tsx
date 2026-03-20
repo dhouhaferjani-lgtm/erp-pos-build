@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { usePageTitle } from '../../hooks/usePageTitle'
 import { useTranslation } from 'react-i18next'
 import { Settings, Users, Shield, Building2, Upload, Calculator, Package, ChevronRight, Receipt, Ruler, Store } from 'lucide-react'
 
@@ -78,6 +79,7 @@ const sections: SettingsSection[] = [
 
 export function SettingsPage() {
   const { t } = useTranslation(['settings'])
+  usePageTitle('settings.title', 'common')
 
   return (
     <div className="space-y-6">

@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { Plus, Edit2, Trash2 } from 'lucide-react'
+import { EmptyState } from '@/components/molecules/EmptyState/EmptyState'
 import { CategoryTree } from '@/components/catalog/CategoryTree'
 import { useCategoryTree, useCreateCategory, useUpdateCategory, useDeleteCategory } from '../api/queries'
 import type { CategoryTreeNode, CreateCategoryData, UpdateCategoryData } from '../types'
@@ -53,8 +55,8 @@ export function CategoryManagementPage() {
       setIsCreateModalOpen(false)
       setFormData({ name: '', description: '', parent_id: null })
     } catch (error) {
-      // Error handling is done by the mutation
       console.error('Create category error:', error)
+      toast.error(t('common:errors.operationFailed'))
     }
   }
 
@@ -72,6 +74,7 @@ export function CategoryManagementPage() {
       setSelectedCategory(null)
     } catch (error) {
       console.error('Update category error:', error)
+      toast.error(t('common:errors.operationFailed'))
     }
   }
 
@@ -84,6 +87,7 @@ export function CategoryManagementPage() {
       setSelectedCategory(null)
     } catch (error) {
       console.error('Delete category error:', error)
+      toast.error(t('common:errors.operationFailed'))
     }
   }
 
@@ -135,12 +139,14 @@ export function CategoryManagementPage() {
               />
             </div>
           ) : (
-            <div className="py-12 text-center">
-              <p className="text-gray-500">{t('common:table.noData')}</p>
-              <Button onClick={handleOpenCreate} className="mt-4">
-                <Plus className="h-4 w-4 me-2" />
-                {t('common:catalog.categories.create')}
-              </Button>
+            <div className="py-4">
+              <EmptyState title={t('common:table.noData')} />
+              <div className="flex justify-center mt-4">
+                <Button onClick={handleOpenCreate}>
+                  <Plus className="h-4 w-4 me-2" />
+                  {t('common:catalog.categories.create')}
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -156,7 +162,7 @@ export function CategoryManagementPage() {
                 )}
                 {selectedCategory.products_count !== null && (
                   <p className="text-sm text-gray-500 mt-1">
-                    {selectedCategory.products_count} products
+                    {t('common:catalog.categories.productsCount', { count: selectedCategory.products_count })}
                   </p>
                 )}
               </div>

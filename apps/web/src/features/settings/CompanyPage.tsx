@@ -47,7 +47,7 @@ interface CompanySettingsResponse {
 }
 
 export function CompanyPage() {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['settings', 'common'])
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [notification, setNotification] = useState<{
@@ -97,7 +97,7 @@ export function CompanyPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['company-settings'] })
       setIsDirty(false)
-      showNotification('success', 'Company settings saved successfully.')
+      showNotification('success', t('settings:company.messages.saved'))
     },
     onError: (error) => {
       showNotification('error', getErrorMessage(error))
@@ -115,7 +115,7 @@ export function CompanyPage() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['company-settings'] })
-      showNotification('success', 'Logo uploaded successfully.')
+      showNotification('success', t('settings:company.messages.logoUploaded'))
     },
     onError: (error) => {
       showNotification('error', getErrorMessage(error))
@@ -129,7 +129,7 @@ export function CompanyPage() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['company-settings'] })
-      showNotification('success', 'Logo deleted successfully.')
+      showNotification('success', t('settings:company.messages.logoDeleted'))
     },
     onError: (error) => {
       showNotification('error', getErrorMessage(error))
@@ -170,12 +170,12 @@ export function CompanyPage() {
     if (file) {
       // Validate file size (2MB max)
       if (file.size > 2 * 1024 * 1024) {
-        showNotification('error', 'Logo must be less than 2MB.')
+        showNotification('error', t('settings:company.messages.logoTooLarge'))
         return
       }
       // Validate file type
       if (!['image/png', 'image/jpeg', 'image/svg+xml'].includes(file.type)) {
-        showNotification('error', 'Logo must be PNG, JPG, or SVG.')
+        showNotification('error', t('settings:company.messages.logoInvalidType'))
         return
       }
       uploadLogoMutation.mutate(file)
@@ -183,7 +183,7 @@ export function CompanyPage() {
   }
 
   const handleDeleteLogo = () => {
-    if (confirm('Are you sure you want to delete the company logo?')) {
+    if (confirm(t('settings:company.messages.confirmDeleteLogo'))) {
       deleteLogoMutation.mutate()
     }
   }
@@ -199,7 +199,7 @@ export function CompanyPage() {
   if (error) {
     return (
       <div className="rounded-lg bg-red-50 p-4 text-red-700">
-        Error loading company settings. Please try again.
+        {t('settings:company.messages.loadError')}
       </div>
     )
   }
@@ -232,14 +232,14 @@ export function CompanyPage() {
             className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
           >
             <ArrowLeft className="h-4 w-4" />
-            {t('actions.back')}
+            {t('common:actions.back')}
           </Link>
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
               <Building2 className="h-6 w-6 text-green-500" />
-              Company Settings
+              {t('settings:company.title')}
             </h1>
-            <p className="text-gray-500">Manage your company information and branding</p>
+            <p className="text-gray-500">{t('settings:sections.company.description')}</p>
           </div>
         </div>
       </div>
@@ -248,11 +248,11 @@ export function CompanyPage() {
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Company Information */}
           <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Company Information</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('settings:company.sections.information')}</h2>
             <div className="space-y-4">
               <div>
                 <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                  Company Name *
+                  {t('settings:company.fields.name')}
                 </label>
                 <input
                   type="text"
@@ -265,7 +265,7 @@ export function CompanyPage() {
               </div>
               <div>
                 <label htmlFor="legal_name" className="block text-sm font-medium text-gray-700">
-                  Legal Name
+                  {t('settings:company.fields.legalName')}
                 </label>
                 <input
                   type="text"
@@ -277,7 +277,7 @@ export function CompanyPage() {
               </div>
               <div>
                 <label htmlFor="tax_id" className="block text-sm font-medium text-gray-700">
-                  Tax ID / VAT Number
+                  {t('settings:company.fields.taxId')}
                 </label>
                 <input
                   type="text"
@@ -290,7 +290,7 @@ export function CompanyPage() {
               </div>
               <div>
                 <label htmlFor="registration_number" className="block text-sm font-medium text-gray-700">
-                  Registration Number
+                  {t('settings:company.fields.registrationNumber')}
                 </label>
                 <input
                   type="text"
@@ -306,12 +306,12 @@ export function CompanyPage() {
 
           {/* Contact Information */}
           <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Contact Information</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('settings:company.sections.contact')}</h2>
             <div className="space-y-4">
               <div>
                 <label htmlFor="street" className="block text-sm font-medium text-gray-700">
                   <MapPin className="inline h-4 w-4 mr-1" />
-                  Street Address
+                  {t('settings:company.fields.street')}
                 </label>
                 <input
                   type="text"
@@ -325,7 +325,7 @@ export function CompanyPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="city" className="block text-sm font-medium text-gray-700">
-                    City
+                    {t('settings:company.fields.city')}
                   </label>
                   <input
                     type="text"
@@ -338,7 +338,7 @@ export function CompanyPage() {
                 </div>
                 <div>
                   <label htmlFor="postal_code" className="block text-sm font-medium text-gray-700">
-                    Postal Code
+                    {t('settings:company.fields.postalCode')}
                   </label>
                   <input
                     type="text"
@@ -352,7 +352,7 @@ export function CompanyPage() {
               </div>
               <div>
                 <label htmlFor="country" className="block text-sm font-medium text-gray-700">
-                  Country
+                  {t('settings:company.fields.country')}
                 </label>
                 <select
                   id="country"
@@ -372,7 +372,7 @@ export function CompanyPage() {
                 <div>
                   <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
                     <Phone className="inline h-4 w-4 mr-1" />
-                    Phone
+                    {t('settings:company.fields.phone')}
                   </label>
                   <input
                     type="text"
@@ -386,7 +386,7 @@ export function CompanyPage() {
                 <div>
                   <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                     <Mail className="inline h-4 w-4 mr-1" />
-                    Email
+                    {t('settings:company.fields.email')}
                   </label>
                   <input
                     type="email"
@@ -401,7 +401,7 @@ export function CompanyPage() {
               <div>
                 <label htmlFor="website" className="block text-sm font-medium text-gray-700">
                   <Globe className="inline h-4 w-4 mr-1" />
-                  Website
+                  {t('settings:company.fields.website')}
                 </label>
                 <input
                   type="url"
@@ -417,15 +417,15 @@ export function CompanyPage() {
 
           {/* Logo & Branding */}
           <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Logo & Branding</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('settings:company.sections.branding')}</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Company Logo</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">{t('settings:company.fields.logo')}</label>
                 {settings?.logo_url ? (
                   <div className="flex items-center gap-4">
                     <img
                       src={settings.logo_url}
-                      alt="Company logo"
+                      alt={t('settings:company.fields.logo')}
                       className="h-20 w-20 object-contain rounded-lg border border-gray-200 bg-white p-2"
                     />
                     <div className="flex flex-col gap-2">
@@ -436,7 +436,7 @@ export function CompanyPage() {
                         className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                       >
                         <Upload className="h-4 w-4" />
-                        Replace
+                        {t('settings:company.actions.replaceLogo')}
                       </button>
                       <button
                         type="button"
@@ -445,7 +445,7 @@ export function CompanyPage() {
                         className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
                       >
                         <Trash2 className="h-4 w-4" />
-                        Delete
+                        {t('common:actions.delete')}
                       </button>
                     </div>
                   </div>
@@ -459,8 +459,8 @@ export function CompanyPage() {
                     ) : (
                       <>
                         <Upload className="mx-auto h-12 w-12 text-gray-400" />
-                        <p className="mt-2 text-sm text-gray-600">Click to upload company logo</p>
-                        <p className="text-xs text-gray-400">PNG, JPG, SVG up to 2MB</p>
+                        <p className="mt-2 text-sm text-gray-600">{t('settings:company.messages.uploadLogo')}</p>
+                        <p className="text-xs text-gray-400">{t('settings:company.messages.logoFormats')}</p>
                       </>
                     )}
                   </div>
@@ -475,7 +475,7 @@ export function CompanyPage() {
               </div>
               <div>
                 <label htmlFor="primary_color" className="block text-sm font-medium text-gray-700">
-                  Primary Color
+                  {t('settings:company.fields.primaryColor')}
                 </label>
                 <div className="mt-1 flex items-center gap-3">
                   <input
@@ -501,11 +501,11 @@ export function CompanyPage() {
 
           {/* Regional Settings */}
           <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Regional Settings</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('settings:company.sections.regional')}</h2>
             <div className="space-y-4">
               <div>
                 <label htmlFor="currency_code" className="block text-sm font-medium text-gray-700">
-                  Currency
+                  {t('settings:company.fields.currency')}
                 </label>
                 <select
                   id="currency_code"
@@ -523,7 +523,7 @@ export function CompanyPage() {
               </div>
               <div>
                 <label htmlFor="timezone" className="block text-sm font-medium text-gray-700">
-                  Timezone
+                  {t('settings:company.fields.timezone')}
                 </label>
                 <select
                   id="timezone"
@@ -541,7 +541,7 @@ export function CompanyPage() {
               </div>
               <div>
                 <label htmlFor="date_format" className="block text-sm font-medium text-gray-700">
-                  Date Format
+                  {t('settings:company.fields.dateFormat')}
                 </label>
                 <select
                   id="date_format"
@@ -556,7 +556,7 @@ export function CompanyPage() {
               </div>
               <div>
                 <label htmlFor="locale" className="block text-sm font-medium text-gray-700">
-                  Language
+                  {t('settings:company.fields.language')}
                 </label>
                 <select
                   id="locale"
@@ -576,7 +576,7 @@ export function CompanyPage() {
         {/* Save Button */}
         <div className="mt-6 flex justify-end gap-3">
           {isDirty && (
-            <span className="text-sm text-amber-600 self-center">You have unsaved changes</span>
+            <span className="text-sm text-amber-600 self-center">{t('settings:company.messages.unsavedChanges')}</span>
           )}
           <button
             type="submit"
@@ -586,10 +586,10 @@ export function CompanyPage() {
             {updateMutation.isPending ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Saving...
+                {t('common:status.saving')}
               </>
             ) : (
-              t('actions.save')
+              t('common:actions.save')
             )}
           </button>
         </div>

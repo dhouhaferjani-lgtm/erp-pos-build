@@ -1,7 +1,6 @@
 <?php
 
 use App\Http\Middleware\CompanyContextMiddleware;
-use App\Http\Middleware\CorsMiddleware;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\RequireModule;
 use App\Http\Middleware\SecurityHeaders;
@@ -42,9 +41,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'broadcasting/auth',
         ]);
 
-        // Enable CORS handling FIRST (must run before other middleware)
         $middleware->prependToGroup('api', [
-            CorsMiddleware::class,
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
         ]);
 

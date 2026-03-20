@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
+import { usePageTitle } from '../../hooks/usePageTitle'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Package, AlertTriangle, MapPin, Plus, Minus, RefreshCw, X, ArrowRightLeft } from 'lucide-react'
@@ -54,6 +55,7 @@ type AdjustmentType = 'adjust' | 'receive' | 'issue' | 'transfer'
 
 export function StockLevelsPage() {
   const { t } = useTranslation(['common', 'inventory'])
+  usePageTitle('stockLevels.title', 'inventory')
   const queryClient = useQueryClient()
   const { currentLocationId } = useLocation()
   const [searchQuery, setSearchQuery] = useState('')

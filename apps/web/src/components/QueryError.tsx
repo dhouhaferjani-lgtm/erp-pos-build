@@ -1,4 +1,5 @@
 import { AlertCircle, RefreshCw } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { getErrorMessage } from '@/lib/api'
 
 interface QueryErrorProps {
@@ -6,7 +7,7 @@ interface QueryErrorProps {
   error: Error | unknown
   /** Optional retry function - if provided, shows a retry button */
   onRetry?: () => void
-  /** Optional custom title */
+  /** Optional custom title - defaults to translated "Failed to load data" */
   title?: string
   /** Optional custom message - overrides error message extraction */
   message?: string
@@ -31,11 +32,13 @@ interface QueryErrorProps {
 export function QueryError({
   error,
   onRetry,
-  title = 'Failed to load data',
+  title,
   message,
   compact = false,
   className = '',
 }: QueryErrorProps) {
+  const { t } = useTranslation()
+  const resolvedTitle = title ?? t('errors.failedToLoad')
   const errorMessage = message ?? getErrorMessage(error)
 
   if (compact) {
@@ -53,7 +56,7 @@ export function QueryError({
             className="inline-flex items-center px-2 py-1 text-xs font-medium text-red-700 hover:text-red-800 hover:bg-red-100 rounded"
           >
             <RefreshCw className="w-3 h-3 me-1" />
-            Retry
+            {t('retry')}
           </button>
         )}
       </div>
@@ -68,7 +71,7 @@ export function QueryError({
         <AlertCircle className="w-6 h-6 text-red-600" />
       </div>
 
-      <h3 className="text-lg font-medium text-gray-900 mb-2">{title}</h3>
+      <h3 className="text-lg font-medium text-gray-900 mb-2">{resolvedTitle}</h3>
 
       <p className="text-gray-600 mb-4 max-w-md">{errorMessage}</p>
 
@@ -78,7 +81,7 @@ export function QueryError({
           className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         >
           <RefreshCw className="w-4 h-4 me-2" />
-          Try Again
+          {t('actions.tryAgain')}
         </button>
       )}
     </div>

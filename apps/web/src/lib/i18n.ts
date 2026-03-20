@@ -27,6 +27,7 @@ import enCrm from '../locales/en/crm.json'
 import enPartsCatalog from '../locales/en/parts-catalog.json'
 import enLoyalty from '../locales/en/loyalty.json'
 import enCompliance from '../locales/en/compliance.json'
+import enWithholding from '../locales/en/withholding.json'
 
 import frCommon from '../locales/fr/common.json'
 import frAuth from '../locales/fr/auth.json'
@@ -52,6 +53,7 @@ import frCrm from '../locales/fr/crm.json'
 import frPartsCatalog from '../locales/fr/parts-catalog.json'
 import frLoyalty from '../locales/fr/loyalty.json'
 import frCompliance from '../locales/fr/compliance.json'
+import frWithholding from '../locales/fr/withholding.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -87,6 +89,7 @@ const resources = {
     'parts-catalog': enPartsCatalog,
     loyalty: enLoyalty,
     compliance: enCompliance,
+    withholding: enWithholding,
   },
   fr: {
     common: frCommon,
@@ -113,6 +116,7 @@ const resources = {
     'parts-catalog': frPartsCatalog,
     loyalty: frLoyalty,
     compliance: frCompliance,
+    withholding: frWithholding,
   },
   ar: {
     // Arabic falls back to English - translations to be added later
@@ -140,6 +144,7 @@ const resources = {
     'parts-catalog': enPartsCatalog,
     loyalty: enLoyalty,
     compliance: enCompliance,
+    withholding: enWithholding,
   },
 }
 
@@ -150,7 +155,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

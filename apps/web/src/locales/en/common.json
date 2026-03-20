@@ -36,7 +36,11 @@
     "downloading": "Downloading...",
     "generating": "Generating...",
     "sendEmail": "Send Email",
-    "sending": "Sending..."
+    "sending": "Sending...",
+    "tryAgain": "Try Again",
+    "refreshPage": "Refresh Page",
+    "goHome": "Go Home",
+    "retry": "Retry"
   },
   "common": {
     "create": "Create",
@@ -124,7 +128,8 @@
     "year": "Year",
     "vin": "VIN",
     "totalReceivable": "Total Receivable",
-    "totalPayable": "Total Payable"
+    "totalPayable": "Total Payable",
+    "description": "Description"
   },
   "partner": {
     "unallocatedBalance": "Unallocated Balance",
@@ -148,7 +153,10 @@
     "documentNotFound": "Document not found or an error occurred.",
     "permissionDenied": "Permission Denied",
     "permissionDeniedDescription": "You don't have permission to access this page. Please contact your administrator if you believe this is an error.",
-    "unexpected": "An unexpected error occurred. Please try again."
+    "unexpected": "An unexpected error occurred. Please try again.",
+    "unexpectedError": "Something went wrong",
+    "unexpectedErrorDetails": "An unexpected error occurred. Please try refreshing the page or go back to the home page.",
+    "failedToLoad": "Failed to load data"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -959,7 +967,8 @@
       "tree": "Category Tree",
       "cannotDelete": "Cannot delete category with products or subcategories",
       "selectCategory": "Select category...",
-      "rootCategory": "Root Category (No Parent)"
+      "rootCategory": "Root Category (No Parent)",
+      "productsCount": "{{count}} products"
     },
     "products": {
       "category": "Category"
@@ -1078,5 +1087,100 @@
     "connected": "Real-time updates active",
     "connecting": "Connecting to real-time updates...",
     "disconnected": "Real-time updates unavailable"
+  },
+  "errors": {
+    "realtimeConnectionFailed": "Real-time updates are unavailable. Changes may not appear automatically.",
+    "locationsFetchFailed": "Failed to load locations.",
+    "operationFailed": "Operation failed. Please try again."
+  },
+  "permissions": {
+    "modules": {
+      "products": "Products",
+      "partners": "Partners",
+      "vehicles": "Vehicles",
+      "documents": "Documents",
+      "quotes": "Quotes",
+      "orders": "Orders",
+      "invoices": "Invoices",
+      "credit-notes": "Credit Notes",
+      "purchase-orders": "Purchase Orders",
+      "deliveries": "Deliveries",
+      "treasury": "Treasury",
+      "repositories": "Repositories",
+      "instruments": "Instruments",
+      "payments": "Payments",
+      "withholding": "Withholding",
+      "taxation": "Taxation",
+      "inventory": "Inventory",
+      "accounts": "Accounts",
+      "journal": "Journal",
+      "ledger": "Ledger",
+      "reports": "Reports",
+      "pricing": "Pricing",
+      "uom": "Units of Measure",
+      "pos": "Point of Sale",
+      "services": "Services",
+      "expenses": "Expenses",
+      "reconciliation": "Reconciliation",
+      "locations": "Locations",
+      "categories": "Categories",
+      "composite-items": "Composite Items",
+      "modifier-groups": "Modifier Groups",
+      "menus": "Menus",
+      "promotions": "Promotions",
+      "coupons": "Coupons",
+      "loyalty": "Loyalty",
+      "companies": "Companies",
+      "contacts": "Contacts",
+      "users": "Users",
+      "roles": "Roles",
+      "settings": "Settings"
+    },
+    "actions": {
+      "view": "View",
+      "create": "Create",
+      "update": "Edit",
+      "delete": "Delete",
+      "manage": "Manage",
+      "confirm": "Confirm",
+      "convert": "Convert",
+      "post": "Post",
+      "cancel": "Cancel",
+      "receive": "Receive",
+      "transfer": "Transfer",
+      "clear": "Clear",
+      "refund": "Refund",
+      "reverse": "Reverse",
+      "issue": "Issue",
+      "void": "Void",
+      "submit": "Submit",
+      "adjust": "Adjust",
+      "edit": "Edit",
+      "operate": "Operate",
+      "manage_terminals": "Manage Terminals",
+      "open_shift": "Open Shift",
+      "close_shift": "Close Shift",
+      "cash_drawer": "Cash Drawer",
+      "reports": "Reports",
+      "admin": "Admin",
+      "sell_below_target_margin": "Sell Below Target Margin",
+      "sell_below_minimum_margin": "Sell Below Minimum Margin",
+      "sell_below_cost": "Sell Below Cost",
+      "view_cost_prices": "View Cost Prices",
+      "manage_pricing_rules": "Manage Pricing Rules",
+      "manage_withholding_rules": "Manage Withholding Rules",
+      "reconcile": "Reconcile",
+      "export": "Export",
+      "import": "Import"
+    }
+  },
+  "legal": {
+    "privacyPolicy": "Privacy Policy",
+    "termsOfService": "Terms of Service",
+    "cookieConsent": {
+      "message": "This site uses essential cookies for authentication and security.",
+      "accept": "Accept",
+      "learnMore": "Learn more"
+    }
   }
 }

@@ -7,7 +7,13 @@
     "title": "Aperçu de la Retenue",
     "calculating": "Calcul de la retenue...",
     "noRuleFound": "Aucune règle de retenue trouvée",
-    "suggestedRate": "Taux suggéré : {{rate}}%"
+    "noRuleFoundHelp": "Vous pouvez spécifier manuellement un taux de retenue en utilisant l'option de remplacement ci-dessous.",
+    "suggestedRate": "Taux suggéré : {{rate}}%",
+    "amountBreakdown": "Détail des montants",
+    "applyWithholding": "Appliquer la retenue",
+    "manualOverride": "Remplacement manuel",
+    "manualRate": "Taux manuel (%)",
+    "overrideReasonPlaceholder": "Saisissez la raison du remplacement du taux..."
   },
 
   "form": {
@@ -106,20 +112,36 @@
 
   "rules": {
     "title": "Règles de Retenue à la Source",
+    "subtitle": "Gérer les règles de retenue pour le calcul automatique",
     "noRules": "Aucune règle de retenue trouvée",
+    "addRule": "Ajouter une règle",
+    "createRule": "Créer une règle de retenue",
+    "editRule": "Modifier la règle de retenue",
     "code": "Code",
     "name": "Nom",
+    "namePlaceholder": "ex. Retenue services professionnels",
     "rate": "Taux",
+    "ratePercentage": "Taux (%)",
     "effectiveFrom": "Effectif Depuis",
     "effectiveTo": "Effectif Jusqu'à",
+    "effectiveToHelp": "Laisser vide pour une validité indéfinie",
     "isActive": "Actif",
     "isGlobal": "Global",
     "companySpecific": "Spécifique à l'Entreprise",
     "conditions": "Conditions",
     "transactionType": "Type de Transaction",
     "partnerTaxStatus": "Statut Fiscal du Partenaire",
+    "partnerRegime": "Régime fiscal du partenaire",
     "minAmount": "Montant Minimum",
-    "description": "Description"
+    "minAmountHelp": "La règle s'applique uniquement si le montant dépasse ce seuil",
+    "description": "Description",
+    "descriptionPlaceholder": "Description optionnelle des conditions d'application de cette règle",
+    "countryFilter": "Pays",
+    "basicInfo": "Informations de base",
+    "validityPeriod": "Période de validité",
+    "infoTitle": "À propos des règles de retenue",
+    "infoText": "Les règles de retenue déterminent le taux de retenue automatique en fonction du type de transaction, du régime du partenaire et des seuils de montant. Les règles sont appliquées par ordre de spécificité.",
+    "confirmDelete": "Êtes-vous sûr de vouloir supprimer la règle \"{{name}}\" ?"
   },
 
   "salesWithholding": {
@@ -161,6 +183,26 @@
     }
   },
 
+  "taxStatuses": {
+    "registered": "Assujetti à la TVA",
+    "nonRegistered": "Non assujetti",
+    "exempt": "Exonéré"
+  },
+
+  "taxRegimes": {
+    "corporate": "Société (Réel)",
+    "individual": "Personne physique (Forfait)",
+    "exempt": "Exonéré",
+    "non_resident": "Non-résident"
+  },
+
+  "countries": {
+    "tunisia": "Tunisie",
+    "france": "France",
+    "morocco": "Maroc",
+    "algeria": "Algérie"
+  },
+
   "messages": {
     "certificateCreated": "Attestation de retenue créée avec succès",
     "certificateIssued": "Attestation émise avec succès",
@@ -173,7 +215,15 @@
     "confirmIssue": "Êtes-vous sûr de vouloir émettre cette attestation ? Cette action est irréversible.",
     "confirmVoid": "Êtes-vous sûr de vouloir annuler cette attestation ?",
     "confirmDelete": "Êtes-vous sûr de vouloir supprimer ce brouillon d'attestation ?",
-    "voidReasonRequired": "Veuillez fournir une raison pour l'annulation de cette attestation"
+    "voidReasonRequired": "Veuillez fournir une raison pour l'annulation de cette attestation",
+    "ruleCreated": "Règle de retenue créée avec succès",
+    "ruleUpdated": "Règle de retenue mise à jour avec succès",
+    "ruleDeleted": "Règle de retenue supprimée avec succès",
+    "ruleDeactivated": "Règle de retenue désactivée avec succès",
+    "ruleCreationFailed": "Échec de la création de la règle de retenue",
+    "ruleUpdateFailed": "Échec de la mise à jour de la règle de retenue",
+    "ruleDeletionFailed": "Échec de la suppression de la règle de retenue",
+    "ruleDeactivationFailed": "Échec de la désactivation de la règle de retenue"
   },
 
   "validation": {

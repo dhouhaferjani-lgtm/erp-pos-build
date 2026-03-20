@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
+import { usePageTitle } from '../../hooks/usePageTitle'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -55,6 +56,7 @@ type ViewMode = 'list' | 'grid'
 
 export function ProductListPage() {
   const { t } = useTranslation(['common', 'inventory'])
+  usePageTitle('products.title', 'inventory')
 
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
   const [viewMode, setViewMode] = useState<ViewMode>('list')

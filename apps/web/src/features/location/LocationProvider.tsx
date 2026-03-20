@@ -1,6 +1,8 @@
 import { useEffect, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { useLocationStore } from '../../stores/locationStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { fetchLocations, transformLocationResponse } from './api'
@@ -18,6 +20,7 @@ interface LocationProviderProps {
  * Skips fetching on admin routes since they use separate authentication.
  */
 export function LocationProvider({ children }: LocationProviderProps) {
+  const { t } = useTranslation()
   const routerLocation = useLocation()
   const currentCompanyId = useCompanyStore((state) => state.currentCompanyId)
   const setLocations = useLocationStore((state) => state.setLocations)
@@ -53,6 +56,7 @@ export function LocationProvider({ children }: LocationProviderProps) {
       setLocations(data)
     } else if (isError) {
       console.error('Failed to fetch locations:', error)
+      toast.error(t('common:errors.locationsFetchFailed'))
       setLoading(false)
     }
   }, [data, isLoading, isError, error, setLocations, setLoading])

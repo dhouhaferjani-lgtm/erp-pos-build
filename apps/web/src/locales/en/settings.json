@@ -39,6 +39,49 @@
       "description": "Manage POS terminals, receipt settings, and cash drawers"
     }
   },
+  "company": {
+    "title": "Company Settings",
+    "sections": {
+      "information": "Company Information",
+      "contact": "Contact Information",
+      "branding": "Logo & Branding",
+      "regional": "Regional Settings"
+    },
+    "fields": {
+      "name": "Company Name *",
+      "legalName": "Legal Name",
+      "taxId": "Tax ID / VAT Number",
+      "registrationNumber": "Registration Number",
+      "street": "Street Address",
+      "city": "City",
+      "postalCode": "Postal Code",
+      "country": "Country",
+      "phone": "Phone",
+      "email": "Email",
+      "website": "Website",
+      "logo": "Company Logo",
+      "primaryColor": "Primary Color",
+      "currency": "Currency",
+      "timezone": "Timezone",
+      "dateFormat": "Date Format",
+      "language": "Language"
+    },
+    "actions": {
+      "replaceLogo": "Replace"
+    },
+    "messages": {
+      "saved": "Company settings saved successfully.",
+      "logoUploaded": "Logo uploaded successfully.",
+      "logoDeleted": "Logo deleted successfully.",
+      "logoTooLarge": "Logo must be less than 2MB.",
+      "logoInvalidType": "Logo must be PNG, JPG, or SVG.",
+      "confirmDeleteLogo": "Are you sure you want to delete the company logo?",
+      "loadError": "Error loading company settings. Please try again.",
+      "unsavedChanges": "You have unsaved changes",
+      "uploadLogo": "Click to upload company logo",
+      "logoFormats": "PNG, JPG, SVG up to 2MB"
+    }
+  },
   "appInfo": {
     "title": "App Information",
     "version": "Version",

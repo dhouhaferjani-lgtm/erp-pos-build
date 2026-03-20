@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { usePageTitle } from '../../hooks/usePageTitle'
 import { Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -71,6 +72,7 @@ function getNetBalance(partner: Partner, isCustomerView: boolean): number {
 export function PartnerListPage({ partnerType }: PartnerListPageProps) {
   usePartnerBalanceRealtime()
   const { t, i18n } = useTranslation(['common', 'sales'])
+  usePageTitle('partners.title', 'sales')
   const location = useLocation()
   const currentCompany = useCompanyStore((s) => s.getCurrentCompany())
   const currency = currentCompany?.currency ?? 'EUR'

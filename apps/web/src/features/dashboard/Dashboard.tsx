@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { usePageTitle } from '../../hooks/usePageTitle'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import {
@@ -79,6 +80,7 @@ const getDocumentRoute = (type: string, id: string): string => {
 
 export function Dashboard() {
   const { t } = useTranslation()
+  usePageTitle('dashboard.title')
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
 
   // Get company currency with fallback

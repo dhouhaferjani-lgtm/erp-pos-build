@@ -33,7 +33,14 @@
     "downloading": "Téléchargement...",
     "generating": "Génération...",
     "sendEmail": "Envoyer par e-mail",
-    "sending": "Envoi..."
+    "sending": "Envoi...",
+    "tryAgain": "Réessayer",
+    "refreshPage": "Rafraîchir la page",
+    "goHome": "Retour à l'accueil",
+    "retry": "Réessayer",
+    "newQuote": "Nouveau devis",
+    "newInvoice": "Nouvelle facture",
+    "addVehicle": "Ajouter un véhicule"
   },
   "common": {
     "create": "Créer",
@@ -59,7 +66,8 @@
     "minLength": "Doit contenir au moins {{min}} caractères",
     "maxLength": "Doit contenir au maximum {{max}} caractères",
     "minAmount": "Le montant minimum est {{amount}}",
-    "terminalCodeFormat": "Le code du terminal ne doit contenir que des lettres majuscules et des chiffres"
+    "terminalCodeFormat": "Le code du terminal ne doit contenir que des lettres majuscules et des chiffres",
+    "invalidNumber": "Nombre invalide"
   },
   "errorMessages": {
     "generic": "Une erreur est survenue. Veuillez réessayer."
@@ -82,14 +90,26 @@
     "failed": "Échoué",
     "refunded": "Remboursé",
     "current": "En cours",
-    "overdue": "En retard"
+    "overdue": "En retard",
+    "creating": "Création...",
+    "processing": "Traitement...",
+    "tryDifferentSearch": "Essayez un autre terme de recherche.",
+    "noDocuments": "Aucun document",
+    "noDocumentsDescription": "Aucun document n'a été créé pour ce client.",
+    "noPayments": "Aucun paiement",
+    "noPaymentsDescription": "Aucun paiement n'a été enregistré pour ce client.",
+    "noVehicles": "Aucun véhicule",
+    "noVehiclesDescription": "Aucun véhicule n'a été lié à ce client."
   },
   "errors": {
     "loadingFailed": "Erreur de chargement des données. Veuillez réessayer.",
     "documentNotFound": "Document non trouvé ou une erreur est survenue.",
     "permissionDenied": "Permission refusée",
     "permissionDeniedDescription": "Vous n'avez pas l'autorisation d'accéder à cette page. Veuillez contacter votre administrateur si vous pensez qu'il s'agit d'une erreur.",
-    "unexpected": "Une erreur inattendue s'est produite. Veuillez réessayer."
+    "unexpected": "Une erreur inattendue s'est produite. Veuillez réessayer.",
+    "unexpectedError": "Une erreur est survenue",
+    "unexpectedErrorDetails": "Une erreur inattendue s'est produite. Veuillez rafraîchir la page ou retourner à l'accueil.",
+    "failedToLoad": "Échec du chargement des données"
   },
   "dashboard": {
     "title": "Tableau de bord",
@@ -191,10 +211,32 @@
   },
   "fields": {
     "totalReceivable": "Total à recevoir",
-    "totalPayable": "Total à payer"
+    "totalPayable": "Total à payer",
+    "name": "Nom",
+    "type": "Type",
+    "status": "Statut",
+    "contact": "Contact",
+    "email": "E-mail",
+    "phone": "Téléphone",
+    "address": "Adresse",
+    "taxId": "Identifiant fiscal",
+    "notes": "Notes",
+    "created": "Créé",
+    "documentNumber": "Numéro de document",
+    "amount": "Montant",
+    "date": "Date",
+    "paymentNumber": "Numéro de paiement",
+    "method": "Mode",
+    "licensePlate": "Immatriculation",
+    "vehicle": "Véhicule",
+    "year": "Année",
+    "vin": "NIV",
+    "description": "Description"
   },
   "sections": {
-    "balance": "Solde"
+    "balance": "Solde",
+    "contactInfo": "Informations de contact",
+    "businessInfo": "Informations commerciales"
   },
   "partner": {
     "unallocatedBalance": "Solde non alloué",
@@ -928,7 +970,8 @@
       "tree": "Arbre des catégories",
       "cannotDelete": "Impossible de supprimer une catégorie contenant des produits ou des sous-catégories",
       "selectCategory": "Sélectionner une catégorie...",
-      "rootCategory": "Catégorie racine (Aucune parente)"
+      "rootCategory": "Catégorie racine (Aucune parente)",
+      "productsCount": "{{count}} produits"
     },
     "products": {
       "category": "Catégorie"
@@ -1011,5 +1054,100 @@
     "connected": "Mises à jour en temps réel actives",
     "connecting": "Connexion aux mises à jour en temps réel...",
     "disconnected": "Mises à jour en temps réel indisponibles"
+  },
+  "errors": {
+    "realtimeConnectionFailed": "Les mises à jour en temps réel sont indisponibles. Les changements peuvent ne pas apparaître automatiquement.",
+    "locationsFetchFailed": "Échec du chargement des emplacements.",
+    "operationFailed": "L'opération a échoué. Veuillez réessayer."
+  },
+  "permissions": {
+    "modules": {
+      "products": "Produits",
+      "partners": "Partenaires",
+      "vehicles": "Véhicules",
+      "documents": "Documents",
+      "quotes": "Devis",
+      "orders": "Commandes",
+      "invoices": "Factures",
+      "credit-notes": "Avoirs",
+      "purchase-orders": "Commandes fournisseurs",
+      "deliveries": "Livraisons",
+      "treasury": "Trésorerie",
+      "repositories": "Dépôts",
+      "instruments": "Effets de paiement",
+      "payments": "Paiements",
+      "withholding": "Retenue à la source",
+      "taxation": "Fiscalité",
+      "inventory": "Inventaire",
+      "accounts": "Comptes",
+      "journal": "Journal",
+      "ledger": "Grand livre",
+      "reports": "Rapports",
+      "pricing": "Tarification",
+      "uom": "Unités de mesure",
+      "pos": "Point de vente",
+      "services": "Prestations",
+      "expenses": "Dépenses",
+      "reconciliation": "Rapprochement",
+      "locations": "Emplacements",
+      "categories": "Catégories",
+      "composite-items": "Articles composés",
+      "modifier-groups": "Groupes de modificateurs",
+      "menus": "Menus",
+      "promotions": "Promotions",
+      "coupons": "Coupons",
+      "loyalty": "Fidélité",
+      "companies": "Entreprises",
+      "contacts": "Contacts",
+      "users": "Utilisateurs",
+      "roles": "Rôles",
+      "settings": "Paramètres"
+    },
+    "actions": {
+      "view": "Voir",
+      "create": "Créer",
+      "update": "Modifier",
+      "delete": "Supprimer",
+      "manage": "Gérer",
+      "confirm": "Confirmer",
+      "convert": "Convertir",
+      "post": "Comptabiliser",
+      "cancel": "Annuler",
+      "receive": "Réceptionner",
+      "transfer": "Transférer",
+      "clear": "Encaisser",
+      "refund": "Rembourser",
+      "reverse": "Annuler",
+      "issue": "Émettre",
+      "void": "Annuler",
+      "submit": "Soumettre",
+      "adjust": "Ajuster",
+      "edit": "Modifier",
+      "operate": "Opérer",
+      "manage_terminals": "Gérer les terminaux",
+      "open_shift": "Ouvrir la caisse",
+      "close_shift": "Fermer la caisse",
+      "cash_drawer": "Tiroir-caisse",
+      "reports": "Rapports",
+      "admin": "Administration",
+      "sell_below_target_margin": "Vendre sous la marge cible",
+      "sell_below_minimum_margin": "Vendre sous la marge minimum",
+      "sell_below_cost": "Vendre sous le prix de revient",
+      "view_cost_prices": "Voir les prix de revient",
+      "manage_pricing_rules": "Gérer les règles de tarification",
+      "manage_withholding_rules": "Gérer les règles de retenue",
+      "reconcile": "Rapprocher",
+      "export": "Exporter",
+      "import": "Importer"
+    }
+  },
+  "legal": {
+    "privacyPolicy": "Politique de confidentialit\u00e9",
+    "termsOfService": "Conditions d'utilisation",
+    "cookieConsent": {
+      "message": "Ce site utilise des cookies essentiels pour l'authentification et la s\u00e9curit\u00e9.",
+      "accept": "Accepter",
+      "learnMore": "En savoir plus"
+    }
   }
 }

@@ -1,4 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { useWebSocketConnection } from '../../../hooks/useWebSocketConnection'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
@@ -83,6 +85,7 @@ export interface UseImportProgressOptions {
  */
 export function useImportProgress(options: UseImportProgressOptions = {}): void {
   const { enabled = true, onProgress, onCompleted, onError } = options
+  const { t } = useTranslation()
   const { echo, isConnected } = useWebSocketConnection()
   const { user } = useAuthStore()
   const { currentCompanyId } = useCompanyStore()
@@ -153,11 +156,13 @@ export function useImportProgress(options: UseImportProgressOptions = {}): void 
       // Listen for subscription errors
       channel.error((error: Error) => {
         console.error('Import WebSocket subscription error:', error)
+        toast.error(t('common:errors.realtimeConnectionFailed'))
         onErrorRef.current?.(error)
       })
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Failed to subscribe to import channel')
       console.error('Import WebSocket subscription error:', err)
+      toast.error(t('common:errors.realtimeConnectionFailed'))
       onErrorRef.current?.(err)
     }
 

@@ -11,6 +11,7 @@ import { GlobalImportProgress } from './components/organisms/GlobalImportProgres
 import { AppRoutes } from './routes'
 import { languages } from './lib/i18n'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { CookieConsent } from './components/CookieConsent'
 
 /**
  * Import Progress Subscriber
@@ -43,6 +44,7 @@ function App() {
                 <AppRoutes />
                 <Toaster position="top-right" richColors />
                 <ImportProgressSubscriber />
+                <CookieConsent />
               </LocationProvider>
             </CompanyConfigProvider>
           </CompanyProvider>

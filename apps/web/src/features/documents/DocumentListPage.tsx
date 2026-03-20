@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { usePageTitle } from '../../hooks/usePageTitle'
 import { Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -89,6 +90,7 @@ interface DocumentListPageProps {
 
 export function DocumentListPage({ documentType }: DocumentListPageProps) {
   const { t } = useTranslation()
+  usePageTitle('documents.title', 'sales')
   const location = useLocation()
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
   const [searchQuery, setSearchQuery] = useState('')
@@ -108,7 +110,7 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
 
   // Get translated type and status labels
   const getTypeLabel = (type: string | undefined) => {
-    if (!type) return 'Unknown'
+    if (!type) return t('common:unknown')
     return t(`sales:documents.types.${type.replace(/_/g, '')}`, t(`sales:documents.types.${type}`, type))
   }
   const getStatusLabel = (status: string) => t(`status.${status}`, status)

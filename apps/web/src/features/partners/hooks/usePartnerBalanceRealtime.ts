@@ -1,5 +1,7 @@
 import { useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { useRealtimeChannel } from '../../../hooks/useRealtimeChannel'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
@@ -20,6 +22,7 @@ interface PartnerBalanceUpdatePayload {
  * relevant queries when any partner's balance changes.
  */
 export function usePartnerBalanceRealtime(): void {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
   const getCurrentCompany = useCompanyStore((state) => state.getCurrentCompany)
@@ -36,7 +39,8 @@ export function usePartnerBalanceRealtime(): void {
 
   const handleError = useCallback((error: Error) => {
     console.error('Partner balance WebSocket subscription error:', error)
-  }, [])
+    toast.error(t('common:errors.realtimeConnectionFailed'))
+  }, [t])
 
   const shouldSubscribe = Boolean(user && currentCompany)
 

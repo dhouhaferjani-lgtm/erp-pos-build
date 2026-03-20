@@ -26,6 +26,14 @@ interface PermissionsResponse {
 
 const SYSTEM_ROLES = ['super-admin', 'admin', 'owner']
 
+const translateModule = (t: (key: string, fallback: string) => string, module: string) =>
+  t('permissions.modules.' + module, module)
+
+const translateAction = (t: (key: string, fallback: string) => string, module: string, permission: string) => {
+  const action = permission.replace(`${module}.`, '')
+  return t('permissions.actions.' + action, action)
+}
+
 export function RolesPage() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -319,14 +327,14 @@ export function RolesPage() {
                           colSpan={roles.length + 1}
                           className="px-4 py-2 text-sm font-semibold text-gray-700 capitalize"
                         >
-                          {module}
+                          {translateModule(t, module)}
                         </td>
                       </tr>
                       {/* Permission Rows */}
                       {permissions.map((permission) => (
                         <tr key={permission} className="hover:bg-gray-50">
                           <td className="sticky left-0 bg-white whitespace-nowrap px-4 py-2 text-sm text-gray-700">
-                            {permission.replace(`${module}.`, '')}
+                            {translateAction(t, module, permission)}
                           </td>
                           {roles.map((role) => {
                             const hasPermission = role.permissions.includes(permission)
@@ -421,7 +429,7 @@ export function RolesPage() {
                                 <Check className="h-3 w-3 text-white" />
                               )}
                             </div>
-                            {module}
+                            {translateModule(t, module)}
                             <span className="text-xs text-gray-400">
                               ({moduleSelected}/{permissions.length})
                             </span>
@@ -438,7 +446,7 @@ export function RolesPage() {
                                   onChange={() => { togglePermission(permission); }}
                                   className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                                 />
-                                {permission.replace(`${module}.`, '')}
+                                {translateAction(t, module, permission)}
                               </label>
                             ))}
                           </div>

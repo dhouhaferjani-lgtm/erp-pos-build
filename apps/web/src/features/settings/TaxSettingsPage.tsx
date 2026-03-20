@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { EmptyState } from '../../components/molecules/EmptyState/EmptyState'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Save, Plus, Pencil, Trash2, GripVertical } from 'lucide-react'
@@ -433,8 +434,8 @@ export function TaxSettingsPage() {
 
             {/* Tax List */}
             {taxConfigurations.length === 0 ? (
-              <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
-                <p className="text-gray-500">{t('tax.configurations.table.noData')}</p>
+              <div className="bg-white rounded-lg border border-gray-200">
+                <EmptyState title={t('tax.configurations.table.noData')} />
               </div>
             ) : (
               <div className="bg-white shadow sm:rounded-lg overflow-hidden">

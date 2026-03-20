@@ -43,6 +43,8 @@ return [
 
     'path' => env('HORIZON_PATH', 'horizon'),
 
+    'allowed_emails' => env('HORIZON_ALLOWED_EMAILS', ''),
+
     /*
     |--------------------------------------------------------------------------
     | Horizon Redis Connection
@@ -83,7 +85,7 @@ return [
     |
     */
 
-    'middleware' => ['web'],
+    'middleware' => ['web', 'auth'],
 
     /*
     |--------------------------------------------------------------------------

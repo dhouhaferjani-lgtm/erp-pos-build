@@ -212,6 +212,10 @@ const LoyaltyMemberListPage = lazy(() => import('../features/loyalty').then((m) 
 const LoyaltyMemberFormPage = lazy(() => import('../features/loyalty').then((m) => ({ default: m.MemberFormPage })))
 const LoyaltyMemberDetailPage = lazy(() => import('../features/loyalty').then((m) => ({ default: m.MemberDetailPage })))
 
+// Legal pages
+const PrivacyPolicyPage = lazy(() => import('../pages/legal/PrivacyPolicyPage').then((m) => ({ default: m.PrivacyPolicyPage })))
+const TermsOfServicePage = lazy(() => import('../pages/legal/TermsOfServicePage').then((m) => ({ default: m.TermsOfServicePage })))
+
 function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   return (
     <Suspense fallback={<LoadingSpinner fullScreen />}>
@@ -261,6 +265,24 @@ export function AppRoutes() {
         element={
           <SuspenseWrapper>
             <ResetPasswordPage />
+          </SuspenseWrapper>
+        }
+      />
+
+      {/* Legal pages (public) */}
+      <Route
+        path="/privacy"
+        element={
+          <SuspenseWrapper>
+            <PrivacyPolicyPage />
+          </SuspenseWrapper>
+        }
+      />
+      <Route
+        path="/terms"
+        element={
+          <SuspenseWrapper>
+            <TermsOfServicePage />
           </SuspenseWrapper>
         }
       />

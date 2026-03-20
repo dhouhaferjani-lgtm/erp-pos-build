@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { fetchAgedReceivables } from '../api/reportsApi'
 import { formatCurrency } from '@/lib/format'
+import { useCompanyStore } from '@/stores/companyStore'
 
 /**
  * Aged Receivables Report Page
@@ -16,6 +18,8 @@ import { formatCurrency } from '@/lib/format'
  */
 export function AgedReceivablesPage() {
   const { t } = useTranslation(['reports', 'common'])
+  usePageTitle('agedReceivables.title', 'reports')
+  const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
   const [asOfDate, setAsOfDate] = useState<string>(new Date().toISOString().split('T')[0])
 
   const { data: report, isLoading, error } = useQuery({
@@ -43,7 +47,7 @@ export function AgedReceivablesPage() {
     return null
   }
 
-  const currency = 'EUR' // TODO: Get from company settings
+  const currency = currentCompany?.currency ?? 'EUR'
 
   return (
     <div className="container mx-auto px-4 py-8">
