@@ -132,5 +132,68 @@
       "days90": "61-90 Days",
       "over90": "Over 90 Days"
     }
+  },
+  "hub": {
+    "title": "Finance",
+    "description": "Manage payments, accounting, and financial reports",
+    "sections": {
+      "money": "Money",
+      "accounting": "Accounting",
+      "reports": "Reports"
+    },
+    "cards": {
+      "payments": {
+        "title": "Payments",
+        "description": "Track incoming and outgoing payments"
+      },
+      "expenses": {
+        "title": "Expenses",
+        "description": "Record and categorize business expenses"
+      },
+      "withholdingCertificates": {
+        "title": "Withholding Certificates",
+        "description": "Manage tax withholding certificates"
+      },
+      "chartOfAccounts": {
+        "title": "Chart of Accounts",
+        "description": "View and manage your account structure"
+      },
+      "generalLedger": {
+        "title": "General Ledger",
+        "description": "Browse all accounting transactions"
+      },
+      "journalEntries": {
+        "title": "Journal Entries",
+        "description": "Create and review manual journal entries"
+      },
+      "trialBalance": {
+        "title": "Trial Balance",
+        "description": "Verify debits and credits are balanced"
+      },
+      "profitLoss": {
+        "title": "Profit & Loss",
+        "description": "Income and expenses over a period"
+      },
+      "balanceSheet": {
+        "title": "Balance Sheet",
+        "description": "Assets, liabilities, and equity snapshot"
+      },
+      "agedReceivables": {
+        "title": "Aged Receivables",
+        "description": "Outstanding customer invoices by age"
+      },
+      "agedPayables": {
+        "title": "Aged Payables",
+        "description": "Outstanding vendor bills by age"
+      },
+      "posAnalytics": {
+        "title": "POS Analytics",
+        "description": "Sales performance and POS metrics"
+      },
+      "zReports": {
+        "title": "Z-Reports",
+        "description": "End-of-day POS settlement reports"
+      }
+    }
   }
 }

@@ -19,3 +19,4 @@ export * from './RecordPaymentModal'
 // which now supports multiple payment lines with excess allocation options.
 // Keep export for backwards compatibility but avoid using in new code.
 export * from './SplitPaymentModal'
+export * from './CommandPalette'

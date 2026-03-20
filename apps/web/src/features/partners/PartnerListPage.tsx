@@ -3,7 +3,7 @@ import { usePageTitle } from '../../hooks/usePageTitle'
 import { Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Plus, Users, Mail, Phone, FileText, Receipt } from 'lucide-react'
+import { Plus, Users, Mail, Phone, FileText, Receipt, Upload } from 'lucide-react'
 import { api } from '../../lib/api'
 import { formatCurrency } from '../../lib/formatCurrency'
 import { SearchInput } from '../../components/ui/SearchInput'
@@ -192,13 +192,22 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
             {total} {entitySingular.toLowerCase()} {t('total')}
           </p>
         </div>
-        <Link
-          to={`${basePath}/new`}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          {t('actions.add')} {entitySingular}
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            to={`/settings/import?entity=${isSupplierView ? 'suppliers' : 'customers'}`}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            <Upload className="h-4 w-4" />
+            {t('actions.import')}
+          </Link>
+          <Link
+            to={`${basePath}/new`}
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            {t('actions.add')} {entitySingular}
+          </Link>
+        </div>
       </div>
 
       {/* Filters */}

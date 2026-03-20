@@ -683,5 +683,51 @@
       "inactive": "Inactives",
       "withProducts": "Avec produits"
     }
+  },
+  "hub": {
+    "title": "Inventaire",
+    "description": "Gérer vos produits, niveaux de stock et opérations d'inventaire",
+    "cards": {
+      "products": {
+        "title": "Produits",
+        "description": "Parcourir et gérer votre catalogue de produits"
+      },
+      "categories": {
+        "title": "Catégories",
+        "description": "Organiser les produits en catégories et sous-catégories"
+      },
+      "stockLevels": {
+        "title": "Niveaux de stock",
+        "description": "Voir le stock actuel dans tous les emplacements"
+      },
+      "stockMovements": {
+        "title": "Mouvements de stock",
+        "description": "Suivre les entrées, sorties, transferts et ajustements"
+      },
+      "inventoryCounting": {
+        "title": "Comptage d'inventaire",
+        "description": "Planifier et exécuter les comptages physiques"
+      },
+      "priceLists": {
+        "title": "Listes de prix",
+        "description": "Gérer les règles de tarification et listes de prix"
+      },
+      "batches": {
+        "title": "Lots",
+        "description": "Suivre les numéros de lot et dates d'expiration"
+      },
+      "compositeItems": {
+        "title": "Articles composés",
+        "description": "Créer des recettes et produits groupés"
+      },
+      "modifierGroups": {
+        "title": "Groupes de modificateurs",
+        "description": "Configurer les modificateurs et options de produits"
+      },
+      "menus": {
+        "title": "Menus",
+        "description": "Concevoir et gérer les menus de produits"
+      }
+    }
   }
 }

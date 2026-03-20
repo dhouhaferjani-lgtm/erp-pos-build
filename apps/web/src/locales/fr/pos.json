@@ -653,5 +653,37 @@
       "served": "Servie",
       "cancelled": "Annulée"
     }
+  },
+  "hub": {
+    "title": "Point de vente",
+    "description": "Gérer vos terminaux PDV, commandes et opérations de vente",
+    "openPos": "Ouvrir le PDV",
+    "openPosDescription": "Lancer le terminal de point de vente pour traiter les transactions",
+    "cards": {
+      "orders": {
+        "title": "Commandes",
+        "description": "Voir et gérer les commandes PDV"
+      },
+      "tables": {
+        "title": "Tables",
+        "description": "Gérer la disposition et l'attribution des tables"
+      },
+      "kitchen": {
+        "title": "Affichage cuisine",
+        "description": "Surveiller les commandes et l'état de préparation"
+      },
+      "terminals": {
+        "title": "Terminaux",
+        "description": "Configurer et gérer les terminaux PDV"
+      },
+      "shiftHistory": {
+        "title": "Historique des quarts",
+        "description": "Consulter les quarts passés et la réconciliation de caisse"
+      },
+      "receipts": {
+        "title": "Reçus",
+        "description": "Rechercher et réimprimer les reçus de transaction"
+      }
+    }
   }
 }
