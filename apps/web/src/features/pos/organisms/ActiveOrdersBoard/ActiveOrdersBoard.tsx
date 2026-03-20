@@ -83,7 +83,7 @@ export function ActiveOrdersBoard({
                 <button
                   key={order.id}
                   type="button"
-                  onClick={() => onSelectOrder(order.id)}
+                  onClick={() => { onSelectOrder(order.id); }}
                   className={`w-full rounded-lg border p-3 text-left transition-colors hover:border-blue-300 dark:hover:border-blue-600 ${
                     selectedOrderId === order.id
                       ? 'border-blue-500 bg-blue-50 dark:border-blue-500 dark:bg-blue-900/20'

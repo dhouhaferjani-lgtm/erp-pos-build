@@ -146,7 +146,7 @@ export function KeyComponentFormPage() {
               <Input
                 id="slug"
                 value={slug}
-                onChange={(e) => setSlug(e.target.value)}
+                onChange={(e) => { setSlug(e.target.value); }}
                 required
                 placeholder="gelatin-capsule"
               />
@@ -160,7 +160,7 @@ export function KeyComponentFormPage() {
                 type="checkbox"
                 id="is_allergen"
                 checked={isAllergen}
-                onChange={(e) => setIsAllergen(e.target.checked)}
+                onChange={(e) => { setIsAllergen(e.target.checked); }}
                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               <label htmlFor="is_allergen" className="text-sm text-gray-700">

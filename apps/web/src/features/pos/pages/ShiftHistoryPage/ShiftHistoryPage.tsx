@@ -58,11 +58,11 @@ export function ShiftHistoryPage() {
             className="rounded-md border-gray-300 text-sm"
             value={filters.terminal_id ?? ''}
             onChange={(e) =>
-              setFilters((prev) => ({
+              { setFilters((prev) => ({
                 ...prev,
                 terminal_id: e.target.value || undefined,
                 page: 1,
-              }))
+              })); }
             }
           >
             <option value="">{t('pos:shiftHistory.filters.allTerminals')}</option>
@@ -82,11 +82,11 @@ export function ShiftHistoryPage() {
             className="rounded-md border-gray-300 text-sm"
             value={filters.status ?? ''}
             onChange={(e) =>
-              setFilters((prev) => ({
+              { setFilters((prev) => ({
                 ...prev,
                 status: (e.target.value || undefined) as ShiftHistoryFilters['status'],
                 page: 1,
-              }))
+              })); }
             }
           >
             <option value="">{t('pos:shiftHistory.filters.allStatuses')}</option>
@@ -104,7 +104,7 @@ export function ShiftHistoryPage() {
             className="rounded-md border-gray-300 text-sm"
             value={filters.from_date ?? ''}
             onChange={(e) =>
-              setFilters((prev) => ({ ...prev, from_date: e.target.value || undefined, page: 1 }))
+              { setFilters((prev) => ({ ...prev, from_date: e.target.value || undefined, page: 1 })); }
             }
           />
         </div>
@@ -118,7 +118,7 @@ export function ShiftHistoryPage() {
             className="rounded-md border-gray-300 text-sm"
             value={filters.to_date ?? ''}
             onChange={(e) =>
-              setFilters((prev) => ({ ...prev, to_date: e.target.value || undefined, page: 1 }))
+              { setFilters((prev) => ({ ...prev, to_date: e.target.value || undefined, page: 1 })); }
             }
           />
         </div>
@@ -220,7 +220,7 @@ export function ShiftHistoryPage() {
               <button
                 type="button"
                 disabled={meta.current_page <= 1}
-                onClick={() => setFilters((prev) => ({ ...prev, page: (prev.page ?? 1) - 1 }))}
+                onClick={() => { setFilters((prev) => ({ ...prev, page: (prev.page ?? 1) - 1 })); }}
                 className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm disabled:opacity-50"
               >
                 {t('common:pagination.previous')}
@@ -228,7 +228,7 @@ export function ShiftHistoryPage() {
               <button
                 type="button"
                 disabled={meta.current_page >= meta.last_page}
-                onClick={() => setFilters((prev) => ({ ...prev, page: (prev.page ?? 1) + 1 }))}
+                onClick={() => { setFilters((prev) => ({ ...prev, page: (prev.page ?? 1) + 1 })); }}
                 className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm disabled:opacity-50"
               >
                 {t('common:pagination.next')}

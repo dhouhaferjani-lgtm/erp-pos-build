@@ -61,7 +61,7 @@ export function ModifierGroupAssigner({ compositeItemId, assignedGroups }: Modif
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => handleRemove(group.id)}
+                  onClick={() => { handleRemove(group.id); }}
                   disabled={removeMutation.isPending}
                   className="!p-1 text-red-600 hover:text-red-900 hover:bg-red-50"
                 >
@@ -87,7 +87,7 @@ export function ModifierGroupAssigner({ compositeItemId, assignedGroups }: Modif
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => handleAssign(group.id)}
+                  onClick={() => { handleAssign(group.id); }}
                   disabled={assignMutation.isPending}
                   className="!p-1 text-blue-600 hover:text-blue-700"
                 >

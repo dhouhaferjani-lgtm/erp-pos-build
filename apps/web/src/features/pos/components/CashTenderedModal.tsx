@@ -84,7 +84,7 @@ export function CashTenderedModal({
               step="0.01"
               min={0}
               value={tenderedStr}
-              onChange={(e) => setTenderedStr(e.target.value)}
+              onChange={(e) => { setTenderedStr(e.target.value); }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && isValid && !isProcessing) {
                   handleConfirm()
@@ -109,7 +109,7 @@ export function CashTenderedModal({
             <button
               key={amount}
               type="button"
-              onClick={() => handleDenomination(amount)}
+              onClick={() => { handleDenomination(amount); }}
               className="flex-1 min-w-[60px] px-3 py-2.5 text-sm font-medium bg-gray-50 text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
             >
               {formatMoney(amount)}

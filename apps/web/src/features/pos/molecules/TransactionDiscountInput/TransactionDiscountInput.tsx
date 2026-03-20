@@ -12,7 +12,7 @@ export interface TransactionDiscountInputProps {
   subtotal: string
   effectiveLimit: number
   requiresReason: boolean
-  onApply: (amount: string, reason?: string | undefined) => void
+  onApply: (amount: string, reason?: string  ) => void
   onClear: () => void
   touchOptimized?: boolean | undefined
 }
@@ -139,7 +139,7 @@ export function TransactionDiscountInput({
             variant={inputMode === 'percentage' ? 'primary' : 'secondary'}
             size={touchOptimized ? 'md' : 'sm'}
             touchOptimized={touchOptimized}
-            onClick={() => handleModeChange('percentage')}
+            onClick={() => { handleModeChange('percentage'); }}
             fullWidth
           >
             {t('pos:cart.percentage')}
@@ -148,7 +148,7 @@ export function TransactionDiscountInput({
             variant={inputMode === 'fixed' ? 'primary' : 'secondary'}
             size={touchOptimized ? 'md' : 'sm'}
             touchOptimized={touchOptimized}
-            onClick={() => handleModeChange('fixed')}
+            onClick={() => { handleModeChange('fixed'); }}
             fullWidth
           >
             {t('pos:cart.fixed')}
@@ -167,7 +167,7 @@ export function TransactionDiscountInput({
                 variant="secondary"
                 size={touchOptimized ? 'md' : 'sm'}
                 touchOptimized={touchOptimized}
-                onClick={() => handlePresetClick(percent)}
+                onClick={() => { handlePresetClick(percent); }}
                 disabled={percent > effectiveLimit}
               >
                 {percent}%

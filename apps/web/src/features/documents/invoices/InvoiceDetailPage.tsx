@@ -237,13 +237,13 @@ export function InvoiceDetailPage() {
               document={invoice}
               basePath="/sales/invoices"
               isActionPending={isActionPending}
-              onConfirm={() => setConfirmAction('confirm')}
-              onPost={() => setConfirmAction('post')}
-              onCreateCreditNote={() => setShowCreditNoteForm(true)}
+              onConfirm={() => { setConfirmAction('confirm'); }}
+              onPost={() => { setConfirmAction('post'); }}
+              onCreateCreditNote={() => { setShowCreditNoteForm(true); }}
               onDownloadPdf={handleDownloadPdf}
               onPreviewPdf={handlePreviewPdf}
               onPrintPdf={handlePrintPdf}
-              onSendEmail={() => setShowEmailModal(true)}
+              onSendEmail={() => { setShowEmailModal(true); }}
               isDownloading={downloadPdfMutation.isPending}
               isPreviewing={previewPdfMutation.isPending}
               isPrinting={printPdfMutation.isPending}
@@ -254,7 +254,7 @@ export function InvoiceDetailPage() {
               <DocumentOutstandingCallout
                 amount={outstandingAmount}
                 currency={currentCompany?.currency ?? 'EUR'}
-                {...(canRecordPayment ? { onRecordPayment: () => setShowPaymentModal(true) } : {})}
+                {...(canRecordPayment ? { onRecordPayment: () => { setShowPaymentModal(true); } } : {})}
               />
             ) : undefined
           }
@@ -401,7 +401,7 @@ export function InvoiceDetailPage() {
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
             <button
-              onClick={() => setActiveTab('related')}
+              onClick={() => { setActiveTab('related'); }}
               className={`${
                 activeTab === 'related'
                   ? 'border-blue-500 text-blue-600'
@@ -411,7 +411,7 @@ export function InvoiceDetailPage() {
               {t('documents.relatedDocuments')}
             </button>
             <button
-              onClick={() => setActiveTab('attachments')}
+              onClick={() => { setActiveTab('attachments'); }}
               className={`${
                 activeTab === 'attachments'
                   ? 'border-blue-500 text-blue-600'
@@ -422,7 +422,7 @@ export function InvoiceDetailPage() {
             </button>
             {isPosted && (
               <button
-                onClick={() => setActiveTab('creditNotes')}
+                onClick={() => { setActiveTab('creditNotes'); }}
                 className={`${
                   activeTab === 'creditNotes'
                     ? 'border-blue-500 text-blue-600'
@@ -434,7 +434,7 @@ export function InvoiceDetailPage() {
             )}
             {isConfirmedOrPosted && (
               <button
-                onClick={() => setActiveTab('payments')}
+                onClick={() => { setActiveTab('payments'); }}
                 className={`${
                   activeTab === 'payments'
                     ? 'border-blue-500 text-blue-600'
@@ -469,7 +469,7 @@ export function InvoiceDetailPage() {
                   outstandingAmount={outstandingAmount}
                   paymentStatus={invoice.payment_status as PaymentStatus}
                   currency={currentCompany?.currency ?? 'EUR'}
-                  onRecordPayment={canRecordPayment ? () => setShowPaymentModal(true) : undefined}
+                  onRecordPayment={canRecordPayment ? () => { setShowPaymentModal(true); } : undefined}
                 />
               </div>
             </div>
@@ -480,7 +480,7 @@ export function InvoiceDetailPage() {
       {/* Confirmation Dialogs */}
       <ConfirmDialog
         isOpen={confirmAction === 'confirm'}
-        onClose={() => setConfirmAction(null)}
+        onClose={() => { setConfirmAction(null); }}
         onConfirm={handleConfirm}
         title={t('documents.confirmTitle')}
         message={t('documents.confirmMessage')}
@@ -490,7 +490,7 @@ export function InvoiceDetailPage() {
 
       <ConfirmDialog
         isOpen={confirmAction === 'post'}
-        onClose={() => setConfirmAction(null)}
+        onClose={() => { setConfirmAction(null); }}
         onConfirm={handlePost}
         title={t('invoices.postTitle')}
         message={t('invoices.postMessage')}
@@ -502,9 +502,9 @@ export function InvoiceDetailPage() {
       {/* Delivery Confirmation Modal */}
       <DeliveryConfirmationModal
         isOpen={showDeliveryConfirmationModal}
-        onClose={() => setShowDeliveryConfirmationModal(false)}
+        onClose={() => { setShowDeliveryConfirmationModal(false); }}
         draftDeliveryNotes={draftDeliveryNotes}
-        onConfirmAndPost={() => confirmDeliveriesAndPostMutation.mutate()}
+        onConfirmAndPost={() => { confirmDeliveriesAndPostMutation.mutate(); }}
         isLoading={confirmDeliveriesAndPostMutation.isPending}
       />
 
@@ -515,7 +515,7 @@ export function InvoiceDetailPage() {
             <CreateCreditNoteForm
               invoice={invoice as unknown as InvoiceForCreditNote}
               onSuccess={handleCreditNoteCreated}
-              onCancel={() => setShowCreditNoteForm(false)}
+              onCancel={() => { setShowCreditNoteForm(false); }}
             />
           </div>
         </div>
@@ -525,7 +525,7 @@ export function InvoiceDetailPage() {
       {invoice.partner_id && (
         <RecordPaymentModal
           isOpen={showPaymentModal}
-          onClose={() => setShowPaymentModal(false)}
+          onClose={() => { setShowPaymentModal(false); }}
           onSuccess={handlePaymentSuccess}
           prefill={{
             partner_id: invoice.partner_id,
@@ -549,7 +549,7 @@ export function InvoiceDetailPage() {
                 <input
                   type="email"
                   value={emailForm.recipientEmail}
-                  onChange={(e) => setEmailForm({ ...emailForm, recipientEmail: e.target.value })}
+                  onChange={(e) => { setEmailForm({ ...emailForm, recipientEmail: e.target.value }); }}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                 />
               </div>
@@ -558,7 +558,7 @@ export function InvoiceDetailPage() {
                 <input
                   type="text"
                   value={emailForm.subject}
-                  onChange={(e) => setEmailForm({ ...emailForm, subject: e.target.value })}
+                  onChange={(e) => { setEmailForm({ ...emailForm, subject: e.target.value }); }}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                 />
               </div>
@@ -566,14 +566,14 @@ export function InvoiceDetailPage() {
                 <label className="block text-sm font-medium text-gray-700">{t('common:email.message')}</label>
                 <textarea
                   value={emailForm.message}
-                  onChange={(e) => setEmailForm({ ...emailForm, message: e.target.value })}
+                  onChange={(e) => { setEmailForm({ ...emailForm, message: e.target.value }); }}
                   rows={4}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                 />
               </div>
               <div className="flex justify-end gap-3">
                 <button
-                  onClick={() => setShowEmailModal(false)}
+                  onClick={() => { setShowEmailModal(false); }}
                   className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
                   {t('common:cancel')}

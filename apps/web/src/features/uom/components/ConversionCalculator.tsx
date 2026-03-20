@@ -182,7 +182,7 @@ export function ConversionCalculator({
             <UnitDropdown
               name="fromUnitId"
               value={fromUnitId}
-              onChange={(value) => setValue('fromUnitId', value, { shouldValidate: true })}
+              onChange={(value) => { setValue('fromUnitId', value, { shouldValidate: true }); }}
               error={!!errors.fromUnitId}
             />
           </FormField>
@@ -205,7 +205,7 @@ export function ConversionCalculator({
             <UnitDropdown
               name="toUnitId"
               value={toUnitId}
-              onChange={(value) => setValue('toUnitId', value, { shouldValidate: true })}
+              onChange={(value) => { setValue('toUnitId', value, { shouldValidate: true }); }}
               error={!!errors.toUnitId}
             />
           </FormField>

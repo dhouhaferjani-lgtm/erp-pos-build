@@ -140,7 +140,7 @@ export function HeldOrderCard({
           </span>
           <button
             type="button"
-            onClick={() => setShowConfirmDiscard(false)}
+            onClick={() => { setShowConfirmDiscard(false); }}
             className="rounded px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100"
           >
             {t('common:cancel')}
@@ -158,7 +158,7 @@ export function HeldOrderCard({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => onRecall(order.id)}
+            onClick={() => { onRecall(order.id); }}
             disabled={isRecalling || expiryInfo?.expired === true}
             className={cn(
               'flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium',

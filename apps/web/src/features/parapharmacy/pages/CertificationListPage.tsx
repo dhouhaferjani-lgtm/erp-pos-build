@@ -147,7 +147,7 @@ export function CertificationListPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => setDeleteId(certification.id)}
+                          onClick={() => { setDeleteId(certification.id); }}
                           aria-label={t('common:delete')}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -177,7 +177,7 @@ export function CertificationListPage() {
 
       <ConfirmDialog
         isOpen={!!deleteId}
-        onClose={() => setDeleteId(null)}
+        onClose={() => { setDeleteId(null); }}
         onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
         title={t('parapharmacy:confirmDeleteCertification')}
         message={t('parapharmacy:confirmDeleteCertificationDescription')}

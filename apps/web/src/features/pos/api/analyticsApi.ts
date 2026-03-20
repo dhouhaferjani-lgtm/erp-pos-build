@@ -78,7 +78,7 @@ export interface FnbMetrics {
 function buildParams(filters: AnalyticsFilters, extra?: Record<string, string>): string {
   const params = new URLSearchParams({ from: filters.from, to: filters.to })
   if (extra) {
-    Object.entries(extra).forEach(([k, v]) => params.set(k, v))
+    Object.entries(extra).forEach(([k, v]) => { params.set(k, v); })
   }
   return params.toString()
 }

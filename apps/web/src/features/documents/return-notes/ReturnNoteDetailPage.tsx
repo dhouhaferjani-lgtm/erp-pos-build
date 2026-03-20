@@ -127,10 +127,10 @@ export function ReturnNoteDetailPage() {
             document={returnNote}
             basePath="/inventory/return-notes"
             isActionPending={confirmMutation.isPending}
-            onConfirm={() => setConfirmAction('confirm')}
-            onDownloadPdf={() => downloadPdfMutation.mutate(returnNote.id)}
-            onPreviewPdf={() => previewPdfMutation.mutate(returnNote.id)}
-            onPrintPdf={() => printPdfMutation.mutate(returnNote.id)}
+            onConfirm={() => { setConfirmAction('confirm'); }}
+            onDownloadPdf={() => { downloadPdfMutation.mutate(returnNote.id); }}
+            onPreviewPdf={() => { previewPdfMutation.mutate(returnNote.id); }}
+            onPrintPdf={() => { printPdfMutation.mutate(returnNote.id); }}
             isDownloading={downloadPdfMutation.isPending}
             isPreviewing={previewPdfMutation.isPending}
             isPrinting={printPdfMutation.isPending}
@@ -294,8 +294,8 @@ export function ReturnNoteDetailPage() {
       {/* Confirm Dialog */}
       <ConfirmDialog
         isOpen={confirmAction === 'confirm'}
-        onClose={() => setConfirmAction(null)}
-        onConfirm={() => confirmMutation.mutate()}
+        onClose={() => { setConfirmAction(null); }}
+        onConfirm={() => { confirmMutation.mutate(); }}
         title={t('returnNotes.confirmTitle')}
         message={t('returnNotes.confirmMessage')}
         confirmText={t('common:confirm')}
@@ -305,7 +305,7 @@ export function ReturnNoteDetailPage() {
       {/* Email Modal */}
       <Modal
         isOpen={showEmailModal}
-        onClose={() => setShowEmailModal(false)}
+        onClose={() => { setShowEmailModal(false); }}
         title={t('common.sendEmail')}
       >
         <div className="space-y-4">
@@ -316,7 +316,7 @@ export function ReturnNoteDetailPage() {
             <input
               type="email"
               value={emailForm.recipientEmail}
-              onChange={(e) => setEmailForm({ ...emailForm, recipientEmail: e.target.value })}
+              onChange={(e) => { setEmailForm({ ...emailForm, recipientEmail: e.target.value }); }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md"
             />
           </div>
@@ -327,7 +327,7 @@ export function ReturnNoteDetailPage() {
             <input
               type="text"
               value={emailForm.subject}
-              onChange={(e) => setEmailForm({ ...emailForm, subject: e.target.value })}
+              onChange={(e) => { setEmailForm({ ...emailForm, subject: e.target.value }); }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md"
             />
           </div>
@@ -337,14 +337,14 @@ export function ReturnNoteDetailPage() {
             </label>
             <textarea
               value={emailForm.message}
-              onChange={(e) => setEmailForm({ ...emailForm, message: e.target.value })}
+              onChange={(e) => { setEmailForm({ ...emailForm, message: e.target.value }); }}
               rows={4}
               className="w-full px-3 py-2 border border-gray-300 rounded-md"
             />
           </div>
           <div className="flex justify-end gap-3">
             <button
-              onClick={() => setShowEmailModal(false)}
+              onClick={() => { setShowEmailModal(false); }}
               className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               {t('common:cancel')}

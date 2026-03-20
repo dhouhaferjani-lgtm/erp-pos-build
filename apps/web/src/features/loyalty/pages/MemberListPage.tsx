@@ -127,8 +127,8 @@ export function MemberListPage() {
             <Pagination
               hasPrev={meta.current_page > 1}
               hasNext={meta.current_page < meta.last_page}
-              onPrev={() => setPage((p) => Math.max(1, p - 1))}
-              onNext={() => setPage((p) => p + 1)}
+              onPrev={() => { setPage((p) => Math.max(1, p - 1)); }}
+              onNext={() => { setPage((p) => p + 1); }}
               perPage={perPage}
               onPerPageChange={(newPerPage) => {
                 setPerPage(newPerPage)

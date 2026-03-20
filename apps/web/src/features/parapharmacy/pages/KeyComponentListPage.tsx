@@ -133,7 +133,7 @@ export function KeyComponentListPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => setDeleteId(keyComponent.id)}
+                          onClick={() => { setDeleteId(keyComponent.id); }}
                           aria-label={t('common:delete')}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -163,7 +163,7 @@ export function KeyComponentListPage() {
 
       <ConfirmDialog
         isOpen={!!deleteId}
-        onClose={() => setDeleteId(null)}
+        onClose={() => { setDeleteId(null); }}
         onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
         title={t('parapharmacy:confirmDeleteKeyComponent')}
         message={t('parapharmacy:confirmDeleteKeyComponentDescription')}

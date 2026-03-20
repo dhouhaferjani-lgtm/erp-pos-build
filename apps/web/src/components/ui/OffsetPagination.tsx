@@ -62,7 +62,7 @@ export function OffsetPagination({
           <span className="text-sm text-gray-600">{t('rowsPerPage')}:</span>
           <select
             value={perPage}
-            onChange={(e) => onPerPageChange(Number(e.target.value))}
+            onChange={(e) => { onPerPageChange(Number(e.target.value)); }}
             className="rounded-md border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
           >
             {PER_PAGE_OPTIONS.map((option) => (

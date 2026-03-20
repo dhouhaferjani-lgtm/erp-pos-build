@@ -115,7 +115,7 @@ export function AnalyticsDashboardPage() {
             <button
               key={tab}
               type="button"
-              onClick={() => setActiveTab(tab)}
+              onClick={() => { setActiveTab(tab); }}
               className={`whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition-colors ${
                 activeTab === tab
                   ? 'border-primary text-primary'

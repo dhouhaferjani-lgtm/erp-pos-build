@@ -1,6 +1,6 @@
 // Import Types - matches backend API
 
-export type ImportType = 'partners' | 'products' | 'opening_balances' | 'product_images' | 'composite_items'
+export type ImportType = 'partners' | 'products' | 'opening_balances' | 'product_images' | 'composite_items' | 'stock_levels'
 
 export type ImportStatus =
   | 'pending'

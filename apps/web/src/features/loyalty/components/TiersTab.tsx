@@ -38,10 +38,10 @@ export function TiersTab({ programId }: TiersTabProps) {
     if (editingTier) {
       updateMutation.mutate(
         { id: editingTier.id, data },
-        { onSuccess: () => setIsModalOpen(false) },
+        { onSuccess: () => { setIsModalOpen(false); } },
       )
     } else {
-      createMutation.mutate(data, { onSuccess: () => setIsModalOpen(false) })
+      createMutation.mutate(data, { onSuccess: () => { setIsModalOpen(false); } })
     }
   }
 
@@ -101,13 +101,13 @@ export function TiersTab({ programId }: TiersTabProps) {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <button
-                        onClick={() => handleOpenEdit(tier)}
+                        onClick={() => { handleOpenEdit(tier); }}
                         className="p-1.5 rounded hover:bg-gray-100 text-gray-600"
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => setDeleteTarget(tier)}
+                        onClick={() => { setDeleteTarget(tier); }}
                         className="p-1.5 rounded hover:bg-red-50 text-red-500"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -123,7 +123,7 @@ export function TiersTab({ programId }: TiersTabProps) {
 
       <TierFormModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => { setIsModalOpen(false); }}
         onSubmit={handleSubmit}
         isPending={createMutation.isPending || updateMutation.isPending}
         editingTier={editingTier}
@@ -131,10 +131,10 @@ export function TiersTab({ programId }: TiersTabProps) {
 
       <ConfirmDialog
         isOpen={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
+        onClose={() => { setDeleteTarget(null); }}
         onConfirm={() => {
           if (deleteTarget) {
-            deleteMutation.mutate(deleteTarget.id, { onSettled: () => setDeleteTarget(null) })
+            deleteMutation.mutate(deleteTarget.id, { onSettled: () => { setDeleteTarget(null); } })
           }
         }}
         isLoading={deleteMutation.isPending}

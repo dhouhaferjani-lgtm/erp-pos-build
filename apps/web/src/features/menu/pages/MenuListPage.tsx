@@ -91,11 +91,11 @@ export function MenuListPage() {
         <FilterTabs
           tabs={filterTabs}
           value={statusFilter}
-          onChange={(v) => tableState.setFilter('is_active', v === 'all' ? undefined : v)}
+          onChange={(v) => { tableState.setFilter('is_active', v === 'all' ? undefined : v); }}
         />
         <SearchFilter
           value={tableState.filters['search'] as string | undefined}
-          onChange={(v) => tableState.setFilter('search', v)}
+          onChange={(v) => { tableState.setFilter('search', v); }}
           placeholder={`${t('common:actions.search')} ${t('menu:menus').toLowerCase()}...`}
           className="w-full sm:w-72"
         />

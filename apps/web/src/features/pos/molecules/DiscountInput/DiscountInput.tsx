@@ -185,7 +185,7 @@ export function DiscountInput({
             variant={discountType === 'percentage' ? 'primary' : 'secondary'}
             size={touchOptimized ? 'md' : 'sm'}
             touchOptimized={touchOptimized}
-            onClick={() => handleTypeChange('percentage')}
+            onClick={() => { handleTypeChange('percentage'); }}
             fullWidth
           >
             {t('cart.percentage')}
@@ -194,7 +194,7 @@ export function DiscountInput({
             variant={discountType === 'fixed' ? 'primary' : 'secondary'}
             size={touchOptimized ? 'md' : 'sm'}
             touchOptimized={touchOptimized}
-            onClick={() => handleTypeChange('fixed')}
+            onClick={() => { handleTypeChange('fixed'); }}
             fullWidth
           >
             {t('cart.fixed')}
@@ -213,7 +213,7 @@ export function DiscountInput({
                 variant="secondary"
                 size={touchOptimized ? 'md' : 'sm'}
                 touchOptimized={touchOptimized}
-                onClick={() => handlePresetClick(percent)}
+                onClick={() => { handlePresetClick(percent); }}
                 disabled={percent > effectiveLimit}
               >
                 {percent}%

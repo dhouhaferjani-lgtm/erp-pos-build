@@ -161,7 +161,7 @@ export function IngredientListPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => setDeleteId(ingredient.id)}
+                          onClick={() => { setDeleteId(ingredient.id); }}
                           aria-label={t('common:delete')}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -191,7 +191,7 @@ export function IngredientListPage() {
 
       <ConfirmDialog
         isOpen={!!deleteId}
-        onClose={() => setDeleteId(null)}
+        onClose={() => { setDeleteId(null); }}
         onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
         title={t('parapharmacy:confirmDeleteIngredient')}
         message={t('parapharmacy:confirmDeleteIngredientDescription')}

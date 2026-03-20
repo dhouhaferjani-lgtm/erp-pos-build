@@ -48,10 +48,10 @@ export function RewardsTab({ programId }: RewardsTabProps) {
     if (editingReward) {
       updateMutation.mutate(
         { id: editingReward.id, data },
-        { onSuccess: () => setIsModalOpen(false) },
+        { onSuccess: () => { setIsModalOpen(false); } },
       )
     } else {
-      createMutation.mutate(data, { onSuccess: () => setIsModalOpen(false) })
+      createMutation.mutate(data, { onSuccess: () => { setIsModalOpen(false); } })
     }
   }
 
@@ -108,28 +108,28 @@ export function RewardsTab({ programId }: RewardsTabProps) {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <button
-                        onClick={() => handleOpenEdit(reward)}
+                        onClick={() => { handleOpenEdit(reward); }}
                         className="p-1.5 rounded hover:bg-gray-100 text-gray-600"
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
                       {reward.is_active ? (
                         <button
-                          onClick={() => deactivateMutation.mutate(reward.id)}
+                          onClick={() => { deactivateMutation.mutate(reward.id); }}
                           className="p-1.5 rounded hover:bg-orange-50 text-orange-600"
                         >
                           <Pause className="w-4 h-4" />
                         </button>
                       ) : (
                         <button
-                          onClick={() => activateMutation.mutate(reward.id)}
+                          onClick={() => { activateMutation.mutate(reward.id); }}
                           className="p-1.5 rounded hover:bg-green-50 text-green-600"
                         >
                           <Play className="w-4 h-4" />
                         </button>
                       )}
                       <button
-                        onClick={() => setDeleteTarget(reward)}
+                        onClick={() => { setDeleteTarget(reward); }}
                         className="p-1.5 rounded hover:bg-red-50 text-red-500"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -145,7 +145,7 @@ export function RewardsTab({ programId }: RewardsTabProps) {
 
       <RewardFormModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => { setIsModalOpen(false); }}
         onSubmit={handleSubmit}
         isPending={createMutation.isPending || updateMutation.isPending}
         editingReward={editingReward}
@@ -153,10 +153,10 @@ export function RewardsTab({ programId }: RewardsTabProps) {
 
       <ConfirmDialog
         isOpen={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
+        onClose={() => { setDeleteTarget(null); }}
         onConfirm={() => {
           if (deleteTarget) {
-            deleteMutation.mutate(deleteTarget.id, { onSettled: () => setDeleteTarget(null) })
+            deleteMutation.mutate(deleteTarget.id, { onSettled: () => { setDeleteTarget(null); } })
           }
         }}
         isLoading={deleteMutation.isPending}

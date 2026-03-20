@@ -117,7 +117,7 @@ export function ZReportDetailPage() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => downloadPdfMutation.mutate()}
+            onClick={() => { downloadPdfMutation.mutate(); }}
             disabled={downloadPdfMutation.isPending}
             className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
           >
@@ -130,7 +130,7 @@ export function ZReportDetailPage() {
           </button>
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={() => { window.print(); }}
             className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             <Printer className="h-4 w-4" />
@@ -138,7 +138,7 @@ export function ZReportDetailPage() {
           </button>
           <button
             type="button"
-            onClick={() => verifyChainMutation.mutate(terminalId)}
+            onClick={() => { verifyChainMutation.mutate(terminalId); }}
             disabled={verifyChainMutation.isPending}
             className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >

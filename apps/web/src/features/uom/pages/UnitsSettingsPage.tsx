@@ -84,7 +84,7 @@ export function UnitsSettingsPage() {
           <h1 className="text-3xl font-bold text-gray-900">{t('uom:title')}</h1>
           <p className="mt-2 text-gray-600">{t('uom:systemUnitInfo')}</p>
         </div>
-        <Button onClick={() => handleAddUnit()}>
+        <Button onClick={() => { handleAddUnit(); }}>
           <Plus className="h-4 w-4 mr-2" />
           {t('uom:addUnit')}
         </Button>
@@ -103,7 +103,7 @@ export function UnitsSettingsPage() {
                 )}
               </div>
               <Button
-                onClick={() => handleAddUnit(category.id)}
+                onClick={() => { handleAddUnit(category.id); }}
                 variant="secondary"
                 size="sm"
               >
@@ -171,7 +171,7 @@ export function UnitsSettingsPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleEditUnit(unit)}
+                              onClick={() => { handleEditUnit(unit); }}
                               disabled={unit.isSystem}
                               aria-label={t('common:actions.edit')}
                             >
@@ -180,7 +180,7 @@ export function UnitsSettingsPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleDeleteClick(unit)}
+                              onClick={() => { handleDeleteClick(unit); }}
                               disabled={unit.isSystem || deleteMutation.isPending}
                               aria-label={t('common:actions.delete')}
                             >
@@ -215,7 +215,7 @@ export function UnitsSettingsPage() {
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog
         isOpen={!!deleteUnit}
-        onClose={() => setDeleteUnit(null)}
+        onClose={() => { setDeleteUnit(null); }}
         onConfirm={handleConfirmDelete}
         title={t('common:common.confirmDelete', { resource: deleteUnit?.name || '' })}
         message={t('uom:errors.unitInUse')}

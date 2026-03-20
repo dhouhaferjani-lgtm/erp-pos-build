@@ -91,14 +91,14 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
                   <Input
                     type="text"
                     defaultValue={variant.name}
-                    onBlur={(e) => handleUpdate(variant.id, 'name', e.target.value)}
+                    onBlur={(e) => { handleUpdate(variant.id, 'name', e.target.value); }}
                     className="!mt-0 w-32"
                   />
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm">
                   <Select
                     defaultValue={variant.price_adjustment_type}
-                    onChange={(e) => handleUpdate(variant.id, 'price_adjustment_type', e.target.value)}
+                    onChange={(e) => { handleUpdate(variant.id, 'price_adjustment_type', e.target.value); }}
                     className="!mt-0"
                   >
                     <option value="absolute">{t('catalog:absolute')}</option>
@@ -110,7 +110,7 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
                   <Input
                     type="number"
                     defaultValue={variant.price_adjustment}
-                    onBlur={(e) => handleUpdate(variant.id, 'price_adjustment', e.target.value)}
+                    onBlur={(e) => { handleUpdate(variant.id, 'price_adjustment', e.target.value); }}
                     className="!mt-0 w-24"
                     step="0.01"
                   />
@@ -119,7 +119,7 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
                   <Input
                     type="number"
                     defaultValue={variant.recipe_multiplier}
-                    onBlur={(e) => handleUpdate(variant.id, 'recipe_multiplier', e.target.value)}
+                    onBlur={(e) => { handleUpdate(variant.id, 'recipe_multiplier', e.target.value); }}
                     className="!mt-0 w-20"
                     step="0.01"
                     min="0.01"
@@ -130,7 +130,7 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
                     type="radio"
                     name="default_variant"
                     checked={variant.is_default}
-                    onChange={() => handleUpdate(variant.id, 'is_default', true)}
+                    onChange={() => { handleUpdate(variant.id, 'is_default', true); }}
                     className={tokens.radio.base}
                   />
                 </td>
@@ -138,7 +138,7 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleDelete(variant.id)}
+                    onClick={() => { handleDelete(variant.id); }}
                     disabled={deleteMutation.isPending}
                     className="!p-1 text-red-600 hover:text-red-900 hover:bg-red-50"
                   >
@@ -154,7 +154,7 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
                   type="text"
                   placeholder={t('catalog:code')}
                   value={newVariant.code}
-                  onChange={(e) => setNewVariant({ ...newVariant, code: e.target.value })}
+                  onChange={(e) => { setNewVariant({ ...newVariant, code: e.target.value }); }}
                   className="!mt-0 w-24"
                 />
               </td>
@@ -163,14 +163,14 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
                   type="text"
                   placeholder={t('catalog:name')}
                   value={newVariant.name}
-                  onChange={(e) => setNewVariant({ ...newVariant, name: e.target.value })}
+                  onChange={(e) => { setNewVariant({ ...newVariant, name: e.target.value }); }}
                   className="!mt-0 w-32"
                 />
               </td>
               <td className="px-3 py-4">
                 <Select
                   value={newVariant.price_adjustment_type}
-                  onChange={(e) => setNewVariant({ ...newVariant, price_adjustment_type: e.target.value as PriceAdjustmentType })}
+                  onChange={(e) => { setNewVariant({ ...newVariant, price_adjustment_type: e.target.value as PriceAdjustmentType }); }}
                   className="!mt-0"
                 >
                   <option value="absolute">{t('catalog:absolute')}</option>
@@ -182,7 +182,7 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
                 <Input
                   type="number"
                   value={newVariant.price_adjustment}
-                  onChange={(e) => setNewVariant({ ...newVariant, price_adjustment: e.target.value })}
+                  onChange={(e) => { setNewVariant({ ...newVariant, price_adjustment: e.target.value }); }}
                   className="!mt-0 w-24"
                   step="0.01"
                 />
@@ -191,7 +191,7 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
                 <Input
                   type="number"
                   value={newVariant.recipe_multiplier}
-                  onChange={(e) => setNewVariant({ ...newVariant, recipe_multiplier: e.target.value })}
+                  onChange={(e) => { setNewVariant({ ...newVariant, recipe_multiplier: e.target.value }); }}
                   className="!mt-0 w-20"
                   step="0.01"
                   min="0.01"
@@ -201,7 +201,7 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
                 <input
                   type="checkbox"
                   checked={newVariant.is_default}
-                  onChange={(e) => setNewVariant({ ...newVariant, is_default: e.target.checked })}
+                  onChange={(e) => { setNewVariant({ ...newVariant, is_default: e.target.checked }); }}
                   className={tokens.checkbox.base}
                 />
               </td>

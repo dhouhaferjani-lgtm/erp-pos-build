@@ -197,7 +197,7 @@ export function CartLineItem({
               </span>
               {onEditDiscount && (
                 <button
-                  onClick={() => onEditDiscount(item.product.id)}
+                  onClick={() => { onEditDiscount(item.product.id); }}
                   className={cn(
                     'text-xs',
                     textColors.brand,

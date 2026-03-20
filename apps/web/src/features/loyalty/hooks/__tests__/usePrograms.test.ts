@@ -29,7 +29,7 @@ function createWrapper() {
 describe('usePrograms', () => {
   it('fetches programs list', async () => {
     const { result } = renderHook(() => usePrograms(), { wrapper: createWrapper() })
-    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    await waitFor(() => { expect(result.current.isSuccess).toBe(true); })
     expect(result.current.data).toHaveLength(1)
     expect(result.current.data?.[0].name).toBe('Test Program')
   })
@@ -38,7 +38,7 @@ describe('usePrograms', () => {
 describe('useProgram', () => {
   it('fetches single program', async () => {
     const { result } = renderHook(() => useProgram('1'), { wrapper: createWrapper() })
-    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    await waitFor(() => { expect(result.current.isSuccess).toBe(true); })
     expect(result.current.data?.name).toBe('Test Program')
   })
 

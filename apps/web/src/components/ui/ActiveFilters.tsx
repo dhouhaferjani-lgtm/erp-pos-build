@@ -41,7 +41,7 @@ export function ActiveFilters({ filters, onRemove, filterConfig }: ActiveFilters
               {config.label}: {formatValue(value)}
             </span>
             <button
-              onClick={() => onRemove(key)}
+              onClick={() => { onRemove(key); }}
               className="hover:text-blue-900 focus:outline-none"
               aria-label={`Remove ${config.label} filter`}
             >

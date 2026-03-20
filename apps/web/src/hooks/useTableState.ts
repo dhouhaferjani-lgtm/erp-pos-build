@@ -55,7 +55,7 @@ export function useTableState(options: TableStateOptions = {}): TableState {
       if (urlSortBy) {
         return {
           column: urlSortBy,
-          direction: (urlSortDir === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc',
+          direction: (urlSortDir === 'desc' ? 'desc' : 'asc'),
         }
       }
     }

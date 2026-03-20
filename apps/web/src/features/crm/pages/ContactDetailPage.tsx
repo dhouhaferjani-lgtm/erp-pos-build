@@ -166,7 +166,7 @@ export function ContactDetailPage() {
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">{t('crm:contacts.companyAssociations')}</h2>
           {!showLinkForm && (
-            <Button variant="secondary" onClick={() => setShowLinkForm(true)}>
+            <Button variant="secondary" onClick={() => { setShowLinkForm(true); }}>
               <Plus className="h-4 w-4 me-2" />
               {t('crm:contacts.linkCompany')}
             </Button>
@@ -184,7 +184,7 @@ export function ContactDetailPage() {
                 <label className="mb-1 block text-sm font-medium text-gray-700">{t('crm:contacts.jobTitle')}</label>
                 <Input
                   value={linkJobTitle}
-                  onChange={(e) => setLinkJobTitle(e.target.value)}
+                  onChange={(e) => { setLinkJobTitle(e.target.value); }}
                 />
               </div>
             </div>

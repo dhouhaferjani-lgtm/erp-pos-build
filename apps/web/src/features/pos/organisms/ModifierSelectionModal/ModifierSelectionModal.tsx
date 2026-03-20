@@ -284,7 +284,7 @@ function ModifierGroupSection({
                   type={group.selection_type === 'single' ? 'radio' : 'checkbox'}
                   name={`modifier-group-${group.id}`}
                   checked={isSelected}
-                  onChange={() => onSelect(group.id, mod.id, group.selection_type)}
+                  onChange={() => { onSelect(group.id, mod.id, group.selection_type); }}
                   className={group.selection_type === 'single' ? tokens.radio.base : tokens.checkbox.base}
                 />
                 <span className={cn('text-sm', isSelected ? cn('font-medium', textColors.primary) : textColors.secondary)}>

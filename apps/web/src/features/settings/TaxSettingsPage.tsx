@@ -291,7 +291,7 @@ export function TaxSettingsPage() {
                           name="tax_status"
                           value="REGISTERED"
                           checked={formData.tax_status === 'REGISTERED'}
-                          onChange={(e) => handleChange('tax_status', e.target.value as CompanyTaxStatus)}
+                          onChange={(e) => { handleChange('tax_status', e.target.value as CompanyTaxStatus); }}
                           className="mt-0.5 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
                         />
                         <span className="ms-3">
@@ -309,7 +309,7 @@ export function TaxSettingsPage() {
                           name="tax_status"
                           value="NON_REGISTERED"
                           checked={formData.tax_status === 'NON_REGISTERED'}
-                          onChange={(e) => handleChange('tax_status', e.target.value as CompanyTaxStatus)}
+                          onChange={(e) => { handleChange('tax_status', e.target.value as CompanyTaxStatus); }}
                           className="mt-0.5 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
                         />
                         <span className="ms-3">
@@ -333,7 +333,7 @@ export function TaxSettingsPage() {
                         type="text"
                         id="vat_number"
                         value={formData.vat_registration_number ?? ''}
-                        onChange={(e) => handleChange('vat_registration_number', e.target.value || null)}
+                        onChange={(e) => { handleChange('vat_registration_number', e.target.value || null); }}
                         className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                         placeholder="TN123456789"
                       />
@@ -359,7 +359,7 @@ export function TaxSettingsPage() {
                       min="0"
                       max="100"
                       value={formData.default_tax_rate ?? ''}
-                      onChange={(e) => handleChange('default_tax_rate', e.target.value || null)}
+                      onChange={(e) => { handleChange('default_tax_rate', e.target.value || null); }}
                       className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm pe-8"
                       placeholder="19.00"
                     />
@@ -383,7 +383,7 @@ export function TaxSettingsPage() {
                   <select
                     id="fiscal_year_start_month"
                     value={formData.fiscal_year_start_month}
-                    onChange={(e) => handleChange('fiscal_year_start_month', parseInt(e.target.value))}
+                    onChange={(e) => { handleChange('fiscal_year_start_month', parseInt(e.target.value)); }}
                     className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                   >
                     {MONTHS.map(month => (
@@ -493,14 +493,14 @@ export function TaxSettingsPage() {
                         <td className="px-6 py-4 whitespace-nowrap text-end text-sm font-medium">
                           <button
                             type="button"
-                            onClick={() => handleEditTax(tax)}
+                            onClick={() => { handleEditTax(tax); }}
                             className="text-blue-600 hover:text-blue-900 me-4"
                           >
                             <Pencil className="h-4 w-4" />
                           </button>
                           <button
                             type="button"
-                            onClick={() => setDeletingTaxId(tax.id)}
+                            onClick={() => { setDeletingTaxId(tax.id); }}
                             className="text-red-600 hover:text-red-900"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -530,7 +530,7 @@ export function TaxSettingsPage() {
                       <input
                         type="text"
                         value={taxFormData.name}
-                        onChange={(e) => handleTaxFormChange('name', e.target.value)}
+                        onChange={(e) => { handleTaxFormChange('name', e.target.value); }}
                         className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                         placeholder={t('tax.configurations.form.namePlaceholder')}
                       />
@@ -541,7 +541,7 @@ export function TaxSettingsPage() {
                       </label>
                       <select
                         value={taxFormData.tax_type}
-                        onChange={(e) => handleTaxFormChange('tax_type', e.target.value as TaxType)}
+                        onChange={(e) => { handleTaxFormChange('tax_type', e.target.value as TaxType); }}
                         className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                       >
                         <option value="PERCENTAGE">{t('tax.configurations.form.typePercentage')}</option>
@@ -557,7 +557,7 @@ export function TaxSettingsPage() {
                           type="number"
                           step="0.01"
                           value={taxFormData.percentage_rate}
-                          onChange={(e) => handleTaxFormChange('percentage_rate', e.target.value)}
+                          onChange={(e) => { handleTaxFormChange('percentage_rate', e.target.value); }}
                           className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                         />
                       </div>
@@ -570,7 +570,7 @@ export function TaxSettingsPage() {
                           type="number"
                           step="0.01"
                           value={taxFormData.fixed_amount ?? ''}
-                          onChange={(e) => handleTaxFormChange('fixed_amount', e.target.value)}
+                          onChange={(e) => { handleTaxFormChange('fixed_amount', e.target.value); }}
                           className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                         />
                       </div>
@@ -581,7 +581,7 @@ export function TaxSettingsPage() {
                       </label>
                       <select
                         value={taxFormData.applies_to}
-                        onChange={(e) => handleTaxFormChange('applies_to', e.target.value as TaxApplicationLevel)}
+                        onChange={(e) => { handleTaxFormChange('applies_to', e.target.value as TaxApplicationLevel); }}
                         className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                       >
                         <option value="LINE_ITEMS">{t('tax.configurations.form.appliesToLineItems')}</option>
@@ -646,7 +646,7 @@ export function TaxSettingsPage() {
                         <input
                           type="checkbox"
                           checked={taxFormData.is_active}
-                          onChange={(e) => handleTaxFormChange('is_active', e.target.checked)}
+                          onChange={(e) => { handleTaxFormChange('is_active', e.target.checked); }}
                           className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                         />
                         <span className="ms-2 text-sm text-gray-700">{t('tax.configurations.form.active')}</span>
@@ -657,7 +657,7 @@ export function TaxSettingsPage() {
                         <input
                           type="checkbox"
                           checked={taxFormData.is_recoverable ?? true}
-                          onChange={(e) => handleTaxFormChange('is_recoverable', e.target.checked)}
+                          onChange={(e) => { handleTaxFormChange('is_recoverable', e.target.checked); }}
                           className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                         />
                         <span className="ms-2 text-sm text-gray-700">{t('tax.configurations.form.recoverable')}</span>
@@ -710,7 +710,7 @@ export function TaxSettingsPage() {
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog
         isOpen={deletingTaxId !== null}
-        onClose={() => setDeletingTaxId(null)}
+        onClose={() => { setDeletingTaxId(null); }}
         onConfirm={() => {
           void handleDeleteTax()
         }}

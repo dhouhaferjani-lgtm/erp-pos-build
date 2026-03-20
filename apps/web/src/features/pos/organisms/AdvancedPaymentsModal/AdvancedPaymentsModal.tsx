@@ -468,7 +468,7 @@ export function AdvancedPaymentsModal({
                               <button
                                 key={method.id}
                                 type="button"
-                                onClick={() => handleSelectMethod(method.id)}
+                                onClick={() => { handleSelectMethod(method.id); }}
                                 className={cn(
                                   'flex flex-col items-center justify-center gap-2',
                                   'min-h-[72px] rounded-lg border-2 p-3',
@@ -510,7 +510,7 @@ export function AdvancedPaymentsModal({
                                 step="0.001"
                                 min="0"
                                 value={entryAmount}
-                                onChange={(e) => setEntryAmount(e.target.value)}
+                                onChange={(e) => { setEntryAmount(e.target.value); }}
                                 placeholder="0.00"
                                 className={cn(tokens.input.base, 'text-2xl font-semibold min-h-[56px]')}
                                 autoFocus
@@ -554,7 +554,7 @@ export function AdvancedPaymentsModal({
                               ) : (
                                 <select
                                   value={entryRepositoryId}
-                                  onChange={(e) => setEntryRepositoryId(e.target.value)}
+                                  onChange={(e) => { setEntryRepositoryId(e.target.value); }}
                                   className={cn(tokens.input.base, 'min-h-[48px]')}
                                 >
                                   <option value="">
@@ -580,7 +580,7 @@ export function AdvancedPaymentsModal({
                                 <input
                                   type="text"
                                   value={entryReference}
-                                  onChange={(e) => setEntryReference(e.target.value)}
+                                  onChange={(e) => { setEntryReference(e.target.value); }}
                                   placeholder={t('advancedPayments.referencePlaceholder')}
                                   className={cn(tokens.input.base, 'min-h-[48px]')}
                                 />
@@ -595,7 +595,7 @@ export function AdvancedPaymentsModal({
                                     type="text"
                                     maxLength={4}
                                     value={entryCardLastFour}
-                                    onChange={(e) => setEntryCardLastFour(e.target.value.replace(/\D/g, ''))}
+                                    onChange={(e) => { setEntryCardLastFour(e.target.value.replace(/\D/g, '')); }}
                                     placeholder="0000"
                                     className={cn(tokens.input.base, 'min-h-[48px]')}
                                   />
@@ -656,7 +656,7 @@ export function AdvancedPaymentsModal({
                                 {toFixedCurrency(payment.amount)} {currency}
                               </span>
                               <button
-                                onClick={() => handleRemovePayment(payment.id)}
+                                onClick={() => { handleRemovePayment(payment.id); }}
                                 className={cn(
                                   'p-2 rounded-md transition-colors shrink-0',
                                   textColors.disabled,

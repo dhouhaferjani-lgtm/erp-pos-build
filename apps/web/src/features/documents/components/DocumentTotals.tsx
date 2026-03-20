@@ -145,7 +145,7 @@ export function DocumentTotals({
               {t('invoices.balanceDue')}
             </span>
             <span className="text-sm font-semibold text-blue-700 font-mono">
-              {formatAmount(balanceDue!)} {currency}
+              {formatAmount(balanceDue)} {currency}
             </span>
           </div>
         </>

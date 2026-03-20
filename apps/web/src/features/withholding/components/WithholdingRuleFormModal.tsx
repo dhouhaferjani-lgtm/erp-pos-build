@@ -138,7 +138,7 @@ export function WithholdingRuleFormModal({
                   <input
                     type="text"
                     value={formData.code}
-                    onChange={(e) => handleChange('code', e.target.value)}
+                    onChange={(e) => { handleChange('code', e.target.value); }}
                     required
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
                     placeholder="e.g., TN_PROF_10"
@@ -152,7 +152,7 @@ export function WithholdingRuleFormModal({
                   <input
                     type="number"
                     value={formData.rate}
-                    onChange={(e) => handleChange('rate', parseFloat(e.target.value))}
+                    onChange={(e) => { handleChange('rate', parseFloat(e.target.value)); }}
                     required
                     min="0"
                     max="100"
@@ -170,7 +170,7 @@ export function WithholdingRuleFormModal({
                 <input
                   type="text"
                   value={formData.name}
-                  onChange={(e) => handleChange('name', e.target.value)}
+                  onChange={(e) => { handleChange('name', e.target.value); }}
                   required
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
                   placeholder={t('rules.namePlaceholder')}
@@ -183,7 +183,7 @@ export function WithholdingRuleFormModal({
                 </label>
                 <textarea
                   value={formData.description}
-                  onChange={(e) => handleChange('description', e.target.value)}
+                  onChange={(e) => { handleChange('description', e.target.value); }}
                   rows={2}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
                   placeholder={t('rules.descriptionPlaceholder')}
@@ -204,7 +204,7 @@ export function WithholdingRuleFormModal({
                   </label>
                   <select
                     value={formData.transaction_type || ''}
-                    onChange={(e) => handleChange('transaction_type', e.target.value)}
+                    onChange={(e) => { handleChange('transaction_type', e.target.value); }}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
                   >
                     <option value="">{t('common:all')}</option>
@@ -221,7 +221,7 @@ export function WithholdingRuleFormModal({
                   </label>
                   <select
                     value={formData.partner_tax_status || ''}
-                    onChange={(e) => handleChange('partner_tax_status', e.target.value)}
+                    onChange={(e) => { handleChange('partner_tax_status', e.target.value); }}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
                   >
                     <option value="">{t('common:all')}</option>
@@ -239,7 +239,7 @@ export function WithholdingRuleFormModal({
                 <input
                   type="number"
                   value={formData.min_amount}
-                  onChange={(e) => handleChange('min_amount', e.target.value)}
+                  onChange={(e) => { handleChange('min_amount', e.target.value); }}
                   min="0"
                   step="0.001"
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
@@ -265,7 +265,7 @@ export function WithholdingRuleFormModal({
                   <input
                     type="date"
                     value={formData.effective_from}
-                    onChange={(e) => handleChange('effective_from', e.target.value)}
+                    onChange={(e) => { handleChange('effective_from', e.target.value); }}
                     required
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
                   />
@@ -278,7 +278,7 @@ export function WithholdingRuleFormModal({
                   <input
                     type="date"
                     value={formData.effective_to}
-                    onChange={(e) => handleChange('effective_to', e.target.value)}
+                    onChange={(e) => { handleChange('effective_to', e.target.value); }}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
                   />
                   <p className="mt-1 text-xs text-gray-500">
@@ -292,7 +292,7 @@ export function WithholdingRuleFormModal({
                   type="checkbox"
                   id="is_active"
                   checked={formData.is_active}
-                  onChange={(e) => handleChange('is_active', e.target.checked)}
+                  onChange={(e) => { handleChange('is_active', e.target.checked); }}
                   className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <label htmlFor="is_active" className="text-sm text-gray-700">

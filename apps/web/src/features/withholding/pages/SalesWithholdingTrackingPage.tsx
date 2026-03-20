@@ -107,10 +107,10 @@ export function SalesWithholdingTrackingPage() {
             <select
               value={filters.certificate_received === undefined ? '' : filters.certificate_received.toString()}
               onChange={(e) =>
-                setFilters({
+                { setFilters({
                   ...filters,
                   certificate_received: e.target.value === '' ? undefined : e.target.value === 'true',
-                })
+                }); }
               }
               className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
             >
@@ -128,7 +128,7 @@ export function SalesWithholdingTrackingPage() {
             <input
               type="date"
               value={filters.date_from}
-              onChange={(e) => setFilters({ ...filters, date_from: e.target.value })}
+              onChange={(e) => { setFilters({ ...filters, date_from: e.target.value }); }}
               className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
             />
           </div>
@@ -141,7 +141,7 @@ export function SalesWithholdingTrackingPage() {
             <input
               type="date"
               value={filters.date_to}
-              onChange={(e) => setFilters({ ...filters, date_to: e.target.value })}
+              onChange={(e) => { setFilters({ ...filters, date_to: e.target.value }); }}
               className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
             />
           </div>
@@ -151,11 +151,11 @@ export function SalesWithholdingTrackingPage() {
             <button
               type="button"
               onClick={() =>
-                setFilters({
+                { setFilters({
                   certificate_received: undefined,
                   date_from: '',
                   date_to: '',
-                })
+                }); }
               }
               className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
@@ -263,7 +263,7 @@ export function SalesWithholdingTrackingPage() {
                         {!record.certificateReceived && (
                           <button
                             type="button"
-                            onClick={() => setMarkReceivedModalId(record.id)}
+                            onClick={() => { setMarkReceivedModalId(record.id); }}
                             className="inline-flex items-center justify-center rounded p-1 text-green-600 hover:bg-green-100 hover:text-green-900"
                             title={t('salesWithholding.markCertificateReceived')}
                           >
@@ -316,7 +316,7 @@ export function SalesWithholdingTrackingPage() {
                 id="certificate-number"
                 type="text"
                 value={certificateNumber}
-                onChange={(e) => setCertificateNumber(e.target.value)}
+                onChange={(e) => { setCertificateNumber(e.target.value); }}
                 placeholder={t('salesWithholding.certificateNumberPlaceholder')}
                 className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                 autoFocus

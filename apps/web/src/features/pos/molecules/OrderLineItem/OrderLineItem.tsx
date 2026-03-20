@@ -71,7 +71,7 @@ export function OrderLineItem({
             {onModify && (
               <button
                 type="button"
-                onClick={() => onModify(line.id)}
+                onClick={() => { onModify(line.id); }}
                 className="rounded p-1 text-sm text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
               >
                 {t('orders.actions.modifyLine')}
@@ -80,7 +80,7 @@ export function OrderLineItem({
             {onRemove && (
               <button
                 type="button"
-                onClick={() => onRemove(line.id)}
+                onClick={() => { onRemove(line.id); }}
                 className="rounded p-1 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30"
               >
                 {t('orders.actions.removeLine')}

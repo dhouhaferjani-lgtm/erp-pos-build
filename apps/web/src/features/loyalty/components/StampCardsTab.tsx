@@ -38,10 +38,10 @@ export function StampCardsTab({ programId }: StampCardsTabProps) {
     if (editingCard) {
       updateMutation.mutate(
         { id: editingCard.id, data },
-        { onSuccess: () => setIsModalOpen(false) },
+        { onSuccess: () => { setIsModalOpen(false); } },
       )
     } else {
-      createMutation.mutate(data, { onSuccess: () => setIsModalOpen(false) })
+      createMutation.mutate(data, { onSuccess: () => { setIsModalOpen(false); } })
     }
   }
 
@@ -92,13 +92,13 @@ export function StampCardsTab({ programId }: StampCardsTabProps) {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <button
-                        onClick={() => handleOpenEdit(card)}
+                        onClick={() => { handleOpenEdit(card); }}
                         className="p-1.5 rounded hover:bg-gray-100 text-gray-600"
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => setDeleteTarget(card)}
+                        onClick={() => { setDeleteTarget(card); }}
                         className="p-1.5 rounded hover:bg-red-50 text-red-500"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -114,7 +114,7 @@ export function StampCardsTab({ programId }: StampCardsTabProps) {
 
       <StampCardFormModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => { setIsModalOpen(false); }}
         onSubmit={handleSubmit}
         isPending={createMutation.isPending || updateMutation.isPending}
         editingCard={editingCard}
@@ -122,10 +122,10 @@ export function StampCardsTab({ programId }: StampCardsTabProps) {
 
       <ConfirmDialog
         isOpen={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
+        onClose={() => { setDeleteTarget(null); }}
         onConfirm={() => {
           if (deleteTarget) {
-            deleteMutation.mutate(deleteTarget.id, { onSettled: () => setDeleteTarget(null) })
+            deleteMutation.mutate(deleteTarget.id, { onSettled: () => { setDeleteTarget(null); } })
           }
         }}
         isLoading={deleteMutation.isPending}

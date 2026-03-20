@@ -152,11 +152,11 @@ export function CreditNoteDetailPage() {
             document={creditNote}
             basePath="/sales/credit-notes"
             isActionPending={confirmMutation.isPending || postMutation.isPending}
-            onConfirm={() => setConfirmAction('confirm')}
-            onPost={() => setConfirmAction('post')}
-            onDownloadPdf={() => downloadPdfMutation.mutate(creditNote.id)}
-            onPreviewPdf={() => previewPdfMutation.mutate(creditNote.id)}
-            onPrintPdf={() => printPdfMutation.mutate(creditNote.id)}
+            onConfirm={() => { setConfirmAction('confirm'); }}
+            onPost={() => { setConfirmAction('post'); }}
+            onDownloadPdf={() => { downloadPdfMutation.mutate(creditNote.id); }}
+            onPreviewPdf={() => { previewPdfMutation.mutate(creditNote.id); }}
+            onPrintPdf={() => { printPdfMutation.mutate(creditNote.id); }}
             isDownloading={downloadPdfMutation.isPending}
             isPreviewing={previewPdfMutation.isPending}
             isPrinting={printPdfMutation.isPending}
@@ -298,8 +298,8 @@ export function CreditNoteDetailPage() {
       {/* Confirm Dialog */}
       <ConfirmDialog
         isOpen={confirmAction === 'confirm'}
-        onClose={() => setConfirmAction(null)}
-        onConfirm={() => confirmMutation.mutate()}
+        onClose={() => { setConfirmAction(null); }}
+        onConfirm={() => { confirmMutation.mutate(); }}
         title={t('creditNotes.confirmTitle')}
         message={t('creditNotes.confirmMessage')}
         confirmText={t('common:confirm')}
@@ -308,8 +308,8 @@ export function CreditNoteDetailPage() {
 
       <ConfirmDialog
         isOpen={confirmAction === 'post'}
-        onClose={() => setConfirmAction(null)}
-        onConfirm={() => postMutation.mutate()}
+        onClose={() => { setConfirmAction(null); }}
+        onConfirm={() => { postMutation.mutate(); }}
         title={t('creditNotes.postTitle')}
         message={t('creditNotes.postMessage')}
         confirmText={t('invoices.post')}
@@ -320,7 +320,7 @@ export function CreditNoteDetailPage() {
       {/* Email Modal */}
       <Modal
         isOpen={showEmailModal}
-        onClose={() => setShowEmailModal(false)}
+        onClose={() => { setShowEmailModal(false); }}
         title={t('common.sendEmail')}
       >
         <div className="space-y-4">
@@ -331,7 +331,7 @@ export function CreditNoteDetailPage() {
             <input
               type="email"
               value={emailForm.recipientEmail}
-              onChange={(e) => setEmailForm({ ...emailForm, recipientEmail: e.target.value })}
+              onChange={(e) => { setEmailForm({ ...emailForm, recipientEmail: e.target.value }); }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md"
             />
           </div>
@@ -342,7 +342,7 @@ export function CreditNoteDetailPage() {
             <input
               type="text"
               value={emailForm.subject}
-              onChange={(e) => setEmailForm({ ...emailForm, subject: e.target.value })}
+              onChange={(e) => { setEmailForm({ ...emailForm, subject: e.target.value }); }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md"
             />
           </div>
@@ -352,7 +352,7 @@ export function CreditNoteDetailPage() {
             </label>
             <textarea
               value={emailForm.message}
-              onChange={(e) => setEmailForm({ ...emailForm, message: e.target.value })}
+              onChange={(e) => { setEmailForm({ ...emailForm, message: e.target.value }); }}
               rows={4}
               className="w-full px-3 py-2 border border-gray-300 rounded-md"
             />
@@ -360,7 +360,7 @@ export function CreditNoteDetailPage() {
           <div className="flex justify-end gap-3">
             <Button
               variant="secondary"
-              onClick={() => setShowEmailModal(false)}
+              onClick={() => { setShowEmailModal(false); }}
             >
               {t('common:cancel')}
             </Button>

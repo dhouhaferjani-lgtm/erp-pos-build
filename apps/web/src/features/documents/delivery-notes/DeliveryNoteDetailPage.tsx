@@ -129,12 +129,12 @@ export function DeliveryNoteDetailPage() {
             document={deliveryNote}
             basePath="/inventory/delivery-notes"
             isActionPending={confirmMutation.isPending}
-            onConfirm={() => setConfirmAction('confirm')}
-            onCreateReturnNote={() => setShowReturnNoteForm(true)}
+            onConfirm={() => { setConfirmAction('confirm'); }}
+            onCreateReturnNote={() => { setShowReturnNoteForm(true); }}
             onRecordPayment={() => navigate(`/treasury/payments/new?delivery_note=${deliveryNote.id}`)}
-            onDownloadPdf={() => downloadPdfMutation.mutate(deliveryNote.id)}
-            onPreviewPdf={() => previewPdfMutation.mutate(deliveryNote.id)}
-            onPrintPdf={() => printPdfMutation.mutate(deliveryNote.id)}
+            onDownloadPdf={() => { downloadPdfMutation.mutate(deliveryNote.id); }}
+            onPreviewPdf={() => { previewPdfMutation.mutate(deliveryNote.id); }}
+            onPrintPdf={() => { printPdfMutation.mutate(deliveryNote.id); }}
             isDownloading={downloadPdfMutation.isPending}
             isPreviewing={previewPdfMutation.isPending}
             isPrinting={printPdfMutation.isPending}
@@ -275,8 +275,8 @@ export function DeliveryNoteDetailPage() {
       {/* Confirm Dialog */}
       <ConfirmDialog
         isOpen={confirmAction === 'confirm'}
-        onClose={() => setConfirmAction(null)}
-        onConfirm={() => confirmMutation.mutate()}
+        onClose={() => { setConfirmAction(null); }}
+        onConfirm={() => { confirmMutation.mutate(); }}
         title={t('deliveryNotes.confirmTitle')}
         message={t('deliveryNotes.confirmMessage')}
         confirmText={t('common:confirm')}
@@ -286,7 +286,7 @@ export function DeliveryNoteDetailPage() {
       {/* Email Modal */}
       <Modal
         isOpen={showEmailModal}
-        onClose={() => setShowEmailModal(false)}
+        onClose={() => { setShowEmailModal(false); }}
         title={t('common.sendEmail')}
       >
         <div className="space-y-4">
@@ -297,7 +297,7 @@ export function DeliveryNoteDetailPage() {
             <input
               type="email"
               value={emailForm.recipientEmail}
-              onChange={(e) => setEmailForm({ ...emailForm, recipientEmail: e.target.value })}
+              onChange={(e) => { setEmailForm({ ...emailForm, recipientEmail: e.target.value }); }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md"
             />
           </div>
@@ -308,7 +308,7 @@ export function DeliveryNoteDetailPage() {
             <input
               type="text"
               value={emailForm.subject}
-              onChange={(e) => setEmailForm({ ...emailForm, subject: e.target.value })}
+              onChange={(e) => { setEmailForm({ ...emailForm, subject: e.target.value }); }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md"
             />
           </div>
@@ -318,14 +318,14 @@ export function DeliveryNoteDetailPage() {
             </label>
             <textarea
               value={emailForm.message}
-              onChange={(e) => setEmailForm({ ...emailForm, message: e.target.value })}
+              onChange={(e) => { setEmailForm({ ...emailForm, message: e.target.value }); }}
               rows={4}
               className="w-full px-3 py-2 border border-gray-300 rounded-md"
             />
           </div>
           <div className="flex justify-end gap-3">
             <button
-              onClick={() => setShowEmailModal(false)}
+              onClick={() => { setShowEmailModal(false); }}
               className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               {t('common:cancel')}
@@ -345,7 +345,7 @@ export function DeliveryNoteDetailPage() {
       {showReturnNoteForm && (
         <Modal
           isOpen={true}
-          onClose={() => setShowReturnNoteForm(false)}
+          onClose={() => { setShowReturnNoteForm(false); }}
           title={t('returnNotes.create')}
         >
           <CreateReturnNoteForm
@@ -355,7 +355,7 @@ export function DeliveryNoteDetailPage() {
               setShowReturnNoteForm(false)
               queryClient.invalidateQueries({ queryKey: ['document', deliveryNote.id] })
             }}
-            onCancel={() => setShowReturnNoteForm(false)}
+            onCancel={() => { setShowReturnNoteForm(false); }}
           />
         </Modal>
       )}

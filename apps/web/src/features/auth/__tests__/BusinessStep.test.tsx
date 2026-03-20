@@ -54,7 +54,7 @@ describe('BusinessStep', () => {
 
     const listbox = screen.getByRole('listbox')
     const verticalCards = listbox.querySelectorAll('button[role="option"]')
-    fireEvent.click(verticalCards[0]!)
+    fireEvent.click(verticalCards[0])
 
     expect(updateField).toHaveBeenCalledWith('vertical', 'retail')
   })

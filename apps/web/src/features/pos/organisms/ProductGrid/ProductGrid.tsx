@@ -134,7 +134,7 @@ export function ProductGrid({
               ref={barcodeInputRef}
               type="text"
               value={barcodeInput}
-              onChange={(e) => setBarcodeInput(e.target.value)}
+              onChange={(e) => { setBarcodeInput(e.target.value); }}
               onKeyDown={handleBarcodeKeyDown}
               placeholder={t('pos:barcode.inputPlaceholder')}
               className={cn(
@@ -149,7 +149,7 @@ export function ProductGrid({
             />
             {barcodeInput && (
               <button
-                onClick={() => setBarcodeInput('')}
+                onClick={() => { setBarcodeInput(''); }}
                 className="absolute end-3 top-1/2 -translate-y-1/2"
                 aria-label={t('pos:barcode.clearInput')}
               >
@@ -166,7 +166,7 @@ export function ProductGrid({
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); }}
               placeholder={t('pos:products.searchPlaceholder')}
               className={cn(
                 'w-full ps-10 pe-10 py-3 rounded-lg border border-gray-300',
@@ -199,7 +199,7 @@ export function ProductGrid({
                     : 'secondary'
                 }
                 size={touchOptimized ? 'md' : 'sm'}
-                onClick={() => handleCategorySelect(category)}
+                onClick={() => { handleCategorySelect(category); }}
               >
                 {category}
               </POSButton>

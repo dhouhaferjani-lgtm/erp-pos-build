@@ -146,7 +146,7 @@ export function ReceiptSearchPage() {
               className="flex-1 rounded-md border-gray-300 text-sm"
               placeholder={t('pos:receiptSearch.searchPlaceholder')}
               value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
+              onChange={(e) => { setSearchInput(e.target.value); }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleSearch()
               }}
@@ -169,7 +169,7 @@ export function ReceiptSearchPage() {
             className="rounded-md border-gray-300 text-sm"
             value={filters.terminal_id ?? ''}
             onChange={(e) =>
-              setFilters((prev) => ({ ...prev, terminal_id: e.target.value || undefined, page: 1 }))
+              { setFilters((prev) => ({ ...prev, terminal_id: e.target.value || undefined, page: 1 })); }
             }
           >
             <option value="">{t('pos:receiptSearch.filters.allTerminals')}</option>
@@ -189,11 +189,11 @@ export function ReceiptSearchPage() {
             className="rounded-md border-gray-300 text-sm"
             value={filters.is_voided === undefined ? '' : String(filters.is_voided)}
             onChange={(e) =>
-              setFilters((prev) => ({
+              { setFilters((prev) => ({
                 ...prev,
                 is_voided: e.target.value === '' ? undefined : e.target.value === 'true',
                 page: 1,
-              }))
+              })); }
             }
           >
             <option value="">{t('pos:receiptSearch.filters.allStatuses')}</option>
@@ -210,11 +210,11 @@ export function ReceiptSearchPage() {
             className="rounded-md border-gray-300 text-sm"
             value={filters.receipt_type ?? ''}
             onChange={(e) =>
-              setFilters((prev) => ({
+              { setFilters((prev) => ({
                 ...prev,
                 receipt_type: e.target.value || undefined,
                 page: 1,
-              }))
+              })); }
             }
           >
             <option value="">{t('pos:receiptSearch.filters.allTypes')}</option>
@@ -232,7 +232,7 @@ export function ReceiptSearchPage() {
             className="rounded-md border-gray-300 text-sm"
             value={filters.from_date ?? ''}
             onChange={(e) =>
-              setFilters((prev) => ({ ...prev, from_date: e.target.value || undefined, page: 1 }))
+              { setFilters((prev) => ({ ...prev, from_date: e.target.value || undefined, page: 1 })); }
             }
           />
         </div>
@@ -246,7 +246,7 @@ export function ReceiptSearchPage() {
             className="rounded-md border-gray-300 text-sm"
             value={filters.to_date ?? ''}
             onChange={(e) =>
-              setFilters((prev) => ({ ...prev, to_date: e.target.value || undefined, page: 1 }))
+              { setFilters((prev) => ({ ...prev, to_date: e.target.value || undefined, page: 1 })); }
             }
           />
         </div>
@@ -333,7 +333,7 @@ export function ReceiptSearchPage() {
                         {!receipt.is_voided && receipt.receipt_type !== 'return' && (
                           <button
                             type="button"
-                            onClick={() => setReturnTarget(receipt)}
+                            onClick={() => { setReturnTarget(receipt); }}
                             className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-orange-600 hover:bg-orange-50"
                             title={t('pos:returns.returnButton')}
                           >
@@ -343,7 +343,7 @@ export function ReceiptSearchPage() {
                         {!receipt.is_voided && (
                           <button
                             type="button"
-                            onClick={() => setVoidTarget(receipt)}
+                            onClick={() => { setVoidTarget(receipt); }}
                             className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
                             title={t('pos:receiptSearch.void')}
                           >
@@ -373,7 +373,7 @@ export function ReceiptSearchPage() {
               <button
                 type="button"
                 disabled={meta.current_page <= 1}
-                onClick={() => setFilters((prev) => ({ ...prev, page: (prev.page ?? 1) - 1 }))}
+                onClick={() => { setFilters((prev) => ({ ...prev, page: (prev.page ?? 1) - 1 })); }}
                 className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm disabled:opacity-50"
               >
                 {t('common:pagination.previous')}
@@ -381,7 +381,7 @@ export function ReceiptSearchPage() {
               <button
                 type="button"
                 disabled={meta.current_page >= meta.last_page}
-                onClick={() => setFilters((prev) => ({ ...prev, page: (prev.page ?? 1) + 1 }))}
+                onClick={() => { setFilters((prev) => ({ ...prev, page: (prev.page ?? 1) + 1 })); }}
                 className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm disabled:opacity-50"
               >
                 {t('common:pagination.next')}
@@ -395,7 +395,7 @@ export function ReceiptSearchPage() {
       {returnTarget && webTerminalMutation.data && (
         <ReturnItemsModal
           isOpen={!!returnTarget}
-          onClose={() => setReturnTarget(null)}
+          onClose={() => { setReturnTarget(null); }}
           receiptId={returnTarget.id}
           terminalId={webTerminalMutation.data.id}
           onSuccess={() => {
@@ -433,7 +433,7 @@ export function ReceiptSearchPage() {
                   className="w-full rounded-md border-gray-300 text-sm"
                   placeholder={t('pos:receiptSearch.voidReasonPlaceholder')}
                   value={voidReason}
-                  onChange={(e) => setVoidReason(e.target.value)}
+                  onChange={(e) => { setVoidReason(e.target.value); }}
                 />
               </div>
             </div>
@@ -452,7 +452,7 @@ export function ReceiptSearchPage() {
             <button
               type="button"
               onClick={() =>
-                voidMutation.mutate({ id: voidTarget.id, reason: voidReason })
+                { voidMutation.mutate({ id: voidTarget.id, reason: voidReason }); }
               }
               disabled={!voidReason.trim() || voidMutation.isPending}
               className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"

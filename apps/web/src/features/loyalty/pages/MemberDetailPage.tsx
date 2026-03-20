@@ -100,7 +100,7 @@ function TransactionHistorySection({ memberId, enrollment }: { memberId: string;
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              onClick={() => { setPage((p) => Math.max(1, p - 1)); }}
               disabled={page <= 1}
             >
               {t('common:previous')}
@@ -108,7 +108,7 @@ function TransactionHistorySection({ memberId, enrollment }: { memberId: string;
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => setPage((p) => p + 1)}
+              onClick={() => { setPage((p) => p + 1); }}
               disabled={page >= meta.last_page}
             >
               {t('common:next')}
@@ -163,7 +163,7 @@ export function MemberDetailPage() {
   const handleEnroll = (programId: string) => {
     enrollMutation.mutate(
       { memberId: member.id, programId },
-      { onSuccess: () => setIsEnrollModalOpen(false) },
+      { onSuccess: () => { setIsEnrollModalOpen(false); } },
     )
   }
 
@@ -171,7 +171,7 @@ export function MemberDetailPage() {
     if (adjustTarget) {
       adjustMutation.mutate(
         { memberId: member.id, enrollmentId: adjustTarget.id, data },
-        { onSuccess: () => setAdjustTarget(null) },
+        { onSuccess: () => { setAdjustTarget(null); } },
       )
     }
   }
@@ -201,7 +201,7 @@ export function MemberDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => setIsEnrollModalOpen(true)}>
+          <Button variant="secondary" onClick={() => { setIsEnrollModalOpen(true); }}>
             <Plus className="w-4 h-4 mr-2" />
             {t('loyalty:actions.enroll')}
           </Button>
@@ -261,7 +261,7 @@ export function MemberDetailPage() {
                   </div>
                   <div className="flex gap-1">
                     <button
-                      onClick={() => setAdjustTarget(enrollment)}
+                      onClick={() => { setAdjustTarget(enrollment); }}
                       className="p-1.5 rounded hover:bg-gray-100 text-gray-600"
                       title={t('loyalty:actions.adjustPoints')}
                     >
@@ -269,7 +269,7 @@ export function MemberDetailPage() {
                     </button>
                     {enrollment.status === 'active' ? (
                       <button
-                        onClick={() => setOptOutTarget(enrollment)}
+                        onClick={() => { setOptOutTarget(enrollment); }}
                         className="p-1.5 rounded hover:bg-orange-50 text-orange-600"
                         title={t('loyalty:actions.optOut')}
                       >
@@ -278,10 +278,10 @@ export function MemberDetailPage() {
                     ) : enrollment.status === 'opted_out' ? (
                       <button
                         onClick={() =>
-                          reactivateMutation.mutate({
+                          { reactivateMutation.mutate({
                             memberId: member.id,
                             enrollmentId: enrollment.id,
-                          })
+                          }); }
                         }
                         className="p-1.5 rounded hover:bg-green-50 text-green-600"
                         title={t('loyalty:actions.reactivate')}
@@ -310,7 +310,7 @@ export function MemberDetailPage() {
                 <div className="mt-4 pt-3 border-t border-gray-100">
                   <button
                     type="button"
-                    onClick={() => toggleTransactions(enrollment.id)}
+                    onClick={() => { toggleTransactions(enrollment.id); }}
                     className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900"
                   >
                     {expandedEnrollments.has(enrollment.id) ? (
@@ -333,26 +333,26 @@ export function MemberDetailPage() {
 
       <EnrollMemberModal
         isOpen={isEnrollModalOpen}
-        onClose={() => setIsEnrollModalOpen(false)}
+        onClose={() => { setIsEnrollModalOpen(false); }}
         onSubmit={handleEnroll}
         isPending={enrollMutation.isPending}
       />
 
       <AdjustPointsModal
         isOpen={adjustTarget !== null}
-        onClose={() => setAdjustTarget(null)}
+        onClose={() => { setAdjustTarget(null); }}
         onSubmit={handleAdjust}
         isPending={adjustMutation.isPending}
       />
 
       <ConfirmDialog
         isOpen={optOutTarget !== null}
-        onClose={() => setOptOutTarget(null)}
+        onClose={() => { setOptOutTarget(null); }}
         onConfirm={() => {
           if (optOutTarget) {
             optOutMutation.mutate(
               { memberId: member.id, enrollmentId: optOutTarget.id },
-              { onSettled: () => setOptOutTarget(null) },
+              { onSettled: () => { setOptOutTarget(null); } },
             )
           }
         }}

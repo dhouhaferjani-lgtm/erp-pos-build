@@ -48,10 +48,10 @@ export function EarningRulesTab({ programId }: EarningRulesTabProps) {
     if (editingRule) {
       updateMutation.mutate(
         { id: editingRule.id, data },
-        { onSuccess: () => setIsModalOpen(false) },
+        { onSuccess: () => { setIsModalOpen(false); } },
       )
     } else {
-      createMutation.mutate(data, { onSuccess: () => setIsModalOpen(false) })
+      createMutation.mutate(data, { onSuccess: () => { setIsModalOpen(false); } })
     }
   }
 
@@ -108,7 +108,7 @@ export function EarningRulesTab({ programId }: EarningRulesTabProps) {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <button
-                        onClick={() => handleOpenEdit(rule)}
+                        onClick={() => { handleOpenEdit(rule); }}
                         className="p-1.5 rounded hover:bg-gray-100 text-gray-600"
                         title={t('loyalty:earningRules.edit')}
                       >
@@ -116,7 +116,7 @@ export function EarningRulesTab({ programId }: EarningRulesTabProps) {
                       </button>
                       {rule.is_active ? (
                         <button
-                          onClick={() => deactivateMutation.mutate(rule.id)}
+                          onClick={() => { deactivateMutation.mutate(rule.id); }}
                           className="p-1.5 rounded hover:bg-orange-50 text-orange-600"
                           title={t('loyalty:actions.deactivate')}
                         >
@@ -124,7 +124,7 @@ export function EarningRulesTab({ programId }: EarningRulesTabProps) {
                         </button>
                       ) : (
                         <button
-                          onClick={() => activateMutation.mutate(rule.id)}
+                          onClick={() => { activateMutation.mutate(rule.id); }}
                           className="p-1.5 rounded hover:bg-green-50 text-green-600"
                           title={t('loyalty:actions.activate')}
                         >
@@ -132,7 +132,7 @@ export function EarningRulesTab({ programId }: EarningRulesTabProps) {
                         </button>
                       )}
                       <button
-                        onClick={() => setDeleteTarget(rule)}
+                        onClick={() => { setDeleteTarget(rule); }}
                         className="p-1.5 rounded hover:bg-red-50 text-red-500"
                         title={t('loyalty:actions.delete')}
                       >
@@ -149,7 +149,7 @@ export function EarningRulesTab({ programId }: EarningRulesTabProps) {
 
       <EarningRuleFormModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => { setIsModalOpen(false); }}
         onSubmit={handleSubmit}
         isPending={createMutation.isPending || updateMutation.isPending}
         editingRule={editingRule}
@@ -157,10 +157,10 @@ export function EarningRulesTab({ programId }: EarningRulesTabProps) {
 
       <ConfirmDialog
         isOpen={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
+        onClose={() => { setDeleteTarget(null); }}
         onConfirm={() => {
           if (deleteTarget) {
-            deleteMutation.mutate(deleteTarget.id, { onSettled: () => setDeleteTarget(null) })
+            deleteMutation.mutate(deleteTarget.id, { onSettled: () => { setDeleteTarget(null); } })
           }
         }}
         isLoading={deleteMutation.isPending}

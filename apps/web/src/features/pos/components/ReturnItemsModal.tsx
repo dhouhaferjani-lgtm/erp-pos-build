@@ -189,7 +189,7 @@ export function ReturnItemsModal({
               <select
                 className="w-full rounded-md border-gray-300 text-sm"
                 value={returnReason}
-                onChange={(e) => setReturnReason(e.target.value as ReturnReasonValue)}
+                onChange={(e) => { setReturnReason(e.target.value as ReturnReasonValue); }}
               >
                 {RETURN_REASONS.map((reason) => (
                   <option key={reason} value={reason}>
@@ -218,7 +218,7 @@ export function ReturnItemsModal({
                     <input
                       type="checkbox"
                       checked={line.selected}
-                      onChange={() => toggleLine(line.lineId)}
+                      onChange={() => { toggleLine(line.lineId); }}
                       className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
                     <div className="flex-1 min-w-0">
@@ -241,7 +241,7 @@ export function ReturnItemsModal({
                           step={1}
                           value={line.returnQuantity}
                           onChange={(e) =>
-                            updateQuantity(line.lineId, parseFloat(e.target.value) || 0)
+                            { updateQuantity(line.lineId, parseFloat(e.target.value) || 0); }
                           }
                           className="w-20 rounded-md border-gray-300 text-sm text-center"
                         />
@@ -265,7 +265,7 @@ export function ReturnItemsModal({
                 rows={2}
                 placeholder={t('pos:returns.notesPlaceholder')}
                 value={notes}
-                onChange={(e) => setNotes(e.target.value)}
+                onChange={(e) => { setNotes(e.target.value); }}
               />
             </div>
 

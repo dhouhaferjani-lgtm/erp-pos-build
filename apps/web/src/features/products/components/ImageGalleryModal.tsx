@@ -50,7 +50,7 @@ export function ImageGalleryModal({
     }
 
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    return () => { window.removeEventListener('keydown', handleKeyDown); }
   }, [isOpen, viewMode, currentIndex, images.length])
 
   // Prevent body scroll when modal is open
@@ -94,7 +94,7 @@ export function ImageGalleryModal({
       {/* Modal Content */}
       <div
         className="relative max-h-[95vh] max-w-[95vw]"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); }}
       >
         {/* Top Controls Bar */}
         <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between p-4">
@@ -133,7 +133,7 @@ export function ImageGalleryModal({
               {images.map((image, index) => (
                 <button
                   key={image.id}
-                  onClick={() => handleImageClick(index)}
+                  onClick={() => { handleImageClick(index); }}
                   className="group relative aspect-square overflow-hidden rounded-lg bg-gray-800 transition-transform hover:scale-105"
                 >
                   <img

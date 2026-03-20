@@ -49,7 +49,7 @@ export function IngredientFormPage() {
       setIsAllergen(ingredient.is_allergen)
       setAllergenCode(ingredient.allergen_code || '')
       setRegulatoryStatus(
-        (ingredient.regulatory_status as 'approved' | 'restricted' | 'banned') ||
+        (ingredient.regulatory_status) ||
           'approved'
       )
       setNotes(ingredient.notes || '')
@@ -165,7 +165,7 @@ export function IngredientFormPage() {
                 <Input
                   id="slug"
                   value={slug}
-                  onChange={(e) => setSlug(e.target.value)}
+                  onChange={(e) => { setSlug(e.target.value); }}
                   required
                   placeholder="vitamin-c-ascorbic-acid"
                 />
@@ -184,7 +184,7 @@ export function IngredientFormPage() {
                 <Input
                   id="cas_number"
                   value={casNumber}
-                  onChange={(e) => setCasNumber(e.target.value)}
+                  onChange={(e) => { setCasNumber(e.target.value); }}
                   placeholder="50-81-7"
                 />
               </div>
@@ -203,9 +203,9 @@ export function IngredientFormPage() {
                   id="regulatory_status"
                   value={regulatoryStatus}
                   onChange={(e) =>
-                    setRegulatoryStatus(
+                    { setRegulatoryStatus(
                       e.target.value as 'approved' | 'restricted' | 'banned'
-                    )
+                    ); }
                   }
                   required
                 >
@@ -231,7 +231,7 @@ export function IngredientFormPage() {
                 <Input
                   id="allergen_code"
                   value={allergenCode}
-                  onChange={(e) => setAllergenCode(e.target.value)}
+                  onChange={(e) => { setAllergenCode(e.target.value); }}
                   placeholder="EU14"
                   disabled={!isAllergen}
                 />
@@ -243,7 +243,7 @@ export function IngredientFormPage() {
                 type="checkbox"
                 id="is_allergen"
                 checked={isAllergen}
-                onChange={(e) => setIsAllergen(e.target.checked)}
+                onChange={(e) => { setIsAllergen(e.target.checked); }}
                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               <label htmlFor="is_allergen" className="text-sm text-gray-700">
@@ -261,7 +261,7 @@ export function IngredientFormPage() {
               <Textarea
                 id="notes"
                 value={notes}
-                onChange={(e) => setNotes(e.target.value)}
+                onChange={(e) => { setNotes(e.target.value); }}
                 rows={3}
                 placeholder={t('parapharmacy:notesPlaceholder')}
               />

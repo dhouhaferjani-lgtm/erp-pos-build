@@ -86,7 +86,7 @@ export function ZReportListPage() {
         {filters.terminal_id && (
           <button
             type="button"
-            onClick={() => verifyChainMutation.mutate(filters.terminal_id!)}
+            onClick={() => { verifyChainMutation.mutate(filters.terminal_id!); }}
             disabled={verifyChainMutation.isPending}
             className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
@@ -175,7 +175,7 @@ export function ZReportListPage() {
               type="date"
               className="rounded-md border-gray-300 text-sm w-full"
               value={filters.from_date ?? ''}
-              onChange={(e) => updateFilter('from_date', e.target.value)}
+              onChange={(e) => { updateFilter('from_date', e.target.value); }}
             />
           </div>
           <div className="min-w-[160px]">
@@ -189,7 +189,7 @@ export function ZReportListPage() {
               type="date"
               className="rounded-md border-gray-300 text-sm w-full"
               value={filters.to_date ?? ''}
-              onChange={(e) => updateFilter('to_date', e.target.value)}
+              onChange={(e) => { updateFilter('to_date', e.target.value); }}
             />
           </div>
         </div>
@@ -233,7 +233,7 @@ export function ZReportListPage() {
                   {reports.map((report) => (
                     <tr
                       key={report.id}
-                      onClick={() => handleRowClick(report)}
+                      onClick={() => { handleRowClick(report); }}
                       className="hover:bg-gray-50 cursor-pointer"
                     >
                       <td className="px-4 py-3 text-sm font-mono font-medium text-gray-900">
@@ -294,7 +294,7 @@ export function ZReportListPage() {
                 <button
                   type="button"
                   disabled={meta.current_page <= 1}
-                  onClick={() => setFilters((prev) => ({ ...prev, page: (prev.page ?? 1) - 1 }))}
+                  onClick={() => { setFilters((prev) => ({ ...prev, page: (prev.page ?? 1) - 1 })); }}
                   className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm disabled:opacity-50"
                 >
                   {t('common:pagination.previous')}
@@ -302,7 +302,7 @@ export function ZReportListPage() {
                 <button
                   type="button"
                   disabled={meta.current_page >= meta.last_page}
-                  onClick={() => setFilters((prev) => ({ ...prev, page: (prev.page ?? 1) + 1 }))}
+                  onClick={() => { setFilters((prev) => ({ ...prev, page: (prev.page ?? 1) + 1 })); }}
                   className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm disabled:opacity-50"
                 >
                   {t('common:pagination.next')}

@@ -69,7 +69,7 @@ export function OrdersPage({ terminalId, shiftId }: OrdersPageProps) {
         <div className="flex items-center gap-3">
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => { setStatusFilter(e.target.value); }}
             className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
           >
             <option value="">{t('orders.filters.allStatuses')}</option>
@@ -100,7 +100,7 @@ export function OrdersPage({ terminalId, shiftId }: OrdersPageProps) {
           <div className="flex-1 overflow-auto p-4">
             <ActiveOrdersBoard
               orders={orders}
-              onSelectOrder={(id: string) => setSelectedOrderId(id)}
+              onSelectOrder={(id: string) => { setSelectedOrderId(id); }}
               selectedOrderId={selectedOrderId}
             />
           </div>

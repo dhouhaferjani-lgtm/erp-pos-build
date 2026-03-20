@@ -173,12 +173,12 @@ export function HealthClaimFormPage() {
                   id="claim_type"
                   value={claimType}
                   onChange={(e) =>
-                    setClaimType(
+                    { setClaimType(
                       e.target.value as
                         | 'function'
                         | 'reduction_of_disease_risk'
                         | 'development_and_health'
-                    )
+                    ); }
                   }
                   required
                 >
@@ -204,7 +204,7 @@ export function HealthClaimFormPage() {
                 <Input
                   id="slug"
                   value={slug}
-                  onChange={(e) => setSlug(e.target.value)}
+                  onChange={(e) => { setSlug(e.target.value); }}
                   required
                   placeholder="supports-immune-function"
                 />
@@ -224,7 +224,7 @@ export function HealthClaimFormPage() {
                   id="regulatory_status"
                   value={regulatoryStatus}
                   onChange={(e) =>
-                    setRegulatoryStatus(e.target.value as 'approved' | 'pending' | 'rejected')
+                    { setRegulatoryStatus(e.target.value as 'approved' | 'pending' | 'rejected'); }
                   }
                   required
                 >
@@ -250,7 +250,7 @@ export function HealthClaimFormPage() {
                 <Input
                   id="efsa_reference"
                   value={efsaReference}
-                  onChange={(e) => setEfsaReference(e.target.value)}
+                  onChange={(e) => { setEfsaReference(e.target.value); }}
                   placeholder="EFSA-Q-2008-123"
                 />
               </div>
@@ -267,7 +267,7 @@ export function HealthClaimFormPage() {
                 <Input
                   id="fda_reference"
                   value={fdaReference}
-                  onChange={(e) => setFdaReference(e.target.value)}
+                  onChange={(e) => { setFdaReference(e.target.value); }}
                   placeholder="FDA-2008-N-0453"
                 />
               </div>
@@ -282,7 +282,7 @@ export function HealthClaimFormPage() {
                 <Input
                   id="country_restrictions"
                   value={countryRestrictions}
-                  onChange={(e) => setCountryRestrictions(e.target.value)}
+                  onChange={(e) => { setCountryRestrictions(e.target.value); }}
                   placeholder="FR, DE, IT (comma-separated)"
                 />
                 <p className="text-xs text-gray-500 mt-1">
@@ -296,7 +296,7 @@ export function HealthClaimFormPage() {
                 type="checkbox"
                 id="requires_disclaimer"
                 checked={requiresDisclaimer}
-                onChange={(e) => setRequiresDisclaimer(e.target.checked)}
+                onChange={(e) => { setRequiresDisclaimer(e.target.checked); }}
                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               <label htmlFor="requires_disclaimer" className="text-sm text-gray-700">

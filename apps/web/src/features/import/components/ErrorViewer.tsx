@@ -114,7 +114,7 @@ export function ErrorViewer({ jobId, totalRows }: ErrorViewerProps) {
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  onClick={() => { setCurrentPage(p => Math.max(1, p - 1)); }}
                   disabled={currentPage === 1}
                   className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -125,7 +125,7 @@ export function ErrorViewer({ jobId, totalRows }: ErrorViewerProps) {
                 </span>
                 <button
                   type="button"
-                  onClick={() => setCurrentPage(p => Math.min(errorsData.meta!.last_page!, p + 1))}
+                  onClick={() => { setCurrentPage(p => Math.min(errorsData.meta!.last_page!, p + 1)); }}
                   disabled={currentPage === errorsData.meta.last_page}
                   className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >

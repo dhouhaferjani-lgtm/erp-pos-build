@@ -99,14 +99,14 @@ export function CompositeItemListPage() {
           </p>
           <div className="flex gap-2">
             <button
-              onClick={() => setPage(Math.max(1, page - 1))}
+              onClick={() => { setPage(Math.max(1, page - 1)); }}
               disabled={page <= 1}
               className="rounded-md border border-gray-300 px-3 py-1 text-sm disabled:opacity-50"
             >
               {t('common:previous')}
             </button>
             <button
-              onClick={() => setPage(Math.min(meta.last_page, page + 1))}
+              onClick={() => { setPage(Math.min(meta.last_page, page + 1)); }}
               disabled={page >= meta.last_page}
               className="rounded-md border border-gray-300 px-3 py-1 text-sm disabled:opacity-50"
             >

@@ -55,7 +55,7 @@ vi.mock('../../components/PartnerSelect', () => ({
     <input
       data-testid="partner-select"
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(e) => { onChange(e.target.value); }}
     />
   ),
 }))

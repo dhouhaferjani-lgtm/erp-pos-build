@@ -107,7 +107,7 @@ export function LoyaltyRewardSelector({
               <POSButton
                 variant="primary"
                 size="sm"
-                onClick={() => handleRedeem(reward)}
+                onClick={() => { handleRedeem(reward); }}
                 disabled={!canAfford || isRedeeming}
                 className="ml-2 flex-shrink-0"
               >

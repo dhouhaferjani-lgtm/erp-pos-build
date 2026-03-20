@@ -136,7 +136,7 @@ export function MenuFormPage() {
               <Input
                 id="menu-name"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => { setName(e.target.value); }}
                 required
               />
             </FormField>
@@ -144,7 +144,7 @@ export function MenuFormPage() {
               <Textarea
                 id="menu-desc"
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => { setDescription(e.target.value); }}
                 rows={2}
               />
             </FormField>
@@ -153,7 +153,7 @@ export function MenuFormPage() {
                 id="display-order"
                 type="number"
                 value={displayOrder}
-                onChange={(e) => setDisplayOrder(parseInt(e.target.value, 10) || 0)}
+                onChange={(e) => { setDisplayOrder(parseInt(e.target.value, 10) || 0); }}
                 min={0}
               />
             </FormField>
@@ -162,7 +162,7 @@ export function MenuFormPage() {
                 <input
                   type="checkbox"
                   checked={isActive}
-                  onChange={(e) => setIsActive(e.target.checked)}
+                  onChange={(e) => { setIsActive(e.target.checked); }}
                   className={tokens.checkbox.base}
                 />
                 <span className="text-sm text-gray-700">{t('menu:isActive')}</span>
@@ -171,7 +171,7 @@ export function MenuFormPage() {
                 <input
                   type="checkbox"
                   checked={isDefault}
-                  onChange={(e) => setIsDefault(e.target.checked)}
+                  onChange={(e) => { setIsDefault(e.target.checked); }}
                   className={tokens.checkbox.base}
                 />
                 <span className="text-sm text-gray-700">{t('menu:isDefault')}</span>
@@ -189,7 +189,7 @@ export function MenuFormPage() {
                 id="active-from"
                 type="time"
                 value={activeFrom}
-                onChange={(e) => setActiveFrom(e.target.value)}
+                onChange={(e) => { setActiveFrom(e.target.value); }}
               />
             </FormField>
             <FormField label={t('menu:activeUntil')} htmlFor="active-until">
@@ -197,7 +197,7 @@ export function MenuFormPage() {
                 id="active-until"
                 type="time"
                 value={activeUntil}
-                onChange={(e) => setActiveUntil(e.target.value)}
+                onChange={(e) => { setActiveUntil(e.target.value); }}
               />
             </FormField>
             <FormField label={t('menu:startDate')} htmlFor="start-date">
@@ -205,7 +205,7 @@ export function MenuFormPage() {
                 id="start-date"
                 type="date"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={(e) => { setStartDate(e.target.value); }}
               />
             </FormField>
             <FormField label={t('menu:endDate')} htmlFor="end-date">
@@ -213,7 +213,7 @@ export function MenuFormPage() {
                 id="end-date"
                 type="date"
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                onChange={(e) => { setEndDate(e.target.value); }}
               />
             </FormField>
             <div className="sm:col-span-2">
@@ -223,7 +223,7 @@ export function MenuFormPage() {
                   <button
                     key={day.value}
                     type="button"
-                    onClick={() => toggleDay(day.value)}
+                    onClick={() => { toggleDay(day.value); }}
                     className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
                       availableDays.includes(day.value)
                         ? 'bg-blue-600 text-white'
@@ -266,7 +266,7 @@ export function MenuFormPage() {
             <div className="flex gap-2">
               <Input
                 value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
+                onChange={(e) => { setNewCategoryName(e.target.value); }}
                 placeholder={t('menu:newCategoryPlaceholder')}
                 className="flex-1"
                 onKeyDown={(e) => {

@@ -162,7 +162,7 @@ export function CertificationFormPage() {
                 <Input
                   id="type"
                   value={type}
-                  onChange={(e) => setType(e.target.value)}
+                  onChange={(e) => { setType(e.target.value); }}
                   required
                   placeholder="organic, vegan, halal, fair-trade"
                 />
@@ -181,7 +181,7 @@ export function CertificationFormPage() {
                 <Input
                   id="slug"
                   value={slug}
-                  onChange={(e) => setSlug(e.target.value)}
+                  onChange={(e) => { setSlug(e.target.value); }}
                   required
                   placeholder="ecocert-organic"
                 />
@@ -202,7 +202,7 @@ export function CertificationFormPage() {
                 <Input
                   id="certifying_body"
                   value={certifyingBody}
-                  onChange={(e) => setCertifyingBody(e.target.value)}
+                  onChange={(e) => { setCertifyingBody(e.target.value); }}
                   placeholder="Ecocert, NSF, USDA"
                 />
               </div>
@@ -218,7 +218,7 @@ export function CertificationFormPage() {
                   id="display_order"
                   type="number"
                   value={displayOrder}
-                  onChange={(e) => setDisplayOrder(parseInt(e.target.value, 10))}
+                  onChange={(e) => { setDisplayOrder(parseInt(e.target.value, 10)); }}
                   required
                   min="0"
                 />
@@ -240,7 +240,7 @@ export function CertificationFormPage() {
                   id="logo_url"
                   type="url"
                   value={logoUrl}
-                  onChange={(e) => setLogoUrl(e.target.value)}
+                  onChange={(e) => { setLogoUrl(e.target.value); }}
                   placeholder="https://example.com/logo.png"
                 />
               </div>
@@ -256,7 +256,7 @@ export function CertificationFormPage() {
                   id="verification_url"
                   type="url"
                   value={verificationUrl}
-                  onChange={(e) => setVerificationUrl(e.target.value)}
+                  onChange={(e) => { setVerificationUrl(e.target.value); }}
                   placeholder="https://example.com/verify"
                 />
               </div>
@@ -267,7 +267,7 @@ export function CertificationFormPage() {
                 type="checkbox"
                 id="is_active"
                 checked={isActive}
-                onChange={(e) => setIsActive(e.target.checked)}
+                onChange={(e) => { setIsActive(e.target.checked); }}
                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               <label htmlFor="is_active" className="text-sm text-gray-700">

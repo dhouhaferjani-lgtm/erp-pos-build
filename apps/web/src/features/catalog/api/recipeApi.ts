@@ -12,7 +12,7 @@ import type {
 // Recipes
 export async function getRecipes(compositeItemId: string): Promise<RecipeData[]> {
   const response = await apiGet(`/composite-items/${compositeItemId}/recipes`)
-  return response as unknown as RecipeData[]
+  return response as RecipeData[]
 }
 
 export async function getRecipe(id: string): Promise<RecipeData> {
@@ -55,7 +55,7 @@ export async function deleteRecipeLine(recipeId: string, lineId: string): Promis
 // Variants
 export async function getVariants(compositeItemId: string): Promise<CompositeItemVariantData[]> {
   const response = await apiGet(`/composite-items/${compositeItemId}/variants`)
-  return response as unknown as CompositeItemVariantData[]
+  return response as CompositeItemVariantData[]
 }
 
 export async function createVariant(compositeItemId: string, data: CreateVariantData): Promise<CompositeItemVariantData> {

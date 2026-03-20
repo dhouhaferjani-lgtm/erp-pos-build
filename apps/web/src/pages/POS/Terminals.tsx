@@ -248,7 +248,7 @@ export function TerminalsPage() {
             <div className="flex gap-3">
               <button
                 type="button"
-                onClick={() => setArchiveTarget(null)}
+                onClick={() => { setArchiveTarget(null); }}
                 className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
                 {t('common.actions.cancel')}
@@ -278,7 +278,7 @@ export function TerminalsPage() {
             <div className="flex gap-3">
               <button
                 type="button"
-                onClick={() => setDeleteTarget(null)}
+                onClick={() => { setDeleteTarget(null); }}
                 className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
                 {t('common.actions.cancel')}
@@ -308,7 +308,7 @@ export function TerminalsPage() {
             <input
               type="text"
               value={deactivateReason}
-              onChange={(e) => setDeactivateReason(e.target.value)}
+              onChange={(e) => { setDeactivateReason(e.target.value); }}
               placeholder={t('pos.terminal.deactivationReasonPlaceholder')}
               className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-6"
             />

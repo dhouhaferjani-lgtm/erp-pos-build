@@ -153,7 +153,7 @@ export function ModifierGroupFormPage() {
                 id="mg-code"
                 required
                 value={form.code}
-                onChange={(e) => setForm({ ...form, code: e.target.value })}
+                onChange={(e) => { setForm({ ...form, code: e.target.value }); }}
               />
             </FormField>
             <FormField label={t('catalog:name')} htmlFor="mg-name" required>
@@ -161,14 +161,14 @@ export function ModifierGroupFormPage() {
                 id="mg-name"
                 required
                 value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                onChange={(e) => { setForm({ ...form, name: e.target.value }); }}
               />
             </FormField>
             <FormField label={t('catalog:selectionType')} htmlFor="mg-selection">
               <Select
                 id="mg-selection"
                 value={form.selection_type}
-                onChange={(e) => setForm({ ...form, selection_type: e.target.value as SelectionType })}
+                onChange={(e) => { setForm({ ...form, selection_type: e.target.value as SelectionType }); }}
               >
                 <option value="single">{t('catalog:single')}</option>
                 <option value="multiple">{t('catalog:multiple')}</option>
@@ -181,7 +181,7 @@ export function ModifierGroupFormPage() {
                   type="number"
                   min="0"
                   value={form.min_selections}
-                  onChange={(e) => setForm({ ...form, min_selections: Number(e.target.value) })}
+                  onChange={(e) => { setForm({ ...form, min_selections: Number(e.target.value) }); }}
                 />
               </FormField>
               <FormField label={t('catalog:maxSelections')} htmlFor="mg-max">
@@ -190,7 +190,7 @@ export function ModifierGroupFormPage() {
                   type="number"
                   min="1"
                   value={form.max_selections}
-                  onChange={(e) => setForm({ ...form, max_selections: Number(e.target.value) })}
+                  onChange={(e) => { setForm({ ...form, max_selections: Number(e.target.value) }); }}
                 />
               </FormField>
             </div>
@@ -199,7 +199,7 @@ export function ModifierGroupFormPage() {
                 <input
                   type="checkbox"
                   checked={form.is_required}
-                  onChange={(e) => setForm({ ...form, is_required: e.target.checked })}
+                  onChange={(e) => { setForm({ ...form, is_required: e.target.checked }); }}
                   className={tokens.checkbox.base}
                 />
                 <span className="text-sm text-gray-700">{t('catalog:isRequired')}</span>
@@ -208,7 +208,7 @@ export function ModifierGroupFormPage() {
                 <input
                   type="checkbox"
                   checked={form.is_active}
-                  onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+                  onChange={(e) => { setForm({ ...form, is_active: e.target.checked }); }}
                   className={tokens.checkbox.base}
                 />
                 <span className="text-sm text-gray-700">{t('catalog:isActive')}</span>
@@ -284,7 +284,7 @@ export function ModifierGroupFormPage() {
                       <input
                         type="checkbox"
                         defaultChecked={mod.is_default}
-                        onChange={(e) => handleUpdateModifier(mod.id, 'is_default', e.target.checked)}
+                        onChange={(e) => { handleUpdateModifier(mod.id, 'is_default', e.target.checked); }}
                         className={tokens.checkbox.base}
                       />
                     </td>
@@ -292,7 +292,7 @@ export function ModifierGroupFormPage() {
                       <div className="flex items-center gap-2">
                         <ProductSearchSelect
                           value={mod.component_id ?? ''}
-                          onChange={(productId) => handleUpdateModifier(mod.id, 'component_id', productId)}
+                          onChange={(productId) => { handleUpdateModifier(mod.id, 'component_id', productId); }}
                           placeholder={t('catalog:searchComponent')}
                           className="min-w-[160px]"
                         />
@@ -302,7 +302,7 @@ export function ModifierGroupFormPage() {
                             step="0.01"
                             min="0"
                             defaultValue={mod.component_quantity ?? ''}
-                            onBlur={(e) => handleUpdateModifier(mod.id, 'component_quantity', e.target.value)}
+                            onBlur={(e) => { handleUpdateModifier(mod.id, 'component_quantity', e.target.value); }}
                             className="!mt-0 w-20"
                             placeholder={t('catalog:quantity')}
                           />
@@ -313,7 +313,7 @@ export function ModifierGroupFormPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleDeleteModifier(mod.id)}
+                        onClick={() => { handleDeleteModifier(mod.id); }}
                         className="!p-1 text-red-600 hover:text-red-900 hover:bg-red-50"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -327,7 +327,7 @@ export function ModifierGroupFormPage() {
                       type="text"
                       placeholder={t('catalog:code')}
                       value={newModifier.code}
-                      onChange={(e) => setNewModifier({ ...newModifier, code: e.target.value })}
+                      onChange={(e) => { setNewModifier({ ...newModifier, code: e.target.value }); }}
                       className="!mt-0 w-24"
                     />
                   </td>
@@ -336,7 +336,7 @@ export function ModifierGroupFormPage() {
                       type="text"
                       placeholder={t('catalog:name')}
                       value={newModifier.name}
-                      onChange={(e) => setNewModifier({ ...newModifier, name: e.target.value })}
+                      onChange={(e) => { setNewModifier({ ...newModifier, name: e.target.value }); }}
                       className="!mt-0 w-32"
                     />
                   </td>
@@ -345,7 +345,7 @@ export function ModifierGroupFormPage() {
                       type="number"
                       step="0.01"
                       value={newModifier.price_adjustment}
-                      onChange={(e) => setNewModifier({ ...newModifier, price_adjustment: e.target.value })}
+                      onChange={(e) => { setNewModifier({ ...newModifier, price_adjustment: e.target.value }); }}
                       className="!mt-0 w-24"
                     />
                   </td>

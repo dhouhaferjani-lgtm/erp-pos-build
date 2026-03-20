@@ -36,7 +36,7 @@ export function EnrollMemberModal({ isOpen, onClose, onSubmit, isPending }: Enro
             <FormField label={t('loyalty:enroll.selectProgram')}>
               <Select
                 value={selectedProgramId}
-                onChange={(e) => setSelectedProgramId(e.target.value)}
+                onChange={(e) => { setSelectedProgramId(e.target.value); }}
               >
                 <option value="">{t('loyalty:enroll.selectProgram')}</option>
                 {activePrograms.map((program) => (

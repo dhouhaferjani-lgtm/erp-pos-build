@@ -111,7 +111,7 @@ export function ProductImageGallery({
               <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
                 {!image.is_primary && (
                   <button
-                    onClick={() => handleSetPrimary(image.id)}
+                    onClick={() => { handleSetPrimary(image.id); }}
                     disabled={settingPrimaryId === image.id}
                     className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-gray-700 shadow-sm transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
                     title={t('products:images.setPrimary')}
@@ -125,7 +125,7 @@ export function ProductImageGallery({
                 )}
 
                 <button
-                  onClick={() => handleDelete(image.id)}
+                  onClick={() => { handleDelete(image.id); }}
                   disabled={deletingId === image.id}
                   className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-red-600 shadow-sm transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                   title={t('common:delete')}

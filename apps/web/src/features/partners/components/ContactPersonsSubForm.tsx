@@ -112,7 +112,7 @@ export function ContactPersonsSubForm({
                 <button
                   type="button"
                   onClick={() =>
-                    setExpandedIndex(expandedIndex === index ? null : index)
+                    { setExpandedIndex(expandedIndex === index ? null : index); }
                   }
                   className="flex-1 text-start"
                 >
@@ -148,7 +148,7 @@ export function ContactPersonsSubForm({
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleRemove(index)}
+                  onClick={() => { handleRemove(index); }}
                   disabled={disabled}
                   className="rounded p-1 text-gray-400 hover:text-red-600 disabled:opacity-50"
                 >
@@ -167,7 +167,7 @@ export function ContactPersonsSubForm({
                       type="text"
                       value={contact.first_name}
                       onChange={(e) =>
-                        handleFieldChange(index, 'first_name', e.target.value)
+                        { handleFieldChange(index, 'first_name', e.target.value); }
                       }
                       disabled={disabled}
                       className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
@@ -181,7 +181,7 @@ export function ContactPersonsSubForm({
                       type="text"
                       value={contact.last_name}
                       onChange={(e) =>
-                        handleFieldChange(index, 'last_name', e.target.value)
+                        { handleFieldChange(index, 'last_name', e.target.value); }
                       }
                       disabled={disabled}
                       className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
@@ -195,7 +195,7 @@ export function ContactPersonsSubForm({
                       type="email"
                       value={contact.email}
                       onChange={(e) =>
-                        handleFieldChange(index, 'email', e.target.value)
+                        { handleFieldChange(index, 'email', e.target.value); }
                       }
                       disabled={disabled}
                       className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
@@ -209,7 +209,7 @@ export function ContactPersonsSubForm({
                       type="tel"
                       value={contact.phone}
                       onChange={(e) =>
-                        handleFieldChange(index, 'phone', e.target.value)
+                        { handleFieldChange(index, 'phone', e.target.value); }
                       }
                       disabled={disabled}
                       className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
@@ -223,7 +223,7 @@ export function ContactPersonsSubForm({
                       type="text"
                       value={contact.job_title}
                       onChange={(e) =>
-                        handleFieldChange(index, 'job_title', e.target.value)
+                        { handleFieldChange(index, 'job_title', e.target.value); }
                       }
                       disabled={disabled}
                       className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
@@ -237,7 +237,7 @@ export function ContactPersonsSubForm({
                       type="text"
                       value={contact.department}
                       onChange={(e) =>
-                        handleFieldChange(index, 'department', e.target.value)
+                        { handleFieldChange(index, 'department', e.target.value); }
                       }
                       disabled={disabled}
                       className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
@@ -251,11 +251,11 @@ export function ContactPersonsSubForm({
                         type="checkbox"
                         checked={contact.is_primary}
                         onChange={(e) =>
-                          handleFieldChange(
+                          { handleFieldChange(
                             index,
                             'is_primary',
                             e.target.checked,
-                          )
+                          ); }
                         }
                         disabled={disabled}
                         className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -274,11 +274,11 @@ export function ContactPersonsSubForm({
                         type="checkbox"
                         checked={contact.is_invoice_contact}
                         onChange={(e) =>
-                          handleFieldChange(
+                          { handleFieldChange(
                             index,
                             'is_invoice_contact',
                             e.target.checked,
-                          )
+                          ); }
                         }
                         disabled={disabled}
                         className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -293,11 +293,11 @@ export function ContactPersonsSubForm({
                         type="checkbox"
                         checked={contact.is_delivery_contact}
                         onChange={(e) =>
-                          handleFieldChange(
+                          { handleFieldChange(
                             index,
                             'is_delivery_contact',
                             e.target.checked,
-                          )
+                          ); }
                         }
                         disabled={disabled}
                         className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"

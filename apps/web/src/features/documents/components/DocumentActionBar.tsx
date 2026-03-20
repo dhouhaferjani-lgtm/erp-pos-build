@@ -239,7 +239,7 @@ export function DocumentActionBar({
         <div className="relative" ref={dropdownRef}>
           <button
             type="button"
-            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+            onClick={() => { setIsDropdownOpen(!isDropdownOpen); }}
             className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white p-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
             aria-label={t('common:actions.more', 'More actions')}
           >
@@ -252,7 +252,7 @@ export function DocumentActionBar({
                 <Link
                   to={`${basePath}/${document.id}/edit`}
                   className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                  onClick={() => setIsDropdownOpen(false)}
+                  onClick={() => { setIsDropdownOpen(false); }}
                 >
                   <Edit className="h-4 w-4 text-gray-400" />
                   {t('actions.edit')}

@@ -18,7 +18,7 @@ export function ConsumptionModeToggle({ value, onChange, className }: Consumptio
     <div className={cn('inline-flex rounded-lg bg-gray-100 p-1', className)}>
       <button
         type="button"
-        onClick={() => onChange('SUR_PLACE')}
+        onClick={() => { onChange('SUR_PLACE'); }}
         className={cn(
           'flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors',
           focusRing.default,
@@ -33,7 +33,7 @@ export function ConsumptionModeToggle({ value, onChange, className }: Consumptio
       </button>
       <button
         type="button"
-        onClick={() => onChange('A_EMPORTER')}
+        onClick={() => { onChange('A_EMPORTER'); }}
         className={cn(
           'flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors',
           focusRing.default,

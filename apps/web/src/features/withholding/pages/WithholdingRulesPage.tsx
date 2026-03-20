@@ -85,7 +85,7 @@ export function WithholdingRulesPage() {
         </label>
         <select
           value={selectedCountry}
-          onChange={(e) => setSelectedCountry(e.target.value)}
+          onChange={(e) => { setSelectedCountry(e.target.value); }}
           className="block w-64 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
         >
           <option value="TN">{t('countries.tunisia')}</option>
@@ -179,7 +179,7 @@ export function WithholdingRulesPage() {
                       <div className="flex items-center justify-center gap-1">
                         <button
                           type="button"
-                          onClick={() => handleEdit(rule)}
+                          onClick={() => { handleEdit(rule); }}
                           className="inline-flex items-center justify-center rounded p-1 text-blue-600 hover:bg-blue-100 hover:text-blue-900"
                           title={t('common:edit')}
                         >

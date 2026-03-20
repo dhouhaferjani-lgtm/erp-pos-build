@@ -65,7 +65,7 @@ export function CompanyConfigProvider({ children }: CompanyConfigProviderProps) 
     () => ({
       config: data ?? null,
       isLoading,
-      error: error as Error | null,
+      error: error,
       hasModule,
     }),
     [data, isLoading, error, hasModule]

@@ -132,7 +132,7 @@ export function TranslationEditor({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => removeTranslation(index)}
+                    onClick={() => { removeTranslation(index); }}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -159,7 +159,7 @@ export function TranslationEditor({
                       id={`translation-${index}-${field.name}`}
                       value={(translation[field.name] as string) || ''}
                       onChange={(e) =>
-                        updateTranslation(index, field.name, e.target.value)
+                        { updateTranslation(index, field.name, e.target.value); }
                       }
                       required={field.required && translation.locale === 'en'}
                       rows={3}
@@ -169,7 +169,7 @@ export function TranslationEditor({
                       id={`translation-${index}-${field.name}`}
                       value={(translation[field.name] as string) || ''}
                       onChange={(e) =>
-                        updateTranslation(index, field.name, e.target.value)
+                        { updateTranslation(index, field.name, e.target.value); }
                       }
                       required={field.required && translation.locale === 'en'}
                     />

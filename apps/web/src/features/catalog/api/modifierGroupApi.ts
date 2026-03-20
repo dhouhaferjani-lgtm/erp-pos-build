@@ -62,7 +62,7 @@ export async function assignModifierGroup(
     modifier_group_id: modifierGroupId,
     display_order: displayOrder ?? 0,
   })
-  return response as unknown as ModifierGroupData[]
+  return response as ModifierGroupData[]
 }
 
 export async function removeModifierGroup(compositeItemId: string, modifierGroupId: string): Promise<void> {

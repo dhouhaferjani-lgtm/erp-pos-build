@@ -126,7 +126,7 @@ export function POSPage({
     }
 
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    return () => { window.removeEventListener('keydown', handleKeyDown); }
   }, [])
 
   // Get array of product IDs in cart
@@ -247,8 +247,8 @@ export function POSPage({
   // Flash indicator when a scan is detected
   const triggerScanFlash = useCallback(() => {
     setScanFlash(true)
-    const timer = setTimeout(() => setScanFlash(false), 600)
-    return () => clearTimeout(timer)
+    const timer = setTimeout(() => { setScanFlash(false); }, 600)
+    return () => { clearTimeout(timer); }
   }, [])
 
   const { lookup, status: barcodeStatus } = useBarcodeLookup({
@@ -503,7 +503,7 @@ export function POSPage({
             onClearCart={handleClearCart}
             onQuickCheckout={handleQuickCheckout}
             onAdvancedPayments={handleAdvancedPayments}
-            onOpenCalculator={() => setIsCalculatorOpen(true)}
+            onOpenCalculator={() => { setIsCalculatorOpen(true); }}
             selectedCustomer={selectedCustomer}
             onChangeCustomer={onChangeCustomer}
             touchOptimized={touchOptimized}
@@ -545,7 +545,7 @@ export function POSPage({
                 {barcodeMatchProducts.map((product) => (
                   <button
                     key={product.id}
-                    onClick={() => handleBarcodeMatchSelect(product)}
+                    onClick={() => { handleBarcodeMatchSelect(product); }}
                     className="w-full px-6 py-4 text-start hover:bg-blue-50 border-b border-gray-100 last:border-b-0 transition-colors"
                   >
                     <div className="font-medium text-gray-900">{product.name}</div>
@@ -580,7 +580,7 @@ export function POSPage({
         {/* Calculator Modal */}
         <Calculator
           isOpen={isCalculatorOpen}
-          onClose={() => setIsCalculatorOpen(false)}
+          onClose={() => { setIsCalculatorOpen(false); }}
           touchOptimized={touchOptimized}
         />
 
@@ -588,7 +588,7 @@ export function POSPage({
         {modifierProduct && (
           <ModifierSelectionModal
             isOpen={!!modifierProduct}
-            onClose={() => setModifierProduct(null)}
+            onClose={() => { setModifierProduct(null); }}
             product={modifierProduct}
             onConfirm={handleModifierConfirm}
           />

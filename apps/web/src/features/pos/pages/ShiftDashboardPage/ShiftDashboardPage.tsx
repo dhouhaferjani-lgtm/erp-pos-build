@@ -206,7 +206,7 @@ export function ShiftDashboardPage({
             <POSButton
               variant="secondary"
               size={touchOptimized ? 'lg' : 'md'}
-              onClick={() => setActiveModal('deposit')}
+              onClick={() => { setActiveModal('deposit'); }}
               icon={<TrendingDown className="w-5 h-5" />}
               fullWidth
               touchOptimized={touchOptimized}
@@ -217,7 +217,7 @@ export function ShiftDashboardPage({
             <POSButton
               variant="secondary"
               size={touchOptimized ? 'lg' : 'md'}
-              onClick={() => setActiveModal('payout')}
+              onClick={() => { setActiveModal('payout'); }}
               icon={<TrendingUp className="w-5 h-5" />}
               fullWidth
               touchOptimized={touchOptimized}
@@ -239,7 +239,7 @@ export function ShiftDashboardPage({
             <POSButton
               variant="danger"
               size={touchOptimized ? 'lg' : 'md'}
-              onClick={() => setActiveModal('close')}
+              onClick={() => { setActiveModal('close'); }}
               icon={<LogOut className="w-5 h-5" />}
               fullWidth
               touchOptimized={touchOptimized}
@@ -260,7 +260,7 @@ export function ShiftDashboardPage({
           <POSButton
             variant="primary"
             size={touchOptimized ? 'lg' : 'md'}
-            onClick={() => setActiveModal('open')}
+            onClick={() => { setActiveModal('open'); }}
             touchOptimized={touchOptimized}
           >
             {t('pos:shiftDashboard.openShift')}
@@ -272,7 +272,7 @@ export function ShiftDashboardPage({
       {activeModal === 'open' && (
         <Modal
           title={t('pos:shiftDashboard.openShift')}
-          onClose={() => setActiveModal(null)}
+          onClose={() => { setActiveModal(null); }}
           touchOptimized={touchOptimized}
         >
           <MoneyInput
@@ -286,7 +286,7 @@ export function ShiftDashboardPage({
           <div className="flex gap-3 mt-6">
             <POSButton
               variant="secondary"
-              onClick={() => setActiveModal(null)}
+              onClick={() => { setActiveModal(null); }}
               fullWidth
             >
               {t('common:cancel')}
@@ -306,7 +306,7 @@ export function ShiftDashboardPage({
       {activeModal === 'close' && currentShift && (
         <Modal
           title={t('pos:shiftDashboard.closeShift')}
-          onClose={() => setActiveModal(null)}
+          onClose={() => { setActiveModal(null); }}
           touchOptimized={touchOptimized}
         >
           <div className="space-y-4">
@@ -353,7 +353,7 @@ export function ShiftDashboardPage({
           <div className="flex gap-3 mt-6">
             <POSButton
               variant="secondary"
-              onClick={() => setActiveModal(null)}
+              onClick={() => { setActiveModal(null); }}
               fullWidth
             >
               {t('common:cancel')}
@@ -373,7 +373,7 @@ export function ShiftDashboardPage({
       {(activeModal === 'deposit' || activeModal === 'payout') && (
         <Modal
           title={activeModal === 'deposit' ? t('pos:shiftDashboard.cashDeposit') : t('pos:shiftDashboard.cashPayout')}
-          onClose={() => setActiveModal(null)}
+          onClose={() => { setActiveModal(null); }}
           touchOptimized={touchOptimized}
         >
           <div className="space-y-4">
@@ -393,7 +393,7 @@ export function ShiftDashboardPage({
               <input
                 type="text"
                 value={operationReason}
-                onChange={(e) => setOperationReason(e.target.value)}
+                onChange={(e) => { setOperationReason(e.target.value); }}
                 placeholder={t('pos:shiftDashboard.reason')}
                 className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -403,14 +403,14 @@ export function ShiftDashboardPage({
           <div className="flex gap-3 mt-6">
             <POSButton
               variant="secondary"
-              onClick={() => setActiveModal(null)}
+              onClick={() => { setActiveModal(null); }}
               fullWidth
             >
               {t('common:cancel')}
             </POSButton>
             <POSButton
               variant="primary"
-              onClick={() => handleCashOperation(activeModal)}
+              onClick={() => { handleCashOperation(activeModal); }}
               fullWidth
               disabled={!operationAmount || !operationReason}
             >
@@ -516,7 +516,7 @@ export function ShiftDashboardPage({
           <div className="flex gap-3 mt-6">
             <POSButton
               variant="secondary"
-              onClick={() => window.print()}
+              onClick={() => { window.print(); }}
               icon={<Printer className="w-4 h-4" />}
               fullWidth
             >

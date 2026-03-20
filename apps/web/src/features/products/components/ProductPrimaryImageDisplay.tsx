@@ -86,7 +86,7 @@ export function ProductPrimaryImageDisplay({ productId }: ProductPrimaryImageDis
           src={getProductImageDownloadUrl(productId, primaryImage.id)}
           alt={primaryImage.original_filename}
           className="h-full w-full object-cover"
-          onError={() => handleImageError(primaryImage.id)}
+          onError={() => { handleImageError(primaryImage.id); }}
         />
 
         {/* Magnifier Icon Overlay */}
@@ -112,7 +112,7 @@ export function ProductPrimaryImageDisplay({ productId }: ProductPrimaryImageDis
           {validImages.slice(0, 8).map((image) => (
             <button
               key={image.id}
-              onClick={() => handleThumbnailClick(image.id)}
+              onClick={() => { handleThumbnailClick(image.id); }}
               className={`group relative aspect-square overflow-hidden rounded border-2 transition-all hover:scale-105 ${
                 image.id === primaryImage.id
                   ? 'border-blue-500 ring-2 ring-blue-200'
@@ -123,7 +123,7 @@ export function ProductPrimaryImageDisplay({ productId }: ProductPrimaryImageDis
                 src={getProductImageDownloadUrl(productId, image.id)}
                 alt={image.original_filename}
                 className="h-full w-full object-cover"
-                onError={() => handleImageError(image.id)}
+                onError={() => { handleImageError(image.id); }}
               />
               {image.is_primary && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-all group-hover:bg-black/20">
@@ -151,7 +151,7 @@ export function ProductPrimaryImageDisplay({ productId }: ProductPrimaryImageDis
         productId={productId}
         images={validImages}
         isOpen={isGalleryOpen}
-        onClose={() => setIsGalleryOpen(false)}
+        onClose={() => { setIsGalleryOpen(false); }}
         initialIndex={getCurrentImageIndex()}
         initialView={galleryInitialView}
       />

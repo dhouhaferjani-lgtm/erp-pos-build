@@ -583,7 +583,7 @@ export function POSTransactions() {
       {cashTenderedState && (
         <CashTenderedModal
           isOpen={!!cashTenderedState}
-          onClose={() => setCashTenderedState(null)}
+          onClose={() => { setCashTenderedState(null); }}
           onConfirm={handleCashTenderedConfirm}
           total={cashTenderedState.total}
           isProcessing={isCashPaymentProcessing}
@@ -594,7 +594,7 @@ export function POSTransactions() {
       {quickCheckoutResult && (
         <CheckoutSuccessDialog
           isOpen={!!quickCheckoutResult}
-          onClose={() => setQuickCheckoutResult(null)}
+          onClose={() => { setQuickCheckoutResult(null); }}
           receiptNumber={quickCheckoutResult.receiptNumber}
           total={quickCheckoutResult.total}
           changeDue={quickCheckoutResult.changeDue}
@@ -686,7 +686,7 @@ export function POSTransactions() {
       {productInfoId && (
         <ProductInfoModal
           isOpen={!!productInfoId}
-          onClose={() => setProductInfoId(null)}
+          onClose={() => { setProductInfoId(null); }}
           productId={productInfoId}
           touchOptimized={false}
         />

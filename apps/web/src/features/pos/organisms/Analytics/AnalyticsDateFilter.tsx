@@ -53,7 +53,7 @@ export function AnalyticsDateFilter({ filters, onChange }: AnalyticsDateFilterPr
           <button
             key={preset.key}
             type="button"
-            onClick={() => handlePreset(preset)}
+            onClick={() => { handlePreset(preset); }}
             className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
               activePreset === preset.key
                 ? 'bg-primary text-primary-foreground'
@@ -68,14 +68,14 @@ export function AnalyticsDateFilter({ filters, onChange }: AnalyticsDateFilterPr
         <input
           type="date"
           value={filters.from}
-          onChange={(e) => handleDateChange('from', e.target.value)}
+          onChange={(e) => { handleDateChange('from', e.target.value); }}
           className="rounded-md border border-input bg-background px-3 py-1.5 text-sm"
         />
         <span className="text-muted-foreground">—</span>
         <input
           type="date"
           value={filters.to}
-          onChange={(e) => handleDateChange('to', e.target.value)}
+          onChange={(e) => { handleDateChange('to', e.target.value); }}
           className="rounded-md border border-input bg-background px-3 py-1.5 text-sm"
         />
       </div>

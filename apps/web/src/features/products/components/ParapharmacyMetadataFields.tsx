@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { useFieldArray, type Control, type UseFormRegister, type FieldErrors } from 'react-hook-form'
 import { Plus, X } from 'lucide-react'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 interface ParapharmacyMetadataFieldsProps {
   control: Control<any>
   register: UseFormRegister<any>

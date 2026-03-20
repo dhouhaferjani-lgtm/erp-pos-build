@@ -168,7 +168,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
             type="number"
             min="0"
             defaultValue={recipe.prep_time_minutes ?? ''}
-            onBlur={(e) => handleUpdateRecipeField('prep_time_minutes', e.target.value)}
+            onBlur={(e) => { handleUpdateRecipeField('prep_time_minutes', e.target.value); }}
             placeholder="0"
           />
         </FormField>
@@ -177,7 +177,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
             type="number"
             min="0"
             defaultValue={recipe.cook_time_minutes ?? ''}
-            onBlur={(e) => handleUpdateRecipeField('cook_time_minutes', e.target.value)}
+            onBlur={(e) => { handleUpdateRecipeField('cook_time_minutes', e.target.value); }}
             placeholder="0"
           />
         </FormField>
@@ -190,7 +190,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
           <FormField label={t('catalog:instructions')}>
             <Textarea
               defaultValue={recipe.instructions ?? ''}
-              onBlur={(e) => handleUpdateInstructions(e.target.value)}
+              onBlur={(e) => { handleUpdateInstructions(e.target.value); }}
               rows={3}
               placeholder={t('catalog:instructions')}
             />
@@ -229,7 +229,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                   <Input
                     type="number"
                     defaultValue={line.quantity}
-                    onBlur={(e) => handleUpdateLine(line.id, 'quantity', e.target.value)}
+                    onBlur={(e) => { handleUpdateLine(line.id, 'quantity', e.target.value); }}
                     className="!mt-0 w-20"
                     step="0.01"
                   />
@@ -239,7 +239,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                   <Input
                     type="number"
                     defaultValue={line.wastage_percent}
-                    onBlur={(e) => handleUpdateLine(line.id, 'wastage_percent', e.target.value)}
+                    onBlur={(e) => { handleUpdateLine(line.id, 'wastage_percent', e.target.value); }}
                     className="!mt-0 w-16"
                     step="0.1"
                     min="0"
@@ -250,7 +250,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                   <input
                     type="checkbox"
                     defaultChecked={line.is_optional}
-                    onChange={(e) => handleUpdateLine(line.id, 'is_optional', e.target.checked)}
+                    onChange={(e) => { handleUpdateLine(line.id, 'is_optional', e.target.checked); }}
                     className={tokens.checkbox.base}
                   />
                 </td>
@@ -260,7 +260,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleDeleteLine(line.id)}
+                    onClick={() => { handleDeleteLine(line.id); }}
                     disabled={deleteLineMutation.isPending}
                     className="!p-1 text-red-600 hover:text-red-900 hover:bg-red-50"
                   >
@@ -275,7 +275,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                 <div className="space-y-2">
                   <Select
                     value={newLine.component_type}
-                    onChange={(e) => setNewLine({ ...newLine, component_type: e.target.value as ComponentType, component_id: '' })}
+                    onChange={(e) => { setNewLine({ ...newLine, component_type: e.target.value as ComponentType, component_id: '' }); }}
                     className="!mt-0 text-xs"
                   >
                     <option value="product">{t('catalog:componentTypes.product')}</option>
@@ -284,14 +284,14 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                   {newLine.component_type === 'product' ? (
                     <ProductSearchSelect
                       value={newLine.component_id}
-                      onChange={(id) => setNewLine({ ...newLine, component_id: id })}
+                      onChange={(id) => { setNewLine({ ...newLine, component_id: id }); }}
                       placeholder={t(verticalType === 'fnb' || verticalType === 'bakery' ? 'catalog:searchIngredient' : 'catalog:searchComponent')}
                       className="min-w-[200px]"
                     />
                   ) : (
                     <CompositeItemSearchSelect
                       value={newLine.component_id}
-                      onChange={(id) => setNewLine({ ...newLine, component_id: id })}
+                      onChange={(id) => { setNewLine({ ...newLine, component_id: id }); }}
                       placeholder={t('catalog:searchCompositeItem')}
                       className="min-w-[200px]"
                     />
@@ -303,7 +303,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                   type="number"
                   placeholder={t('catalog:quantity')}
                   value={newLine.quantity}
-                  onChange={(e) => setNewLine({ ...newLine, quantity: e.target.value })}
+                  onChange={(e) => { setNewLine({ ...newLine, quantity: e.target.value }); }}
                   className="!mt-0 w-20"
                   step="0.01"
                 />
@@ -313,7 +313,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                 <Input
                   type="number"
                   value={newLine.wastage_percent}
-                  onChange={(e) => setNewLine({ ...newLine, wastage_percent: e.target.value })}
+                  onChange={(e) => { setNewLine({ ...newLine, wastage_percent: e.target.value }); }}
                   className="!mt-0 w-16"
                   step="0.1"
                 />
@@ -322,7 +322,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                 <input
                   type="checkbox"
                   checked={newLine.is_optional}
-                  onChange={(e) => setNewLine({ ...newLine, is_optional: e.target.checked })}
+                  onChange={(e) => { setNewLine({ ...newLine, is_optional: e.target.checked }); }}
                   className={tokens.checkbox.base}
                 />
               </td>

@@ -194,12 +194,12 @@ export function QuoteDetailPage() {
               document={quote}
               basePath="/sales/quotes"
               isActionPending={isActionPending}
-              onConfirm={() => setConfirmAction('confirm')}
-              {...((!relatedDocs || relatedDocs.descendants.length === 0) ? { onConvert: () => setConfirmAction('convert') } : {})}
+              onConfirm={() => { setConfirmAction('confirm'); }}
+              {...((!relatedDocs || relatedDocs.descendants.length === 0) ? { onConvert: () => { setConfirmAction('convert'); } } : {})}
               onDownloadPdf={handleDownloadPdf}
               onPreviewPdf={handlePreviewPdf}
               onPrintPdf={handlePrintPdf}
-              onSendEmail={() => setShowEmailModal(true)}
+              onSendEmail={() => { setShowEmailModal(true); }}
               isDownloading={downloadPdfMutation.isPending}
               isPreviewing={previewPdfMutation.isPending}
               isPrinting={printPdfMutation.isPending}
@@ -336,7 +336,7 @@ export function QuoteDetailPage() {
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
             <button
-              onClick={() => setActiveTab('related')}
+              onClick={() => { setActiveTab('related'); }}
               className={`${
                 activeTab === 'related'
                   ? 'border-blue-500 text-blue-600'
@@ -346,7 +346,7 @@ export function QuoteDetailPage() {
               {t('documents.relatedDocuments')}
             </button>
             <button
-              onClick={() => setActiveTab('attachments')}
+              onClick={() => { setActiveTab('attachments'); }}
               className={`${
                 activeTab === 'attachments'
                   ? 'border-blue-500 text-blue-600'
@@ -367,7 +367,7 @@ export function QuoteDetailPage() {
       {/* Confirmation Dialogs */}
       <ConfirmDialog
         isOpen={confirmAction === 'confirm'}
-        onClose={() => setConfirmAction(null)}
+        onClose={() => { setConfirmAction(null); }}
         onConfirm={handleConfirm}
         title={t('documents.confirmTitle')}
         message={t('documents.confirmMessage')}
@@ -377,7 +377,7 @@ export function QuoteDetailPage() {
 
       <ConfirmDialog
         isOpen={confirmAction === 'convert'}
-        onClose={() => setConfirmAction(null)}
+        onClose={() => { setConfirmAction(null); }}
         onConfirm={handleConvert}
         title={t('quotes.convertToOrderTitle')}
         message={t('quotes.convertToOrderMessage')}
@@ -396,7 +396,7 @@ export function QuoteDetailPage() {
                 <input
                   type="email"
                   value={emailForm.recipientEmail}
-                  onChange={(e) => setEmailForm({ ...emailForm, recipientEmail: e.target.value })}
+                  onChange={(e) => { setEmailForm({ ...emailForm, recipientEmail: e.target.value }); }}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                 />
               </div>
@@ -405,7 +405,7 @@ export function QuoteDetailPage() {
                 <input
                   type="text"
                   value={emailForm.subject}
-                  onChange={(e) => setEmailForm({ ...emailForm, subject: e.target.value })}
+                  onChange={(e) => { setEmailForm({ ...emailForm, subject: e.target.value }); }}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                 />
               </div>
@@ -413,14 +413,14 @@ export function QuoteDetailPage() {
                 <label className="block text-sm font-medium text-gray-700">{t('common:email.message')}</label>
                 <textarea
                   value={emailForm.message}
-                  onChange={(e) => setEmailForm({ ...emailForm, message: e.target.value })}
+                  onChange={(e) => { setEmailForm({ ...emailForm, message: e.target.value }); }}
                   rows={4}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                 />
               </div>
               <div className="flex justify-end gap-3">
                 <button
-                  onClick={() => setShowEmailModal(false)}
+                  onClick={() => { setShowEmailModal(false); }}
                   className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
                   {t('common:cancel')}

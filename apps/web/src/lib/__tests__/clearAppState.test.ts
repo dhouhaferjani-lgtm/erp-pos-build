@@ -114,7 +114,7 @@ describe('clearAllAppState', () => {
 
   it('clears everything even if stores are already empty', () => {
     // Should not throw when stores are already in initial state
-    expect(() => clearAllAppState(queryClient)).not.toThrow()
+    expect(() => { clearAllAppState(queryClient); }).not.toThrow()
 
     expect(useAuthStore.getState().isAuthenticated).toBe(false)
     expect(useCompanyStore.getState().currentCompanyId).toBeNull()

@@ -79,8 +79,8 @@ export function HoldOrderButton({
         {t('pos:heldOrders.holdOrder')}
       </button>
 
-      <Modal isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)}>
-        <ModalHeader title={t('pos:heldOrders.holdOrder')} onClose={() => setIsDialogOpen(false)} />
+      <Modal isOpen={isDialogOpen} onClose={() => { setIsDialogOpen(false); }}>
+        <ModalHeader title={t('pos:heldOrders.holdOrder')} onClose={() => { setIsDialogOpen(false); }} />
         <ModalContent>
           <div className="space-y-4">
             <div>
@@ -94,7 +94,7 @@ export function HoldOrderButton({
                 id="hold-order-label"
                 type="text"
                 value={label}
-                onChange={(e) => setLabel(e.target.value)}
+                onChange={(e) => { setLabel(e.target.value); }}
                 placeholder={t('pos:heldOrders.labelPlaceholder')}
                 maxLength={255}
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -111,7 +111,7 @@ export function HoldOrderButton({
         <ModalFooter>
           <button
             type="button"
-            onClick={() => setIsDialogOpen(false)}
+            onClick={() => { setIsDialogOpen(false); }}
             className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             {t('common:cancel')}

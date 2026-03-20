@@ -66,7 +66,7 @@ export function PromotionListPage() {
   const handleConfirm = () => {
     if (!confirmAction) return
     deleteMutation.mutate(confirmAction.promotion.id, {
-      onSettled: () => setConfirmAction(null),
+      onSettled: () => { setConfirmAction(null); },
     })
   }
 
@@ -93,12 +93,12 @@ export function PromotionListPage() {
         <Input
           placeholder={t('common:search')}
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => { setSearch(e.target.value); }}
           className="max-w-xs"
         />
         <Select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => { setStatusFilter(e.target.value); }}
           className="w-auto"
         >
           <option value="">{t('common:all')}</option>
@@ -177,10 +177,10 @@ export function PromotionListPage() {
                     {promo.usage_limit !== null && ` / ${promo.usage_limit}`}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1" onClick={(e) => { e.stopPropagation(); }}>
                       {promo.status === 'draft' || promo.status === 'paused' ? (
                         <button
-                          onClick={() => handleAction('activate', promo)}
+                          onClick={() => { handleAction('activate', promo); }}
                           className="p-1.5 rounded hover:bg-green-50 text-green-600"
                           title={t('promotions:actions.activate')}
                         >
@@ -189,7 +189,7 @@ export function PromotionListPage() {
                       ) : null}
                       {promo.status === 'active' ? (
                         <button
-                          onClick={() => handleAction('pause', promo)}
+                          onClick={() => { handleAction('pause', promo); }}
                           className="p-1.5 rounded hover:bg-yellow-50 text-yellow-600"
                           title={t('promotions:actions.pause')}
                         >
@@ -198,7 +198,7 @@ export function PromotionListPage() {
                       ) : null}
                       {promo.status !== 'archived' ? (
                         <button
-                          onClick={() => handleAction('archive', promo)}
+                          onClick={() => { handleAction('archive', promo); }}
                           className="p-1.5 rounded hover:bg-gray-100 text-gray-500"
                           title={t('promotions:actions.archive')}
                         >
@@ -207,7 +207,7 @@ export function PromotionListPage() {
                       ) : null}
                       {promo.status !== 'active' ? (
                         <button
-                          onClick={() => handleAction('delete', promo)}
+                          onClick={() => { handleAction('delete', promo); }}
                           className="p-1.5 rounded hover:bg-red-50 text-red-500"
                           title={t('promotions:deletePromotion')}
                         >
@@ -225,7 +225,7 @@ export function PromotionListPage() {
 
       <ConfirmDialog
         isOpen={confirmAction !== null}
-        onClose={() => setConfirmAction(null)}
+        onClose={() => { setConfirmAction(null); }}
         onConfirm={handleConfirm}
         title={t('promotions:deletePromotion')}
         message={t('promotions:actions.confirmDelete')}

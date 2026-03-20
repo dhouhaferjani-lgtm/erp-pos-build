@@ -82,7 +82,7 @@ export function POSLayout({
       setShiftDuration(calculateDuration())
     }, 60000)
 
-    return () => clearInterval(interval)
+    return () => { clearInterval(interval); }
   }, [shift?.opened_at])
 
   return (
@@ -141,7 +141,7 @@ export function POSLayout({
         <div className="flex items-center gap-3">
           {shift && (
             <button
-              onClick={() => setIsOperationsMenuOpen(!isOperationsMenuOpen)}
+              onClick={() => { setIsOperationsMenuOpen(!isOperationsMenuOpen); }}
               className="flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800"
               aria-label={t('common:pos.operations', { defaultValue: 'Operations' })}
             >
@@ -168,7 +168,7 @@ export function POSLayout({
           balance={balance}
           terminalCode={terminalCode}
           isOpen={isOperationsMenuOpen}
-          onClose={() => setIsOperationsMenuOpen(false)}
+          onClose={() => { setIsOperationsMenuOpen(false); }}
           onOpenCashDeposit={() => {
             setActiveModal('deposit')
           }}
@@ -182,7 +182,7 @@ export function POSLayout({
       {activeModal && shift && terminalCode && (
         <CashOperationModal
           isOpen={!!activeModal}
-          onClose={() => setActiveModal(null)}
+          onClose={() => { setActiveModal(null); }}
           type={activeModal}
           shiftId={shift.id}
           terminalCode={terminalCode}

@@ -186,7 +186,7 @@ export function POSShiftsDashboard() {
         opening_cash: shift.opening_cash,
         expected_cash: balance?.expected_cash ?? shift.opening_cash,
         opened_at: shift.opened_at,
-        status: shift.status as 'OPEN' | 'CLOSED',
+        status: shift.status,
       }
     : null
 
@@ -201,7 +201,7 @@ export function POSShiftsDashboard() {
         onCashPayout={handleCashPayout}
         onGenerateXReport={handleGenerateXReport}
         xReportData={xReportData}
-        onCloseXReport={() => setXReportData(null)}
+        onCloseXReport={() => { setXReportData(null); }}
         isLoading={isLoadingShift}
         touchOptimized={false}
       />

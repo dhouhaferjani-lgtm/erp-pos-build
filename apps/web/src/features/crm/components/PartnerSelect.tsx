@@ -56,7 +56,7 @@ export function PartnerSelect({ value, onChange }: PartnerSelectProps) {
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    return () => { document.removeEventListener('mousedown', handleClickOutside); }
   }, [])
 
   if (value && selectedName) {
@@ -86,7 +86,7 @@ export function PartnerSelect({ value, onChange }: PartnerSelectProps) {
           setSearch(e.target.value)
           setIsOpen(true)
         }}
-        onFocus={() => setIsOpen(true)}
+        onFocus={() => { setIsOpen(true); }}
         placeholder={t('crm:contacts.searchCompany')}
       />
       {isOpen && results && results.length > 0 && (

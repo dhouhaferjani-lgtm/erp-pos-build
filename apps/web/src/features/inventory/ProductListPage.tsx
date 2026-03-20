@@ -71,7 +71,7 @@ export function ProductListPage() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['products', tableState.getQueryParams()],
     queryFn: async () => {
-      const params = new URLSearchParams(tableState.getQueryParams() as Record<string, string>)
+      const params = new URLSearchParams(tableState.getQueryParams())
       const queryString = params.toString()
       const response = await api.get<ProductsResponse>(`/products${queryString ? `?${queryString}` : ''}`)
       return response.data
@@ -159,7 +159,7 @@ export function ProductListPage() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <FilterPanel
             isOpen={filterPanelOpen}
-            onToggle={() => setFilterPanelOpen(!filterPanelOpen)}
+            onToggle={() => { setFilterPanelOpen(!filterPanelOpen); }}
             onClear={tableState.clearFilters}
             hasActiveFilters={tableState.hasActiveFilters}
           >
@@ -167,31 +167,31 @@ export function ProductListPage() {
               <SearchFilter
                 label={t('common:search')}
                 value={tableState.filters['search'] as string | undefined}
-                onChange={(v) => tableState.setFilter('search', v)}
+                onChange={(v) => { tableState.setFilter('search', v); }}
                 placeholder={t('inventory:products.searchPlaceholder')}
               />
               <BooleanFilter
                 label={t('inventory:products.isPhysical')}
                 value={tableState.filters['is_physical'] as boolean | undefined}
-                onChange={(v) => tableState.setFilter('is_physical', v)}
+                onChange={(v) => { tableState.setFilter('is_physical', v); }}
               />
               <BooleanFilter
                 label={t('inventory:products.filters.active')}
                 value={tableState.filters['is_active'] as boolean | undefined}
-                onChange={(v) => tableState.setFilter('is_active', v)}
+                onChange={(v) => { tableState.setFilter('is_active', v); }}
               />
               <RangeFilter
                 label={t('inventory:products.filters.priceRange')}
                 min={tableState.filters['price_min'] as string | undefined}
                 max={tableState.filters['price_max'] as string | undefined}
-                onMinChange={(v) => tableState.setFilter('price_min', v)}
-                onMaxChange={(v) => tableState.setFilter('price_max', v)}
+                onMinChange={(v) => { tableState.setFilter('price_min', v); }}
+                onMaxChange={(v) => { tableState.setFilter('price_max', v); }}
                 placeholder={companyCurrency}
               />
               <BooleanFilter
                 label={t('inventory:products.filters.hasStock')}
                 value={tableState.filters['has_stock'] as boolean | undefined}
-                onChange={(v) => tableState.setFilter('has_stock', v)}
+                onChange={(v) => { tableState.setFilter('has_stock', v); }}
               />
             </div>
           </FilterPanel>

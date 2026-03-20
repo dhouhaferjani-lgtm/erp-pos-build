@@ -162,7 +162,7 @@ export function CompositeItemFormPage() {
 
       {/* Tabs (edit mode) / Details form (create mode) */}
       {isEdit ? (
-        <Tabs defaultValue="details" value={activeTab} onChange={(v) => setActiveTab(v as TabValue)}>
+        <Tabs defaultValue="details" value={activeTab} onChange={(v) => { setActiveTab(v as TabValue); }}>
           <TabsList>
             <TabsTrigger value="details">{t('catalog:details')}</TabsTrigger>
             <TabsTrigger value="recipeTab">{getLabel('recipe')}</TabsTrigger>
@@ -179,7 +179,7 @@ export function CompositeItemFormPage() {
                       id="ci-code"
                       required
                       value={form.code}
-                      onChange={(e) => setForm({ ...form, code: e.target.value })}
+                      onChange={(e) => { setForm({ ...form, code: e.target.value }); }}
                     />
                   </FormField>
                   <FormField label={t('catalog:name')} htmlFor="ci-name" required>
@@ -187,7 +187,7 @@ export function CompositeItemFormPage() {
                       id="ci-name"
                       required
                       value={form.name}
-                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      onChange={(e) => { setForm({ ...form, name: e.target.value }); }}
                     />
                   </FormField>
                   <FormField label={t('catalog:basePrice')} htmlFor="ci-price" required>
@@ -198,7 +198,7 @@ export function CompositeItemFormPage() {
                       step="0.01"
                       min="0"
                       value={form.base_price}
-                      onChange={(e) => setForm({ ...form, base_price: e.target.value })}
+                      onChange={(e) => { setForm({ ...form, base_price: e.target.value }); }}
                     />
                   </FormField>
                   <input type="hidden" name="vertical_type" value={form.vertical_type} />
@@ -206,7 +206,7 @@ export function CompositeItemFormPage() {
                     <Select
                       id="ci-production"
                       value={form.production_type}
-                      onChange={(e) => setForm({ ...form, production_type: e.target.value as ProductionType })}
+                      onChange={(e) => { setForm({ ...form, production_type: e.target.value as ProductionType }); }}
                     >
                       <option value="made_to_order">{t('catalog:productionTypes.made_to_order')}</option>
                       <option value="batch">{t('catalog:productionTypes.batch')}</option>
@@ -218,7 +218,7 @@ export function CompositeItemFormPage() {
                       <Select
                         id="ci-pricing-mode"
                         value={form.pricing_mode}
-                        onChange={(e) => setForm({ ...form, pricing_mode: e.target.value as PricingMode })}
+                        onChange={(e) => { setForm({ ...form, pricing_mode: e.target.value as PricingMode }); }}
                       >
                         <option value="standard">{t('catalog:pricingModes.standard')}</option>
                         <option value="fixed_bundle">{t('catalog:pricingModes.fixed_bundle')}</option>
@@ -233,7 +233,7 @@ export function CompositeItemFormPage() {
                       min="0"
                       max="100"
                       value={form.tax_rate}
-                      onChange={(e) => setForm({ ...form, tax_rate: e.target.value })}
+                      onChange={(e) => { setForm({ ...form, tax_rate: e.target.value }); }}
                     />
                   </FormField>
                   <div className="flex items-center gap-6 pt-6">
@@ -241,7 +241,7 @@ export function CompositeItemFormPage() {
                       <input
                         type="checkbox"
                         checked={form.is_active}
-                        onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+                        onChange={(e) => { setForm({ ...form, is_active: e.target.checked }); }}
                         className={tokens.checkbox.base}
                       />
                       <span className="text-sm text-gray-700">{t('catalog:isActive')}</span>
@@ -250,7 +250,7 @@ export function CompositeItemFormPage() {
                       <input
                         type="checkbox"
                         checked={form.is_available}
-                        onChange={(e) => setForm({ ...form, is_available: e.target.checked })}
+                        onChange={(e) => { setForm({ ...form, is_available: e.target.checked }); }}
                         className={tokens.checkbox.base}
                       />
                       <span className="text-sm text-gray-700">{t('catalog:isAvailable')}</span>
@@ -286,7 +286,7 @@ export function CompositeItemFormPage() {
                     <Select
                       id="avail-location"
                       value={selectedLocationId}
-                      onChange={(e) => setSelectedLocationId(e.target.value)}
+                      onChange={(e) => { setSelectedLocationId(e.target.value); }}
                     >
                       <option value="">{t('common:select')}</option>
                       {(locations ?? []).map((loc) => (
@@ -380,7 +380,7 @@ export function CompositeItemFormPage() {
                   id="ci-code"
                   required
                   value={form.code}
-                  onChange={(e) => setForm({ ...form, code: e.target.value })}
+                  onChange={(e) => { setForm({ ...form, code: e.target.value }); }}
                 />
               </FormField>
               <FormField label={t('catalog:name')} htmlFor="ci-name" required>
@@ -388,7 +388,7 @@ export function CompositeItemFormPage() {
                   id="ci-name"
                   required
                   value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  onChange={(e) => { setForm({ ...form, name: e.target.value }); }}
                 />
               </FormField>
               <FormField label={t('catalog:basePrice')} htmlFor="ci-price" required>
@@ -399,7 +399,7 @@ export function CompositeItemFormPage() {
                   step="0.01"
                   min="0"
                   value={form.base_price}
-                  onChange={(e) => setForm({ ...form, base_price: e.target.value })}
+                  onChange={(e) => { setForm({ ...form, base_price: e.target.value }); }}
                 />
               </FormField>
               <input type="hidden" name="vertical_type" value={form.vertical_type} />
@@ -407,7 +407,7 @@ export function CompositeItemFormPage() {
                 <Select
                   id="ci-production"
                   value={form.production_type}
-                  onChange={(e) => setForm({ ...form, production_type: e.target.value as ProductionType })}
+                  onChange={(e) => { setForm({ ...form, production_type: e.target.value as ProductionType }); }}
                 >
                   <option value="made_to_order">{t('catalog:productionTypes.made_to_order')}</option>
                   <option value="batch">{t('catalog:productionTypes.batch')}</option>
@@ -422,7 +422,7 @@ export function CompositeItemFormPage() {
                   min="0"
                   max="100"
                   value={form.tax_rate}
-                  onChange={(e) => setForm({ ...form, tax_rate: e.target.value })}
+                  onChange={(e) => { setForm({ ...form, tax_rate: e.target.value }); }}
                 />
               </FormField>
               <div className="flex items-center gap-6 pt-6">
@@ -430,7 +430,7 @@ export function CompositeItemFormPage() {
                   <input
                     type="checkbox"
                     checked={form.is_active}
-                    onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+                    onChange={(e) => { setForm({ ...form, is_active: e.target.checked }); }}
                     className={tokens.checkbox.base}
                   />
                   <span className="text-sm text-gray-700">{t('catalog:isActive')}</span>
@@ -439,7 +439,7 @@ export function CompositeItemFormPage() {
                   <input
                     type="checkbox"
                     checked={form.is_available}
-                    onChange={(e) => setForm({ ...form, is_available: e.target.checked })}
+                    onChange={(e) => { setForm({ ...form, is_available: e.target.checked }); }}
                     className={tokens.checkbox.base}
                   />
                   <span className="text-sm text-gray-700">{t('catalog:isAvailable')}</span>

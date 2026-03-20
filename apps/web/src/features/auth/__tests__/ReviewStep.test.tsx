@@ -56,13 +56,13 @@ describe('ReviewStep', () => {
     const editButtons = screen.getAllByLabelText('auth:register.editSection')
     expect(editButtons).toHaveLength(3)
 
-    fireEvent.click(editButtons[0]!) // Account section
+    fireEvent.click(editButtons[0]) // Account section
     expect(onGoToStep).toHaveBeenCalledWith(1)
 
-    fireEvent.click(editButtons[1]!) // Business section
+    fireEvent.click(editButtons[1]) // Business section
     expect(onGoToStep).toHaveBeenCalledWith(2)
 
-    fireEvent.click(editButtons[2]!) // Company section
+    fireEvent.click(editButtons[2]) // Company section
     expect(onGoToStep).toHaveBeenCalledWith(3)
   })
 

@@ -74,7 +74,7 @@ export function PromotionFormPage() {
       setAppliesTo(p.applies_to)
       setUsageLimit(p.usage_limit !== null ? String(p.usage_limit) : '')
 
-      const conditions = p.conditions as Record<string, unknown>
+      const conditions = p.conditions
       setMinQty(conditions['min_qty'] ? String(conditions['min_qty']) : '')
       setMinAmount(conditions['min_amount'] ? String(conditions['min_amount']) : '')
       setTriggerQty(conditions['trigger_qty'] ? String(conditions['trigger_qty']) : '')
@@ -174,18 +174,18 @@ export function PromotionFormPage() {
         <h2 className="text-lg font-semibold">{t('common:details')}</h2>
 
         <FormField label={t('promotions:fields.name')} required>
-          <Input value={name} onChange={(e) => setName(e.target.value)} required />
+          <Input value={name} onChange={(e) => { setName(e.target.value); }} required />
         </FormField>
 
         <FormField label={t('promotions:fields.description')}>
-          <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+          <Textarea value={description} onChange={(e) => { setDescription(e.target.value); }} rows={3} />
         </FormField>
 
         <div className="grid grid-cols-2 gap-4">
           <FormField label={t('promotions:fields.type')} required>
             <Select
               value={type}
-              onChange={(e) => setType(e.target.value)}
+              onChange={(e) => { setType(e.target.value); }}
               required
             >
               {PROMOTION_TYPES.map((pt) => (
@@ -200,7 +200,7 @@ export function PromotionFormPage() {
             <Input
               type="number"
               value={priority}
-              onChange={(e) => setPriority(parseInt(e.target.value, 10) || 0)}
+              onChange={(e) => { setPriority(parseInt(e.target.value, 10) || 0); }}
               min={0}
             />
           </FormField>
@@ -215,7 +215,7 @@ export function PromotionFormPage() {
           <FormField label={t('promotions:fields.discountType')} required>
             <Select
               value={discountType}
-              onChange={(e) => setDiscountType(e.target.value)}
+              onChange={(e) => { setDiscountType(e.target.value); }}
               required
             >
               {DISCOUNT_TYPES.map((dt) => (
@@ -230,7 +230,7 @@ export function PromotionFormPage() {
             <Input
               type="number"
               value={discountValue}
-              onChange={(e) => setDiscountValue(e.target.value)}
+              onChange={(e) => { setDiscountValue(e.target.value); }}
               step="0.01"
               min="0"
               required
@@ -241,7 +241,7 @@ export function PromotionFormPage() {
             <Input
               type="number"
               value={maxDiscountAmount}
-              onChange={(e) => setMaxDiscountAmount(e.target.value)}
+              onChange={(e) => { setMaxDiscountAmount(e.target.value); }}
               step="0.01"
               min="0"
             />
@@ -251,7 +251,7 @@ export function PromotionFormPage() {
         <FormField label={t('promotions:fields.appliesTo')} required>
           <Select
             value={appliesTo}
-            onChange={(e) => setAppliesTo(e.target.value)}
+            onChange={(e) => { setAppliesTo(e.target.value); }}
             required
           >
             {APPLIES_TO_OPTIONS.map((opt) => (
@@ -274,7 +274,7 @@ export function PromotionFormPage() {
                 <Input
                   type="number"
                   value={minQty}
-                  onChange={(e) => setMinQty(e.target.value)}
+                  onChange={(e) => { setMinQty(e.target.value); }}
                   min="1"
                 />
               </FormField>
@@ -282,7 +282,7 @@ export function PromotionFormPage() {
                 <Input
                   type="number"
                   value={minAmount}
-                  onChange={(e) => setMinAmount(e.target.value)}
+                  onChange={(e) => { setMinAmount(e.target.value); }}
                   step="0.01"
                   min="0"
                 />
@@ -294,7 +294,7 @@ export function PromotionFormPage() {
               <Input
                 type="number"
                 value={triggerQty}
-                onChange={(e) => setTriggerQty(e.target.value)}
+                onChange={(e) => { setTriggerQty(e.target.value); }}
                 min="1"
               />
             </FormField>
@@ -340,7 +340,7 @@ export function PromotionFormPage() {
               <Input
                 type="number"
                 value={rewardQty}
-                onChange={(e) => setRewardQty(e.target.value)}
+                onChange={(e) => { setRewardQty(e.target.value); }}
                 min="1"
               />
             </FormField>
@@ -357,14 +357,14 @@ export function PromotionFormPage() {
             <Input
               type="datetime-local"
               value={startsAt}
-              onChange={(e) => setStartsAt(e.target.value)}
+              onChange={(e) => { setStartsAt(e.target.value); }}
             />
           </FormField>
           <FormField label={t('promotions:fields.endsAt')}>
             <Input
               type="datetime-local"
               value={endsAt}
-              onChange={(e) => setEndsAt(e.target.value)}
+              onChange={(e) => { setEndsAt(e.target.value); }}
             />
           </FormField>
         </div>
@@ -374,14 +374,14 @@ export function PromotionFormPage() {
             <Input
               type="time"
               value={timeFrom}
-              onChange={(e) => setTimeFrom(e.target.value)}
+              onChange={(e) => { setTimeFrom(e.target.value); }}
             />
           </FormField>
           <FormField label={t('promotions:fields.timeUntil')}>
             <Input
               type="time"
               value={timeUntil}
-              onChange={(e) => setTimeUntil(e.target.value)}
+              onChange={(e) => { setTimeUntil(e.target.value); }}
             />
           </FormField>
         </div>
@@ -392,7 +392,7 @@ export function PromotionFormPage() {
               <button
                 key={day}
                 type="button"
-                onClick={() => toggleDay(day)}
+                onClick={() => { toggleDay(day); }}
                 className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                   daysOfWeek.includes(day)
                     ? 'bg-blue-500 text-white'
@@ -414,7 +414,7 @@ export function PromotionFormPage() {
           <FormField label={t('promotions:fields.stackingGroup')}>
             <Input
               value={stackingGroup}
-              onChange={(e) => setStackingGroup(e.target.value)}
+              onChange={(e) => { setStackingGroup(e.target.value); }}
             />
           </FormField>
 
@@ -422,7 +422,7 @@ export function PromotionFormPage() {
             <Input
               type="number"
               value={usageLimit}
-              onChange={(e) => setUsageLimit(e.target.value)}
+              onChange={(e) => { setUsageLimit(e.target.value); }}
               min="1"
             />
           </FormField>
@@ -432,7 +432,7 @@ export function PromotionFormPage() {
               <input
                 type="checkbox"
                 checked={isExclusive}
-                onChange={(e) => setIsExclusive(e.target.checked)}
+                onChange={(e) => { setIsExclusive(e.target.checked); }}
                 className="rounded border-gray-300"
               />
               <span className="text-sm text-gray-700">{t('promotions:fields.isExclusive')}</span>

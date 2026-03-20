@@ -111,7 +111,7 @@ export function BatchDetailPage() {
         <div className="flex items-center gap-2">
           {canRecall && (
             <button
-              onClick={() => setConfirmAction('recall')}
+              onClick={() => { setConfirmAction('recall'); }}
               className="inline-flex items-center gap-2 rounded-lg border border-orange-600 px-4 py-2 text-sm font-medium text-orange-600 hover:bg-orange-50"
             >
               <AlertTriangle className="h-4 w-4" />
@@ -129,7 +129,7 @@ export function BatchDetailPage() {
           )}
           {canDelete && (
             <button
-              onClick={() => setConfirmAction('delete')}
+              onClick={() => { setConfirmAction('delete'); }}
               className="inline-flex items-center gap-2 rounded-lg border border-red-600 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
             >
               <Trash2 className="h-4 w-4" />
@@ -302,7 +302,7 @@ export function BatchDetailPage() {
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog
         isOpen={confirmAction === 'delete'}
-        onClose={() => setConfirmAction(null)}
+        onClose={() => { setConfirmAction(null); }}
         onConfirm={handleDelete}
         title={t('batches:actions.deleteBatch')}
         message={t('batches:form.confirmDelete')}
@@ -323,7 +323,7 @@ export function BatchDetailPage() {
                 </label>
                 <textarea
                   value={recallReason}
-                  onChange={(e) => setRecallReason(e.target.value)}
+                  onChange={(e) => { setRecallReason(e.target.value); }}
                   rows={3}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                   placeholder={t('batches:form.enterRecallReason')}

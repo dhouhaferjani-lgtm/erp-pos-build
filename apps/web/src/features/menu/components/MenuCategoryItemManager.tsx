@@ -84,7 +84,7 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
       {/* Category header - click to expand */}
       <button
         type="button"
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={() => { setIsExpanded(!isExpanded); }}
         className="flex w-full items-center justify-between p-3"
       >
         <div className="flex items-center gap-3">
@@ -200,7 +200,7 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
               <div className="flex items-center gap-2">
                 <Input
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => { setSearchQuery(e.target.value); }}
                   placeholder={t('menu:searchItems')}
                   className="flex-1"
                 />
@@ -209,7 +209,7 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
                   step="0.01"
                   min="0"
                   value={overridePrice}
-                  onChange={(e) => setOverridePrice(e.target.value)}
+                  onChange={(e) => { setOverridePrice(e.target.value); }}
                   placeholder={t('menu:overridePrice')}
                   className="w-32"
                 />
@@ -223,7 +223,7 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
                     <button
                       key={ci.id}
                       type="button"
-                      onClick={() => handleAddItem(ci.id)}
+                      onClick={() => { handleAddItem(ci.id); }}
                       disabled={addItemMutation.isPending}
                       className="flex w-full items-center justify-between rounded-md bg-white px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
                     >
@@ -261,7 +261,7 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
               type="button"
               variant="secondary"
               size="sm"
-              onClick={() => setShowAddForm(true)}
+              onClick={() => { setShowAddForm(true); }}
             >
               <Plus className="mr-1 h-4 w-4" />
               {t('menu:addItem')}

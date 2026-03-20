@@ -80,7 +80,7 @@ export function TerminalSelector({ onSelect, lastUsedCode }: TerminalSelectorPro
               <button
                 key={terminal.id}
                 type="button"
-                onClick={() => onSelect(terminal.code)}
+                onClick={() => { onSelect(terminal.code); }}
                 className={cn(
                   'relative flex flex-col items-center gap-3 rounded-xl border-2 bg-white p-6 transition-all hover:shadow-lg hover:border-blue-400',
                   isLastUsed

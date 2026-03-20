@@ -165,7 +165,7 @@ export function Calculator({
           'bg-white rounded-lg shadow-2xl w-full max-w-sm',
           touchOptimized ? 'p-6' : 'p-4'
         )}
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); }}
       >
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
@@ -227,7 +227,7 @@ export function Calculator({
           </POSButton>
           <POSButton
             variant="primary"
-            onClick={() => handleOperation('÷')}
+            onClick={() => { handleOperation('÷'); }}
             className={buttonClass}
             touchOptimized={touchOptimized}
           >
@@ -237,7 +237,7 @@ export function Calculator({
           {/* Row 2: 7, 8, 9, × */}
           <POSButton
             variant="secondary"
-            onClick={() => handleNumber('7')}
+            onClick={() => { handleNumber('7'); }}
             className={buttonClass}
             touchOptimized={touchOptimized}
           >
@@ -245,7 +245,7 @@ export function Calculator({
           </POSButton>
           <POSButton
             variant="secondary"
-            onClick={() => handleNumber('8')}
+            onClick={() => { handleNumber('8'); }}
             className={buttonClass}
             touchOptimized={touchOptimized}
           >
@@ -253,7 +253,7 @@ export function Calculator({
           </POSButton>
           <POSButton
             variant="secondary"
-            onClick={() => handleNumber('9')}
+            onClick={() => { handleNumber('9'); }}
             className={buttonClass}
             touchOptimized={touchOptimized}
           >
@@ -261,7 +261,7 @@ export function Calculator({
           </POSButton>
           <POSButton
             variant="primary"
-            onClick={() => handleOperation('×')}
+            onClick={() => { handleOperation('×'); }}
             className={buttonClass}
             touchOptimized={touchOptimized}
           >
@@ -271,7 +271,7 @@ export function Calculator({
           {/* Row 3: 4, 5, 6, - */}
           <POSButton
             variant="secondary"
-            onClick={() => handleNumber('4')}
+            onClick={() => { handleNumber('4'); }}
             className={buttonClass}
             touchOptimized={touchOptimized}
           >
@@ -279,7 +279,7 @@ export function Calculator({
           </POSButton>
           <POSButton
             variant="secondary"
-            onClick={() => handleNumber('5')}
+            onClick={() => { handleNumber('5'); }}
             className={buttonClass}
             touchOptimized={touchOptimized}
           >
@@ -287,7 +287,7 @@ export function Calculator({
           </POSButton>
           <POSButton
             variant="secondary"
-            onClick={() => handleNumber('6')}
+            onClick={() => { handleNumber('6'); }}
             className={buttonClass}
             touchOptimized={touchOptimized}
           >
@@ -295,7 +295,7 @@ export function Calculator({
           </POSButton>
           <POSButton
             variant="primary"
-            onClick={() => handleOperation('-')}
+            onClick={() => { handleOperation('-'); }}
             className={buttonClass}
             touchOptimized={touchOptimized}
           >
@@ -305,7 +305,7 @@ export function Calculator({
           {/* Row 4: 1, 2, 3, + */}
           <POSButton
             variant="secondary"
-            onClick={() => handleNumber('1')}
+            onClick={() => { handleNumber('1'); }}
             className={buttonClass}
             touchOptimized={touchOptimized}
           >
@@ -313,7 +313,7 @@ export function Calculator({
           </POSButton>
           <POSButton
             variant="secondary"
-            onClick={() => handleNumber('2')}
+            onClick={() => { handleNumber('2'); }}
             className={buttonClass}
             touchOptimized={touchOptimized}
           >
@@ -321,7 +321,7 @@ export function Calculator({
           </POSButton>
           <POSButton
             variant="secondary"
-            onClick={() => handleNumber('3')}
+            onClick={() => { handleNumber('3'); }}
             className={buttonClass}
             touchOptimized={touchOptimized}
           >
@@ -329,7 +329,7 @@ export function Calculator({
           </POSButton>
           <POSButton
             variant="primary"
-            onClick={() => handleOperation('+')}
+            onClick={() => { handleOperation('+'); }}
             className={buttonClass}
             touchOptimized={touchOptimized}
           >
@@ -340,7 +340,7 @@ export function Calculator({
           <div className="col-span-2">
             <POSButton
               variant="secondary"
-              onClick={() => handleNumber('0')}
+              onClick={() => { handleNumber('0'); }}
               className={buttonClass}
               fullWidth
               touchOptimized={touchOptimized}

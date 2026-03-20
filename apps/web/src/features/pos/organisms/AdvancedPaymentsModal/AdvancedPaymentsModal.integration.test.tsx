@@ -285,7 +285,7 @@ describe('AdvancedPaymentsModal - Receipt Printing Integration', () => {
     await addCashPayment()
 
     // Wait a bit
-    await waitFor(() => expect(mockOnComplete).toHaveBeenCalled())
+    await waitFor(() => { expect(mockOnComplete).toHaveBeenCalled(); })
 
     // Verify success screen is NOT shown
     expect(screen.queryByText(/payment successful/i)).not.toBeInTheDocument()

@@ -38,7 +38,7 @@ export interface TransactionCartProps {
     amount: string
     reason?: string | undefined
   } | undefined
-  onUpdateTransactionDiscount?: ((discount?: { amount: string; reason?: string | undefined } | undefined) => void) | undefined
+  onUpdateTransactionDiscount?: ((discount?: { amount: string; reason?: string | undefined }  ) => void) | undefined
   loyaltyMember?: LoyaltyMember | null | undefined
   loyaltyEnrollment?: LoyaltyEnrollment | null | undefined
   discountBreakdown?: DiscountBreakdownData | null | undefined
@@ -345,7 +345,7 @@ export function TransactionCart({
         return (
           <Modal
             isOpen={!!editingLineDiscountProductId}
-            onClose={() => setEditingLineDiscountProductId(null)}
+            onClose={() => { setEditingLineDiscountProductId(null); }}
             title={`${t('pos:cart.discount')} — ${editingItem.product.name}`}
             size="md"
           >

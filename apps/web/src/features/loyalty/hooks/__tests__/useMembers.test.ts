@@ -32,7 +32,7 @@ function createWrapper() {
 describe('useMembers', () => {
   it('fetches paginated members list', async () => {
     const { result } = renderHook(() => useMembers(), { wrapper: createWrapper() })
-    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    await waitFor(() => { expect(result.current.isSuccess).toBe(true); })
     expect(result.current.data?.data).toHaveLength(1)
     expect(result.current.data?.meta.total).toBe(1)
   })
@@ -41,7 +41,7 @@ describe('useMembers', () => {
 describe('useMember', () => {
   it('fetches single member', async () => {
     const { result } = renderHook(() => useMember('1'), { wrapper: createWrapper() })
-    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    await waitFor(() => { expect(result.current.isSuccess).toBe(true); })
     expect(result.current.data?.phone).toBe('+33612345678')
   })
 

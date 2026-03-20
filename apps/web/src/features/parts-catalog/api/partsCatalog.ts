@@ -56,9 +56,9 @@ export function getArticleLinkages(articleId: string): Promise<{ vehicles: Enric
 
 export async function multiSearch(query: string): Promise<MultiSearchResponse> {
   const result = await apiGet<PaginatedArticles | EnrichedArticle[]>(`${BASE}/articles`, { article_number: query })
-  const articles = Array.isArray(result) ? result : (result as PaginatedArticles).data ?? []
+  const articles = Array.isArray(result) ? result : (result).data ?? []
   return {
-    articles: articles as EnrichedArticle[],
+    articles: articles,
     detected_brand: null,
     search_methods_used: ['article_number'],
   }

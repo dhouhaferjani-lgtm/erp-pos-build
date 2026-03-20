@@ -45,7 +45,7 @@ export function CouponListPage() {
   const handleConfirm = () => {
     if (!confirmAction) return
     const { type, coupon } = confirmAction
-    const onSettled = () => setConfirmAction(null)
+    const onSettled = () => { setConfirmAction(null); }
 
     switch (type) {
       case 'revoke':
@@ -109,12 +109,12 @@ export function CouponListPage() {
         <Input
           placeholder={t('common:search')}
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => { setSearch(e.target.value); }}
           className="max-w-xs"
         />
         <Select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => { setStatusFilter(e.target.value); }}
           className="w-auto"
         >
           <option value="">{t('common:all')}</option>
@@ -193,10 +193,10 @@ export function CouponListPage() {
                       : '-'}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1" onClick={(e) => { e.stopPropagation(); }}>
                       {coupon.status === 'active' ? (
                         <button
-                          onClick={() => handleAction('revoke', coupon)}
+                          onClick={() => { handleAction('revoke', coupon); }}
                           className="p-1.5 rounded hover:bg-orange-50 text-orange-600"
                           title={t('coupons:actions.revoke')}
                         >
@@ -205,7 +205,7 @@ export function CouponListPage() {
                       ) : null}
                       {coupon.status === 'revoked' || coupon.status === 'exhausted' ? (
                         <button
-                          onClick={() => handleAction('reactivate', coupon)}
+                          onClick={() => { handleAction('reactivate', coupon); }}
                           className="p-1.5 rounded hover:bg-green-50 text-green-600"
                           title={t('coupons:actions.reactivate')}
                         >
@@ -214,7 +214,7 @@ export function CouponListPage() {
                       ) : null}
                       {coupon.status !== 'active' ? (
                         <button
-                          onClick={() => handleAction('delete', coupon)}
+                          onClick={() => { handleAction('delete', coupon); }}
                           className="p-1.5 rounded hover:bg-red-50 text-red-500"
                           title={t('coupons:deleteCoupon')}
                         >
@@ -232,7 +232,7 @@ export function CouponListPage() {
 
       <ConfirmDialog
         isOpen={confirmAction !== null}
-        onClose={() => setConfirmAction(null)}
+        onClose={() => { setConfirmAction(null); }}
         onConfirm={handleConfirm}
         isLoading={isActionPending}
         {...getConfirmDialogProps()}

@@ -37,7 +37,7 @@ export function ProgramListPage() {
   const handleConfirm = () => {
     if (!confirmAction) return
     const { type, program } = confirmAction
-    const onSettled = () => setConfirmAction(null)
+    const onSettled = () => { setConfirmAction(null); }
 
     switch (type) {
       case 'delete':
@@ -100,7 +100,7 @@ export function ProgramListPage() {
         />
         <Select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => { setStatusFilter(e.target.value); }}
           className="w-auto"
         >
           <option value="">{t('common:all')}</option>
@@ -160,10 +160,10 @@ export function ProgramListPage() {
                     {program.start_date ? new Date(program.start_date).toLocaleDateString() : '-'}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1" onClick={(e) => { e.stopPropagation(); }}>
                       {program.status === 'draft' || program.status === 'paused' ? (
                         <button
-                          onClick={() => setConfirmAction({ type: 'activate', program })}
+                          onClick={() => { setConfirmAction({ type: 'activate', program }); }}
                           className="p-1.5 rounded hover:bg-green-50 text-green-600"
                           title={t('loyalty:actions.activate')}
                         >
@@ -172,7 +172,7 @@ export function ProgramListPage() {
                       ) : null}
                       {program.status === 'active' ? (
                         <button
-                          onClick={() => setConfirmAction({ type: 'deactivate', program })}
+                          onClick={() => { setConfirmAction({ type: 'deactivate', program }); }}
                           className="p-1.5 rounded hover:bg-orange-50 text-orange-600"
                           title={t('loyalty:actions.deactivate')}
                         >
@@ -181,7 +181,7 @@ export function ProgramListPage() {
                       ) : null}
                       {program.status !== 'active' ? (
                         <button
-                          onClick={() => setConfirmAction({ type: 'delete', program })}
+                          onClick={() => { setConfirmAction({ type: 'delete', program }); }}
                           className="p-1.5 rounded hover:bg-red-50 text-red-500"
                           title={t('loyalty:actions.delete')}
                         >
@@ -199,7 +199,7 @@ export function ProgramListPage() {
 
       <ConfirmDialog
         isOpen={confirmAction !== null}
-        onClose={() => setConfirmAction(null)}
+        onClose={() => { setConfirmAction(null); }}
         onConfirm={handleConfirm}
         isLoading={isActionPending}
         {...getConfirmDialogProps()}
