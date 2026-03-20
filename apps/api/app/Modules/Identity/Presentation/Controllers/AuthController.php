@@ -16,6 +16,7 @@ use App\Modules\Identity\Application\DTOs\LoginResponseData;
 use App\Modules\Identity\Application\Services\EmailVerificationService;
 use App\Modules\Identity\Domain\Device;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Identity\Presentation\Requests\CheckEmailRequest;
 use App\Modules\Identity\Presentation\Requests\ForgotPasswordRequest;
 use App\Modules\Identity\Presentation\Requests\LoginRequest;
 use App\Modules\Identity\Presentation\Requests\RegisterRequest;
@@ -248,6 +249,20 @@ class AuthController extends Controller
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
             ],
         ], 201);
+    }
+
+    /**
+     * Check if an email is available for registration.
+     */
+    public function checkEmail(CheckEmailRequest $request): JsonResponse
+    {
+        $validated = $request->validated();
+
+        $exists = User::where('email', $validated['email'])->exists();
+
+        return response()->json([
+            'available' => ! $exists,
+        ]);
     }
 
     /**
