@@ -51,3 +51,4 @@ apps/api/.deptrac.cache
 # Session artifacts (AI-generated status/plan files)
 docs/sessions/
 !docs/sessions/.gitkeep
+.worktrees/
