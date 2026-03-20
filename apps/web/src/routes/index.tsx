@@ -10,6 +10,8 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 const LoginPage = lazy(() => import('../features/auth/LoginPage').then((m) => ({ default: m.LoginPage })))
 const RegisterPage = lazy(() => import('../features/auth/RegisterPage').then((m) => ({ default: m.RegisterPage })))
 const VerifyEmailPage = lazy(() => import('../features/auth/VerifyEmailPage').then((m) => ({ default: m.VerifyEmailPage })))
+const ForgotPasswordPage = lazy(() => import('../features/auth/ForgotPasswordPage').then((m) => ({ default: m.ForgotPasswordPage })))
+const ResetPasswordPage = lazy(() => import('../features/auth/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })))
 const Dashboard = lazy(() => import('../features/dashboard/Dashboard').then((m) => ({ default: m.Dashboard })))
 
 // Admin pages
@@ -243,6 +245,22 @@ export function AppRoutes() {
         element={
           <SuspenseWrapper>
             <VerifyEmailPage />
+          </SuspenseWrapper>
+        }
+      />
+      <Route
+        path="/forgot-password"
+        element={
+          <SuspenseWrapper>
+            <ForgotPasswordPage />
+          </SuspenseWrapper>
+        }
+      />
+      <Route
+        path="/reset-password"
+        element={
+          <SuspenseWrapper>
+            <ResetPasswordPage />
           </SuspenseWrapper>
         }
       />

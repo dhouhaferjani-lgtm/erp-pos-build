@@ -28,6 +28,12 @@ Route::prefix('api/v1/auth')->middleware('web')->group(function () {
     Route::post('verify-email', [AuthController::class, 'verifyEmail'])
         ->middleware('throttle:email-verification')
         ->name('auth.verify-email');
+    Route::post('forgot-password', [AuthController::class, 'forgotPassword'])
+        ->middleware('throttle:password-reset')
+        ->name('auth.forgot-password');
+    Route::post('reset-password', [AuthController::class, 'resetPassword'])
+        ->middleware('throttle:password-reset')
+        ->name('auth.reset-password');
 
     // Protected routes (no company context required for auth endpoints)
     Route::middleware(['auth:sanctum', SetPermissionsTeam::class])->group(function () {

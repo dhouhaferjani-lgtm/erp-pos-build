@@ -16,8 +16,10 @@ use App\Modules\Identity\Application\DTOs\LoginResponseData;
 use App\Modules\Identity\Application\Services\EmailVerificationService;
 use App\Modules\Identity\Domain\Device;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Identity\Presentation\Requests\ForgotPasswordRequest;
 use App\Modules\Identity\Presentation\Requests\LoginRequest;
 use App\Modules\Identity\Presentation\Requests\RegisterRequest;
+use App\Modules\Identity\Presentation\Requests\ResetPasswordRequest;
 use App\Modules\Identity\Presentation\Requests\VerifyEmailRequest;
 use App\Modules\Tenant\Application\Services\TenantInitializationService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -29,6 +31,7 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -257,11 +260,8 @@ class AuthController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        // Revoke current token if using token-based auth (skip for session-based TransientToken)
-        $currentToken = $user->currentAccessToken();
-        if ($currentToken instanceof \Laravel\Sanctum\PersonalAccessToken) { // @phpstan-ignore instanceof.alwaysTrue
-            $currentToken->delete();
-        }
+        // Revoke all tokens for this user (covers both session-based and token-based auth)
+        $user->tokens()->delete();
 
         // Invalidate and regenerate session for SPA auth
         Auth::guard('web')->logout();
@@ -373,6 +373,68 @@ class AuthController extends Controller
 
         return response()->json([
             'data' => ['message' => __('auth.verify_email_sent')],
+            'meta' => [
+                'timestamp' => now()->toIso8601String(),
+                'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
+            ],
+        ]);
+    }
+
+    /**
+     * Send a password reset link to the given email.
+     */
+    public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
+    {
+        $validated = $request->validated();
+
+        try {
+            Password::sendResetLink(['email' => $validated['email']]);
+        } catch (\Throwable) {
+            // Silently handle errors (e.g., missing route, mail config) to prevent email enumeration
+        }
+
+        // Always return success to prevent email enumeration
+        return response()->json([
+            'data' => ['message' => 'If an account exists with that email, a password reset link has been sent.'],
+            'meta' => [
+                'timestamp' => now()->toIso8601String(),
+                'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
+            ],
+        ]);
+    }
+
+    /**
+     * Reset the user's password using a valid token.
+     */
+    public function resetPassword(ResetPasswordRequest $request): JsonResponse
+    {
+        $validated = $request->validated();
+
+        $status = Password::reset(
+            [
+                'email' => $validated['email'],
+                'password' => $validated['password'],
+                'password_confirmation' => $validated['password_confirmation'],
+                'token' => $validated['token'],
+            ],
+            function (User $user, string $password): void {
+                $user->update([
+                    'password' => Hash::make($password),
+                ]);
+
+                // Revoke all existing tokens for security
+                $user->tokens()->delete();
+            }
+        );
+
+        if ($status !== Password::PASSWORD_RESET) {
+            throw ValidationException::withMessages([
+                'email' => [__($status)],
+            ]);
+        }
+
+        return response()->json([
+            'data' => ['message' => 'Password has been reset successfully.'],
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),

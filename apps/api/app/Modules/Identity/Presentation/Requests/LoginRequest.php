@@ -25,7 +25,7 @@ class LoginRequest extends FormRequest
     {
         return [
             'email' => ['required', 'email'],
-            'password' => ['required', 'string', 'min:8'],
+            'password' => ['required', 'string'],
             'device_name' => ['nullable', 'string', 'max:255'],
             'device_id' => ['nullable', 'string', 'max:255'],
             'platform' => ['nullable', 'string', 'in:ios,android,windows,macos,linux,web'],

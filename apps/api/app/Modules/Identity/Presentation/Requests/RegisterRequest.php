@@ -7,6 +7,7 @@ namespace App\Modules\Identity\Presentation\Requests;
 use App\Enums\Vertical;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 
 /**
  * Request for user registration (signup).
@@ -38,7 +39,7 @@ class RegisterRequest extends FormRequest
             // User fields
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'password' => ['required', 'string', Password::defaults(), 'confirmed'],
 
             // Company fields
             'company_name' => ['required', 'string', 'max:255'],

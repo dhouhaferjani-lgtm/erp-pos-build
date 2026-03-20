@@ -9,6 +9,8 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Seeders\CountriesSeeder;
+use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Tests\Traits\AssertsApiValidation;
@@ -23,6 +25,9 @@ class AuthenticationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->seed(RolesAndPermissionsSeeder::class);
+        $this->seed(CountriesSeeder::class);
 
         $this->tenant = Tenant::create([
             'name' => 'Test Tenant',
@@ -220,10 +225,11 @@ class AuthenticationTest extends TestCase
         $response = $this->postJson('/api/v1/auth/register', [
             'name' => 'New User',
             'email' => 'newuser@example.com',
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
+            'password' => 'MyStr0ng!Pass',
+            'password_confirmation' => 'MyStr0ng!Pass',
             'company_name' => 'New Company',
             'country_code' => 'FR',
+            'vertical' => 'retail',
         ]);
 
         $response->assertCreated()
@@ -290,10 +296,11 @@ class AuthenticationTest extends TestCase
         $response = $this->postJson('/api/v1/auth/register', [
             'name' => 'New User',
             'email' => 'existing@example.com',
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
+            'password' => 'MyStr0ng!Pass',
+            'password_confirmation' => 'MyStr0ng!Pass',
             'company_name' => 'New Company',
             'country_code' => 'FR',
+            'vertical' => 'retail',
         ]);
 
         $this->assertApiValidationErrors($response, ['email']);
@@ -304,10 +311,11 @@ class AuthenticationTest extends TestCase
         $response = $this->postJson('/api/v1/auth/register', [
             'name' => 'New User',
             'email' => 'newuser@example.com',
-            'password' => 'password123',
-            'password_confirmation' => 'differentpassword',
+            'password' => 'MyStr0ng!Pass',
+            'password_confirmation' => 'MyStr0ng!Diff',
             'company_name' => 'New Company',
             'country_code' => 'FR',
+            'vertical' => 'retail',
         ]);
 
         $this->assertApiValidationErrors($response, ['password']);
@@ -318,10 +326,11 @@ class AuthenticationTest extends TestCase
         $response = $this->postJson('/api/v1/auth/register', [
             'name' => 'French User',
             'email' => 'french@example.com',
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
+            'password' => 'MyStr0ng!Pass',
+            'password_confirmation' => 'MyStr0ng!Pass',
             'company_name' => 'French Company',
             'country_code' => 'FR',
+            'vertical' => 'retail',
         ]);
 
         $response->assertCreated();
@@ -338,8 +347,8 @@ class AuthenticationTest extends TestCase
         $response = $this->postJson('/api/v1/auth/register', [
             'name' => 'Business User',
             'email' => 'business@example.com',
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
+            'password' => 'MyStr0ng!Pass',
+            'password_confirmation' => 'MyStr0ng!Pass',
             'company_name' => 'Business Corp',
             'company_legal_name' => 'Business Corporation SARL',
             'country_code' => 'TN',
@@ -347,6 +356,7 @@ class AuthenticationTest extends TestCase
             'phone' => '+21612345678',
             'currency' => 'TND',
             'timezone' => 'Africa/Tunis',
+            'vertical' => 'retail',
         ]);
 
         $response->assertCreated();
@@ -360,5 +370,125 @@ class AuthenticationTest extends TestCase
             'currency' => 'TND',
             'timezone' => 'Africa/Tunis',
         ]);
+    }
+
+    public function test_register_rejects_weak_password(): void
+    {
+        $response = $this->postJson('/api/v1/auth/register', [
+            'name' => 'Test User',
+            'email' => 'weak@example.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'company_name' => 'Test Company',
+            'country_code' => 'FR',
+            'vertical' => 'retail',
+        ]);
+
+        $this->assertApiValidationErrors($response, ['password']);
+    }
+
+    public function test_register_accepts_strong_password(): void
+    {
+        $response = $this->postJson('/api/v1/auth/register', [
+            'name' => 'Strong User',
+            'email' => 'strong@example.com',
+            'password' => 'MyStr0ng!Pass',
+            'password_confirmation' => 'MyStr0ng!Pass',
+            'company_name' => 'Strong Company',
+            'country_code' => 'FR',
+            'vertical' => 'retail',
+        ]);
+
+        $response->assertCreated();
+    }
+
+    public function test_login_does_not_validate_password_strength(): void
+    {
+        $user = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Test User',
+            'email' => 'test@example.com',
+            'password' => 'weak',
+            'status' => UserStatus::Active,
+        ]);
+
+        // Login should not reject based on password strength rules
+        // (it should only fail because credentials are wrong, not because of validation)
+        $response = $this->postJson('/api/v1/auth/login', [
+            'email' => 'test@example.com',
+            'password' => 'weak',
+        ]);
+
+        // Should get past validation (422) — either 200 or credential error (422 with email key)
+        // The key point: no password validation error
+        $this->assertNotEquals(422, $response->status(), 'Login should not validate password strength');
+    }
+
+    public function test_forgot_password_returns_success_for_existing_email(): void
+    {
+        User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Test User',
+            'email' => 'test@example.com',
+            'password' => 'MyStr0ng!Pass',
+            'status' => UserStatus::Active,
+        ]);
+
+        $response = $this->postJson('/api/v1/auth/forgot-password', [
+            'email' => 'test@example.com',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.message', 'If an account exists with that email, a password reset link has been sent.');
+    }
+
+    public function test_forgot_password_returns_success_for_nonexistent_email(): void
+    {
+        // Should return same response to prevent email enumeration
+        $response = $this->postJson('/api/v1/auth/forgot-password', [
+            'email' => 'nonexistent@example.com',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.message', 'If an account exists with that email, a password reset link has been sent.');
+    }
+
+    public function test_forgot_password_requires_valid_email(): void
+    {
+        $response = $this->postJson('/api/v1/auth/forgot-password', []);
+
+        $this->assertApiValidationErrors($response, ['email']);
+    }
+
+    public function test_reset_password_with_invalid_token_fails(): void
+    {
+        User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Test User',
+            'email' => 'test@example.com',
+            'password' => 'MyStr0ng!Pass',
+            'status' => UserStatus::Active,
+        ]);
+
+        $response = $this->postJson('/api/v1/auth/reset-password', [
+            'token' => 'invalid-token',
+            'email' => 'test@example.com',
+            'password' => 'NewStr0ng!Pass',
+            'password_confirmation' => 'NewStr0ng!Pass',
+        ]);
+
+        $this->assertApiValidationErrors($response, ['email']);
+    }
+
+    public function test_reset_password_requires_strong_password(): void
+    {
+        $response = $this->postJson('/api/v1/auth/reset-password', [
+            'token' => 'some-token',
+            'email' => 'test@example.com',
+            'password' => 'weak',
+            'password_confirmation' => 'weak',
+        ]);
+
+        $this->assertApiValidationErrors($response, ['password']);
     }
 }
