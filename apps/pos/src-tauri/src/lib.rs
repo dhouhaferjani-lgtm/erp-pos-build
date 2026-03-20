@@ -23,6 +23,8 @@ pub fn run() {
             commands::display::open_customer_display,
             commands::display::close_customer_display,
             commands::display::send_to_customer_display,
+            commands::crypto::encrypt_secret,
+            commands::crypto::decrypt_secret,
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();

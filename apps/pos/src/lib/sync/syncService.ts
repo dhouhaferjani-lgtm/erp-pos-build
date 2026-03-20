@@ -11,13 +11,15 @@ import {
   getPendingReceiptsForSync,
   updateReceiptStatus,
   incrementRetryCount,
+  cleanupSyncedReceipts,
+  cleanupStuckReceipts,
   type OfflineReceipt,
 } from '@/lib/db/repositories/offlineReceiptRepository';
 import {
   getUnsyncedZReports,
   markZReportSynced,
 } from '@/lib/db/repositories/zReportRepository';
-import { logSyncOperation, getSyncMetadata, setSyncMetadata } from '@/lib/db/repositories/syncLogRepository';
+import { logSyncOperation, getSyncMetadata, setSyncMetadata, cleanupOldSyncLogs } from '@/lib/db/repositories/syncLogRepository';
 import type { LocalZReport } from '@/lib/offline/types';
 import type { POSProduct } from '@/types/product';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
@@ -324,6 +326,11 @@ export async function runFullSync(
   terminalId: string,
 ): Promise<SyncResult> {
   const errors: string[] = [];
+
+  // Cleanup old data to prevent unbounded growth
+  try { await cleanupOldSyncLogs(db, 7); } catch { /* non-critical */ }
+  try { await cleanupSyncedReceipts(db); } catch { /* non-critical */ }
+  try { await cleanupStuckReceipts(db); } catch { /* non-critical */ }
 
   // Push receipts first (order matters for chain)
   const { pushed, failed, errors: pushErrors, chainBreak } = await pushOfflineReceipts(db);

@@ -136,3 +136,20 @@ export async function getReceiptByIdempotencyKey(
     [key]
   );
 }
+
+export async function cleanupSyncedReceipts(db: Database): Promise<void> {
+  await execute(
+    db,
+    "DELETE FROM offline_receipts WHERE status = 'synced' AND synced_at < datetime('now', '-30 days')"
+  );
+}
+
+export async function cleanupStuckReceipts(db: Database): Promise<void> {
+  await execute(
+    db,
+    `DELETE FROM offline_receipts
+     WHERE status = 'failed' AND retry_count >= $1
+     AND created_at < datetime('now', '-90 days')`,
+    [MAX_SYNC_RETRIES]
+  );
+}

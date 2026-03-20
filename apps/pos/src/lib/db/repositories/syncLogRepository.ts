@@ -33,3 +33,11 @@ export async function setSyncMetadata(db: Database, key: string, value: string):
     [key, value]
   );
 }
+
+export async function cleanupOldSyncLogs(db: Database, daysToKeep: number = 7): Promise<void> {
+  await execute(
+    db,
+    "DELETE FROM sync_log WHERE created_at < datetime('now', '-' || $1 || ' days')",
+    [daysToKeep]
+  );
+}
