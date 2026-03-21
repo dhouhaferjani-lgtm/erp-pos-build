@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\Catalog\Presentation\Controllers;
 
-use App\Modules\Catalog\Application\DTOs\RecipeCostData;
 use App\Modules\Catalog\Application\DTOs\RecipeData;
 use App\Modules\Catalog\Application\Services\RecipeCostCalculationService;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;

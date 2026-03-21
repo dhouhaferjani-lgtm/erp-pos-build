@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Tests\Feature\Catalog;
 
 use App\Enums\Vertical;
-use App\Services\CompanyConfigService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Services\CompanyConfigService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 

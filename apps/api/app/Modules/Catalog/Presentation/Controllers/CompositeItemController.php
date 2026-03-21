@@ -132,8 +132,8 @@ class CompositeItemController extends Controller
             ->findOrFail($id);
 
         $newItem = $item->replicate(['id', 'default_recipe_id']);
-        $newItem->code = $item->code . '-copy-' . Str::random(4);
-        $newItem->name = $item->name . ' (Copy)';
+        $newItem->code = $item->code.'-copy-'.Str::random(4);
+        $newItem->name = $item->name.' (Copy)';
         $newItem->save();
 
         // Duplicate active recipe and lines
@@ -155,7 +155,7 @@ class CompositeItemController extends Controller
         foreach ($item->variants as $variant) {
             $newVariant = $variant->replicate(['id']);
             $newVariant->composite_item_id = $newItem->id;
-            $newVariant->code = $variant->code . '-copy';
+            $newVariant->code = $variant->code.'-copy';
             $newVariant->save();
         }
 

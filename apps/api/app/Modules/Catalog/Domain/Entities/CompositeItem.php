@@ -58,6 +58,7 @@ class CompositeItem extends Model implements SellableContract
 {
     /** @use HasFactory<\Illuminate\Database\Eloquent\Factories\Factory<CompositeItem>> */
     use HasFactory;
+
     use HasUuids;
     use SoftDeletes;
 

@@ -258,7 +258,7 @@ class SuperAdminController extends Controller
 
         if ($invalidExtras !== []) {
             return response()->json([
-                'error' => 'Invalid extras for vertical ' . $vertical->value . ': ' . implode(', ', $invalidExtras),
+                'error' => 'Invalid extras for vertical '.$vertical->value.': '.implode(', ', $invalidExtras),
                 'valid_extras' => $compatibleExtras,
             ], 422);
         }

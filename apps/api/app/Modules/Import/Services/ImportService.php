@@ -465,6 +465,7 @@ final class ImportService
                     $mapped[$target] = $row[$source];
                 }
             }
+
             return $mapped;
         }, $rows);
     }
