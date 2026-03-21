@@ -55,6 +55,7 @@ export function CompositeItemFormPage() {
     category_id: '',
     vertical_type: companyVerticalType,
     base_price: '',
+    manual_cost: '',
     production_type: 'made_to_order' as ProductionType,
     pricing_mode: 'standard' as PricingMode,
     tax_rate: '',
@@ -78,6 +79,7 @@ export function CompositeItemFormPage() {
         category_id: item.category_id ?? '',
         vertical_type: item.vertical_type,
         base_price: item.base_price,
+        manual_cost: item.manual_cost ?? '',
         production_type: item.production_type,
         pricing_mode: item.pricing_mode ?? 'standard',
         tax_rate: item.tax_rate ?? '',
@@ -97,6 +99,7 @@ export function CompositeItemFormPage() {
       category_id: form.category_id || null,
       vertical_type: form.vertical_type,
       base_price: Number(form.base_price),
+      manual_cost: form.manual_cost ? Number(form.manual_cost) : null,
       production_type: form.production_type,
       pricing_mode: form.pricing_mode,
       tax_rate: form.tax_rate ? Number(form.tax_rate) : null,
@@ -200,6 +203,22 @@ export function CompositeItemFormPage() {
                       value={form.base_price}
                       onChange={(e) => { setForm({ ...form, base_price: e.target.value }); }}
                     />
+                  </FormField>
+                  <FormField label={t('catalog:manualCost')} htmlFor="ci-manual-cost">
+                    <Input
+                      id="ci-manual-cost"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={form.manual_cost}
+                      onChange={(e) => { setForm({ ...form, manual_cost: e.target.value }); }}
+                      placeholder={t('catalog:manualCostPlaceholder')}
+                    />
+                    {form.manual_cost && parseFloat(form.base_price) > 0 && (
+                      <p className="mt-1 text-sm text-gray-500">
+                        {t('catalog:margin')}: {(((parseFloat(form.base_price) - parseFloat(form.manual_cost)) / parseFloat(form.base_price)) * 100).toFixed(1)}%
+                      </p>
+                    )}
                   </FormField>
                   <input type="hidden" name="vertical_type" value={form.vertical_type} />
                   <FormField label={t('catalog:productionType')} htmlFor="ci-production">
@@ -401,6 +420,22 @@ export function CompositeItemFormPage() {
                   value={form.base_price}
                   onChange={(e) => { setForm({ ...form, base_price: e.target.value }); }}
                 />
+              </FormField>
+              <FormField label={t('catalog:manualCost')} htmlFor="ci-manual-cost">
+                <Input
+                  id="ci-manual-cost"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={form.manual_cost}
+                  onChange={(e) => { setForm({ ...form, manual_cost: e.target.value }); }}
+                  placeholder={t('catalog:manualCostPlaceholder')}
+                />
+                {form.manual_cost && parseFloat(form.base_price) > 0 && (
+                  <p className="mt-1 text-sm text-gray-500">
+                    {t('catalog:margin')}: {(((parseFloat(form.base_price) - parseFloat(form.manual_cost)) / parseFloat(form.base_price)) * 100).toFixed(1)}%
+                  </p>
+                )}
               </FormField>
               <input type="hidden" name="vertical_type" value={form.vertical_type} />
               <FormField label={t('catalog:productionType')} htmlFor="ci-production">

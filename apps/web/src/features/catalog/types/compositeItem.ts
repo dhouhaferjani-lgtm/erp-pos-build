@@ -11,6 +11,7 @@ export interface CompositeItemData {
   name: string
   vertical_type: VerticalType
   base_price: string
+  manual_cost: string | null
   production_type: ProductionType
   pricing_mode: PricingMode
   tax_rate: string | null
@@ -135,6 +136,7 @@ export interface CreateCompositeItemData {
   category_id?: string | null
   vertical_type?: VerticalType
   base_price: number
+  manual_cost?: number | null
   production_type?: ProductionType
   pricing_mode?: PricingMode
   tax_rate?: number | null

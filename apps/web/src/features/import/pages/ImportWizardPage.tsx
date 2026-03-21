@@ -76,6 +76,7 @@ const TARGET_COLUMNS: Record<ImportType, { name: string; required: boolean; desc
     { name: 'code', required: true, description: 'Unique item code' },
     { name: 'name', required: true },
     { name: 'base_price', required: true, description: 'Selling price' },
+    { name: 'manual_cost', required: false, description: 'Estimated cost per unit' },
     { name: 'vertical_type', required: false, description: 'fnb, manufacturing, sewing, bakery, generic' },
     { name: 'production_type', required: false, description: 'made_to_order, batch, stock' },
     { name: 'pricing_mode', required: false, description: 'standard or fixed_bundle' },
