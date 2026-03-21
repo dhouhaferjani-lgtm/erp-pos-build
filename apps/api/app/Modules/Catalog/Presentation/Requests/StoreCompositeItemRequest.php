@@ -40,6 +40,7 @@ class StoreCompositeItemRequest extends FormRequest
             'production_type' => ['sometimes', new Enum(ProductionType::class)],
             'pricing_mode' => ['sometimes', new Enum(PricingMode::class)],
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'manual_cost' => ['nullable', 'numeric', 'min:0'],
             'stock_unit_id' => ['nullable', 'uuid', 'exists:units,id'],
             'is_active' => ['sometimes', 'boolean'],
             'is_available' => ['sometimes', 'boolean'],

@@ -27,6 +27,10 @@ class CompositeItemData extends Data
         public ProductionType $production_type,
         public PricingMode $pricing_mode,
         public ?string $tax_rate,
+        public ?string $manual_cost,
+        public ?string $effective_cost,
+        public ?string $recipe_cost,
+        public ?float $margin_percentage,
         public bool $is_active,
         public bool $is_available,
         public int|string|null $category_id,
@@ -42,6 +46,8 @@ class CompositeItemData extends Data
 
     public static function fromModel(CompositeItem $item): self
     {
+        $recipeCost = $item->activeRecipe?->calculated_cost;
+
         return new self(
             id: $item->id,
             code: $item->code,
@@ -51,6 +57,10 @@ class CompositeItemData extends Data
             production_type: $item->production_type,
             pricing_mode: $item->pricing_mode ?? PricingMode::Standard,
             tax_rate: $item->tax_rate !== null ? (string) $item->tax_rate : null,
+            manual_cost: $item->manual_cost !== null ? (string) $item->manual_cost : null,
+            effective_cost: $item->getEffectiveCost(),
+            recipe_cost: $recipeCost !== null ? (string) $recipeCost : null,
+            margin_percentage: $item->getMarginPercentage(),
             is_active: $item->is_active,
             is_available: $item->is_available,
             category_id: $item->category_id,

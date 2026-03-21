@@ -43,7 +43,7 @@ enum ImportType: string
             self::StockLevels => ['notes'],
             self::OpeningBalances => ['description', 'reference'],
             self::ProductImages => [], // ZIP-based import, not CSV
-            self::CompositeItems => ['vertical_type', 'production_type', 'pricing_mode', 'tax_rate', 'category_name', 'is_active', 'description'],
+            self::CompositeItems => ['vertical_type', 'production_type', 'pricing_mode', 'tax_rate', 'manual_cost', 'category_name', 'is_active', 'description'],
         };
     }
 
@@ -91,6 +91,7 @@ enum ImportType: string
                 'production_type' => ['nullable', 'in:made_to_order,batch,stock'],
                 'pricing_mode' => ['nullable', 'in:standard,fixed_bundle'],
                 'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+                'manual_cost' => ['nullable', 'numeric', 'min:0'],
                 'is_active' => ['nullable', 'in:true,false,1,0,yes,no'],
             ],
         };

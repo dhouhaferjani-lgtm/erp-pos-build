@@ -33,6 +33,10 @@ final class CompositeItemImportService implements CompositeItemServiceInterface
             $attributes['tax_rate'] = $data['tax_rate'];
         }
 
+        if (isset($data['manual_cost']) && $data['manual_cost'] !== '') {
+            $attributes['manual_cost'] = $data['manual_cost'];
+        }
+
         if (isset($data['is_active']) && $data['is_active'] !== '') {
             $attributes['is_active'] = in_array(strtolower((string) $data['is_active']), ['true', '1', 'yes'], true);
         }
