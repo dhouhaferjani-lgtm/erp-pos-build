@@ -22,7 +22,22 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
+// Group 1: Categories — ungated (no Inventory module required)
 Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function () {
+    // Categories
+    Route::prefix('categories')->group(function () {
+        Route::get('/', [CategoryController::class, 'index'])->name('categories.index');
+        Route::get('/tree', [CategoryController::class, 'tree'])->name('categories.tree');
+        Route::post('/', [CategoryController::class, 'store'])->name('categories.store');
+        Route::get('/{id}', [CategoryController::class, 'show'])->name('categories.show');
+        Route::put('/{id}', [CategoryController::class, 'update'])->name('categories.update');
+        Route::delete('/{id}', [CategoryController::class, 'destroy'])->name('categories.destroy');
+        Route::post('/reorder', [CategoryController::class, 'reorder'])->name('categories.reorder');
+    });
+});
+
+// Group 2: Products and all product-related routes — gated behind Inventory module
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, 'module:Inventory'])->group(function () {
     // Product CRUD with permission middleware
     Route::get('products', [ProductController::class, 'index'])
         ->middleware('can:products.view')
@@ -47,17 +62,6 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::delete('products/{product}', [ProductController::class, 'destroy'])
         ->middleware('can:products.delete')
         ->name('products.destroy');
-
-    // Categories
-    Route::prefix('categories')->group(function () {
-        Route::get('/', [CategoryController::class, 'index'])->name('categories.index');
-        Route::get('/tree', [CategoryController::class, 'tree'])->name('categories.tree');
-        Route::post('/', [CategoryController::class, 'store'])->name('categories.store');
-        Route::get('/{id}', [CategoryController::class, 'show'])->name('categories.show');
-        Route::put('/{id}', [CategoryController::class, 'update'])->name('categories.update');
-        Route::delete('/{id}', [CategoryController::class, 'destroy'])->name('categories.destroy');
-        Route::post('/reorder', [CategoryController::class, 'reorder'])->name('categories.reorder');
-    });
 
     // Parapharmacy Master Data - Ingredients
     Route::prefix('parapharmacy/ingredients')->middleware('can:settings.manage')->group(function () {

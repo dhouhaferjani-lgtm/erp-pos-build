@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function (): void {
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, 'module:Inventory'])->group(function (): void {
     // Locations (using Company module's full-featured LocationController)
     Route::get('/locations', [LocationController::class, 'index'])
         ->middleware('can:inventory.view')
