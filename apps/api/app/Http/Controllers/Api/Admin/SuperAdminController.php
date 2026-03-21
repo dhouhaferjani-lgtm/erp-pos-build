@@ -10,6 +10,7 @@ use App\Modules\Billing\Application\Services\PlanEnforcementService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Services\AdminAuditService;
+use App\Services\VerticalConfigService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,7 +19,8 @@ class SuperAdminController extends Controller
 {
     public function __construct(
         private readonly AdminAuditService $auditService,
-        private readonly PlanEnforcementService $planEnforcementService
+        private readonly PlanEnforcementService $planEnforcementService,
+        private readonly VerticalConfigService $verticalConfigService
     ) {}
 
     public function dashboard(): JsonResponse
@@ -227,6 +229,62 @@ class SuperAdminController extends Controller
         return response()->json([
             'data' => $tenant,
             'message' => 'Tenant activated successfully',
+        ]);
+    }
+
+    /**
+     * Update the enabled_extras (optional modules) for a tenant.
+     */
+    public function updateExtras(Request $request, string $id): JsonResponse
+    {
+        $tenant = Tenant::findOrFail($id);
+
+        $request->validate([
+            'enabled_extras' => ['required', 'array'],
+            'enabled_extras.*' => ['required', 'string'],
+        ]);
+
+        /** @var array<int, string> $requestedExtras */
+        $requestedExtras = $request->input('enabled_extras');
+        /** @var \App\Enums\Vertical|null $vertical */
+        $vertical = $tenant->vertical;
+
+        if ($vertical === null) {
+            return response()->json(['error' => 'Tenant has no vertical configured'], 422);
+        }
+
+        $compatibleExtras = $this->verticalConfigService->getCompatibleExtras($vertical);
+        $invalidExtras = array_diff($requestedExtras, $compatibleExtras);
+
+        if ($invalidExtras !== []) {
+            return response()->json([
+                'error' => 'Invalid extras for vertical ' . $vertical->value . ': ' . implode(', ', $invalidExtras),
+                'valid_extras' => $compatibleExtras,
+            ], 422);
+        }
+
+        $previousExtras = $tenant->enabled_extras ?? [];
+        $tenant->update(['enabled_extras' => $requestedExtras]);
+
+        /** @var SuperAdmin $admin */
+        $admin = $request->user();
+
+        $this->auditService->logTenantAction(
+            admin: $admin,
+            tenant: $tenant,
+            action: 'update_extras',
+            oldValues: ['enabled_extras' => $previousExtras],
+            newValues: ['enabled_extras' => $requestedExtras],
+            notes: 'Enabled extras updated by admin'
+        );
+
+        return response()->json([
+            'data' => [
+                'id' => $tenant->id,
+                'name' => $tenant->name,
+                'vertical' => $vertical->value,
+                'enabled_extras' => $tenant->enabled_extras,
+            ],
         ]);
     }
 

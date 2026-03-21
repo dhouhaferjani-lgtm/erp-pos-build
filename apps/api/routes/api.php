@@ -62,6 +62,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/tenants/{id}/change-plan', [SuperAdminController::class, 'changePlan']);
             Route::post('/tenants/{id}/suspend', [SuperAdminController::class, 'suspendTenant']);
             Route::post('/tenants/{id}/activate', [SuperAdminController::class, 'activateTenant']);
+            Route::post('/tenants/{id}/update-extras', [SuperAdminController::class, 'updateExtras']);
             Route::get('/audit-logs', [SuperAdminController::class, 'auditLogs']);
 
             // User management
