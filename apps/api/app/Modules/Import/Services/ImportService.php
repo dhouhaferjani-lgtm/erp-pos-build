@@ -445,6 +445,31 @@ final class ImportService
     }
 
     /**
+     * Apply column mapping to rows — rename source column names to target names.
+     * Unmapped columns are dropped.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @param  array<string, string>|null  $mapping  Source → target column name map
+     * @return array<int, array<string, mixed>>
+     */
+    public function applyColumnMapping(array $rows, ?array $mapping): array
+    {
+        if ($mapping === null || $mapping === []) {
+            return $rows;
+        }
+
+        return array_map(static function (array $row) use ($mapping): array {
+            $mapped = [];
+            foreach ($mapping as $source => $target) {
+                if (array_key_exists($source, $row)) {
+                    $mapped[$target] = $row[$source];
+                }
+            }
+            return $mapped;
+        }, $rows);
+    }
+
+    /**
      * Parse CSV file and create rows
      *
      * @return array{headers: array<string>, row_count: int}

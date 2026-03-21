@@ -94,6 +94,10 @@ class ImportController extends Controller
         $file = $request->file('file');
         $type = ImportType::from($request->input('type'));
 
+        $columnMapping = $request->has('column_mapping')
+            ? json_decode($request->input('column_mapping'), true)
+            : null;
+
         // Special handling for ProductImages (ZIP file)
         if ($type === ImportType::ProductImages) {
             return $this->handleProductImagesUpload($file, $user, $tenantId);
@@ -124,25 +128,32 @@ class ImportController extends Controller
         $fullPath = Storage::disk('local')->path($path);
 
         // Create import job with temporary total_rows
+        /** @var array<string, string>|null $columnMapping */
         $job = $this->importService->createJob(
             tenantId: $tenantId,
             userId: $user->id,
             type: $type,
             filename: $file->getClientOriginalName(),
             filePath: $path,
-            totalRows: 0
+            totalRows: 0,
+            columnMapping: $columnMapping
         );
 
         try {
             // Parse spreadsheet file (CSV, XLSX, XLS)
             $parseResult = $this->spreadsheetParser->parse($fullPath);
 
+            $mappedRows = $this->importService->applyColumnMapping($parseResult['rows'], $columnMapping);
+            $mappedHeaders = $columnMapping !== null
+                ? array_values($columnMapping)
+                : $parseResult['headers'];
+
             // Add rows to the import job using batch insert (10x faster for large imports)
-            $this->importService->addRowsBatch($job, $parseResult['rows']);
+            $this->importService->addRowsBatch($job, $mappedRows);
 
             // Validate headers
             $headerValidation = $this->validationEngine->validateHeaders(
-                $parseResult['headers'],
+                $mappedHeaders,
                 $type->getRequiredColumns(),
                 $type->getOptionalColumns()
             );
@@ -163,7 +174,7 @@ class ImportController extends Controller
             }
 
             // Update total rows
-            $job->update(['total_rows' => count($parseResult['rows'])]);
+            $job->update(['total_rows' => count($mappedRows)]);
 
             // Validate rows
             $this->importService->validateJob($job);

@@ -30,16 +30,19 @@ export const importApi = {
   createJob: async (
     type: ImportType,
     file: File,
-    _columnMapping?: Record<string, string>
+    columnMapping?: Record<string, string>
   ): Promise<CreateImportResponse> => {
     const formData = new FormData()
     formData.append('type', type)
     formData.append('file', file)
+    if (columnMapping && Object.keys(columnMapping).length > 0) {
+      formData.append('column_mapping', JSON.stringify(columnMapping))
+    }
 
     // Large files need more time for parsing + validation (up to 2 minutes)
     const response = await api.post<CreateImportResponse>(IMPORT_URL, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 120000, // 120 seconds for large imports
+      timeout: 120000,
     })
     return response.data
   },
