@@ -12,6 +12,7 @@ import {
   UtensilsCrossed,
 } from 'lucide-react'
 import type { ImportType } from '../types'
+import { useCompanyConfig } from '@/contexts/CompanyConfigContext'
 
 interface ImportTypeConfig {
   type: ImportType
@@ -47,8 +48,15 @@ const IMPORT_TYPES: ImportTypeConfig[] = [
   },
 ]
 
+const INVENTORY_IMPORT_TYPES: ImportType[] = ['products', 'product_images']
+
 export function ImportDashboardPage() {
   const { t } = useTranslation('import')
+  const { hasModule } = useCompanyConfig()
+
+  const visibleImportTypes = IMPORT_TYPES.filter(
+    (config) => !INVENTORY_IMPORT_TYPES.includes(config.type) || hasModule('Inventory')
+  )
 
   return (
     <div className="space-y-6">
@@ -86,7 +94,7 @@ export function ImportDashboardPage() {
           {t('dashboard.importTypes')}
         </h2>
         <div className="grid gap-4 md:grid-cols-2">
-          {IMPORT_TYPES.map((config) => (
+          {visibleImportTypes.map((config) => (
             <Link
               key={config.type}
               to={`/settings/import/${config.type}`}

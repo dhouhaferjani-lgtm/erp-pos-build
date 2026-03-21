@@ -25,7 +25,8 @@ export function CompositeItemFormPage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const isEdit = !!id && id !== 'new'
-  const { config } = useCompanyConfig()
+  const { config, hasModule } = useCompanyConfig()
+  const hasInventory = hasModule('Inventory')
   const companyVerticalType = companyVerticalToCatalog(config?.vertical)
 
   const { data: item, isLoading } = useCompositeItem(isEdit ? id : '')
@@ -168,7 +169,9 @@ export function CompositeItemFormPage() {
         <Tabs defaultValue="details" value={activeTab} onChange={(v) => { setActiveTab(v as TabValue); }}>
           <TabsList>
             <TabsTrigger value="details">{t('catalog:details')}</TabsTrigger>
-            <TabsTrigger value="recipeTab">{getLabel('recipe')}</TabsTrigger>
+            {hasInventory && (
+              <TabsTrigger value="recipeTab">{getLabel('recipe')}</TabsTrigger>
+            )}
             <TabsTrigger value="sizesTab">{getLabel('variant')}</TabsTrigger>
             <TabsTrigger value="modifiersTab">{getLabel('modifierGroup')}</TabsTrigger>
           </TabsList>
@@ -296,8 +299,8 @@ export function CompositeItemFormPage() {
               </StickyFormFooter>
             </form>
 
-            {/* Availability section */}
-            {item?.active_recipe && (
+            {/* Availability section — only shown when Inventory module is enabled */}
+            {hasInventory && item?.active_recipe && (
               <div className={`${tokens.card.base} mt-6`}>
                 <h3 className="text-lg font-medium text-gray-900 mb-4">{t('catalog:availability')}</h3>
                 <div className="flex items-end gap-3 mb-4">
@@ -356,25 +359,27 @@ export function CompositeItemFormPage() {
             )}
           </TabsContent>
 
-          <TabsContent value="recipeTab" className="mt-6">
-            {item?.active_recipe ? (
-              <RecipeLineEditor
-                recipe={item.active_recipe}
-                compositeItemId={id}
-                verticalType={item.vertical_type}
-              />
-            ) : (
-              <div className="text-center py-8">
-                <p className="text-gray-500 mb-4">{t('catalog:createRecipe')}</p>
-                <Button
-                  onClick={handleCreateRecipe}
-                  disabled={createRecipeMutation.isPending}
-                >
-                  {t('catalog:createRecipe')}
-                </Button>
-              </div>
-            )}
-          </TabsContent>
+          {hasInventory && (
+            <TabsContent value="recipeTab" className="mt-6">
+              {item?.active_recipe ? (
+                <RecipeLineEditor
+                  recipe={item.active_recipe}
+                  compositeItemId={id}
+                  verticalType={item.vertical_type}
+                />
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-gray-500 mb-4">{t('catalog:createRecipe')}</p>
+                  <Button
+                    onClick={handleCreateRecipe}
+                    disabled={createRecipeMutation.isPending}
+                  >
+                    {t('catalog:createRecipe')}
+                  </Button>
+                </div>
+              )}
+            </TabsContent>
+          )}
 
           <TabsContent value="sizesTab" className="mt-6">
             <VariantEditor

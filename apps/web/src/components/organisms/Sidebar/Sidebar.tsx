@@ -75,6 +75,15 @@ const MODULE_NAME_MAP: Record<string, string | string[]> = {
   'parts-catalog': 'PlatformIntegration',
   automotive: ['Vehicle', 'Workshop', 'PlatformIntegration'],
   marketing: ['Promotions', 'Coupons', 'Loyalty'],
+  // Inventory module mappings
+  inventory: 'Inventory',
+  inventoryAndCatalog: 'Inventory',
+  products: 'Inventory',
+  categories: 'Inventory',
+  stockLevels: 'Inventory',
+  stockMovements: 'Inventory',
+  counting: 'Inventory',
+  purchaseOrders: 'Inventory',
 }
 
 interface NavChild {
