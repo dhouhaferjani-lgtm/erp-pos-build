@@ -7,6 +7,7 @@ import {
   changePlan,
   suspendTenant,
   activateTenant,
+  updateTenantExtras,
 } from '../api'
 import { getErrorMessage } from '@/lib/api'
 
@@ -90,6 +91,28 @@ export function useActivateTenant() {
       queryClient.invalidateQueries({ queryKey: ['admin', 'tenants'] })
       queryClient.invalidateQueries({ queryKey: ['admin', 'tenant'] })
       toast.success('Tenant activated successfully')
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
+    },
+  })
+}
+
+export function useUpdateTenantExtras() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      tenantId,
+      enabledExtras,
+    }: {
+      tenantId: string
+      enabledExtras: string[]
+    }) => updateTenantExtras(tenantId, enabledExtras),
+    onSuccess: (_data, { tenantId }) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'tenants'] })
+      queryClient.invalidateQueries({ queryKey: ['admin', 'tenant', tenantId] })
+      toast.success('Modules updated successfully')
     },
     onError: (error) => {
       toast.error(getErrorMessage(error))

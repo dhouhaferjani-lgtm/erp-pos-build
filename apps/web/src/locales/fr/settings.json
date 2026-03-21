@@ -174,5 +174,10 @@
         "message": "Cette taxe sera désactivée mais pas supprimée. Les documents existants ne seront pas affectés."
       }
     }
+  },
+  "admin": {
+    "tenants": {
+      "manageModules": "Gestion des modules"
+    }
   }
 }

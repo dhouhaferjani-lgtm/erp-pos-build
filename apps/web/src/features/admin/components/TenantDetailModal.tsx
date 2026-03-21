@@ -2,11 +2,28 @@ import { Fragment } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import { X } from 'lucide-react'
 import { useTenant } from '../hooks/useTenants'
+import { useUpdateTenantExtras } from '../hooks/useTenants'
 import type { PlanSummary, UsageStat } from '../types'
+
+// Compatible extras per vertical — mirrors apps/api/config/verticals.php
+const VERTICAL_COMPATIBLE_EXTRAS: Record<string, string[]> = {
+  mechanic: ['Appointments', 'Fleet'],
+  pharmacy: ['BatchExpiry', 'Prescription'],
+  restaurant: ['Tables', 'Reservation', 'Inventory'],
+  coffee_shop: ['Tables', 'Loyalty', 'Inventory'],
+  retail: ['Loyalty', 'Ecommerce'],
+  fashion: ['Loyalty', 'Ecommerce'],
+  body_shop: ['Appointments', 'Fleet'],
+  parts_retailer: ['Ecommerce'],
+  car_glass: ['Appointments', 'Fleet'],
+  tire_shop: ['Appointments'],
+  service_station: [],
+}
 
 interface TenantDetailModalProps {
   tenantId: string | null
   onClose: () => void
+  onRefresh?: () => void
 }
 
 function UsageBar({ stat, label }: { stat: UsageStat; label: string }) {
@@ -228,12 +245,90 @@ function PlanUsageSection({ planSummary }: { planSummary: PlanSummary }) {
   )
 }
 
+interface ManageModulesSectionProps {
+  tenantId: string
+  vertical: string | null
+  enabledExtras: string[]
+  onRefresh: (() => void) | undefined
+}
+
+function ManageModulesSection({
+  tenantId,
+  vertical,
+  enabledExtras,
+  onRefresh,
+}: ManageModulesSectionProps) {
+  const updateExtras = useUpdateTenantExtras()
+
+  const compatibleExtras =
+    vertical !== null ? (VERTICAL_COMPATIBLE_EXTRAS[vertical] ?? []) : []
+
+  if (compatibleExtras.length === 0) {
+    return null
+  }
+
+  const handleToggleModule = (module: string, enable: boolean) => {
+    const newExtras = enable
+      ? [...enabledExtras, module]
+      : enabledExtras.filter((e) => e !== module)
+
+    updateExtras.mutate(
+      { tenantId, enabledExtras: newExtras },
+      {
+        onSuccess: () => {
+          onRefresh?.()
+        },
+      }
+    )
+  }
+
+  return (
+    <div>
+      <h4 className="mb-3 font-semibold text-gray-900">Manage Modules</h4>
+      <div className="space-y-2">
+        {compatibleExtras.map((extra) => {
+          const isEnabled = enabledExtras.includes(extra)
+          return (
+            <div
+              key={extra}
+              className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3"
+            >
+              <span className="text-sm font-medium text-gray-700">{extra}</span>
+              <button
+                type="button"
+                disabled={updateExtras.isPending}
+                onClick={() => handleToggleModule(extra, !isEnabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors disabled:opacity-50 ${
+                  isEnabled ? 'bg-blue-600' : 'bg-gray-200'
+                }`}
+                aria-pressed={isEnabled}
+                aria-label={`${isEnabled ? 'Disable' : 'Enable'} ${extra}`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform ${
+                    isEnabled ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export function TenantDetailModal({
   tenantId,
   onClose,
+  onRefresh,
 }: TenantDetailModalProps) {
   const { data, isLoading } = useTenant(tenantId ?? '')
   const isOpen = tenantId !== null
+
+  const tenant = data?.tenant
+  const vertical = tenant?.vertical ?? null
+  const enabledExtras = tenant?.enabled_extras ?? []
 
   return (
     <Transition appear show={isOpen} as={Fragment}>
@@ -284,7 +379,17 @@ export function TenantDetailModal({
                       <div className="text-gray-500">Loading...</div>
                     </div>
                   ) : data?.plan_summary ? (
-                    <PlanUsageSection planSummary={data.plan_summary} />
+                    <div className="space-y-6">
+                      <PlanUsageSection planSummary={data.plan_summary} />
+                      {tenantId !== null && (
+                        <ManageModulesSection
+                          tenantId={tenantId}
+                          vertical={vertical}
+                          enabledExtras={enabledExtras}
+                          onRefresh={onRefresh}
+                        />
+                      )}
+                    </div>
                   ) : (
                     <div className="flex h-64 items-center justify-center">
                       <div className="text-gray-500">No data available</div>

@@ -110,6 +110,15 @@ export async function activateTenant(tenantId: string): Promise<void> {
   await adminApiPost(`/admin/tenants/${tenantId}/activate`, {})
 }
 
+export async function updateTenantExtras(
+  tenantId: string,
+  enabledExtras: string[]
+): Promise<void> {
+  await adminApiPost(`/admin/tenants/${tenantId}/update-extras`, {
+    enabled_extras: enabledExtras,
+  })
+}
+
 // Audit Logs
 export async function getAdminAuditLogs(params?: {
   tenant_id?: string

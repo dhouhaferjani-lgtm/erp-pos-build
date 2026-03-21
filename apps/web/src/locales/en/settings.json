@@ -174,5 +174,10 @@
         "message": "This tax will be deactivated but not deleted. Existing documents will not be affected."
       }
     }
+  },
+  "admin": {
+    "tenants": {
+      "manageModules": "Manage Modules"
+    }
   }
 }

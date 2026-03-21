@@ -24,6 +24,8 @@ export interface TenantListItem {
   name: string
   email: string | null
   status: 'active' | 'trial' | 'suspended' | 'expired'
+  vertical: string | null
+  enabled_extras: string[] | null
   subscription: {
     plan: {
       id: string
@@ -388,6 +390,7 @@ export interface TenantDetailResponse {
     locations_count: number
   }
   plan_summary: PlanSummary
+  compatible_extras?: string[]
 }
 
 // User Management Types
