@@ -66,7 +66,7 @@ return [
         'label' => 'Restaurant',
         'description' => 'Full-service dining with table management',
         'product' => 'izipos',
-        'compatible_extras' => ['Tables', 'Reservation'],
+        'compatible_extras' => ['Tables', 'Reservation', 'Inventory'],
         'default_modules' => [
             'Identity',
             'Tenant',
@@ -74,7 +74,6 @@ return [
             'Menu',
             'Partner',
             'Sales',
-            'Inventory',
             'Treasury',
             'Accounting',
             'Tables',
@@ -93,7 +92,7 @@ return [
         'label' => 'Coffee Shop',
         'description' => 'Coffee shop and quick-service cafe',
         'product' => 'izipos',
-        'compatible_extras' => ['Tables', 'Loyalty'],
+        'compatible_extras' => ['Tables', 'Loyalty', 'Inventory'],
         'default_modules' => [
             'Identity',
             'Tenant',
@@ -101,7 +100,6 @@ return [
             'Menu',
             'Partner',
             'Sales',
-            'Inventory',
             'Treasury',
             'Accounting',
             'CompositeItems',

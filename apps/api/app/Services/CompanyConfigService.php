@@ -42,6 +42,9 @@ class CompanyConfigService
             // Get vertical configuration
             $defaultModules = $this->verticalConfigService->getDefaultModules($vertical);
 
+            // Get all optional modules supported by this vertical
+            $compatibleExtras = $this->verticalConfigService->getCompatibleExtras($vertical);
+
             // Decode enabled extras from JSON
             $enabledExtras = $this->decodeExtras($tenant->enabled_extras);
 
@@ -52,6 +55,7 @@ class CompanyConfigService
                 'vertical' => $vertical,
                 'default_modules' => $defaultModules,
                 'enabled_extras' => $enabledExtras,
+                'compatible_extras' => $compatibleExtras,
                 'all_enabled_modules' => $allEnabledModules,
             ]);
         });

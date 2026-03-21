@@ -17,12 +17,14 @@ class CompanyConfig implements \JsonSerializable
     /**
      * @param  array<int, string>  $defaultModules  Default modules for the vertical
      * @param  array<int, string>  $enabledExtras  Enabled optional modules (extras)
+     * @param  array<int, string>  $compatibleExtras  All optional modules supported by this vertical
      * @param  array<int, string>  $allEnabledModules  All enabled modules (defaults + extras)
      */
     public function __construct(
         public readonly Vertical $vertical,
         public readonly array $defaultModules,
         public readonly array $enabledExtras,
+        public readonly array $compatibleExtras,
         public readonly array $allEnabledModules,
     ) {}
 
@@ -37,6 +39,7 @@ class CompanyConfig implements \JsonSerializable
             vertical: $data['vertical'],
             defaultModules: $data['default_modules'] ?? [],
             enabledExtras: $data['enabled_extras'] ?? [],
+            compatibleExtras: $data['compatible_extras'] ?? [],
             allEnabledModules: $data['all_enabled_modules'] ?? [],
         );
     }
@@ -60,6 +63,7 @@ class CompanyConfig implements \JsonSerializable
             'vertical' => $this->vertical->value,
             'default_modules' => $this->defaultModules,
             'enabled_extras' => $this->enabledExtras,
+            'compatible_extras' => $this->compatibleExtras,
             'all_enabled_modules' => $this->allEnabledModules,
         ];
     }

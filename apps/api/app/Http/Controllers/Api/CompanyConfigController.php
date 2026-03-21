@@ -70,6 +70,7 @@ class CompanyConfigController
                 'vertical' => $config->vertical->value,
                 'default_modules' => $config->defaultModules,
                 'enabled_extras' => $config->enabledExtras,
+                'compatible_extras' => $config->compatibleExtras,
                 'all_enabled_modules' => $config->allEnabledModules,
                 'currency' => $currency,
                 'locale' => $locale,
