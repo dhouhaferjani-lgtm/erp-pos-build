@@ -33,6 +33,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string $base_price
  * @property ProductionType $production_type
  * @property PricingMode $pricing_mode
+ * @property string|null $manual_cost
  * @property string|null $tax_rate
  * @property string|null $default_recipe_id
  * @property string|null $stock_unit_id
@@ -68,6 +69,7 @@ class CompositeItem extends Model implements SellableContract
         'category_id',
         'vertical_type',
         'base_price',
+        'manual_cost',
         'production_type',
         'pricing_mode',
         'tax_rate',
@@ -97,6 +99,7 @@ class CompositeItem extends Model implements SellableContract
             'vertical_type' => VerticalType::class,
             'production_type' => ProductionType::class,
             'pricing_mode' => PricingMode::class,
+            'manual_cost' => 'decimal:4',
             'is_active' => 'boolean',
             'is_available' => 'boolean',
             'display_order' => 'integer',
@@ -138,6 +141,26 @@ class CompositeItem extends Model implements SellableContract
     public function isAvailable(): bool
     {
         return $this->is_active && $this->is_available;
+    }
+
+    public function getEffectiveCost(): ?string
+    {
+        $recipeCost = $this->activeRecipe?->calculated_cost;
+        if ($recipeCost !== null) {
+            return $recipeCost;
+        }
+
+        return $this->manual_cost;
+    }
+
+    public function getMarginPercentage(): ?float
+    {
+        $cost = $this->getEffectiveCost();
+        if ($cost === null || (float) $this->base_price === 0.0) {
+            return null;
+        }
+
+        return round(((float) $this->base_price - (float) $cost) / (float) $this->base_price * 100, 2);
     }
 
     // -- Relations --
