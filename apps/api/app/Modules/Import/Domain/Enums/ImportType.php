@@ -39,7 +39,7 @@ enum ImportType: string
     {
         return match ($this) {
             self::Partners => ['email', 'phone', 'vat_number', 'address', 'city', 'country'],
-            self::Products => ['description', 'sale_price', 'purchase_price', 'barcode'],
+            self::Products => ['description', 'sale_price', 'purchase_price', 'barcode', 'category_name', 'tax_rate', 'unit', 'is_active'],
             self::StockLevels => ['notes'],
             self::OpeningBalances => ['description', 'reference'],
             self::ProductImages => [], // ZIP-based import, not CSV
@@ -68,6 +68,9 @@ enum ImportType: string
                 'type' => ['required', 'in:part,service,consumable'],
                 'sale_price' => ['nullable', 'numeric', 'min:0'],
                 'purchase_price' => ['nullable', 'numeric', 'min:0'],
+                'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+                'unit' => ['nullable', 'string', 'max:50'],
+                'is_active' => ['nullable', 'in:true,false,1,0,yes,no'],
             ],
             self::StockLevels => [
                 'product_sku' => ['required', 'string'],

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Product\Application\Services;
 
+use App\Modules\Product\Domain\Category;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\ProductServiceInterface;
@@ -44,20 +45,41 @@ final class ProductService implements ProductServiceInterface
         string $companyId,
         array $data
     ): string {
+        $attributes = [
+            'name' => $data['name'],
+            'type' => isset($data['type']) ? ProductType::from($data['type']) : null,
+            'description' => $this->emptyToNull($data['description'] ?? null),
+            'sale_price' => $this->emptyToNull($data['sale_price'] ?? null),
+            'purchase_price' => $this->emptyToNull($data['purchase_price'] ?? null),
+            'barcode' => $this->emptyToNull($data['barcode'] ?? null),
+            'tax_rate' => $this->emptyToNull($data['tax_rate'] ?? null),
+            'unit' => $this->emptyToNull($data['unit'] ?? null),
+        ];
+
+        if (isset($data['is_active']) && $data['is_active'] !== '') {
+            $attributes['is_active'] = in_array(
+                strtolower((string) $data['is_active']),
+                ['true', '1', 'yes'],
+                true
+            );
+        }
+
+        if (isset($data['category_name']) && $data['category_name'] !== '') {
+            $category = Category::where('company_id', $companyId)
+                ->where('name', $data['category_name'])
+                ->first();
+            if ($category !== null) {
+                $attributes['category_id'] = $category->id;
+            }
+        }
+
         $product = Product::updateOrCreate(
             [
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
                 'sku' => $data['sku'],
             ],
-            [
-                'name' => $data['name'],
-                'type' => isset($data['type']) ? ProductType::from($data['type']) : null,
-                'description' => $this->emptyToNull($data['description'] ?? null),
-                'sale_price' => $this->emptyToNull($data['sale_price'] ?? null),
-                'purchase_price' => $this->emptyToNull($data['purchase_price'] ?? null),
-                'barcode' => $this->emptyToNull($data['barcode'] ?? null),
-            ]
+            $attributes
         );
 
         return $product->id;

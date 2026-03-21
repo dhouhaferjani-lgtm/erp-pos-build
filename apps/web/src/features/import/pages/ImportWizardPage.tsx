@@ -51,13 +51,14 @@ const TARGET_COLUMNS: Record<ImportType, { name: string; required: boolean; desc
   products: [
     { name: 'sku', required: true, description: 'Unique product code' },
     { name: 'name', required: true },
-    { name: 'type', required: true, description: 'goods or service' },
-    { name: 'unit_price', required: true },
-    { name: 'cost_price', required: false },
-    { name: 'category', required: false },
-    { name: 'brand', required: false },
+    { name: 'type', required: true, description: 'part, service, or consumable' },
+    { name: 'sale_price', required: false, description: 'Selling price' },
+    { name: 'purchase_price', required: false, description: 'Cost price' },
+    { name: 'category_name', required: false, description: 'Category name (must exist)' },
     { name: 'barcode', required: false },
-    { name: 'tax_rate', required: false },
+    { name: 'tax_rate', required: false, description: 'Tax rate percentage' },
+    { name: 'unit', required: false, description: 'Unit of measure' },
+    { name: 'is_active', required: false, description: 'true/false, yes/no, 1/0' },
     { name: 'description', required: false },
   ],
   opening_balances: [
@@ -70,6 +71,12 @@ const TARGET_COLUMNS: Record<ImportType, { name: string; required: boolean; desc
   product_images: [
     { name: 'sku', required: true, description: 'Product SKU' },
     { name: 'image_url', required: true, description: 'Image URL' },
+  ],
+  stock_levels: [
+    { name: 'product_sku', required: true, description: 'Product SKU' },
+    { name: 'location_code', required: true, description: 'Warehouse/location code' },
+    { name: 'quantity', required: true, description: 'Stock quantity' },
+    { name: 'notes', required: false },
   ],
   composite_items: [
     { name: 'code', required: true, description: 'Unique item code' },

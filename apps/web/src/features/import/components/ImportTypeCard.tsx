@@ -6,6 +6,7 @@ import {
   Calculator,
   Image,
   UtensilsCrossed,
+  Warehouse,
   CheckCircle,
   AlertTriangle,
   Lock,
@@ -23,6 +24,7 @@ const typeIcons: Record<ImportType, React.ComponentType<{ className?: string }>>
   opening_balances: Calculator,
   product_images: Image,
   composite_items: UtensilsCrossed,
+  stock_levels: Warehouse,
 }
 
 interface ImportTypeCardProps {
