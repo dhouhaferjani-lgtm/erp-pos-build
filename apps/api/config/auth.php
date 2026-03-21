@@ -119,4 +119,18 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Super Admin Seeder
+    |--------------------------------------------------------------------------
+    |
+    | Credentials used by SuperAdminSeeder. SUPER_ADMIN_PASSWORD is required.
+    |
+    */
+
+    'super_admin' => [
+        'email' => env('SUPER_ADMIN_EMAIL', 'superadmin@mecanospex.com'),
+        'password' => env('SUPER_ADMIN_PASSWORD'),
+    ],
+
 ];
