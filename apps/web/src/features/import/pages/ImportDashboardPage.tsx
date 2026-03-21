@@ -10,7 +10,6 @@ import {
   ArrowRight,
   Image,
   UtensilsCrossed,
-  Warehouse,
 } from 'lucide-react'
 import type { ImportType } from '../types'
 
@@ -40,11 +39,6 @@ const IMPORT_TYPES: ImportTypeConfig[] = [
     type: 'composite_items',
     icon: <UtensilsCrossed className="h-6 w-6" />,
     colorClass: 'bg-amber-100 text-amber-600',
-  },
-  {
-    type: 'stock_levels',
-    icon: <Warehouse className="h-6 w-6" />,
-    colorClass: 'bg-teal-100 text-teal-600',
   },
   {
     type: 'opening_balances',

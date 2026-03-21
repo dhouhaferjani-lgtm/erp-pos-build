@@ -242,6 +242,10 @@ final class MigrationWizardService
                     'sale_price' => '29.99',
                     'purchase_price' => '15.00',
                     'barcode' => '1234567890123',
+                    'category_name' => 'Brake Parts',
+                    'tax_rate' => '19',
+                    'unit' => 'piece',
+                    'is_active' => 'true',
                 ],
                 [
                     'name' => 'Oil Change Service',
@@ -251,6 +255,10 @@ final class MigrationWizardService
                     'sale_price' => '45.00',
                     'purchase_price' => '',
                     'barcode' => '',
+                    'category_name' => 'Services',
+                    'tax_rate' => '19',
+                    'unit' => '',
+                    'is_active' => 'true',
                 ],
             ],
             ImportType::StockLevels => [

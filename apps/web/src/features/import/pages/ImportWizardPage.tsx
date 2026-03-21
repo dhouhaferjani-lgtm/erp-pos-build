@@ -72,12 +72,6 @@ const TARGET_COLUMNS: Record<ImportType, { name: string; required: boolean; desc
     { name: 'sku', required: true, description: 'Product SKU' },
     { name: 'image_url', required: true, description: 'Image URL' },
   ],
-  stock_levels: [
-    { name: 'product_sku', required: true, description: 'Product SKU' },
-    { name: 'location_code', required: true, description: 'Warehouse/location code' },
-    { name: 'quantity', required: true, description: 'Stock quantity' },
-    { name: 'notes', required: false },
-  ],
   composite_items: [
     { name: 'code', required: true, description: 'Unique item code' },
     { name: 'name', required: true },

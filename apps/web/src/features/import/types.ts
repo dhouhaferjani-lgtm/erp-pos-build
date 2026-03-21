@@ -1,6 +1,6 @@
 // Import Types - matches backend API
 
-export type ImportType = 'partners' | 'products' | 'opening_balances' | 'product_images' | 'composite_items' | 'stock_levels'
+export type ImportType = 'partners' | 'products' | 'opening_balances' | 'product_images' | 'composite_items'
 
 export type ImportStatus =
   | 'pending'
@@ -65,7 +65,6 @@ export interface MigrationStatus {
   partners: { count: number; has_data: boolean }
   products: { count: number; has_data: boolean }
   composite_items: { count: number; has_data: boolean }
-  stock_levels: { count: number; has_data: boolean }
   accounts: { count: number; has_data: boolean }
 }
 
