@@ -23,6 +23,7 @@ export function PinEntryPage({ isLocked }: PinEntryPageProps) {
   const [showSignOut, setShowSignOut] = useState(false);
 
   function handleSignOut() {
+    setShowSignOut(false);
     useCartStore.getState().clearCart();
     usePaymentStore.getState().reset();
     useProductStore.getState().reset();
