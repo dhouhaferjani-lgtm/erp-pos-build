@@ -19,6 +19,7 @@ describe('settingsStore', () => {
     useSettingsStore.setState({
       displayMode: 'grid',
       language: 'en',
+      cartPosition: 'start',
     });
     vi.clearAllMocks();
   });
@@ -51,5 +52,14 @@ describe('settingsStore', () => {
     const codes = SUPPORTED_LANGUAGES.map((l) => l.code);
     expect(codes).toContain('en');
     expect(codes).toContain('fr');
+  });
+
+  it('defaults cartPosition to start', () => {
+    expect(useSettingsStore.getState().cartPosition).toBe('start');
+  });
+
+  it('allows setting cartPosition to end', () => {
+    useSettingsStore.getState().setCartPosition('end');
+    expect(useSettingsStore.getState().cartPosition).toBe('end');
   });
 });

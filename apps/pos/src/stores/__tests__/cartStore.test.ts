@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useCartStore } from '../cartStore';
+import { useCartStore, computeTaxAmount } from '../cartStore';
 import type { POSProduct } from '@/types/product';
 
 function makeProduct(overrides: Partial<POSProduct> = {}): POSProduct {
@@ -163,5 +163,23 @@ describe('cartStore', () => {
     const updated = useCartStore.getState().items[0]!;
     expect(parseFloat(updated.tax_amount)).toBeCloseTo(8);
     expect(useCartStore.getState().total()).toBeCloseTo(88);
+  });
+});
+
+describe('computeTaxAmount', () => {
+  it('calculates tax correctly', () => {
+    expect(computeTaxAmount(100, '20')).toBe('20.00');
+  });
+
+  it('returns zero for zero tax rate', () => {
+    expect(computeTaxAmount(100, '0')).toBe('0.00');
+  });
+
+  it('returns zero for zero line total', () => {
+    expect(computeTaxAmount(0, '20')).toBe('0.00');
+  });
+
+  it('handles negative tax rate', () => {
+    expect(computeTaxAmount(100, '-5')).toBe('0.00');
   });
 });
