@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useProductStore } from '@/stores/productStore';
-import { useCartStore } from '@/stores/cartStore';
+import { useCartStore, computeTaxAmount } from '@/stores/cartStore';
 import { usePaymentStore } from '@/stores/paymentStore';
 import { useHoldStore } from '@/stores/holdStore';
 import { useScannerStore } from '@/stores/scannerStore';
@@ -334,6 +334,7 @@ export function HomePage() {
             discount_amount: discountAmount.toFixed(2),
             discount_reason: data.reason || undefined,
             line_total: lineTotal.toFixed(2),
+            tax_amount: computeTaxAmount(lineTotal, item.tax_rate),
           };
         }),
       }));

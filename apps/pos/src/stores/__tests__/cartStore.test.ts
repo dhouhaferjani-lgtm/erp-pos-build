@@ -137,4 +137,31 @@ describe('cartStore', () => {
 
     expect(useCartStore.getState().total()).toBe(0);
   });
+
+  it('recalculates tax_amount when line discount is applied via setState', () => {
+    useCartStore.getState().addItem(makeProduct({ sale_price: '100.00', tax_rate: '10' }));
+    const item = useCartStore.getState().items[0]!;
+    expect(parseFloat(item.tax_amount)).toBeCloseTo(10);
+
+    // Simulate line discount: 20% off → lineTotal = 80
+    useCartStore.setState((state) => ({
+      items: state.items.map((i) => {
+        const grossTotal = parseFloat(i.unit_price) * i.quantity;
+        const discountAmount = (grossTotal * 20) / 100;
+        const lineTotal = Math.max(0, grossTotal - discountAmount);
+        return {
+          ...i,
+          discount_type: 'percentage' as const,
+          discount_percent: '20',
+          discount_amount: discountAmount.toFixed(2),
+          line_total: lineTotal.toFixed(2),
+          tax_amount: (lineTotal * parseFloat(i.tax_rate) / 100).toFixed(2),
+        };
+      }),
+    }));
+
+    const updated = useCartStore.getState().items[0]!;
+    expect(parseFloat(updated.tax_amount)).toBeCloseTo(8);
+    expect(useCartStore.getState().total()).toBeCloseTo(88);
+  });
 });

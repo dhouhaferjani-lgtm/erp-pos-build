@@ -34,7 +34,7 @@ function getDecimals(): number {
   return getCurrencyDecimals(company?.currency ?? 'EUR');
 }
 
-function computeTaxAmount(lineTotal: number, taxRate: string): string {
+export function computeTaxAmount(lineTotal: number, taxRate: string): string {
   const decimals = getDecimals();
   const rate = parseFloat(taxRate);
   if (rate <= 0) return (0).toFixed(decimals);
