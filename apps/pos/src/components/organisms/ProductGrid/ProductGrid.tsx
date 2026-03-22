@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { Search, X, Package, LayoutGrid, Image } from 'lucide-react';
@@ -23,6 +24,7 @@ export interface ProductGridProps {
   onCustomize?: (product: POSProduct) => void;
   cartProductIds: string[];
   isLoading?: boolean;
+  consumptionModeToggle?: ReactNode;
 }
 
 const POPULAR_COUNT = 8;
@@ -34,6 +36,7 @@ export function ProductGrid({
   onCustomize,
   cartProductIds,
   isLoading = false,
+  consumptionModeToggle,
 }: ProductGridProps) {
   const { t } = useTranslation('pos');
   const { format } = useCurrency();
@@ -127,6 +130,7 @@ export function ProductGrid({
     <div className="flex h-full flex-col gap-2">
       {/* Search bar + display mode toggle */}
       <div className="flex items-center gap-2">
+        {consumptionModeToggle}
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
           <input

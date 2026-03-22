@@ -23,6 +23,7 @@ import { LineDiscountModal } from '@/components/organisms/LineDiscountModal';
 import { ModifierSelectionModal } from '@/components/organisms/ModifierSelectionModal';
 import { VoidReturnModal } from '@/components/organisms/VoidReturnModal';
 import { QuantityNumpad } from '@/components/organisms/QuantityNumpad';
+import { useSettingsStore } from '@/stores/settingsStore';
 import type { ConsumptionMode } from '@/components/atoms/ConsumptionModeToggle';
 import type { POSProduct } from '@/types/product';
 import type { SelectedModifier } from '@/types/cart';
@@ -90,6 +91,9 @@ export function HomePage() {
   // Consumption mode + table selection (F&B only)
   const [consumptionMode, setConsumptionMode] = useState<ConsumptionMode>('SUR_PLACE');
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+
+  // Settings
+  const cartPosition = useSettingsStore((s) => s.cartPosition);
 
   // Line discount state
   const [discountItemId, setDiscountItemId] = useState<string | null>(null);
@@ -417,7 +421,7 @@ export function HomePage() {
   }
 
   return (
-    <div className="flex h-full relative">
+    <div className={`flex h-full relative ${cartPosition === 'end' ? 'flex-row-reverse' : 'flex-row'}`}>
       {/* Barcode scan feedback */}
       {scanMessage && (
         <div
@@ -431,34 +435,8 @@ export function HomePage() {
         </div>
       )}
 
-      {/* Product grid - left panel */}
-      <div className="flex flex-[7] flex-col overflow-hidden border-r border-gray-200 bg-gray-50 p-2">
-        {isFnB && (
-          <div className="mb-2 space-y-2">
-            <ConsumptionModeToggle
-              value={consumptionMode}
-              onChange={handleConsumptionModeChange}
-            />
-            {consumptionMode === 'SUR_PLACE' && (
-              <TableSelector
-                selectedTableId={selectedTableId}
-                onSelectTable={setSelectedTableId}
-              />
-            )}
-          </div>
-        )}
-        <ProductGrid
-          products={products}
-          categories={categories}
-          onAddToCart={handleAddToCart}
-          onCustomize={handleCustomize}
-          cartProductIds={cartProductIds}
-          isLoading={productsLoading}
-        />
-      </div>
-
-      {/* Cart - right panel */}
-      <div className="flex-[4] min-w-[400px]">
+      {/* Cart - left panel (first in DOM) */}
+      <div className="flex-[4] min-w-[340px] border-r border-gray-200">
         <TransactionCart
           items={cartItems}
           subtotal={subtotal()}
@@ -479,6 +457,32 @@ export function HomePage() {
           shiftNumber={shift.shift_number}
           openingCash={shift.opening_cash}
           paymentMethods={paymentMethods}
+        />
+      </div>
+
+      {/* Product grid - right panel (second in DOM) */}
+      <div className="flex flex-[7] flex-col overflow-hidden bg-gray-50 p-2">
+        {isFnB && consumptionMode === 'SUR_PLACE' && (
+          <div className="mb-2">
+            <TableSelector
+              selectedTableId={selectedTableId}
+              onSelectTable={setSelectedTableId}
+            />
+          </div>
+        )}
+        <ProductGrid
+          products={products}
+          categories={categories}
+          onAddToCart={handleAddToCart}
+          onCustomize={handleCustomize}
+          cartProductIds={cartProductIds}
+          isLoading={productsLoading}
+          consumptionModeToggle={isFnB ? (
+            <ConsumptionModeToggle
+              value={consumptionMode}
+              onChange={handleConsumptionModeChange}
+            />
+          ) : undefined}
         />
       </div>
 
