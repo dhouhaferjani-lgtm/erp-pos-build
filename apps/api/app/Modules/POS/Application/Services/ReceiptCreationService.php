@@ -283,6 +283,16 @@ final class ReceiptCreationService
                     $this->aggregateVat($vatAggregates, $taxRate, $netAmount, $taxAmount, $lineTotal);
                 }
 
+                // Capture unit cost for margin analytics
+                $unitCost = null;
+                if ($compositeItem !== null) {
+                    $unitCost = $compositeItem->getEffectiveCost();
+                } elseif (isset($lineData['product_id'])) {
+                    /** @var Product|null $lineProduct */
+                    $lineProduct = $products->get($lineData['product_id']);
+                    $unitCost = $lineProduct?->cost_price;
+                }
+
                 $receiptLines[] = [
                     'line_number' => $index + 1,
                     'product_id' => $compositeItem !== null ? null : ($lineData['product_id'] ?? null),
@@ -293,6 +303,7 @@ final class ReceiptCreationService
                     'quantity' => $quantity,
                     'unit' => $sellableUnit,
                     'unit_price' => $unitPrice,
+                    'unit_cost' => $unitCost,
                     'line_total' => $lineTotal,
                     'tax_rate' => $taxRate,
                     'tax_amount' => $taxAmount,
@@ -523,7 +534,7 @@ final class ReceiptCreationService
 
             if ($isTraining) {
                 // Training receipts get a placeholder hash — not part of the fiscal chain
-                $receipt->fiscal_hash = hash('sha256', 'TRAINING-' . $receiptId);
+                $receipt->fiscal_hash = hash('sha256', 'TRAINING-'.$receiptId);
             } else {
                 $fiscalHash = $this->receiptHashService->calculateHash($receipt, $previousHash);
                 $receipt->fiscal_hash = $fiscalHash;

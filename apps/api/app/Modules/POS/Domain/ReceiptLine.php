@@ -29,6 +29,7 @@ use Illuminate\Support\Carbon;
  * @property numeric-string $quantity
  * @property string $unit
  * @property numeric-string $unit_price
+ * @property numeric-string|null $unit_cost
  * @property numeric-string $line_total
  * @property numeric-string $tax_rate
  * @property numeric-string $tax_amount
@@ -68,6 +69,7 @@ class ReceiptLine extends Model
         'quantity',
         'unit',
         'unit_price',
+        'unit_cost',
         'line_total',
         'tax_rate',
         'tax_amount',
@@ -87,6 +89,7 @@ class ReceiptLine extends Model
             'line_number' => 'integer',
             'quantity' => 'decimal:3',
             'unit_price' => 'decimal:3',
+            'unit_cost' => 'decimal:4',
             'line_total' => 'decimal:3',
             'tax_rate' => 'decimal:2',
             'tax_amount' => 'decimal:3',
