@@ -29,13 +29,13 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
   };
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 transition-all duration-150">
+    <div className="rounded-lg border border-gray-200 bg-white p-2 transition-all duration-150">
       {/* Row 1: Name + Line Total */}
       <div className="flex items-center justify-between gap-2">
         <h4 className="truncate text-base font-semibold text-gray-900">
           {item.product.name}
         </h4>
-        <span className="shrink-0 text-lg font-bold text-gray-900">
+        <span className="shrink-0 text-base font-bold text-gray-900">
           {format(item.line_total)}
         </span>
       </div>
@@ -78,7 +78,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
           {/* Quantity controls */}
           <button
             onClick={handleDecrement}
-            className="flex h-12 w-12 items-center justify-center rounded-lg border border-gray-300 bg-gray-50 text-gray-700 active:bg-gray-200"
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300 bg-gray-50 text-gray-700 active:bg-gray-200"
             aria-label={t('cart.decrementQty')}
           >
             <Minus className="h-5 w-5" />
@@ -94,7 +94,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
 
           <button
             onClick={handleIncrement}
-            className="flex h-12 w-12 items-center justify-center rounded-lg border border-gray-300 bg-gray-50 text-gray-700 active:bg-gray-200"
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300 bg-gray-50 text-gray-700 active:bg-gray-200"
             aria-label={t('cart.incrementQty')}
           >
             <Plus className="h-5 w-5" />
@@ -104,7 +104,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
           {onEditModifiers && item.product.selectedModifiers && item.product.selectedModifiers.length > 0 && (
             <button
               onClick={() => onEditModifiers(item.id)}
-              className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-blue-600 active:bg-blue-100"
+              className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 active:bg-blue-100"
               aria-label={t('cart.editModifiers')}
               title={t('cart.editModifiers')}
             >
@@ -116,7 +116,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
           {onDiscount && (
             <button
               onClick={() => onDiscount(item.id)}
-              className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary-50 text-primary-600 active:bg-primary-100"
+              className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-50 text-primary-600 active:bg-primary-100"
               aria-label={t('cart.lineDiscount')}
             >
               <Tag className="h-5 w-5" />
@@ -126,7 +126,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
           {/* Delete button */}
           <button
             onClick={() => onRemove(item.id)}
-            className="flex h-12 w-12 items-center justify-center rounded-lg bg-red-50 text-red-600 active:bg-red-100"
+            className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 text-red-600 active:bg-red-100"
             aria-label={t('cart.removeItem')}
           >
             <Trash2 className="h-5 w-5" />

@@ -81,14 +81,14 @@ export function CashPaymentScreen({
         {/* Left: amounts */}
         <div className="flex flex-[2] flex-col items-center justify-center border-r border-gray-700 p-6">
           <div className="text-center">
-            <p className="text-xs font-medium uppercase tracking-widest text-gray-500">
+            <p className="text-xs font-medium uppercase tracking-widest text-gray-400">
               {t('cashPayment.amountDue')}
             </p>
             <p className="mt-2 text-4xl font-bold">{format(total)}</p>
           </div>
 
           <div className="mt-8 text-center">
-            <p className="text-xs font-medium uppercase tracking-widest text-gray-500">
+            <p className="text-xs font-medium uppercase tracking-widest text-gray-400">
               {t('cashPayment.tendered')}
             </p>
             <p className="mt-2 text-3xl font-bold text-blue-400">
