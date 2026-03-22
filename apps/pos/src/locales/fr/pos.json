@@ -49,6 +49,16 @@
     "morePaymentMethods": "Plus...",
     "processingQuickCheckout": "Traitement du paiement..."
   },
+  "cashPayment": {
+    "back": "Retour",
+    "title": "Paiement espèces",
+    "amountDue": "Montant dû",
+    "tendered": "Montant reçu",
+    "changeDue": "Monnaie à rendre",
+    "exact": "Exact",
+    "processing": "Traitement...",
+    "complete": "Terminer et imprimer"
+  },
   "cashTendered": {
     "title": "Paiement en espèces",
     "amountDue": "Montant dû",

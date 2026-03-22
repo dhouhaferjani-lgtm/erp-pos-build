@@ -49,6 +49,16 @@
     "morePaymentMethods": "More...",
     "processingQuickCheckout": "Processing cash payment..."
   },
+  "cashPayment": {
+    "back": "Back",
+    "title": "Cash Payment",
+    "amountDue": "Amount Due",
+    "tendered": "Cash Tendered",
+    "changeDue": "Change Due",
+    "exact": "Exact",
+    "processing": "Processing...",
+    "complete": "Complete & Print Receipt"
+  },
   "cashTendered": {
     "title": "Cash Payment",
     "amountDue": "Amount Due",

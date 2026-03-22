@@ -14,7 +14,7 @@ import { ConsumptionModeToggle } from '@/components/atoms/ConsumptionModeToggle'
 import { TableSelector } from '@/components/atoms/TableSelector';
 import { ProductGrid } from '@/components/organisms/ProductGrid';
 import { TransactionCart } from '@/components/organisms/TransactionCart';
-import { CashTenderedModal } from '@/components/organisms/CashTenderedModal';
+import { CashPaymentScreen } from '@/components/organisms/CashPaymentScreen';
 import { CheckoutSuccessModal } from '@/components/organisms/CheckoutSuccessModal';
 import { AdvancedPaymentsModal } from '@/components/organisms/AdvancedPaymentsModal';
 import { HeldTransactionsModal } from '@/components/organisms/HeldTransactionsModal';
@@ -482,8 +482,8 @@ export function HomePage() {
         />
       </div>
 
-      {/* Cash tendered modal */}
-      <CashTenderedModal
+      {/* Cash payment screen */}
+      <CashPaymentScreen
         isOpen={showCashModal}
         onClose={() => setShowCashModal(false)}
         onConfirm={(amount) => void handleCashConfirm(amount)}
