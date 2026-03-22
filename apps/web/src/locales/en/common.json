@@ -1218,5 +1218,11 @@
     "newExpense": "New Expense",
     "newPurchaseOrder": "New Purchase Order",
     "openPos": "Open POS"
+  },
+  "tax": {
+    "selectPlaceholder": "Select tax...",
+    "addNew": "+ Add new tax",
+    "loadingError": "Tax load failed — enter rate manually",
+    "staleTaxWarning": "Selected tax no longer exists"
   }
 }
