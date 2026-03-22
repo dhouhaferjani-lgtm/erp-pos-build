@@ -142,32 +142,32 @@ class CompanySettingsTest extends TestCase
             ->assertJsonStructure([
                 'data' => [
                     'name',
-                    'legalName',
-                    'taxId',
-                    'registrationNumber',
+                    'legal_name',
+                    'tax_id',
+                    'registration_number',
                     'address' => [
                         'street',
                         'city',
-                        'postalCode',
+                        'postal_code',
                         'country',
                     ],
                     'phone',
                     'email',
                     'website',
-                    'logoUrl',
-                    'primaryColor',
-                    'countryCode',
-                    'currencyCode',
+                    'logo_url',
+                    'primary_color',
+                    'country_code',
+                    'currency_code',
                     'timezone',
-                    'dateFormat',
+                    'date_format',
                     'locale',
                 ],
                 'meta',
             ])
             ->assertJsonPath('data.name', 'Acme Garage')
-            ->assertJsonPath('data.legalName', 'Acme Garage SARL')
-            ->assertJsonPath('data.taxId', 'FR12345678901')
-            ->assertJsonPath('data.primaryColor', '#FF5733')
+            ->assertJsonPath('data.legal_name', 'Acme Garage SARL')
+            ->assertJsonPath('data.tax_id', 'FR12345678901')
+            ->assertJsonPath('data.primary_color', '#FF5733')
             ->assertJsonPath('data.timezone', 'Europe/Paris');
     }
 
@@ -230,9 +230,9 @@ class CompanySettingsTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('data.name', 'Updated Company Name')
-            ->assertJsonPath('data.legalName', 'Updated Legal Name SARL')
-            ->assertJsonPath('data.taxId', 'FR98765432101')
-            ->assertJsonPath('data.primaryColor', '#00FF00')
+            ->assertJsonPath('data.legal_name', 'Updated Legal Name SARL')
+            ->assertJsonPath('data.tax_id', 'FR98765432101')
+            ->assertJsonPath('data.primary_color', '#00FF00')
             ->assertJsonPath('data.timezone', 'Europe/London');
 
         // Verify database was updated
@@ -451,7 +451,7 @@ class CompanySettingsTest extends TestCase
         $response->assertOk()
             ->assertJsonStructure([
                 'data' => [
-                    'logoUrl',
+                    'logo_url',
                 ],
                 'meta',
             ]);
@@ -665,5 +665,63 @@ class CompanySettingsTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('data.message', 'No logo to delete');
+    }
+
+    // ==================== Currency/Country Regression Tests ====================
+
+    public function test_tunisian_tenant_returns_tnd_currency(): void
+    {
+        $this->tenant->update([
+            'name' => 'Cafe Tunis',
+            'country_code' => 'TN',
+            'currency_code' => 'TND',
+            'timezone' => 'Africa/Tunis',
+            'locale' => 'fr',
+        ]);
+
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->getJson('/api/v1/settings/company');
+
+        $response->assertOk()
+            ->assertJsonPath('data.currency_code', 'TND')
+            ->assertJsonPath('data.country_code', 'TN');
+    }
+
+    public function test_address_country_falls_back_to_country_code_when_address_is_null(): void
+    {
+        $this->tenant->update([
+            'address' => null,
+            'country_code' => 'TN',
+        ]);
+
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->getJson('/api/v1/settings/company');
+
+        $response->assertOk()
+            ->assertJsonPath('data.address.country', 'TN')
+            ->assertJsonPath('data.address.street', null)
+            ->assertJsonPath('data.address.city', null)
+            ->assertJsonPath('data.address.postal_code', null);
+    }
+
+    public function test_address_country_uses_address_value_when_set(): void
+    {
+        $this->tenant->update([
+            'address' => [
+                'street' => '10 Avenue Habib Bourguiba',
+                'city' => 'Tunis',
+                'postal_code' => '1000',
+                'country' => 'TN',
+            ],
+            'country_code' => 'TN',
+        ]);
+
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->getJson('/api/v1/settings/company');
+
+        $response->assertOk()
+            ->assertJsonPath('data.address.country', 'TN')
+            ->assertJsonPath('data.address.street', '10 Avenue Habib Bourguiba')
+            ->assertJsonPath('data.address.city', 'Tunis');
     }
 }

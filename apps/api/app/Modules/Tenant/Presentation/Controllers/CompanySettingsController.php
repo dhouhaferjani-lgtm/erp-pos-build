@@ -162,7 +162,7 @@ class CompanySettingsController extends Controller
 
         return response()->json([
             'data' => [
-                'logoUrl' => asset('storage/'.$path),
+                'logo_url' => asset('storage/'.$path),
             ],
             'meta' => $this->getMeta($request),
         ]);
