@@ -25,6 +25,7 @@ export interface Service {
   default_duration_minutes: number | null
   hourly_rate: string | null
   tax_rate: string | null
+  default_tax_configuration_id: string | null
   is_active: boolean
   created_at: string
   updated_at: string | null
@@ -62,6 +63,7 @@ export interface CreateServiceData {
   default_duration_minutes?: number | null
   hourly_rate?: string | null
   tax_rate?: string | null
+  default_tax_configuration_id?: string | null
   is_active?: boolean
 }
 

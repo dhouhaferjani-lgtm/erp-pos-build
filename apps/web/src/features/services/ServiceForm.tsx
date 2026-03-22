@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
 import { api } from '../../lib/api'
 import type { Service, CreateServiceData, CategoriesResponse } from './types'
+import { TaxConfigurationField } from '../../components/molecules/TaxConfigurationField'
 
 interface ServiceResponse {
   data: Service
@@ -15,6 +16,7 @@ interface ServiceFormData extends Omit<CreateServiceData, 'base_price' | 'hourly
   base_price: string
   hourly_rate: string
   tax_rate: string
+  tax_configuration_id: string | null
 }
 
 export function ServiceForm() {
@@ -29,6 +31,7 @@ export function ServiceForm() {
     handleSubmit,
     reset,
     watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<ServiceFormData>({
     defaultValues: {
@@ -42,6 +45,7 @@ export function ServiceForm() {
       default_duration_minutes: null,
       hourly_rate: '',
       tax_rate: '',
+      tax_configuration_id: null,
       is_active: true,
     },
   })
@@ -84,6 +88,7 @@ export function ServiceForm() {
         default_duration_minutes: data.default_duration_minutes ?? null,
         hourly_rate: data.hourly_rate ?? '',
         tax_rate: data.tax_rate ?? '',
+        tax_configuration_id: data.default_tax_configuration_id ?? null,
         is_active: data.is_active,
       })
     }
@@ -396,21 +401,14 @@ export function ServiceForm() {
             )}
 
             {/* Tax Rate */}
-            <div>
-              <label htmlFor="tax_rate" className="block text-sm font-medium text-gray-700">
-                {t('services.fields.taxRate', 'Tax Rate (%)')}
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                max="100"
-                id="tax_rate"
-                {...register('tax_rate')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder="19"
-              />
-            </div>
+            <TaxConfigurationField
+              label={t('services.fields.taxRate', 'Tax Rate')}
+              value={watch('tax_configuration_id')}
+              onChange={(configId, taxRate) => {
+                setValue('tax_configuration_id', configId)
+                setValue('tax_rate', taxRate)
+              }}
+            />
           </div>
         </div>
 
