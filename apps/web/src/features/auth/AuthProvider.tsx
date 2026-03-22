@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
@@ -34,12 +34,18 @@ interface RequireAuthProps {
  * SECURITY: Authentication is handled via httpOnly cookies set by Laravel Sanctum.
  * We always check the session on mount - if a valid session cookie exists,
  * the /auth/me endpoint will return the user data.
+ *
+ * GUARD: clearAllAppState is only called when a previously authenticated session
+ * becomes invalid (wasAuthenticated ref). An initial 401 on page load (before
+ * login/registration) will NOT clear app state, preventing a race condition
+ * that could wipe tokens set during registration.
  */
 export function AuthProvider({ children }: AuthProviderProps) {
   const user = useAuthStore((state) => state.user)
   const setUser = useAuthStore((state) => state.setUser)
   const setLoading = useAuthStore((state) => state.setLoading)
   const queryClient = useQueryClient()
+  const wasAuthenticated = useRef(false)
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['auth', 'me'],
@@ -57,6 +63,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     if (isLoading) {
       setLoading(true)
     } else if (data) {
+      wasAuthenticated.current = true
       // Map tenantId to tenant_id for store compatibility
       const userData = {
         id: data.id,
@@ -68,8 +75,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
       setUser(userData)
     } else if (isError) {
-      // Session is invalid or expired, clear all app state
-      clearAllAppState(queryClient)
+      if (wasAuthenticated.current) {
+        // Session was valid but is now expired — clear all app state
+        clearAllAppState(queryClient)
+        wasAuthenticated.current = false
+      }
+      setLoading(false)
     }
   }, [data, isLoading, isError, setUser, setLoading, queryClient])
 
