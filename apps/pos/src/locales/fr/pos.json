@@ -440,8 +440,8 @@
     "receiptCreationFailed": "Échec de la création du ticket",
     "paymentProcessingFailed": "Échec du traitement du paiement",
     "unexpected": "Une erreur inattendue s'est produite",
-    "noCashMethod": "Aucun moyen de paiement espèces configuré",
-    "noCashRegister": "Aucune caisse enregistreuse configurée",
+    "noCashMethod": "Aucun moyen de paiement espèces configuré. Veuillez configurer un moyen de paiement espèces dans Paramètres → Moyens de paiement.",
+    "noCashRegister": "Aucune caisse enregistreuse configurée. Veuillez configurer une caisse dans Paramètres → Dépôts de paiement.",
     "checkoutFailed": "Échec du paiement"
   }
 }

@@ -440,8 +440,8 @@
     "receiptCreationFailed": "Failed to create receipt",
     "paymentProcessingFailed": "Payment processing failed",
     "unexpected": "An unexpected error occurred",
-    "noCashMethod": "No cash payment method configured",
-    "noCashRegister": "No cash register configured",
+    "noCashMethod": "No cash payment method configured. Please set up a cash payment method in Settings → Payment Methods.",
+    "noCashRegister": "No cash register configured. Please set up a cash register in Settings → Payment Repositories.",
     "checkoutFailed": "Checkout failed"
   }
 }
