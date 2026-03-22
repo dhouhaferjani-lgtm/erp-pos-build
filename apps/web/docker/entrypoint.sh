@@ -40,6 +40,13 @@ cat > /etc/nginx/conf.d/default.conf << EOF
 # Nginx Server Configuration (generated at runtime)
 # =============================================================================
 
+# Pass through the original protocol from the upstream reverse proxy (Traefik).
+# Defaults to https when accessed directly (no X-Forwarded-Proto header).
+map \$http_x_forwarded_proto \$forwarded_proto {
+    default \$http_x_forwarded_proto;
+    ''      'https';
+}
+
 server {
     listen 80;
     listen [::]:80;
@@ -90,7 +97,7 @@ server {
         proxy_set_header Host ${API_HOST};
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Proto \$forwarded_proto;
         proxy_set_header X-Forwarded-Host \$host;
 
         # WebSocket support (for future use)
@@ -116,7 +123,7 @@ server {
         proxy_set_header Host ${API_HOST};
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Proto \$forwarded_proto;
         proxy_set_header X-Forwarded-Host \$host;
     }
 
@@ -132,7 +139,7 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Proto \$forwarded_proto;
         proxy_read_timeout 86400s;
         proxy_send_timeout 86400s;
     }
@@ -145,7 +152,7 @@ server {
         proxy_set_header Host ${API_HOST};
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Proto \$forwarded_proto;
         proxy_set_header X-Forwarded-Host \$host;
     }
 
