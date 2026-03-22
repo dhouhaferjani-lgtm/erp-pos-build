@@ -61,3 +61,16 @@ export function disconnectEcho(): void {
     window.Echo = null
   }
 }
+
+// Subscribe to auth store — recreate Echo when token changes.
+// Initialize from current store state to avoid a spurious disconnectEcho on hydration.
+let previousToken: string | null = useAuthStore.getState().token
+useAuthStore.subscribe((state) => {
+  const currentToken = state.token
+  if (currentToken !== previousToken) {
+    previousToken = currentToken
+    if (window.Echo) {
+      disconnectEcho()
+    }
+  }
+})
