@@ -77,9 +77,9 @@ const MODULE_NAME_MAP: Record<string, string | string[]> = {
   marketing: ['Promotions', 'Coupons', 'Loyalty'],
   // Inventory module mappings
   inventory: 'Inventory',
-  inventoryAndCatalog: 'Inventory',
+  inventoryAndCatalog: ['Inventory', 'CompositeItems'],
   products: 'Inventory',
-  categories: 'Inventory',
+  categories: ['Inventory', 'CompositeItems'],
   stockLevels: 'Inventory',
   stockMovements: 'Inventory',
   counting: 'Inventory',
