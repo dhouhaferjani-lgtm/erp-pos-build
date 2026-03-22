@@ -8,6 +8,7 @@ import { FormField } from '../../atoms/FormField'
 import { Input } from '../../atoms/Input'
 import { Button } from '../../atoms/Button'
 import { apiPost } from '../../../lib/api'
+import { TaxConfigurationField } from '../../molecules/TaxConfigurationField'
 
 interface Product {
   id: string
@@ -24,6 +25,7 @@ interface QuickProductFormData {
   sku: string
   sale_price: string
   tax_rate: string
+  tax_configuration_id: string | null
 }
 
 export interface AddQuickProductModalProps {
@@ -75,13 +77,16 @@ export function AddQuickProductModal({
     register,
     handleSubmit,
     reset,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm<QuickProductFormData>({
     defaultValues: {
       name: '',
       sku: '',
       sale_price: '',
-      tax_rate: '19', // Default VAT rate (can be adjusted per country)
+      tax_rate: '',
+      tax_configuration_id: null,
     },
   })
 
@@ -92,7 +97,8 @@ export function AddQuickProductModal({
         name: '',
         sku: '',
         sale_price: '',
-        tax_rate: '19',
+        tax_rate: '',
+        tax_configuration_id: null,
       })
     }
   }, [isOpen, reset])
@@ -177,26 +183,16 @@ export function AddQuickProductModal({
               />
             </FormField>
 
-            <FormField
-              label={t('inventory:products.taxRate')}
-              htmlFor="product-tax-rate"
+            <TaxConfigurationField
+              label={t('common:tax.selectPlaceholder')}
               required
-              error={errors.tax_rate?.message}
-            >
-              <Input
-                id="product-tax-rate"
-                type="number"
-                step="0.01"
-                min="0"
-                max="100"
-                {...register('tax_rate', {
-                  required: t('common:validation.required'),
-                  min: { value: 0, message: 'Minimum 0%' },
-                  max: { value: 100, message: 'Maximum 100%' },
-                })}
-                placeholder="19"
-              />
-            </FormField>
+              {...(errors.tax_rate?.message !== undefined && { error: errors.tax_rate.message })}
+              value={watch('tax_configuration_id') ?? null}
+              onChange={(configId, taxRate) => {
+                setValue('tax_configuration_id', configId)
+                setValue('tax_rate', taxRate)
+              }}
+            />
           </div>
 
           {/* Info message */}
