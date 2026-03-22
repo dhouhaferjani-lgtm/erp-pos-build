@@ -12,7 +12,7 @@ vi.mock('pusher-js', () => ({
   default: vi.fn(),
 }))
 
-import { getEcho, disconnectEcho } from '../echo'
+import { getEcho } from '../echo'
 
 describe('Echo lifecycle', () => {
   beforeEach(() => {
