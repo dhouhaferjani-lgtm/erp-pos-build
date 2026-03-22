@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import { apiGet, apiPost } from '@/lib/api';
 import { getDeviceId } from '@/lib/device';
 import { getStoredValue, setStoredValue, removeStoredValue, StorageKeys } from '@/lib/storage';
+import { getDatabase } from '@/lib/db';
+import { pullTerminalState, pullZChainState } from '@/lib/sync/syncService';
+import { useAuthStore } from '@/stores/authStore';
 
 export interface Location {
   id: string;
@@ -67,6 +70,23 @@ const initialState: TerminalState = {
   isLoading: false,
 };
 
+/**
+ * Seed the local SQLite terminal_state and Z-chain state from the server.
+ * Must run after a terminal becomes active so offline receipts and Z-reports
+ * can compute fiscal hashes.
+ */
+async function seedOfflineHashChain(terminalId: string): Promise<void> {
+  const companyId = useAuthStore.getState().companyId;
+  if (!companyId) return;
+  try {
+    const db = await getDatabase(companyId);
+    await pullTerminalState(db, terminalId);
+    await pullZChainState(db, terminalId);
+  } catch (error) {
+    console.error('[Terminal] Failed to seed offline hash chain:', error);
+  }
+}
+
 export const useTerminalStore = create<TerminalStore>()((set, get) => ({
   ...initialState,
 
@@ -77,6 +97,8 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
       const terminal = await getStoredValue<Terminal>(StorageKeys.TERMINAL);
       if (terminal) {
         set({ terminal });
+        // Ensure offline hash chain is seeded (may be missing after DB reset/reinstall)
+        await seedOfflineHashChain(terminal.id);
         await get().fetchCurrentShift();
         return;
       }
@@ -93,6 +115,7 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
             console.log('[Terminal] Pending terminal is now active:', pending.code);
             await setStoredValue(StorageKeys.TERMINAL, pending);
             await removeStoredValue(StorageKeys.PENDING_TERMINAL_ID);
+            await seedOfflineHashChain(pending.id);
             set({ terminal: pending, pendingTerminalId: null });
             await get().fetchCurrentShift();
             return;
@@ -112,6 +135,7 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
         const found = await apiGet<Terminal | null>(`/pos/terminals/by-device/${deviceId}`);
         if (found?.is_active) {
           await setStoredValue(StorageKeys.TERMINAL, found);
+          await seedOfflineHashChain(found.id);
           set({ terminal: found });
           await get().fetchCurrentShift();
         } else if (found && !found.is_active) {
@@ -142,6 +166,7 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
         hardware_identifier: hardwareIdentifier,
       });
       await setStoredValue(StorageKeys.TERMINAL, terminal);
+      await seedOfflineHashChain(terminal.id);
       set({ terminal, isLoading: false });
     } catch (error) {
       set({ isLoading: false });
@@ -174,6 +199,7 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     if (terminal.is_active) {
       await setStoredValue(StorageKeys.TERMINAL, terminal);
       await removeStoredValue(StorageKeys.PENDING_TERMINAL_ID);
+      await seedOfflineHashChain(terminal.id);
       set({ terminal, pendingTerminalId: null });
     }
     return terminal;

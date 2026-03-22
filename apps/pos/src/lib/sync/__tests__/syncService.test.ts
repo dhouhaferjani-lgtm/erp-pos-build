@@ -9,12 +9,15 @@ vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({
   getPendingReceiptsForSync: vi.fn(),
   updateReceiptStatus: vi.fn().mockResolvedValue(undefined),
   incrementRetryCount: vi.fn().mockResolvedValue(undefined),
+  cleanupSyncedReceipts: vi.fn().mockResolvedValue(undefined),
+  cleanupStuckReceipts: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/lib/db/repositories/syncLogRepository', () => ({
   logSyncOperation: vi.fn().mockResolvedValue(undefined),
   getSyncMetadata: vi.fn().mockResolvedValue(null),
   setSyncMetadata: vi.fn().mockResolvedValue(undefined),
+  cleanupOldSyncLogs: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/lib/db/repositories/productRepository', () => ({
@@ -32,11 +35,16 @@ vi.mock('@/lib/db/repositories/operatorPinRepository', () => ({
 
 vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
   upsertTerminalState: vi.fn().mockResolvedValue(undefined),
+  upsertZChainState: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/lib/db/repositories/zReportRepository', () => ({
   getUnsyncedZReports: vi.fn().mockResolvedValue([]),
   markZReportSynced: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('@/lib/fiscal/hashService', () => ({
+  computeGenesisHash: vi.fn().mockResolvedValue('genesis-hash-abc123'),
 }));
 
 import {
@@ -54,6 +62,8 @@ import {
   incrementRetryCount,
 } from '@/lib/db/repositories/offlineReceiptRepository';
 import { upsertProducts } from '@/lib/db/repositories/productRepository';
+import { upsertTerminalState } from '@/lib/db/repositories/terminalStateRepository';
+import { computeGenesisHash } from '@/lib/fiscal/hashService';
 import { makeOfflineReceipt } from '@/test/helpers';
 
 function makeMockDb() {
@@ -235,11 +245,11 @@ describe('syncService', () => {
   });
 
   describe('pullTerminalState', () => {
-    it('returns true when terminal has genesis seed', async () => {
+    it('returns true and upserts state when terminal has genesis seed and last_hash', async () => {
       vi.mocked(apiGet).mockResolvedValue({
-        terminal_id: 'term-1',
-        terminal_code: 'T001',
-        genesis_seed: 'seed-abc',
+        id: 'term-1',
+        code: 'T001',
+        genesis_seed: 'abcd1234',
         last_hash: 'hash-xyz',
         hash_sequence: 10,
       });
@@ -247,12 +257,42 @@ describe('syncService', () => {
       const result = await pullTerminalState(db, 'term-1');
 
       expect(result).toBe(true);
+      expect(upsertTerminalState).toHaveBeenCalledWith(db, {
+        terminal_id: 'term-1',
+        terminal_code: 'T001',
+        genesis_seed: 'abcd1234',
+        last_hash: 'hash-xyz',
+        hash_sequence: 10,
+      });
+      expect(computeGenesisHash).not.toHaveBeenCalled();
+    });
+
+    it('computes genesis hash when last_hash is null (new terminal)', async () => {
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'term-1',
+        code: 'T001',
+        genesis_seed: 'abcd1234',
+        last_hash: null,
+        hash_sequence: 0,
+      });
+
+      const result = await pullTerminalState(db, 'term-1');
+
+      expect(result).toBe(true);
+      expect(computeGenesisHash).toHaveBeenCalledWith('abcd1234');
+      expect(upsertTerminalState).toHaveBeenCalledWith(db, {
+        terminal_id: 'term-1',
+        terminal_code: 'T001',
+        genesis_seed: 'abcd1234',
+        last_hash: 'genesis-hash-abc123',
+        hash_sequence: 0,
+      });
     });
 
     it('returns false when no genesis seed', async () => {
       vi.mocked(apiGet).mockResolvedValue({
-        terminal_id: 'term-1',
-        terminal_code: 'T001',
+        id: 'term-1',
+        code: 'T001',
         genesis_seed: '',
         last_hash: '',
         hash_sequence: 0,
@@ -261,6 +301,7 @@ describe('syncService', () => {
       const result = await pullTerminalState(db, 'term-1');
 
       expect(result).toBe(false);
+      expect(upsertTerminalState).not.toHaveBeenCalled();
     });
 
     it('returns false on error', async () => {
@@ -280,7 +321,8 @@ describe('syncService', () => {
         .mockResolvedValueOnce([]) // payment methods
         .mockResolvedValueOnce([]) // payment repos
         .mockResolvedValueOnce([]) // operator pins
-        .mockResolvedValueOnce({ terminal_id: 't-1', terminal_code: 'T001', genesis_seed: 'seed', last_hash: 'h', hash_sequence: 0 });
+        .mockResolvedValueOnce({ id: 't-1', code: 'T001', genesis_seed: 'seed', last_hash: 'h', hash_sequence: 0 }) // terminal state
+        .mockResolvedValueOnce({ z_last_hash: null, z_hash_sequence: 0, z_number: 0, grand_totals: null }); // z-chain state
 
       const result = await runFullSync(db, 't-1');
 

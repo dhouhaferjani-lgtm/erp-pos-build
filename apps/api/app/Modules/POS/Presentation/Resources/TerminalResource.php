@@ -38,6 +38,9 @@ final class TerminalResource extends JsonResource
             'deactivation_reason' => $this->deactivation_reason,
             'has_history' => ($this->receipts_count ?? $this->receipts()->count()) > 0
                 || ($this->shifts_count ?? $this->shifts()->count()) > 0,
+            'genesis_seed' => $this->genesis_seed,
+            'last_hash' => $this->last_hash,
+            'hash_sequence' => max(0, $this->current_sequence - 1),
             'current_sequence' => $this->current_sequence,
             'current_year' => $this->current_year,
             'created_at' => $this->created_at->toISOString(),

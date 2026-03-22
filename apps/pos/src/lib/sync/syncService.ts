@@ -7,6 +7,7 @@ import {
 } from '@/lib/db/repositories/paymentRepository';
 import { upsertOperators } from '@/lib/db/repositories/operatorPinRepository';
 import { upsertTerminalState, upsertZChainState, type TerminalHashState } from '@/lib/db/repositories/terminalStateRepository';
+import { computeGenesisHash } from '@/lib/fiscal/hashService';
 import {
   getPendingReceiptsForSync,
   updateReceiptStatus,
@@ -59,10 +60,10 @@ interface OperatorPinData {
 }
 
 interface TerminalStateResponse {
-  terminal_id: string;
-  terminal_code: string;
+  id: string;
+  code: string;
   genesis_seed: string;
-  last_hash: string;
+  last_hash: string | null;
   hash_sequence: number;
 }
 
@@ -266,11 +267,14 @@ export async function pullTerminalState(
   try {
     const state = await apiGet<TerminalStateResponse>(`/pos/terminals/${terminalId}`);
     if (state.genesis_seed) {
+      // For a new terminal with no receipts, last_hash is null on the server.
+      // The genesis hash (SHA-256 of "GENESIS|<seed>") is the chain's starting point.
+      const initialHash = state.last_hash ?? await computeGenesisHash(state.genesis_seed);
       const hashState: TerminalHashState = {
-        terminal_id: state.terminal_id,
-        terminal_code: state.terminal_code,
+        terminal_id: state.id,
+        terminal_code: state.code,
         genesis_seed: state.genesis_seed,
-        last_hash: state.last_hash,
+        last_hash: initialHash,
         hash_sequence: state.hash_sequence,
       };
       await upsertTerminalState(db, hashState);
