@@ -12,6 +12,9 @@ export interface CompositeItemData {
   vertical_type: VerticalType
   base_price: string
   manual_cost: string | null
+  effective_cost: string | null
+  recipe_cost: string | null
+  margin_percentage: number | null
   production_type: ProductionType
   pricing_mode: PricingMode
   tax_rate: string | null

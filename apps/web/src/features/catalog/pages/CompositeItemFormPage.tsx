@@ -217,6 +217,20 @@ export function CompositeItemFormPage() {
                       onChange={(e) => { setForm({ ...form, manual_cost: e.target.value }); }}
                       placeholder={t('catalog:manualCostPlaceholder')}
                     />
+                    {item?.recipe_cost && (
+                      <div className="rounded-md bg-blue-50 p-3 text-sm space-y-1 mt-2">
+                        <div className="flex justify-between">
+                          <span className="text-blue-700">{t('catalog:recipeCost')}</span>
+                          <span className="font-medium text-blue-900">{item.recipe_cost}</span>
+                        </div>
+                        {item.margin_percentage !== null && (
+                          <div className="flex justify-between">
+                            <span className="text-blue-700">{t('catalog:margin')}</span>
+                            <span className="font-medium text-blue-900">{item.margin_percentage}%</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {form.manual_cost && parseFloat(form.base_price) > 0 && (
                       <p className="mt-1 text-sm text-gray-500">
                         {t('catalog:margin')}: {(((parseFloat(form.base_price) - parseFloat(form.manual_cost)) / parseFloat(form.base_price)) * 100).toFixed(1)}%
