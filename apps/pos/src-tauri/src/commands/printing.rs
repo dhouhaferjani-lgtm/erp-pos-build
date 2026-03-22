@@ -9,6 +9,15 @@ use crate::printing::{
 pub async fn discover_printers(subnet_prefix: Option<String>) -> Result<Vec<PrinterInfo>, PrintError> {
     let mut printers = Vec::new();
 
+    // Windows Winspool discovery (local + connected printers)
+    #[cfg(target_os = "windows")]
+    {
+        match printing::windows::discover() {
+            Ok(win_printers) => printers.extend(win_printers),
+            Err(e) => log::warn!("Windows printer discovery failed: {}", e),
+        }
+    }
+
     // USB discovery (synchronous, quick)
     let usb_printers = printing::usb::discover();
     printers.extend(usb_printers);
