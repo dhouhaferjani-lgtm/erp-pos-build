@@ -1139,32 +1139,32 @@
     }
   },
   "commandPalette": {
-    "placeholder": "Rechercher ou aller \u00e0...",
+    "placeholder": "Rechercher ou aller à...",
     "navigation": "Navigation",
     "actions": "Actions",
-    "recent": "R\u00e9cents",
-    "noResults": "Aucun r\u00e9sultat",
-    "hint": "\u2191\u2193 Naviguer \u2022 Entr\u00e9e S\u00e9lectionner \u2022 \u00c9chap Fermer",
+    "recent": "Récents",
+    "noResults": "Aucun résultat",
+    "hint": "↑↓ Naviguer • Entrée Sélectionner • Échap Fermer",
     "searchTrigger": "Rechercher...",
-    "createInvoice": "Cr\u00e9er une facture",
-    "createQuote": "Cr\u00e9er un devis",
-    "createCustomer": "Cr\u00e9er un client",
-    "createProduct": "Cr\u00e9er un produit",
-    "createPayment": "Cr\u00e9er un paiement",
-    "createExpense": "Cr\u00e9er une d\u00e9pense",
-    "createPurchaseOrder": "Cr\u00e9er un bon de commande"
+    "createInvoice": "Créer une facture",
+    "createQuote": "Créer un devis",
+    "createCustomer": "Créer un client",
+    "createProduct": "Créer un produit",
+    "createPayment": "Créer un paiement",
+    "createExpense": "Créer une dépense",
+    "createPurchaseOrder": "Créer un bon de commande"
   },
   "legal": {
-    "privacyPolicy": "Politique de confidentialit\u00e9",
+    "privacyPolicy": "Politique de confidentialité",
     "termsOfService": "Conditions d'utilisation",
     "cookieConsent": {
-      "message": "Ce site utilise des cookies essentiels pour l'authentification et la s\u00e9curit\u00e9.",
+      "message": "Ce site utilise des cookies essentiels pour l'authentification et la sécurité.",
       "accept": "Accepter",
       "learnMore": "En savoir plus"
     }
   },
   "quickCreate": {
-    "label": "Cr\u00e9ation rapide",
+    "label": "Création rapide",
     "newInvoice": "Nouvelle facture",
     "newQuote": "Nouveau devis",
     "newCustomer": "Nouveau client",
@@ -1173,5 +1173,12 @@
     "newExpense": "Nouvelle dépense",
     "newPurchaseOrder": "Nouvelle commande fournisseur",
     "openPos": "Ouvrir la caisse"
+  },
+  "tax": {
+    "addNew": "+ Ajouter une taxe...",
+    "selectPlaceholder": "Sélectionner une taxe...",
+    "loadingError": "Impossible de charger les taxes",
+    "staleTaxWarning": "La configuration de taxe n'existe plus",
+    "noTaxes": "Aucune taxe configurée"
   }
 }

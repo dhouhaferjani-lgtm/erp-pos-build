@@ -153,14 +153,9 @@
     "businessInfo": "Business Information"
   },
   "errors": {
-    "loadingFailed": "Error loading data. Please try again.",
-    "documentNotFound": "Document not found or an error occurred.",
-    "permissionDenied": "Permission Denied",
-    "permissionDeniedDescription": "You don't have permission to access this page. Please contact your administrator if you believe this is an error.",
-    "unexpected": "An unexpected error occurred. Please try again.",
-    "unexpectedError": "Something went wrong",
-    "unexpectedErrorDetails": "An unexpected error occurred. Please try refreshing the page or go back to the home page.",
-    "failedToLoad": "Failed to load data"
+    "realtimeConnectionFailed": "Real-time updates are unavailable. Changes may not appear automatically.",
+    "locationsFetchFailed": "Failed to load locations.",
+    "operationFailed": "Operation failed. Please try again."
   },
   "dashboard": {
     "title": "Dashboard",
@@ -325,7 +320,6 @@
     "item": "item",
     "items": "items"
   },
-  "filtersLabel": "Filters",
   "clearAll": "Clear all",
   "activeFilters": "{{count}} active filter(s)",
   "remove": "Remove",
@@ -1072,7 +1066,6 @@
       "deactivationReasonPrompt": "Reason for deactivation (optional):",
       "deactivateTerminal": "Deactivate Terminal",
       "deactivationReasonPlaceholder": "Enter reason...",
-      "deactivate": "Deactivate",
       "archive": "Archive",
       "confirmArchiveTitle": "Archive Terminal",
       "confirmArchive": "Are you sure you want to archive {{resource}}? The terminal will be hidden but all transaction history will be preserved.",
@@ -1096,11 +1089,6 @@
     "connected": "Real-time updates active",
     "connecting": "Connecting to real-time updates...",
     "disconnected": "Real-time updates unavailable"
-  },
-  "errors": {
-    "realtimeConnectionFailed": "Real-time updates are unavailable. Changes may not appear automatically.",
-    "locationsFetchFailed": "Failed to load locations.",
-    "operationFailed": "Operation failed. Please try again."
   },
   "permissions": {
     "modules": {
@@ -1189,7 +1177,7 @@
     "actions": "Actions",
     "recent": "Recent",
     "noResults": "No results found",
-    "hint": "\u2191\u2193 Navigate \u2022 Enter Select \u2022 Esc Close",
+    "hint": "↑↓ Navigate • Enter Select • Esc Close",
     "searchTrigger": "Search...",
     "createInvoice": "Create Invoice",
     "createQuote": "Create Quote",
@@ -1218,5 +1206,12 @@
     "newExpense": "New Expense",
     "newPurchaseOrder": "New Purchase Order",
     "openPos": "Open POS"
+  },
+  "tax": {
+    "addNew": "+ Add new tax...",
+    "selectPlaceholder": "Select tax...",
+    "loadingError": "Could not load taxes",
+    "staleTaxWarning": "Tax configuration no longer exists",
+    "noTaxes": "No taxes configured"
   }
 }
