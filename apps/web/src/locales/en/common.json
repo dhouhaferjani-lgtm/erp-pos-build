@@ -1221,8 +1221,9 @@
   },
   "tax": {
     "selectPlaceholder": "Select tax...",
-    "addNew": "+ Add new tax",
+    "addNew": "+ Add new tax...",
     "loadingError": "Tax load failed — enter rate manually",
-    "staleTaxWarning": "Selected tax no longer exists"
+    "staleTaxWarning": "Selected tax no longer exists",
+    "noTaxes": "No taxes configured"
   }
 }

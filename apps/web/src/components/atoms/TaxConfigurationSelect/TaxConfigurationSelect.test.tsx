@@ -59,6 +59,16 @@ describe('TaxConfigurationSelect', () => {
     expect(screen.getByText('Stamp Duty (1.000)')).toBeInTheDocument()
   })
 
+  it('filters by documentType — keeps matching and universal configs', () => {
+    setup({ documentType: 'SALES_INVOICE' })
+    // TVA 19% has empty applicable_document_types → matches all
+    expect(screen.getByText('TVA 19% (19.00%)')).toBeInTheDocument()
+    // TVA 7% has SALES_INVOICE in its list → matches
+    expect(screen.getByText('TVA 7% (7.00%)')).toBeInTheDocument()
+    // Stamp Duty has SALES_INVOICE → matches
+    expect(screen.getByText('Stamp Duty (1.000)')).toBeInTheDocument()
+  })
+
   it('filters OUT configs that do not match documentType', () => {
     setup({ documentType: 'QUOTE' })
     expect(screen.getByText('TVA 19% (19.00%)')).toBeInTheDocument()
@@ -108,5 +118,10 @@ describe('TaxConfigurationSelect', () => {
     mockUseTaxConfigurations.mockReturnValue({ data: undefined, isLoading: false, isError: true })
     setup()
     expect(screen.getByRole('spinbutton')).toBeInTheDocument()
+  })
+
+  it('shows stale value warning when selected config no longer exists', () => {
+    setup({ value: 'deleted-tax-id' })
+    expect(screen.getByText(/no longer exists|n'existe plus/i)).toBeInTheDocument()
   })
 })

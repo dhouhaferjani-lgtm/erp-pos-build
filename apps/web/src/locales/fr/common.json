@@ -1176,8 +1176,9 @@
   },
   "tax": {
     "selectPlaceholder": "Sélectionner une taxe...",
-    "addNew": "+ Ajouter une nouvelle taxe",
+    "addNew": "+ Ajouter une taxe...",
     "loadingError": "Échec du chargement — saisir le taux manuellement",
-    "staleTaxWarning": "La taxe sélectionnée n'existe plus"
+    "staleTaxWarning": "La taxe sélectionnée n'existe plus",
+    "noTaxes": "Aucune taxe configurée"
   }
 }
