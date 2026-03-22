@@ -8,6 +8,7 @@ import { tokens } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 import { apiGet } from '@/lib/api'
 import { useCurrency } from '@/hooks/useCurrency'
+import { useTaxConfigName } from '@/hooks/useTaxConfigName'
 
 /**
  * Product Info Modal Props
@@ -31,6 +32,7 @@ export interface ProductDetailResponse {
   sale_price: string | null
   purchase_price?: string | null
   tax_rate?: string
+  default_tax_configuration_id?: string | null
   category?: {
     id: string
     name: string
@@ -137,6 +139,8 @@ export function ProductInfoModal({
     queryFn: () => fetchProductDetails(productId),
     enabled: isOpen,
   })
+
+  const taxConfigName = useTaxConfigName(product?.default_tax_configuration_id)
 
   // Fetch stock levels (lazy load on tab switch)
   const {
@@ -272,12 +276,14 @@ export function ProductInfoModal({
                         {product.sale_price ? `${product.sale_price} ${currency}` : 'N/A'}
                       </p>
                     </div>
-                    {product.tax_rate && (
+                    {(product.tax_rate || product.default_tax_configuration_id) && (
                       <div>
                         <p className="text-xs text-gray-500">
                           {t('pos:productInfo.fields.taxRate')}
                         </p>
-                        <p className="text-lg font-semibold text-gray-700">{product.tax_rate}%</p>
+                        <p className="text-lg font-semibold text-gray-700">
+                          {taxConfigName ?? (product.tax_rate ? `${product.tax_rate}%` : '—')}
+                        </p>
                       </div>
                     )}
                   </div>

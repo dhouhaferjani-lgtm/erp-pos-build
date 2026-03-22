@@ -19,6 +19,7 @@ import { ProductDocumentsTab } from './components/ProductDocumentsTab'
 import { useProductRealtime } from '../products/hooks/useProductRealtime'
 import { ProductPrimaryImageDisplay } from '../products/components'
 import { ProductStockLevels } from './components'
+import { useTaxConfigName } from '../../hooks/useTaxConfigName'
 
 interface Product {
   id: string
@@ -30,6 +31,7 @@ interface Product {
   purchase_price: string | null
   cost_price: string | null
   tax_rate: string | null
+  default_tax_configuration_id: string | null
   unit: string | null
   barcode: string | null
   is_active: boolean
@@ -135,6 +137,8 @@ export function ProductDetailPage() {
   }
 
   const product = data
+
+  const taxConfigName = useTaxConfigName(product?.default_tax_configuration_id)
 
   return (
     <div className="space-y-6">
@@ -246,7 +250,7 @@ export function ProductDetailPage() {
                     </div>
                     <div>
                       <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Tax Rate</div>
-                      <div className="mt-1 text-base font-semibold text-gray-900">{product.tax_rate ? `${product.tax_rate}%` : '-'}</div>
+                      <div className="mt-1 text-base font-semibold text-gray-900">{taxConfigName ?? (product.tax_rate ? `${product.tax_rate}%` : '-')}</div>
                     </div>
                   </div>
                   {product.sale_price && product.cost_price && (
