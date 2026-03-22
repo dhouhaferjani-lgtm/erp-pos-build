@@ -428,6 +428,7 @@ export function TaxSettingsPage() {
             )}
 
             <TaxConfigFormModal
+              key={editingTax?.id ?? 'new'}
               isOpen={isModalOpen}
               onClose={() => { setIsModalOpen(false); setEditingTax(null); }}
               onSaved={() => { setIsModalOpen(false); setEditingTax(null); }}

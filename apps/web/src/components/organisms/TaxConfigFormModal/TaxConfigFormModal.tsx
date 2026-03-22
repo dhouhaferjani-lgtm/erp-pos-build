@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { getErrorMessage } from '../../../lib/api'
@@ -48,13 +48,9 @@ export function TaxConfigFormModal({ isOpen, onClose, onSaved, editingTax }: Tax
   const createTax = useCreateTaxConfiguration()
   const updateTax = useUpdateTaxConfiguration()
 
-  const [taxFormData, setTaxFormData] = useState<TaxConfigurationFormData>(defaultFormData)
-
-  useEffect(() => {
-    if (!isOpen) return
-
+  const initialFormData = useMemo((): TaxConfigurationFormData => {
     if (editingTax) {
-      setTaxFormData({
+      return {
         name: editingTax.name,
         code: editingTax.code,
         tax_type: editingTax.tax_type,
@@ -66,11 +62,12 @@ export function TaxConfigFormModal({ isOpen, onClose, onSaved, editingTax }: Tax
         is_active: editingTax.is_active,
         is_recoverable: editingTax.is_recoverable,
         sequence_order: editingTax.sequence_order,
-      })
-    } else {
-      setTaxFormData({ ...defaultFormData })
+      }
     }
-  }, [isOpen, editingTax])
+    return { ...defaultFormData }
+  }, [editingTax])
+
+  const [taxFormData, setTaxFormData] = useState<TaxConfigurationFormData>(initialFormData)
 
   const handleTaxFormChange = (field: keyof TaxConfigurationFormData, value: unknown) => {
     setTaxFormData(prev => ({ ...prev, [field]: value }))
