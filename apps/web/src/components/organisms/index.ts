@@ -20,3 +20,4 @@ export * from './RecordPaymentModal'
 // Keep export for backwards compatibility but avoid using in new code.
 export * from './SplitPaymentModal'
 export * from './CommandPalette'
+export { TaxConfigFormModal } from './TaxConfigFormModal'

@@ -1,5 +1,7 @@
 import { GripVertical, Trash2 } from 'lucide-react'
 import { MarginIndicator, type MarginLevel } from '../../../../components/molecules/MarginIndicator'
+import { TaxConfigurationSelect } from '../../../../components/atoms/TaxConfigurationSelect'
+import { useTaxConfigName } from '../../../../hooks/useTaxConfigName'
 
 export interface DocumentLineData {
   id: string
@@ -9,6 +11,7 @@ export interface DocumentLineData {
   quantity: number
   unit_price: number
   tax_rate: number
+  tax_configuration_id?: string | null
   line_total: number
   cost_price?: number
 }
@@ -22,6 +25,7 @@ export interface DocumentLineRowProps {
   minimumMargin?: number
   isEditing: boolean
   isDragging: boolean
+  documentType?: string
   onEdit: () => void
   onUpdate: (updates: Partial<DocumentLineData>) => void
   onRemove: () => void
@@ -57,6 +61,7 @@ export function DocumentLineRow({
   minimumMargin = 15,
   isEditing,
   isDragging,
+  documentType,
   onEdit,
   onUpdate,
   onRemove,
@@ -67,6 +72,7 @@ export function DocumentLineRow({
   formatCurrency,
 }: DocumentLineRowProps) {
   const margin = line.cost_price ? calculateMargin(line.unit_price, line.cost_price) : null
+  const taxConfigName = useTaxConfigName(line.tax_configuration_id)
   const level = margin !== null ? getMarginLevel(margin, targetMargin, minimumMargin) : null
 
   return (
@@ -173,15 +179,15 @@ export function DocumentLineRow({
       {/* Tax Rate */}
       <td className="px-4 py-3 text-end">
         {readonly ? (
-          <span className="text-sm text-gray-500">{line.tax_rate}%</span>
+          <span className="text-sm text-gray-500">{taxConfigName ?? `${String(line.tax_rate)}%`}</span>
         ) : (
-          <input
-            type="number"
-            min="0"
-            step="0.1"
-            value={line.tax_rate}
-            onChange={(e) => { onUpdate({ tax_rate: parseFloat(e.target.value) || 0 }) }}
-            className="w-16 rounded border border-gray-300 px-2 py-1 text-end text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          <TaxConfigurationSelect
+            value={line.tax_configuration_id ?? null}
+            onChange={(configId, taxRate) => {
+              onUpdate({ tax_configuration_id: configId, tax_rate: parseFloat(taxRate) || 0 })
+            }}
+            {...(documentType ? { documentType } : {})}
+            size="sm"
           />
         )}
       </td>

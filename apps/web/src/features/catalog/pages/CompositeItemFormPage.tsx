@@ -16,6 +16,7 @@ import { VariantEditor } from '../components/VariantEditor'
 import { ModifierGroupAssigner } from '../components/ModifierGroupAssigner'
 import { useVerticalLabels, companyVerticalToCatalog } from '../hooks/useVerticalLabels'
 import { useCompanyConfig } from '@/contexts'
+import { TaxConfigurationField } from '../../../components/molecules/TaxConfigurationField'
 import type { ProductionType, PricingMode } from '../types/compositeItem'
 
 type TabValue = 'details' | 'recipeTab' | 'sizesTab' | 'modifiersTab'
@@ -60,6 +61,7 @@ export function CompositeItemFormPage() {
     production_type: 'made_to_order' as ProductionType,
     pricing_mode: 'standard' as PricingMode,
     tax_rate: '',
+    tax_configuration_id: null as string | null,
     is_active: true,
     is_available: true,
     image_url: '',
@@ -84,6 +86,7 @@ export function CompositeItemFormPage() {
         production_type: item.production_type,
         pricing_mode: item.pricing_mode ?? 'standard',
         tax_rate: item.tax_rate ?? '',
+        tax_configuration_id: null,
         is_active: item.is_active,
         is_available: item.is_available,
         image_url: item.image_url ?? '',
@@ -261,17 +264,13 @@ export function CompositeItemFormPage() {
                       </Select>
                     </FormField>
                   )}
-                  <FormField label={t('catalog:taxRate')} htmlFor="ci-tax">
-                    <Input
-                      id="ci-tax"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="100"
-                      value={form.tax_rate}
-                      onChange={(e) => { setForm({ ...form, tax_rate: e.target.value }); }}
-                    />
-                  </FormField>
+                  <TaxConfigurationField
+                    label={t('catalog:taxRate')}
+                    value={form.tax_configuration_id}
+                    onChange={(configId, taxRate) => {
+                      setForm({ ...form, tax_configuration_id: configId, tax_rate: taxRate })
+                    }}
+                  />
                   <div className="flex items-center gap-6 pt-6">
                     <label className="flex items-center gap-2">
                       <input
@@ -468,17 +467,13 @@ export function CompositeItemFormPage() {
                   <option value="stock">{t('catalog:productionTypes.stock')}</option>
                 </Select>
               </FormField>
-              <FormField label={t('catalog:taxRate')} htmlFor="ci-tax">
-                <Input
-                  id="ci-tax"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="100"
-                  value={form.tax_rate}
-                  onChange={(e) => { setForm({ ...form, tax_rate: e.target.value }); }}
-                />
-              </FormField>
+              <TaxConfigurationField
+                label={t('catalog:taxRate')}
+                value={form.tax_configuration_id}
+                onChange={(configId, taxRate) => {
+                  setForm({ ...form, tax_configuration_id: configId, tax_rate: taxRate })
+                }}
+              />
               <div className="flex items-center gap-6 pt-6">
                 <label className="flex items-center gap-2">
                   <input

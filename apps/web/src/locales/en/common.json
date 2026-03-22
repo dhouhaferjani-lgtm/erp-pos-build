@@ -1208,10 +1208,10 @@
     "openPos": "Open POS"
   },
   "tax": {
-    "addNew": "+ Add new tax...",
     "selectPlaceholder": "Select tax...",
-    "loadingError": "Could not load taxes",
-    "staleTaxWarning": "Tax configuration no longer exists",
+    "addNew": "+ Add new tax...",
+    "loadingError": "Tax load failed — enter rate manually",
+    "staleTaxWarning": "Selected tax no longer exists",
     "noTaxes": "No taxes configured"
   }
 }

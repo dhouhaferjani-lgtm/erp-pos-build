@@ -10,6 +10,7 @@ import { StickyFormFooter } from '../../components/molecules/StickyFormFooter/St
 import { ProductImageSection, ParapharmacyMetadataFields } from '../products/components'
 import { useCompanyConfig } from '../../contexts/CompanyConfigContext'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
+import { TaxConfigurationField } from '../../components/molecules/TaxConfigurationField'
 
 interface Product {
   id: string
@@ -21,6 +22,7 @@ interface Product {
   sale_price: string | null
   cost_price: string | null
   tax_rate: string | null
+  default_tax_configuration_id: string | null
   unit: string | null
   barcode: string | null
   is_active: boolean
@@ -57,6 +59,7 @@ interface ProductFormData {
   description: string
   sale_price: string
   tax_rate: string
+  tax_configuration_id: string | null
   unit: string
   barcode: string
   is_active: boolean
@@ -93,7 +96,8 @@ export function ProductForm() {
       category_id: null,
       description: '',
       sale_price: '',
-      tax_rate: '19',
+      tax_rate: '',
+      tax_configuration_id: null,
       unit: 'pcs',
       barcode: '',
       is_active: true,
@@ -146,7 +150,8 @@ export function ProductForm() {
         category_id: product.category_id ?? null,
         description: product.description ?? '',
         sale_price: product.sale_price ?? '',
-        tax_rate: product.tax_rate ?? '19',
+        tax_rate: product.tax_rate ?? '',
+        tax_configuration_id: product.default_tax_configuration_id ?? null,
         unit: product.unit ?? 'pcs',
         barcode: product.barcode ?? '',
         is_active: product.is_active,
@@ -397,23 +402,14 @@ export function ProductForm() {
               </div>
             )}
 
-            <div>
-              <label htmlFor="tax_rate" className="block text-sm font-medium text-gray-700">
-                Tax Rate (%)
-              </label>
-              <div className="relative mt-1">
-                <input
-                  type="number"
-                  step="0.01"
-                  id="tax_rate"
-                  {...register('tax_rate')}
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-                <span className="absolute inset-y-0 end-0 flex items-center pe-3 text-gray-500">
-                  %
-                </span>
-              </div>
-            </div>
+            <TaxConfigurationField
+              label={t('inventory:products.fields.taxRate', 'Tax Rate')}
+              value={watch('tax_configuration_id')}
+              onChange={(configId, taxRate) => {
+                setValue('tax_configuration_id', configId)
+                setValue('tax_rate', taxRate)
+              }}
+            />
           </div>
         </div>
 

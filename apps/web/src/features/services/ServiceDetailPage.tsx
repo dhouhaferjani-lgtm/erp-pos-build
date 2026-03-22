@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useCompany } from '../../hooks/useCompany'
+import { useTaxConfigName } from '../../hooks/useTaxConfigName'
 import type { Service, PricingType } from './types'
 
 interface ServiceResponse {
@@ -58,6 +59,8 @@ export function ServiceDetailPage() {
   })
 
   const service = data?.data
+
+  const taxConfigName = useTaxConfigName(service?.default_tax_configuration_id)
 
   const formatCurrency = (amount: string | null) => {
     if (!amount) return '-'
@@ -252,11 +255,11 @@ export function ServiceDetailPage() {
               </dd>
             </div>
           )}
-          {service.tax_rate && (
+          {(service.tax_rate || service.default_tax_configuration_id) && (
             <div>
               <dt className="text-sm text-gray-500">{t('services.fields.taxRate', 'Tax Rate')}</dt>
               <dd className="mt-1 text-sm font-medium text-gray-900">
-                {service.tax_rate}%
+                {taxConfigName ?? (service.tax_rate ? `${service.tax_rate}%` : '—')}
               </dd>
             </div>
           )}

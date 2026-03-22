@@ -51,6 +51,7 @@ class UpdateProductRequest extends FormRequest
             'sale_price' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'purchase_price' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'tax_rate' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100'],
+            'default_tax_configuration_id' => ['sometimes', 'nullable', 'uuid', 'exists:tax_configurations,id'],
             'unit' => ['sometimes', 'nullable', 'string', 'max:50'],
             'barcode' => ['sometimes', 'nullable', 'string', 'max:100'],
             'is_active' => ['sometimes', 'boolean'],

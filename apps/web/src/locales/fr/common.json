@@ -1175,10 +1175,10 @@
     "openPos": "Ouvrir la caisse"
   },
   "tax": {
-    "addNew": "+ Ajouter une taxe...",
     "selectPlaceholder": "Sélectionner une taxe...",
-    "loadingError": "Impossible de charger les taxes",
-    "staleTaxWarning": "La configuration de taxe n'existe plus",
+    "addNew": "+ Ajouter une taxe...",
+    "loadingError": "Échec du chargement — saisir le taux manuellement",
+    "staleTaxWarning": "La taxe sélectionnée n'existe plus",
     "noTaxes": "Aucune taxe configurée"
   }
 }

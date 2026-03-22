@@ -35,6 +35,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property PricingMode $pricing_mode
  * @property string|null $manual_cost
  * @property string|null $tax_rate
+ * @property string|null $default_tax_configuration_id
  * @property string|null $default_recipe_id
  * @property string|null $stock_unit_id
  * @property bool $is_active
@@ -74,6 +75,7 @@ class CompositeItem extends Model implements SellableContract
         'production_type',
         'pricing_mode',
         'tax_rate',
+        'default_tax_configuration_id',
         'default_recipe_id',
         'stock_unit_id',
         'is_active',
@@ -196,6 +198,19 @@ class CompositeItem extends Model implements SellableContract
     public function unitOfMeasure(): BelongsTo
     {
         return $this->belongsTo(Unit::class, 'stock_unit_id');
+    }
+
+    /**
+     * Get the default tax configuration for this composite item.
+     *
+     * @return BelongsTo<\App\Modules\Taxation\Domain\Entities\TaxConfiguration, $this>
+     */
+    public function defaultTaxConfiguration(): BelongsTo
+    {
+        return $this->belongsTo(
+            \App\Modules\Taxation\Domain\Entities\TaxConfiguration::class,
+            'default_tax_configuration_id'
+        );
     }
 
     /**
