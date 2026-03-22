@@ -1,48 +1,74 @@
 import { useTranslation } from 'react-i18next'
+import { Check, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface PasswordStrengthProps {
   password: string
 }
 
+interface Requirement {
+  key: string
+  test: (pw: string) => boolean
+}
+
+const REQUIREMENTS: Requirement[] = [
+  { key: 'minLength', test: (pw) => pw.length >= 10 },
+  { key: 'lowercase', test: (pw) => /[a-z]/.test(pw) },
+  { key: 'uppercase', test: (pw) => /[A-Z]/.test(pw) },
+  { key: 'number', test: (pw) => /[0-9]/.test(pw) },
+  { key: 'symbol', test: (pw) => /[^a-zA-Z0-9]/.test(pw) },
+]
+
 export function PasswordStrength({ password }: PasswordStrengthProps) {
   const { t } = useTranslation(['auth'])
 
   if (!password) return null
 
-  const length = password.length
-  let level: 1 | 2 | 3
-  let color: string
-  let label: string
+  const met = REQUIREMENTS.filter((r) => r.test(password)).length
+  const total = REQUIREMENTS.length
 
-  if (length < 8) {
-    level = 1
+  let color: string
+  if (met <= 1) {
     color = 'bg-red-500'
-    label = t('auth:passwordStrength.weak')
-  } else if (length < 12) {
-    level = 2
+  } else if (met <= 3) {
     color = 'bg-yellow-500'
-    label = t('auth:passwordStrength.fair')
   } else {
-    level = 3
     color = 'bg-green-500'
-    label = t('auth:passwordStrength.strong')
   }
 
   return (
-    <div className="mt-2">
+    <div className="mt-2 space-y-2">
+      {/* Strength bar */}
       <div className="flex gap-1">
-        {[1, 2, 3].map((segment) => (
+        {Array.from({ length: total }, (_, i) => (
           <div
-            key={segment}
+            key={i}
             className={cn(
               'h-1 flex-1 rounded-full transition-colors',
-              segment <= level ? color : 'bg-gray-200'
+              i < met ? color : 'bg-gray-200'
             )}
           />
         ))}
       </div>
-      <p className="mt-1 text-xs text-gray-500">{label}</p>
+
+      {/* Requirements checklist */}
+      <ul className="space-y-0.5">
+        {REQUIREMENTS.map((req) => {
+          const passed = req.test(password)
+          return (
+            <li key={req.key} className="flex items-center gap-1.5 text-xs">
+              {passed ? (
+                <Check className="h-3 w-3 text-green-500" />
+              ) : (
+                <X className="h-3 w-3 text-gray-300" />
+              )}
+              <span className={passed ? 'text-green-600' : 'text-gray-400'}>
+                {t(`auth:passwordStrength.${req.key}`)}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }

@@ -24,7 +24,7 @@ describe('useRegisterForm', () => {
     act(() => {
       result.current.updateField('name', 'John Doe')
       result.current.updateField('email', 'john@example.com')
-      result.current.updateField('password', 'strongpassword123')
+      result.current.updateField('password', 'Str0ng!Pass9')
     })
 
     act(() => { result.current.goToNext() })
@@ -47,7 +47,7 @@ describe('useRegisterForm', () => {
     act(() => {
       result.current.updateField('name', 'John Doe')
       result.current.updateField('email', 'john@example.com')
-      result.current.updateField('password', 'strongpassword123')
+      result.current.updateField('password', 'Str0ng!Pass9')
     })
     act(() => { result.current.goToNext() })
     act(() => { result.current.goBack() })
@@ -62,7 +62,7 @@ describe('useRegisterForm', () => {
     act(() => {
       result.current.updateField('name', 'John Doe')
       result.current.updateField('email', 'john@example.com')
-      result.current.updateField('password', 'strongpassword123')
+      result.current.updateField('password', 'Str0ng!Pass9')
       result.current.updateField('countryCode', 'FR')
       result.current.updateField('vertical', 'retail')
       result.current.updateField('companyName', 'Test Corp')
@@ -72,7 +72,7 @@ describe('useRegisterForm', () => {
     const payload = result.current.buildPayload()
 
     expect(payload.name).toBe('John Doe')
-    expect(payload.password_confirmation).toBe('strongpassword123')
+    expect(payload.password_confirmation).toBe('Str0ng!Pass9')
     expect(payload.phone).toBe('+33612345678')
     expect(payload.currency).toBe('EUR')
     expect(payload.locale).toBe('fr')

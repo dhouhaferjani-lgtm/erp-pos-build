@@ -68,8 +68,16 @@ export function useRegisterForm() {
       }
       if (!formData.password) {
         errs.password = 'Password is required'
-      } else if (formData.password.length < 8) {
-        errs.password = 'Password must be at least 8 characters'
+      } else if (formData.password.length < 10) {
+        errs.password = 'Password must be at least 10 characters'
+      } else if (!/[a-z]/.test(formData.password)) {
+        errs.password = 'Password must contain a lowercase letter'
+      } else if (!/[A-Z]/.test(formData.password)) {
+        errs.password = 'Password must contain an uppercase letter'
+      } else if (!/[0-9]/.test(formData.password)) {
+        errs.password = 'Password must contain a number'
+      } else if (!/[^a-zA-Z0-9]/.test(formData.password)) {
+        errs.password = 'Password must contain a symbol'
       }
     }
 

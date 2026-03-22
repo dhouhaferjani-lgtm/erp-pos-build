@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ChevronRight, ChevronLeft } from 'lucide-react'
 import { toast } from 'sonner'
-import { api, ensureCsrfCookie } from '../../lib/api'
+import { api, ensureCsrfCookie, getErrorMessage } from '../../lib/api'
 import { useAuthStore } from '../../stores/authStore'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
 import { useRegisterForm } from './hooks/useRegisterForm'
@@ -97,8 +97,9 @@ export function RegisterPage() {
       void queryClient.invalidateQueries({ queryKey: ['auth', 'me'] })
       void navigate('/', { replace: true })
     },
-    onError: () => {
-      toast.error(t('auth:errors.registrationFailed'))
+    onError: (error: unknown) => {
+      const message = getErrorMessage(error)
+      toast.error(message || t('auth:errors.registrationFailed'))
     },
   })
 
