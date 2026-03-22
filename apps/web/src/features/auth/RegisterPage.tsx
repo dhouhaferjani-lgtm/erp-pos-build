@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ChevronRight, ChevronLeft } from 'lucide-react'
 import { toast } from 'sonner'
@@ -38,6 +38,7 @@ export function RegisterPage() {
   const { t } = useTranslation(['auth', 'common'])
   const navigate = useNavigate()
   const setAuth = useAuthStore((state) => state.setAuth)
+  const queryClient = useQueryClient()
   const { product, productName } = useProductConfig()
   const formContainerRef = useRef<HTMLDivElement>(null)
 
@@ -93,6 +94,7 @@ export function RegisterPage() {
         email_verified_at: null,
       }
       setAuth(user, data.token)
+      void queryClient.invalidateQueries({ queryKey: ['auth', 'me'] })
       void navigate('/', { replace: true })
     },
     onError: () => {

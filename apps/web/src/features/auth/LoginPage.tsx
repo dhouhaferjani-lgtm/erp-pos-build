@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { LogIn, AlertCircle } from 'lucide-react'
 import { api, ensureCsrfCookie } from '../../lib/api'
@@ -40,6 +40,7 @@ export function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const setAuth = useAuthStore((state) => state.setAuth)
+  const queryClient = useQueryClient()
   const { productName } = useProductConfig()
 
   const [formData, setFormData] = useState<LoginFormData>({
@@ -67,6 +68,7 @@ export function LoginPage() {
         email_verified_at: data.user.emailVerifiedAt,
       }
       setAuth(user, data.token)
+      void queryClient.invalidateQueries({ queryKey: ['auth', 'me'] })
       // Redirect to the page they were trying to access, or home
       const locationState = location.state as { from?: { pathname: string } } | null
       const from = locationState?.from?.pathname ?? '/'
