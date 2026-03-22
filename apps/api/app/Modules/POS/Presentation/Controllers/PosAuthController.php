@@ -103,6 +103,40 @@ final class PosAuthController extends Controller
     }
 
     /**
+     * Get all operators with PINs for offline sync.
+     *
+     * GET /api/v1/pos/auth/pin-data
+     *
+     * Returns PIN hashes so the POS can verify PINs offline.
+     */
+    public function pinData(Request $request): JsonResponse
+    {
+        Gate::authorize('pos.operate_terminal');
+
+        /** @var User $currentUser */
+        $currentUser = $request->user();
+
+        $operators = User::where('tenant_id', $currentUser->tenant_id)
+            ->whereNotNull('pos_pin')
+            ->get();
+
+        $data = $operators->map(function (User $user): array {
+            return [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'pin_hash' => $user->getAttributes()['pos_pin'],
+                'roles' => $user->getRoleNames()->values()->all(),
+                'permissions' => $user->getAllPermissions()->pluck('name')->values()->all(),
+                'can_discount' => (bool) $user->can_discount,
+                'max_discount_percent' => $user->max_discount_percent,
+            ];
+        })->values()->all();
+
+        return response()->json(['data' => $data]);
+    }
+
+    /**
      * Check if any user in the tenant has a POS PIN set.
      *
      * GET /api/v1/pos/auth/has-pins

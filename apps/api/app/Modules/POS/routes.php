@@ -25,6 +25,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/pos/auth/verify-pin', [PosAuthController::class, 'verifyPin']);
     Route::post('/pos/auth/setup-pin', [PosAuthController::class, 'setupPin']);
     Route::get('/pos/auth/has-pins', [PosAuthController::class, 'hasPins']);
+    Route::get('/pos/auth/pin-data', [PosAuthController::class, 'pinData']);
 
     // Terminal Management
     Route::get('/pos/terminals', [TerminalController::class, 'index']);
