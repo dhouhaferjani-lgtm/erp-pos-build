@@ -15,7 +15,6 @@ interface OperatorState {
   operator: Operator | null;
   isLocked: boolean;
   lastActivity: number;
-  lockTimeoutMs: number;
   hasPins: boolean | null;
 }
 
@@ -30,13 +29,10 @@ interface OperatorActions {
 
 type OperatorStore = OperatorState & OperatorActions;
 
-const LOCK_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-
 const initialState: OperatorState = {
   operator: null,
   isLocked: false,
   lastActivity: Date.now(),
-  lockTimeoutMs: LOCK_TIMEOUT_MS,
   hasPins: null,
 };
 

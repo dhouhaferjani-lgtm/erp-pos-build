@@ -25,7 +25,6 @@ describe('operatorStore', () => {
       operator: null,
       isLocked: false,
       lastActivity: Date.now(),
-      lockTimeoutMs: 5 * 60 * 1000,
       hasPins: null,
     });
     vi.clearAllMocks();

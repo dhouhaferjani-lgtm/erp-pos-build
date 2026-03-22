@@ -48,6 +48,11 @@ export function Header() {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
   const [showCashDrawerModal, setShowCashDrawerModal] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  const isManager = operator?.roles?.some((r) =>
+    ['manager', 'admin', 'owner'].includes(r),
+  ) ?? false;
 
   const handleXReport = async () => {
     if (!terminal) return;
@@ -199,14 +204,16 @@ export function Header() {
             <Settings className="h-5 w-5" />
           </button>
 
-          {/* Logout */}
-          <button
-            onClick={handleLogout}
-            className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary-800 text-primary-200 hover:bg-primary-700"
-            title={t('header.logout')}
-          >
-            <LogOut className="h-5 w-5" />
-          </button>
+          {/* Logout — manager/admin only */}
+          {isManager && (
+            <button
+              onClick={() => setShowLogoutConfirm(true)}
+              className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary-800 text-primary-200 hover:bg-primary-700"
+              title={t('header.logout')}
+            >
+              <LogOut className="h-5 w-5" />
+            </button>
+          )}
         </div>
       </header>
 
@@ -256,6 +263,37 @@ export function Header() {
           onClose={() => setShowCashDrawerModal(false)}
           shiftId={shift.id}
         />
+      )}
+
+      {/* Logout Confirmation */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="mx-4 w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-bold text-gray-900">
+              {t('settings.signOutTerminal')}
+            </h3>
+            <p className="mt-2 text-sm text-gray-600">
+              {t('settings.signOutConfirmMessage')}
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                {t('settings.cancel')}
+              </button>
+              <button
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  handleLogout();
+                }}
+                className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700"
+              >
+                {t('settings.signOut')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

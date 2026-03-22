@@ -375,6 +375,11 @@ export function HomePage() {
     clearCart();
     clearLastReceipt();
     setSelectedTableId(null);
+
+    // Lock screen after sale if enabled
+    if (useSettingsStore.getState().lockAfterSale) {
+      useOperatorStore.getState().lock();
+    }
   }, [clearCart, clearLastReceipt]);
 
   // Open shift screen

@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Monitor, Image, Globe, Printer, Search, CheckCircle, AlertCircle, Loader2, Hand, Maximize } from 'lucide-react';
+import { ArrowLeft, Monitor, Image, Globe, Printer, Search, CheckCircle, AlertCircle, Loader2, Hand, Maximize, Shield } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSettingsStore, SUPPORTED_LANGUAGES } from '@/stores/settingsStore';
 import { usePrinterStore } from '@/stores/printerStore';
@@ -19,6 +19,15 @@ import { CashDrawerSettings } from '@/components/settings/CashDrawerSettings';
 import { ScannerSettings } from '@/components/settings/ScannerSettings';
 import { PrinterAdvancedSettings } from '@/components/settings/PrinterAdvancedSettings';
 import { CustomerDisplaySettings } from '@/components/settings/CustomerDisplaySettings';
+
+const TIMEOUT_PRESETS = [
+  { value: 30, labelKey: 'settings.timeout30s' },
+  { value: 60, labelKey: 'settings.timeout1m' },
+  { value: 120, labelKey: 'settings.timeout2m' },
+  { value: 300, labelKey: 'settings.timeout5m' },
+  { value: 600, labelKey: 'settings.timeout10m' },
+  { value: 0, labelKey: 'settings.timeoutNever' },
+] as const;
 
 async function toggleFullscreen(enabled: boolean): Promise<void> {
   try {
@@ -47,6 +56,10 @@ export function SettingsPage() {
   const setLanguage = useSettingsStore((s) => s.setLanguage);
   const setTouchMode = useSettingsStore((s) => s.setTouchMode);
   const setFullscreen = useSettingsStore((s) => s.setFullscreen);
+  const inactivityTimeout = useSettingsStore((s) => s.inactivityTimeout);
+  const lockAfterSale = useSettingsStore((s) => s.lockAfterSale);
+  const setInactivityTimeout = useSettingsStore((s) => s.setInactivityTimeout);
+  const setLockAfterSale = useSettingsStore((s) => s.setLockAfterSale);
 
   const terminal = useTerminalStore((s) => s.terminal);
   const shift = useTerminalStore((s) => s.shift);
@@ -264,6 +277,72 @@ export function SettingsPage() {
                     className={cn(
                       'inline-block h-4 w-4 rounded-full bg-white transition-transform',
                       fullscreen ? 'translate-x-6' : 'translate-x-1',
+                    )}
+                  />
+                </button>
+              </div>
+            </div>
+          </section>
+
+          {/* Security */}
+          <section className="rounded-xl bg-white p-4 shadow-sm">
+            <div className="mb-4 flex items-center gap-2">
+              <Shield className="h-5 w-5 text-gray-700" />
+              <h2 className="text-base font-bold text-gray-900">
+                {t('settings.security')}
+              </h2>
+            </div>
+
+            <div className="space-y-4">
+              {/* Inactivity timeout */}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-900">
+                  {t('settings.inactivityTimeout')}
+                </label>
+                <p className="mb-2 text-xs text-gray-500">
+                  {t('settings.inactivityTimeoutDesc')}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {TIMEOUT_PRESETS.map((preset) => (
+                    <button
+                      key={preset.value}
+                      onClick={() => setInactivityTimeout(preset.value)}
+                      className={cn(
+                        'rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                        inactivityTimeout === preset.value
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200',
+                      )}
+                    >
+                      {t(preset.labelKey)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Lock after each sale */}
+              <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-3">
+                <div>
+                  <span className="text-sm font-medium text-gray-900">
+                    {t('settings.lockAfterSale')}
+                  </span>
+                  <p className="text-xs text-gray-500">
+                    {t('settings.lockAfterSaleDesc')}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setLockAfterSale(!lockAfterSale)}
+                  className={cn(
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    lockAfterSale ? 'bg-blue-600' : 'bg-gray-300',
+                  )}
+                  role="switch"
+                  aria-checked={lockAfterSale}
+                >
+                  <span
+                    className={cn(
+                      'inline-block h-4 w-4 rounded-full bg-white transition-transform',
+                      lockAfterSale ? 'translate-x-6' : 'translate-x-1',
                     )}
                   />
                 </button>

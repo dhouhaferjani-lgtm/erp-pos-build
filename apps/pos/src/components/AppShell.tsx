@@ -3,6 +3,7 @@ import { Route, Routes, Navigate } from 'react-router-dom';
 import { Header } from './Header';
 import { HomePage } from '@/pages/HomePage';
 import { useOperatorStore } from '@/stores/operatorStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useCustomerDisplaySync } from '@/hooks/useCustomerDisplaySync';
 
@@ -15,7 +16,6 @@ const TodaySalesPage = lazy(() =>
 );
 
 export function AppShell() {
-  const lockTimeoutMs = useOperatorStore((s) => s.lockTimeoutMs);
   const resetActivityTimer = useOperatorStore((s) => s.resetActivityTimer);
   const lock = useOperatorStore((s) => s.lock);
   const operator = useOperatorStore((s) => s.operator);
@@ -42,8 +42,10 @@ export function AppShell() {
     }
 
     const interval = setInterval(() => {
+      const timeout = useSettingsStore.getState().inactivityTimeout;
+      if (timeout === 0) return; // "Never" — skip check
       const { lastActivity } = useOperatorStore.getState();
-      if (Date.now() - lastActivity > lockTimeoutMs) {
+      if (Date.now() - lastActivity > timeout * 1000) {
         lock();
       }
     }, 10_000);
@@ -54,7 +56,7 @@ export function AppShell() {
       }
       clearInterval(interval);
     };
-  }, [operator, lockTimeoutMs, handleActivity, lock]);
+  }, [operator, handleActivity, lock]);
 
   return (
     <div className="flex h-screen flex-col bg-gray-50">

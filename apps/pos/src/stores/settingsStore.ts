@@ -11,11 +11,17 @@ interface SettingsState {
   fullscreen: boolean;
   /** Controls which side the cart panel appears on. 'start' = left, 'end' = right. */
   cartPosition: 'start' | 'end';
+  /** Inactivity timeout in seconds before auto-lock. 0 = never. */
+  inactivityTimeout: number;
+  /** Lock the screen after completing a sale. */
+  lockAfterSale: boolean;
   setDisplayMode: (mode: 'grid' | 'visual') => void;
   setLanguage: (lang: string) => void;
   setTouchMode: (enabled: boolean) => void;
   setFullscreen: (enabled: boolean) => void;
   setCartPosition: (position: 'start' | 'end') => void;
+  setInactivityTimeout: (seconds: number) => void;
+  setLockAfterSale: (enabled: boolean) => void;
 }
 
 export const SUPPORTED_LANGUAGES = [
@@ -31,6 +37,8 @@ export const useSettingsStore = create<SettingsState>()(
       touchMode: false,
       fullscreen: false,
       cartPosition: 'start',
+      inactivityTimeout: 300,
+      lockAfterSale: false,
 
       setDisplayMode: (mode: 'grid' | 'visual') => {
         set({ displayMode: mode });
@@ -51,6 +59,14 @@ export const useSettingsStore = create<SettingsState>()(
 
       setCartPosition: (position: 'start' | 'end') => {
         set({ cartPosition: position });
+      },
+
+      setInactivityTimeout: (seconds: number) => {
+        set({ inactivityTimeout: seconds });
+      },
+
+      setLockAfterSale: (enabled: boolean) => {
+        set({ lockAfterSale: enabled });
       },
     }),
     {
