@@ -7,6 +7,13 @@ import { EmailVerificationBanner } from '../../organisms/EmailVerificationBanner
 import { CommandPalette } from '../../organisms/CommandPalette'
 import { WebSocketReconnectProvider } from '../../../providers/WebSocketReconnectProvider'
 import { useProductConfig } from '../../../contexts/ProductConfigContext'
+import { useImportProgress } from '../../../features/import/hooks/useImportProgress'
+import { GlobalImportProgress } from '../../organisms/GlobalImportProgress/GlobalImportProgress'
+
+function ImportProgressSubscriber() {
+  useImportProgress()
+  return <GlobalImportProgress />
+}
 
 export function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -37,6 +44,7 @@ export function DashboardLayout() {
         <TopBar onMenuClick={() => { setSidebarOpen(true) }} onSearchClick={openCommandPalette} />
         <CommandPalette isOpen={commandPaletteOpen} onClose={() => { setCommandPaletteOpen(false) }} />
         <WebSocketReconnectProvider>
+          <ImportProgressSubscriber />
           <main className="flex flex-1 flex-col overflow-y-auto p-4 sm:p-6">
             <Breadcrumb />
             <div className="flex flex-1 flex-col">
