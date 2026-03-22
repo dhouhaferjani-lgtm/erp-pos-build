@@ -147,20 +147,25 @@ function MainApp() {
   const cfdIdleImagePath = useCustomerDisplayStore((s) => s.idleImagePath);
   const setIsOpen = useCustomerDisplayStore((s) => s.setIsOpen);
 
-  // Apply fullscreen on startup if the setting is enabled
+  // Apply fullscreen + hide decorations when the setting is enabled
   useEffect(() => {
-    if (!fullscreen) return;
-    const applyFullscreen = async () => {
+    const applyWindowMode = async () => {
       try {
-        if (isTauriEnvironment()) {
-          const { getCurrentWindow } = await import('@tauri-apps/api/window');
-          await getCurrentWindow().setFullscreen(true);
+        if (!isTauriEnvironment()) return;
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const win = getCurrentWindow();
+        if (fullscreen) {
+          await win.setDecorations(false);
+          await win.setFullscreen(true);
+        } else {
+          await win.setFullscreen(false);
+          await win.setDecorations(true);
         }
       } catch {
         // Ignore — not critical
       }
     };
-    void applyFullscreen();
+    void applyWindowMode();
   }, [fullscreen]);
 
   // Auto-open customer display on startup if enabled
