@@ -66,10 +66,12 @@ class SuperAdminController extends Controller
     {
         $tenant = Tenant::with(['subscription.plan'])->findOrFail($id);
 
+        $companyIds = DB::table('companies')->where('tenant_id', $id)->pluck('id');
+
         $stats = [
             'users_count' => DB::table('users')->where('tenant_id', $id)->count(),
-            'companies_count' => DB::table('companies')->where('tenant_id', $id)->count(),
-            'locations_count' => DB::table('locations')->where('tenant_id', $id)->count(),
+            'companies_count' => $companyIds->count(),
+            'locations_count' => DB::table('locations')->whereIn('company_id', $companyIds)->count(),
         ];
 
         // Get plan limits and usage from PlanEnforcementService
