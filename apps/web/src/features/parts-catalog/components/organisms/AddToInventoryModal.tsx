@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { X, Package } from 'lucide-react'
 import { addArticleToInventory } from '../../api/partsCatalog'
 import type { EnrichedArticle, BrandQualityTier } from '../../types/catalog'
+import { TaxConfigurationField } from '../../../../components/molecules/TaxConfigurationField'
 
 interface AddToInventoryModalProps {
   isOpen: boolean
@@ -48,7 +49,8 @@ export function AddToInventoryModal({
   const [barcode, setBarcode] = useState(defaultBarcode)
   const [salePrice, setSalePrice] = useState('')
   const [purchasePrice, setPurchasePrice] = useState('')
-  const [taxRate, setTaxRate] = useState('19')
+  const [taxRate, setTaxRate] = useState('0')
+  const [taxConfigurationId, setTaxConfigurationId] = useState<string | null>(null)
   const [qualityTier, setQualityTier] = useState<BrandQualityTier>('aftermarket')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -211,23 +213,14 @@ export function AddToInventoryModal({
           </div>
 
           {/* Tax Rate */}
-          <div>
-            <label htmlFor="inv-tax" className="block text-sm font-medium text-gray-700 mb-1">
-              {t('parts-catalog:addToInventory.taxRate')}
-            </label>
-            <select
-              id="inv-tax"
-              value={taxRate}
-              onChange={(e) => { setTaxRate(e.target.value) }}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="0">0%</option>
-              <option value="7">7%</option>
-              <option value="13">13%</option>
-              <option value="19">19%</option>
-              <option value="20">20%</option>
-            </select>
-          </div>
+          <TaxConfigurationField
+            label={t('parts-catalog:addToInventory.taxRate')}
+            value={taxConfigurationId}
+            onChange={(configId, rate) => {
+              setTaxConfigurationId(configId)
+              setTaxRate(rate)
+            }}
+          />
 
           {/* Quality Tier */}
           <div>
