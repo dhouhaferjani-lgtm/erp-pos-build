@@ -125,7 +125,7 @@ final class PosAuthController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
-                'pin_hash' => $user->getAttributes()['pos_pin'],
+                'pin_hash' => $user->pos_pin,
                 'roles' => $user->getRoleNames()->values()->all(),
                 'permissions' => $user->getAllPermissions()->pluck('name')->values()->all(),
                 'can_discount' => (bool) $user->can_discount,
