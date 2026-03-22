@@ -12,12 +12,28 @@ An atom + molecule component pair (`TaxConfigurationSelect` + `TaxConfigurationF
 
 ## Design Decisions
 
-- **No backend changes.** Existing endpoints, models, and FKs (`default_tax_configuration_id` on company/category/product) already support this.
+- **Minimal backend change required.** `default_tax_configuration_id` FK exists on `companies` and `categories` but **not** on `products` — a migration is needed to add it. No other backend changes.
 - **Forms submit `tax_rate` as before.** The rate is derived from the selected configuration — backward compatible with all existing calculation logic.
 - **Approach B (atom + molecule):** Atom for compact table rows, molecule with `FormField` wrapper for standalone forms. Follows atomic design principles.
 - **Default resolution via FK chain:** `product.default_tax_configuration_id` > `category.default_tax_configuration_id` > `company.default_tax_configuration_id`. Direct FK lookup, no rate-matching ambiguity.
 - **Filtered by document type:** When used on documents, only shows configs where `applicable_document_types` includes the current document type (or is empty = all types).
 - **TDD:** Tests written first for each component and consumer integration.
+
+## Prerequisites
+
+### 1. Backend: Add `default_tax_configuration_id` to products
+
+The `default_tax_configuration_id` FK currently exists on `companies` and `categories` but **not** on `products`. A migration is needed:
+
+- Add `default_tax_configuration_id` (UUID, nullable, FK to `tax_configurations`) to the `products` table
+- Add the relationship and fillable field to the Product model(s) in Inventory/Catalog domains
+- Expose the field in product create/update API requests and resources
+
+### 2. Extract `TaxConfigFormModal` from `TaxSettingsPage`
+
+The tax configuration creation/edit modal is currently inline JSX in `TaxSettingsPage.tsx` (with local state `isModalOpen`, `taxFormData`, `editingTax`). It must be extracted into a standalone `TaxConfigFormModal` component so the `TaxConfigurationSelect` atom can reuse it.
+
+**Location:** `apps/web/src/components/organisms/TaxConfigFormModal/`
 
 ## Component Architecture
 
@@ -39,8 +55,14 @@ An atom + molecule component pair (`TaxConfigurationSelect` + `TaxConfigurationF
 - Fetches active tax configs via `useTaxConfigurations()`
 - Filters by `documentType` when provided (configs with empty `applicable_document_types` match all)
 - Renders dropdown: `"{name} ({rate}%)"` for percentage, `"{name} ({amount})"` for fixed
-- Last option: "Add new tax..." opens the existing tax config creation modal from `TaxSettingsPage`
+- Last option: `t('common:tax.addNew')` — "Add new tax..." — opens the extracted `TaxConfigFormModal`
 - After creating a new tax config, auto-selects it and calls `onChange`
+
+**Loading state:** Renders a disabled select with `t('common:loading')` while `useTaxConfigurations()` is fetching.
+
+**Error state:** Falls back to a plain numeric input for `tax_rate` if the query fails, so the form remains usable.
+
+**Stale value:** If the selected `value` (config ID) is not in the fetched list (deleted config), shows the ID as selected with a warning indicator and allows re-selection.
 
 ### Molecule: `TaxConfigurationField`
 
@@ -57,7 +79,15 @@ Wraps `TaxConfigurationSelect` inside a `FormField` component with label and err
 
 ### Shared Hook
 
-`useTaxConfigurations()` already exists at `features/settings/hooks/useTaxConfigurations.ts`. Re-export from a shared hooks location so it's accessible outside the settings feature.
+`useTaxConfigurations()` already exists at `features/settings/hooks/useTaxConfigurations.ts`. Re-export from `apps/web/src/hooks/useTaxConfigurations.ts` so it's accessible across all features without cross-feature imports.
+
+## i18n Keys
+
+New translation keys (namespace `common`):
+- `common:tax.addNew` — "Add new tax..."
+- `common:tax.selectPlaceholder` — "Select tax..."
+- `common:tax.loadingError` — "Could not load taxes"
+- `common:tax.staleTaxWarning` — "Tax configuration no longer exists"
 
 ## Consumer Integration
 
@@ -85,10 +115,20 @@ Wraps `TaxConfigurationSelect` inside a `FormField` component with label and err
 - Replace numeric input with `TaxConfigurationField`
 - Default from `category.default_tax_configuration_id` > `company.default_tax_configuration_id`
 
+### AddToInventoryModal.tsx (parts catalog)
+- Replace tax rate input with `TaxConfigurationField`
+- Default from company's `default_tax_configuration_id`
+
 ### Read-Only Displays
-- `ServiceDetailPage.tsx`, `DocumentLineRow.tsx`, `ProductInfoModal.tsx`
+- `ServiceDetailPage.tsx`, `DocumentLineRow.tsx`, `ProductInfoModal.tsx`, `ProductDetailPage.tsx`
 - Show tax config name (e.g., "TVA 19%") instead of just "19%"
 - Fallback to rate display if config name unavailable
+
+### Excluded: Import Wizard
+- `ImportWizardPage.tsx` maps CSV columns including `tax_rate` — this stays as a raw rate value since bulk imports use numeric rates, not config IDs
+
+### Excluded: Credit Note / Return Note Forms
+- `CreateCreditNoteForm.tsx` and `CreateReturnNoteForm.tsx` copy `tax_rate` from original invoice lines — these are read-only calculations, no selector needed
 
 ## Testing Strategy (TDD)
 
@@ -99,6 +139,9 @@ Wraps `TaxConfigurationSelect` inside a `FormField` component with label and err
 4. Shows "Add new tax" option
 5. Handles empty configurations list
 6. Pre-selects `value` prop
+7. Shows loading state while fetching
+8. Falls back to numeric input on fetch error
+9. Handles stale value (deleted config)
 
 ### Molecule tests (`TaxConfigurationField.test.tsx`)
 1. Renders with label and error
@@ -118,13 +161,21 @@ Each consumer gets a test verifying:
 - `apps/web/src/components/molecules/TaxConfigurationField/TaxConfigurationField.tsx`
 - `apps/web/src/components/molecules/TaxConfigurationField/TaxConfigurationField.test.tsx`
 - `apps/web/src/components/molecules/TaxConfigurationField/index.ts`
+- `apps/web/src/components/organisms/TaxConfigFormModal/TaxConfigFormModal.tsx`
+- `apps/web/src/components/organisms/TaxConfigFormModal/index.ts`
+- `apps/web/src/hooks/useTaxConfigurations.ts` (re-export)
+- `apps/api/database/migrations/YYYY_MM_DD_HHMMSS_add_default_tax_configuration_id_to_products.php`
 
 ## Files to Modify
+- `apps/web/src/features/settings/TaxSettingsPage.tsx` (extract modal)
 - `apps/web/src/features/documents/components/DocumentLineEditor.tsx`
 - `apps/web/src/features/catalog/pages/CompositeItemFormPage.tsx`
 - `apps/web/src/features/services/ServiceForm.tsx`
 - `apps/web/src/components/organisms/AddQuickProductModal/AddQuickProductModal.tsx`
 - `apps/web/src/features/inventory/ProductForm.tsx`
+- `apps/web/src/features/parts-catalog/components/organisms/AddToInventoryModal.tsx`
 - `apps/web/src/features/services/ServiceDetailPage.tsx` (read-only)
 - `apps/web/src/features/documents/components/DocumentLineRow/DocumentLineRow.tsx` (read-only)
 - `apps/web/src/features/pos/organisms/ProductInfoModal/ProductInfoModal.tsx` (read-only)
+- `apps/web/src/features/inventory/ProductDetailPage.tsx` (read-only)
+- Product model(s) in `apps/api/app/Modules/Inventory/` and/or `apps/api/app/Modules/Catalog/` (add FK relationship)
