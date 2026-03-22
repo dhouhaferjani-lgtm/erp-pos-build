@@ -85,7 +85,7 @@ export function TransactionCart({
       {/* Cart items */}
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {items.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center text-center text-gray-400">
+          <div className="flex h-full flex-col items-center justify-center text-center text-gray-500">
             <ShoppingCart className="mb-3 h-12 w-12" />
             <p className="text-base font-medium">{t('cart.empty')}</p>
             <p className="mt-1 text-sm">{t('cart.addProducts')}</p>
@@ -119,7 +119,7 @@ export function TransactionCart({
         )}
 
         {/* Shift info footer */}
-        <div className="mt-3 flex justify-between border-t border-gray-100 pt-3 text-xs text-gray-500">
+        <div className="mt-3 flex justify-between border-t border-gray-100 pt-3 text-xs text-gray-600">
           <span>{t('shift.number', { number: shiftNumber })}</span>
           <span>{t('shift.opening', { amount: openingCash })}</span>
         </div>

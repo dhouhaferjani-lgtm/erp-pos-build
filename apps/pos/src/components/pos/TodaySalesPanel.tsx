@@ -116,7 +116,7 @@ export function TodaySalesPage() {
               </span>
             )}
             {voidedCount > 0 && (
-              <span className="ml-2 text-sm font-normal text-gray-400">
+              <span className="ml-2 text-sm font-normal text-gray-500">
                 ({voidedCount} {t('voidReturn.void').toLowerCase()})
               </span>
             )}
@@ -132,7 +132,7 @@ export function TodaySalesPage() {
               <RotateCcw className="h-6 w-6 animate-spin text-gray-400" />
             </div>
           ) : receipts.length === 0 ? (
-            <p className="py-16 text-center text-sm text-gray-400">
+            <p className="py-16 text-center text-sm text-gray-500">
               {t('reports.noReceipts')}
             </p>
           ) : (

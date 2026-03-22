@@ -25,7 +25,7 @@ export function HeldTransactionsModal({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={t('hold.title')} size="lg">
       {heldTransactions.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-center text-gray-400">
+        <div className="flex flex-col items-center justify-center py-12 text-center text-gray-500">
           <ClipboardList className="mb-3 h-12 w-12" />
           <p className="text-base font-medium">{t('hold.empty')}</p>
         </div>

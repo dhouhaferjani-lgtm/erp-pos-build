@@ -35,7 +35,7 @@ export function XReportModal({ isOpen, onClose, report, isLoading, error }: XRep
       {report && !isLoading && (
         <div className="space-y-5">
           {/* Generated timestamp */}
-          <p className="text-right text-xs text-gray-400">
+          <p className="text-right text-xs text-gray-500">
             {t('reports.generatedAt')} {new Date(report.generated_at).toLocaleString()}
           </p>
 

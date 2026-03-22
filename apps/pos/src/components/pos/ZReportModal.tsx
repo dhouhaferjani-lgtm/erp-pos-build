@@ -113,11 +113,11 @@ export function ZReportModal({
               <span className="rounded-lg bg-blue-100 px-3 py-1.5 text-sm font-bold text-blue-800">
                 {report.formatted_z_number}
               </span>
-              <p className="font-mono text-xs text-gray-400" title={report.fiscal_hash}>
+              <p className="font-mono text-xs text-gray-500" title={report.fiscal_hash}>
                 {t('reports.fiscalHash')}: {report.fiscal_hash.slice(0, 16)}…
               </p>
             </div>
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-gray-500">
               {t('reports.generatedAt')} {new Date(report.generated_at).toLocaleString()}
             </p>
           </div>

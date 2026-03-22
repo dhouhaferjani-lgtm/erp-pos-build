@@ -197,7 +197,7 @@ export function VoidReturnModal({ isOpen, onClose }: VoidReturnModalProps) {
 
             {/* Receipt info */}
             <div className="rounded-xl bg-gray-50 p-4">
-              <p className="text-sm font-medium text-gray-500">
+              <p className="text-sm font-medium text-gray-600">
                 #{receipt.receipt_number}
               </p>
               <p className="text-lg font-bold text-gray-900">{format(receipt.total)}</p>

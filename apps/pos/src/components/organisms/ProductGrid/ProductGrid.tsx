@@ -234,7 +234,7 @@ export function ProductGrid({
       {/* Popular items row (only shown in "All" category, no search query) */}
       {!selectedCategory && !searchQuery && popularProducts.length > 0 && (
         <div>
-          <h3 className="mb-2 text-sm font-semibold text-gray-500 uppercase tracking-wide">
+          <h3 className="mb-2 text-sm font-semibold text-gray-600 uppercase tracking-wide">
             {t('products.popular')}
           </h3>
           <div className="flex gap-2 overflow-x-auto pb-2">
@@ -264,7 +264,7 @@ export function ProductGrid({
           <div className="text-center">
             <Package className="mx-auto mb-4 h-16 w-16 text-gray-400" />
             <p className="text-lg text-gray-600">{t('products.notFound')}</p>
-            <p className="mt-2 text-sm text-gray-500">
+            <p className="mt-2 text-sm text-gray-600">
               {t('products.tryAdjusting')}
             </p>
           </div>

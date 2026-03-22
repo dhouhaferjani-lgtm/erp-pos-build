@@ -40,7 +40,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap }
 
       {/* Modifiers */}
       {item.product.selectedModifiers && item.product.selectedModifiers.length > 0 && (
-        <p className="mt-0.5 text-xs italic text-gray-400">
+        <p className="mt-0.5 text-xs italic text-gray-500">
           {item.product.selectedModifiers.map((m) => m.name).join(', ')}
         </p>
       )}

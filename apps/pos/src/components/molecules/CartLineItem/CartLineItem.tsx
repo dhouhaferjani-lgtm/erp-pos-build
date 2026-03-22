@@ -42,7 +42,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
 
       {/* Modifiers */}
       {item.product.selectedModifiers && item.product.selectedModifiers.length > 0 && (
-        <p className="mt-0.5 text-xs italic text-gray-400">
+        <p className="mt-0.5 text-xs italic text-gray-500">
           {item.product.selectedModifiers.map((m) => m.name).join(', ')}
         </p>
       )}
@@ -51,7 +51,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
       {item.product.comboComponents && item.product.comboComponents.length > 0 && (
         <div className="mt-1 space-y-0.5">
           {item.product.comboComponents.map((name, idx) => (
-            <p key={idx} className="text-xs text-gray-400 pl-2">
+            <p key={idx} className="text-xs text-gray-500 pl-2">
               &bull; {name}
             </p>
           ))}

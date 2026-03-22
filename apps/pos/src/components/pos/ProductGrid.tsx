@@ -195,7 +195,7 @@ export function ProductGrid({
           <div className="text-center">
             <Package className="mx-auto mb-4 h-16 w-16 text-gray-400" />
             <p className="text-lg text-gray-600">{t('products.notFound')}</p>
-            <p className="mt-2 text-sm text-gray-500">
+            <p className="mt-2 text-sm text-gray-600">
               {t('products.tryAdjusting')}
             </p>
           </div>
