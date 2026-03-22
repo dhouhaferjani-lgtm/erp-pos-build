@@ -124,7 +124,7 @@ export function ProductGrid({
   }
 
   return (
-    <div className="flex h-full flex-col gap-4">
+    <div className="flex h-full flex-col gap-2">
       {/* Search bar + display mode toggle */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
@@ -134,7 +134,7 @@ export function ProductGrid({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('products.searchPlaceholder')}
-            className="w-full rounded-lg border border-gray-300 py-3 pl-10 pr-10 text-base focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-10 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
           />
           {searchQuery && (
             <button

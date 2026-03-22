@@ -432,9 +432,9 @@ export function HomePage() {
       )}
 
       {/* Product grid - left panel */}
-      <div className="flex flex-[7] flex-col overflow-hidden border-r border-gray-200 bg-gray-50 p-4">
+      <div className="flex flex-[7] flex-col overflow-hidden border-r border-gray-200 bg-gray-50 p-2">
         {isFnB && (
-          <div className="mb-4 space-y-3">
+          <div className="mb-2 space-y-2">
             <ConsumptionModeToggle
               value={consumptionMode}
               onChange={handleConsumptionModeChange}

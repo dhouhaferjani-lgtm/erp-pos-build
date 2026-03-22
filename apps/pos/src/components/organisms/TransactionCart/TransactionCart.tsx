@@ -54,7 +54,7 @@ export function TransactionCart({
   return (
     <div className="flex h-full flex-col bg-white">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+      <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2">
         <div className="flex items-center gap-2">
           <ShoppingCart className="h-5 w-5 text-gray-600" />
           <h2 className="text-lg font-bold text-gray-900">{t('cart.title')}</h2>
@@ -87,7 +87,7 @@ export function TransactionCart({
       )}
 
       {/* Cart items */}
-      <div className="flex-1 overflow-y-auto px-4 py-3">
+      <div className="flex-1 overflow-y-auto px-3 py-1">
         {items.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center text-gray-400">
             <ShoppingCart className="mb-3 h-12 w-12" />
@@ -95,7 +95,7 @@ export function TransactionCart({
             <p className="mt-1 text-sm">{t('cart.addProducts')}</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="divide-y divide-gray-100">
             {items.map((item) => (
               <CartLineItem
                 key={item.id}
@@ -112,7 +112,7 @@ export function TransactionCart({
       </div>
 
       {/* Payment summary + actions */}
-      <div className="px-4 pb-4">
+      <div className="px-3 pb-2">
         {items.length > 0 && (
           <PaymentSummary
             subtotal={subtotal}
@@ -125,7 +125,7 @@ export function TransactionCart({
         )}
 
         {/* Shift info footer */}
-        <div className="mt-3 flex justify-between border-t border-gray-100 pt-3 text-xs text-gray-500">
+        <div className="mt-1 flex justify-between border-t border-gray-100 pt-1 text-xs text-gray-500">
           <span>{t('shift.number', { number: shiftNumber })}</span>
           <span>{t('shift.opening', { amount: openingCash })}</span>
         </div>
