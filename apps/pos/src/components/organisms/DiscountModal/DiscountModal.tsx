@@ -9,7 +9,8 @@ export interface DiscountModalProps {
   isOpen: boolean;
   onClose: () => void;
   onApplyTransactionDiscount: (data: {
-    amount: string;
+    type: 'percentage' | 'fixed';
+    value: string;
     reason: string;
   }) => void;
   maxDiscountPercent: number;
@@ -52,7 +53,8 @@ export function DiscountModal({
     if (!isValid) return;
 
     onApplyTransactionDiscount({
-      amount: value,
+      type: discountType,
+      value,
       reason: reason.trim(),
     });
 

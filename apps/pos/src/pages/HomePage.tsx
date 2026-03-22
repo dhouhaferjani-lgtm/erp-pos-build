@@ -290,9 +290,18 @@ export function HomePage() {
   );
 
   const handleApplyTransactionDiscount = useCallback(
-    (data: { amount: string; reason: string }) => {
+    (data: { type: 'percentage' | 'fixed'; value: string; reason: string }) => {
+      const subtotal = useCartStore.getState().subtotal();
+      const tax = useCartStore.getState().taxAmount();
+      const totalBeforeDiscount = subtotal + tax;
+      let discountAmount: number;
+      if (data.type === 'percentage') {
+        discountAmount = (totalBeforeDiscount * parseFloat(data.value)) / 100;
+      } else {
+        discountAmount = parseFloat(data.value);
+      }
       useCartStore.getState().setTransactionDiscount({
-        amount: data.amount,
+        amount: discountAmount.toFixed(2),
         reason: data.reason || undefined,
       });
     },
