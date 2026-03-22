@@ -387,6 +387,34 @@ class AuthenticationTest extends TestCase
         $this->assertApiValidationErrors($response, ['password']);
     }
 
+    public function test_register_sets_tenant_regional_fields_from_country(): void
+    {
+        $response = $this->postJson('/api/v1/auth/register', [
+            'name' => 'Tunisian User',
+            'email' => 'tunisian-regional@example.com',
+            'password' => 'MyStr0ng!Pass',
+            'password_confirmation' => 'MyStr0ng!Pass',
+            'company_name' => 'Tunisian Cafe',
+            'country_code' => 'TN',
+            'currency' => 'TND',
+            'timezone' => 'Africa/Tunis',
+            'locale' => 'fr',
+            'vertical' => 'coffee_shop',
+        ]);
+
+        $response->assertCreated();
+
+        // Verify tenant top-level columns are set (not just in settings JSON)
+        $this->assertDatabaseHas('tenants', [
+            'name' => 'Tunisian Cafe',
+            'country_code' => 'TN',
+            'currency_code' => 'TND',
+            'timezone' => 'Africa/Tunis',
+            'locale' => 'fr',
+            'date_format' => 'd/m/Y',
+        ]);
+    }
+
     public function test_register_accepts_strong_password(): void
     {
         $response = $this->postJson('/api/v1/auth/register', [

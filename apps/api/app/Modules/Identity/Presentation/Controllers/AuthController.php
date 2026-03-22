@@ -123,6 +123,10 @@ class AuthController extends Controller
 
         $result = DB::transaction(function () use ($validated) {
             // 1. Create Tenant (subscription account)
+            $timezone = $validated['timezone'] ?? $this->getDefaultTimezone($validated['country_code']);
+            $locale = $validated['locale'] ?? $this->getDefaultLocale($validated['country_code']);
+            $dateFormat = 'd/m/Y';
+
             $tenant = Tenant::create([
                 'name' => $validated['company_name'],
                 'slug' => Str::slug($validated['company_name']).'-'.Str::random(6),
@@ -132,10 +136,13 @@ class AuthController extends Controller
                 'plan' => SubscriptionPlan::Trial,
                 'country_code' => strtoupper($validated['country_code']),
                 'currency_code' => $validated['currency'] ?? $this->getDefaultCurrency($validated['country_code']),
+                'timezone' => $timezone,
+                'locale' => $locale,
+                'date_format' => $dateFormat,
                 'settings' => [
-                    'timezone' => $validated['timezone'] ?? $this->getDefaultTimezone($validated['country_code']),
-                    'locale' => $validated['locale'] ?? $this->getDefaultLocale($validated['country_code']),
-                    'date_format' => 'd/m/Y',
+                    'timezone' => $timezone,
+                    'locale' => $locale,
+                    'date_format' => $dateFormat,
                     'fiscal_year_start' => '01-01',
                 ],
                 'trial_ends_at' => now()->addDays(14),
