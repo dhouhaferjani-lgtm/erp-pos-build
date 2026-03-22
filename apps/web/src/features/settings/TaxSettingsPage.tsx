@@ -11,16 +11,11 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/Ta
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import {
   useTaxConfigurations,
-  useDocumentTypes,
-  useCreateTaxConfiguration,
-  useUpdateTaxConfiguration,
   useDeleteTaxConfiguration,
 } from './hooks/useTaxConfigurations'
+import { TaxConfigFormModal } from '../../components/organisms'
 import type {
   TaxConfiguration,
-  TaxConfigurationFormData,
-  TaxType,
-  TaxApplicationLevel,
   CompanyTaxStatus,
 } from './types/tax'
 
@@ -55,20 +50,6 @@ const MONTHS = [
   { value: 12, label: 'December' },
 ]
 
-// Helper to convert backend document type values to translation keys
-const getDocumentTypeTranslationKey = (value: string): string => {
-  const mapping: Record<string, string> = {
-    'QUOTATION': 'quotation',
-    'SALES_ORDER': 'salesOrder',
-    'DELIVERY_NOTE': 'deliveryNote',
-    'TAX_INVOICE': 'taxInvoice',
-    'FISCAL_RECEIPT': 'fiscalReceipt',
-    'CREDIT_NOTE': 'creditNote',
-    'PURCHASE_ORDER': 'purchaseOrder',
-    'PURCHASE_INVOICE': 'purchaseInvoice',
-  }
-  return mapping[value] || value.toLowerCase()
-}
 
 export function TaxSettingsPage() {
   const { t } = useTranslation(['settings', 'common', 'sales'])
@@ -86,16 +67,6 @@ export function TaxSettingsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingTax, setEditingTax] = useState<TaxConfiguration | null>(null)
   const [deletingTaxId, setDeletingTaxId] = useState<string | null>(null)
-  const [taxFormData, setTaxFormData] = useState<TaxConfigurationFormData>({
-    name: '',
-    code: '',
-    tax_type: 'PERCENTAGE',
-    percentage_rate: '',
-    applies_to: 'LINE_ITEMS',
-    stacks_on: 'BASE_AMOUNT',
-    applicable_document_types: [],
-    is_active: true,
-  })
 
   // Fetch company settings
   const { isLoading: isLoadingCompany } = useQuery({
@@ -119,9 +90,6 @@ export function TaxSettingsPage() {
 
   // Tax configurations
   const { data: taxConfigurations = [], isLoading: isLoadingTaxes } = useTaxConfigurations()
-  const { data: documentTypes = [] } = useDocumentTypes()
-  const createTax = useCreateTaxConfiguration()
-  const updateTax = useUpdateTaxConfiguration()
   const deleteTax = useDeleteTaxConfiguration()
 
   // Update company settings
@@ -151,68 +119,14 @@ export function TaxSettingsPage() {
     updateMutation.mutate(formData)
   }
 
-  const handleTaxFormChange = (field: keyof TaxConfigurationFormData, value: unknown) => {
-    setTaxFormData(prev => ({ ...prev, [field]: value }))
-  }
-
   const handleCreateTax = () => {
     setEditingTax(null)
-    setTaxFormData({
-      name: '',
-      code: '',
-      tax_type: 'PERCENTAGE',
-      percentage_rate: '',
-      applies_to: 'LINE_ITEMS',
-      stacks_on: 'BASE_AMOUNT',
-      applicable_document_types: [],
-      is_active: true,
-      is_recoverable: true,
-    })
     setIsModalOpen(true)
   }
 
   const handleEditTax = (tax: TaxConfiguration) => {
     setEditingTax(tax)
-    setTaxFormData({
-      name: tax.name,
-      code: tax.code,
-      tax_type: tax.tax_type,
-      percentage_rate: tax.percentage_rate ?? '',
-      fixed_amount: tax.fixed_amount ?? '',
-      applies_to: tax.applies_to,
-      stacks_on: tax.stacks_on,
-      applicable_document_types: tax.applicable_document_types,
-      is_active: tax.is_active,
-      is_recoverable: tax.is_recoverable,
-      sequence_order: tax.sequence_order,
-    })
     setIsModalOpen(true)
-  }
-
-  const handleSaveTax = async () => {
-    try {
-      if (editingTax) {
-        await updateTax.mutateAsync({ id: editingTax.id, data: taxFormData })
-        toast.success(t('settings:tax.configurations.messages.updated'))
-      } else {
-        await createTax.mutateAsync(taxFormData)
-        toast.success(t('settings:tax.configurations.messages.created'))
-      }
-      setIsModalOpen(false)
-      setEditingTax(null)
-      setTaxFormData({
-        name: '',
-        code: '',
-        tax_type: 'PERCENTAGE',
-        percentage_rate: '',
-        applies_to: 'LINE_ITEMS',
-        stacks_on: 'BASE_AMOUNT',
-        applicable_document_types: [],
-        is_active: true,
-      })
-    } catch (error) {
-      toast.error(getErrorMessage(error))
-    }
   }
 
   const handleDeleteTax = async () => {
@@ -513,196 +427,12 @@ export function TaxSettingsPage() {
               </div>
             )}
 
-            {/* Tax Form Modal (simplified - would normally be a proper modal) */}
-            {isModalOpen && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 overflow-y-auto">
-                <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 my-8">
-                  <div className="px-6 py-4 border-b border-gray-200">
-                    <h3 className="text-lg font-medium text-gray-900">
-                      {editingTax ? t('tax.configurations.form.editTitle') : t('tax.configurations.form.addTitle')}
-                    </h3>
-                  </div>
-                  <div className="px-6 py-4 space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('tax.configurations.form.name')}
-                      </label>
-                      <input
-                        type="text"
-                        value={taxFormData.name}
-                        onChange={(e) => { handleTaxFormChange('name', e.target.value); }}
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                        placeholder={t('tax.configurations.form.namePlaceholder')}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('tax.configurations.form.typeLabel')}
-                      </label>
-                      <select
-                        value={taxFormData.tax_type}
-                        onChange={(e) => { handleTaxFormChange('tax_type', e.target.value as TaxType); }}
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                      >
-                        <option value="PERCENTAGE">{t('tax.configurations.form.typePercentage')}</option>
-                        <option value="FIXED_AMOUNT">{t('tax.configurations.form.typeFixed')}</option>
-                      </select>
-                    </div>
-                    {taxFormData.tax_type === 'PERCENTAGE' ? (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          {t('tax.configurations.form.rate')}
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={taxFormData.percentage_rate}
-                          onChange={(e) => { handleTaxFormChange('percentage_rate', e.target.value); }}
-                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                        />
-                      </div>
-                    ) : (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          {t('tax.configurations.form.amount')}
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={taxFormData.fixed_amount ?? ''}
-                          onChange={(e) => { handleTaxFormChange('fixed_amount', e.target.value); }}
-                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                        />
-                      </div>
-                    )}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('tax.configurations.form.appliesTo')}
-                      </label>
-                      <select
-                        value={taxFormData.applies_to}
-                        onChange={(e) => { handleTaxFormChange('applies_to', e.target.value as TaxApplicationLevel); }}
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                      >
-                        <option value="LINE_ITEMS">{t('tax.configurations.form.appliesToLineItems')}</option>
-                        <option value="DOCUMENT_TOTAL">{t('tax.configurations.form.appliesToDocument')}</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        {t('tax.configurations.form.documentTypes')}
-                      </label>
-                      <p className="text-xs text-gray-500 mb-2">
-                        {t('tax.configurations.form.documentTypesHelp')}
-                      </p>
-                      <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-300 rounded-md p-3">
-                        <label className="flex items-center pb-2 border-b border-gray-200">
-                          <input
-                            type="checkbox"
-                            checked={taxFormData.applicable_document_types.length === 0}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                handleTaxFormChange('applicable_document_types', [])
-                              }
-                            }}
-                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                          />
-                          <span className="ms-2 text-sm text-gray-700 font-medium">
-                            {t('tax.configurations.form.allDocumentTypes')}
-                          </span>
-                        </label>
-                        <div className="pt-1">
-                          <p className="text-xs text-gray-500 mb-2 italic">
-                            {t('tax.configurations.form.orSelectSpecific')}
-                          </p>
-                          {documentTypes.map((docType) => (
-                            <label key={docType.value} className="flex items-center mb-1">
-                              <input
-                                type="checkbox"
-                                checked={taxFormData.applicable_document_types.includes(docType.value)}
-                                onChange={(e) => {
-                                  const current = taxFormData.applicable_document_types
-                                  if (e.target.checked) {
-                                    // Auto-uncheck "All" when selecting a specific type
-                                    const newTypes = current.length === 0 ? [docType.value] : [...current, docType.value]
-                                    handleTaxFormChange('applicable_document_types', newTypes)
-                                  } else {
-                                    const newTypes = current.filter(t => t !== docType.value)
-                                    handleTaxFormChange('applicable_document_types', newTypes)
-                                  }
-                                }}
-                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                              />
-                              <span className="ms-2 text-sm text-gray-700">
-                                {t(`sales:documents.types.${getDocumentTypeTranslationKey(docType.value)}`)}
-                              </span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={taxFormData.is_active}
-                          onChange={(e) => { handleTaxFormChange('is_active', e.target.checked); }}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                        <span className="ms-2 text-sm text-gray-700">{t('tax.configurations.form.active')}</span>
-                      </label>
-                    </div>
-                    <div>
-                      <label className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={taxFormData.is_recoverable ?? true}
-                          onChange={(e) => { handleTaxFormChange('is_recoverable', e.target.checked); }}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                        <span className="ms-2 text-sm text-gray-700">{t('tax.configurations.form.recoverable')}</span>
-                      </label>
-                      <p className="text-xs text-gray-500 mt-1 ms-6">
-                        {t('tax.configurations.form.recoverableHelp')}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsModalOpen(false)
-                        setEditingTax(null)
-                        setTaxFormData({
-                          name: '',
-                          code: '',
-                          tax_type: 'PERCENTAGE',
-                          percentage_rate: '',
-                          applies_to: 'LINE_ITEMS',
-                          stacks_on: 'BASE_AMOUNT',
-                          applicable_document_types: [],
-                          is_active: true,
-                          is_recoverable: true,
-                        })
-                      }}
-                      className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                    >
-                      {t('common:cancel')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void handleSaveTax()
-                      }}
-                      disabled={createTax.isPending || updateTax.isPending}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-                    >
-                      {t('common:save')}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+            <TaxConfigFormModal
+              isOpen={isModalOpen}
+              onClose={() => { setIsModalOpen(false); setEditingTax(null); }}
+              onSaved={() => { setIsModalOpen(false); setEditingTax(null); }}
+              editingTax={editingTax}
+            />
           </div>
         </TabsContent>
       </Tabs>
