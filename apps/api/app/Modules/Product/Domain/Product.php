@@ -28,6 +28,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $sale_price
  * @property string|null $purchase_price
  * @property string|null $tax_rate
+ * @property string|null $default_tax_configuration_id
  * @property string|null $unit
  * @property string|null $barcode
  * @property bool $is_active
@@ -71,6 +72,7 @@ class Product extends Model implements SellableContract
         'sale_price',
         'purchase_price',
         'tax_rate',
+        'default_tax_configuration_id',
         'unit',
         'barcode',
         'is_active',
@@ -249,6 +251,19 @@ class Product extends Model implements SellableContract
     public function unitOfMeasure(): BelongsTo
     {
         return $this->belongsTo(Unit::class, 'unit_id');
+    }
+
+    /**
+     * Get the default tax configuration for this product.
+     *
+     * @return BelongsTo<\App\Modules\Taxation\Domain\Entities\TaxConfiguration, $this>
+     */
+    public function defaultTaxConfiguration(): BelongsTo
+    {
+        return $this->belongsTo(
+            \App\Modules\Taxation\Domain\Entities\TaxConfiguration::class,
+            'default_tax_configuration_id'
+        );
     }
 
     /**

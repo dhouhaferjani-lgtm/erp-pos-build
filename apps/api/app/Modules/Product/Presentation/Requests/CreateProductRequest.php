@@ -49,6 +49,7 @@ class CreateProductRequest extends FormRequest
             'sale_price' => ['nullable', 'numeric', 'min:0'],
             'purchase_price' => ['nullable', 'numeric', 'min:0'],
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'default_tax_configuration_id' => ['nullable', 'uuid', 'exists:tax_configurations,id'],
             'unit' => ['nullable', 'string', 'max:50'],
             'barcode' => ['nullable', 'string', 'max:100'],
             'is_active' => ['sometimes', 'boolean'],
