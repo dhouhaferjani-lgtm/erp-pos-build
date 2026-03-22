@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Tenant\Application\Services;
 
+use App\Enums\Vertical;
 use App\Modules\Billing\Domain\Enums\SubscriptionStatus;
 use App\Modules\Billing\Domain\Plan;
 use App\Modules\Billing\Domain\TenantSubscription;
@@ -54,6 +55,11 @@ class TenantInitializationService
 
         // 5. Seed standard payment methods
         $this->seedPaymentMethods($company);
+
+        // 6. Auto-include Inventory for F&B verticals
+        // Temporarily auto-include Inventory for F&B verticals
+        // TODO: Remove when Inventory becomes a separately purchased module
+        $this->enableInventoryForFnbVerticals($tenant);
     }
 
     /**
@@ -146,5 +152,32 @@ class TenantInitializationService
     {
         $seeder = new PaymentMethodSeeder;
         $seeder->run($company);
+    }
+
+    /**
+     * Auto-enable the Inventory extra for Food & Beverage verticals.
+     *
+     * CoffeeShop and Restaurant tenants require Inventory to be enabled
+     * from the start. This is temporary until Inventory becomes a
+     * separately purchased module.
+     *
+     * TODO: Remove when Inventory becomes a separately purchased module.
+     */
+    private function enableInventoryForFnbVerticals(Tenant $tenant): void
+    {
+        $fnbVerticals = [Vertical::CoffeeShop, Vertical::Restaurant];
+
+        if (! in_array($tenant->vertical, $fnbVerticals, true)) {
+            return;
+        }
+
+        $extras = $tenant->enabled_extras ?? [];
+
+        if (in_array('Inventory', $extras, true)) {
+            return;
+        }
+
+        $extras[] = 'Inventory';
+        $tenant->update(['enabled_extras' => $extras]);
     }
 }
