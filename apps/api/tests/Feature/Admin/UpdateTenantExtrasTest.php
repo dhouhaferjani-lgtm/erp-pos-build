@@ -138,4 +138,42 @@ class UpdateTenantExtrasTest extends TestCase
 
         $response->assertUnprocessable();
     }
+
+    public function test_update_extras_allows_empty_array_to_disable_all(): void
+    {
+        // First enable some extras
+        $this->tenantWithVertical->update(['enabled_extras' => ['Tables', 'Loyalty']]);
+
+        $response = $this->actingAs($this->superAdmin, 'sanctum-admin')
+            ->postJson("/api/v1/admin/tenants/{$this->tenantWithVertical->id}/update-extras", [
+                'enabled_extras' => [],
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.enabled_extras', []);
+
+        $this->tenantWithVertical->refresh();
+        $this->assertEquals([], $this->tenantWithVertical->enabled_extras);
+    }
+
+    public function test_show_tenant_includes_compatible_extras(): void
+    {
+        $response = $this->actingAs($this->superAdmin, 'sanctum-admin')
+            ->getJson("/api/v1/admin/tenants/{$this->tenantWithVertical->id}");
+
+        $response->assertOk()
+            ->assertJsonStructure([
+                'data' => [
+                    'tenant',
+                    'stats',
+                    'compatible_extras',
+                ],
+            ]);
+
+        $compatibleExtras = $response->json('data.compatible_extras');
+        $this->assertIsArray($compatibleExtras);
+        $this->assertContains('Tables', $compatibleExtras);
+        $this->assertContains('Loyalty', $compatibleExtras);
+        $this->assertContains('Inventory', $compatibleExtras);
+    }
 }

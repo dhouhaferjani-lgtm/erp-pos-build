@@ -89,4 +89,18 @@ class CompanyConfigTest extends TestCase
         $decoded = json_decode($json, true);
         $this->assertEquals('pharmacy', $decoded['vertical']);
     }
+
+    public function test_company_config_includes_compatible_extras(): void
+    {
+        $config = CompanyConfig::fromArray([
+            'vertical' => Vertical::CoffeeShop,
+            'default_modules' => ['Sales', 'CompositeItems'],
+            'enabled_extras' => ['Inventory'],
+            'compatible_extras' => ['Tables', 'Loyalty', 'Inventory'],
+            'all_enabled_modules' => ['Sales', 'CompositeItems', 'Inventory'],
+        ]);
+
+        $this->assertEquals(['Tables', 'Loyalty', 'Inventory'], $config->compatibleExtras);
+        $this->assertContains('compatible_extras', array_keys($config->toArray()));
+    }
 }
