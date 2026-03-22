@@ -247,7 +247,7 @@ class SuperAdminController extends Controller
         $tenant = Tenant::findOrFail($id);
 
         $request->validate([
-            'enabled_extras' => ['required', 'array'],
+            'enabled_extras' => ['present', 'array'],
             'enabled_extras.*' => ['required', 'string'],
         ]);
 
