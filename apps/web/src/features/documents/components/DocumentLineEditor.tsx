@@ -6,6 +6,18 @@ import { api } from '../../../lib/api'
 import { formatCurrency } from '../../../lib/format'
 import { useCompanyStore } from '../../../stores/companyStore'
 import { AddQuickProductModal } from '../../../components/organisms'
+import { TaxConfigurationSelect } from '../../../components/atoms/TaxConfigurationSelect'
+
+// Map frontend document type strings to backend applicable_document_types format
+const DOCUMENT_TYPE_MAP: Record<string, string> = {
+  quote: 'QUOTATION',
+  sales_order: 'SALES_ORDER',
+  invoice: 'TAX_INVOICE',
+  purchase_order: 'PURCHASE_ORDER',
+  delivery_note: 'DELIVERY_NOTE',
+  credit_note: 'CREDIT_NOTE',
+  return_note: 'CREDIT_NOTE',
+}
 
 interface Product {
   id: string
@@ -13,6 +25,7 @@ interface Product {
   sku: string
   sale_price: number
   tax_rate: number
+  default_tax_configuration_id?: string | null
 }
 
 interface Service {
@@ -41,6 +54,7 @@ export interface DocumentLine {
   quantity: number
   unit_price: number
   tax_rate: number
+  tax_configuration_id?: string | null
   line_total: number
   is_service?: boolean
 }
@@ -51,9 +65,10 @@ interface DocumentLineEditorProps {
   lines: DocumentLine[]
   onChange: (lines: DocumentLine[]) => void
   readonly?: boolean
+  documentType?: string
 }
 
-export function DocumentLineEditor({ lines, onChange, readonly = false }: DocumentLineEditorProps) {
+export function DocumentLineEditor({ lines, onChange, readonly = false, documentType }: DocumentLineEditorProps) {
   const { t } = useTranslation(['sales', 'common'])
   const queryClient = useQueryClient()
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
@@ -143,6 +158,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false }: Docume
         quantity: 1,
         unit_price: product.sale_price,
         tax_rate: product.tax_rate,
+        tax_configuration_id: product.default_tax_configuration_id ?? null,
         line_total: calculateLineTotal(1, product.sale_price, product.tax_rate),
       }
       onChange([...lines, newLine])
@@ -165,6 +181,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false }: Docume
         quantity: 1,
         unit_price: service.base_price,
         tax_rate: service.tax_rate,
+        tax_configuration_id: null,
         line_total: calculateLineTotal(1, service.base_price, service.tax_rate),
         is_service: true,
       }
@@ -403,15 +420,16 @@ export function DocumentLineEditor({ lines, onChange, readonly = false }: Docume
                     {readonly ? (
                       <span className="text-sm text-gray-500">{line.tax_rate}%</span>
                     ) : (
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        value={line.tax_rate}
-                        onChange={(e) => {
-                          handleUpdateLine(line.id, { tax_rate: parseFloat(e.target.value) || 0 })
+                      <TaxConfigurationSelect
+                        value={line.tax_configuration_id ?? null}
+                        onChange={(configId, taxRate) => {
+                          handleUpdateLine(line.id, {
+                            tax_configuration_id: configId,
+                            tax_rate: parseFloat(taxRate) || 0,
+                          })
                         }}
-                        className="w-16 rounded border border-gray-300 px-2 py-1 text-end text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        {...(documentType ? { documentType: DOCUMENT_TYPE_MAP[documentType] ?? documentType } : {})}
+                        size="sm"
                       />
                     )}
                   </td>

@@ -2,7 +2,7 @@ import { FormField } from '../../atoms/FormField'
 import { TaxConfigurationSelect } from '../../atoms/TaxConfigurationSelect'
 import type { TaxConfigurationSelectProps } from '../../atoms/TaxConfigurationSelect'
 
-export interface TaxConfigurationFieldProps extends TaxConfigurationSelectProps {
+export interface TaxConfigurationFieldProps extends Omit<TaxConfigurationSelectProps, 'error'> {
   label?: string
   error?: string
   required?: boolean

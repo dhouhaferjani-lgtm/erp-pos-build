@@ -479,7 +479,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
         </div>
 
         {/* Document Lines */}
-        <DocumentLineEditor lines={lines} onChange={setLines} />
+        <DocumentLineEditor lines={lines} onChange={setLines} {...(effectiveType ? { documentType: effectiveType } : {})} />
 
         {/* Additional Costs (Purchase Orders only - after document is created) */}
         {effectiveType === 'purchase_order' && isEditing && id && (
