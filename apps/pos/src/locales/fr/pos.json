@@ -297,6 +297,7 @@
     "scanning": "Recherche en cours...",
     "availablePrinters": "Imprimantes disponibles",
     "networkPrinter": "Réseau",
+    "windowsPrinter": "Windows",
     "addManualPrinter": "Ajouter une imprimante manuellement...",
     "manualNetworkPrinter": "Imprimante réseau",
     "ipAddressPlaceholder": "Adresse IP (ex. 192.168.1.100)",

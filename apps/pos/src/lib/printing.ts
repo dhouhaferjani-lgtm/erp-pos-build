@@ -6,7 +6,7 @@ import { useCashDrawerStore } from '@/stores/cashDrawerStore';
 
 // ── Types ──
 
-export type PrinterConnectionType = 'usb' | 'network';
+export type PrinterConnectionType = 'usb' | 'network' | 'windows';
 
 export interface PrinterInfo {
   id: string;

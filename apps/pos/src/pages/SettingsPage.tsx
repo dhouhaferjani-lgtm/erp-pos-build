@@ -295,7 +295,11 @@ export function SettingsPage() {
                           {printerConfig.name}
                         </p>
                         <p className="text-xs text-green-600">
-                          {printerConfig.connection_type === 'usb' ? 'USB' : t('settings.networkPrinter')} — {printerConfig.address}
+                          {printerConfig.connection_type === 'usb'
+                          ? 'USB'
+                          : printerConfig.connection_type === 'windows'
+                            ? t('settings.windowsPrinter')
+                            : t('settings.networkPrinter')} — {printerConfig.address}
                         </p>
                       </div>
                       <button
@@ -392,7 +396,11 @@ export function SettingsPage() {
                             {printer.name}
                           </p>
                           <p className="text-xs text-gray-500">
-                            {printer.connection_type === 'usb' ? 'USB' : t('settings.networkPrinter')} — {printer.address}
+                            {printer.connection_type === 'usb'
+                            ? 'USB'
+                            : printer.connection_type === 'windows'
+                              ? t('settings.windowsPrinter')
+                              : t('settings.networkPrinter')} — {printer.address}
                           </p>
                         </div>
                         {printerConfig?.address === printer.address && (

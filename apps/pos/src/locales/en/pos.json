@@ -297,6 +297,7 @@
     "scanning": "Scanning...",
     "availablePrinters": "Available Printers",
     "networkPrinter": "Network",
+    "windowsPrinter": "Windows",
     "addManualPrinter": "Add printer manually...",
     "manualNetworkPrinter": "Network Printer",
     "ipAddressPlaceholder": "IP address (e.g. 192.168.1.100)",
