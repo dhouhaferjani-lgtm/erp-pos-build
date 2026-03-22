@@ -1,24 +1,11 @@
-import { Fragment } from 'react'
+import { Fragment, useState } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import { X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useTenant } from '../hooks/useTenants'
 import { useUpdateTenantExtras } from '../hooks/useTenants'
 import type { PlanSummary, UsageStat } from '../types'
-
-// Compatible extras per vertical — mirrors apps/api/config/verticals.php
-const VERTICAL_COMPATIBLE_EXTRAS: Record<string, string[]> = {
-  mechanic: ['Appointments', 'Fleet'],
-  pharmacy: ['BatchExpiry', 'Prescription'],
-  restaurant: ['Tables', 'Reservation', 'Inventory'],
-  coffee_shop: ['Tables', 'Loyalty', 'Inventory'],
-  retail: ['Loyalty', 'Ecommerce'],
-  fashion: ['Loyalty', 'Ecommerce'],
-  body_shop: ['Appointments', 'Fleet'],
-  parts_retailer: ['Ecommerce'],
-  car_glass: ['Appointments', 'Fleet'],
-  tire_shop: ['Appointments'],
-  service_station: [],
-}
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 
 interface TenantDetailModalProps {
   tenantId: string | null
@@ -247,36 +234,40 @@ function PlanUsageSection({ planSummary }: { planSummary: PlanSummary }) {
 
 interface ManageModulesSectionProps {
   tenantId: string
-  vertical: string | null
+  compatibleExtras: string[]
   enabledExtras: string[]
   onRefresh: (() => void) | undefined
 }
 
 function ManageModulesSection({
   tenantId,
-  vertical,
+  compatibleExtras,
   enabledExtras,
   onRefresh,
 }: ManageModulesSectionProps) {
+  const { t } = useTranslation('settings')
   const updateExtras = useUpdateTenantExtras()
-
-  const compatibleExtras =
-    vertical !== null ? (VERTICAL_COMPATIBLE_EXTRAS[vertical] ?? []) : []
+  const [pendingToggle, setPendingToggle] = useState<{ module: string; enable: boolean } | null>(null)
 
   if (compatibleExtras.length === 0) {
     return null
   }
 
-  const handleToggleModule = (module: string, enable: boolean) => {
-    const newExtras = enable
-      ? [...enabledExtras, module]
-      : enabledExtras.filter((e) => e !== module)
+  const handleConfirmToggle = () => {
+    if (!pendingToggle) return
+    const newExtras = pendingToggle.enable
+      ? [...enabledExtras, pendingToggle.module]
+      : enabledExtras.filter((e) => e !== pendingToggle.module)
 
     updateExtras.mutate(
       { tenantId, enabledExtras: newExtras },
       {
         onSuccess: () => {
+          setPendingToggle(null)
           onRefresh?.()
+        },
+        onSettled: () => {
+          setPendingToggle(null)
         },
       }
     )
@@ -284,7 +275,7 @@ function ManageModulesSection({
 
   return (
     <div>
-      <h4 className="mb-3 font-semibold text-gray-900">Manage Modules</h4>
+      <h4 className="mb-3 font-semibold text-gray-900">{t('admin.tenants.manageModules')}</h4>
       <div className="space-y-2">
         {compatibleExtras.map((extra) => {
           const isEnabled = enabledExtras.includes(extra)
@@ -297,7 +288,7 @@ function ManageModulesSection({
               <button
                 type="button"
                 disabled={updateExtras.isPending}
-                onClick={() => handleToggleModule(extra, !isEnabled)}
+                onClick={() => setPendingToggle({ module: extra, enable: !isEnabled })}
                 className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors disabled:opacity-50 ${
                   isEnabled ? 'bg-blue-600' : 'bg-gray-200'
                 }`}
@@ -314,6 +305,20 @@ function ManageModulesSection({
           )
         })}
       </div>
+      <ConfirmDialog
+        isOpen={pendingToggle !== null}
+        onClose={() => setPendingToggle(null)}
+        onConfirm={handleConfirmToggle}
+        title={pendingToggle?.enable ? t('admin.tenants.enableModule') : t('admin.tenants.disableModule')}
+        message={
+          pendingToggle?.enable
+            ? t('admin.tenants.enableModuleConfirm', { module: pendingToggle.module })
+            : t('admin.tenants.disableModuleConfirm', { module: pendingToggle?.module ?? '' })
+        }
+        variant={pendingToggle?.enable ? 'info' : 'warning'}
+        isLoading={updateExtras.isPending}
+        confirmText={pendingToggle?.enable ? t('common:actions.enable') : t('common:actions.disable')}
+      />
     </div>
   )
 }
@@ -326,9 +331,8 @@ export function TenantDetailModal({
   const { data, isLoading } = useTenant(tenantId ?? '')
   const isOpen = tenantId !== null
 
-  const tenant = data?.tenant
-  const vertical = tenant?.vertical ?? null
-  const enabledExtras = tenant?.enabled_extras ?? []
+  const enabledExtras = data?.tenant?.enabled_extras ?? []
+  const compatibleExtras = data?.compatible_extras ?? []
 
   return (
     <Transition appear show={isOpen} as={Fragment}>
@@ -384,7 +388,7 @@ export function TenantDetailModal({
                       {tenantId !== null && (
                         <ManageModulesSection
                           tenantId={tenantId}
-                          vertical={vertical}
+                          compatibleExtras={compatibleExtras}
                           enabledExtras={enabledExtras}
                           onRefresh={onRefresh}
                         />

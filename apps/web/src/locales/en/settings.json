@@ -177,7 +177,11 @@
   },
   "admin": {
     "tenants": {
-      "manageModules": "Manage Modules"
+      "manageModules": "Manage Modules",
+      "enableModule": "Enable Module",
+      "disableModule": "Disable Module",
+      "enableModuleConfirm": "Are you sure you want to enable {{module}} for this tenant?",
+      "disableModuleConfirm": "Are you sure you want to disable {{module}} for this tenant? This will immediately restrict access to module features."
     }
   }
 }

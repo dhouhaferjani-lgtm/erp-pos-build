@@ -75,11 +75,18 @@ class SuperAdminController extends Controller
         // Get plan limits and usage from PlanEnforcementService
         $planSummary = $this->planEnforcementService->getPlanSummary($tenant);
 
+        /** @var \App\Enums\Vertical|null $vertical */
+        $vertical = $tenant->vertical;
+        $compatibleExtras = $vertical !== null
+            ? $this->verticalConfigService->getCompatibleExtras($vertical)
+            : [];
+
         return response()->json([
             'data' => [
                 'tenant' => $tenant,
                 'stats' => $stats,
                 'plan_summary' => $planSummary,
+                'compatible_extras' => $compatibleExtras,
             ],
         ]);
     }

@@ -177,7 +177,11 @@
   },
   "admin": {
     "tenants": {
-      "manageModules": "Gestion des modules"
+      "manageModules": "Gestion des modules",
+      "enableModule": "Activer le module",
+      "disableModule": "Désactiver le module",
+      "enableModuleConfirm": "Voulez-vous activer {{module}} pour ce locataire ?",
+      "disableModuleConfirm": "Voulez-vous désactiver {{module}} pour ce locataire ? L'accès aux fonctionnalités du module sera immédiatement restreint."
     }
   }
 }

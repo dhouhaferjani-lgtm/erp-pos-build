@@ -24,6 +24,8 @@
     "reset": "Reset",
     "clear": "Clear",
     "viewAll": "View all",
+    "enable": "Enable",
+    "disable": "Disable",
     "expand": "Expand",
     "collapse": "Collapse",
     "newQuote": "New Quote",
