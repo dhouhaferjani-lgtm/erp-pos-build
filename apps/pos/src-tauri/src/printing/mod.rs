@@ -2,6 +2,8 @@ pub mod escpos;
 pub mod network;
 pub mod receipt_template;
 pub mod usb;
+#[cfg(target_os = "windows")]
+pub mod windows;
 
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +22,7 @@ pub struct PrinterInfo {
 pub enum PrinterConnectionType {
     Usb,
     Network,
+    Windows,
 }
 
 /// Errors from the printing subsystem.
@@ -35,6 +38,8 @@ pub enum PrintError {
     NoPrinter,
     #[error("Printer not found: {0}")]
     PrinterNotFound(String),
+    #[error("Windows printing error: {0}")]
+    Windows(String),
 }
 
 impl Serialize for PrintError {
@@ -55,5 +60,11 @@ pub async fn send_to_printer(
     match connection_type {
         PrinterConnectionType::Usb => usb::send(address, data),
         PrinterConnectionType::Network => network::send(address, data).await,
+        #[cfg(target_os = "windows")]
+        PrinterConnectionType::Windows => windows::send(address, data).await,
+        #[cfg(not(target_os = "windows"))]
+        PrinterConnectionType::Windows => Err(PrintError::Windows(
+            "Windows printing is only available on Windows".to_string(),
+        )),
     }
 }
