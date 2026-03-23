@@ -79,7 +79,7 @@ export function SetupChecklist() {
             </span>
 
             {/* Label */}
-            <span className="flex-1 text-sm font-medium text-gray-900">{item.label}</span>
+            <span className="flex-1 text-sm font-medium text-gray-900">{t(`onboarding.steps.${item.step}`)}</span>
 
             {/* Badge */}
             <span
