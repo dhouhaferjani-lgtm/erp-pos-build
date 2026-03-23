@@ -199,5 +199,78 @@
         "description": "Outstanding vendor bills by age"
       }
     }
+  },
+  "vatReporting": {
+    "title": "VAT Reporting",
+    "subtitle": "Manage VAT periods and declarations",
+    "generatePeriods": "Generate Periods",
+    "ytdOutput": "Total Output VAT",
+    "ytdInput": "Total Input VAT",
+    "ytdNet": "Net VAT Due",
+    "ytdCredit": "Credit Carried",
+    "total": "Total",
+    "liveData": "Amounts on open periods are live-computed and may change.",
+    "confirmClose": "Are you sure you want to close this period? This will snapshot the current VAT data.",
+    "confirmFile": "Are you sure you want to mark this period as filed? This action cannot be undone.",
+    "summary": {
+      "outputVat": "Output VAT",
+      "inputVat": "Input VAT",
+      "creditBroughtForward": "Credit Brought Forward",
+      "amountPayable": "Amount Payable"
+    },
+    "columns": {
+      "period": "Period",
+      "dateRange": "Date Range",
+      "outputVat": "Output VAT",
+      "inputVat": "Input VAT",
+      "netDue": "Net Due",
+      "status": "Status",
+      "actions": "Actions",
+      "rate": "Rate (%)",
+      "baseAmount": "Base (HT)",
+      "vatAmount": "VAT Amount",
+      "documentCount": "Documents",
+      "recoverable": "Recoverable",
+      "yes": "Yes",
+      "no": "No"
+    },
+    "status": {
+      "open": "Open",
+      "closed": "Closed",
+      "filed": "Filed"
+    },
+    "actions": {
+      "view": "View",
+      "close": "Close",
+      "reopen": "Reopen",
+      "file": "File",
+      "export": "Export",
+      "closePeriodTitle": "Close Period",
+      "closePeriodMessage": "Are you sure you want to close {{period}}? This will snapshot the current VAT data.",
+      "filePeriodTitle": "File Period",
+      "filePeriodMessage": "Are you sure you want to mark {{period}} as filed? This action cannot be undone.",
+      "reopenPeriodTitle": "Reopen Period",
+      "reopenPeriodMessage": "Are you sure you want to reopen {{period}}? This will allow modifications."
+    },
+    "detail": {
+      "backToList": "Back to VAT Periods",
+      "outputBreakdown": "Output VAT Breakdown",
+      "inputBreakdown": "Input VAT Breakdown",
+      "specialItems": "Special Items",
+      "creditBroughtForward": "Credit Brought Forward",
+      "amountPayable": "Amount Payable",
+      "vatCollected": "VAT collected on sales",
+      "vatOnPurchases": "VAT on purchases (recoverable)",
+      "fromPreviousPeriod": "Credit carried forward",
+      "dueToAuthority": "Due to tax authority"
+    },
+    "specialItems": {
+      "title": "Special Items",
+      "timbreFiscalCount": "Timbre Fiscal Count",
+      "timbreFiscalAmount": "Timbre Fiscal Amount",
+      "retenueSourceAmount": "Retenue à la Source Amount",
+      "creditTvaPrevious": "Previous TVA Credit",
+      "euAcquisitionsVat": "EU Acquisitions VAT"
+    }
   }
 }

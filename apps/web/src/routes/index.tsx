@@ -133,6 +133,10 @@ const JournalEntryListPage = lazy(() => import('../features/finance/pages/Journa
 const JournalEntryForm = lazy(() => import('../features/finance/pages/JournalEntryForm').then((m) => ({ default: m.JournalEntryForm })))
 const JournalEntryDetailPage = lazy(() => import('../features/finance/pages/JournalEntryDetailPage').then((m) => ({ default: m.JournalEntryDetailPage })))
 
+// VAT Reporting module
+const VatPeriodsPage = lazy(() => import('../features/vat-reporting/pages/VatPeriodsPage').then((m) => ({ default: m.VatPeriodsPage })))
+const VatReportPage = lazy(() => import('../features/vat-reporting/pages/VatReportPage').then((m) => ({ default: m.VatReportPage })))
+
 // Pricing module
 const PriceListListPage = lazy(() => import('../features/pricing/PriceListListPage').then((m) => ({ default: m.PriceListListPage })))
 const PriceListDetailPage = lazy(() => import('../features/pricing/PriceListDetailPage').then((m) => ({ default: m.PriceListDetailPage })))
@@ -1487,6 +1491,26 @@ export function AppRoutes() {
               <RequirePermission permission="journal.view">
                 <SuspenseWrapper>
                   <JournalEntryDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="vat-periods"
+            element={
+              <RequirePermission moduleKey="reports">
+                <SuspenseWrapper>
+                  <VatPeriodsPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="vat-report/:id"
+            element={
+              <RequirePermission moduleKey="reports">
+                <SuspenseWrapper>
+                  <VatReportPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

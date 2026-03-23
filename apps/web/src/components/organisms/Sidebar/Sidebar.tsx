@@ -231,6 +231,7 @@ function buildNavigation(isOtospex: boolean): NavModule[] {
         { key: 'balanceSheet', href: '/finance/balance-sheet', icon: PieChart, module: 'accounts' },
         { key: 'agedReceivables', href: '/finance/aged-receivables', icon: Clock, module: 'accounts' },
         { key: 'agedPayables', href: '/finance/aged-payables', icon: Clock, module: 'accounts' },
+        { key: 'vatReporting', href: '/finance/vat-periods', icon: Receipt, module: 'reports' },
       ],
     },
   ]

@@ -199,5 +199,78 @@
         "description": "Factures fournisseurs impayées par ancienneté"
       }
     }
+  },
+  "vatReporting": {
+    "title": "Déclaration de TVA",
+    "subtitle": "Gérer les périodes et déclarations de TVA",
+    "generatePeriods": "Générer les périodes",
+    "ytdOutput": "TVA collectée totale",
+    "ytdInput": "TVA déductible totale",
+    "ytdNet": "TVA nette due",
+    "ytdCredit": "Crédit reporté",
+    "total": "Total",
+    "liveData": "Les montants des périodes ouvertes sont calculés en temps réel et peuvent changer.",
+    "confirmClose": "Êtes-vous sûr de vouloir clôturer cette période ? Les données TVA actuelles seront figées.",
+    "confirmFile": "Êtes-vous sûr de vouloir marquer cette période comme déclarée ? Cette action est irréversible.",
+    "summary": {
+      "outputVat": "TVA collectée",
+      "inputVat": "TVA déductible",
+      "creditBroughtForward": "Crédit reporté",
+      "amountPayable": "Montant à payer"
+    },
+    "columns": {
+      "period": "Période",
+      "dateRange": "Plage de dates",
+      "outputVat": "TVA collectée",
+      "inputVat": "TVA déductible",
+      "netDue": "Net dû",
+      "status": "Statut",
+      "actions": "Actions",
+      "rate": "Taux (%)",
+      "baseAmount": "Base (HT)",
+      "vatAmount": "Montant TVA",
+      "documentCount": "Documents",
+      "recoverable": "Récupérable",
+      "yes": "Oui",
+      "no": "Non"
+    },
+    "status": {
+      "open": "Ouverte",
+      "closed": "Clôturée",
+      "filed": "Déclarée"
+    },
+    "actions": {
+      "view": "Voir",
+      "close": "Clôturer",
+      "reopen": "Rouvrir",
+      "file": "Déclarer",
+      "export": "Exporter",
+      "closePeriodTitle": "Clôturer la période",
+      "closePeriodMessage": "Êtes-vous sûr de vouloir clôturer {{period}} ? Les données TVA actuelles seront figées.",
+      "filePeriodTitle": "Déclarer la période",
+      "filePeriodMessage": "Êtes-vous sûr de vouloir marquer {{period}} comme déclarée ? Cette action est irréversible.",
+      "reopenPeriodTitle": "Rouvrir la période",
+      "reopenPeriodMessage": "Êtes-vous sûr de vouloir rouvrir {{period}} ? Cela permettra des modifications."
+    },
+    "detail": {
+      "backToList": "Retour aux périodes de TVA",
+      "outputBreakdown": "Détail TVA collectée",
+      "inputBreakdown": "Détail TVA déductible",
+      "specialItems": "Éléments spéciaux",
+      "creditBroughtForward": "Crédit reporté",
+      "amountPayable": "Montant à payer",
+      "vatCollected": "TVA collectée sur les ventes",
+      "vatOnPurchases": "TVA sur les achats (récupérable)",
+      "fromPreviousPeriod": "Crédit reporté",
+      "dueToAuthority": "Dû à l'administration fiscale"
+    },
+    "specialItems": {
+      "title": "Éléments spéciaux",
+      "timbreFiscalCount": "Nombre de timbres fiscaux",
+      "timbreFiscalAmount": "Montant des timbres fiscaux",
+      "retenueSourceAmount": "Montant de retenue à la source",
+      "creditTvaPrevious": "Crédit TVA précédent",
+      "euAcquisitionsVat": "TVA acquisitions UE"
+    }
   }
 }
