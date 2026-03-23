@@ -44,7 +44,7 @@ export function QuickActions({
   ];
 
   return (
-    <div className="flex gap-2 overflow-x-auto px-4 py-2">
+    <div className="flex gap-1.5 overflow-x-auto px-2 py-1">
       {actions.map((action) => {
         const Icon = action.icon;
         return (
@@ -53,7 +53,7 @@ export function QuickActions({
             onClick={action.onClick}
             disabled={action.disabled}
             className={cn(
-              'relative flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100',
+              'relative flex min-h-[36px] flex-1 items-center justify-center gap-1.5 rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100',
               action.disabled && 'cursor-not-allowed opacity-50',
             )}
           >

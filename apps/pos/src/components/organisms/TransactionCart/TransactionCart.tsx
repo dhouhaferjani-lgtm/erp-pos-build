@@ -96,7 +96,7 @@ export function TransactionCart({
       )}
 
       {/* Cart items */}
-      <div className="flex-1 overflow-y-auto px-3 py-1">
+      <div className="flex-1 overflow-y-auto px-2 py-0.5">
         {items.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center text-gray-600">
             <ShoppingCart className="mb-3 h-12 w-12" />
@@ -104,7 +104,7 @@ export function TransactionCart({
             <p className="mt-1 text-sm">{t('cart.addProducts')}</p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y divide-gray-200">
             {items.map((item) => (
               <CartLineItem
                 key={item.id}

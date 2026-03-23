@@ -35,15 +35,15 @@ export function PaymentSummary({
   const hasMultipleMethods = paymentMethods.filter((m) => m.is_active).length >= 2;
 
   return (
-    <div className="space-y-2 border-t border-gray-200 pt-2">
+    <div className="space-y-1 border-t border-gray-200 pt-1.5">
       {/* Subtotal */}
-      <div className="flex justify-between text-sm text-gray-700">
+      <div className="flex justify-between text-xs text-gray-700">
         <span>{t('common:subtotal')}</span>
         <span>{format(subtotal)}</span>
       </div>
 
       {/* Tax */}
-      <div className="flex justify-between text-sm text-gray-700">
+      <div className="flex justify-between text-xs text-gray-700">
         <span>{t('common:tax')}</span>
         <span>{format(taxAmount)}</span>
       </div>
@@ -80,9 +80,9 @@ export function PaymentSummary({
         <button
           onClick={onPayCash}
           disabled={disabled}
-          className="flex flex-[3] items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-3 text-base font-semibold text-white transition-colors hover:bg-green-700 active:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex flex-[3] items-center justify-center gap-2 rounded-lg bg-green-600 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-green-700 active:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <Banknote className="h-6 w-6" />
+          <Banknote className="h-5 w-5" />
           {t('pos:payment.cashPayment')}
         </button>
 
@@ -90,9 +90,9 @@ export function PaymentSummary({
           <button
             onClick={onAdvancedPayments}
             disabled={disabled}
-            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-3 text-base font-semibold text-white transition-colors hover:bg-primary-700 active:bg-primary-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary-600 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-700 active:bg-primary-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Wallet className="h-6 w-6" />
+            <Wallet className="h-5 w-5" />
             {t('pos:payment.advancedPayments')}
           </button>
         )}
