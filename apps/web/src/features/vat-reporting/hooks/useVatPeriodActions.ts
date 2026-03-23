@@ -1,9 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { generateVatPeriods, closeVatPeriod, reopenVatPeriod, fileVatPeriod } from '../api'
 import { getErrorMessage } from '@/lib/api'
 
 export function useVatPeriodActions() {
+  const { t } = useTranslation(['finance'])
   const queryClient = useQueryClient()
 
   const invalidate = () => {
@@ -14,7 +16,7 @@ export function useVatPeriodActions() {
     mutationFn: (year: number) => generateVatPeriods(year),
     onSuccess: () => {
       invalidate()
-      toast.success('VAT periods generated successfully')
+      toast.success(t('finance:vatReporting.toast.generated'))
     },
     onError: (error) => {
       toast.error(getErrorMessage(error))
@@ -26,7 +28,7 @@ export function useVatPeriodActions() {
     onSuccess: () => {
       invalidate()
       void queryClient.invalidateQueries({ queryKey: ['vat-report'] })
-      toast.success('VAT period closed successfully')
+      toast.success(t('finance:vatReporting.toast.closed'))
     },
     onError: (error) => {
       toast.error(getErrorMessage(error))
@@ -37,7 +39,7 @@ export function useVatPeriodActions() {
     mutationFn: (id: string) => reopenVatPeriod(id),
     onSuccess: () => {
       invalidate()
-      toast.success('VAT period reopened successfully')
+      toast.success(t('finance:vatReporting.toast.reopened'))
     },
     onError: (error) => {
       toast.error(getErrorMessage(error))
@@ -49,7 +51,7 @@ export function useVatPeriodActions() {
       fileVatPeriod(id, filingReference),
     onSuccess: () => {
       invalidate()
-      toast.success('VAT period marked as filed')
+      toast.success(t('finance:vatReporting.toast.filed'))
     },
     onError: (error) => {
       toast.error(getErrorMessage(error))

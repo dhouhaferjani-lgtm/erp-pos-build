@@ -271,6 +271,13 @@
       "retenueSourceAmount": "Retenue à la Source Amount",
       "creditTvaPrevious": "Previous TVA Credit",
       "euAcquisitionsVat": "EU Acquisitions VAT"
+    },
+    "toast": {
+      "generated": "VAT periods generated successfully",
+      "closed": "VAT period closed successfully",
+      "reopened": "VAT period reopened successfully",
+      "filed": "VAT period marked as filed",
+      "exported": "Export downloaded successfully"
     }
   }
 }

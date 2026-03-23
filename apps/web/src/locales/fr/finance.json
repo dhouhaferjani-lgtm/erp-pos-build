@@ -271,6 +271,13 @@
       "retenueSourceAmount": "Montant de retenue à la source",
       "creditTvaPrevious": "Crédit TVA précédent",
       "euAcquisitionsVat": "TVA acquisitions UE"
+    },
+    "toast": {
+      "generated": "Périodes de TVA générées avec succès",
+      "closed": "Période de TVA clôturée avec succès",
+      "reopened": "Période de TVA rouverte avec succès",
+      "filed": "Période de TVA marquée comme déclarée",
+      "exported": "Export téléchargé avec succès"
     }
   }
 }

@@ -20,11 +20,14 @@ function computeYtdTotals(periods: VatPeriod[]) {
     totalInput += parseFloat(period.total_input_vat ?? '0')
   }
 
-  // Use the last period's credit/payable as the running total
+  // Use the most recent period's credit/payable as the running total.
+  // Periods are ordered by period_start DESC, so index 0 is the latest.
   if (periods.length > 0) {
-    const lastPeriod = periods[periods.length - 1]
-    creditCarried = lastPeriod.credit_carried_forward
-    amountPayable = lastPeriod.amount_payable
+    const latestPeriod = periods.reduce((latest, p) =>
+      p.period_end > latest.period_end ? p : latest
+    , periods[0])
+    creditCarried = latestPeriod.credit_carried_forward
+    amountPayable = latestPeriod.amount_payable
   }
 
   return {

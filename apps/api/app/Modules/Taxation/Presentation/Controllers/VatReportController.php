@@ -7,12 +7,16 @@ namespace App\Modules\Taxation\Presentation\Controllers;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Taxation\Application\Services\VatExportService;
 use App\Modules\Taxation\Application\Services\VatReportGenerationService;
+use App\Modules\Taxation\Domain\DTOs\VatAggregation;
+use App\Modules\Taxation\Domain\DTOs\VatSummary;
 use App\Modules\Taxation\Domain\Entities\VatPeriod;
+use App\Modules\Taxation\Domain\Enums\VatDirection;
 use App\Modules\Taxation\Domain\Enums\VatExportFormat;
 use App\Modules\Taxation\Presentation\Requests\VatReportRequest;
 use App\Modules\Taxation\Presentation\Resources\VatSummaryResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class VatReportController extends Controller
 {
@@ -41,22 +45,75 @@ class VatReportController extends Controller
 
     /**
      * Get VAT summary for a specific period.
+     *
+     * For OPEN periods, re-queries the database for live data.
+     * For CLOSED/FILED periods, returns the persisted snapshot.
      */
     public function periodSummary(string $periodId): JsonResponse
     {
         $company = $this->companyContext->requireCompany();
         $period = VatPeriod::query()->forCompany($company->id)->findOrFail($periodId);
 
-        $summaryData = $this->reportGenerationService->generateSummary(
-            $company->id,
-            $company->country_code,
-            $period->period_start->toDateString(),
-            $period->period_end->toDateString(),
-            $period->credit_brought_forward,
-        );
+        if ($period->isOpen()) {
+            $summaryData = $this->reportGenerationService->generateSummary(
+                $company->id,
+                $company->country_code,
+                $period->period_start->toDateString(),
+                $period->period_end->toDateString(),
+                $period->credit_brought_forward,
+            );
+
+            return response()->json([
+                'data' => $summaryData->toArray(),
+            ]);
+        }
+
+        // CLOSED/FILED: return persisted snapshot data
+        $period->load('breakdowns');
+
+        $outputBreakdowns = [];
+        $inputBreakdowns = [];
+        $outputBase = '0.000';
+        $inputBase = '0.000';
+
+        foreach ($period->breakdowns as $breakdown) {
+            $row = [
+                'rate' => $breakdown->tax_rate,
+                'base_amount' => $breakdown->base_amount,
+                'vat_amount' => $breakdown->vat_amount,
+                'document_count' => $breakdown->document_count,
+                'is_recoverable' => $breakdown->is_recoverable,
+                'direction' => $breakdown->direction->value,
+            ];
+
+            if ($breakdown->direction === VatDirection::Output) {
+                $outputBreakdowns[] = $row;
+                $outputBase = bcadd($outputBase, $breakdown->base_amount, 3);
+            } else {
+                $inputBreakdowns[] = $row;
+                $inputBase = bcadd($inputBase, $breakdown->base_amount, 3);
+            }
+        }
 
         return response()->json([
-            'data' => $summaryData->toArray(),
+            'data' => [
+                'output_vat' => [
+                    'total_base' => $outputBase,
+                    'total_vat' => $period->total_output_vat ?? '0.000',
+                    'breakdowns' => $outputBreakdowns,
+                ],
+                'input_vat' => [
+                    'total_base' => $inputBase,
+                    'total_vat' => $period->total_input_vat ?? '0.000',
+                    'breakdowns' => $inputBreakdowns,
+                ],
+                'net_vat' => $period->net_vat ?? '0.000',
+                'credit_brought_forward' => $period->credit_brought_forward,
+                'credit_carried_forward' => $period->credit_carried_forward,
+                'amount_payable' => $period->amount_payable,
+                'special_items' => $period->special_items ?? [],
+                'declaration' => $period->declaration_data ?? [],
+            ],
         ]);
     }
 
@@ -87,7 +144,7 @@ class VatReportController extends Controller
     /**
      * Export VAT report in a specific format.
      */
-    public function export(string $periodId, string $format): JsonResponse
+    public function export(string $periodId, string $format): StreamedResponse|JsonResponse
     {
         $company = $this->companyContext->requireCompany();
         $period = VatPeriod::query()->forCompany($company->id)->findOrFail($periodId);
@@ -105,14 +162,49 @@ class VatReportController extends Controller
             ], 422);
         }
 
-        // Return export metadata; actual file generation handled by export service
-        return response()->json([
-            'data' => [
-                'format' => $exportFormat->value,
-                'filename' => $this->exportService->getFilename($exportFormat, $period),
-                'content_type' => $this->exportService->getContentType($exportFormat),
-                'period_label' => $period->label,
-            ],
-        ]);
+        // Generate summary data for the period
+        $summaryData = $this->reportGenerationService->generateSummary(
+            $company->id,
+            $company->country_code,
+            $period->period_start->toDateString(),
+            $period->period_end->toDateString(),
+            $period->credit_brought_forward,
+        );
+
+        // Build domain objects for the exporter
+        $strategy = $this->reportGenerationService->resolveStrategy($company->country_code);
+
+        $vatSummary = new VatSummary(
+            outputBreakdowns: array_map(
+                static fn (array $b): VatAggregation => new VatAggregation(
+                    direction: (string) ($b['direction'] ?? 'OUTPUT'),
+                    taxRate: (string) $b['tax_rate'],
+                    baseAmount: (string) $b['base_amount'],
+                    vatAmount: (string) $b['vat_amount'],
+                    documentCount: (int) $b['document_count'],
+                    isRecoverable: (bool) ($b['is_recoverable'] ?? false),
+                    taxConfigurationId: isset($b['tax_configuration_id']) ? (string) $b['tax_configuration_id'] : null,
+                ),
+                $summaryData->outputVat['breakdowns'],
+            ),
+            inputBreakdowns: array_map(
+                static fn (array $b): VatAggregation => new VatAggregation(
+                    direction: (string) ($b['direction'] ?? 'INPUT'),
+                    taxRate: (string) $b['tax_rate'],
+                    baseAmount: (string) $b['base_amount'],
+                    vatAmount: (string) $b['vat_amount'],
+                    documentCount: (int) $b['document_count'],
+                    isRecoverable: (bool) ($b['is_recoverable'] ?? true),
+                    taxConfigurationId: isset($b['tax_configuration_id']) ? (string) $b['tax_configuration_id'] : null,
+                ),
+                $summaryData->inputVat['breakdowns'],
+            ),
+            totalOutputVat: $summaryData->getTotalOutputVat(),
+            totalInputVat: $summaryData->getTotalInputVat(),
+        );
+
+        $declaration = $strategy->mapToDeclaration($vatSummary);
+
+        return $this->exportService->export($vatSummary, $declaration, $exportFormat, $period);
     }
 }
