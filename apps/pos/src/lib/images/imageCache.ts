@@ -154,58 +154,49 @@ export async function processDownloadQueue(db: Database): Promise<void> {
       await mkdir(imagesDir, { recursive: true });
     }
 
-    // Take a batch of up to 10 items
-    const batch = Array.from(downloadQueue.entries()).slice(0, 10);
+    // Process all queued items in batches of 10 (concurrent within each batch)
+    while (downloadQueue.size > 0) {
+      const batch = Array.from(downloadQueue.entries()).slice(0, 10);
 
-    for (const [productId, item] of batch) {
-      try {
-        // Determine file extension from URL
-        const ext = getExtensionFromUrl(item.remoteUrl) || 'jpg';
-        const fileName = `${productId}.${ext}`;
-        const filePath = `${imagesDir}/${fileName}`;
+      await Promise.allSettled(batch.map(async ([productId, item]) => {
+        try {
+          const ext = getExtensionFromUrl(item.remoteUrl) || 'jpg';
+          const fileName = `${productId}.${ext}`;
+          const filePath = `${imagesDir}/${fileName}`;
 
-        // Download the image
-        const response = await fetch(item.remoteUrl);
-        if (!response.ok) {
-          downloadQueue.delete(productId);
-          continue;
-        }
-
-        const arrayBuffer = await response.arrayBuffer();
-        const data = new Uint8Array(arrayBuffer);
-
-        // Write to filesystem
-        await writeFile(filePath, data);
-
-        // Get the etag if available
-        const etag = response.headers.get('etag');
-
-        // Update SQLite manifest
-        await db.execute(
-          `INSERT OR REPLACE INTO product_images (product_id, remote_url, local_path, etag, downloaded_at)
-           VALUES (?, ?, ?, ?, ?)`,
-          [productId, item.remoteUrl, filePath, etag, new Date().toISOString()],
-        );
-
-        // Update in-memory map
-        const assetUrl = convertFileSrc(filePath);
-        imageMap.set(productId, assetUrl);
-
-        // Notify callbacks — snapshot first to prevent splice interference
-        const snapshot = [...item.callbacks];
-        for (const cb of snapshot) {
-          try {
-            cb(assetUrl);
-          } catch {
-            // Callback errors are non-critical
+          const response = await fetch(item.remoteUrl);
+          if (!response.ok) {
+            downloadQueue.delete(productId);
+            return;
           }
-        }
 
-        downloadQueue.delete(productId);
-      } catch {
-        // Single image failure: remove from queue, continue with others
-        downloadQueue.delete(productId);
-      }
+          const arrayBuffer = await response.arrayBuffer();
+          const data = new Uint8Array(arrayBuffer);
+
+          await writeFile(filePath, data);
+
+          const etag = response.headers.get('etag');
+
+          await db.execute(
+            `INSERT OR REPLACE INTO product_images (product_id, remote_url, local_path, etag, downloaded_at)
+             VALUES (?, ?, ?, ?, ?)`,
+            [productId, item.remoteUrl, filePath, etag, new Date().toISOString()],
+          );
+
+          const assetUrl = convertFileSrc(filePath);
+          imageMap.set(productId, assetUrl);
+
+          // Notify callbacks — snapshot to prevent splice interference
+          const snapshot = [...item.callbacks];
+          for (const cb of snapshot) {
+            try { cb(assetUrl); } catch { /* non-critical */ }
+          }
+
+          downloadQueue.delete(productId);
+        } catch {
+          downloadQueue.delete(productId);
+        }
+      }));
     }
   } finally {
     isProcessing = false;

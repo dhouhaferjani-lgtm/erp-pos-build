@@ -85,6 +85,12 @@ async function seedOfflineHashChain(terminalId: string): Promise<void> {
     await pullTerminalState(db, terminalId);
     await pullZChainState(db, terminalId);
 
+    // Hydrate in-memory image cache from SQLite manifest
+    try {
+      const { initImageCache } = await import('@/lib/images/imageCache');
+      await initImageCache(db);
+    } catch { /* image caching is non-critical */ }
+
     // Start the background sync scheduler
     const scheduler = new SyncScheduler(db, terminalId);
     useSyncStore.getState().setScheduler(scheduler);

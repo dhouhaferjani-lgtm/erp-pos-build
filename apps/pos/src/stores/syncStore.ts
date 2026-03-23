@@ -67,7 +67,8 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
   triggerSync: () => {
     const { scheduler, isSyncing } = get();
     if (!scheduler || isSyncing) return;
-    set({ isSyncing: true });
+    // Don't set isSyncing here — tick() handles it via startSync().
+    // Setting it here would cause tick() to bail out at its own isSyncing guard.
     scheduler.syncNow().catch(() => {
       // syncNow errors are handled inside tick(), this is just for safety
     });
