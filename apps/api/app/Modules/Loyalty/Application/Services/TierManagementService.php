@@ -102,27 +102,31 @@ final readonly class TierManagementService
 
             $enrollment = $this->enrollmentRepository->save($enrollment);
 
-            // Dispatch appropriate event
+            // Dispatch appropriate event after transaction commits
             if ($isUpgrade) {
-                event(new TierUpgradedV2(
-                    enrollmentId: $enrollment->id,
-                    memberId: $enrollment->member_id,
-                    programId: $enrollment->program_id,
-                    previousTierId: $previousTierId,
-                    newTierId: $calculatedTier->id,
-                    newTierName: $calculatedTier->name,
-                    upgradedAt: $enrollment->tier_changed_at?->toIso8601String() ?? now()->toIso8601String(),
-                ));
+                DB::afterCommit(function () use ($enrollment, $previousTierId, $calculatedTier) {
+                    event(new TierUpgradedV2(
+                        enrollmentId: $enrollment->id,
+                        memberId: $enrollment->member_id,
+                        programId: $enrollment->program_id,
+                        previousTierId: $previousTierId,
+                        newTierId: $calculatedTier->id,
+                        newTierName: $calculatedTier->name,
+                        upgradedAt: $enrollment->tier_changed_at?->toIso8601String() ?? now()->toIso8601String(),
+                    ));
+                });
             } else {
-                event(new TierDowngradedV2(
-                    enrollmentId: $enrollment->id,
-                    memberId: $enrollment->member_id,
-                    programId: $enrollment->program_id,
-                    previousTierId: $previousTierId,
-                    newTierId: $calculatedTier->id,
-                    newTierName: $calculatedTier->name,
-                    downgradedAt: $enrollment->tier_changed_at?->toIso8601String() ?? now()->toIso8601String(),
-                ));
+                DB::afterCommit(function () use ($enrollment, $previousTierId, $calculatedTier) {
+                    event(new TierDowngradedV2(
+                        enrollmentId: $enrollment->id,
+                        memberId: $enrollment->member_id,
+                        programId: $enrollment->program_id,
+                        previousTierId: $previousTierId,
+                        newTierId: $calculatedTier->id,
+                        newTierName: $calculatedTier->name,
+                        downgradedAt: $enrollment->tier_changed_at?->toIso8601String() ?? now()->toIso8601String(),
+                    ));
+                });
             }
 
             return [
@@ -244,27 +248,31 @@ final readonly class TierManagementService
 
             $enrollment = $this->enrollmentRepository->save($enrollment);
 
-            // Dispatch appropriate event
+            // Dispatch appropriate event after transaction commits
             if ($isUpgrade) {
-                event(new TierUpgradedV2(
-                    enrollmentId: $enrollment->id,
-                    memberId: $enrollment->member_id,
-                    programId: $enrollment->program_id,
-                    previousTierId: $previousTierId,
-                    newTierId: $tier->id,
-                    newTierName: $tier->name,
-                    upgradedAt: $enrollment->tier_changed_at?->toIso8601String() ?? now()->toIso8601String(),
-                ));
+                DB::afterCommit(function () use ($enrollment, $previousTierId, $tier) {
+                    event(new TierUpgradedV2(
+                        enrollmentId: $enrollment->id,
+                        memberId: $enrollment->member_id,
+                        programId: $enrollment->program_id,
+                        previousTierId: $previousTierId,
+                        newTierId: $tier->id,
+                        newTierName: $tier->name,
+                        upgradedAt: $enrollment->tier_changed_at?->toIso8601String() ?? now()->toIso8601String(),
+                    ));
+                });
             } else {
-                event(new TierDowngradedV2(
-                    enrollmentId: $enrollment->id,
-                    memberId: $enrollment->member_id,
-                    programId: $enrollment->program_id,
-                    previousTierId: $previousTierId,
-                    newTierId: $tier->id,
-                    newTierName: $tier->name,
-                    downgradedAt: $enrollment->tier_changed_at?->toIso8601String() ?? now()->toIso8601String(),
-                ));
+                DB::afterCommit(function () use ($enrollment, $previousTierId, $tier) {
+                    event(new TierDowngradedV2(
+                        enrollmentId: $enrollment->id,
+                        memberId: $enrollment->member_id,
+                        programId: $enrollment->program_id,
+                        previousTierId: $previousTierId,
+                        newTierId: $tier->id,
+                        newTierName: $tier->name,
+                        downgradedAt: $enrollment->tier_changed_at?->toIso8601String() ?? now()->toIso8601String(),
+                    ));
+                });
             }
 
             return [

@@ -179,13 +179,15 @@ final readonly class ProgramManagementService
             $program->status = ProgramStatus::Active;
             $program = $this->programRepository->save($program);
 
-            // Dispatch event
-            event(new ProgramActivated(
-                programId: $program->id,
-                tenantId: $program->tenant_id,
-                programName: $program->name,
-                activatedAt: now()->toIso8601String(),
-            ));
+            // Dispatch event after transaction commits
+            DB::afterCommit(function () use ($program) {
+                event(new ProgramActivated(
+                    programId: $program->id,
+                    tenantId: $program->tenant_id,
+                    programName: $program->name,
+                    activatedAt: now()->toIso8601String(),
+                ));
+            });
 
             return LoyaltyProgramData::fromModel($program);
         });
@@ -212,13 +214,15 @@ final readonly class ProgramManagementService
             $program->status = ProgramStatus::Paused;
             $program = $this->programRepository->save($program);
 
-            // Dispatch event
-            event(new ProgramDeactivated(
-                programId: $program->id,
-                tenantId: $program->tenant_id,
-                programName: $program->name,
-                deactivatedAt: now()->toIso8601String(),
-            ));
+            // Dispatch event after transaction commits
+            DB::afterCommit(function () use ($program) {
+                event(new ProgramDeactivated(
+                    programId: $program->id,
+                    tenantId: $program->tenant_id,
+                    programName: $program->name,
+                    deactivatedAt: now()->toIso8601String(),
+                ));
+            });
 
             return LoyaltyProgramData::fromModel($program);
         });

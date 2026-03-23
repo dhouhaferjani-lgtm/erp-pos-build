@@ -80,23 +80,25 @@ final readonly class PointAdjustmentService
             $monetaryValue = $points;
             $program = $enrollment->program;
 
-            event(new LoyaltyAdjusted(
-                adjustmentId: $transaction->id,
-                enrollmentId: $enrollment->id,
-                tenantId: $adjustedBy->tenant_id,
-                companyId: $company->id,
-                partnerId: $enrollment->member_id,
-                programId: $enrollment->program_id,
-                adjustmentType: bccomp($points, '0', 3) >= 0 ? 'credit' : 'debit',
-                points: $points,
-                monetaryValue: $monetaryValue,
-                currency: $program->currency ?? 'EUR',
-                previousBalance: $balanceBefore,
-                newBalance: $balanceAfter,
-                adjustedBy: $adjustedBy->id,
-                adjustedAt: now()->toIso8601String(),
-                reason: $reason,
-            ));
+            DB::afterCommit(function () use ($transaction, $enrollment, $adjustedBy, $company, $points, $monetaryValue, $program, $balanceBefore, $balanceAfter, $reason) {
+                event(new LoyaltyAdjusted(
+                    adjustmentId: $transaction->id,
+                    enrollmentId: $enrollment->id,
+                    tenantId: $adjustedBy->tenant_id,
+                    companyId: $company->id,
+                    partnerId: $enrollment->member_id,
+                    programId: $enrollment->program_id,
+                    adjustmentType: bccomp($points, '0', 3) >= 0 ? 'credit' : 'debit',
+                    points: $points,
+                    monetaryValue: $monetaryValue,
+                    currency: $program->currency ?? 'EUR',
+                    previousBalance: $balanceBefore,
+                    newBalance: $balanceAfter,
+                    adjustedBy: $adjustedBy->id,
+                    adjustedAt: now()->toIso8601String(),
+                    reason: $reason,
+                ));
+            });
 
             return TransactionData::fromModel($transaction);
         });

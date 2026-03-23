@@ -103,16 +103,18 @@ final readonly class RedemptionProcessingService
 
             $enrollment = $this->enrollmentRepository->save($enrollment);
 
-            // Dispatch event
-            event(new RewardRedeemedV2(
-                transactionId: $transaction->id,
-                enrollmentId: $enrollment->id,
-                memberId: $enrollment->member_id,
-                programId: $enrollment->program_id,
-                rewardId: $reward->id,
-                pointsCost: $pointsRequired,
-                redeemedAt: $transaction->created_at->toIso8601String(),
-            ));
+            // Dispatch event after transaction commits
+            DB::afterCommit(function () use ($transaction, $enrollment, $reward, $pointsRequired) {
+                event(new RewardRedeemedV2(
+                    transactionId: $transaction->id,
+                    enrollmentId: $enrollment->id,
+                    memberId: $enrollment->member_id,
+                    programId: $enrollment->program_id,
+                    rewardId: $reward->id,
+                    pointsCost: $pointsRequired,
+                    redeemedAt: $transaction->created_at->toIso8601String(),
+                ));
+            });
 
             return TransactionData::fromModel($transaction);
         });
