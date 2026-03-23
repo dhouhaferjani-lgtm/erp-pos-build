@@ -33,57 +33,66 @@ class ProductImageService
         $this->validateFile($file);
         $this->enforceImageLimit($product);
 
-        return DB::transaction(function () use ($product, $file, $sortOrder) {
-            // Generate unique filename
-            $extension = $file->getClientOriginalExtension();
-            $filename = Str::uuid().'.'.$extension;
+        // Generate unique filename
+        $extension = $file->getClientOriginalExtension();
+        $filename = Str::uuid().'.'.$extension;
 
-            // Storage path: products/{tenant_id}/{product_id}/{filename}
-            $storagePath = sprintf(
-                'products/%s/%s/%s',
-                $product->tenant_id,
-                $product->id,
-                $filename
-            );
+        // Storage path: products/{tenant_id}/{product_id}/{filename}
+        $storagePath = sprintf(
+            'products/%s/%s/%s',
+            $product->tenant_id,
+            $product->id,
+            $filename
+        );
 
-            // Upload to S3 (MinIO)
-            $disk = Storage::disk('s3');
-            $disk->putFileAs(
-                dirname($storagePath),
-                $file,
-                basename($filename),
-                'private' // Default private
-            );
+        // Get image dimensions (must happen before transaction while temp file exists)
+        [$width, $height] = getimagesize($file->getRealPath()) ?: [null, null];
 
-            // Get image dimensions
-            [$width, $height] = getimagesize($file->getRealPath()) ?: [null, null];
+        // 1. Upload to S3 BEFORE the transaction
+        $disk = Storage::disk('s3');
+        $disk->putFileAs(
+            dirname($storagePath),
+            $file,
+            basename($filename),
+            'private' // Default private
+        );
 
-            // Create record
-            $image = ProductImage::create([
-                'tenant_id' => $product->tenant_id,
-                'product_id' => $product->id,
-                'filename' => $filename,
-                'original_filename' => $file->getClientOriginalName(),
-                'storage_path' => $storagePath,
-                'storage_disk' => 's3',
-                'mime_type' => $file->getMimeType(),
-                'file_size' => $file->getSize(),
-                'width' => $width,
-                'height' => $height,
-                'sort_order' => $sortOrder ?? $this->getNextSortOrder($product),
-                'is_primary' => $product->images()->count() === 0, // First image is primary
-                'uploaded_by' => auth()->id(),
-            ]);
+        try {
+            return DB::transaction(function () use ($product, $file, $filename, $storagePath, $sortOrder, $width, $height) {
+                // 2. Create DB record inside transaction
+                $image = ProductImage::create([
+                    'tenant_id' => $product->tenant_id,
+                    'product_id' => $product->id,
+                    'filename' => $filename,
+                    'original_filename' => $file->getClientOriginalName(),
+                    'storage_path' => $storagePath,
+                    'storage_disk' => 's3',
+                    'mime_type' => $file->getMimeType(),
+                    'file_size' => $file->getSize(),
+                    'width' => $width,
+                    'height' => $height,
+                    'sort_order' => $sortOrder ?? $this->getNextSortOrder($product),
+                    'is_primary' => $product->images()->count() === 0, // First image is primary
+                    'uploaded_by' => auth()->id(),
+                ]);
 
-            // Dispatch async WebP variant generation
-            GenerateImageVariants::dispatch(
-                $image->id,
-                $image->storage_path,
-                $image->storage_disk,
-            );
+                // 3. Dispatch variant generation only after commit succeeds
+                DB::afterCommit(function () use ($image): void {
+                    GenerateImageVariants::dispatch(
+                        $image->id,
+                        $image->storage_path,
+                        $image->storage_disk,
+                    );
+                });
 
-            return $image;
-        });
+                return $image;
+            });
+        } catch (\Throwable $e) {
+            // 4. Clean up orphaned S3 file if transaction failed
+            $disk->delete($storagePath);
+
+            throw $e;
+        }
     }
 
     /**
@@ -123,17 +132,12 @@ class ProductImageService
      */
     public function delete(ProductImage $image): void
     {
-        DB::transaction(function () use ($image) {
-            // Delete from storage
-            $disk = Storage::disk($image->storage_disk);
-            $disk->delete($image->storage_path);
+        // Capture file paths before the transaction (model may be gone after delete)
+        $storageDisk = $image->storage_disk;
+        $storagePath = $image->storage_path;
+        $variantPaths = ImageVariantService::allVariantPaths($image->storage_path);
 
-            // Delete WebP variants
-            $variantPaths = ImageVariantService::allVariantPaths($image->storage_path);
-            foreach ($variantPaths as $variantPath) {
-                $disk->delete($variantPath);
-            }
-
+        DB::transaction(function () use ($image, $storageDisk, $storagePath, $variantPaths) {
             // If this was the primary image, set the next one as primary
             if ($image->is_primary) {
                 $nextImage = ProductImage::where('product_id', $image->product_id)
@@ -148,6 +152,16 @@ class ProductImageService
 
             // Soft delete
             $image->delete();
+
+            // Delete files from storage only after commit succeeds
+            DB::afterCommit(function () use ($storageDisk, $storagePath, $variantPaths): void {
+                $disk = Storage::disk($storageDisk);
+                $disk->delete($storagePath);
+
+                foreach ($variantPaths as $variantPath) {
+                    $disk->delete($variantPath);
+                }
+            });
         });
     }
 
