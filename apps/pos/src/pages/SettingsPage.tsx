@@ -15,6 +15,7 @@ import {
   isTauriEnvironment,
 } from '@/lib/printing';
 import type { PrinterInfo, PrinterConfig } from '@/lib/printing';
+import { applyFullscreen } from '@/lib/fullscreen';
 import { CashDrawerSettings } from '@/components/settings/CashDrawerSettings';
 import { ScannerSettings } from '@/components/settings/ScannerSettings';
 import { PrinterAdvancedSettings } from '@/components/settings/PrinterAdvancedSettings';
@@ -29,42 +30,6 @@ const TIMEOUT_PRESETS = [
   { value: 0, labelKey: 'settings.timeoutNever' },
 ] as const;
 
-async function toggleFullscreen(enabled: boolean): Promise<void> {
-  try {
-    if (isTauriEnvironment()) {
-      const { getCurrentWindow, currentMonitor } = await import('@tauri-apps/api/window');
-      const { LogicalPosition, LogicalSize } = await import('@tauri-apps/api/dpi');
-      const win = getCurrentWindow();
-      if (enabled) {
-        const monitor = await currentMonitor();
-        await win.setDecorations(false);
-        await win.setSkipTaskbar(true);
-        await win.setAlwaysOnTop(true);
-        if (monitor) {
-          const pos = monitor.position;
-          const size = monitor.size;
-          await win.setPosition(new LogicalPosition(pos.x, pos.y));
-          await win.setSize(new LogicalSize(size.width / monitor.scaleFactor, size.height / monitor.scaleFactor));
-        } else {
-          await win.setFullscreen(true);
-        }
-      } else {
-        await win.setAlwaysOnTop(false);
-        await win.setSkipTaskbar(false);
-        await win.setFullscreen(false);
-        await win.setDecorations(true);
-        await win.setSize(new LogicalSize(1280, 800));
-        await win.center();
-      }
-    } else if (enabled) {
-      await document.documentElement.requestFullscreen?.();
-    } else if (document.fullscreenElement) {
-      await document.exitFullscreen?.();
-    }
-  } catch {
-    // Fullscreen may be blocked by browser policy — ignore
-  }
-}
 
 export function SettingsPage() {
   const { t } = useTranslation('pos');
@@ -286,7 +251,7 @@ export function SettingsPage() {
                   onClick={() => {
                     const next = !fullscreen;
                     setFullscreen(next);
-                    void toggleFullscreen(next);
+                    void applyFullscreen(next);
                   }}
                   className={cn(
                     'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',

@@ -5,7 +5,7 @@ import { ArrowLeftRight, BarChart3, Lock, LogOut, Minimize2, Settings } from 'lu
 import { useAuthStore } from '@/stores/authStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { isTauriEnvironment } from '@/lib/printing';
+import { applyFullscreen } from '@/lib/fullscreen';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useCartStore } from '@/stores/cartStore';
 import { usePaymentStore } from '@/stores/paymentStore';
@@ -101,22 +101,8 @@ export function Header() {
   };
 
   const handleExitFullscreen = async () => {
-    try {
-      if (isTauriEnvironment()) {
-        const { getCurrentWindow } = await import('@tauri-apps/api/window');
-        const { LogicalSize } = await import('@tauri-apps/api/dpi');
-        const win = getCurrentWindow();
-        await win.setAlwaysOnTop(false);
-        await win.setSkipTaskbar(false);
-        await win.setFullscreen(false);
-        await win.setDecorations(true);
-        await win.setSize(new LogicalSize(1280, 800));
-        await win.center();
-      }
-      useSettingsStore.getState().setFullscreen(false);
-    } catch {
-      // ignore
-    }
+    useSettingsStore.getState().setFullscreen(false);
+    await applyFullscreen(false);
   };
 
   function handleSwitchOperator() {

@@ -7,8 +7,8 @@ use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use std::time::Duration;
 
-use windows::core::PCWSTR;
-use windows::Win32::Foundation::HANDLE;
+use windows::core::{PCWSTR, PWSTR};
+use windows::Win32::Foundation::{BOOL, HANDLE};
 use windows::Win32::Graphics::Printing::{
     ClosePrinter, EnumPrintersW, OpenPrinterW, StartDocPrinterW, StartPagePrinter,
     WritePrinter, EndPagePrinter, EndDocPrinter,
@@ -152,7 +152,7 @@ fn send_blocking(printer_name: &str, data: &[u8]) -> Result<(), PrintError> {
     let wide_name = to_wide(printer_name);
 
     let defaults = PRINTER_DEFAULTSW {
-        pDatatype: PCWSTR::null(),
+        pDatatype: PWSTR::null(),
         pDevMode: std::ptr::null_mut(),
         DesiredAccess: PRINTER_ACCESS_USE,
     };
@@ -170,13 +170,13 @@ fn send_blocking(printer_name: &str, data: &[u8]) -> Result<(), PrintError> {
 
     let printer = PrinterHandle(handle);
 
-    let doc_name = to_wide("POS Receipt");
-    let datatype = to_wide("RAW");
+    let mut doc_name = to_wide("POS Receipt");
+    let mut datatype = to_wide("RAW");
 
     let mut doc_info = DOC_INFO_1W {
-        pDocName: PCWSTR(doc_name.as_ptr()),
-        pOutputFile: PCWSTR::null(),
-        pDatatype: PCWSTR(datatype.as_ptr()),
+        pDocName: PWSTR(doc_name.as_mut_ptr()),
+        pOutputFile: PWSTR::null(),
+        pDatatype: PWSTR(datatype.as_mut_ptr()),
     };
 
     unsafe {
@@ -187,17 +187,21 @@ fn send_blocking(printer_name: &str, data: &[u8]) -> Result<(), PrintError> {
             ));
         }
 
-        StartPagePrinter(printer.0)
-            .map_err(|e| PrintError::Windows(format!("StartPagePrinter failed: {}", e)))?;
+        let result: BOOL = StartPagePrinter(printer.0);
+        if !result.as_bool() {
+            return Err(PrintError::Windows("StartPagePrinter failed".to_string()));
+        }
 
         let mut bytes_written: u32 = 0;
-        WritePrinter(
+        let result: BOOL = WritePrinter(
             printer.0,
             data.as_ptr() as *const _,
             data.len() as u32,
             &mut bytes_written,
-        )
-        .map_err(|e| PrintError::Windows(format!("WritePrinter failed: {}", e)))?;
+        );
+        if !result.as_bool() {
+            return Err(PrintError::Windows("WritePrinter failed".to_string()));
+        }
 
         if (bytes_written as usize) != data.len() {
             log::warn!(
