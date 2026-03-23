@@ -10,6 +10,8 @@ use App\Modules\Taxation\Application\Services\TEJExportService;
 use App\Modules\Taxation\Application\Services\WithholdingCertificateService;
 use App\Modules\Taxation\Application\Services\WithholdingHashChainService;
 use App\Modules\Taxation\Domain\Repositories\SalesWithholdingTrackingRepositoryInterface;
+use App\Modules\Taxation\Domain\Repositories\VatDataRepositoryInterface;
+use App\Modules\Taxation\Domain\Repositories\VatPeriodRepositoryInterface;
 use App\Modules\Taxation\Domain\Repositories\WithholdingCertificateRepositoryInterface;
 use App\Modules\Taxation\Domain\Repositories\WithholdingTaxRuleRepositoryInterface;
 use App\Modules\Taxation\Domain\Services\StampDutyService;
@@ -17,6 +19,8 @@ use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Taxation\Domain\Services\TaxResolutionService;
 use App\Modules\Taxation\Domain\Services\WithholdingCalculationService;
 use App\Modules\Taxation\Infrastructure\Repositories\EloquentSalesWithholdingTrackingRepository;
+use App\Modules\Taxation\Infrastructure\Repositories\EloquentVatDataRepository;
+use App\Modules\Taxation\Infrastructure\Repositories\EloquentVatPeriodRepository;
 use App\Modules\Taxation\Infrastructure\Repositories\EloquentWithholdingCertificateRepository;
 use App\Modules\Taxation\Infrastructure\Repositories\EloquentWithholdingTaxRuleRepository;
 use Illuminate\Support\ServiceProvider;
@@ -44,6 +48,17 @@ class TaxationServiceProvider extends ServiceProvider
         $this->app->bind(
             SalesWithholdingTrackingRepositoryInterface::class,
             EloquentSalesWithholdingTrackingRepository::class
+        );
+
+        // Register VAT reporting repositories
+        $this->app->bind(
+            VatPeriodRepositoryInterface::class,
+            EloquentVatPeriodRepository::class
+        );
+
+        $this->app->bind(
+            VatDataRepositoryInterface::class,
+            EloquentVatDataRepository::class
         );
 
         // Register withholding tax services as singletons
