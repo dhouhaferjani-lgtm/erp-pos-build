@@ -556,9 +556,6 @@ export function HomePage() {
         isOpen={showAdvancedModal}
         onClose={() => setShowAdvancedModal(false)}
         total={total()}
-        subtotal={subtotal()}
-        taxAmount={taxAmount()}
-        itemCount={itemCount()}
         paymentMethods={paymentMethods}
         paymentRepositories={paymentRepositories}
         onComplete={handleAdvancedComplete}

@@ -64,9 +64,6 @@ export interface AdvancedPaymentsModalProps {
   isOpen: boolean;
   onClose: () => void;
   total: number;
-  subtotal: number;
-  taxAmount: number;
-  itemCount: number;
   paymentMethods: PaymentMethod[];
   paymentRepositories: PaymentRepository[];
   onComplete: (payments: AdvancedPaymentLine[]) => Promise<void>;
@@ -78,9 +75,6 @@ export function AdvancedPaymentsModal({
   isOpen,
   onClose,
   total,
-  subtotal: _subtotal,
-  taxAmount: _taxAmount,
-  itemCount: _itemCount,
   paymentMethods,
   paymentRepositories,
   onComplete,
