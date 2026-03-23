@@ -191,8 +191,9 @@ export async function processDownloadQueue(db: Database): Promise<void> {
         const assetUrl = convertFileSrc(filePath);
         imageMap.set(productId, assetUrl);
 
-        // Notify callbacks
-        for (const cb of item.callbacks) {
+        // Notify callbacks — snapshot first to prevent splice interference
+        const snapshot = [...item.callbacks];
+        for (const cb of snapshot) {
           try {
             cb(assetUrl);
           } catch {
@@ -218,8 +219,6 @@ export async function cleanupOrphanedImages(
   db: Database,
   currentProductIds: string[],
 ): Promise<void> {
-  if (currentProductIds.length === 0) return;
-
   try {
     let remove: ((path: string) => Promise<void>) | null = null;
     try {
@@ -229,12 +228,20 @@ export async function cleanupOrphanedImages(
       return;
     }
 
-    // Find orphaned entries
-    const placeholders = currentProductIds.map(() => '?').join(',');
-    const orphaned = await db.select<ImageManifestEntry[]>(
-      `SELECT product_id, local_path FROM product_images WHERE product_id NOT IN (${placeholders})`,
-      currentProductIds,
-    );
+    let orphaned: ImageManifestEntry[];
+    if (currentProductIds.length === 0) {
+      // No products at all — every cached image is orphaned
+      orphaned = await db.select<ImageManifestEntry[]>(
+        'SELECT product_id, local_path FROM product_images',
+      );
+    } else {
+      // Find entries whose product_id is not in the current list
+      const placeholders = currentProductIds.map(() => '?').join(',');
+      orphaned = await db.select<ImageManifestEntry[]>(
+        `SELECT product_id, local_path FROM product_images WHERE product_id NOT IN (${placeholders})`,
+        currentProductIds,
+      );
+    }
 
     for (const entry of orphaned) {
       try {
@@ -246,13 +253,18 @@ export async function cleanupOrphanedImages(
     }
 
     if (orphaned.length > 0) {
-      await db.execute(
-        `DELETE FROM product_images WHERE product_id NOT IN (${placeholders})`,
-        currentProductIds,
-      );
+      if (currentProductIds.length === 0) {
+        await db.execute('DELETE FROM product_images');
+      } else {
+        const placeholders = currentProductIds.map(() => '?').join(',');
+        await db.execute(
+          `DELETE FROM product_images WHERE product_id NOT IN (${placeholders})`,
+          currentProductIds,
+        );
+      }
     }
-  } catch {
-    // Non-critical cleanup
+  } catch (error) {
+    console.error('[imageCache] cleanup failed:', error);
   }
 }
 

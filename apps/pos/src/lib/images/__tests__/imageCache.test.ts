@@ -22,6 +22,7 @@ import {
   enqueueDownload,
   getDownloadQueueSize,
   processDownloadQueue,
+  cleanupOrphanedImages,
   _resetForTesting,
 } from '../imageCache';
 
@@ -170,6 +171,56 @@ describe('imageCache', () => {
       expect(getDownloadQueueSize()).toBe(0);
 
       vi.restoreAllMocks();
+    });
+  });
+
+  describe('cleanupOrphanedImages', () => {
+    it('removes entries not in current product list', async () => {
+      vi.mocked(db.select as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { product_id: 'old1', local_path: '/data/images/old1.jpg' },
+        { product_id: 'old2', local_path: '/data/images/old2.png' },
+      ]);
+
+      await cleanupOrphanedImages(db, ['p1', 'p2']);
+
+      // Should query for orphaned entries excluding current products
+      expect(db.select).toHaveBeenCalledWith(
+        expect.stringContaining('WHERE product_id NOT IN'),
+        ['p1', 'p2'],
+      );
+
+      // Should delete orphaned files via remove
+      const { remove } = await import('@tauri-apps/plugin-fs');
+      expect(remove).toHaveBeenCalledWith('/data/images/old1.jpg');
+      expect(remove).toHaveBeenCalledWith('/data/images/old2.png');
+
+      // Should delete from DB
+      expect(db.execute).toHaveBeenCalledWith(
+        expect.stringContaining('DELETE FROM product_images WHERE product_id NOT IN'),
+        ['p1', 'p2'],
+      );
+    });
+
+    it('removes all entries when product list is empty', async () => {
+      vi.mocked(db.select as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { product_id: 'p1', local_path: '/data/images/p1.jpg' },
+        { product_id: 'p2', local_path: '/data/images/p2.png' },
+      ]);
+
+      await cleanupOrphanedImages(db, []);
+
+      // Should select ALL cached images (no WHERE clause)
+      expect(db.select).toHaveBeenCalledWith(
+        'SELECT product_id, local_path FROM product_images',
+      );
+
+      // Should delete all files
+      const { remove } = await import('@tauri-apps/plugin-fs');
+      expect(remove).toHaveBeenCalledWith('/data/images/p1.jpg');
+      expect(remove).toHaveBeenCalledWith('/data/images/p2.png');
+
+      // Should delete all rows from DB
+      expect(db.execute).toHaveBeenCalledWith('DELETE FROM product_images');
     });
   });
 });

@@ -39,17 +39,17 @@ app/Modules/Taxation/
 │   │   ├── VatPeriodType.php                # MONTHLY, QUARTERLY, ANNUAL
 │   │   ├── VatDirection.php                 # OUTPUT, INPUT
 │   │   └── VatExportFormat.php              # PDF, CSV, FEC, MTD_JSON, TEIF_XML
-│   ├── Repositories/
-│   │   └── VatPeriodRepositoryInterface.php
 │   ├── Contracts/
 │   │   ├── VatReportStrategyInterface.php
 │   │   └── VatExporterInterface.php
 │   ├── DTOs/
 │   │   ├── VatAggregation.php               # readonly, per-rate aggregation result
 │   │   └── VatSummary.php                   # readonly, full period summary
+│   ├── Repositories/
+│   │   ├── VatPeriodRepositoryInterface.php
+│   │   └── VatDataRepositoryInterface.php   # abstracts tax detail queries (docs + POS)
 │   ├── Services/
-│   │   ├── VatAggregationService.php        # pure bcmath, no repo deps
-│   │   └── VatCreditService.php             # carry-forward calculations
+│   │   └── VatCreditService.php             # carry-forward calculations (pure bcmath)
 │   └── Events/
 │       ├── VatPeriodClosed.php
 │       └── VatPeriodFiled.php
@@ -66,7 +66,8 @@ app/Modules/Taxation/
 │
 ├── Infrastructure/
 │   ├── Repositories/
-│   │   └── EloquentVatPeriodRepository.php
+│   │   ├── EloquentVatPeriodRepository.php
+│   │   └── EloquentVatDataRepository.php    # queries document_tax_details + pos_receipt_vat_details
 │   ├── Strategies/
 │   │   ├── TunisiaVatStrategy.php           # monthly, 19/13/7%, timbre, retenue
 │   │   ├── FranceVatStrategy.php            # monthly CA3, 20/10/5.5/2.1%, credit TVA
@@ -95,7 +96,8 @@ app/Modules/Taxation/
 
 | Layer | Responsibility | Dependencies |
 |-------|---------------|-------------|
-| **Domain/Services** | Pure bcmath aggregation, credit calculations | None (no repos, no DB) |
+| **Domain/Services** | Pure bcmath credit carry-forward calculations | None (no repos, no DB) |
+| **Domain/Repositories** | Interfaces for period persistence + tax data queries | Domain DTOs |
 | **Domain/Contracts** | Strategy + exporter interfaces | Domain DTOs, enums |
 | **Application/Services** | Orchestration, `DB::transaction`, event dispatch | Domain services, repos, strategies |
 | **Infrastructure/Strategies** | Country-specific period generation, declaration mapping, special items | Domain contracts, DB queries for country data |
@@ -116,7 +118,19 @@ interface VatReportStrategyInterface
 }
 ```
 
-### 2.5 Strategy Resolution
+### 2.5 Exporter Interface
+
+```php
+interface VatExporterInterface
+{
+    public function supports(VatExportFormat $format): bool;
+    public function export(VatSummaryData $summary, VatDeclarationData $declaration): StreamedResponse;
+    public function getContentType(): string;
+    public function getFilename(VatPeriod $period): string;
+}
+```
+
+### 2.6 Strategy Resolution
 
 The `VatReportGenerationService` resolves the correct strategy based on `$company->country_code`:
 
@@ -140,13 +154,12 @@ public function resolveStrategy(string $countryCode): VatReportStrategyInterface
 
 New countries: add a strategy class + one line in the match statement. No migrations.
 
-### 2.6 Service Provider Bindings
+### 2.7 Service Provider Bindings
 
 Add to `TaxationServiceProvider::register()`:
 
 ```php
 // Domain services (singleton, stateless)
-$this->app->singleton(VatAggregationService::class);
 $this->app->singleton(VatCreditService::class);
 
 // Application services (singleton)
@@ -154,8 +167,9 @@ $this->app->singleton(VatPeriodManagementService::class);
 $this->app->singleton(VatReportGenerationService::class);
 $this->app->singleton(VatExportService::class);
 
-// Repository binding
+// Repository bindings
 $this->app->bind(VatPeriodRepositoryInterface::class, EloquentVatPeriodRepository::class);
+$this->app->bind(VatDataRepositoryInterface::class, EloquentVatDataRepository::class);
 ```
 
 ---
@@ -214,7 +228,7 @@ $this->app->bind(VatPeriodRepositoryInterface::class, EloquentVatPeriodRepositor
 **Indexes:**
 - `INDEX(vat_period_id)` — load all breakdowns for a period
 - `INDEX(vat_period_id, direction)` — filter output vs input
-- `UNIQUE(vat_period_id, direction, tax_rate)` — one row per rate+direction
+- `UNIQUE(vat_period_id, direction, tax_rate, is_recoverable)` — one row per rate+direction+recoverability
 
 ### 3.3 Design Rationale
 
@@ -234,25 +248,25 @@ All routes use middleware: `['api', 'auth:sanctum', SetPermissionsTeam::class]`
 | Method | Path | Permission | Description |
 |--------|------|-----------|-------------|
 | GET | `/api/v1/vat/periods` | `reports.view` | List periods. Query: `?year=2026&status=OPEN` |
-| POST | `/api/v1/vat/periods/generate` | `reports.create` | Auto-generate periods for a year. Body: `{ "year": 2026 }` |
+| POST | `/api/v1/vat/periods/generate` | `reports.manage` | Auto-generate periods for a year. Body: `{ "year": 2026 }` |
 | GET | `/api/v1/vat/periods/{id}` | `reports.view` | Single period with nested breakdowns |
-| POST | `/api/v1/vat/periods/{id}/close` | `reports.update` | Close period: snapshot totals + breakdowns, calculate carry-forward. Body: `{ "notes": "..." }` |
-| POST | `/api/v1/vat/periods/{id}/reopen` | `reports.update` | Reopen CLOSED period. Deletes breakdown snapshot. Cannot reopen FILED. |
-| POST | `/api/v1/vat/periods/{id}/file` | `reports.update` | Mark as filed. Permanently locks. Body: `{ "filing_reference": "..." }` |
+| POST | `/api/v1/vat/periods/{id}/close` | `reports.manage` | Close period: snapshot totals + breakdowns, calculate carry-forward. Body: `{ "notes": "..." }` |
+| POST | `/api/v1/vat/periods/{id}/reopen` | `reports.manage` | Reopen CLOSED period. Deletes breakdown snapshot. Cannot reopen FILED. |
+| POST | `/api/v1/vat/periods/{id}/file` | `reports.manage` | Mark as filed. Permanently locks. Body: `{ "filing_reference": "..." }` |
 
 ### 4.2 VAT Reports & Summary
 
 | Method | Path | Permission | Description |
 |--------|------|-----------|-------------|
-| GET | `/api/v1/vat/reports/{periodId}/summary` | `reports.view` | Full summary. Live for OPEN, snapshot for CLOSED/FILED. |
-| GET | `/api/v1/vat/reports/summary` | `reports.view` | Ad-hoc custom date range. Query: `?date_from=&date_to=` |
+| GET | `/api/v1/vat/reports/{periodId}/summary` | `reports.financial` | Full summary. Live for OPEN, snapshot for CLOSED/FILED. |
+| GET | `/api/v1/vat/reports/summary` | `reports.financial` | Ad-hoc custom date range. Query: `?date_from=&date_to=` |
 
 ### 4.3 Exports
 
 | Method | Path | Permission | Description |
 |--------|------|-----------|-------------|
-| GET | `/api/v1/vat/reports/{periodId}/export-formats` | `reports.view` | Available formats for company's country |
-| GET | `/api/v1/vat/reports/{periodId}/export/{format}` | `reports.view` | Download file. Format: `pdf`, `csv`, `fec`, `mtd-json`, `teif-xml`. Returns `StreamedResponse`. |
+| GET | `/api/v1/vat/reports/{periodId}/export-formats` | `reports.financial` | Available formats for company's country |
+| GET | `/api/v1/vat/reports/{periodId}/export/{format}` | `reports.financial` | Download file. Format: `pdf`, `csv`, `fec`, `mtd-json`, `teif-xml`. Returns `StreamedResponse`. |
 
 ### 4.4 Summary Response Shape
 
@@ -298,7 +312,7 @@ All amounts are strings with 3 decimal places. Enums are string values.
 | Supported exports | PDF, CSV, TEIF XML |
 | Currency precision | 3 decimals (TND) |
 
-**Special items query:** Count stamp duty from `document_tax_details` where `is_stamp_duty = true`. Sum retenue from `withholding_certificates` where `direction = 'sales'` in period.
+**Special items query:** Count stamp duty from `document_tax_details` where `is_stamp_duty = true` (documents only — POS receipts do not have a separate stamp duty flag; POS stamp duty is identified via `tax_category = 'stamp_duty'` on `pos_receipt_vat_details`, or by matching the configured stamp duty rate). Sum retenue from `withholding_certificates` where `direction = 'sales'` in period.
 
 ### 5.2 France (`FranceVatStrategy`)
 
@@ -311,7 +325,7 @@ All amounts are strings with 3 decimal places. Enums are string values.
 | Supported exports | PDF, CSV, FEC |
 | Currency precision | 2 decimals (EUR) |
 
-**FEC export:** 18-field tab-delimited flat file. Fields: JournalCode, JournalLib, EcritureNum, EcritureDate (AAAAMMJJ), CompteNum, CompteLib, CompAuxNum, CompAuxLib, PieceRef, PieceDate, EcritureLib, Debit, Credit, EcritureLet, DateLet, ValidDate, Montantdevise, Idevise. Filename format: `SIRENFECAAAAMMJJ`.
+**FEC export:** The full FEC (Fichier des Ecritures Comptables) is a general ledger audit file that belongs in the Accounting module. The VAT-scoped FEC export here generates a **filtered subset**: only journal entries related to VAT accounts (44x accounts in the PCG) for the selected period. This is not a substitute for the full FEC (which should be implemented separately in Accounting). Format: 18-field tab-delimited flat file. Fields: JournalCode, JournalLib, EcritureNum, EcritureDate (AAAAMMJJ), CompteNum, CompteLib, CompAuxNum, CompAuxLib, PieceRef, PieceDate, EcritureLib, Debit, Credit, EcritureLet, DateLet, ValidDate, Montantdevise, Idevise. Filename format: `SIRENFECAAAAMMJJ`.
 
 ### 5.3 United Kingdom (`UkVatStrategy`)
 
@@ -348,17 +362,19 @@ All amounts are strings with 3 decimal places. Enums are string values.
 ### 6.1 Aggregation Pipeline
 
 ```
-1. Invoices / Credit Notes / Purchase Invoices / POS Receipts
+1. Invoices / Credit Notes / Expenses / POS Receipts
    ↓ (already captured at transaction time)
 2. document_tax_details + pos_receipt_vat_details (immutable snapshots)
-   ↓ (queried by VatAggregationService)
-3. VatAggregationService.aggregate(companyId, dateFrom, dateTo)
-   - Query document_tax_details joined with documents (for direction: sales vs purchase doc types)
-   - Query pos_receipt_vat_details joined with receipts (for POS sales)
-   - Group by tax_rate + direction (output/input)
-   - Sum base_amount, vat_amount, count documents
-   - Use bcmath for all arithmetic
-   - Return VatSummary DTO
+   ↓ (queried by EloquentVatDataRepository via VatDataRepositoryInterface)
+3. VatReportGenerationService.generateSummary(companyId, dateFrom, dateTo)
+   - Calls VatDataRepositoryInterface.aggregateByRateAndDirection(companyId, dateFrom, dateTo)
+   - Repository queries document_tax_details joined with documents
+     (direction determined by document.type: Invoice/CreditNote → OUTPUT, Expense → INPUT)
+   - Repository queries pos_receipt_vat_details joined with receipts (OUTPUT)
+   - Groups by tax_rate + direction, sums base + vat amounts, counts documents
+   - Recoverability determined by joining tax_configurations.is_recoverable
+     (matched via tax_rate + country_code, since document_tax_details lacks is_recoverable)
+   - Returns VatSummary DTO
    ↓
 4. CountryStrategy.mapToDeclaration(summary)
    - Add country-specific special items
@@ -370,14 +386,23 @@ All amounts are strings with 3 decimal places. Enums are string values.
 6. Exporters generate files from persisted data
 ```
 
+**Cross-module boundary for POS data:** The `EloquentVatDataRepository` queries `pos_receipt_vat_details` directly via DB query builder (not importing POS domain models). This is acceptable because the repository is an infrastructure concern querying raw data. If a `Shared/Contracts` approach is preferred, a `PosVatDataProviderInterface` can be introduced later.
+
 ### 6.2 Document Type → Direction Mapping
 
-| Document Type | VAT Direction |
-|--------------|---------------|
-| TaxInvoice | OUTPUT |
-| FiscalReceipt (POS) | OUTPUT |
-| CreditNote | OUTPUT (negative amounts) |
-| PurchaseInvoice | INPUT |
+Based on the actual `DocumentType` enum (`Document\Domain\Enums\DocumentType`):
+
+| DocumentType Enum | VAT Direction | Notes |
+|-------------------|---------------|-------|
+| `Invoice` (`'invoice'`) | OUTPUT | Sales invoices |
+| `CreditNote` (`'credit_note'`) | OUTPUT | Negative amounts (reduces output VAT) |
+| `Expense` (`'expense'`) | INPUT | Purchase expenses with recoverable VAT |
+| `PurchaseOrder` (`'purchase_order'`) | INPUT | Only if VAT is tracked on POs (verify at implementation) |
+| POS `ReceiptVatDetail` | OUTPUT | Queried separately from `pos_receipt_vat_details` |
+
+**Excluded from VAT aggregation:** `Quote`, `SalesOrder`, `DeliveryNote`, `ReturnNote` — these do not represent VAT-liable transactions.
+
+**Note on CreditNote direction:** The `documents` table is unified. Credit notes are always OUTPUT (negative). Purchase-side credit notes are not currently modeled as a separate type. If this changes, a `direction` column or additional enum cases would be needed.
 
 ### 6.3 Credit Carry-Forward Logic
 
@@ -413,6 +438,8 @@ OPEN → CLOSED → FILED
 | CLOSED → OPEN | `reopen()` | Delete breakdown rows, clear totals, clear carry-forward |
 | CLOSED → FILED | `file()` | Set `filed_at`, `filed_by`, `filing_reference`, dispatch `VatPeriodFiled` |
 | FILED → * | blocked | Cannot be undone |
+
+**Reopen chain protection:** A period can only be reopened if no subsequent period (by `period_start`) is CLOSED or FILED. This prevents breaking the credit carry-forward chain. If Period N is reopened, any subsequent OPEN periods will recalculate their `credit_brought_forward` on next close. The `reopen()` method must validate this constraint and return a 422 with the blocking period's label if violated.
 
 ---
 
@@ -517,6 +544,8 @@ const VatReportPage = lazy(() => import('../features/vat-reporting/pages/VatRepo
 Add keys to `apps/web/src/locales/en/finance.json` under a `vatReporting` section. All user-facing text uses `t('finance:vatReporting.xxx')`.
 
 ### 7.7 TypeScript Types
+
+Per CLAUDE.md Rule 7, domain entity types will be generated from PHP DTOs via `php artisan typescript:transform`. The types below are illustrative of the expected shape. The actual `types.ts` file will import from `packages/shared/types/generated.ts` for entity types, and define only filter/param types locally.
 
 ```typescript
 // types.ts — all amounts as string, enums as string unions
@@ -654,12 +683,34 @@ Order:
 
 ## 10. Permissions
 
-Reuse existing `reports.*` permissions:
-- `reports.view` — view periods, summaries, exports
-- `reports.create` — generate periods
-- `reports.update` — close, reopen, file periods
+### 10.1 Existing Permissions (reused)
 
-No new permissions needed.
+- `reports.view` — view periods, summaries (read-only endpoints)
+- `reports.financial` — view detailed financial data, export reports
+
+### 10.2 New Permissions (must be added to `RolesAndPermissionsSeeder`)
+
+- `reports.manage` — generate periods, close, reopen, file (state-changing operations)
+
+### 10.3 Permission Mapping
+
+| Action | Permission |
+|--------|-----------|
+| List/view periods | `reports.view` |
+| View VAT summary | `reports.financial` |
+| Export reports | `reports.financial` |
+| Generate periods | `reports.manage` |
+| Close period | `reports.manage` |
+| Reopen period | `reports.manage` |
+| File period | `reports.manage` |
+
+### 10.4 Role Assignment
+
+| Role | Permissions |
+|------|------------|
+| Manager | `reports.view`, `reports.financial`, `reports.manage` |
+| Accountant | `reports.view`, `reports.financial`, `reports.manage` |
+| Viewer | `reports.view` |
 
 ---
 
