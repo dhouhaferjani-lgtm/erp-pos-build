@@ -428,6 +428,7 @@
     "visualMode": "Vue images"
   },
   "advancedPayments": {
+    "back": "Retour",
     "title": "Paiement",
     "totalDue": "Total dû",
     "selectMethod": "Mode de paiement",

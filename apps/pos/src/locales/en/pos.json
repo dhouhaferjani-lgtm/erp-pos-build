@@ -428,6 +428,7 @@
     "visualMode": "Image view"
   },
   "advancedPayments": {
+    "back": "Back",
     "title": "Payment",
     "totalDue": "Total Due",
     "selectMethod": "Select Payment Method",
