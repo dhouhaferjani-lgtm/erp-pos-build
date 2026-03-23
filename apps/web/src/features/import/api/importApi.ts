@@ -65,7 +65,7 @@ export const importApi = {
   },
 
   downloadFailedRowsUrl: (jobId: string): string => {
-    return `/api/v1${IMPORT_URL}/${jobId}/failed-rows.csv`
+    return `${IMPORT_URL}/${jobId}/failed-rows.csv`
   },
 
   getPreview: async (jobId: string): Promise<ImportPreview> => {
@@ -101,8 +101,7 @@ export const importApi = {
   },
 
   downloadTemplateUrl: (type: ImportType): string => {
-    // Returns URL for direct download
-    return `/api/v1${WIZARD_URL}/template/${type}`
+    return `${WIZARD_URL}/template/${type}`
   },
 
   getMigrationStatus: async (): Promise<MigrationStatus> => {

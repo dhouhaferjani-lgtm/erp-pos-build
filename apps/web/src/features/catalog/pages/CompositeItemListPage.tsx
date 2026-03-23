@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
-import { Plus, Search } from 'lucide-react'
+import { Plus, Search, Upload } from 'lucide-react'
 import { useCompositeItems } from '../hooks/useCompositeItems'
 import { useCompanyVerticalLabels } from '../hooks/useVerticalLabels'
 import type { CompositeItemData } from '../types/compositeItem'
@@ -20,13 +20,22 @@ export function CompositeItemListPage() {
     <div className="space-y-6">
       <div className="sm:flex sm:items-center sm:justify-between">
         <h1 className="text-2xl font-semibold text-gray-900">{getLabel('compositeItems')}</h1>
-        <Link
-          to="/catalog/composite-items/new"
-          className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-        >
-          <Plus className="mr-1.5 h-4 w-4" />
-          {t('catalog:createCompositeItem')}
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/settings/import/wizard/composite_items"
+            className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+          >
+            <Upload className="mr-1.5 h-4 w-4" />
+            {t('catalog:bulkImport')}
+          </Link>
+          <Link
+            to="/catalog/composite-items/new"
+            className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            <Plus className="mr-1.5 h-4 w-4" />
+            {t('catalog:createCompositeItem')}
+          </Link>
+        </div>
       </div>
 
       {/* Search */}

@@ -69,8 +69,8 @@ final class FailedRowsExportService
             return null;
         }
 
-        // Return API endpoint for download
-        return '/api/v1/imports/'.$job->id.'/failed-rows.csv';
+        // Return relative URL (frontend api client adds /api/v1 prefix)
+        return '/imports/'.$job->id.'/failed-rows.csv';
     }
 
     /**
