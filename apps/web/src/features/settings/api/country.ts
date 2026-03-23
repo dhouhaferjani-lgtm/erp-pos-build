@@ -1,6 +1,10 @@
 import { apiGet } from '@/lib/api'
 import type { Country, CountryFilters } from '../types/country'
 
+/**
+ * Fetch active countries. apiGet already unwraps response.data.data,
+ * so we get Country[] directly — do NOT double-unwrap.
+ */
 export async function getCountries(filters?: CountryFilters): Promise<Country[]> {
   const params = new URLSearchParams()
 
@@ -11,11 +15,9 @@ export async function getCountries(filters?: CountryFilters): Promise<Country[]>
   const queryString = params.toString()
   const url = queryString ? `/countries?${queryString}` : '/countries'
 
-  const response = await apiGet<{ data: Country[] }>(url)
-  return response.data
+  return apiGet<Country[]>(url)
 }
 
 export async function getCountry(code: string): Promise<Country> {
-  const response = await apiGet<{ data: Country }>(`/countries/${code}`)
-  return response.data
+  return apiGet<Country>(`/countries/${code}`)
 }

@@ -1,12 +1,23 @@
 import { useEffect } from 'react'
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useForm } from 'react-hook-form'
+import { useForm, Controller } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft } from 'lucide-react'
-import { api, apiPost, apiPatch } from '../../lib/api'
+import { ArrowLeft, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
+import { api, apiPost, apiPatch, getErrorMessage, isApiError } from '../../lib/api'
+import { tokens } from '../../lib/designTokens'
+import { cn } from '../../lib/utils'
+import { FormField } from '../../components/atoms/FormField/FormField'
+import { Input } from '../../components/atoms/Input/Input'
+import { Select } from '../../components/atoms/Select/Select'
+import { Textarea } from '../../components/atoms/Textarea/Textarea'
 import { B2BFieldsSection } from './components/B2BFieldsSection'
+import { getCountries } from '../settings/api/country'
+import type { Country } from '../settings/types/country'
 import type { PartnerType } from './PartnerListPage'
+
+const PINNED_COUNTRY_CODES = ['FR', 'TN', 'GB', 'IT', 'MA', 'DZ', 'US']
 
 interface Partner {
   id: string
@@ -23,11 +34,13 @@ interface Partner {
   consolidation_frequency: string | null
   email: string | null
   phone: string | null
-  address: string | null
+  street_address: string | null
   city: string | null
+  state: string | null
   postal_code: string | null
   country: string | null
-  tax_id: string | null
+  country_code: string | null
+  vat_number: string | null
   tax_status: 'REGISTERED' | 'NON_REGISTERED' | 'EXEMPT'
   exemption_reason: string | null
   exemption_certificate_path: string | null
@@ -49,11 +62,13 @@ interface PartnerFormData {
   consolidation_frequency: string
   email: string
   phone: string
-  address: string
+  street_address: string
   city: string
+  state: string
   postal_code: string
   country: string
-  tax_id: string
+  country_code: string
+  vat_number: string
   tax_status: 'REGISTERED' | 'NON_REGISTERED' | 'EXEMPT'
   exemption_reason: string
   exemption_valid_until: string
@@ -64,8 +79,50 @@ interface PartnerFormProps {
   partnerType?: PartnerType
 }
 
+/**
+ * Sort countries with pinned ones at the top, rest alphabetically by name.
+ */
+function sortCountries(countries: Country[]): { pinned: Country[]; rest: Country[] } {
+  const pinned: Country[] = []
+  const rest: Country[] = []
+
+  for (const country of countries) {
+    if (PINNED_COUNTRY_CODES.includes(country.code)) {
+      pinned.push(country)
+    } else {
+      rest.push(country)
+    }
+  }
+
+  // Sort pinned by their order in the PINNED_COUNTRY_CODES array
+  pinned.sort((a, b) => PINNED_COUNTRY_CODES.indexOf(a.code) - PINNED_COUNTRY_CODES.indexOf(b.code))
+  // Sort rest alphabetically by name
+  rest.sort((a, b) => a.name.localeCompare(b.name))
+
+  return { pinned, rest }
+}
+
+/**
+ * Extract field-level validation errors from a 422 API error response.
+ * Laravel returns: { error: { code: "VALIDATION_ERROR", errors: { field: ["msg"] } } }
+ */
+function getFieldErrors(error: unknown): Record<string, string> | null {
+  if (!isApiError(error)) return null
+  const data = error.response?.data as { error?: { errors?: Record<string, string[]> } } | undefined
+  const errors = data?.error?.errors
+  if (!errors) return null
+
+  const result: Record<string, string> = {}
+  for (const [field, messages] of Object.entries(errors)) {
+    if (Array.isArray(messages) && messages.length > 0) {
+      result[field] = messages[0]
+    }
+  }
+  return result
+}
+
 export function PartnerForm({ partnerType }: PartnerFormProps) {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['sales', 'common', 'countries'])
   const { id = '' } = useParams<{ id: string }>()
   const location = useLocation()
   const navigate = useNavigate()
@@ -83,10 +140,10 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
       : '/partners'
 
   const entityName = isCustomerContext
-    ? t('navigation.customers').slice(0, -1)
+    ? t('navigation.customers', { ns: 'common' }).slice(0, -1)
     : isSupplierContext
-      ? t('navigation.suppliers').slice(0, -1)
-      : 'Partner'
+      ? t('navigation.suppliers', { ns: 'common' }).slice(0, -1)
+      : t('sales:partners.title').slice(0, -1)
 
   // Determine default partner type based on context
   const defaultType = isCustomerContext
@@ -100,7 +157,9 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
     handleSubmit,
     reset,
     watch,
-    formState: { errors, isSubmitting },
+    control,
+    setError,
+    formState: { errors },
   } = useForm<PartnerFormData>({
     defaultValues: {
       name: '',
@@ -116,11 +175,13 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
       consolidation_frequency: '',
       email: '',
       phone: '',
-      address: '',
+      street_address: '',
       city: '',
+      state: '',
       postal_code: '',
       country: '',
-      tax_id: '',
+      country_code: '',
+      vat_number: '',
       tax_status: 'REGISTERED',
       exemption_reason: '',
       exemption_valid_until: '',
@@ -130,6 +191,15 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
 
   const taxStatus = watch('tax_status')
   const customerCategory = watch('customer_category')
+
+  // Fetch countries for dropdown
+  const { data: countries = [] } = useQuery({
+    queryKey: ['countries', 'active'],
+    queryFn: () => getCountries({ is_active: true }),
+    staleTime: 10 * 60 * 1000, // 10 minutes — countries rarely change
+  })
+
+  const { pinned: pinnedCountries, rest: otherCountries } = sortCountries(countries)
 
   // Fetch partner data when editing
   const { data: partner, isLoading } = useQuery({
@@ -158,12 +228,14 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
         consolidation_frequency: partner.consolidation_frequency ?? '',
         email: partner.email ?? '',
         phone: partner.phone ?? '',
-        address: partner.address ?? '',
+        street_address: partner.street_address ?? '',
         city: partner.city ?? '',
+        state: partner.state ?? '',
         postal_code: partner.postal_code ?? '',
         country: partner.country ?? '',
-        tax_id: partner.tax_id ?? '',
-        tax_status: partner.tax_status || 'REGISTERED',
+        country_code: partner.country_code ?? '',
+        vat_number: partner.vat_number ?? '',
+        tax_status: partner.tax_status,
         exemption_reason: partner.exemption_reason ?? '',
         exemption_valid_until: partner.exemption_valid_until ?? '',
         notes: partner.notes ?? '',
@@ -171,36 +243,84 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
     }
   }, [partner, reset])
 
+  /**
+   * Handle mutation errors: show toast + map field-level errors from 422.
+   */
+  const handleMutationError = (error: unknown) => {
+    const fieldErrors = getFieldErrors(error)
+    if (fieldErrors && Object.keys(fieldErrors).length > 0) {
+      // Map backend field errors to form fields
+      for (const [field, message] of Object.entries(fieldErrors)) {
+        setError(field as keyof PartnerFormData, { type: 'server', message })
+      }
+      toast.error(t('sales:partners.messages.saveFailed'))
+    } else {
+      toast.error(getErrorMessage(error))
+    }
+  }
+
   const createMutation = useMutation({
     mutationFn: (data: PartnerFormData) => apiPost<Partner>('/partners', data),
     onSuccess: () => {
+      toast.success(t('sales:partners.messages.created'))
       void queryClient.invalidateQueries({ queryKey: ['partners'] })
       void navigate(basePath)
     },
+    onError: handleMutationError,
   })
 
   const updateMutation = useMutation({
     mutationFn: (data: PartnerFormData) =>
       apiPatch<Partner>(`/partners/${id}`, data),
     onSuccess: () => {
+      toast.success(t('sales:partners.messages.updated'))
       void queryClient.invalidateQueries({ queryKey: ['partners'] })
       void queryClient.invalidateQueries({ queryKey: ['partner', id] })
       void navigate(`${basePath}/${id}`)
     },
+    onError: handleMutationError,
   })
 
   const onSubmit = (data: PartnerFormData) => {
+    // Clean up empty strings to null for optional fields
+    const cleaned = {
+      ...data,
+      customer_category: data.customer_category || null,
+      payment_terms: data.payment_terms || null,
+      payment_terms_days: data.payment_terms_days || null,
+      country: data.country || null,
+      country_code: data.country_code || null,
+      vat_number: data.vat_number || null,
+      street_address: data.street_address || null,
+      city: data.city || null,
+      state: data.state || null,
+      postal_code: data.postal_code || null,
+      email: data.email || null,
+      phone: data.phone || null,
+      notes: data.notes || null,
+      exemption_reason: data.exemption_reason || null,
+      exemption_valid_until: data.exemption_valid_until || null,
+      credit_limit: data.credit_limit || null,
+      discount_percentage: data.discount_percentage || null,
+      consolidation_frequency: data.consolidation_frequency || null,
+      company_legal_name: data.company_legal_name || null,
+      business_registration_number: data.business_registration_number || null,
+    }
+
     if (isEditing) {
-      updateMutation.mutate(data)
+      updateMutation.mutate(cleaned as unknown as PartnerFormData)
     } else {
-      createMutation.mutate(data)
+      createMutation.mutate(cleaned as unknown as PartnerFormData)
     }
   }
+
+  const isSaving = createMutation.isPending || updateMutation.isPending
 
   if (isEditing && isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-gray-500">Loading...</div>
+        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+        <span className="ms-2 text-gray-500">{t('common:status.loading')}</span>
       </div>
     )
   }
@@ -214,186 +334,194 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
           className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
         >
           <ArrowLeft className="h-4 w-4" />
-          {t('actions.back')}
+          {t('common:actions.back')}
         </Link>
         <h1 className="text-2xl font-bold text-gray-900">
-          {isEditing ? `${t('actions.edit')} ${entityName}` : `${t('actions.add')} ${entityName}`}
+          {isEditing ? `${t('common:actions.edit')} ${entityName}` : `${t('common:actions.add')} ${entityName}`}
         </h1>
       </div>
 
       {/* Form */}
       <form onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="space-y-6">
+        {/* General Information */}
         <div className="rounded-lg border border-gray-200 bg-white p-6">
+          <h3 className="mb-4 text-lg font-semibold text-gray-900">
+            {t('sales:partners.generalInfo')}
+          </h3>
           <div className="grid gap-6 sm:grid-cols-2">
             {/* Name */}
-            <div className="sm:col-span-2">
-              <label
-                htmlFor="name"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Name *
-              </label>
-              <input
-                type="text"
+            <FormField
+              label={t('sales:partners.name')}
+              htmlFor="name"
+              required
+              error={errors.name?.message}
+              className="sm:col-span-2"
+            >
+              <Input
                 id="name"
-                {...register('name', { required: 'Name is required' })}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                {...register('name', { required: t('sales:partners.validation.nameRequired') })}
+                error={!!errors.name}
               />
-              {errors.name && (
-                <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
-              )}
-            </div>
+            </FormField>
 
             {/* Type */}
-            <div>
-              <label
-                htmlFor="type"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Type *
-              </label>
-              <select
+            <FormField
+              label={t('sales:partners.type')}
+              htmlFor="type"
+              required
+              error={errors.type?.message}
+            >
+              <Select
                 id="type"
-                {...register('type', { required: 'Type is required' })}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                {...register('type', { required: t('sales:partners.validation.typeRequired') })}
+                error={!!errors.type}
               >
-                <option value="">Select type</option>
-                <option value="customer">Customer</option>
-                <option value="supplier">Supplier</option>
-                <option value="both">Both</option>
-              </select>
-              {errors.type && (
-                <p className="mt-1 text-sm text-red-600">{errors.type.message}</p>
-              )}
-            </div>
+                <option value="">{t('sales:partners.selectType')}</option>
+                <option value="customer">{t('sales:partners.types.customer')}</option>
+                <option value="supplier">{t('sales:partners.types.supplier')}</option>
+                <option value="both">{t('sales:partners.types.both')}</option>
+              </Select>
+            </FormField>
 
             {/* Customer Category */}
-            <div>
-              <label
-                htmlFor="customer_category"
-                className="block text-sm font-medium text-gray-700"
-              >
-                {t('sales:partners.b2b.customerCategory')}
-              </label>
-              <select
+            <FormField
+              label={t('sales:partners.b2b.customerCategory')}
+              htmlFor="customer_category"
+            >
+              <Select
                 id="customer_category"
                 {...register('customer_category')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
                 <option value="">{t('sales:partners.b2b.selectCategory')}</option>
                 <option value="individual">{t('sales:partners.b2b.individual')}</option>
                 <option value="business">{t('sales:partners.b2b.business')}</option>
-              </select>
-            </div>
+              </Select>
+            </FormField>
 
             {/* Email */}
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Email
-              </label>
-              <input
+            <FormField
+              label={t('sales:partners.email')}
+              htmlFor="email"
+              error={errors.email?.message}
+            >
+              <Input
                 type="email"
                 id="email"
                 {...register('email', {
                   pattern: {
                     value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-                    message: 'Invalid email address',
+                    message: t('common:validation.invalidEmail'),
                   },
                 })}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                error={!!errors.email}
               />
-              {errors.email && (
-                <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>
-              )}
-            </div>
+            </FormField>
 
             {/* Phone */}
-            <div>
-              <label
-                htmlFor="phone"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Phone
-              </label>
-              <input
+            <FormField
+              label={t('sales:partners.phone')}
+              htmlFor="phone"
+            >
+              <Input
                 type="tel"
                 id="phone"
                 {...register('phone')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
-            </div>
+            </FormField>
 
-            {/* Tax ID */}
-            <div>
-              <label
-                htmlFor="tax_id"
-                className="block text-sm font-medium text-gray-700"
-              >
-                {t('sales:partners.taxId')}
-              </label>
-              <input
-                type="text"
-                id="tax_id"
-                {...register('tax_id')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            {/* VAT Number */}
+            <FormField
+              label={t('sales:partners.vatNumber')}
+              htmlFor="vat_number"
+              error={errors.vat_number?.message}
+            >
+              <Input
+                id="vat_number"
+                {...register('vat_number')}
+                error={!!errors.vat_number}
               />
-            </div>
+            </FormField>
+
+            {/* Country Code (for VAT validation) */}
+            <FormField
+              label={t('sales:partners.countryCode')}
+              htmlFor="country_code"
+              error={errors.country_code?.message}
+            >
+              <Controller
+                name="country_code"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    id="country_code"
+                    value={field.value}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    error={!!errors.country_code}
+                  >
+                    <option value="">{t('sales:partners.selectCountryCode')}</option>
+                    {pinnedCountries.length > 0 && (
+                      <>
+                        {pinnedCountries.map((c) => (
+                          <option key={c.code} value={c.code}>
+                            {t(`countries:${c.code}`, { defaultValue: c.name })} ({c.code})
+                          </option>
+                        ))}
+                        <option disabled>──────────</option>
+                      </>
+                    )}
+                    {otherCountries.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {t(`countries:${c.code}`, { defaultValue: c.name })} ({c.code})
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              />
+            </FormField>
 
             {/* Tax Status */}
-            <div className="sm:col-span-2">
-              <label
-                htmlFor="tax_status"
-                className="block text-sm font-medium text-gray-700"
-              >
-                {t('sales:partners.taxInfo.status')}
-              </label>
-              <select
+            <FormField
+              label={t('sales:partners.taxInfo.status')}
+              htmlFor="tax_status"
+              className="sm:col-span-2"
+            >
+              <Select
                 id="tax_status"
                 {...register('tax_status')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
                 <option value="REGISTERED">{t('sales:partners.taxInfo.statusRegistered')}</option>
                 <option value="NON_REGISTERED">{t('sales:partners.taxInfo.statusNonRegistered')}</option>
                 <option value="EXEMPT">{t('sales:partners.taxInfo.statusExempt')}</option>
-              </select>
-            </div>
+              </Select>
+            </FormField>
 
             {/* Exemption Fields (shown only when EXEMPT) */}
             {taxStatus === 'EXEMPT' && (
               <>
-                <div className="sm:col-span-2">
-                  <label
-                    htmlFor="exemption_reason"
-                    className="block text-sm font-medium text-gray-700"
-                  >
-                    {t('sales:partners.taxInfo.exemptionReason')}
-                  </label>
-                  <textarea
+                <FormField
+                  label={t('sales:partners.taxInfo.exemptionReason')}
+                  htmlFor="exemption_reason"
+                  className="sm:col-span-2"
+                >
+                  <Textarea
                     id="exemption_reason"
                     rows={3}
                     {...register('exemption_reason')}
                     placeholder={t('sales:partners.taxInfo.exemptionReasonPlaceholder')}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
-                </div>
+                </FormField>
 
-                <div>
-                  <label
-                    htmlFor="exemption_valid_until"
-                    className="block text-sm font-medium text-gray-700"
-                  >
-                    {t('sales:partners.taxInfo.validUntil')}
-                  </label>
-                  <input
+                <FormField
+                  label={t('sales:partners.taxInfo.validUntil')}
+                  htmlFor="exemption_valid_until"
+                >
+                  <Input
                     type="date"
                     id="exemption_valid_until"
                     {...register('exemption_valid_until')}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
-                </div>
+                </FormField>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
@@ -412,7 +540,6 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
                 </div>
               </>
             )}
-
           </div>
         </div>
 
@@ -425,87 +552,115 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
           />
         )}
 
+        {/* Address Section */}
         <div className="rounded-lg border border-gray-200 bg-white p-6">
+          <h3 className="mb-4 text-lg font-semibold text-gray-900">
+            {t('sales:partners.addressInfo')}
+          </h3>
           <div className="grid gap-6 sm:grid-cols-2">
-            {/* Address */}
-            <div className="sm:col-span-2">
-              <label
-                htmlFor="address"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Address
-              </label>
-              <input
-                type="text"
-                id="address"
-                {...register('address')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            {/* Street Address */}
+            <FormField
+              label={t('sales:partners.streetAddress')}
+              htmlFor="street_address"
+              error={errors.street_address?.message}
+              className="sm:col-span-2"
+            >
+              <Input
+                id="street_address"
+                {...register('street_address')}
+                error={!!errors.street_address}
               />
-            </div>
+            </FormField>
 
             {/* City */}
-            <div>
-              <label
-                htmlFor="city"
-                className="block text-sm font-medium text-gray-700"
-              >
-                City
-              </label>
-              <input
-                type="text"
+            <FormField
+              label={t('sales:partners.city')}
+              htmlFor="city"
+              error={errors.city?.message}
+            >
+              <Input
                 id="city"
                 {...register('city')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                error={!!errors.city}
               />
-            </div>
+            </FormField>
+
+            {/* State */}
+            <FormField
+              label={t('sales:partners.state')}
+              htmlFor="state"
+              error={errors.state?.message}
+            >
+              <Input
+                id="state"
+                {...register('state')}
+                error={!!errors.state}
+              />
+            </FormField>
 
             {/* Postal Code */}
-            <div>
-              <label
-                htmlFor="postal_code"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Postal Code
-              </label>
-              <input
-                type="text"
+            <FormField
+              label={t('sales:partners.postalCode')}
+              htmlFor="postal_code"
+              error={errors.postal_code?.message}
+            >
+              <Input
                 id="postal_code"
                 {...register('postal_code')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                error={!!errors.postal_code}
               />
-            </div>
+            </FormField>
 
             {/* Country */}
-            <div>
-              <label
-                htmlFor="country"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Country
-              </label>
-              <input
-                type="text"
-                id="country"
-                {...register('country')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            <FormField
+              label={t('sales:partners.country')}
+              htmlFor="country"
+              error={errors.country?.message}
+            >
+              <Controller
+                name="country"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    id="country"
+                    value={field.value}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    error={!!errors.country}
+                  >
+                    <option value="">{t('sales:partners.selectCountry')}</option>
+                    {pinnedCountries.length > 0 && (
+                      <>
+                        {pinnedCountries.map((c) => (
+                          <option key={c.code} value={c.code}>
+                            {t(`countries:${c.code}`, { defaultValue: c.name })}
+                          </option>
+                        ))}
+                        <option disabled>──────────</option>
+                      </>
+                    )}
+                    {otherCountries.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {t(`countries:${c.code}`, { defaultValue: c.name })}
+                      </option>
+                    ))}
+                  </Select>
+                )}
               />
-            </div>
+            </FormField>
 
             {/* Notes */}
-            <div className="sm:col-span-2">
-              <label
-                htmlFor="notes"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Notes
-              </label>
-              <textarea
+            <FormField
+              label={t('sales:partners.notes')}
+              htmlFor="notes"
+              className="sm:col-span-2"
+            >
+              <Textarea
                 id="notes"
                 rows={4}
                 {...register('notes')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
-            </div>
+            </FormField>
           </div>
         </div>
 
@@ -513,16 +668,17 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
         <div className="flex items-center justify-end gap-4">
           <Link
             to={basePath}
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            className={cn(tokens.button.base, tokens.button.secondary, tokens.button.sizes.md)}
           >
-            {t('actions.cancel')}
+            {t('common:actions.cancel')}
           </Link>
           <button
             type="submit"
-            disabled={isSubmitting}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            disabled={isSaving}
+            className={cn(tokens.button.base, tokens.button.primary, tokens.button.sizes.md, 'gap-2')}
           >
-            {isSubmitting ? t('status.saving') : t('actions.save')}
+            {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+            {isSaving ? t('common:status.saving') : t('common:actions.save')}
           </button>
         </div>
       </form>

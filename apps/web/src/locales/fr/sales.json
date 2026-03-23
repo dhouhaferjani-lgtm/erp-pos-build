@@ -28,20 +28,39 @@
     "unknown": "Partenaire inconnu",
     "name": "Nom",
     "type": "Type",
+    "selectType": "Sélectionner le type",
     "contact": "Contact",
     "email": "E-mail",
     "phone": "Téléphone",
-    "address": "Adresse",
+    "generalInfo": "Informations générales",
+    "addressInfo": "Adresse",
+    "streetAddress": "Adresse",
+    "streetAddress2": "Complément d'adresse",
     "city": "Ville",
+    "state": "État / Région",
     "postalCode": "Code postal",
     "country": "Pays",
+    "selectCountry": "Sélectionner le pays",
+    "countryCode": "Pays (TVA)",
+    "selectCountryCode": "Sélectionner le pays pour la TVA",
+    "vatNumber": "Numéro de TVA",
     "taxId": "Numéro de TVA",
     "notes": "Notes",
     "created": "Créé le",
+    "address": "Adresse",
     "types": {
       "customer": "Client",
       "supplier": "Fournisseur",
       "both": "Les deux"
+    },
+    "validation": {
+      "nameRequired": "Le nom est obligatoire",
+      "typeRequired": "Le type est obligatoire"
+    },
+    "messages": {
+      "created": "Partenaire créé avec succès",
+      "updated": "Partenaire mis à jour avec succès",
+      "saveFailed": "Échec de l'enregistrement du partenaire"
     },
     "taxInfo": {
       "title": "Informations fiscales",

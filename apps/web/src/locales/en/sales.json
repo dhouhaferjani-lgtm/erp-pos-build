@@ -28,20 +28,39 @@
     "unknown": "Unknown Partner",
     "name": "Name",
     "type": "Type",
+    "selectType": "Select type",
     "contact": "Contact",
     "email": "Email",
     "phone": "Phone",
-    "address": "Address",
+    "generalInfo": "General Information",
+    "addressInfo": "Address",
+    "streetAddress": "Street Address",
+    "streetAddress2": "Address Line 2",
     "city": "City",
+    "state": "State / Region",
     "postalCode": "Postal Code",
     "country": "Country",
+    "selectCountry": "Select country",
+    "countryCode": "Country (VAT)",
+    "selectCountryCode": "Select country for VAT",
+    "vatNumber": "VAT Number",
     "taxId": "Tax ID",
     "notes": "Notes",
     "created": "Created",
+    "address": "Address",
     "types": {
       "customer": "Customer",
       "supplier": "Supplier",
       "both": "Both"
+    },
+    "validation": {
+      "nameRequired": "Name is required",
+      "typeRequired": "Type is required"
+    },
+    "messages": {
+      "created": "Partner created successfully",
+      "updated": "Partner updated successfully",
+      "saveFailed": "Failed to save partner"
     },
     "taxInfo": {
       "title": "Tax Information",
