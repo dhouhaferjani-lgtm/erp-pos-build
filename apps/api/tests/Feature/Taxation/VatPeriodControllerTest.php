@@ -210,6 +210,80 @@ class VatPeriodControllerTest extends TestCase
         $response->assertStatus(422);
     }
 
+    public function test_cannot_view_period_from_another_company(): void
+    {
+        $otherTenant = Tenant::create([
+            'name' => 'Other Tenant',
+            'slug' => 'other-tenant-vat',
+            'status' => TenantStatus::Active,
+            'plan' => SubscriptionPlan::Professional,
+        ]);
+
+        $otherCompany = Company::create([
+            'tenant_id' => $otherTenant->id,
+            'name' => 'Other Company',
+            'legal_name' => 'Other Company SARL',
+            'tax_id' => '9999999ZZZ',
+            'country_code' => 'TN',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'currency' => 'TND',
+            'status' => CompanyStatus::Active,
+        ]);
+
+        $period = VatPeriod::create([
+            'company_id' => $otherCompany->id,
+            'country_code' => 'TN',
+            'period_type' => VatPeriodType::Monthly,
+            'label' => 'January 2026',
+            'period_start' => '2026-01-01',
+            'period_end' => '2026-01-31',
+            'status' => VatPeriodStatus::Open,
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/vat/periods/{$period->id}");
+
+        $response->assertStatus(404);
+    }
+
+    public function test_cannot_close_period_from_another_company(): void
+    {
+        $otherTenant = Tenant::create([
+            'name' => 'Other Tenant Close',
+            'slug' => 'other-tenant-vat-close',
+            'status' => TenantStatus::Active,
+            'plan' => SubscriptionPlan::Professional,
+        ]);
+
+        $otherCompany = Company::create([
+            'tenant_id' => $otherTenant->id,
+            'name' => 'Other Company Close',
+            'legal_name' => 'Other Company Close SARL',
+            'tax_id' => '8888888YYY',
+            'country_code' => 'TN',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'currency' => 'TND',
+            'status' => CompanyStatus::Active,
+        ]);
+
+        $period = VatPeriod::create([
+            'company_id' => $otherCompany->id,
+            'country_code' => 'TN',
+            'period_type' => VatPeriodType::Monthly,
+            'label' => 'January 2026',
+            'period_start' => '2026-01-01',
+            'period_end' => '2026-01-31',
+            'status' => VatPeriodStatus::Open,
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/vat/periods/{$period->id}/close");
+
+        $response->assertStatus(404);
+    }
+
     public function test_cannot_reopen_period_when_successor_is_closed(): void
     {
         $period = VatPeriod::create([

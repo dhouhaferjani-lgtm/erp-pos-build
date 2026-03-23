@@ -137,6 +137,61 @@ class VatReportControllerTest extends TestCase
             ]);
     }
 
+    public function test_export_returns_streamed_response(): void
+    {
+        $period = VatPeriod::create([
+            'company_id' => $this->company->id,
+            'country_code' => 'TN',
+            'period_type' => VatPeriodType::Monthly,
+            'label' => 'January 2026',
+            'period_start' => '2026-01-01',
+            'period_end' => '2026-01-31',
+            'status' => VatPeriodStatus::Closed,
+            'closed_at' => now(),
+            'total_output_vat' => '1900.000',
+            'total_input_vat' => '500.000',
+            'net_vat' => '1400.000',
+            'amount_payable' => '1400.000',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->get("/api/v1/vat/reports/{$period->id}/export/csv");
+
+        $response->assertOk();
+        $response->assertHeader('content-type', 'text/csv; charset=utf-8');
+        $response->assertHeader('content-disposition');
+
+        $content = $response->streamedContent();
+        $this->assertStringContainsString('Rate', $content);
+    }
+
+    public function test_period_summary_returns_snapshot_for_closed_period(): void
+    {
+        $period = VatPeriod::create([
+            'company_id' => $this->company->id,
+            'country_code' => 'TN',
+            'period_type' => VatPeriodType::Monthly,
+            'label' => 'February 2026',
+            'period_start' => '2026-02-01',
+            'period_end' => '2026-02-28',
+            'status' => VatPeriodStatus::Closed,
+            'closed_at' => now(),
+            'total_output_vat' => '10000.000',
+            'total_input_vat' => '6000.000',
+            'net_vat' => '4000.000',
+            'amount_payable' => '4000.000',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/vat/reports/{$period->id}/summary");
+
+        $response->assertOk();
+
+        $data = $response->json('data');
+        $this->assertEquals('4000.000', $data['net_vat']);
+        $this->assertEquals('4000.000', $data['amount_payable']);
+    }
+
     public function test_export_formats_returns_country_specific_formats(): void
     {
         $period = VatPeriod::create([
