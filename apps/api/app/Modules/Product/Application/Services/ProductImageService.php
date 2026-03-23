@@ -150,13 +150,32 @@ class ProductImageService
     }
 
     /**
-     * Download an image file.
+     * Download an image file (attachment, triggers browser download).
      */
     public function download(ProductImage $image): StreamedResponse
     {
         $disk = Storage::disk($image->storage_disk);
 
         return $disk->download($image->storage_path, $image->original_filename);
+    }
+
+    /**
+     * Serve an image inline for browser rendering (e.g., <img src>).
+     * Sets Content-Disposition: inline and Cache-Control headers so browsers
+     * render the image rather than triggering a file download.
+     */
+    public function serve(ProductImage $image): StreamedResponse
+    {
+        $disk = Storage::disk($image->storage_disk);
+
+        $response = $disk->response($image->storage_path, $image->original_filename, [
+            'Content-Type' => $image->mime_type,
+        ]);
+
+        $response->headers->set('Content-Disposition', 'inline; filename="'.$image->original_filename.'"');
+        $response->headers->set('Cache-Control', 'public, max-age=86400');
+
+        return $response;
     }
 
     /**

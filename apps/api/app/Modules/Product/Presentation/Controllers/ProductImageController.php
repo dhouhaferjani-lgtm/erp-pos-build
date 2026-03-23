@@ -80,11 +80,11 @@ class ProductImageController extends Controller
     }
 
     /**
-     * Download an image file.
+     * Serve an image file inline for browser rendering.
      */
     public function download(Product $product, ProductImage $image): StreamedResponse
     {
-        return $this->imageService->download($image);
+        return $this->imageService->serve($image);
     }
 
     /**
