@@ -245,9 +245,9 @@ export const useCartStore = create<CartStore>()((set, get) => ({
     if (!discount) return 0;
     const subtotal = get().subtotal();
     if (discount.type === 'percentage') {
-      return Math.min(subtotal, (subtotal * parseFloat(discount.value)) / 100);
+      return Math.min(subtotal, (subtotal * (parseFloat(discount.value) || 0)) / 100);
     }
-    return Math.min(subtotal, parseFloat(discount.value));
+    return Math.min(subtotal, parseFloat(discount.value) || 0);
   },
 
   total: () => {

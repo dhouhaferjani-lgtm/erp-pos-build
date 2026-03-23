@@ -45,6 +45,9 @@ export function LineDiscountModal({
   // Reset state when modal opens/closes
   useEffect(() => {
     if (isOpen) {
+      setValue('');
+      setReason('');
+      setDiscountType('percentage');
       setNeedsApproval(false);
       setManagerPin('');
       setManagerError(null);
