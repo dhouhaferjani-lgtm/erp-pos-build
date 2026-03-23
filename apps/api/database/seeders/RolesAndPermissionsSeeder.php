@@ -158,6 +158,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'reports.view',  // All financial reports
             'reports.financial',
             'reports.operational',
+            'reports.manage',  // VAT period management
 
             // Workshop
             'work-orders.view',
@@ -287,7 +288,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'treasury.view',
             'journal.view',
             'accounts.view', 'accounts.manage',
-            'reports.financial', 'reports.operational',
+            'reports.financial', 'reports.operational', 'reports.manage',
             'work-orders.view', 'work-orders.create', 'work-orders.update', 'work-orders.complete',
             'users.view',
             'pos.manage_terminals', 'pos.operate_terminal', 'pos.manage_shifts', 'pos.manage_tables',
@@ -425,7 +426,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'treasury.view', 'treasury.manage',
             'journal.view', 'journal.create', 'journal.post',
             'accounts.view', 'accounts.manage',
-            'reports.financial',
+            'reports.financial', 'reports.manage',
             'withholding.view', 'withholding.create', 'withholding.update',
             'audit.view',
             'compliance.export_jet', 'compliance.verify_chains', 'compliance.view_reprint_log',

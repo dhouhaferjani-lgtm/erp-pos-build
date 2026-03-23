@@ -23,37 +23,4 @@ class VatPeriodClosed
     public function __construct(
         public readonly VatPeriod $period
     ) {}
-
-    /**
-     * Get the period ID for event logging.
-     */
-    public function getPeriodId(): string
-    {
-        return $this->period->id;
-    }
-
-    /**
-     * Get event payload for audit log.
-     *
-     * @return array<string, mixed>
-     */
-    public function toAuditLog(): array
-    {
-        return [
-            'event' => 'vat_period_closed',
-            'period_id' => $this->period->id,
-            'company_id' => $this->period->company_id,
-            'label' => $this->period->label,
-            'period_type' => $this->period->period_type->value,
-            'period_start' => $this->period->period_start->toDateString(),
-            'period_end' => $this->period->period_end->toDateString(),
-            'total_output_vat' => $this->period->total_output_vat,
-            'total_input_vat' => $this->period->total_input_vat,
-            'net_vat' => $this->period->net_vat,
-            'amount_payable' => $this->period->amount_payable,
-            'credit_carried_forward' => $this->period->credit_carried_forward,
-            'closed_at' => $this->period->closed_at?->toIso8601String(),
-            'closed_by' => $this->period->closed_by,
-        ];
-    }
 }

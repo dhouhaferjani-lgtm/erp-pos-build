@@ -18,10 +18,15 @@ use App\Modules\Taxation\Domain\Repositories\VatPeriodRepositoryInterface;
 use App\Modules\Taxation\Domain\Repositories\WithholdingCertificateRepositoryInterface;
 use App\Modules\Taxation\Domain\Repositories\WithholdingTaxRuleRepositoryInterface;
 use App\Modules\Taxation\Domain\Services\StampDutyService;
-use App\Modules\Taxation\Domain\Services\VatCreditService;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Taxation\Domain\Services\TaxResolutionService;
+use App\Modules\Taxation\Domain\Services\VatCreditService;
 use App\Modules\Taxation\Domain\Services\WithholdingCalculationService;
+use App\Modules\Taxation\Infrastructure\Exporters\CsvVatExporter;
+use App\Modules\Taxation\Infrastructure\Exporters\FecExporter;
+use App\Modules\Taxation\Infrastructure\Exporters\MtdJsonExporter;
+use App\Modules\Taxation\Infrastructure\Exporters\PdfVatExporter;
+use App\Modules\Taxation\Infrastructure\Exporters\TeifXmlExporter;
 use App\Modules\Taxation\Infrastructure\Repositories\EloquentSalesWithholdingTrackingRepository;
 use App\Modules\Taxation\Infrastructure\Repositories\EloquentVatDataRepository;
 use App\Modules\Taxation\Infrastructure\Repositories\EloquentVatPeriodRepository;
@@ -78,8 +83,13 @@ class TaxationServiceProvider extends ServiceProvider
         $this->app->singleton(VatReportGenerationService::class);
         $this->app->singleton(VatPeriodManagementService::class);
         $this->app->singleton(VatExportService::class, function (): VatExportService {
-            // Exporters will be registered in Task 7
-            return new VatExportService([]);
+            return new VatExportService([
+                new CsvVatExporter,
+                new PdfVatExporter,
+                new FecExporter,
+                new MtdJsonExporter,
+                new TeifXmlExporter,
+            ]);
         });
     }
 

@@ -6,6 +6,8 @@ use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Taxation\Presentation\Controllers\SalesWithholdingTrackingController;
 use App\Modules\Taxation\Presentation\Controllers\StampDutyRuleController;
 use App\Modules\Taxation\Presentation\Controllers\TaxConfigurationController;
+use App\Modules\Taxation\Presentation\Controllers\VatPeriodController;
+use App\Modules\Taxation\Presentation\Controllers\VatReportController;
 use App\Modules\Taxation\Presentation\Controllers\WithholdingCertificateController;
 use App\Modules\Taxation\Presentation\Controllers\WithholdingPreviewController;
 use App\Modules\Taxation\Presentation\Controllers\WithholdingTaxRuleController;
@@ -72,4 +74,22 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // Record withholding on document
     Route::post('/documents/{documentId}/record-withholding', [SalesWithholdingTrackingController::class, 'recordWithholding'])
         ->middleware('can:invoices.update');
+
+    // VAT Period endpoints
+    Route::prefix('vat/periods')->group(function (): void {
+        Route::get('/', [VatPeriodController::class, 'index'])->middleware('can:reports.view');
+        Route::post('/generate', [VatPeriodController::class, 'generate'])->middleware('can:reports.manage');
+        Route::get('/{id}', [VatPeriodController::class, 'show'])->middleware('can:reports.view');
+        Route::post('/{id}/close', [VatPeriodController::class, 'close'])->middleware('can:reports.manage');
+        Route::post('/{id}/reopen', [VatPeriodController::class, 'reopen'])->middleware('can:reports.manage');
+        Route::post('/{id}/file', [VatPeriodController::class, 'file'])->middleware('can:reports.manage');
+    });
+
+    // VAT Report endpoints
+    Route::prefix('vat/reports')->group(function (): void {
+        Route::get('/summary', [VatReportController::class, 'summary'])->middleware('can:reports.financial');
+        Route::get('/{periodId}/summary', [VatReportController::class, 'periodSummary'])->middleware('can:reports.financial');
+        Route::get('/{periodId}/export-formats', [VatReportController::class, 'exportFormats'])->middleware('can:reports.financial');
+        Route::get('/{periodId}/export/{format}', [VatReportController::class, 'export'])->middleware('can:reports.financial');
+    });
 });

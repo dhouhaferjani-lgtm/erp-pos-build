@@ -12,7 +12,8 @@ class EloquentVatDataRepository implements VatDataRepositoryInterface
 {
     public function aggregateByRateAndDirection(string $companyId, string $dateFrom, string $dateTo): array
     {
-        $rows = DB::table('document_tax_details as dtd')
+        // Document-based VAT aggregation
+        $documentQuery = DB::table('document_tax_details as dtd')
             ->join('documents as d', 'dtd.document_id', '=', 'd.id')
             ->leftJoin('tax_configurations as tc', function ($join) use ($companyId): void {
                 $join->on('dtd.tax_rate', '=', 'tc.percentage_rate')
@@ -47,12 +48,57 @@ class EloquentVatDataRepository implements VatDataRepositoryInterface
                 dtd.tax_rate,
                 tc.is_recoverable,
                 tc.id
+            ");
+
+        // POS receipt VAT aggregation (all OUTPUT — sales only)
+        $posQuery = DB::table('pos_receipt_vat_details as prvd')
+            ->join('pos_receipts as r', 'prvd.receipt_id', '=', 'r.id')
+            ->leftJoin('tax_configurations as tc2', function ($join) use ($companyId): void {
+                $join->on('prvd.tax_rate', '=', 'tc2.percentage_rate')
+                    ->on('tc2.country_code', '=', DB::raw(
+                        '(SELECT country_code FROM companies WHERE id = '.DB::getPdo()->quote($companyId).')'
+                    ))
+                    ->where('tc2.is_active', true)
+                    ->where('tc2.is_stamp_duty', false);
+            })
+            ->where('r.company_id', $companyId)
+            ->whereBetween('r.posted_at', [$dateFrom, $dateTo])
+            ->where('r.is_voided', false)
+            ->where('r.is_training', false)
+            ->where('prvd.tax_rate', '>', 0)
+            ->selectRaw("
+                'OUTPUT' as direction,
+                prvd.tax_rate,
+                SUM(prvd.net_amount) as base_amount,
+                SUM(prvd.vat_amount) as vat_amount,
+                COUNT(DISTINCT r.id) as document_count,
+                COALESCE(tc2.is_recoverable, true) as is_recoverable,
+                tc2.id as tax_configuration_id
             ")
+            ->groupByRaw("
+                prvd.tax_rate,
+                tc2.is_recoverable,
+                tc2.id
+            ");
+
+        // Union both queries, then re-aggregate by rate + direction
+        $combined = DB::query()
+            ->fromSub($documentQuery->unionAll($posQuery), 'combined')
+            ->selectRaw("
+                direction,
+                tax_rate,
+                SUM(base_amount) as base_amount,
+                SUM(vat_amount) as vat_amount,
+                SUM(document_count) as document_count,
+                is_recoverable,
+                tax_configuration_id
+            ")
+            ->groupByRaw('direction, tax_rate, is_recoverable, tax_configuration_id')
             ->orderBy('direction')
-            ->orderBy('dtd.tax_rate')
+            ->orderBy('tax_rate')
             ->get();
 
-        return $rows->map(fn (object $row): VatAggregation => new VatAggregation(
+        return $combined->map(fn (object $row): VatAggregation => new VatAggregation(
             direction: (string) $row->direction,
             taxRate: number_format((float) $row->tax_rate, 2, '.', ''),
             baseAmount: number_format((float) $row->base_amount, 3, '.', ''),
