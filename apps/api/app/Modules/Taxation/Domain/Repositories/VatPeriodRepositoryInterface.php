@@ -50,4 +50,16 @@ interface VatPeriodRepositoryInterface
      * This prevents reopening a period when later ones have already been finalized.
      */
     public function hasClosedOrFiledSuccessor(VatPeriod $period): bool;
+
+    /**
+     * Create a breakdown record for a VAT period.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function createBreakdown(array $data): void;
+
+    /**
+     * Delete all breakdowns for a VAT period.
+     */
+    public function deleteBreakdowns(string $periodId): void;
 }

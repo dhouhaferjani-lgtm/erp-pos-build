@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Taxation\Infrastructure\Repositories;
 
 use App\Modules\Taxation\Domain\Entities\VatPeriod;
+use App\Modules\Taxation\Domain\Entities\VatPeriodBreakdown;
 use App\Modules\Taxation\Domain\Enums\VatPeriodStatus;
 use App\Modules\Taxation\Domain\Repositories\VatPeriodRepositoryInterface;
 use Illuminate\Database\Eloquent\Collection;
@@ -61,5 +62,15 @@ class EloquentVatPeriodRepository implements VatPeriodRepositoryInterface
             ->where('period_start', '>', $period->period_start)
             ->whereIn('status', [VatPeriodStatus::Closed, VatPeriodStatus::Filed])
             ->exists();
+    }
+
+    public function createBreakdown(array $data): void
+    {
+        VatPeriodBreakdown::create($data);
+    }
+
+    public function deleteBreakdowns(string $periodId): void
+    {
+        VatPeriodBreakdown::where('vat_period_id', $periodId)->delete();
     }
 }

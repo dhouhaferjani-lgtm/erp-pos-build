@@ -7,6 +7,9 @@ namespace App\Modules\Taxation\Providers;
 use App\Modules\Taxation\Application\Services\CertificatePDFService;
 use App\Modules\Taxation\Application\Services\SalesWithholdingTrackingService;
 use App\Modules\Taxation\Application\Services\TEJExportService;
+use App\Modules\Taxation\Application\Services\VatExportService;
+use App\Modules\Taxation\Application\Services\VatPeriodManagementService;
+use App\Modules\Taxation\Application\Services\VatReportGenerationService;
 use App\Modules\Taxation\Application\Services\WithholdingCertificateService;
 use App\Modules\Taxation\Application\Services\WithholdingHashChainService;
 use App\Modules\Taxation\Domain\Repositories\SalesWithholdingTrackingRepositoryInterface;
@@ -15,6 +18,7 @@ use App\Modules\Taxation\Domain\Repositories\VatPeriodRepositoryInterface;
 use App\Modules\Taxation\Domain\Repositories\WithholdingCertificateRepositoryInterface;
 use App\Modules\Taxation\Domain\Repositories\WithholdingTaxRuleRepositoryInterface;
 use App\Modules\Taxation\Domain\Services\StampDutyService;
+use App\Modules\Taxation\Domain\Services\VatCreditService;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Taxation\Domain\Services\TaxResolutionService;
 use App\Modules\Taxation\Domain\Services\WithholdingCalculationService;
@@ -68,6 +72,15 @@ class TaxationServiceProvider extends ServiceProvider
         $this->app->singleton(SalesWithholdingTrackingService::class);
         $this->app->singleton(TEJExportService::class);
         $this->app->singleton(CertificatePDFService::class);
+
+        // Register VAT reporting services as singletons
+        $this->app->singleton(VatCreditService::class);
+        $this->app->singleton(VatReportGenerationService::class);
+        $this->app->singleton(VatPeriodManagementService::class);
+        $this->app->singleton(VatExportService::class, function (): VatExportService {
+            // Exporters will be registered in Task 7
+            return new VatExportService([]);
+        });
     }
 
     public function boot(): void
