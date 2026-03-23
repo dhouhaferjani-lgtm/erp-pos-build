@@ -179,7 +179,7 @@ export function Header() {
               className="flex items-center gap-2 rounded-md bg-green-50 px-2.5 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"
             >
               <span>{t('shift.number', { number: shift.shift_number })}</span>
-              <span className="text-green-400">|</span>
+              <span className="text-green-600">|</span>
               <span>{t('shift.opening', { amount: shift.opening_cash })}</span>
             </button>
           ) : (

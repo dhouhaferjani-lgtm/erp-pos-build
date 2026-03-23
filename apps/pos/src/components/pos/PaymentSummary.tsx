@@ -68,7 +68,7 @@ export function PaymentSummary({
       )}
 
       {/* Total */}
-      <div className="rounded-lg bg-gray-900 px-3 py-2 text-white">
+      <div className="rounded-lg bg-primary-600 px-3 py-2 text-white">
         <div className="flex items-center justify-between">
           <span className="text-lg font-medium">{t('common:total')}</span>
           <span className="text-2xl font-bold">{format(total)}</span>

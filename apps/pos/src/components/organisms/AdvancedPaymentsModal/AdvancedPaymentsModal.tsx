@@ -402,7 +402,7 @@ export function AdvancedPaymentsModal({
               {t('advancedPayments.addedPayments')}
             </p>
             {paymentLines.length === 0 ? (
-              <p className="py-6 text-center text-sm text-gray-400">
+              <p className="py-6 text-center text-sm text-gray-500">
                 {t('advancedPayments.noPayments')}
               </p>
             ) : (
