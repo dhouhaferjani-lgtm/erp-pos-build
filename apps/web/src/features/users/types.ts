@@ -12,8 +12,8 @@ export interface User {
   phone: string | null
   status: UserStatus
   roles: string[]
-  can_discount?: boolean
-  max_discount_percent?: number | null
+  canDiscount?: boolean
+  maxDiscountPercent?: number | null
   lastLoginAt: string | null
   createdAt: string
 }

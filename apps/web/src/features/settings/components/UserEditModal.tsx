@@ -27,9 +27,9 @@ export function UserEditModal({ user, roles, onClose, onSuccess, onError }: User
   const [email, setEmail] = useState(user.email)
   const [phone, setPhone] = useState(user.phone ?? '')
   const [role, setRole] = useState(user.roles[0] ?? 'operator')
-  const [canDiscount, setCanDiscount] = useState(user.can_discount ?? false)
+  const [canDiscount, setCanDiscount] = useState(user.canDiscount ?? false)
   const [maxDiscountPercent, setMaxDiscountPercent] = useState<string>(
-    user.max_discount_percent != null ? String(user.max_discount_percent) : ''
+    user.maxDiscountPercent != null ? String(user.maxDiscountPercent) : ''
   )
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -38,9 +38,9 @@ export function UserEditModal({ user, roles, onClose, onSuccess, onError }: User
     setEmail(user.email)
     setPhone(user.phone ?? '')
     setRole(user.roles[0] ?? 'operator')
-    setCanDiscount(user.can_discount ?? false)
+    setCanDiscount(user.canDiscount ?? false)
     setMaxDiscountPercent(
-      user.max_discount_percent != null ? String(user.max_discount_percent) : ''
+      user.maxDiscountPercent != null ? String(user.maxDiscountPercent) : ''
     )
   }, [user])
 
