@@ -140,7 +140,7 @@ class UserController extends Controller
         /** @var Tenant $tenant */
         $tenant = Tenant::findOrFail($currentUser->tenant_id);
 
-        return DB::transaction(function () use ($validated, $currentUser, $tenant, $request) {
+        $user = DB::transaction(function () use ($validated, $currentUser, $request) {
             // Generate a random password (user will set it via invitation email)
             $tempPassword = Str::random(32);
 
@@ -159,12 +159,6 @@ class UserController extends Controller
             setPermissionsTeamId($currentUser->tenant_id);
             $user->assignRole($validated['role']);
 
-            // Send invitation email
-            $user->notify(new UserInvitation(
-                inviterName: $currentUser->name,
-                tenantName: $tenant->name
-            ));
-
             // Log audit event
             $this->logAuditEvent(
                 eventType: 'user.created',
@@ -178,11 +172,25 @@ class UserController extends Controller
                 ]
             );
 
-            return response()->json([
-                'data' => UserData::fromUser($user),
-                'meta' => $this->getMeta($request),
-            ], Response::HTTP_CREATED);
+            return $user;
         });
+
+        // Send invitation AFTER transaction commits — email failure is non-fatal
+        if ($user->email !== null) {
+            try {
+                $user->notify(new UserInvitation(
+                    inviterName: $currentUser->name,
+                    tenantName: $tenant->name
+                ));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return response()->json([
+            'data' => UserData::fromUser($user),
+            'meta' => $this->getMeta($request),
+        ], Response::HTTP_CREATED);
     }
 
     /**

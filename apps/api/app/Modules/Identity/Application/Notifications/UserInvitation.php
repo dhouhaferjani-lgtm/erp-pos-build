@@ -6,11 +6,12 @@ namespace App\Modules\Identity\Application\Notifications;
 
 use App\Modules\Identity\Domain\User;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Facades\Password;
 
-class UserInvitation extends Notification
+class UserInvitation extends Notification implements ShouldQueue
 {
     use Queueable;
 
