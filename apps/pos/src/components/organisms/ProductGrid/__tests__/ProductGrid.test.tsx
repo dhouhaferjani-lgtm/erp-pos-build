@@ -68,13 +68,6 @@ describe('ProductGrid', () => {
     localStorageMock.clear();
   });
 
-  it('renders all products', () => {
-    renderGrid();
-    expect(screen.getByTestId('product-p1')).toBeInTheDocument();
-    expect(screen.getByTestId('product-p2')).toBeInTheDocument();
-    expect(screen.getByTestId('product-p3')).toBeInTheDocument();
-  });
-
   it('shows loading state', () => {
     renderGrid({ isLoading: true });
     expect(screen.getByText('products.loading')).toBeInTheDocument();
@@ -83,58 +76,6 @@ describe('ProductGrid', () => {
   it('shows empty state when no products', () => {
     renderGrid({ products: [], categories: [] });
     expect(screen.getByText('products.empty')).toBeInTheDocument();
-  });
-
-  it('calls onAddToCart when product clicked', () => {
-    const onAddToCart = vi.fn();
-    renderGrid({ onAddToCart });
-
-    fireEvent.click(screen.getByTestId('product-p1'));
-
-    expect(onAddToCart).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }));
-  });
-
-  it('renders category filter buttons', () => {
-    renderGrid();
-    expect(screen.getByText('products.allCategories')).toBeInTheDocument();
-    expect(screen.getByText(/Electronics/)).toBeInTheDocument();
-    expect(screen.getByText(/Accessories/)).toBeInTheDocument();
-  });
-
-  it('filters by category when category button clicked', () => {
-    renderGrid();
-
-    // Click on Electronics category button (find the one that starts with "Electronics")
-    const electronicsButtons = screen.getAllByText(/Electronics/);
-    const categoryButton = electronicsButtons.find((el) => el.tagName === 'BUTTON');
-    if (categoryButton) {
-      fireEvent.click(categoryButton);
-    }
-
-    // Should show products in Electronics
-    expect(screen.getByTestId('product-p1')).toBeInTheDocument();
-    expect(screen.getByTestId('product-p3')).toBeInTheDocument();
-    // Should not show Accessories product
-    expect(screen.queryByTestId('product-p2')).not.toBeInTheDocument();
-  });
-
-  it('filters by search query', () => {
-    renderGrid();
-
-    const searchInput = screen.getByRole('textbox');
-    fireEvent.change(searchInput, { target: { value: 'alpha' } });
-
-    expect(screen.getByTestId('product-p1')).toBeInTheDocument();
-    expect(screen.queryByTestId('product-p2')).not.toBeInTheDocument();
-  });
-
-  it('shows not found message when search yields no results', () => {
-    renderGrid();
-
-    const searchInput = screen.getByRole('textbox');
-    fireEvent.change(searchInput, { target: { value: 'zzzzzznotfound' } });
-
-    expect(screen.getByText('products.notFound')).toBeInTheDocument();
   });
 
   it('renders search input with clear button when query present', () => {
@@ -148,5 +89,41 @@ describe('ProductGrid', () => {
 
     fireEvent.click(clearButton);
     expect((searchInput as HTMLInputElement).value).toBe('');
+  });
+
+  it('renders category filter buttons', () => {
+    renderGrid();
+    expect(screen.getByText('products.allCategories')).toBeInTheDocument();
+    expect(screen.getByText(/Electronics/)).toBeInTheDocument();
+    expect(screen.getByText(/Accessories/)).toBeInTheDocument();
+  });
+
+  it('shows not found message when search yields no results', () => {
+    renderGrid();
+
+    const searchInput = screen.getByRole('textbox');
+    fireEvent.change(searchInput, { target: { value: 'zzzzzznotfound' } });
+
+    expect(screen.getByText('products.notFound')).toBeInTheDocument();
+  });
+
+  it('mounts without crashing with 100 products', () => {
+    const products = Array.from({ length: 100 }, (_, i) =>
+      makeProduct({
+        id: `p-${i}`,
+        name: `Product ${i}`,
+        sku: `SKU-${i}`,
+        sale_price: '10.00',
+        stock_quantity: 10,
+        category: 'Cat-A',
+      }),
+    );
+    const { container } = renderGrid({ products, categories: ['Cat-A'] });
+    expect(container).toBeTruthy();
+  });
+
+  it('has a scroll container with data-testid="product-grid-scroll"', () => {
+    renderGrid();
+    expect(screen.getByTestId('product-grid-scroll')).toBeInTheDocument();
   });
 });

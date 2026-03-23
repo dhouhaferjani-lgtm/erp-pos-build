@@ -1,6 +1,7 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { cn } from '@/lib/utils';
 import { Search, X, Package, LayoutGrid, Image } from 'lucide-react';
 import { useCurrency } from '@/lib/currency';
@@ -10,6 +11,11 @@ import type { POSProduct } from '@/types/product';
 type DisplayMode = 'grid' | 'visual';
 
 const DISPLAY_MODE_STORAGE_KEY = 'pos-display-mode';
+
+/** Estimated row height in pixels (card + gap). */
+const ROW_HEIGHT_GRID = 140;
+const ROW_HEIGHT_VISUAL = 220;
+const GAP = 12;
 
 function getStoredDisplayMode(): DisplayMode {
   const stored = localStorage.getItem(DISPLAY_MODE_STORAGE_KEY);
@@ -29,6 +35,25 @@ export interface ProductGridProps {
 
 const POPULAR_COUNT = 8;
 
+/** Column counts per display mode. */
+function getColumns(displayMode: DisplayMode): number {
+  // Match the original CSS grid classes:
+  // grid mode:   grid-cols-3 sm:grid-cols-4 lg:grid-cols-5
+  // visual mode: grid-cols-2 sm:grid-cols-3 lg:grid-cols-4
+  // We use a sensible default that works for typical POS screens (>= lg).
+  if (typeof window === 'undefined') return displayMode === 'grid' ? 5 : 4;
+  const w = window.innerWidth;
+  if (displayMode === 'grid') {
+    if (w >= 1024) return 5;
+    if (w >= 640) return 4;
+    return 3;
+  }
+  // visual
+  if (w >= 1024) return 4;
+  if (w >= 640) return 3;
+  return 2;
+}
+
 export function ProductGrid({
   products,
   categories,
@@ -44,6 +69,8 @@ export function ProductGrid({
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<DisplayMode>(getStoredDisplayMode);
   const [inStockOnly, setInStockOnly] = useState(false);
+
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const allCategoriesLabel = t('products.allCategories');
 
@@ -103,6 +130,17 @@ export function ProductGrid({
 
     return filtered;
   }, [sortedProducts, selectedCategory, searchQuery, inStockOnly]);
+
+  const columns = useMemo(() => getColumns(displayMode), [displayMode]);
+  const rowCount = Math.ceil(filteredProducts.length / columns);
+  const rowHeight = displayMode === 'grid' ? ROW_HEIGHT_GRID : ROW_HEIGHT_VISUAL;
+
+  const virtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => rowHeight + GAP,
+    overscan: 3,
+  });
 
   if (isLoading) {
     return (
@@ -258,7 +296,7 @@ export function ProductGrid({
         </div>
       )}
 
-      {/* Grid */}
+      {/* Virtualized product grid */}
       {filteredProducts.length === 0 ? (
         <div className="flex flex-1 items-center justify-center">
           <div className="text-center">
@@ -271,23 +309,46 @@ export function ProductGrid({
         </div>
       ) : (
         <div
-          className={cn(
-            'grid gap-3 overflow-y-auto',
-            displayMode === 'grid'
-              ? 'grid-cols-3 sm:grid-cols-4 lg:grid-cols-5'
-              : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4',
-          )}
+          ref={scrollContainerRef}
+          data-testid="product-grid-scroll"
+          className="flex-1 overflow-y-auto"
         >
-          {filteredProducts.map((product) => (
-            <ProductCard
-              key={product.id}
-              product={product}
-              onAddToCart={onAddToCart}
-              onCustomize={onCustomize}
-              isInCart={cartProductIds.includes(product.id)}
-              displayMode={displayMode}
-            />
-          ))}
+          <div
+            className="relative w-full"
+            style={{ height: `${virtualizer.getTotalSize()}px` }}
+          >
+            {virtualizer.getVirtualItems().map((virtualRow) => {
+              const startIdx = virtualRow.index * columns;
+              const rowProducts = filteredProducts.slice(startIdx, startIdx + columns);
+
+              return (
+                <div
+                  key={virtualRow.key}
+                  className={cn(
+                    'absolute left-0 top-0 grid w-full gap-3',
+                    displayMode === 'grid'
+                      ? 'grid-cols-3 sm:grid-cols-4 lg:grid-cols-5'
+                      : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4',
+                  )}
+                  style={{
+                    height: `${virtualRow.size}px`,
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  {rowProducts.map((product) => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      onAddToCart={onAddToCart}
+                      onCustomize={onCustomize}
+                      isInCart={cartProductIds.includes(product.id)}
+                      displayMode={displayMode}
+                    />
+                  ))}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
