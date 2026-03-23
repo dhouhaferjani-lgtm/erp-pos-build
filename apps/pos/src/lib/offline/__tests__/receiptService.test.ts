@@ -117,7 +117,7 @@ describe('receiptService - createOfflineReceipt', () => {
       paymentMethodId: 'pm-1',
       paymentRepositoryId: 'repo-1',
       tenderedAmount: 200,
-      transactionDiscount: { amount: '20.00', reason: 'Loyalty' },
+      transactionDiscount: { type: 'fixed', value: '20.00', reason: 'Loyalty' },
     });
 
     expect(result.total).toBe('80.00');
@@ -136,7 +136,7 @@ describe('receiptService - createOfflineReceipt', () => {
       paymentMethodId: 'pm-1',
       paymentRepositoryId: 'repo-1',
       tenderedAmount: 0,
-      transactionDiscount: { amount: '999.00' },
+      transactionDiscount: { type: 'fixed', value: '999.00' },
     });
 
     expect(result.total).toBe('0.00');

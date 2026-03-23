@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import i18n from '@/lib/i18n';
 import { fetchPaymentMethods, fetchPaymentRepositories } from '@/api/paymentApi';
 import { createReceipt, processReceiptPayments } from '@/api/receiptApi';
+import { useCartStore } from '@/stores/cartStore';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import type { CartItem } from '@/types/cart';
 import type { CreateReceiptResponse, ProcessReceiptPaymentsResponse } from '@/types/receipt';
@@ -31,7 +32,7 @@ interface PaymentActions {
     terminalId: string,
     cartItems: CartItem[],
     tenderedAmount: number,
-    transactionDiscount?: { amount: string; reason?: string },
+    transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string },
     consumptionMode?: string,
     tableId?: string | null,
   ) => Promise<void>;
@@ -39,7 +40,7 @@ interface PaymentActions {
     terminalId: string,
     cartItems: CartItem[],
     cardData?: { lastFour?: string; reference?: string },
-    transactionDiscount?: { amount: string; reason?: string },
+    transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string },
     consumptionMode?: string,
     tableId?: string | null,
   ) => Promise<void>;
@@ -47,7 +48,7 @@ interface PaymentActions {
     terminalId: string,
     cartItems: CartItem[],
     payments: AdvancedPaymentLine[],
-    transactionDiscount?: { amount: string; reason?: string },
+    transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string },
     consumptionMode?: string,
     tableId?: string | null,
   ) => Promise<void>;
@@ -71,7 +72,7 @@ const initialState: PaymentState = {
 function buildReceiptData(
   terminalId: string,
   cartItems: CartItem[],
-  transactionDiscount?: { amount: string; reason?: string },
+  transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string },
   consumptionMode?: string,
   tableId?: string | null,
 ) {
@@ -103,7 +104,7 @@ function buildReceiptData(
     })),
     ...(transactionDiscount
       ? {
-          transaction_discount_amount: transactionDiscount.amount,
+          transaction_discount_amount: useCartStore.getState().discountAmount().toFixed(2),
           transaction_discount_reason: transactionDiscount.reason,
         }
       : {}),
@@ -117,7 +118,7 @@ async function getOrCreateReceipt(
   set: (partial: Partial<PaymentState>) => void,
   terminalId: string,
   cartItems: CartItem[],
-  transactionDiscount?: { amount: string; reason?: string },
+  transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string },
   consumptionMode?: string,
   tableId?: string | null,
 ): Promise<CreateReceiptResponse> {
@@ -152,7 +153,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     terminalId: string,
     cartItems: CartItem[],
     tenderedAmount: number,
-    transactionDiscount?: { amount: string; reason?: string },
+    transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string },
     consumptionMode?: string,
     tableId?: string | null,
   ) => {
@@ -216,7 +217,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     terminalId: string,
     cartItems: CartItem[],
     cardData?: { lastFour?: string; reference?: string },
-    transactionDiscount?: { amount: string; reason?: string },
+    transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string },
     consumptionMode?: string,
     tableId?: string | null,
   ) => {
@@ -281,7 +282,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     terminalId: string,
     cartItems: CartItem[],
     payments: AdvancedPaymentLine[],
-    transactionDiscount?: { amount: string; reason?: string },
+    transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string },
     consumptionMode?: string,
     tableId?: string | null,
   ) => {

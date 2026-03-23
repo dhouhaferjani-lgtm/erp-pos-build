@@ -56,6 +56,7 @@ export function HomePage() {
   const clearCart = useCartStore((s) => s.clearCart);
   const subtotal = useCartStore((s) => s.subtotal);
   const taxAmount = useCartStore((s) => s.taxAmount);
+  const discountAmount = useCartStore((s) => s.discountAmount);
   const total = useCartStore((s) => s.total);
   const itemCount = useCartStore((s) => s.itemCount);
 
@@ -297,20 +298,18 @@ export function HomePage() {
 
   const handleApplyTransactionDiscount = useCallback(
     (data: { type: 'percentage' | 'fixed'; value: string; reason: string }) => {
-      const subtotal = useCartStore.getState().subtotal();
-      let discountAmount: number;
-      if (data.type === 'percentage') {
-        discountAmount = (subtotal * parseFloat(data.value)) / 100;
-      } else {
-        discountAmount = parseFloat(data.value);
-      }
       useCartStore.getState().setTransactionDiscount({
-        amount: discountAmount.toFixed(currencyDecimals),
+        type: data.type,
+        value: data.value,
         reason: data.reason || undefined,
       });
     },
-    [currencyDecimals],
+    [],
   );
+
+  const handleRemoveDiscount = useCallback(() => {
+    useCartStore.getState().setTransactionDiscount(undefined);
+  }, []);
 
   const handleLineDiscount = useCallback((itemId: string) => {
     setDiscountItemId(itemId);
@@ -446,8 +445,10 @@ export function HomePage() {
           items={cartItems}
           subtotal={subtotal()}
           taxAmount={taxAmount()}
+          discountAmount={discountAmount()}
           total={total()}
           itemCount={itemCount()}
+          hasDiscount={!!transactionDiscount}
           onUpdateQuantity={updateQuantity}
           onRemoveItem={removeItem}
           onClearCart={clearCart}
@@ -459,6 +460,7 @@ export function HomePage() {
           onRecall={() => setShowHeldModal(true)}
           onLineDiscount={handleLineDiscount}
           onEditModifiers={handleEditModifiers}
+          onRemoveDiscount={handleRemoveDiscount}
           shiftNumber={shift.shift_number}
           openingCash={shift.opening_cash}
           paymentMethods={paymentMethods}

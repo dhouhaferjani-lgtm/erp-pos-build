@@ -107,13 +107,14 @@ describe('holdStore', () => {
 
   it('preserves transaction discount in held transaction', () => {
     useCartStore.getState().addItem(makeProduct({ sale_price: '100.00' }));
-    useCartStore.getState().setTransactionDiscount({ amount: '15.00', reason: 'Loyalty' });
+    useCartStore.getState().setTransactionDiscount({ type: 'fixed', value: '15.00', reason: 'Loyalty' });
 
     useHoldStore.getState().holdCurrentCart('Discounted');
 
     const held = useHoldStore.getState().heldTransactions[0]!;
     expect(held.transactionDiscount).toBeDefined();
-    expect(held.transactionDiscount!.amount).toBe('15.00');
+    expect(held.transactionDiscount!.type).toBe('fixed');
+    expect(held.transactionDiscount!.value).toBe('15.00');
     expect(held.transactionDiscount!.reason).toBe('Loyalty');
     expect(held.total).toBeCloseTo(85);
   });

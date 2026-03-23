@@ -31,8 +31,10 @@ function renderCart(overrides: Partial<TransactionCartProps> = {}) {
     items: [],
     subtotal: 0,
     taxAmount: 0,
+    discountAmount: 0,
     total: 0,
     itemCount: 0,
+    hasDiscount: false,
     onUpdateQuantity: vi.fn(),
     onRemoveItem: vi.fn(),
     onClearCart: vi.fn(),
@@ -87,8 +89,10 @@ describe('TransactionCart', () => {
         items={[]}
         subtotal={0}
         taxAmount={0}
+        discountAmount={0}
         total={0}
         itemCount={0}
+        hasDiscount={false}
         onUpdateQuantity={vi.fn()}
         onRemoveItem={vi.fn()}
         onClearCart={vi.fn()}
@@ -104,8 +108,10 @@ describe('TransactionCart', () => {
         items={[makeCartItem()]}
         subtotal={10}
         taxAmount={0}
+        discountAmount={0}
         total={10}
         itemCount={1}
+        hasDiscount={false}
         onUpdateQuantity={vi.fn()}
         onRemoveItem={vi.fn()}
         onClearCart={vi.fn()}

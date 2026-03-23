@@ -1,14 +1,17 @@
 import { useTranslation } from 'react-i18next';
 import { useCurrency } from '@/lib/currency';
-import { Banknote, Wallet } from 'lucide-react';
+import { Banknote, Wallet, X } from 'lucide-react';
 import type { PaymentMethod } from '@/types/payment';
 
 interface PaymentSummaryProps {
   subtotal: number;
   taxAmount: number;
+  discountAmount: number;
   total: number;
   onPayCash: () => void;
   onAdvancedPayments?: () => void;
+  onRemoveDiscount?: () => void;
+  hasDiscount: boolean;
   paymentMethods?: PaymentMethod[];
   disabled?: boolean;
 }
@@ -16,9 +19,12 @@ interface PaymentSummaryProps {
 export function PaymentSummary({
   subtotal,
   taxAmount,
+  discountAmount,
   total,
   onPayCash,
   onAdvancedPayments,
+  onRemoveDiscount,
+  hasDiscount,
   paymentMethods = [],
   disabled = false,
 }: PaymentSummaryProps) {
@@ -41,6 +47,25 @@ export function PaymentSummary({
         <span>{t('common:tax')}</span>
         <span>{format(taxAmount)}</span>
       </div>
+
+      {/* Discount */}
+      {hasDiscount && (
+        <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center gap-1">
+            <span className="text-primary-600 font-medium">{t('common:discount')}</span>
+            {onRemoveDiscount && (
+              <button
+                onClick={onRemoveDiscount}
+                className="ml-1 rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-red-500"
+                title={t('pos:discount.remove')}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <span className="font-medium text-primary-600">-{format(discountAmount)}</span>
+        </div>
+      )}
 
       {/* Total */}
       <div className="rounded-lg bg-gray-900 px-3 py-2 text-white">

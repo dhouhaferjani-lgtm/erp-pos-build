@@ -6,7 +6,7 @@ export interface HeldTransaction {
   id: string;
   label: string;
   items: CartItem[];
-  transactionDiscount?: { amount: string; reason?: string };
+  transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string };
   subtotal: number;
   total: number;
   itemCount: number;

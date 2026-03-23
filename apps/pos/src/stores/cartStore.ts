@@ -6,7 +6,11 @@ import { useAuthStore } from '@/stores/authStore';
 
 interface CartState {
   items: CartItem[];
-  transactionDiscount?: { amount: string; reason?: string };
+  transactionDiscount?: {
+    type: 'percentage' | 'fixed';
+    value: string;
+    reason?: string;
+  };
 }
 
 interface CartActions {
@@ -16,12 +20,13 @@ interface CartActions {
   updateLineModifiers: (lineId: string, newModifiers: SelectedModifier[]) => void;
   removeItem: (itemId: string) => void;
   clearCart: () => void;
-  setTransactionDiscount: (discount: { amount: string; reason?: string } | undefined) => void;
+  setTransactionDiscount: (discount: { type: 'percentage' | 'fixed'; value: string; reason?: string } | undefined) => void;
 }
 
 interface CartDerived {
   subtotal: () => number;
   taxAmount: () => number;
+  discountAmount: () => number;
   total: () => number;
   itemCount: () => number;
 }
@@ -227,11 +232,19 @@ export const useCartStore = create<CartStore>()((set, get) => ({
     );
   },
 
+  discountAmount: () => {
+    const discount = get().transactionDiscount;
+    if (!discount) return 0;
+    const subtotal = get().subtotal();
+    if (discount.type === 'percentage') {
+      return (subtotal * parseFloat(discount.value)) / 100;
+    }
+    return parseFloat(discount.value);
+  },
+
   total: () => {
     const subtotal = get().subtotal();
-    const discount = get().transactionDiscount
-      ? parseFloat(get().transactionDiscount!.amount)
-      : 0;
+    const discount = get().discountAmount();
     return Math.max(0, subtotal - discount);
   },
 

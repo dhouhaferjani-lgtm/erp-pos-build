@@ -10,8 +10,10 @@ export interface TransactionCartProps {
   items: CartItem[];
   subtotal: number;
   taxAmount: number;
+  discountAmount: number;
   total: number;
   itemCount: number;
+  hasDiscount: boolean;
   onUpdateQuantity: (itemId: string, quantity: number) => void;
   onRemoveItem: (itemId: string) => void;
   onClearCart: () => void;
@@ -23,6 +25,7 @@ export interface TransactionCartProps {
   onRecall?: () => void;
   onLineDiscount?: (itemId: string) => void;
   onEditModifiers?: (itemId: string) => void;
+  onRemoveDiscount?: () => void;
   paymentMethods?: PaymentMethod[];
   shiftNumber: number;
   openingCash: string;
@@ -32,8 +35,10 @@ export function TransactionCart({
   items,
   subtotal,
   taxAmount,
+  discountAmount,
   total,
   itemCount,
+  hasDiscount,
   onUpdateQuantity,
   onRemoveItem,
   onClearCart,
@@ -45,6 +50,7 @@ export function TransactionCart({
   onRecall,
   onLineDiscount,
   onEditModifiers,
+  onRemoveDiscount,
   paymentMethods,
   shiftNumber,
   openingCash,
@@ -117,9 +123,12 @@ export function TransactionCart({
           <PaymentSummary
             subtotal={subtotal}
             taxAmount={taxAmount}
+            discountAmount={discountAmount}
             total={total}
+            hasDiscount={hasDiscount}
             onPayCash={onPayCash}
             onAdvancedPayments={onAdvancedPayments}
+            onRemoveDiscount={onRemoveDiscount}
             paymentMethods={paymentMethods}
           />
         )}

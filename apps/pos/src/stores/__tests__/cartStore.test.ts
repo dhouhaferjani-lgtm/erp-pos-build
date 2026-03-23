@@ -95,10 +95,11 @@ describe('cartStore', () => {
     expect(useCartStore.getState().subtotal()).toBeCloseTo(35.5);
   });
 
-  it('calculates total with transaction discount', () => {
+  it('calculates total with fixed transaction discount', () => {
     useCartStore.getState().addItem(makeProduct({ sale_price: '100.00' }));
-    useCartStore.getState().setTransactionDiscount({ amount: '10.00' });
+    useCartStore.getState().setTransactionDiscount({ type: 'fixed', value: '10.00' });
 
+    expect(useCartStore.getState().discountAmount()).toBeCloseTo(10);
     expect(useCartStore.getState().total()).toBeCloseTo(90);
   });
 
@@ -133,9 +134,31 @@ describe('cartStore', () => {
 
   it('total never goes below 0', () => {
     useCartStore.getState().addItem(makeProduct({ sale_price: '5.00' }));
-    useCartStore.getState().setTransactionDiscount({ amount: '100.00' });
+    useCartStore.getState().setTransactionDiscount({ type: 'fixed', value: '100.00' });
 
     expect(useCartStore.getState().total()).toBe(0);
+  });
+
+  it('recalculates percentage discount when items change', () => {
+    useCartStore.getState().addItem(makeProduct({ id: 'prod-1', sale_price: '100.00' }));
+    useCartStore.getState().setTransactionDiscount({ type: 'percentage', value: '10' });
+    expect(useCartStore.getState().discountAmount()).toBeCloseTo(10);
+    expect(useCartStore.getState().total()).toBeCloseTo(90);
+
+    // Add another item — discount should recalculate
+    useCartStore.getState().addItem(makeProduct({ id: 'prod-2', sale_price: '100.00' }));
+    expect(useCartStore.getState().discountAmount()).toBeCloseTo(20); // 10% of 200
+    expect(useCartStore.getState().total()).toBeCloseTo(180);
+  });
+
+  it('removes transaction discount when set to undefined', () => {
+    useCartStore.getState().addItem(makeProduct({ sale_price: '100.00' }));
+    useCartStore.getState().setTransactionDiscount({ type: 'percentage', value: '10' });
+    expect(useCartStore.getState().discountAmount()).toBeCloseTo(10);
+
+    useCartStore.getState().setTransactionDiscount(undefined);
+    expect(useCartStore.getState().discountAmount()).toBe(0);
+    expect(useCartStore.getState().total()).toBeCloseTo(100);
   });
 
   it('recalculates tax_amount when line discount is applied via setState', () => {

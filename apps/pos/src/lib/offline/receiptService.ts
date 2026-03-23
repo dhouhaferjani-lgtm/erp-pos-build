@@ -20,7 +20,7 @@ interface OfflineReceiptInput {
   paymentMethodId: string;
   paymentRepositoryId: string;
   tenderedAmount: number;
-  transactionDiscount?: { amount: string; reason?: string };
+  transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string };
 }
 
 interface OfflineReceiptResult {
@@ -94,9 +94,14 @@ export async function createOfflineReceipt(
 
   // 2. Compute line totals
   const { subtotal, taxAmount } = computeLineTotals(input.cartItems);
-  const transactionDiscountAmount = input.transactionDiscount
-    ? parseFloat(input.transactionDiscount.amount)
-    : 0;
+  let transactionDiscountAmount = 0;
+  if (input.transactionDiscount) {
+    if (input.transactionDiscount.type === 'percentage') {
+      transactionDiscountAmount = (subtotal * parseFloat(input.transactionDiscount.value)) / 100;
+    } else {
+      transactionDiscountAmount = parseFloat(input.transactionDiscount.value);
+    }
+  }
   const total = Math.max(0, subtotal - transactionDiscountAmount);
 
   // 3. Generate receipt number
@@ -155,7 +160,9 @@ export async function createOfflineReceipt(
     fiscal_hash: fiscalHash,
     previous_hash: terminalState.last_hash,
     hash_sequence: newSequence,
-    transaction_discount_amount: input.transactionDiscount?.amount ?? null,
+    transaction_discount_amount: input.transactionDiscount
+      ? transactionDiscountAmount.toFixed(decimals)
+      : null,
     transaction_discount_reason: input.transactionDiscount?.reason ?? null,
     tendered_amount: input.tenderedAmount.toFixed(decimals),
     change_due: changeDue.toFixed(decimals),
