@@ -34,6 +34,8 @@ final class PosAuthController extends Controller
 
         foreach ($users as $user) {
             if ($user->pos_pin !== null && Hash::check($pin, $user->pos_pin)) {
+                $isAdmin = $user->hasRole(['super_admin', 'admin']);
+
                 return response()->json([
                     'data' => [
                         'id' => $user->id,
@@ -41,8 +43,8 @@ final class PosAuthController extends Controller
                         'email' => $user->email,
                         'roles' => $user->getRoleNames()->values()->all(),
                         'permissions' => $user->getAllPermissions()->pluck('name')->values()->all(),
-                        'can_discount' => $user->can_discount,
-                        'max_discount_percent' => $user->max_discount_percent,
+                        'can_discount' => $isAdmin || $user->can_discount,
+                        'max_discount_percent' => $isAdmin ? 100.0 : $user->max_discount_percent,
                     ],
                 ]);
             }
@@ -89,6 +91,8 @@ final class PosAuthController extends Controller
 
         $user->update(['pos_pin' => $pin]);
 
+        $isAdmin = $user->hasRole(['super_admin', 'admin']);
+
         return response()->json([
             'data' => [
                 'id' => $user->id,
@@ -96,8 +100,8 @@ final class PosAuthController extends Controller
                 'email' => $user->email,
                 'roles' => $user->getRoleNames()->values()->all(),
                 'permissions' => $user->getAllPermissions()->pluck('name')->values()->all(),
-                'can_discount' => $user->can_discount,
-                'max_discount_percent' => $user->max_discount_percent,
+                'can_discount' => $isAdmin || $user->can_discount,
+                'max_discount_percent' => $isAdmin ? 100.0 : $user->max_discount_percent,
             ],
         ]);
     }
@@ -121,6 +125,8 @@ final class PosAuthController extends Controller
             ->get();
 
         $data = $operators->map(function (User $user): array {
+            $isAdmin = $user->hasRole(['super_admin', 'admin']);
+
             return [
                 'id' => $user->id,
                 'name' => $user->name,
@@ -128,8 +134,8 @@ final class PosAuthController extends Controller
                 'pin_hash' => $user->pos_pin,
                 'roles' => $user->getRoleNames()->values()->all(),
                 'permissions' => $user->getAllPermissions()->pluck('name')->values()->all(),
-                'can_discount' => (bool) $user->can_discount,
-                'max_discount_percent' => $user->max_discount_percent,
+                'can_discount' => $isAdmin || (bool) $user->can_discount,
+                'max_discount_percent' => $isAdmin ? 100.0 : $user->max_discount_percent,
             ];
         })->values()->all();
 

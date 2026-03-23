@@ -47,6 +47,7 @@ class UserFactory extends Factory
             'email_verified_at' => now(),
             'last_login_at' => null,
             'last_login_ip' => null,
+            'can_discount' => true,
         ];
     }
 
