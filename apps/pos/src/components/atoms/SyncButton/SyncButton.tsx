@@ -27,17 +27,17 @@ export function SyncButton() {
       onClick={triggerSync}
       disabled={isSyncing}
       className={cn(
-        'flex min-h-[44px] items-center gap-2 rounded-lg bg-primary-800 px-3 py-2 text-sm font-medium text-primary-200 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed',
+        'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50',
       )}
     >
       <RefreshCw
-        className={cn('h-4 w-4', isSyncing && 'animate-spin')}
+        className={cn('h-3.5 w-3.5', isSyncing && 'animate-spin')}
       />
       <span className="hidden sm:inline">
         {isSyncing ? t('sync.syncing') : t('sync.syncNow')}
       </span>
       {timeAgo && (
-        <span className="text-xs text-primary-300">
+        <span className="text-xs text-gray-400">
           {timeAgo}
         </span>
       )}

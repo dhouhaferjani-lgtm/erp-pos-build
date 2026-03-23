@@ -134,36 +134,36 @@ export function Header() {
 
   return (
     <>
-      <header className="flex h-16 items-center justify-between bg-primary-900 px-4 text-white">
+      <header className="flex h-12 items-center justify-between border-b border-gray-200 bg-white px-4">
         <div className="flex items-center gap-3">
-          <h1 className="text-xl font-bold text-white">{t('auth.title')}</h1>
+          <h1 className="text-lg font-bold text-gray-900">{t('auth.title')}</h1>
           {terminal && (
-            <span className="rounded-lg bg-primary-800 px-3 py-1 text-sm font-medium text-primary-200">
+            <span className="rounded-md bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
               {terminal.name}
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {/* Connectivity indicator */}
           <div className="flex items-center gap-1.5" title={isOnline ? t('sync.online') : t('sync.offline')}>
             <span
               className={cn(
-                'inline-block h-3 w-3 rounded-full',
+                'inline-block h-2.5 w-2.5 rounded-full',
                 isSyncing
-                  ? 'animate-pulse bg-yellow-400'
+                  ? 'animate-pulse bg-yellow-500'
                   : isOnline
                     ? 'bg-green-500'
                     : 'bg-red-500',
               )}
             />
             {!isOnline && (
-              <span className="rounded bg-red-500/20 px-2 py-0.5 text-xs font-medium text-red-200">
+              <span className="rounded bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
                 {t('sync.offline')}
               </span>
             )}
             {pendingReceiptCount > 0 && (
-              <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-xs font-medium text-orange-200">
+              <span className="rounded bg-orange-50 px-1.5 py-0.5 text-xs font-medium text-orange-700">
                 {pendingReceiptCount}
               </span>
             )}
@@ -176,38 +176,38 @@ export function Header() {
           {shift ? (
             <button
               onClick={() => setShowCloseShift(true)}
-              className="flex min-h-[44px] items-center gap-2 rounded-lg bg-green-500/20 px-3 py-1.5 text-sm font-medium text-green-200 hover:bg-green-500/30"
+              className="flex items-center gap-2 rounded-md bg-green-50 px-2.5 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"
             >
               <span>{t('shift.number', { number: shift.shift_number })}</span>
-              <span className="text-xs text-green-300/80">|</span>
-              <span className="text-xs">{t('shift.opening', { amount: shift.opening_cash })}</span>
+              <span className="text-green-400">|</span>
+              <span>{t('shift.opening', { amount: shift.opening_cash })}</span>
             </button>
           ) : (
-            <span className="text-sm text-primary-100">{t('header.noShift')}</span>
+            <span className="text-sm text-gray-500">{t('header.noShift')}</span>
           )}
 
           {/* Operator name */}
           {operator && (
-            <span className="text-base text-primary-100">{operator.name}</span>
+            <span className="text-sm font-medium text-gray-700">{operator.name}</span>
           )}
 
           {/* Switch operator */}
           <button
             onClick={handleSwitchOperator}
-            className="flex min-h-[44px] items-center gap-2 rounded-lg bg-primary-800 px-4 py-2 text-sm font-medium text-primary-200 hover:bg-primary-700"
+            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100"
             title={t('header.switch')}
           >
-            <ArrowLeftRight className="h-4 w-4" />
+            <ArrowLeftRight className="h-3.5 w-3.5" />
             {t('header.switch')}
           </button>
 
           {/* Lock */}
           <button
             onClick={lockScreen}
-            className="flex min-h-[44px] items-center gap-2 rounded-lg bg-primary-800 px-4 py-2 text-sm font-medium text-primary-200 hover:bg-primary-700"
+            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100"
             title={t('header.lock')}
           >
-            <Lock className="h-4 w-4" />
+            <Lock className="h-3.5 w-3.5" />
             {t('header.lock')}
           </button>
 
@@ -215,10 +215,10 @@ export function Header() {
           {shift && (
             <button
               onClick={() => setShowReportsMenu(true)}
-              className="flex min-h-[44px] items-center gap-2 rounded-lg bg-primary-800 px-3 py-2 text-sm font-medium text-primary-200 hover:bg-primary-700"
+              className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100"
               title={t('quickActions.reports')}
             >
-              <BarChart3 className="h-4 w-4" />
+              <BarChart3 className="h-3.5 w-3.5" />
               {t('quickActions.reports')}
             </button>
           )}
@@ -227,7 +227,7 @@ export function Header() {
           {fullscreen && (
             <button
               onClick={() => void handleExitFullscreen()}
-              className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary-800 text-primary-200 hover:bg-primary-700 hover:text-primary-100"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700"
               title={t('settings.exitFullscreen')}
             >
               <Minimize2 className="h-4 w-4" />
@@ -237,20 +237,20 @@ export function Header() {
           {/* Settings */}
           <button
             onClick={() => navigate('/settings')}
-            className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary-800 text-primary-200 hover:bg-primary-700"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700"
             title={t('header.settings')}
           >
-            <Settings className="h-5 w-5" />
+            <Settings className="h-4 w-4" />
           </button>
 
           {/* Logout — manager/admin only */}
           {isManager && (
             <button
               onClick={() => setShowLogoutConfirm(true)}
-              className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary-800 text-primary-200 hover:bg-primary-700"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700"
               title={t('header.logout')}
             >
-              <LogOut className="h-5 w-5" />
+              <LogOut className="h-4 w-4" />
             </button>
           )}
         </div>
