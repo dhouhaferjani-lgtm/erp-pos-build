@@ -159,14 +159,16 @@ final class ReceiptPaymentService
             $freshReceipt = $receipt->fresh(['lines', 'vatDetails', 'payments']);
 
             // Dispatch event for cross-module listeners (loyalty, analytics)
-            event(new ReceiptCompleted(
-                receiptId: $receipt->id,
-                tenantId: $receipt->tenant_id,
-                companyId: $companyId,
-                customerId: $customerId,
-                totalAmount: $receipt->total,
-                currency: $receipt->currency,
-            ));
+            DB::afterCommit(function () use ($receipt, $companyId, $customerId): void {
+                event(new ReceiptCompleted(
+                    receiptId: $receipt->id,
+                    tenantId: $receipt->tenant_id,
+                    companyId: $companyId,
+                    customerId: $customerId,
+                    totalAmount: $receipt->total,
+                    currency: $receipt->currency,
+                ));
+            });
 
             return [
                 'receipt' => $freshReceipt,

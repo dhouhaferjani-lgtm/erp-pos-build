@@ -166,14 +166,16 @@ final class ReportGenerationService
             /** @var ZReport $freshReport */
             $freshReport = $zReport->fresh();
 
-            event(new ZReportGenerated(
-                zReportId: $freshReport->id,
-                companyId: $terminal->company_id,
-                terminalId: $terminal->id,
-                zNumber: $freshReport->z_number,
-                fiscalHash: $freshReport->fiscal_hash,
-                generatedAt: $freshReport->generated_at->toIso8601String(),
-            ));
+            DB::afterCommit(function () use ($freshReport, $terminal): void {
+                event(new ZReportGenerated(
+                    zReportId: $freshReport->id,
+                    companyId: $terminal->company_id,
+                    terminalId: $terminal->id,
+                    zNumber: $freshReport->z_number,
+                    fiscalHash: $freshReport->fiscal_hash,
+                    generatedAt: $freshReport->generated_at->toIso8601String(),
+                ));
+            });
 
             return $freshReport;
         });
