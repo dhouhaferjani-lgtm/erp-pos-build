@@ -224,8 +224,8 @@ describe('ModifierSelectionModal', () => {
 
   it('shows price adjustments for modifiers', () => {
     renderModal();
-    // Extra Cheese has +2.00 EUR
-    expect(screen.getByText('+2.00 EUR')).toBeInTheDocument();
+    // Extra Cheese (+2.00 EUR) and Medium (+2.00 EUR) both appear — all groups visible
+    expect(screen.getAllByText('+2.00 EUR').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('+3.00 EUR')).toBeInTheDocument();
     expect(screen.getByText('+1.50 EUR')).toBeInTheDocument();
   });
