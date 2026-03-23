@@ -108,11 +108,13 @@ describe('ModifierSelectionModal', () => {
     expect(screen.getAllByText(/10\.00 EUR/).length).toBeGreaterThanOrEqual(1);
   });
 
-  it('shows modifier group tabs when multiple groups exist', () => {
+  it('shows all modifier groups simultaneously', () => {
     renderModal();
-    // 'Toppings' appears in both tab and group info
-    expect(screen.getAllByText('Toppings').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('Size').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Toppings')).toBeInTheDocument();
+    expect(screen.getByText('Size')).toBeInTheDocument();
+    // All modifiers from all groups visible
+    expect(screen.getByText('Extra Cheese')).toBeInTheDocument();
+    expect(screen.getByText('Small')).toBeInTheDocument();
   });
 
   it('shows modifier options for the active group', () => {
@@ -161,14 +163,13 @@ describe('ModifierSelectionModal', () => {
     expect(screen.getByText('12.00 EUR')).toBeInTheDocument();
   });
 
-  it('switches between group tabs', () => {
+  it('shows all modifiers from all groups without navigation', () => {
     renderModal();
-
-    // Switch to Size group - click the tab button (first element with 'Size' text that's a button)
-    const sizeElements = screen.getAllByText('Size');
-    const sizeTab = sizeElements.find((el) => el.tagName === 'BUTTON');
-    if (sizeTab) fireEvent.click(sizeTab);
-
+    // Toppings group
+    expect(screen.getByText('Extra Cheese')).toBeInTheDocument();
+    expect(screen.getByText('Bacon')).toBeInTheDocument();
+    expect(screen.getByText('Mushrooms')).toBeInTheDocument();
+    // Size group
     expect(screen.getByText('Small')).toBeInTheDocument();
     expect(screen.getByText('Medium')).toBeInTheDocument();
     expect(screen.getByText('Large')).toBeInTheDocument();
@@ -184,13 +185,8 @@ describe('ModifierSelectionModal', () => {
 
   it('enables confirm when all required groups are satisfied', () => {
     renderModal();
-
-    // Switch to Size tab and select a size
-    const sizeElements = screen.getAllByText('Size');
-    const sizeTab = sizeElements.find((el) => el.tagName === 'BUTTON');
-    if (sizeTab) fireEvent.click(sizeTab);
+    // Size group is required — select Small (visible without tab switching)
     fireEvent.click(screen.getByText('Small'));
-
     const addButton = screen.getByText('modifiers.addToCart');
     expect(addButton.closest('button')).not.toBeDisabled();
   });
@@ -199,13 +195,9 @@ describe('ModifierSelectionModal', () => {
     const onConfirm = vi.fn();
     renderModal({ onConfirm });
 
-    // Select a topping
+    // Select a topping (all groups visible)
     fireEvent.click(screen.getByText('Bacon'));
-
-    // Switch to Size and select
-    const sizeElements = screen.getAllByText('Size');
-    const sizeTab = sizeElements.find((el) => el.tagName === 'BUTTON');
-    if (sizeTab) fireEvent.click(sizeTab);
+    // Select a size (all groups visible)
     fireEvent.click(screen.getByText('Medium'));
 
     // Confirm
