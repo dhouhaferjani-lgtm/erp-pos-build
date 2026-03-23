@@ -91,7 +91,7 @@ export function AdvancedPaymentsModal({
   error,
 }: AdvancedPaymentsModalProps) {
   const { t } = useTranslation('pos');
-  const { format } = useCurrency();
+  const { format, decimals } = useCurrency();
   const touchMode = useSettingsStore((s) => s.touchMode);
 
   const [paymentLines, setPaymentLines] = useState<PaymentLineItem[]>([]);
@@ -140,7 +140,7 @@ export function AdvancedPaymentsModal({
   const handleSelectMethod = useCallback(
     (methodId: string) => {
       setSelectedMethodId(methodId);
-      setAmount(remaining > 0 ? remaining.toFixed(2) : '');
+      setAmount(remaining > 0 ? remaining.toFixed(decimals) : '');
       setRepositoryId('');
       setReference('');
       setCardLastFour('');
@@ -151,7 +151,7 @@ export function AdvancedPaymentsModal({
 
   const handlePayRemaining = useCallback(() => {
     if (remaining > 0) {
-      setAmount(remaining.toFixed(2));
+      setAmount(remaining.toFixed(decimals));
     }
   }, [remaining]);
 

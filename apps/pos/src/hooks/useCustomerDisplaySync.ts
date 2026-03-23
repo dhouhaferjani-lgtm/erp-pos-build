@@ -3,6 +3,7 @@ import { useCustomerDisplayStore } from '@/stores/customerDisplayStore';
 import { useCartStore } from '@/stores/cartStore';
 import { usePaymentStore } from '@/stores/paymentStore';
 import { useAuthStore } from '@/stores/authStore';
+import { getCurrencyDecimals } from '@/lib/currency';
 import { sendCartUpdate, sendIdleScreen, sendThankYou } from '@/lib/customerDisplay';
 import type { CartDisplayItem } from '@/lib/customerDisplay';
 
@@ -38,7 +39,7 @@ export function useCustomerDisplaySync(): void {
             quantity: item.quantity,
             line_total: item.line_total,
           }));
-          const total = useCartStore.getState().total().toFixed(2);
+          const total = useCartStore.getState().total().toFixed(getCurrencyDecimals(currency));
           await sendCartUpdate(displayItems, total, currency);
         } else {
           await sendIdleScreen(idleImagePath);

@@ -23,7 +23,7 @@ export function CashPaymentScreen({
   error,
 }: CashPaymentScreenProps) {
   const { t } = useTranslation('pos');
-  const { format, currency } = useCurrency();
+  const { format, currency, decimals } = useCurrency();
   const [tenderedStr, setTenderedStr] = useState('');
 
   useEffect(() => {
@@ -35,11 +35,11 @@ export function CashPaymentScreen({
   const isValid = tenderedNum >= total && tenderedStr !== '';
 
   const handleExact = useCallback(() => {
-    setTenderedStr(total.toFixed(2));
+    setTenderedStr(total.toFixed(decimals));
   }, [total]);
 
   const handleDenomination = useCallback((amount: number) => {
-    setTenderedStr(amount.toFixed(2));
+    setTenderedStr(amount.toFixed(decimals));
   }, []);
 
   const handleConfirm = useCallback(() => {

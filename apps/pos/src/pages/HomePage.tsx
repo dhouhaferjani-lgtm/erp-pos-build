@@ -9,6 +9,7 @@ import { useHoldStore } from '@/stores/holdStore';
 import { useScannerStore } from '@/stores/scannerStore';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { getErrorMessage } from '@/lib/api';
+import { useCurrency } from '@/lib/currency';
 import { hasModule } from '@/stores/productStore';
 import { ConsumptionModeToggle } from '@/components/atoms/ConsumptionModeToggle';
 import { TableSelector } from '@/components/atoms/TableSelector';
@@ -30,6 +31,7 @@ import type { SelectedModifier } from '@/types/cart';
 
 export function HomePage() {
   const { t } = useTranslation();
+  const { decimals: currencyDecimals } = useCurrency();
   const { shift, terminal, openShift, isLoading: terminalLoading } = useTerminalStore();
   const operator = useOperatorStore((s) => s.operator);
   const [openingCash, setOpeningCash] = useState('0.00');
@@ -305,7 +307,7 @@ export function HomePage() {
         discountAmount = parseFloat(data.value);
       }
       useCartStore.getState().setTransactionDiscount({
-        amount: discountAmount.toFixed(2),
+        amount: discountAmount.toFixed(currencyDecimals),
         reason: data.reason || undefined,
       });
     },
@@ -335,9 +337,9 @@ export function HomePage() {
             ...item,
             discount_type: data.type,
             discount_percent: data.type === 'percentage' ? data.value : undefined,
-            discount_amount: discountAmount.toFixed(2),
+            discount_amount: discountAmount.toFixed(currencyDecimals),
             discount_reason: data.reason || undefined,
-            line_total: lineTotal.toFixed(2),
+            line_total: lineTotal.toFixed(currencyDecimals),
             tax_amount: computeTaxAmount(lineTotal, item.tax_rate),
           };
         }),

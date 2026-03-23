@@ -8,6 +8,8 @@
 
 import type Database from '@tauri-apps/plugin-sql';
 import { queryAll } from '@/lib/db';
+import { getCurrencyDecimals } from '@/lib/currency';
+import { useAuthStore } from '@/stores/authStore';
 import { computeZReportHash } from '@/lib/fiscal/zReportHashService';
 import { insertZReport, getZReportByShift } from '@/lib/db/repositories/zReportRepository';
 import {
@@ -65,6 +67,10 @@ export async function generateZReport(
   shiftOpenedAt: string,
   openingCash: number,
 ): Promise<LocalZReport> {
+  const authState = useAuthStore.getState();
+  const company = authState.companies.find((c) => c.id === authState.companyId);
+  const decimals = getCurrencyDecimals(company?.currency ?? 'EUR');
+
   // 1. Guard: check no Z-report already exists for this shift
   const existing = await getZReportByShift(db, shiftId);
   if (existing) {
@@ -102,7 +108,7 @@ export async function generateZReport(
   const paymentMethodMap = await buildPaymentMethodMap(db);
 
   // 4. Compute report data
-  const reportData = aggregateReportData(receipts, paymentMethodMap);
+  const reportData = aggregateReportData(receipts, paymentMethodMap, decimals);
 
   // 5. Compute expected cash BEFORE hashing — must be embedded in report_data
   // to match the server's ReportGenerationService which adds opening_cash/expected_cash
@@ -111,8 +117,8 @@ export async function generateZReport(
   const cashSales = cashPayments ? parseFloat(cashPayments.total_amount) : 0;
   const expectedCash = openingCash + cashSales;
 
-  reportData.opening_cash = openingCash.toFixed(2);
-  reportData.expected_cash = expectedCash.toFixed(2);
+  reportData.opening_cash = openingCash.toFixed(decimals);
+  reportData.expected_cash = expectedCash.toFixed(decimals);
   reportData.variance = null;
 
   // 6. Build receipt snapshots for fiscal export
@@ -199,6 +205,7 @@ async function buildPaymentMethodMap(db: Database): Promise<Map<string, string>>
 function aggregateReportData(
   receipts: OfflineReceipt[],
   paymentMethodMap: Map<string, string>,
+  decimals: number,
 ): ZReportData {
   let grossSales = 0;
   let netSales = 0;
@@ -252,9 +259,9 @@ function aggregateReportData(
   for (const [rate, totals] of vatByRate) {
     vatBreakdown.push({
       tax_rate: parseFloat(rate),
-      net_amount: totals.net.toFixed(2),
-      vat_amount: totals.vat.toFixed(2),
-      gross_amount: totals.gross.toFixed(2),
+      net_amount: totals.net.toFixed(decimals),
+      vat_amount: totals.vat.toFixed(decimals),
+      gross_amount: totals.gross.toFixed(decimals),
     });
   }
   vatBreakdown.sort((a, b) => a.tax_rate - b.tax_rate);
@@ -263,18 +270,18 @@ function aggregateReportData(
   for (const [type, data] of paymentByType) {
     paymentMethods.push({
       payment_type: type,
-      total_amount: data.amount.toFixed(2),
+      total_amount: data.amount.toFixed(decimals),
       transaction_count: data.count,
     });
   }
 
   return {
     sales_count: salesCount,
-    gross_sales: grossSales.toFixed(2),
-    net_sales: netSales.toFixed(2),
-    tax_amount: taxAmount.toFixed(2),
+    gross_sales: grossSales.toFixed(decimals),
+    net_sales: netSales.toFixed(decimals),
+    tax_amount: taxAmount.toFixed(decimals),
     refunds_count: refundsCount,
-    refunds_amount: refundsAmount.toFixed(2),
+    refunds_amount: refundsAmount.toFixed(decimals),
     voided_count: voidedCount,
     vat_breakdown: vatBreakdown,
     payment_methods: paymentMethods,

@@ -1,5 +1,7 @@
 import { apiGet, apiPost } from '@/lib/api';
 import { getDatabase } from '@/lib/db';
+import { getCurrencyDecimals } from '@/lib/currency';
+import { useAuthStore } from '@/stores/authStore';
 import { generateZReport as generateLocalZReport } from '@/lib/offline/zReportService';
 import type { LocalZReport } from '@/lib/offline/types';
 
@@ -122,13 +124,16 @@ export async function generateZReport(
   shiftOpenedAt: string,
   openingCash: number,
 ): Promise<ZReportResponse> {
+  const authState = useAuthStore.getState();
+  const company = authState.companies.find((c) => c.id === authState.companyId);
+  const decimals = getCurrencyDecimals(company?.currency ?? 'EUR');
   const db = await getDatabase(companyId);
   const localReport = await generateLocalZReport(db, terminalId, shiftId, shiftOpenedAt, openingCash);
-  return localZReportToResponse(localReport);
+  return localZReportToResponse(localReport, decimals);
 }
 
 /** Map local Z-report to the same shape the UI expects. */
-function localZReportToResponse(report: LocalZReport): ZReportResponse {
+function localZReportToResponse(report: LocalZReport, decimals: number): ZReportResponse {
   return {
     id: report.id,
     terminal_id: report.terminal_id,
@@ -142,10 +147,10 @@ function localZReportToResponse(report: LocalZReport): ZReportResponse {
     formatted_z_number: report.formatted_z_number,
     sales_count: report.report_data.sales_count,
     gross_sales: report.report_data.gross_sales,
-    opening_cash: report.opening_cash.toFixed(2),
-    expected_cash: report.expected_cash.toFixed(2),
-    actual_cash: '0.00',
-    variance: '0.00',
+    opening_cash: report.opening_cash.toFixed(decimals),
+    expected_cash: report.expected_cash.toFixed(decimals),
+    actual_cash: (0).toFixed(decimals),
+    variance: (0).toFixed(decimals),
     has_variance: false,
     report_data: {
       sales_count: report.report_data.sales_count,
@@ -155,8 +160,8 @@ function localZReportToResponse(report: LocalZReport): ZReportResponse {
       refunds_count: report.report_data.refunds_count,
       refunds_amount: report.report_data.refunds_amount,
       voided_count: report.report_data.voided_count,
-      opening_cash: report.opening_cash.toFixed(2),
-      expected_cash: report.expected_cash.toFixed(2),
+      opening_cash: report.opening_cash.toFixed(decimals),
+      expected_cash: report.expected_cash.toFixed(decimals),
       vat_breakdown: report.report_data.vat_breakdown.map((v) => ({
         tax_rate: v.tax_rate,
         net_amount: v.net_amount,
