@@ -101,6 +101,10 @@ export function HomePage() {
   // Line discount state
   const [discountItemId, setDiscountItemId] = useState<string | null>(null);
 
+  // Operator discount permissions
+  const canDiscount = operator?.can_discount ?? true;
+  const maxDiscountPct = operator?.max_discount_percent ?? 100;
+
   // Barcode scanner
   const [scanMessage, setScanMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
@@ -312,8 +316,31 @@ export function HomePage() {
   }, []);
 
   const handleLineDiscount = useCallback((itemId: string) => {
+    if (!canDiscount) {
+      setScanMessage({ text: t('pos:discount.notAllowed'), type: 'error' });
+      setTimeout(() => setScanMessage(null), 3000);
+      return;
+    }
     setDiscountItemId(itemId);
-  }, []);
+  }, [canDiscount, t]);
+
+  const handleRemoveLineDiscount = useCallback((itemId: string) => {
+    useCartStore.setState((state) => ({
+      items: state.items.map((item) => {
+        if (item.id !== itemId) return item;
+        const grossTotal = parseFloat(item.unit_price) * item.quantity;
+        return {
+          ...item,
+          discount_type: undefined,
+          discount_percent: undefined,
+          discount_amount: undefined,
+          discount_reason: undefined,
+          line_total: grossTotal.toFixed(currencyDecimals),
+          tax_amount: computeTaxAmount(grossTotal, item.tax_rate),
+        };
+      }),
+    }));
+  }, [currencyDecimals]);
 
   const handleApplyLineDiscount = useCallback(
     (data: { type: 'percentage' | 'fixed'; value: string; reason: string }) => {
@@ -455,10 +482,18 @@ export function HomePage() {
           onPayCash={handlePayCash}
           onAdvancedPayments={handleAdvancedPayments}
           onQuantityTap={handleQuantityTap}
-          onDiscount={() => setShowDiscountModal(true)}
+          onDiscount={() => {
+            if (!canDiscount) {
+              setScanMessage({ text: t('pos:discount.notAllowed'), type: 'error' });
+              setTimeout(() => setScanMessage(null), 3000);
+              return;
+            }
+            setShowDiscountModal(true);
+          }}
           onHold={handleHold}
           onRecall={() => setShowHeldModal(true)}
           onLineDiscount={handleLineDiscount}
+          onRemoveLineDiscount={handleRemoveLineDiscount}
           onEditModifiers={handleEditModifiers}
           onRemoveDiscount={handleRemoveDiscount}
           shiftNumber={shift.shift_number}
@@ -545,8 +580,8 @@ export function HomePage() {
         isOpen={showDiscountModal}
         onClose={() => setShowDiscountModal(false)}
         onApplyTransactionDiscount={handleApplyTransactionDiscount}
-        maxDiscountPercent={100}
-        requiresReason={false}
+        maxDiscountPercent={maxDiscountPct}
+        requiresReason={true}
       />
 
       {/* Line discount modal */}
@@ -555,7 +590,7 @@ export function HomePage() {
         onClose={() => setDiscountItemId(null)}
         onApply={handleApplyLineDiscount}
         itemName={discountItem?.product.name ?? ''}
-        maxDiscountPercent={100}
+        maxDiscountPercent={maxDiscountPct}
       />
 
       {/* Modifier selection modal */}

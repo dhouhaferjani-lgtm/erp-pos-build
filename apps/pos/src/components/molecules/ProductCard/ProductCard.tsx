@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { cn } from '@/lib/utils';
 import { useCurrency } from '@/lib/currency';
 import { Package, SlidersHorizontal } from 'lucide-react';
@@ -12,7 +13,7 @@ export interface ProductCardProps {
   displayMode?: 'grid' | 'visual';
 }
 
-export function ProductCard({
+function ProductCardInner({
   product,
   onAddToCart,
   onCustomize,
@@ -173,3 +174,5 @@ export function ProductCard({
     </button>
   );
 }
+
+export const ProductCard = memo(ProductCardInner);
