@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Product\Application\Services;
 
+use App\Modules\Product\Application\Jobs\GenerateImageVariants;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Product\Domain\ProductImage;
 use Illuminate\Http\UploadedFile;
@@ -74,6 +75,13 @@ class ProductImageService
                 'uploaded_by' => auth()->id(),
             ]);
 
+            // Dispatch async WebP variant generation
+            GenerateImageVariants::dispatch(
+                $image->id,
+                $image->storage_path,
+                $image->storage_disk,
+            );
+
             return $image;
         });
     }
@@ -117,7 +125,14 @@ class ProductImageService
     {
         DB::transaction(function () use ($image) {
             // Delete from storage
-            Storage::disk($image->storage_disk)->delete($image->storage_path);
+            $disk = Storage::disk($image->storage_disk);
+            $disk->delete($image->storage_path);
+
+            // Delete WebP variants
+            $variantPaths = ImageVariantService::allVariantPaths($image->storage_path);
+            foreach ($variantPaths as $variantPath) {
+                $disk->delete($variantPath);
+            }
 
             // If this was the primary image, set the next one as primary
             if ($image->is_primary) {
@@ -164,12 +179,22 @@ class ProductImageService
      * Sets Content-Disposition: inline and Cache-Control headers so browsers
      * render the image rather than triggering a file download.
      */
-    public function serve(ProductImage $image): StreamedResponse
+    public function serve(ProductImage $image, ?string $variant = null): StreamedResponse
     {
         $disk = Storage::disk($image->storage_disk);
+        $path = $image->storage_path;
+        $mimeType = $image->mime_type;
 
-        $response = $disk->response($image->storage_path, $image->original_filename, [
-            'Content-Type' => $image->mime_type,
+        if ($variant !== null) {
+            $variantPath = ImageVariantService::variantPath($image->storage_path, $variant);
+            if ($disk->exists($variantPath)) {
+                $path = $variantPath;
+                $mimeType = 'image/webp';
+            }
+        }
+
+        $response = $disk->response($path, $image->original_filename, [
+            'Content-Type' => $mimeType,
         ]);
 
         $response->headers->set('Content-Disposition', 'inline; filename="'.$image->original_filename.'"');

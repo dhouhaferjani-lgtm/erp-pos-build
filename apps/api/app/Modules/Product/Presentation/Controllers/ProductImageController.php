@@ -82,9 +82,13 @@ class ProductImageController extends Controller
     /**
      * Serve an image file inline for browser rendering.
      */
-    public function download(Product $product, ProductImage $image): StreamedResponse
+    public function download(Request $request, Product $product, ProductImage $image): StreamedResponse
     {
-        return $this->imageService->serve($image);
+        $variant = $request->query('variant');
+        $validVariants = ['sm', 'md'];
+        $resolvedVariant = is_string($variant) && in_array($variant, $validVariants, true) ? $variant : null;
+
+        return $this->imageService->serve($image, $resolvedVariant);
     }
 
     /**
