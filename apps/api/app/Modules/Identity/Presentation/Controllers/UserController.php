@@ -213,7 +213,7 @@ class UserController extends Controller
             $changes = [];
 
             // Update basic fields
-            $fieldsToUpdate = ['name', 'email', 'phone', 'locale', 'timezone'];
+            $fieldsToUpdate = ['name', 'email', 'phone', 'locale', 'timezone', 'can_discount', 'max_discount_percent'];
             foreach ($fieldsToUpdate as $field) {
                 if (array_key_exists($field, $validated)) {
                     $changes[$field] = [

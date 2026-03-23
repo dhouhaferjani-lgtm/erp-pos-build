@@ -44,6 +44,8 @@ class UpdateUserRequest extends FormRequest
             'role' => ['sometimes', 'string', 'exists:roles,name'],
             'locale' => ['sometimes', 'nullable', 'string', 'max:10'],
             'timezone' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'can_discount' => ['sometimes', 'boolean'],
+            'max_discount_percent' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100'],
         ];
     }
 

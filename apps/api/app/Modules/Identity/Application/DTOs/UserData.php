@@ -27,6 +27,8 @@ final readonly class UserData
         public ?string $lastLoginIp,
         public string $createdAt,
         public string $updatedAt,
+        public bool $canDiscount,
+        public ?float $maxDiscountPercent,
     ) {}
 
     public static function fromUser(User $user): self
@@ -51,6 +53,8 @@ final readonly class UserData
             lastLoginIp: $user->last_login_ip,
             createdAt: $user->created_at->toIso8601String(),
             updatedAt: $user->updated_at->toIso8601String(),
+            canDiscount: $user->can_discount,
+            maxDiscountPercent: $user->max_discount_percent,
         );
     }
 }
