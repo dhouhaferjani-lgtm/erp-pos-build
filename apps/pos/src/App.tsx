@@ -147,21 +147,36 @@ function MainApp() {
   const cfdIdleImagePath = useCustomerDisplayStore((s) => s.idleImagePath);
   const setIsOpen = useCustomerDisplayStore((s) => s.setIsOpen);
 
-  // Apply fullscreen + hide decorations when the setting is enabled
+  // Apply borderless fullscreen when the setting is enabled.
+  // Uses manual window sizing instead of OS fullscreen to reliably cover the Windows 10 taskbar.
   useEffect(() => {
     const applyWindowMode = async () => {
       try {
         if (!isTauriEnvironment()) return;
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const { currentMonitor } = await import('@tauri-apps/api/window');
         const win = getCurrentWindow();
+        const { LogicalPosition, LogicalSize } = await import('@tauri-apps/api/dpi');
         if (fullscreen) {
+          const monitor = await currentMonitor();
           await win.setDecorations(false);
-          await win.setFullscreen(true);
+          await win.setSkipTaskbar(true);
           await win.setAlwaysOnTop(true);
+          if (monitor) {
+            const pos = monitor.position;
+            const size = monitor.size;
+            await win.setPosition(new LogicalPosition(pos.x, pos.y));
+            await win.setSize(new LogicalSize(size.width / monitor.scaleFactor, size.height / monitor.scaleFactor));
+          } else {
+            await win.setFullscreen(true);
+          }
         } else {
           await win.setAlwaysOnTop(false);
+          await win.setSkipTaskbar(false);
           await win.setFullscreen(false);
           await win.setDecorations(true);
+          await win.setSize(new LogicalSize(1280, 800));
+          await win.center();
         }
       } catch {
         // Ignore — not critical

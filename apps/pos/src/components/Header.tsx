@@ -103,10 +103,14 @@ export function Header() {
     try {
       if (isTauriEnvironment()) {
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const { LogicalSize } = await import('@tauri-apps/api/dpi');
         const win = getCurrentWindow();
         await win.setAlwaysOnTop(false);
+        await win.setSkipTaskbar(false);
         await win.setFullscreen(false);
         await win.setDecorations(true);
+        await win.setSize(new LogicalSize(1280, 800));
+        await win.center();
       }
       useSettingsStore.getState().setFullscreen(false);
     } catch {
