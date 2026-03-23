@@ -24,7 +24,7 @@ export function UserEditModal({ user, roles, onClose, onSuccess, onError }: User
   const queryClient = useQueryClient()
 
   const [name, setName] = useState(user.name)
-  const [email, setEmail] = useState(user.email)
+  const [email, setEmail] = useState(user.email ?? '')
   const [phone, setPhone] = useState(user.phone ?? '')
   const [role, setRole] = useState(user.roles[0] ?? 'operator')
   const [canDiscount, setCanDiscount] = useState(user.canDiscount ?? false)
@@ -35,7 +35,7 @@ export function UserEditModal({ user, roles, onClose, onSuccess, onError }: User
 
   useEffect(() => {
     setName(user.name)
-    setEmail(user.email)
+    setEmail(user.email ?? '')
     setPhone(user.phone ?? '')
     setRole(user.roles[0] ?? 'operator')
     setCanDiscount(user.canDiscount ?? false)
@@ -74,10 +74,12 @@ export function UserEditModal({ user, roles, onClose, onSuccess, onError }: User
     if (!name.trim()) {
       newErrors['name'] = t('common:users.validation.nameRequired')
     }
-    if (!email.trim()) {
-      newErrors['email'] = t('common:users.validation.emailRequired')
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      newErrors['email'] = t('common:users.validation.invalidEmail')
+    if (role !== 'cashier') {
+      if (!email.trim()) {
+        newErrors['email'] = t('common:users.validation.emailRequired')
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        newErrors['email'] = t('common:users.validation.invalidEmail')
+      }
     }
     if (!role) {
       newErrors['role'] = t('common:users.validation.roleRequired')

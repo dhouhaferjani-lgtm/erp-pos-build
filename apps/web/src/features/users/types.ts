@@ -8,7 +8,7 @@ export type UserStatus = 'active' | 'inactive' | 'pending_verification' | 'locke
 export interface User {
   id: string
   name: string
-  email: string
+  email: string | null
   phone: string | null
   status: UserStatus
   roles: string[]

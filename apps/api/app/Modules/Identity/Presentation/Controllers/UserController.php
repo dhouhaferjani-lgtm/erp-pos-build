@@ -585,6 +585,17 @@ class UserController extends Controller
             ], Response::HTTP_NOT_FOUND);
         }
 
+        // Cannot reset password for users without email (e.g. PIN-only cashiers)
+        if ($user->email === null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'NO_EMAIL',
+                    'message' => 'Cannot reset password for a user without an email address.',
+                ],
+                'meta' => $this->getMeta($request),
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
         // Send password reset notification
         $token = Password::createToken($user);
         $user->notify(new ResetPassword($token));

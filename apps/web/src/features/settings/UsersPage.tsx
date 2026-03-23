@@ -395,10 +395,12 @@ export function UsersPage() {
                       </div>
                       <div>
                         <div className="font-medium text-gray-900">{user.name}</div>
-                        <div className="text-sm text-gray-500 flex items-center gap-1">
-                          <Mail className="h-3.5 w-3.5" />
-                          {user.email}
-                        </div>
+                        {user.email && (
+                          <div className="text-sm text-gray-500 flex items-center gap-1">
+                            <Mail className="h-3.5 w-3.5" />
+                            {user.email}
+                          </div>
+                        )}
                         {user.phone && (
                           <div className="text-sm text-gray-500 flex items-center gap-1">
                             <Phone className="h-3.5 w-3.5" />
@@ -484,13 +486,15 @@ export function UsersPage() {
                               <Hash className="h-4 w-4 text-indigo-500" />
                               {t('users.actions.setPosPin', { defaultValue: 'Set POS PIN' })}
                             </button>
-                            <button
-                              onClick={() => { handleAction('reset-password', user.id) }}
-                              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                            >
-                              <KeyRound className="h-4 w-4 text-blue-500" />
-                              {t('users.actions.resetPassword')}
-                            </button>
+                            {user.email && (
+                              <button
+                                onClick={() => { handleAction('reset-password', user.id) }}
+                                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                              >
+                                <KeyRound className="h-4 w-4 text-blue-500" />
+                                {t('users.actions.resetPassword')}
+                              </button>
+                            )}
                             {user.id !== currentUser?.id && (
                               <button
                                 onClick={() => { handleAction('delete', user.id) }}
