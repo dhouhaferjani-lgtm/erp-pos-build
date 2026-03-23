@@ -146,14 +146,14 @@ export function AdvancedPaymentsModal({
       setCardLastFour('');
       setValidationError(null);
     },
-    [remaining],
+    [remaining, decimals],
   );
 
   const handlePayRemaining = useCallback(() => {
     if (remaining > 0) {
       setAmount(remaining.toFixed(decimals));
     }
-  }, [remaining]);
+  }, [remaining, decimals]);
 
   const handleAddPayment = useCallback(() => {
     if (!selectedMethod) {

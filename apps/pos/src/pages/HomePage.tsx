@@ -311,7 +311,7 @@ export function HomePage() {
         reason: data.reason || undefined,
       });
     },
-    [],
+    [currencyDecimals],
   );
 
   const handleLineDiscount = useCallback((itemId: string) => {
@@ -347,7 +347,7 @@ export function HomePage() {
 
       setDiscountItemId(null);
     },
-    [discountItemId],
+    [discountItemId, currencyDecimals],
   );
 
   const handleQuantityTap = useCallback((itemId: string) => {

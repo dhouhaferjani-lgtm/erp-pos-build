@@ -36,11 +36,11 @@ export function CashPaymentScreen({
 
   const handleExact = useCallback(() => {
     setTenderedStr(total.toFixed(decimals));
-  }, [total]);
+  }, [total, decimals]);
 
   const handleDenomination = useCallback((amount: number) => {
     setTenderedStr(amount.toFixed(decimals));
-  }, []);
+  }, [decimals]);
 
   const handleConfirm = useCallback(() => {
     if (isValid && !isProcessing) onConfirm(tenderedNum);
