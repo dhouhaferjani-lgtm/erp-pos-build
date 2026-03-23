@@ -741,6 +741,8 @@
       "phonePlaceholder": "+33 1 23 45 67 89",
       "roleLabel": "Rôle",
       "invitationNote": "Un e-mail d'invitation sera envoyé à l'utilisateur avec les instructions pour définir son mot de passe.",
+      "emailOptionalHint": "L'e-mail est facultatif pour les caissiers. Ils peuvent utiliser un code PIN pour se connecter au terminal.",
+      "cashierPinNote": "Ce caissier utilisera un code PIN POS pour se connecter. Vous pourrez définir le PIN après la création du compte.",
       "createUser": "Créer l'utilisateur"
     },
     "pinModal": {

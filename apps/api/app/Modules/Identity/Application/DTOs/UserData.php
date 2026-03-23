@@ -16,7 +16,7 @@ final readonly class UserData
     public function __construct(
         public string $id,
         public string $name,
-        public string $email,
+        public ?string $email,
         public ?string $phone,
         public string $status,
         public ?string $locale,
@@ -27,7 +27,7 @@ final readonly class UserData
         public ?string $lastLoginIp,
         public string $createdAt,
         public string $updatedAt,
-        public bool $canDiscount,
+        public ?bool $canDiscount,
         public ?float $maxDiscountPercent,
     ) {}
 

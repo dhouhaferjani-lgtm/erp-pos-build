@@ -347,6 +347,33 @@ class CreateUserTest extends TestCase
         ]);
     }
 
+    public function test_can_create_cashier_without_email(): void
+    {
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->postJson('/api/v1/users', [
+                'name' => 'POS Cashier',
+                'role' => 'cashier',
+            ]);
+
+        $response->assertStatus(201);
+        $this->assertDatabaseHas('users', [
+            'name' => 'POS Cashier',
+            'email' => null,
+            'status' => 'active',
+        ]);
+    }
+
+    public function test_non_cashier_requires_email(): void
+    {
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->postJson('/api/v1/users', [
+                'name' => 'New Operator',
+                'role' => 'operator',
+            ]);
+
+        $this->assertApiValidationErrors($response, ['email']);
+    }
+
     public function test_creation_is_logged_to_audit_trail(): void
     {
         Notification::fake();

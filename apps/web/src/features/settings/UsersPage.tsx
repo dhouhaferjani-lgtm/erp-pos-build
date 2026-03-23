@@ -40,7 +40,7 @@ interface Role {
 
 interface CreateUserData {
   name: string
-  email: string
+  email?: string | undefined
   phone?: string | undefined
   role: string
   locale?: string | undefined
@@ -666,10 +666,12 @@ function AddUserModal({ roles, onClose, onSubmit, isLoading }: AddUserModalProps
     if (!formData.name.trim()) {
       newErrors['name'] = t('users.validation.nameRequired')
     }
-    if (!formData.email.trim()) {
-      newErrors['email'] = t('users.validation.emailRequired')
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors['email'] = t('users.validation.invalidEmail')
+    if (formData.role !== 'cashier') {
+      if (!(formData.email ?? '').trim()) {
+        newErrors['email'] = t('users.validation.emailRequired')
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email ?? '')) {
+        newErrors['email'] = t('users.validation.invalidEmail')
+      }
     }
     if (!formData.role) {
       newErrors['role'] = t('users.validation.roleRequired')
@@ -684,6 +686,7 @@ function AddUserModal({ roles, onClose, onSubmit, isLoading }: AddUserModalProps
     if (validate()) {
       onSubmit({
         ...formData,
+        email: (formData.email ?? '').trim() || undefined,
         phone: formData.phone || undefined,
       })
     }
@@ -716,39 +719,6 @@ function AddUserModal({ roles, onClose, onSubmit, isLoading }: AddUserModalProps
             </div>
 
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                {t('users.modal.emailLabel')} *
-              </label>
-              <input
-                type="email"
-                id="email"
-                value={formData.email}
-                onChange={(e) => { setFormData({ ...formData, email: e.target.value }) }}
-                className={`mt-1 block w-full rounded-md border px-3 py-2 shadow-sm focus:outline-none focus:ring-1 ${
-                  errors['email']
-                    ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                    : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
-                }`}
-                placeholder={t('users.modal.emailPlaceholder')}
-              />
-              {errors['email'] && <p className="mt-1 text-sm text-red-600">{errors['email']}</p>}
-            </div>
-
-            <div>
-              <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
-                {t('users.modal.phoneLabel')}
-              </label>
-              <input
-                type="tel"
-                id="phone"
-                value={formData.phone}
-                onChange={(e) => { setFormData({ ...formData, phone: e.target.value }) }}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder={t('users.modal.phonePlaceholder')}
-              />
-            </div>
-
-            <div>
               <label htmlFor="role" className="block text-sm font-medium text-gray-700">
                 {t('users.modal.roleLabel')} *
               </label>
@@ -771,8 +741,48 @@ function AddUserModal({ roles, onClose, onSubmit, isLoading }: AddUserModalProps
               {errors['role'] && <p className="mt-1 text-sm text-red-600">{errors['role']}</p>}
             </div>
 
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                {t('users.modal.emailLabel')} {formData.role !== 'cashier' && '*'}
+              </label>
+              <input
+                type="email"
+                id="email"
+                value={formData.email ?? ''}
+                onChange={(e) => { setFormData({ ...formData, email: e.target.value }) }}
+                className={`mt-1 block w-full rounded-md border px-3 py-2 shadow-sm focus:outline-none focus:ring-1 ${
+                  errors['email']
+                    ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
+                }`}
+                placeholder={t('users.modal.emailPlaceholder')}
+              />
+              {errors['email'] && <p className="mt-1 text-sm text-red-600">{errors['email']}</p>}
+              {formData.role === 'cashier' && (
+                <p className="mt-1 text-xs text-gray-500">
+                  {t('users.modal.emailOptionalHint')}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
+                {t('users.modal.phoneLabel')}
+              </label>
+              <input
+                type="tel"
+                id="phone"
+                value={formData.phone}
+                onChange={(e) => { setFormData({ ...formData, phone: e.target.value }) }}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder={t('users.modal.phonePlaceholder')}
+              />
+            </div>
+
             <p className="text-sm text-gray-500">
-              {t('users.modal.invitationNote')}
+              {formData.role === 'cashier' && !formData.email?.trim()
+                ? t('users.modal.cashierPinNote')
+                : t('users.modal.invitationNote')}
             </p>
 
             <div className="flex justify-end gap-3 pt-4">

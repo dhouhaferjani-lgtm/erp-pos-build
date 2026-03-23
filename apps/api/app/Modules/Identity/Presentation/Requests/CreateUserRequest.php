@@ -31,9 +31,10 @@ class CreateUserRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'email' => [
-                'required',
+                'nullable',
+                'required_unless:role,cashier',
                 'email',
-                Rule::unique('users', 'email')->where('tenant_id', $currentUser->tenant_id),
+                Rule::unique('users', 'email')->where('tenant_id', $currentUser->tenant_id)->whereNotNull('email'),
             ],
             'phone' => ['nullable', 'string', 'regex:/^\+?[0-9]{7,20}$/'],
             'role' => ['required', 'string', 'exists:roles,name'],

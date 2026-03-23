@@ -738,6 +738,8 @@
       "phonePlaceholder": "+33 1 23 45 67 89",
       "roleLabel": "Role",
       "invitationNote": "An invitation email will be sent to the user with instructions to set their password.",
+      "emailOptionalHint": "Email is optional for cashiers. They can use a PIN to log in at the terminal.",
+      "cashierPinNote": "This cashier will use a POS PIN to log in. You can set the PIN after creating the account.",
       "createUser": "Create User"
     },
     "pinModal": {

@@ -147,7 +147,7 @@ class UserController extends Controller
             $user = User::create([
                 'tenant_id' => $currentUser->tenant_id,
                 'name' => $validated['name'],
-                'email' => $validated['email'],
+                'email' => $validated['email'] ?? null,
                 'phone' => $validated['phone'] ?? null,
                 'password' => Hash::make($tempPassword),
                 'status' => UserStatus::PendingVerification,
@@ -158,6 +158,11 @@ class UserController extends Controller
             // Set permissions team context and assign role
             setPermissionsTeamId($currentUser->tenant_id);
             $user->assignRole($validated['role']);
+
+            // Cashiers without email are immediately active (PIN-only users)
+            if ($user->email === null) {
+                $user->update(['status' => UserStatus::Active]);
+            }
 
             // Log audit event
             $this->logAuditEvent(
