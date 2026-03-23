@@ -57,13 +57,18 @@ final class FiscalYearValidationService
             $company->save();
 
             // Dispatch domain event
-            event(new FiscalYearValidated(
-                companyId: $company->id,
-                tenantId: $company->tenant_id,
-                fiscalYearStartMonth: $startMonth,
-                validatedBy: $user->id,
-                validatedAt: now()->toIso8601String()
-            ));
+            $companyId = $company->id;
+            $tenantId = $company->tenant_id;
+            $userId = $user->id;
+            DB::afterCommit(function () use ($companyId, $tenantId, $startMonth, $userId): void {
+                event(new FiscalYearValidated(
+                    companyId: $companyId,
+                    tenantId: $tenantId,
+                    fiscalYearStartMonth: $startMonth,
+                    validatedBy: $userId,
+                    validatedAt: now()->toIso8601String()
+                ));
+            });
         });
     }
 
@@ -91,14 +96,21 @@ final class FiscalYearValidationService
             $company->save();
 
             // Dispatch domain event
-            event(new FirstTransactionPosted(
-                companyId: $company->id,
-                tenantId: $company->tenant_id,
-                documentId: $document->id,
-                documentNumber: $document->document_number,
-                documentType: $document->type->value,
-                postedAt: now()->toIso8601String()
-            ));
+            $companyId = $company->id;
+            $tenantId = $company->tenant_id;
+            $documentId = $document->id;
+            $documentNumber = $document->document_number;
+            $documentType = $document->type->value;
+            DB::afterCommit(function () use ($companyId, $tenantId, $documentId, $documentNumber, $documentType): void {
+                event(new FirstTransactionPosted(
+                    companyId: $companyId,
+                    tenantId: $tenantId,
+                    documentId: $documentId,
+                    documentNumber: $documentNumber,
+                    documentType: $documentType,
+                    postedAt: now()->toIso8601String()
+                ));
+            });
         });
     }
 

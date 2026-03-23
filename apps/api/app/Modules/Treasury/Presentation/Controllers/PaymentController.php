@@ -188,16 +188,18 @@ class PaymentController extends Controller
             ]);
 
             // Dispatch PaymentRecorded event for audit trail
-            event(new PaymentRecorded(
-                paymentId: $payment->id,
-                tenantId: $tenantId,
-                companyId: $companyId,
-                partnerId: $validated['partner_id'],
-                amount: $paymentAmount,
-                currency: $validated['currency'] ?? 'TND',
-                paymentMethodId: $validated['payment_method_id'],
-                recordedAt: now()->toIso8601String(),
-            ));
+            DB::afterCommit(function () use ($payment, $tenantId, $companyId, $validated, $paymentAmount): void {
+                event(new PaymentRecorded(
+                    paymentId: $payment->id,
+                    tenantId: $tenantId,
+                    companyId: $companyId,
+                    partnerId: $validated['partner_id'],
+                    amount: $paymentAmount,
+                    currency: $validated['currency'] ?? 'TND',
+                    paymentMethodId: $validated['payment_method_id'],
+                    recordedAt: now()->toIso8601String(),
+                ));
+            });
 
             // Create withholding certificate if enabled and document allocated
             if (
@@ -265,16 +267,23 @@ class PaymentController extends Controller
 
                 // Dispatch DocumentFullyPaid event when document is fully paid
                 if ($document->status === DocumentStatus::Paid) {
-                    event(new DocumentFullyPaid(
-                        documentId: $document->id,
-                        tenantId: $tenantId,
-                        companyId: $companyId,
-                        documentNumber: $document->document_number,
-                        documentType: $document->type->value,
-                        partnerId: $document->partner_id,
-                        totalPaid: $document->total ?? '0.00',
-                        paidAt: now()->toIso8601String(),
-                    ));
+                    $paidDocumentId = $document->id;
+                    $paidDocumentNumber = $document->document_number;
+                    $paidDocumentType = $document->type->value;
+                    $paidPartnerId = $document->partner_id;
+                    $paidTotal = $document->total ?? '0.00';
+                    DB::afterCommit(function () use ($paidDocumentId, $tenantId, $companyId, $paidDocumentNumber, $paidDocumentType, $paidPartnerId, $paidTotal): void {
+                        event(new DocumentFullyPaid(
+                            documentId: $paidDocumentId,
+                            tenantId: $tenantId,
+                            companyId: $companyId,
+                            documentNumber: $paidDocumentNumber,
+                            documentType: $paidDocumentType,
+                            partnerId: $paidPartnerId,
+                            totalPaid: $paidTotal,
+                            paidAt: now()->toIso8601String(),
+                        ));
+                    });
                 }
             }
 
@@ -496,16 +505,22 @@ class PaymentController extends Controller
                 ]);
 
                 // Dispatch PaymentRecorded event
-                event(new PaymentRecorded(
-                    paymentId: $payment->id,
-                    tenantId: $tenantId,
-                    companyId: $companyId,
-                    partnerId: $validated['partner_id'],
-                    amount: $lineAmount,
-                    currency: $validated['currency'] ?? 'TND',
-                    paymentMethodId: $paymentLine['payment_method_id'],
-                    recordedAt: now()->toIso8601String(),
-                ));
+                $paymentId = $payment->id;
+                $paymentMethodId = $paymentLine['payment_method_id'];
+                $currency = $validated['currency'] ?? 'TND';
+                $partnerId = $validated['partner_id'];
+                DB::afterCommit(function () use ($paymentId, $tenantId, $companyId, $partnerId, $lineAmount, $currency, $paymentMethodId): void {
+                    event(new PaymentRecorded(
+                        paymentId: $paymentId,
+                        tenantId: $tenantId,
+                        companyId: $companyId,
+                        partnerId: $partnerId,
+                        amount: $lineAmount,
+                        currency: $currency,
+                        paymentMethodId: $paymentMethodId,
+                        recordedAt: now()->toIso8601String(),
+                    ));
+                });
 
                 // Allocate to primary document
                 /** @var numeric-string $allocationForThisPayment */
@@ -561,16 +576,23 @@ class PaymentController extends Controller
                 $primaryDocument->status = DocumentStatus::Paid;
 
                 // Dispatch DocumentFullyPaid event
-                event(new DocumentFullyPaid(
-                    documentId: $primaryDocument->id,
-                    tenantId: $tenantId,
-                    companyId: $companyId,
-                    documentNumber: $primaryDocument->document_number,
-                    documentType: $primaryDocument->type->value,
-                    partnerId: $primaryDocument->partner_id,
-                    totalPaid: $primaryDocument->total ?? '0.00',
-                    paidAt: now()->toIso8601String(),
-                ));
+                $primaryDocId = $primaryDocument->id;
+                $primaryDocNumber = $primaryDocument->document_number;
+                $primaryDocType = $primaryDocument->type->value;
+                $primaryDocPartnerId = $primaryDocument->partner_id;
+                $primaryDocTotal = $primaryDocument->total ?? '0.00';
+                DB::afterCommit(function () use ($primaryDocId, $tenantId, $companyId, $primaryDocNumber, $primaryDocType, $primaryDocPartnerId, $primaryDocTotal): void {
+                    event(new DocumentFullyPaid(
+                        documentId: $primaryDocId,
+                        tenantId: $tenantId,
+                        companyId: $companyId,
+                        documentNumber: $primaryDocNumber,
+                        documentType: $primaryDocType,
+                        partnerId: $primaryDocPartnerId,
+                        totalPaid: $primaryDocTotal,
+                        paidAt: now()->toIso8601String(),
+                    ));
+                });
             }
             $primaryDocument->save();
 
@@ -628,16 +650,23 @@ class PaymentController extends Controller
                         if (bccomp($newTargetBalance, '0.00', $this->scale()) === 0 && $targetDoc->type->canTransitionToPaid()) {
                             $targetDoc->status = DocumentStatus::Paid;
 
-                            event(new DocumentFullyPaid(
-                                documentId: $targetDoc->id,
-                                tenantId: $tenantId,
-                                companyId: $companyId,
-                                documentNumber: $targetDoc->document_number,
-                                documentType: $targetDoc->type->value,
-                                partnerId: $targetDoc->partner_id,
-                                totalPaid: $targetDoc->total ?? '0.00',
-                                paidAt: now()->toIso8601String(),
-                            ));
+                            $paidDocId = $targetDoc->id;
+                            $paidDocNumber = $targetDoc->document_number;
+                            $paidDocType = $targetDoc->type->value;
+                            $paidDocPartnerId = $targetDoc->partner_id;
+                            $paidDocTotal = $targetDoc->total ?? '0.00';
+                            DB::afterCommit(function () use ($paidDocId, $tenantId, $companyId, $paidDocNumber, $paidDocType, $paidDocPartnerId, $paidDocTotal): void {
+                                event(new DocumentFullyPaid(
+                                    documentId: $paidDocId,
+                                    tenantId: $tenantId,
+                                    companyId: $companyId,
+                                    documentNumber: $paidDocNumber,
+                                    documentType: $paidDocType,
+                                    partnerId: $paidDocPartnerId,
+                                    totalPaid: $paidDocTotal,
+                                    paidAt: now()->toIso8601String(),
+                                ));
+                            });
                         }
                         $targetDoc->save();
 
@@ -681,16 +710,23 @@ class PaymentController extends Controller
                         if (bccomp($newTargetBalance, '0.00', $this->scale()) === 0 && $targetDoc->type->canTransitionToPaid()) {
                             $targetDoc->status = DocumentStatus::Paid;
 
-                            event(new DocumentFullyPaid(
-                                documentId: $targetDoc->id,
-                                tenantId: $tenantId,
-                                companyId: $companyId,
-                                documentNumber: $targetDoc->document_number,
-                                documentType: $targetDoc->type->value,
-                                partnerId: $targetDoc->partner_id,
-                                totalPaid: $targetDoc->total ?? '0.00',
-                                paidAt: now()->toIso8601String(),
-                            ));
+                            $paidDocId = $targetDoc->id;
+                            $paidDocNumber = $targetDoc->document_number;
+                            $paidDocType = $targetDoc->type->value;
+                            $paidDocPartnerId = $targetDoc->partner_id;
+                            $paidDocTotal = $targetDoc->total ?? '0.00';
+                            DB::afterCommit(function () use ($paidDocId, $tenantId, $companyId, $paidDocNumber, $paidDocType, $paidDocPartnerId, $paidDocTotal): void {
+                                event(new DocumentFullyPaid(
+                                    documentId: $paidDocId,
+                                    tenantId: $tenantId,
+                                    companyId: $companyId,
+                                    documentNumber: $paidDocNumber,
+                                    documentType: $paidDocType,
+                                    partnerId: $paidDocPartnerId,
+                                    totalPaid: $paidDocTotal,
+                                    paidAt: now()->toIso8601String(),
+                                ));
+                            });
                         }
                         $targetDoc->save();
 
