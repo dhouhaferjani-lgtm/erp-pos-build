@@ -33,12 +33,18 @@ export function TerminalForm({
           name: terminal.name,
           location_id: terminal.location_id,
           description: terminal.description || undefined,
+          max_discount_percent: terminal.max_discount_percent ?? 100,
+          allow_line_discounts: terminal.allow_line_discounts ?? true,
+          allow_transaction_discounts: terminal.allow_transaction_discounts ?? true,
         }
       : {
           name: '',
           code: '',
           location_id: '',
           description: '',
+          max_discount_percent: 100,
+          allow_line_discounts: true,
+          allow_transaction_discounts: true,
         },
   })
 
@@ -142,6 +148,71 @@ export function TerminalForm({
         {errors.description && (
           <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>
         )}
+      </div>
+
+      {/* Discount Settings */}
+      <div className="border-t border-gray-200 pt-4">
+        <h4 className="text-sm font-medium text-gray-900 mb-4">
+          {t('settings:terminalDiscount.title')}
+        </h4>
+
+        {/* Max Discount Percent */}
+        <div className="mb-4">
+          <label htmlFor="max_discount_percent" className="block text-sm font-medium text-gray-700">
+            {t('settings:terminalDiscount.maxPercent')}
+          </label>
+          <p className="mt-1 text-sm text-gray-500">
+            {t('settings:terminalDiscount.maxPercentHelp')}
+          </p>
+          <input
+            {...register('max_discount_percent', {
+              valueAsNumber: true,
+              min: {
+                value: 0,
+                message: t('validation.min', { min: 0 }),
+              },
+              max: {
+                value: 100,
+                message: t('validation.max', { max: 100 }),
+              },
+            })}
+            type="number"
+            id="max_discount_percent"
+            min={0}
+            max={100}
+            step={1}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+          />
+          {'max_discount_percent' in errors && errors.max_discount_percent && (
+            <p className="mt-1 text-sm text-red-600">{errors.max_discount_percent.message}</p>
+          )}
+        </div>
+
+        {/* Allow Line Item Discounts */}
+        <div className="mb-4 flex items-center gap-3">
+          <input
+            {...register('allow_line_discounts')}
+            type="checkbox"
+            id="allow_line_discounts"
+            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          <label htmlFor="allow_line_discounts" className="text-sm font-medium text-gray-700">
+            {t('settings:terminalDiscount.allowLine')}
+          </label>
+        </div>
+
+        {/* Allow Transaction Discounts */}
+        <div className="mb-4 flex items-center gap-3">
+          <input
+            {...register('allow_transaction_discounts')}
+            type="checkbox"
+            id="allow_transaction_discounts"
+            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          <label htmlFor="allow_transaction_discounts" className="text-sm font-medium text-gray-700">
+            {t('settings:terminalDiscount.allowTransaction')}
+          </label>
+        </div>
       </div>
 
       {/* Form Actions */}

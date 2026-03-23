@@ -39,6 +39,9 @@ const mockTerminal: Terminal = {
   deactivation_reason: null,
   current_sequence: 0,
   current_year: 2025,
+  max_discount_percent: 100,
+  allow_line_discounts: true,
+  allow_transaction_discounts: true,
   created_at: '2025-01-01T00:00:00Z',
   updated_at: '2025-01-01T00:00:00Z',
 }
@@ -188,12 +191,14 @@ describe('TerminalForm', () => {
       await user.click(submitButton)
 
       await waitFor(() => {
-        expect(onSubmit).toHaveBeenCalledWith({
-          code: 'POS99',
-          name: 'Custom Terminal',
-          location_id: 'loc-2',
-          description: 'Special purpose terminal',
-        })
+        expect(onSubmit).toHaveBeenCalledWith(
+          expect.objectContaining({
+            code: 'POS99',
+            name: 'Custom Terminal',
+            location_id: 'loc-2',
+            description: 'Special purpose terminal',
+          })
+        )
       })
     })
 

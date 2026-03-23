@@ -30,6 +30,9 @@ const mockTerminal: Terminal = {
   has_history: false,
   current_sequence: 0,
   current_year: 2025,
+  max_discount_percent: 100,
+  allow_line_discounts: true,
+  allow_transaction_discounts: true,
   created_at: '2025-01-01T00:00:00Z',
   updated_at: '2025-01-01T00:00:00Z',
 }

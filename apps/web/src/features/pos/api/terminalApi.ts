@@ -21,6 +21,9 @@ export interface Terminal {
   has_history: boolean
   current_sequence: number
   current_year: number
+  max_discount_percent: number
+  allow_line_discounts: boolean
+  allow_transaction_discounts: boolean
   created_at: string
   updated_at: string
 }
@@ -30,12 +33,18 @@ export interface CreateTerminalInput {
   name: string
   location_id: string
   description?: string | undefined
+  max_discount_percent?: number | undefined
+  allow_line_discounts?: boolean | undefined
+  allow_transaction_discounts?: boolean | undefined
 }
 
 export interface UpdateTerminalInput {
   name?: string | undefined
   location_id?: string | undefined
   description?: string | undefined
+  max_discount_percent?: number | undefined
+  allow_line_discounts?: boolean | undefined
+  allow_transaction_discounts?: boolean | undefined
 }
 
 export interface DeactivateTerminalInput {
