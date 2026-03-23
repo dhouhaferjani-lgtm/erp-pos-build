@@ -78,7 +78,7 @@ class TunisiaTaxConfigurationSeeder extends Seeder
             );
         }
 
-        $this->command->info('Tunisia VAT rates seeded.');
+        $this->command?->info('Tunisia VAT rates seeded.');
     }
 
     private function seedStampDuties(): void
@@ -127,6 +127,6 @@ class TunisiaTaxConfigurationSeeder extends Seeder
             );
         }
 
-        $this->command->info('Tunisia stamp duties seeded.');
+        $this->command?->info('Tunisia stamp duties seeded.');
     }
 }

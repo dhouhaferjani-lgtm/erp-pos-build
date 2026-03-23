@@ -34,22 +34,27 @@ class ProductionSeeder extends Seeder
         $this->command->info('     Countries seeded successfully.');
 
         // 2. Country Tax Rates (lookup table)
-        $this->command->info('[2/5] Seeding country tax rates...');
+        $this->command->info('[2/6] Seeding country tax rates...');
         $this->call(CountryTaxRatesSeeder::class);
         $this->command->info('     Tax rates seeded successfully.');
 
-        // 3. Subscription Plans (required for tenant creation)
-        $this->command->info('[3/5] Seeding subscription plans...');
+        // 3. Tunisia Tax Configurations (VAT rates + stamp duties)
+        $this->command->info('[3/6] Seeding Tunisia tax configurations...');
+        $this->call(TunisiaTaxConfigurationSeeder::class);
+        $this->command->info('     Tunisia tax configurations seeded successfully.');
+
+        // 4. Subscription Plans (required for tenant creation)
+        $this->command->info('[4/6] Seeding subscription plans...');
         $this->call(PlansSeeder::class);
         $this->command->info('     Plans seeded successfully.');
 
-        // 4. Roles and Permissions (required for authorization)
-        $this->command->info('[4/5] Seeding roles and permissions...');
+        // 5. Roles and Permissions (required for authorization)
+        $this->command->info('[5/6] Seeding roles and permissions...');
         $this->call(RolesAndPermissionsSeeder::class);
         $this->command->info('     Roles and permissions seeded successfully.');
 
-        // 5. Individual Permissions (additional granular permissions)
-        $this->command->info('[5/5] Seeding individual permissions...');
+        // 6. Individual Permissions (additional granular permissions)
+        $this->command->info('[6/6] Seeding individual permissions...');
         $this->call(PermissionSeeder::class);
         $this->command->info('     Individual permissions seeded successfully.');
 

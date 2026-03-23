@@ -15,6 +15,7 @@ use Database\Seeders\FranceChartOfAccountsSeeder;
 use Database\Seeders\GenericChartOfAccountsSeeder;
 use Database\Seeders\PaymentMethodSeeder;
 use Database\Seeders\TunisiaChartOfAccountsSeeder;
+use Database\Seeders\TunisiaTaxConfigurationSeeder;
 
 /**
  * Service responsible for initializing a new tenant with required data.
@@ -51,12 +52,18 @@ class TenantInitializationService
         // 3. Seed country-specific chart of accounts
         $this->seedChartOfAccounts($company);
 
-        // 4. Fiscal years are automatically created via CompanyCreated event
+        // 4. Set country-specific default tax rate
+        $this->setDefaultTaxRate($company);
 
-        // 5. Seed standard payment methods
+        // 5. Seed country-specific tax configurations (global, idempotent)
+        $this->seedTaxConfigurations($company);
+
+        // 6. Fiscal years are automatically created via CompanyCreated event
+
+        // 7. Seed standard payment methods
         $this->seedPaymentMethods($company);
 
-        // 6. Auto-include Inventory for F&B verticals
+        // 8. Auto-include Inventory for F&B verticals
         // Temporarily auto-include Inventory for F&B verticals
         // TODO: Remove when Inventory becomes a separately purchased module
         $this->enableInventoryForFnbVerticals($tenant);
@@ -152,6 +159,50 @@ class TenantInitializationService
     {
         $seeder = new PaymentMethodSeeder;
         $seeder->run($company);
+    }
+
+    /**
+     * Set the company's default tax rate based on country.
+     *
+     * This determines the fallback tax rate when neither product
+     * nor category has a tax rate configured.
+     */
+    private function setDefaultTaxRate(Company $company): void
+    {
+        $defaultTaxRate = match (strtoupper($company->country_code)) {
+            'TN' => '19.00',  // Tunisia TVA 19%
+            'FR' => '20.00',  // France TVA 20%
+            default => '0.00',
+        };
+
+        $company->update(['default_tax_rate' => $defaultTaxRate]);
+    }
+
+    /**
+     * Seed country-specific tax configurations (VAT rates, stamp duties).
+     *
+     * These are global (per-country, not per-company) and idempotent.
+     * Uses updateOrCreate internally so safe to call multiple times.
+     */
+    private function seedTaxConfigurations(Company $company): void
+    {
+        // Guard: tax_configurations has FK to countries table
+        $countryExists = \DB::table('countries')
+            ->where('code', strtoupper($company->country_code))
+            ->exists();
+
+        if (! $countryExists) {
+            return;
+        }
+
+        $countryCode = strtoupper($company->country_code);
+
+        $seeder = match ($countryCode) {
+            'TN' => new TunisiaTaxConfigurationSeeder,
+            default => null,
+        };
+
+        $seeder?->run();
     }
 
     /**
