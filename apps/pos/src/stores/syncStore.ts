@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { SyncResult } from '@/lib/sync/syncService';
+import type { SyncScheduler } from '@/lib/sync/syncScheduler';
 
 interface SyncState {
   isSyncing: boolean;
@@ -7,6 +8,7 @@ interface SyncState {
   lastSyncResult: SyncResult | null;
   pendingReceiptCount: number;
   lastError: string | null;
+  scheduler: SyncScheduler | null;
 }
 
 interface SyncActions {
@@ -14,6 +16,8 @@ interface SyncActions {
   completeSync: (result: SyncResult) => void;
   failSync: (error: string) => void;
   setPendingCount: (count: number) => void;
+  setScheduler: (scheduler: SyncScheduler | null) => void;
+  triggerSync: () => void;
   reset: () => void;
 }
 
@@ -25,9 +29,10 @@ const initialState: SyncState = {
   lastSyncResult: null,
   pendingReceiptCount: 0,
   lastError: null,
+  scheduler: null,
 };
 
-export const useSyncStore = create<SyncStore>()((set) => ({
+export const useSyncStore = create<SyncStore>()((set, get) => ({
   ...initialState,
 
   startSync: () => {
@@ -53,6 +58,19 @@ export const useSyncStore = create<SyncStore>()((set) => ({
 
   setPendingCount: (count: number) => {
     set({ pendingReceiptCount: count });
+  },
+
+  setScheduler: (scheduler: SyncScheduler | null) => {
+    set({ scheduler });
+  },
+
+  triggerSync: () => {
+    const { scheduler, isSyncing } = get();
+    if (!scheduler || isSyncing) return;
+    set({ isSyncing: true });
+    scheduler.syncNow().catch(() => {
+      // syncNow errors are handled inside tick(), this is just for safety
+    });
   },
 
   reset: () => {

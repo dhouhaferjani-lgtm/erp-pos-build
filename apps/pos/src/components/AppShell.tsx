@@ -5,6 +5,7 @@ import { HomePage } from '@/pages/HomePage';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useConnectivityStore } from '@/stores/connectivityStore';
+import { useSyncStore } from '@/stores/syncStore';
 import { useCustomerDisplaySync } from '@/hooks/useCustomerDisplaySync';
 
 const SettingsPage = lazy(() =>
@@ -31,6 +32,26 @@ export function AppShell() {
   useEffect(() => {
     const stopMonitoring = useConnectivityStore.getState().startMonitoring();
     return stopMonitoring;
+  }, []);
+
+  // Trigger sync when app regains visibility after >1 min
+  useEffect(() => {
+    const STALE_THRESHOLD_MS = 60_000; // 1 minute
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        const { lastSyncAt, triggerSync } = useSyncStore.getState();
+        const elapsed = lastSyncAt ? Date.now() - lastSyncAt : Infinity;
+        if (elapsed > STALE_THRESHOLD_MS) {
+          triggerSync();
+        }
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   useEffect(() => {

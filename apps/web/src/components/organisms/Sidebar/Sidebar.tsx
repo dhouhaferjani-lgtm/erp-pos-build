@@ -14,6 +14,7 @@ import {
   FileBox,
   Car,
   Wallet,
+  Landmark,
   BarChart3,
   Settings,
   X,
@@ -187,6 +188,8 @@ function buildNavigation(isOtospex: boolean): NavModule[] {
         { key: 'terminals', href: '/pos/terminals', icon: Monitor, module: 'pos' },
         { key: 'shiftHistory', href: '/pos/shift-history', icon: History, module: 'pos' },
         { key: 'receipts', href: '/pos/receipts', icon: Receipt, module: 'pos' },
+        { key: 'analytics', href: '/pos/analytics', icon: BarChart3, module: 'pos' },
+        { key: 'zReports', href: '/pos/z-reports', icon: FileCheck, module: 'pos' },
       ],
     },
     {
@@ -203,13 +206,23 @@ function buildNavigation(isOtospex: boolean): NavModule[] {
       ],
     },
     {
-      key: 'financeAndReports',
-      icon: Calculator,
-      module: ['accounts', 'treasury', 'reports'],
+      key: 'bankingAndPayments',
+      icon: Wallet,
+      module: ['treasury', 'withholding'],
       children: [
         { key: 'payments', href: '/treasury/payments', icon: Wallet, module: 'treasury' },
+        { key: 'repositories', href: '/treasury/repositories', icon: Landmark, module: 'treasury' },
+        { key: 'instruments', href: '/treasury/instruments', icon: FileText, module: 'treasury' },
+        { key: 'bankReconciliation', href: '/treasury/reconciliation', icon: ArrowLeftRight, module: 'treasury' },
         { key: 'expenses', href: '/expenses', icon: Receipt, module: 'treasury' },
         { key: 'withholdingCertificates', href: '/treasury/withholding-certificates', icon: FileCheck, module: 'withholding' },
+      ],
+    },
+    {
+      key: 'accountingAndReports',
+      icon: Calculator,
+      module: ['accounts'],
+      children: [
         { key: 'chartOfAccounts', href: '/finance/chart-of-accounts', icon: BookOpen, module: 'accounts' },
         { key: 'generalLedger', href: '/finance/ledger', icon: FileSpreadsheet, module: 'accounts' },
         { key: 'journalEntries', href: '/finance/journal-entries', icon: FileSpreadsheet, module: 'accounts' },
@@ -218,8 +231,6 @@ function buildNavigation(isOtospex: boolean): NavModule[] {
         { key: 'balanceSheet', href: '/finance/balance-sheet', icon: PieChart, module: 'accounts' },
         { key: 'agedReceivables', href: '/finance/aged-receivables', icon: Clock, module: 'accounts' },
         { key: 'agedPayables', href: '/finance/aged-payables', icon: Clock, module: 'accounts' },
-        { key: 'analytics', href: '/pos/analytics', icon: BarChart3, module: 'pos' },
-        { key: 'zReports', href: '/pos/z-reports', icon: FileCheck, module: 'pos' },
       ],
     },
   ]

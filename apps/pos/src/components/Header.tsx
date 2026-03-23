@@ -12,6 +12,7 @@ import { usePaymentStore } from '@/stores/paymentStore';
 import { useProductStore } from '@/stores/productStore';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useSyncStore } from '@/stores/syncStore';
+import { SyncButton } from '@/components/atoms/SyncButton/SyncButton';
 import { CloseShiftModal } from '@/components/organisms/CloseShiftModal';
 import { ReportsMenu } from '@/components/pos/ReportsMenu';
 import { XReportModal } from '@/components/pos/XReportModal';
@@ -167,6 +168,9 @@ export function Header() {
               </span>
             )}
           </div>
+
+          {/* Manual sync button */}
+          <SyncButton />
 
           {/* Shift badge */}
           {shift ? (

@@ -4,7 +4,9 @@ import { getDeviceId } from '@/lib/device';
 import { getStoredValue, setStoredValue, removeStoredValue, StorageKeys } from '@/lib/storage';
 import { getDatabase } from '@/lib/db';
 import { pullTerminalState, pullZChainState } from '@/lib/sync/syncService';
+import { SyncScheduler } from '@/lib/sync/syncScheduler';
 import { useAuthStore } from '@/stores/authStore';
+import { useSyncStore } from '@/stores/syncStore';
 
 export interface Location {
   id: string;
@@ -82,6 +84,11 @@ async function seedOfflineHashChain(terminalId: string): Promise<void> {
     const db = await getDatabase(companyId);
     await pullTerminalState(db, terminalId);
     await pullZChainState(db, terminalId);
+
+    // Start the background sync scheduler
+    const scheduler = new SyncScheduler(db, terminalId);
+    useSyncStore.getState().setScheduler(scheduler);
+    scheduler.start();
   } catch (error) {
     console.error('[Terminal] Failed to seed offline hash chain:', error);
   }
@@ -255,6 +262,9 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
   },
 
   reset: () => {
+    useSyncStore.getState().scheduler?.stop();
+    useSyncStore.getState().setScheduler(null);
+    useSyncStore.getState().reset();
     set(initialState);
     void removeStoredValue(StorageKeys.TERMINAL);
     void removeStoredValue(StorageKeys.PENDING_TERMINAL_ID);

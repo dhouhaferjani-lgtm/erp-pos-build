@@ -37,11 +37,11 @@ enum OnboardingStep: string
     {
         return match ($this) {
             self::CompanyInfo => '/settings/company',
-            self::TaxConfig => '/settings/taxes',
-            self::PaymentMethods => '/settings/payment-methods',
-            self::PaymentRepositories => '/settings/payment-repositories',
-            self::PosTerminal => '/settings/terminals',
-            self::FirstProduct => '/catalog/products',
+            self::TaxConfig => '/settings/tax',
+            self::PaymentMethods => '/treasury/payment-methods',
+            self::PaymentRepositories => '/treasury/repositories',
+            self::PosTerminal => '/pos/terminals',
+            self::FirstProduct => '/inventory/products',
         };
     }
 }

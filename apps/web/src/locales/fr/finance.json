@@ -137,7 +137,7 @@
     "title": "Finance",
     "description": "Gérer les paiements, la comptabilité et les rapports financiers",
     "sections": {
-      "money": "Argent",
+      "bankingAndPayments": "Banque & Paiements",
       "accounting": "Comptabilité",
       "reports": "Rapports"
     },
@@ -145,6 +145,18 @@
       "payments": {
         "title": "Paiements",
         "description": "Suivre les paiements entrants et sortants"
+      },
+      "repositories": {
+        "title": "Dépôts",
+        "description": "Gérer les caisses et comptes bancaires"
+      },
+      "instruments": {
+        "title": "Effets de paiement",
+        "description": "Suivre les chèques, traites et effets de paiement"
+      },
+      "bankReconciliation": {
+        "title": "Rapprochement bancaire",
+        "description": "Rapprocher les relevés bancaires avec la comptabilité"
       },
       "expenses": {
         "title": "Dépenses",
@@ -185,14 +197,6 @@
       "agedPayables": {
         "title": "Balance âgée fournisseurs",
         "description": "Factures fournisseurs impayées par ancienneté"
-      },
-      "posAnalytics": {
-        "title": "Analytique PDV",
-        "description": "Performance des ventes et métriques PDV"
-      },
-      "zReports": {
-        "title": "Rapports Z",
-        "description": "Rapports de clôture journalière du PDV"
       }
     }
   }

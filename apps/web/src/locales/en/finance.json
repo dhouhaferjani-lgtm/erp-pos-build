@@ -137,7 +137,7 @@
     "title": "Finance",
     "description": "Manage payments, accounting, and financial reports",
     "sections": {
-      "money": "Money",
+      "bankingAndPayments": "Banking & Payments",
       "accounting": "Accounting",
       "reports": "Reports"
     },
@@ -145,6 +145,18 @@
       "payments": {
         "title": "Payments",
         "description": "Track incoming and outgoing payments"
+      },
+      "repositories": {
+        "title": "Repositories",
+        "description": "Manage cash registers and bank accounts"
+      },
+      "instruments": {
+        "title": "Instruments",
+        "description": "Track checks, drafts, and payment instruments"
+      },
+      "bankReconciliation": {
+        "title": "Bank Reconciliation",
+        "description": "Match bank statements with accounting records"
       },
       "expenses": {
         "title": "Expenses",
@@ -185,14 +197,6 @@
       "agedPayables": {
         "title": "Aged Payables",
         "description": "Outstanding vendor bills by age"
-      },
-      "posAnalytics": {
-        "title": "POS Analytics",
-        "description": "Sales performance and POS metrics"
-      },
-      "zReports": {
-        "title": "Z-Reports",
-        "description": "End-of-day POS settlement reports"
       }
     }
   }

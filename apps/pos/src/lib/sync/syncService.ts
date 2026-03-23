@@ -197,25 +197,45 @@ function zReportToSyncPayload(report: LocalZReport): Record<string, unknown> {
 }
 
 /**
- * Pull products delta from server.
+ * Pull products delta from server with pagination.
+ * Uses per_page=500 and loops until a page returns fewer than 500 items.
  */
 export async function pullProducts(db: Database): Promise<number> {
-  const lastSync = await getSyncMetadata(db, 'products_last_sync');
-  const params: Record<string, string> = {};
-  if (lastSync) {
-    params['updated_since'] = lastSync;
+  try {
+    const lastSync = await getSyncMetadata(db, 'products_last_sync');
+    const params: Record<string, string> = { per_page: '500' };
+    if (lastSync) {
+      params['updated_since'] = lastSync;
+    }
+
+    let totalPulled = 0;
+    let page = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+      const result = await apiGet<POSProduct[] | { data: POSProduct[] }>('/products', { ...params, page: String(page) });
+      const products = Array.isArray(result) ? result : result.data;
+
+      if (products.length > 0) {
+        await upsertProducts(db, products);
+        totalPulled += products.length;
+      }
+
+      hasMore = products.length === 500;
+      page++;
+    }
+
+    if (totalPulled > 0) {
+      await setSyncMetadata(db, 'products_last_sync', new Date().toISOString());
+      await logSyncOperation(db, 'pull', 'products', null, 'success', `${totalPulled} products`);
+    }
+
+    return totalPulled;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    await logSyncOperation(db, 'pull', 'products', null, 'error', message);
+    return 0;
   }
-
-  const result = await apiGet<POSProduct[] | { data: POSProduct[] }>('/products', { ...params, per_page: 1000 });
-  const products = Array.isArray(result) ? result : result.data;
-
-  if (products.length > 0) {
-    await upsertProducts(db, products);
-    await setSyncMetadata(db, 'products_last_sync', new Date().toISOString());
-    await logSyncOperation(db, 'pull', 'products', null, 'success', `${products.length} products`);
-  }
-
-  return products.length;
 }
 
 /**

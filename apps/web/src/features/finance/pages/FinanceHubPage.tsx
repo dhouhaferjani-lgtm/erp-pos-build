@@ -14,8 +14,7 @@ import {
   PieChart,
   Users,
   Building2,
-  BarChart3,
-  FileCheck,
+  ArrowLeftRight,
   ChevronRight,
 } from 'lucide-react'
 
@@ -35,7 +34,7 @@ interface HubSection {
 
 const sections: HubSection[] = [
   {
-    titleKey: 'hub.sections.money',
+    titleKey: 'hub.sections.bankingAndPayments',
     cards: [
       {
         titleKey: 'hub.cards.payments.title',
@@ -43,6 +42,30 @@ const sections: HubSection[] = [
         icon: <CreditCard className="h-6 w-6" />,
         href: '/treasury/payments',
         color: 'bg-green-100 text-green-600',
+        permissionModule: 'treasury',
+      },
+      {
+        titleKey: 'hub.cards.repositories.title',
+        descriptionKey: 'hub.cards.repositories.description',
+        icon: <Landmark className="h-6 w-6" />,
+        href: '/treasury/repositories',
+        color: 'bg-blue-100 text-blue-600',
+        permissionModule: 'treasury',
+      },
+      {
+        titleKey: 'hub.cards.instruments.title',
+        descriptionKey: 'hub.cards.instruments.description',
+        icon: <FileText className="h-6 w-6" />,
+        href: '/treasury/instruments',
+        color: 'bg-purple-100 text-purple-600',
+        permissionModule: 'treasury',
+      },
+      {
+        titleKey: 'hub.cards.bankReconciliation.title',
+        descriptionKey: 'hub.cards.bankReconciliation.description',
+        icon: <ArrowLeftRight className="h-6 w-6" />,
+        href: '/treasury/reconciliation',
+        color: 'bg-indigo-100 text-indigo-600',
         permissionModule: 'treasury',
       },
       {
@@ -77,7 +100,7 @@ const sections: HubSection[] = [
       {
         titleKey: 'hub.cards.generalLedger.title',
         descriptionKey: 'hub.cards.generalLedger.description',
-        icon: <FileCheck className="h-6 w-6" />,
+        icon: <Landmark className="h-6 w-6" />,
         href: '/finance/ledger',
         color: 'bg-purple-100 text-purple-600',
         permissionModule: 'finance',
@@ -134,22 +157,6 @@ const sections: HubSection[] = [
         href: '/finance/aged-payables',
         color: 'bg-pink-100 text-pink-600',
         permissionModule: 'accounts',
-      },
-      {
-        titleKey: 'hub.cards.posAnalytics.title',
-        descriptionKey: 'hub.cards.posAnalytics.description',
-        icon: <BarChart3 className="h-6 w-6" />,
-        href: '/pos/analytics',
-        color: 'bg-violet-100 text-violet-600',
-        permissionModule: 'pos',
-      },
-      {
-        titleKey: 'hub.cards.zReports.title',
-        descriptionKey: 'hub.cards.zReports.description',
-        icon: <Landmark className="h-6 w-6" />,
-        href: '/pos/z-reports',
-        color: 'bg-slate-100 text-slate-600',
-        permissionModule: 'pos',
       },
     ],
   },

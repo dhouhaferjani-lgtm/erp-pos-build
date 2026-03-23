@@ -2,6 +2,7 @@ import type Database from '@tauri-apps/plugin-sql';
 import { runFullSync, type SyncResult } from './syncService';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useSyncStore } from '@/stores/syncStore';
+import { useProductStore } from '@/stores/productStore';
 
 const BASE_INTERVAL_MS = 60_000; // 1 minute
 const MAX_INTERVAL_MS = 5 * 60_000; // 5 minutes
@@ -52,6 +53,11 @@ export class SyncScheduler {
 
     try {
       const result = await runFullSync(this.db, this.terminalId);
+
+      // Refresh in-memory product store from SQLite after sync pulls new data
+      useProductStore.getState().refreshFromSQLite().catch((err: unknown) => {
+        console.error('[SyncScheduler] refreshFromSQLite failed:', err);
+      });
 
       useSyncStore.getState().completeSync(result);
 
