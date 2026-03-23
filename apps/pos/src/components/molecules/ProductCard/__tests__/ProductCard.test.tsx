@@ -68,7 +68,7 @@ describe('ProductCard', () => {
     expect(onAddToCart).not.toHaveBeenCalled();
   });
 
-  it('rerenders with same props without issues', () => {
+  it('renders consistently on rerender', () => {
     const product = makeProduct({ id: 'p2', name: 'Stable Product', sale_price: '15.00', stock_quantity: 5 });
     const onAddToCart = vi.fn();
     const { rerender } = render(<ProductCard product={product} onAddToCart={onAddToCart} />);
@@ -78,7 +78,7 @@ describe('ProductCard', () => {
 
   it('shows in-cart visual state when isInCart is true', () => {
     renderCard({ isInCart: true });
-    // Component should render without errors when isInCart changes
-    expect(screen.getByText('Test Widget')).toBeInTheDocument();
+    const btn = screen.getByRole('button');
+    expect(btn.className).toContain('border-l-primary-500');
   });
 });
