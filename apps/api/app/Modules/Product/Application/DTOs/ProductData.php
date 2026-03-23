@@ -6,6 +6,7 @@ namespace App\Modules\Product\Application\DTOs;
 
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
+use Illuminate\Support\Facades\URL;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -37,6 +38,7 @@ class ProductData extends Data
         public ?string $minimum_margin_override,
         public string $created_at,
         public ?string $updated_at,
+        public ?string $primary_image_url = null,
         public ?ParapharmacyProductMetadataData $parapharmacy_metadata = null,
         public ?AutomotiveProductMetadataData $automotive_metadata = null,
     ) {}
@@ -64,6 +66,13 @@ class ProductData extends Data
             minimum_margin_override: $product->minimum_margin_override !== null ? (string) $product->minimum_margin_override : null,
             created_at: $product->created_at?->toIso8601String() ?? '',
             updated_at: $product->updated_at?->toIso8601String(),
+            primary_image_url: $product->relationLoaded('primaryImage') && $product->primaryImage !== null
+                ? URL::route('products.images.download', [
+                    'product' => $product->id,
+                    'image' => $product->primaryImage->id,
+                    'variant' => 'sm',
+                ])
+                : null,
             parapharmacy_metadata: $product->relationLoaded('parapharmacyMetadata') && $product->parapharmacyMetadata !== null
                 ? ParapharmacyProductMetadataData::fromModel($product->parapharmacyMetadata)
                 : null,

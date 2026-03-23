@@ -106,13 +106,26 @@ final class SyncController extends Controller
             $parsedSince = Carbon::parse($updatedSince);
         }
 
-        // Fetch products
+        // Fetch products with primary image for POS image caching
         $productsQuery = Product::where('company_id', $companyId)
-            ->where('is_active', true);
+            ->where('is_active', true)
+            ->with('primaryImage');
         if ($parsedSince !== null) {
             $productsQuery->where('updated_at', '>', $parsedSince);
         }
-        $products = $productsQuery->get();
+        $products = $productsQuery->get()->map(function (Product $product): array {
+            $attributes = $product->toArray();
+            $attributes['image_url'] = $product->primaryImage !== null
+                ? route('products.images.download', [
+                    'product' => $product->id,
+                    'image' => $product->primaryImage->id,
+                    'variant' => 'sm',
+                ])
+                : null;
+            unset($attributes['primary_image']);
+
+            return $attributes;
+        });
 
         // Fetch categories
         $categoriesQuery = Category::where('company_id', $companyId);
