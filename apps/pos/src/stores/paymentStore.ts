@@ -3,6 +3,8 @@ import i18n from '@/lib/i18n';
 import { fetchPaymentMethods, fetchPaymentRepositories } from '@/api/paymentApi';
 import { createReceipt, processReceiptPayments } from '@/api/receiptApi';
 import { useCartStore } from '@/stores/cartStore';
+import { useAuthStore } from '@/stores/authStore';
+import { getCurrencyDecimals } from '@/lib/currency';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import type { CartItem } from '@/types/cart';
 import type { CreateReceiptResponse, ProcessReceiptPaymentsResponse } from '@/types/receipt';
@@ -104,7 +106,12 @@ function buildReceiptData(
     })),
     ...(transactionDiscount
       ? {
-          transaction_discount_amount: useCartStore.getState().discountAmount().toFixed(2),
+          transaction_discount_amount: (() => {
+            const authState = useAuthStore.getState();
+            const company = authState.companies.find((c) => c.id === authState.companyId);
+            const decimals = getCurrencyDecimals(company?.currency ?? 'EUR');
+            return useCartStore.getState().discountAmount().toFixed(decimals);
+          })(),
           transaction_discount_reason: transactionDiscount.reason,
         }
       : {}),

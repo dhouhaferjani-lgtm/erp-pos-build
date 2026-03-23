@@ -10,7 +10,6 @@ export interface CashPaymentScreenProps {
   onClose: () => void;
   onConfirm: (tenderedAmount: number) => void;
   total: number;
-  subtotal?: number;
   discountAmount?: number;
   isProcessing: boolean;
   error?: string | null;

@@ -61,7 +61,7 @@ export function DiscountModal({
     setValue('');
     setReason('');
     onClose();
-  }, [isValid, value, reason, onApplyTransactionDiscount, onClose]);
+  }, [isValid, discountType, value, reason, onApplyTransactionDiscount, onClose]);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={t('discount.transactionDiscount')} size="full">

@@ -234,7 +234,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
     const subtotal = get().subtotal();
     const discount = get().discountAmount();
     if (discount > 0 && subtotal > 0) {
-      const ratio = (subtotal - discount) / subtotal;
+      const ratio = Math.max(0, (subtotal - discount) / subtotal);
       return rawTax * ratio;
     }
     return rawTax;
@@ -245,9 +245,9 @@ export const useCartStore = create<CartStore>()((set, get) => ({
     if (!discount) return 0;
     const subtotal = get().subtotal();
     if (discount.type === 'percentage') {
-      return (subtotal * parseFloat(discount.value)) / 100;
+      return Math.min(subtotal, (subtotal * parseFloat(discount.value)) / 100);
     }
-    return parseFloat(discount.value);
+    return Math.min(subtotal, parseFloat(discount.value));
   },
 
   total: () => {
