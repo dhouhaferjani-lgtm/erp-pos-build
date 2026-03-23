@@ -77,16 +77,18 @@ final readonly class MemberEnrollmentService
                 $this->applyWelcomeBonus($enrollment, $welcomeBonus);
             }
 
-            // Dispatch event
-            event(new MemberEnrolledV2(
-                enrollmentId: $enrollment->id,
-                tenantId: $member->tenant_id,
-                programId: $programId,
-                memberId: $memberId,
-                enrolledAt: $enrollment->enrolled_at->toIso8601String(),
-                customerId: $member->customer_id,
-                welcomeBonus: $welcomeBonus,
-            ));
+            // Dispatch event after transaction commits
+            DB::afterCommit(function () use ($enrollment, $member, $programId, $memberId, $welcomeBonus) {
+                event(new MemberEnrolledV2(
+                    enrollmentId: $enrollment->id,
+                    tenantId: $member->tenant_id,
+                    programId: $programId,
+                    memberId: $memberId,
+                    enrolledAt: $enrollment->enrolled_at->toIso8601String(),
+                    customerId: $member->customer_id,
+                    welcomeBonus: $welcomeBonus,
+                ));
+            });
 
             // Reload to get updated balance
             $reloaded = $this->enrollmentRepository->findById($enrollment->id);

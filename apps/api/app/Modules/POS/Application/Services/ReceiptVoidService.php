@@ -92,14 +92,16 @@ final class ReceiptVoidService
             /** @var \Illuminate\Support\Carbon $voidedAtTimestamp */
             $voidedAtTimestamp = $receipt->voided_at;
 
-            event(new ReceiptVoided(
-                receiptId: $receipt->id,
-                companyId: $receipt->company_id,
-                receiptNumber: $receipt->receipt_number,
-                voidReason: $reason,
-                voidedBy: $voidedBy->id,
-                voidedAt: $voidedAtTimestamp->toIso8601String(),
-            ));
+            DB::afterCommit(function () use ($receipt, $reason, $voidedBy, $voidedAtTimestamp) {
+                event(new ReceiptVoided(
+                    receiptId: $receipt->id,
+                    companyId: $receipt->company_id,
+                    receiptNumber: $receipt->receipt_number,
+                    voidReason: $reason,
+                    voidedBy: $voidedBy->id,
+                    voidedAt: $voidedAtTimestamp->toIso8601String(),
+                ));
+            });
 
             return $receipt;
         });

@@ -618,17 +618,19 @@ final class ReceiptCreationService
                 'cashier',
             ]);
 
-            event(new ReceiptCreated(
-                receiptId: $freshReceipt->id,
-                companyId: $freshReceipt->company_id,
-                terminalId: $freshReceipt->terminal_id,
-                receiptNumber: $freshReceipt->receipt_number,
-                total: (string) $freshReceipt->total,
-                currency: $freshReceipt->currency,
-                fiscalHash: $freshReceipt->fiscal_hash,
-                chainSequence: $freshReceipt->chain_sequence,
-                postedAt: $freshReceipt->posted_at->toIso8601String(),
-            ));
+            DB::afterCommit(function () use ($freshReceipt) {
+                event(new ReceiptCreated(
+                    receiptId: $freshReceipt->id,
+                    companyId: $freshReceipt->company_id,
+                    terminalId: $freshReceipt->terminal_id,
+                    receiptNumber: $freshReceipt->receipt_number,
+                    total: (string) $freshReceipt->total,
+                    currency: $freshReceipt->currency,
+                    fiscalHash: $freshReceipt->fiscal_hash,
+                    chainSequence: $freshReceipt->chain_sequence,
+                    postedAt: $freshReceipt->posted_at->toIso8601String(),
+                ));
+            });
 
             return $freshReceipt;
         });
