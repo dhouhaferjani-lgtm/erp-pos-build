@@ -175,6 +175,27 @@
       }
     }
   },
+  "onboarding": {
+    "title": "Setup Checklist",
+    "description": "Complete these steps to get your POS ready",
+    "progressLabel": "{{completed}} of {{total}} completed",
+    "requiredStepsAlert": "Complete required steps to start selling",
+    "viewChecklist": "View Setup Checklist",
+    "dismiss": "Dismiss",
+    "allDone": "Setup complete! You're ready to start selling.",
+    "steps": {
+      "company_info": "Company Information",
+      "tax_config": "Tax Configuration",
+      "payment_methods": "Payment Methods",
+      "payment_repositories": "Payment Repositories",
+      "pos_terminal": "POS Terminal",
+      "first_product": "First Product"
+    },
+    "badges": {
+      "required": "Required",
+      "optional": "Optional"
+    }
+  },
   "admin": {
     "tenants": {
       "manageModules": "Manage Modules",

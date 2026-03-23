@@ -175,6 +175,27 @@
       }
     }
   },
+  "onboarding": {
+    "title": "Liste de configuration",
+    "description": "Complétez ces étapes pour préparer votre caisse",
+    "progressLabel": "{{completed}} sur {{total}} complétés",
+    "requiredStepsAlert": "Complétez les étapes requises pour commencer à vendre",
+    "viewChecklist": "Voir la liste de configuration",
+    "dismiss": "Ignorer",
+    "allDone": "Configuration terminée ! Vous êtes prêt à vendre.",
+    "steps": {
+      "company_info": "Informations de l'entreprise",
+      "tax_config": "Configuration fiscale",
+      "payment_methods": "Modes de paiement",
+      "payment_repositories": "Dépôts de paiement",
+      "pos_terminal": "Terminal de caisse",
+      "first_product": "Premier produit"
+    },
+    "badges": {
+      "required": "Requis",
+      "optional": "Optionnel"
+    }
+  },
   "admin": {
     "tenants": {
       "manageModules": "Gestion des modules",

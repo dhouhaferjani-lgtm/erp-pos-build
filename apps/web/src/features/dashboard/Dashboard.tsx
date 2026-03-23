@@ -1,4 +1,5 @@
-import { Link } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { usePageTitle } from '../../hooks/usePageTitle'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -11,10 +12,13 @@ import {
   TrendingDown,
   Plus,
   ArrowRight,
+  AlertTriangle,
+  X,
 } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
+import { fetchOnboardingStatus } from '../settings/api/onboardingApi'
 
 interface DashboardStats {
   revenue: {
@@ -79,9 +83,26 @@ const getDocumentRoute = (type: string, id: string): string => {
 }
 
 export function Dashboard() {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['common', 'settings'])
   usePageTitle('dashboard.title')
+  const navigate = useNavigate()
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+
+  const [bannerDismissed, setBannerDismissed] = useState<boolean>(
+    () => sessionStorage.getItem('onboarding-banner-dismissed') === 'true'
+  )
+
+  const { data: onboardingItems = [] } = useQuery({
+    queryKey: ['onboarding-status'],
+    queryFn: fetchOnboardingStatus,
+  })
+
+  const hasIncompleteRequired = onboardingItems.some((item) => item.required && !item.completed)
+
+  const handleDismissBanner = () => {
+    sessionStorage.setItem('onboarding-banner-dismissed', 'true')
+    setBannerDismissed(true)
+  }
 
   // Get company currency with fallback
   const companyCurrency = currentCompany?.currency ?? 'EUR'
@@ -134,6 +155,36 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Onboarding alert banner */}
+      {hasIncompleteRequired && !bannerDismissed && (
+        <div className="flex items-start justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-amber-900">
+                {t('settings:onboarding.requiredStepsAlert')}
+              </p>
+              <button
+                type="button"
+                onClick={() => { navigate('/settings/setup'); }}
+                className="mt-1 inline-flex items-center gap-1 text-sm text-amber-700 underline hover:text-amber-900"
+              >
+                {t('settings:onboarding.viewChecklist')}
+                <ArrowRight className="h-3 w-3" />
+              </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleDismissBanner}
+            aria-label={t('settings:onboarding.dismiss')}
+            className="shrink-0 rounded p-1 text-amber-600 hover:bg-amber-100 hover:text-amber-800"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

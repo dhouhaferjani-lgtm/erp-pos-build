@@ -112,6 +112,7 @@ const CompanyOnboardingPage = lazy(() => import('../features/company/CompanyOnbo
 
 // Settings module
 const SettingsPage = lazy(() => import('../features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })))
+const SetupChecklistPage = lazy(() => import('../features/settings/pages/SetupChecklistPage').then((m) => ({ default: m.SetupChecklistPage })))
 const UsersPage = lazy(() => import('../features/settings/UsersPage').then((m) => ({ default: m.UsersPage })))
 const RolesPage = lazy(() => import('../features/settings/RolesPage').then((m) => ({ default: m.RolesPage })))
 const CompanyPage = lazy(() => import('../features/settings/CompanyPage').then((m) => ({ default: m.CompanyPage })))
@@ -1685,6 +1686,16 @@ export function AppRoutes() {
           />
 
           {/* Compliance */}
+          {/* Setup Checklist */}
+          <Route
+            path="setup"
+            element={
+              <SuspenseWrapper>
+                <SetupChecklistPage />
+              </SuspenseWrapper>
+            }
+          />
+
           <Route
             path="compliance/fraud-settings"
             element={
