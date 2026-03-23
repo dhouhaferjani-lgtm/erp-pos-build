@@ -48,7 +48,7 @@ export function UserEditModal({ user, roles, onClose, onSuccess, onError }: User
     mutationFn: async () => {
       const data: Record<string, unknown> = {
         name,
-        email,
+        email: email.trim() || null,
         phone: phone || null,
         role,
         can_discount: canDiscount,
@@ -135,7 +135,7 @@ export function UserEditModal({ user, roles, onClose, onSuccess, onError }: User
             {/* Email */}
             <div>
               <label htmlFor="editEmail" className="block text-sm font-medium text-gray-700">
-                {t('common:users.modal.emailLabel')} *
+                {t('common:users.modal.emailLabel')} {role !== 'cashier' && '*'}
               </label>
               <input
                 type="email"

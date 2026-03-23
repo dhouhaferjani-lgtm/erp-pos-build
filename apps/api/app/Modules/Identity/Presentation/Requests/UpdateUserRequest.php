@@ -35,9 +35,11 @@ class UpdateUserRequest extends FormRequest
             'name' => ['sometimes', 'string', 'max:255'],
             'email' => [
                 'sometimes',
+                'nullable',
                 'email',
                 Rule::unique('users', 'email')
                     ->where('tenant_id', $currentUser->tenant_id)
+                    ->whereNotNull('email')
                     ->ignore($userId),
             ],
             'phone' => ['sometimes', 'nullable', 'string', 'regex:/^\+?[0-9]{7,20}$/'],
