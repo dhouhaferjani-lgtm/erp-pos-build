@@ -224,4 +224,9 @@ export const migrations: Migration[] = [
       CREATE UNIQUE INDEX IF NOT EXISTS idx_z_reports_shift_unique ON z_reports(shift_id);
     `,
   },
+  {
+    version: 11,
+    name: 'add_modifier_groups_to_products',
+    sql: `ALTER TABLE products ADD COLUMN modifier_groups TEXT DEFAULT NULL`,
+  },
 ];

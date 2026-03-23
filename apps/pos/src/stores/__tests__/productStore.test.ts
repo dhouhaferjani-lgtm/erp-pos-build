@@ -4,6 +4,19 @@ import { useProductStore } from '../productStore';
 // Mock the API module
 vi.mock('@/api/productApi', () => ({
   fetchPOSProducts: vi.fn(),
+  fetchCompanyConfig: vi.fn(),
+  fetchActiveMenu: vi.fn(),
+  flattenMenuToProducts: vi.fn(),
+}));
+
+// Mock the DB module — SQLite not available in test environment
+vi.mock('@/lib/db', () => ({
+  getDatabase: vi.fn().mockRejectedValue(new Error('No SQLite in test')),
+}));
+
+vi.mock('@/lib/db/repositories/productRepository', () => ({
+  getAllProducts: vi.fn().mockResolvedValue([]),
+  upsertProducts: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { fetchPOSProducts } from '@/api/productApi';
@@ -54,22 +67,20 @@ describe('productStore', () => {
     expect(state.lastFetched).not.toBeNull();
   });
 
-  it('uses cache on subsequent calls within cache window', async () => {
-    vi.mocked(fetchPOSProducts).mockResolvedValue(mockProducts);
+  it('does not re-fetch while a fetch is in progress', async () => {
+    let resolveFirst: (value: typeof mockProducts) => void;
+    const firstCall = new Promise<typeof mockProducts>((r) => { resolveFirst = r; });
+    vi.mocked(fetchPOSProducts).mockReturnValueOnce(firstCall);
 
-    await useProductStore.getState().fetchProducts(true);
-    await useProductStore.getState().fetchProducts(); // should use cache
+    const first = useProductStore.getState().fetchProducts(true);
+    // Second call while first is in-flight should be a no-op (isLoading guard)
+    const second = useProductStore.getState().fetchProducts(true);
+
+    resolveFirst!(mockProducts);
+    await first;
+    await second;
 
     expect(fetchPOSProducts).toHaveBeenCalledTimes(1);
-  });
-
-  it('bypasses cache when forced', async () => {
-    vi.mocked(fetchPOSProducts).mockResolvedValue(mockProducts);
-
-    await useProductStore.getState().fetchProducts(true);
-    await useProductStore.getState().fetchProducts(true);
-
-    expect(fetchPOSProducts).toHaveBeenCalledTimes(2);
   });
 
   it('handles fetch errors', async () => {

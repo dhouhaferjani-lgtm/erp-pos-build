@@ -4,10 +4,9 @@ import { fetchPOSProducts, fetchCompanyConfig, fetchActiveMenu, flattenMenuToPro
 import { getDatabase } from '@/lib/db';
 import { getAllProducts, upsertProducts } from '@/lib/db/repositories/productRepository';
 import { useAuthStore } from '@/stores/authStore';
+import { diffProducts } from '@/lib/sync/productDiff';
 import type { POSProduct } from '@/types/product';
 import type { CompanyConfig } from '@/types/companyConfig';
-
-const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
 interface ProductState {
   products: POSProduct[];
@@ -20,6 +19,7 @@ interface ProductState {
 
 interface ProductActions {
   fetchProducts: (force?: boolean) => Promise<void>;
+  refreshFromSQLite: () => Promise<void>;
   getById: (id: string) => POSProduct | undefined;
   reset: () => void;
 }
@@ -49,88 +49,128 @@ export function hasModule(config: CompanyConfig | null, moduleName: string): boo
   return config?.all_enabled_modules?.includes(moduleName) ?? false;
 }
 
+async function fetchProductsFromAPI(config: CompanyConfig | null): Promise<POSProduct[]> {
+  if (hasModule(config, 'Menu')) {
+    const menu = await fetchActiveMenu();
+    return flattenMenuToProducts(menu);
+  }
+  return fetchPOSProducts({ limit: 500 });
+}
+
+let syncInFlight = false;
+
 export const useProductStore = create<ProductStore>()((set, get) => ({
   ...initialState,
 
-  fetchProducts: async (force = false) => {
-    const { lastFetched, isLoading } = get();
+  fetchProducts: async (_force = false) => {
+    const { isLoading } = get();
     if (isLoading) return;
-
-    // Use cache if not forced and within cache duration
-    if (!force && lastFetched && Date.now() - lastFetched < CACHE_DURATION_MS) {
-      return;
-    }
 
     set({ isLoading: true, error: null });
 
-    try {
-      // Fetch company config if not cached
-      let config = get().companyConfig;
-      if (!config) {
-        try {
-          config = await fetchCompanyConfig();
-          set({ companyConfig: config });
-        } catch {
-          // Config fetch failed, proceed with retail mode
-          config = null;
-        }
-      }
+    const companyId = useAuthStore.getState().companyId;
 
-      let products: POSProduct[];
-
-      if (hasModule(config, 'Menu')) {
-        // F&B mode: fetch active menu with modifier groups
-        const menu = await fetchActiveMenu();
-        products = flattenMenuToProducts(menu);
-      } else {
-        // Retail mode: fetch products
-        products = await fetchPOSProducts({ limit: 500 });
-      }
-
-      const categories = extractCategories(products);
-      set({
-        products,
-        categories,
-        isLoading: false,
-        lastFetched: Date.now(),
-      });
-
-      // Upsert to SQLite for offline fallback
+    // Step 1: Load from SQLite immediately (instant render)
+    let hasLocalData = false;
+    if (companyId) {
       try {
-        const companyId = useAuthStore.getState().companyId;
-        if (companyId) {
-          const db = await getDatabase(companyId);
-          await upsertProducts(db, products);
+        const db = await getDatabase(companyId);
+        const cachedProducts = await getAllProducts(db);
+        if (cachedProducts.length > 0) {
+          hasLocalData = true;
+          const categories = extractCategories(cachedProducts);
+          set({
+            products: cachedProducts,
+            categories,
+            isLoading: false,
+          });
         }
       } catch {
-        // SQLite upsert failed silently — not critical
+        // SQLite read failed — continue to API
       }
-    } catch (error) {
-      // API failed — try loading from SQLite cache
+    }
+
+    // Step 2: Fetch company config if not cached
+    let config = get().companyConfig;
+    if (!config) {
       try {
-        const companyId = useAuthStore.getState().companyId;
+        config = await fetchCompanyConfig();
+        set({ companyConfig: config });
+      } catch {
+        config = null;
+      }
+    }
+
+    // Step 3: Fetch from API in parallel (background if we have local data)
+    const doApiFetch = async () => {
+      try {
+        const freshProducts = await fetchProductsFromAPI(config);
+
+        // Upsert to SQLite
         if (companyId) {
-          const db = await getDatabase(companyId);
-          const cachedProducts = await getAllProducts(db);
-          if (cachedProducts.length > 0) {
-            const categories = extractCategories(cachedProducts);
-            set({
-              products: cachedProducts,
-              categories,
-              isLoading: false,
-              lastFetched: Date.now(),
-            });
-            return;
+          try {
+            const db = await getDatabase(companyId);
+            await upsertProducts(db, freshProducts);
+          } catch {
+            // SQLite upsert failed silently — not critical
           }
         }
-      } catch {
-        // SQLite also failed
-      }
 
-      set({
-        isLoading: false,
-        error: error instanceof Error ? error.message : i18n.t('errors.unexpected', { ns: 'pos' }),
-      });
+        // Diff against in-memory products to minimize re-renders
+        const currentProducts = get().products;
+        const { changed, products: merged } = diffProducts(currentProducts, freshProducts);
+        if (changed || currentProducts.length === 0) {
+          set({
+            products: merged,
+            categories: extractCategories(merged),
+            lastFetched: Date.now(),
+          });
+        } else {
+          set({ lastFetched: Date.now() });
+        }
+
+        // Clear loading if still set (first launch with no local data)
+        if (get().isLoading) {
+          set({ isLoading: false });
+        }
+      } catch (error) {
+        // API failed — if we already have local data, silently continue
+        if (!hasLocalData) {
+          set({
+            isLoading: false,
+            error: error instanceof Error ? error.message : i18n.t('errors.unexpected', { ns: 'pos' }),
+          });
+        } else if (get().isLoading) {
+          set({ isLoading: false });
+        }
+      }
+    };
+
+    if (hasLocalData) {
+      // Non-blocking: fire and forget the API fetch (guard against concurrent syncs)
+      if (!syncInFlight) {
+        syncInFlight = true;
+        doApiFetch().finally(() => { syncInFlight = false; });
+      }
+    } else {
+      // First launch (empty SQLite): await the API call
+      await doApiFetch();
+    }
+  },
+
+  refreshFromSQLite: async () => {
+    try {
+      const companyId = useAuthStore.getState().companyId;
+      if (!companyId) return;
+      const db = await getDatabase(companyId);
+      const freshProducts = await getAllProducts(db);
+      if (freshProducts.length === 0) return;
+      const { changed, products: merged } = diffProducts(get().products, freshProducts);
+      if (changed) {
+        set({ products: merged, categories: extractCategories(merged) });
+      }
+    } catch (error) {
+      console.error('[productStore] refreshFromSQLite failed:', error);
     }
   },
 

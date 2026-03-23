@@ -13,6 +13,7 @@ interface ProductRow {
   image_url: string | null;
   tax_rate: string | null;
   sellable_type: string | null;
+  modifier_groups: string | null;
 }
 
 function rowToProduct(row: ProductRow): POSProduct {
@@ -27,6 +28,11 @@ function rowToProduct(row: ProductRow): POSProduct {
     image_url: row.image_url ?? undefined,
     tax_rate: row.tax_rate ?? undefined,
     sellableType: (row.sellable_type as POSProduct['sellableType']) ?? undefined,
+    modifier_groups: (() => {
+      if (!row.modifier_groups) return undefined;
+      try { return JSON.parse(row.modifier_groups); }
+      catch { console.warn(`[productRepository] corrupt modifier_groups for product ${row.id}`); return undefined; }
+    })(),
   };
 }
 
@@ -45,7 +51,8 @@ export async function getProductByBarcode(db: Database, barcode: string): Promis
 }
 
 const BATCH_SIZE = 50;
-const COLUMNS_PER_ROW = 10;
+/** Number of $-placeholder parameters per product row (excludes datetime('now') literals) */
+const PARAMS_PER_ROW = 11;
 
 export async function upsertProducts(db: Database, products: POSProduct[]): Promise<void> {
   for (let i = 0; i < products.length; i += BATCH_SIZE) {
@@ -55,9 +62,9 @@ export async function upsertProducts(db: Database, products: POSProduct[]): Prom
 
     for (let j = 0; j < batch.length; j++) {
       const p = batch[j]!;
-      const offset = j * COLUMNS_PER_ROW;
+      const offset = j * PARAMS_PER_ROW;
       valueClauses.push(
-        `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, datetime('now'), datetime('now'))`
+        `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, datetime('now'), datetime('now'))`
       );
       params.push(
         p.id,
@@ -70,12 +77,13 @@ export async function upsertProducts(db: Database, products: POSProduct[]): Prom
         p.image_url ?? null,
         p.tax_rate ?? null,
         p.sellableType ?? 'product',
+        p.modifier_groups ? JSON.stringify(p.modifier_groups) : null,
       );
     }
 
     await execute(
       db,
-      `INSERT INTO products (id, name, sku, barcode, sale_price, stock_quantity, category, image_url, tax_rate, sellable_type, updated_at, synced_at)
+      `INSERT INTO products (id, name, sku, barcode, sale_price, stock_quantity, category, image_url, tax_rate, sellable_type, modifier_groups, updated_at, synced_at)
        VALUES ${valueClauses.join(', ')}
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name,
@@ -87,6 +95,7 @@ export async function upsertProducts(db: Database, products: POSProduct[]): Prom
          image_url = excluded.image_url,
          tax_rate = excluded.tax_rate,
          sellable_type = excluded.sellable_type,
+         modifier_groups = excluded.modifier_groups,
          updated_at = datetime('now'),
          synced_at = datetime('now')`,
       params
