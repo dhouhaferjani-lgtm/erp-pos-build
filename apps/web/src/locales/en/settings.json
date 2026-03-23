@@ -196,6 +196,23 @@
       "optional": "Optional"
     }
   },
+  "terminalDiscount": {
+    "title": "Discount Settings",
+    "maxPercent": "Maximum discount percentage",
+    "maxPercentHelp": "Maximum discount a cashier can apply on this terminal (0-100%)",
+    "allowLine": "Allow line item discounts",
+    "allowTransaction": "Allow transaction discounts"
+  },
+  "userEdit": {
+    "title": "Edit User",
+    "discountSection": "POS Discount Settings",
+    "canDiscount": "Can apply discounts",
+    "maxDiscountPercent": "Maximum discount percentage",
+    "maxDiscountHelp": "Leave empty for no individual limit (terminal limit applies)",
+    "save": "Save Changes",
+    "saving": "Saving...",
+    "success": "User updated successfully"
+  },
   "admin": {
     "tenants": {
       "manageModules": "Manage Modules",

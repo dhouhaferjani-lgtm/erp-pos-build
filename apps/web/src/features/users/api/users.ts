@@ -16,3 +16,11 @@ export async function getUser(id: string): Promise<User> {
   const response = await api.get<{ data: User }>(`/users/${id}`)
   return response.data.data
 }
+
+/**
+ * Update an existing user
+ */
+export async function updateUser(id: string, data: Record<string, unknown>): Promise<User> {
+  const response = await api.patch<{ data: User }>(`/users/${id}`, data)
+  return response.data.data
+}

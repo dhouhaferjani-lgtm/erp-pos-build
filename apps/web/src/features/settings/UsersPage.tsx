@@ -14,22 +14,14 @@ import {
   KeyRound,
   Trash2,
   Hash,
+  Pencil,
 } from 'lucide-react'
 import { api, getErrorMessage } from '../../lib/api'
 import { useAuthStore } from '../../stores/authStore'
 import { SearchInput } from '../../components/ui/SearchInput'
 import { FilterTabs } from '../../components/ui/FilterTabs'
-
-interface User {
-  id: string
-  name: string
-  email: string
-  phone: string | null
-  status: 'active' | 'inactive' | 'pending_verification' | 'locked'
-  roles: string[]
-  lastLoginAt: string | null
-  createdAt: string
-}
+import { UserEditModal } from './components/UserEditModal'
+import type { User } from '../users/types'
 
 interface UsersResponse {
   data: User[]
@@ -83,6 +75,7 @@ export function UsersPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [showAddModal, setShowAddModal] = useState(false)
+  const [editUser, setEditUser] = useState<User | null>(null)
   const [showPinModal, setShowPinModal] = useState<string | null>(null)
   const [showActionMenu, setShowActionMenu] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -241,6 +234,14 @@ export function UsersPage() {
 
   const handleAction = (action: string, userId: string) => {
     switch (action) {
+      case 'edit': {
+        setShowActionMenu(null)
+        const userToEdit = users.find((u) => u.id === userId)
+        if (userToEdit) {
+          setEditUser(userToEdit as User)
+        }
+        break
+      }
       case 'activate':
         activateMutation.mutate(userId)
         break
@@ -451,6 +452,13 @@ export function UsersPage() {
                       {showActionMenu === user.id && (
                         <div className="absolute right-0 mt-2 w-48 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 z-10">
                           <div className="py-1">
+                            <button
+                              onClick={() => { handleAction('edit', user.id) }}
+                              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            >
+                              <Pencil className="h-4 w-4 text-blue-500" />
+                              {t('users.actions.edit', { defaultValue: 'Edit' })}
+                            </button>
                             {user.status !== 'active' && (
                               <button
                                 onClick={() => { handleAction('activate', user.id) }}
@@ -511,6 +519,17 @@ export function UsersPage() {
           onClose={() => { setShowAddModal(false) }}
           onSubmit={(data) => { createUserMutation.mutate(data) }}
           isLoading={createUserMutation.isPending}
+        />
+      )}
+
+      {/* Edit User Modal */}
+      {editUser && (
+        <UserEditModal
+          user={editUser}
+          roles={roles}
+          onClose={() => { setEditUser(null) }}
+          onSuccess={(message) => { showNotification('success', message) }}
+          onError={(message) => { showNotification('error', message) }}
         />
       )}
 

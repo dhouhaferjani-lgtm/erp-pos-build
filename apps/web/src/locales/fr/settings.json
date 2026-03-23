@@ -196,6 +196,23 @@
       "optional": "Optionnel"
     }
   },
+  "terminalDiscount": {
+    "title": "Paramètres de remise",
+    "maxPercent": "Pourcentage maximum de remise",
+    "maxPercentHelp": "Remise maximale qu'un caissier peut appliquer sur ce terminal (0-100%)",
+    "allowLine": "Autoriser les remises par article",
+    "allowTransaction": "Autoriser les remises sur la transaction"
+  },
+  "userEdit": {
+    "title": "Modifier l'utilisateur",
+    "discountSection": "Paramètres de remise POS",
+    "canDiscount": "Peut appliquer des remises",
+    "maxDiscountPercent": "Pourcentage maximum de remise",
+    "maxDiscountHelp": "Laisser vide pour aucune limite (la limite du terminal s'applique)",
+    "save": "Enregistrer",
+    "saving": "Enregistrement...",
+    "success": "Utilisateur modifié avec succès"
+  },
   "admin": {
     "tenants": {
       "manageModules": "Gestion des modules",
