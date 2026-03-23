@@ -262,14 +262,14 @@ export function AdvancedPaymentsModal({
                     key={method.id}
                     onClick={() => handleSelectMethod(method.id)}
                     className={cn(
-                      'flex min-h-[68px] flex-col items-center justify-center gap-1 rounded-xl border-2 p-2 text-center transition-colors',
+                      'flex min-h-[72px] flex-col items-center justify-center gap-1.5 rounded-xl border-2 p-3 text-center transition-colors',
                       isSelected
                         ? 'border-primary-500 bg-primary-50 text-primary-700'
                         : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50',
                     )}
                   >
-                    <Icon className="h-5 w-5" />
-                    <span className="text-xs font-medium leading-tight">
+                    <Icon className="h-6 w-6" />
+                    <span className="text-sm font-medium leading-tight">
                       {method.name}
                     </span>
                   </button>
@@ -280,8 +280,8 @@ export function AdvancedPaymentsModal({
 
           {/* Configuration panel */}
           {selectedMethod && (
-            <div className="mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
-              <div className="space-y-2">
+            <div className="mb-2 rounded-xl border border-gray-200 bg-gray-50 p-2">
+              <div className="space-y-1.5">
                 {/* Amount + Pay Remaining */}
                 <div className="flex gap-2">
                   <div className="flex-1">
@@ -382,8 +382,8 @@ export function AdvancedPaymentsModal({
             </div>
           )}
 
-          {/* NumPad — touch mode only, shown when a method is selected */}
-          {touchMode && selectedMethod && (
+          {/* NumPad — shown when a method is selected */}
+          {selectedMethod && (
             <div className="mt-auto">
               <NumPad
                 value={amount}
