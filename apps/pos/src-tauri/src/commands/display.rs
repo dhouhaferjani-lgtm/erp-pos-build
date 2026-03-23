@@ -101,14 +101,14 @@ pub async fn open_customer_display(
             .get(idx)
             .ok_or_else(|| format!("Monitor index {} out of range (found {})", idx, monitors.len()))?
     } else {
-        // Auto-detect: pick first non-primary monitor, or fall back to primary
+        // Auto-detect: pick first non-primary monitor; error if none exists
         monitors
             .iter()
             .find(|m| {
                 let name = m.name().map(|n| n.to_string());
                 name != primary_name
             })
-            .unwrap_or_else(|| &monitors[0])
+            .ok_or_else(|| "No secondary monitor found. Connect a second screen to use the customer display.".to_string())?
     };
 
     let position = target.position();

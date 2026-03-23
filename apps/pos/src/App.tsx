@@ -176,8 +176,10 @@ function MainApp() {
         await openCustomerDisplay(cfdMonitorIndex ?? undefined);
         setIsOpen(true);
         await sendIdleScreen(cfdIdleImagePath);
-      } catch {
-        // Non-critical — display may not be connected
+      } catch (error) {
+        console.warn('Customer display failed to open:', error);
+        useCustomerDisplayStore.getState().setEnabled(false);
+        setIsOpen(false);
       }
     };
     void autoOpen();

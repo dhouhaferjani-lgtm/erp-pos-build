@@ -161,6 +161,29 @@ export function CustomerDisplayPage() {
     };
   }, []);
 
+  // Allow Escape key to close the customer display window (safety hatch)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        void (async () => {
+          try {
+            const { invoke } = await import('@tauri-apps/api/core');
+            await invoke('close_customer_display');
+          } catch {
+            try {
+              const { getCurrentWindow } = await import('@tauri-apps/api/window');
+              await getCurrentWindow().close();
+            } catch {
+              // Last resort — ignore
+            }
+          }
+        })();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Prevent any interaction on this window
   useEffect(() => {
     const preventInteraction = (e: Event) => {
