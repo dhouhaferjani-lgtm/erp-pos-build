@@ -67,11 +67,13 @@ class ProductData extends Data
             created_at: $product->created_at?->toIso8601String() ?? '',
             updated_at: $product->updated_at?->toIso8601String(),
             primary_image_url: $product->relationLoaded('primaryImage') && $product->primaryImage !== null
-                ? URL::route('products.images.download', [
-                    'product' => $product->id,
-                    'image' => $product->primaryImage->id,
-                    'variant' => 'sm',
-                ])
+                ? ($product->primaryImage->storage_disk === 'url'
+                    ? $product->primaryImage->storage_path
+                    : URL::route('products.images.download', [
+                        'product' => $product->id,
+                        'image' => $product->primaryImage->id,
+                        'variant' => 'sm',
+                    ]))
                 : null,
             parapharmacy_metadata: $product->relationLoaded('parapharmacyMetadata') && $product->parapharmacyMetadata !== null
                 ? ParapharmacyProductMetadataData::fromModel($product->parapharmacyMetadata)

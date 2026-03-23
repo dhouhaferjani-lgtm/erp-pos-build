@@ -179,8 +179,13 @@ class ProductImageService
      * Sets Content-Disposition: inline and Cache-Control headers so browsers
      * render the image rather than triggering a file download.
      */
-    public function serve(ProductImage $image, ?string $variant = null): StreamedResponse
+    public function serve(ProductImage $image, ?string $variant = null): StreamedResponse|\Illuminate\Http\RedirectResponse
     {
+        // External URL images (seeded placeholders) — redirect to the URL directly
+        if ($image->storage_disk === 'url') {
+            return redirect($image->storage_path);
+        }
+
         $disk = Storage::disk($image->storage_disk);
         $path = $image->storage_path;
         $mimeType = $image->mime_type;

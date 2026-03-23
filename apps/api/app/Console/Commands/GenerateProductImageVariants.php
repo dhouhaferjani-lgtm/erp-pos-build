@@ -35,6 +35,13 @@ class GenerateProductImageVariants extends Command
         $query->chunkById(100, function ($images) use (&$dispatched, &$skipped): void {
             /** @var ProductImage $image */
             foreach ($images as $image) {
+                // Skip external URL images (seeded placeholders) — only process S3 uploads
+                if ($image->storage_disk === 'url') {
+                    $skipped++;
+
+                    continue;
+                }
+
                 if (! $this->option('force')) {
                     $smPath = ImageVariantService::variantPath($image->storage_path, 'sm');
                     if (Storage::disk($image->storage_disk)->exists($smPath)) {

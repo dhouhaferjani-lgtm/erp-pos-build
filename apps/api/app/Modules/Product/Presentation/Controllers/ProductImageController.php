@@ -82,7 +82,7 @@ class ProductImageController extends Controller
     /**
      * Serve an image file inline for browser rendering.
      */
-    public function download(Request $request, Product $product, ProductImage $image): StreamedResponse
+    public function download(Request $request, Product $product, ProductImage $image): StreamedResponse|\Illuminate\Http\RedirectResponse
     {
         $variant = $request->query('variant');
         $validVariants = ['sm', 'md'];

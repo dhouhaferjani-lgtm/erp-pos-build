@@ -116,11 +116,13 @@ final class SyncController extends Controller
         $products = $productsQuery->get()->map(function (Product $product): array {
             $attributes = $product->toArray();
             $attributes['image_url'] = $product->primaryImage !== null
-                ? route('products.images.download', [
-                    'product' => $product->id,
-                    'image' => $product->primaryImage->id,
-                    'variant' => 'sm',
-                ])
+                ? ($product->primaryImage->storage_disk === 'url'
+                    ? $product->primaryImage->storage_path
+                    : route('products.images.download', [
+                        'product' => $product->id,
+                        'image' => $product->primaryImage->id,
+                        'variant' => 'sm',
+                    ]))
                 : null;
             unset($attributes['primary_image']);
 
