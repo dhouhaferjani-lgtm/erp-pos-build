@@ -157,7 +157,9 @@ function MainApp() {
         if (fullscreen) {
           await win.setDecorations(false);
           await win.setFullscreen(true);
+          await win.setAlwaysOnTop(true);
         } else {
+          await win.setAlwaysOnTop(false);
           await win.setFullscreen(false);
           await win.setDecorations(true);
         }

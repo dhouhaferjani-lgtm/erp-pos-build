@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeftRight, BarChart3, Lock, LogOut, Settings } from 'lucide-react';
+import { ArrowLeftRight, BarChart3, Lock, LogOut, Minimize2, Settings } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useTerminalStore } from '@/stores/terminalStore';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { isTauriEnvironment } from '@/lib/printing';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useCartStore } from '@/stores/cartStore';
 import { usePaymentStore } from '@/stores/paymentStore';
@@ -32,6 +34,7 @@ export function Header() {
   const clearOperator = useOperatorStore((s) => s.clearOperator);
 
   const companyId = useAuthStore((s) => s.companyId);
+  const fullscreen = useSettingsStore((s) => s.fullscreen);
 
   const isOnline = useConnectivityStore((s) => s.isOnline);
   const pendingReceiptCount = useSyncStore((s) => s.pendingReceiptCount);
@@ -93,6 +96,21 @@ export function Header() {
       setReportError(getErrorMessage(err));
     } finally {
       setReportLoading(false);
+    }
+  };
+
+  const handleExitFullscreen = async () => {
+    try {
+      if (isTauriEnvironment()) {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const win = getCurrentWindow();
+        await win.setAlwaysOnTop(false);
+        await win.setFullscreen(false);
+        await win.setDecorations(true);
+      }
+      useSettingsStore.getState().setFullscreen(false);
+    } catch {
+      // ignore
     }
   };
 
@@ -192,6 +210,17 @@ export function Header() {
             >
               <BarChart3 className="h-4 w-4" />
               {t('quickActions.reports')}
+            </button>
+          )}
+
+          {/* Exit fullscreen */}
+          {fullscreen && (
+            <button
+              onClick={() => void handleExitFullscreen()}
+              className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary-800 text-primary-400 hover:bg-primary-700 hover:text-primary-200"
+              title={t('settings.exitFullscreen')}
+            >
+              <Minimize2 className="h-4 w-4" />
             </button>
           )}
 

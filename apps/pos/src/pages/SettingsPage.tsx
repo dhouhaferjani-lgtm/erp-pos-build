@@ -33,7 +33,16 @@ async function toggleFullscreen(enabled: boolean): Promise<void> {
   try {
     if (isTauriEnvironment()) {
       const { getCurrentWindow } = await import('@tauri-apps/api/window');
-      await getCurrentWindow().setFullscreen(enabled);
+      const win = getCurrentWindow();
+      if (enabled) {
+        await win.setDecorations(false);
+        await win.setFullscreen(true);
+        await win.setAlwaysOnTop(true);
+      } else {
+        await win.setAlwaysOnTop(false);
+        await win.setFullscreen(false);
+        await win.setDecorations(true);
+      }
     } else if (enabled) {
       await document.documentElement.requestFullscreen?.();
     } else if (document.fullscreenElement) {

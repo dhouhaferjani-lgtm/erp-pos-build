@@ -335,6 +335,7 @@
     "touchModeDesc": "Show on-screen numpad and keyboard for touchscreen",
     "fullscreen": "Fullscreen",
     "fullscreenDesc": "Launch the app in fullscreen mode",
+    "exitFullscreen": "Exit fullscreen",
     "drawerRequiresPrinter": "Cash drawer requires a configured receipt printer.",
     "drawerConnectionInfo": "Connected via receipt printer (RJ45 cable). Ensure your cash drawer is connected to the printer's DK port.",
     "drawerPin": "Kick Connector Pin",

@@ -335,6 +335,7 @@
     "touchModeDesc": "Afficher le pavé numérique et clavier à l'écran",
     "fullscreen": "Plein écran",
     "fullscreenDesc": "Lancer l'application en plein écran",
+    "exitFullscreen": "Quitter le plein écran",
     "drawerRequiresPrinter": "Le tiroir-caisse nécessite une imprimante de tickets configurée.",
     "drawerConnectionInfo": "Connecté via l'imprimante de tickets (câble RJ45). Assurez-vous que votre tiroir-caisse est connecté au port DK de l'imprimante.",
     "drawerPin": "Broche du connecteur",
