@@ -567,7 +567,7 @@ export function SettingsPage() {
                   <span className="text-gray-500">
                     {t('shift.number', { number: shift.shift_number })}
                   </span>
-                  <span className="font-medium text-gray-900">{shift.status}</span>
+                  <span className="font-medium text-gray-900">{t('shift.statusLabel.' + shift.status)}</span>
                 </div>
               )}
             </div>

@@ -83,7 +83,11 @@
     "unknown": "Unknown",
     "openingCash": "Opening Cash",
     "openingButton": "Open Shift",
-    "openingLoading": "Opening..."
+    "openingLoading": "Opening...",
+    "statusLabel": {
+      "open": "Open",
+      "closed": "Closed"
+    }
   },
   "auth": {
     "title": "IziPOS",
@@ -387,7 +391,9 @@
       "idleImageHint": "Shown when no transaction is active. Leave empty for default logo.",
       "preview": "Open Preview",
       "close": "Close Display",
-      "displayOpened": "Customer display opened successfully."
+      "displayOpened": "Customer display opened successfully.",
+      "primaryBadge": "Primary",
+      "monitorFallback": "Monitor {{number}}"
     }
   },
   "numpad": {

@@ -198,7 +198,7 @@ export function CustomerDisplaySettings() {
                   {availableMonitors.map((monitor, index) => (
                     <MonitorOption
                       key={index}
-                      label={monitorLabel(monitor, index)}
+                      label={monitorLabel(monitor, index, t)}
                       description={`${monitor.size[0]}x${monitor.size[1]}`}
                       isSelected={monitorIndex === index}
                       onClick={() => handleMonitorSelect(index)}
@@ -300,6 +300,7 @@ function MonitorOption({
   onClick: () => void;
   isPrimary?: boolean;
 }) {
+  const { t } = useTranslation('pos');
   return (
     <button
       onClick={onClick}
@@ -315,7 +316,7 @@ function MonitorOption({
           {label}
           {isPrimary && (
             <span className="ml-2 rounded bg-gray-200 px-1.5 py-0.5 text-xs text-gray-600">
-              Primary
+              {t('settings.cfd.primaryBadge')}
             </span>
           )}
         </p>
@@ -326,9 +327,13 @@ function MonitorOption({
   );
 }
 
-function monitorLabel(monitor: MonitorInfo, index: number): string {
+function monitorLabel(
+  monitor: MonitorInfo,
+  index: number,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
   if (monitor.name) {
     return monitor.name;
   }
-  return `Monitor ${index + 1}`;
+  return t('settings.cfd.monitorFallback', { number: index + 1 });
 }

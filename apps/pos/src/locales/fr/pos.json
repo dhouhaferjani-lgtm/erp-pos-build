@@ -83,7 +83,11 @@
     "unknown": "Inconnu",
     "openingCash": "Fond de caisse",
     "openingButton": "Ouvrir le service",
-    "openingLoading": "Ouverture..."
+    "openingLoading": "Ouverture...",
+    "statusLabel": {
+      "open": "Ouvert",
+      "closed": "Fermé"
+    }
   },
   "auth": {
     "title": "IziPOS",
@@ -387,7 +391,9 @@
       "idleImageHint": "Affichée quand aucune transaction n'est active. Laisser vide pour le logo par défaut.",
       "preview": "Aperçu",
       "close": "Fermer l'affichage",
-      "displayOpened": "Affichage client ouvert avec succès."
+      "displayOpened": "Affichage client ouvert avec succès.",
+      "primaryBadge": "Principal",
+      "monitorFallback": "Écran {{number}}"
     }
   },
   "numpad": {
