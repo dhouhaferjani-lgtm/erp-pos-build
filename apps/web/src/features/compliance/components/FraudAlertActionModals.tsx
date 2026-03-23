@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { X, UserPlus, XCircle, CheckCircle } from 'lucide-react'
@@ -41,7 +42,7 @@ export function AssignAlertModal({ alert, onClose }: AssignModalProps) {
     assignMutation.mutate(selectedUserId)
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg max-w-md w-full">
         {/* Header */}
@@ -113,7 +114,8 @@ export function AssignAlertModal({ alert, onClose }: AssignModalProps) {
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -146,7 +148,7 @@ export function DismissAlertModal({ alert, onClose }: DismissModalProps) {
     dismissMutation.mutate(notes)
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg max-w-md w-full">
         {/* Header */}
@@ -203,7 +205,8 @@ export function DismissAlertModal({ alert, onClose }: DismissModalProps) {
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -236,7 +239,7 @@ export function ResolveAlertModal({ alert, onClose }: ResolveModalProps) {
     resolveMutation.mutate(notes)
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg max-w-md w-full">
         {/* Header */}
@@ -293,6 +296,7 @@ export function ResolveAlertModal({ alert, onClose }: ResolveModalProps) {
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

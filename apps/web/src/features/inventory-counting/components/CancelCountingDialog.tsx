@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 
 interface Props {
@@ -28,7 +29,7 @@ export function CancelCountingDialog({
     }
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* Backdrop */}
       <div
@@ -84,6 +85,7 @@ export function CancelCountingDialog({
           </form>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { tokens } from '../../../lib/designTokens'
 import { cn } from '../../../lib/utils'
@@ -133,7 +134,7 @@ export function Modal({
 }: ModalProps) {
   if (!isOpen) return null
 
-  return (
+  return createPortal(
     <div className={tokens.modal.backdrop}>
       <div className={cn(tokens.modal.container, sizeClasses[size], className)}>
         {/* Auto-render header if title provided */}
@@ -141,7 +142,8 @@ export function Modal({
 
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

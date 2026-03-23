@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, X } from 'lucide-react'
 
@@ -45,7 +46,7 @@ export function ConfirmDialog({
 
   const styles = variantStyles[variant]
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50">
       <div className="relative mx-4 w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
         {/* Close button */}
@@ -90,6 +91,7 @@ export function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import type { ReconciliationItem } from '../types'
 
@@ -31,7 +32,7 @@ function ManualOverrideDialogContent({
     }
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* Backdrop */}
       <div
@@ -136,7 +137,8 @@ function ManualOverrideDialogContent({
           </form>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
