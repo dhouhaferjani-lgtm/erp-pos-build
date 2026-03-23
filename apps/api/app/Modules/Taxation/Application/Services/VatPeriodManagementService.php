@@ -116,7 +116,9 @@ class VatPeriodManagementService
                 'closed_by' => $userId,
             ]);
 
-            event(new VatPeriodClosed($updatedPeriod));
+            DB::afterCommit(function () use ($updatedPeriod): void {
+                event(new VatPeriodClosed($updatedPeriod));
+            });
 
             return VatPeriodData::fromEntity($updatedPeriod);
         });
@@ -184,7 +186,9 @@ class VatPeriodManagementService
                 'filed_by' => $userId,
             ]);
 
-            event(new VatPeriodFiled($updatedPeriod));
+            DB::afterCommit(function () use ($updatedPeriod): void {
+                event(new VatPeriodFiled($updatedPeriod));
+            });
 
             return VatPeriodData::fromEntity($updatedPeriod);
         });

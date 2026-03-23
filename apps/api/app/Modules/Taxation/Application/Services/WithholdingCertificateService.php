@@ -95,7 +95,9 @@ class WithholdingCertificateService
             ]);
 
             // Dispatch event
-            event(new WithholdingCertificateCreated($certificate));
+            DB::afterCommit(function () use ($certificate): void {
+                event(new WithholdingCertificateCreated($certificate));
+            });
 
             return WithholdingCertificateData::fromEntity($certificate);
         });
@@ -171,7 +173,9 @@ class WithholdingCertificateService
             ]);
 
             // Dispatch event
-            event(new WithholdingCertificateCreated($certificate));
+            DB::afterCommit(function () use ($certificate): void {
+                event(new WithholdingCertificateCreated($certificate));
+            });
 
             return WithholdingCertificateData::fromEntity($certificate);
         });
@@ -224,7 +228,9 @@ class WithholdingCertificateService
             $certificate->refresh();
 
             // Dispatch event
-            event(new WithholdingCertificateIssued($certificate, $userId));
+            DB::afterCommit(function () use ($certificate, $userId): void {
+                event(new WithholdingCertificateIssued($certificate, $userId));
+            });
 
             return WithholdingCertificateData::fromEntity($certificate);
         });
@@ -254,7 +260,9 @@ class WithholdingCertificateService
             $certificate->refresh();
 
             // Dispatch event
-            event(new WithholdingCertificateVoided($certificate, $reason, $userId));
+            DB::afterCommit(function () use ($certificate, $reason, $userId): void {
+                event(new WithholdingCertificateVoided($certificate, $reason, $userId));
+            });
 
             return WithholdingCertificateData::fromEntity($certificate);
         });
@@ -286,7 +294,9 @@ class WithholdingCertificateService
             $certificate->refresh();
 
             // Dispatch event
-            event(new WithholdingSubmittedToTEJ($certificate, $tejReference, $userId));
+            DB::afterCommit(function () use ($certificate, $tejReference, $userId): void {
+                event(new WithholdingSubmittedToTEJ($certificate, $tejReference, $userId));
+            });
 
             return WithholdingCertificateData::fromEntity($certificate);
         });
