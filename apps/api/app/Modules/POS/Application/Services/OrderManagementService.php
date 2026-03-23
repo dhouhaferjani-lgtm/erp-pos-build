@@ -326,7 +326,9 @@ final class OrderManagementService
                     'sent_at' => $now,
                 ]);
 
-            OrderSentToKitchen::dispatch($order->id);
+            DB::afterCommit(function () use ($order): void {
+                OrderSentToKitchen::dispatch($order->id);
+            });
 
             /** @var Order $freshOrder */
             $freshOrder = $order->fresh(['lines']);
@@ -366,7 +368,9 @@ final class OrderManagementService
                 ]);
             }
 
-            OrderClosed::dispatch($order->id, $receipt->id);
+            DB::afterCommit(function () use ($order, $receipt): void {
+                OrderClosed::dispatch($order->id, $receipt->id);
+            });
 
             /** @var Order $freshOrder */
             $freshOrder = $order->fresh(['lines']);
@@ -453,7 +457,9 @@ final class OrderManagementService
             // Check if all non-cancelled lines are Ready → auto-transition order
             $this->checkAndTransitionOrderToReady($order);
 
-            OrderLineStatusChanged::dispatch($order->id, $lineId, $fromStatus->value, $newStatus->value);
+            DB::afterCommit(function () use ($order, $lineId, $fromStatus, $newStatus): void {
+                OrderLineStatusChanged::dispatch($order->id, $lineId, $fromStatus->value, $newStatus->value);
+            });
 
             return $line->fresh() ?? $line;
         });
@@ -529,7 +535,9 @@ final class OrderManagementService
                 ]);
             }
 
-            OrderReady::dispatch($order->id);
+            DB::afterCommit(function () use ($order): void {
+                OrderReady::dispatch($order->id);
+            });
 
             /** @var Order $freshOrder */
             $freshOrder = $order->fresh(['lines']);
@@ -580,7 +588,9 @@ final class OrderManagementService
                 'ready_at' => Carbon::now(),
             ]);
 
-            OrderReady::dispatch($order->id);
+            DB::afterCommit(function () use ($order): void {
+                OrderReady::dispatch($order->id);
+            });
         }
     }
 
