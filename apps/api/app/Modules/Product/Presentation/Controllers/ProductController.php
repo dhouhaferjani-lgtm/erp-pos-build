@@ -199,6 +199,7 @@ class ProductController extends Controller
 
         $productModel = Product::where('company_id', $this->companyContext->requireCompanyId())
             ->where('id', $product)
+            ->with('primaryImage')
             ->first();
 
         if (! $productModel) {
@@ -325,6 +326,8 @@ class ProductController extends Controller
             ]);
         }
 
+        $product->load('primaryImage');
+
         return response()->json([
             'data' => ProductData::fromModel($product),
             'meta' => [
@@ -446,6 +449,8 @@ class ProductController extends Controller
                 'automotiveMetadata.criteria',
             ]);
         }
+
+        $freshProduct->load('primaryImage');
 
         return response()->json([
             'data' => ProductData::fromModel($freshProduct),
