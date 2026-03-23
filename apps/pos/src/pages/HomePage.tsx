@@ -316,13 +316,8 @@ export function HomePage() {
   }, []);
 
   const handleLineDiscount = useCallback((itemId: string) => {
-    if (!canDiscount) {
-      setScanMessage({ text: t('pos:discount.notAllowed'), type: 'error' });
-      setTimeout(() => setScanMessage(null), 3000);
-      return;
-    }
     setDiscountItemId(itemId);
-  }, [canDiscount, t]);
+  }, []);
 
   const handleRemoveLineDiscount = useCallback((itemId: string) => {
     useCartStore.setState((state) => ({
@@ -482,14 +477,7 @@ export function HomePage() {
           onPayCash={handlePayCash}
           onAdvancedPayments={handleAdvancedPayments}
           onQuantityTap={handleQuantityTap}
-          onDiscount={() => {
-            if (!canDiscount) {
-              setScanMessage({ text: t('pos:discount.notAllowed'), type: 'error' });
-              setTimeout(() => setScanMessage(null), 3000);
-              return;
-            }
-            setShowDiscountModal(true);
-          }}
+          onDiscount={() => setShowDiscountModal(true)}
           onHold={handleHold}
           onRecall={() => setShowHeldModal(true)}
           onLineDiscount={handleLineDiscount}
@@ -575,6 +563,7 @@ export function HomePage() {
         isOpen={showDiscountModal}
         onClose={() => setShowDiscountModal(false)}
         onApplyTransactionDiscount={handleApplyTransactionDiscount}
+        canDiscount={canDiscount}
         maxDiscountPercent={maxDiscountPct}
         requiresReason={true}
       />
@@ -585,6 +574,7 @@ export function HomePage() {
         onClose={() => setDiscountItemId(null)}
         onApply={handleApplyLineDiscount}
         itemName={discountItem?.product.name ?? ''}
+        canDiscount={canDiscount}
         maxDiscountPercent={maxDiscountPct}
       />
 

@@ -197,7 +197,13 @@
     "maxExceeded": "La remise maximale est de {{max}}%",
     "transactionDiscount": "Remise sur transaction",
     "notAllowed": "Vous n'êtes pas autorisé à appliquer des remises. Veuillez demander à un responsable.",
-    "removeLineDiscount": "Supprimer la remise"
+    "removeLineDiscount": "Supprimer la remise",
+    "managerApproval": "Approbation du responsable requise",
+    "enterManagerPin": "Entrez le PIN du responsable pour autoriser cette remise",
+    "verifyingPin": "Vérification...",
+    "managerDenied": "Le responsable n'a pas une autorisation de remise suffisante",
+    "invalidPin": "PIN invalide",
+    "authorize": "Autoriser"
   },
   "modifiers": {
     "basePrice": "Prix de base",

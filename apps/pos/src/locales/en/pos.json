@@ -197,7 +197,13 @@
     "maxExceeded": "Maximum discount is {{max}}%",
     "transactionDiscount": "Transaction Discount",
     "notAllowed": "You are not allowed to apply discounts. Please ask a manager.",
-    "removeLineDiscount": "Remove discount"
+    "removeLineDiscount": "Remove discount",
+    "managerApproval": "Manager Approval Required",
+    "enterManagerPin": "Enter manager PIN to authorize this discount",
+    "verifyingPin": "Verifying...",
+    "managerDenied": "Manager does not have sufficient discount permission",
+    "invalidPin": "Invalid PIN",
+    "authorize": "Authorize"
   },
   "modifiers": {
     "basePrice": "Base price",
