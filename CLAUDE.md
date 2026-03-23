@@ -63,6 +63,9 @@ After plan mode, immediately proceed to implementation unless explicitly told to
 ### 17. Testing Pitfalls
 Always use valid UUIDs for FK columns in tests/seeders. Check actual DB schema for required fields before writing seeders/tests. Test rendered HTML output rather than CSS class names.
 
+### 18. Design Tokens for Tailwind Colors
+When editing `.tsx` files in `apps/web/src/`, migrate hardcoded Tailwind color classes (e.g. `bg-blue-600`, `text-gray-700`, `border-red-500`) to design tokens from `lib/designTokens.ts`. Import `tokens`, `textColors`, `borderColors` from `@/lib/designTokens`. Only migrate classes in code you are already touching — do not refactor untouched lines. New feature directories must use tokens exclusively (enforced as ESLint error). A PostToolUse hook will remind you when editing files with hardcoded colors.
+
 ---
 
 ## Context Files

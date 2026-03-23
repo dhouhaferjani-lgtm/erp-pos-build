@@ -41,13 +41,28 @@ export default tseslint.config(
         argsIgnorePattern: '^_',
         varsIgnorePattern: '^_',
       }],
-      // Warn against hardcoded Tailwind color classes
+      // Warn against hardcoded Tailwind color classes in legacy files
       // Encourage use of design tokens from lib/designTokens.ts
       'no-restricted-syntax': [
         'warn',
         {
           selector: 'Literal[value=/\\b(bg|text|border|ring)-(red|blue|green|yellow|gray|purple|pink|indigo)-(\\d{2,3})\\b/]',
           message: 'Avoid hardcoded Tailwind color classes. Use design tokens from lib/designTokens.ts instead. Example: tokens.input.base, tokens.button.primary',
+        },
+      ],
+    },
+  },
+  // Stricter design token enforcement for new feature directories (created after March 2026)
+  {
+    files: [
+      'src/features/marketing/**/*.{ts,tsx}',
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'Literal[value=/\\b(bg|text|border|ring)-(red|blue|green|yellow|gray|purple|pink|indigo)-(\\d{2,3})\\b/]',
+          message: 'Hardcoded Tailwind color classes are not allowed in new features. Use design tokens from lib/designTokens.ts instead. Example: tokens.input.base, tokens.button.primary',
         },
       ],
     },
