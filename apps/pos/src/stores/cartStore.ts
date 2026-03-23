@@ -38,7 +38,9 @@ export function computeTaxAmount(lineTotal: number, taxRate: string): string {
   const decimals = getDecimals();
   const rate = parseFloat(taxRate);
   if (rate <= 0) return (0).toFixed(decimals);
-  const tax = lineTotal * rate / 100;
+  // Tax-inclusive: extract tax from price that already includes it
+  // net = lineTotal / (1 + rate/100), tax = lineTotal - net
+  const tax = lineTotal - lineTotal / (1 + rate / 100);
   return tax.toFixed(decimals);
 }
 
@@ -227,11 +229,10 @@ export const useCartStore = create<CartStore>()((set, get) => ({
 
   total: () => {
     const subtotal = get().subtotal();
-    const tax = get().taxAmount();
     const discount = get().transactionDiscount
       ? parseFloat(get().transactionDiscount!.amount)
       : 0;
-    return Math.max(0, subtotal + tax - discount);
+    return Math.max(0, subtotal - discount);
   },
 
   itemCount: () => {

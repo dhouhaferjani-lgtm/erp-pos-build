@@ -141,7 +141,8 @@ describe('cartStore', () => {
   it('recalculates tax_amount when line discount is applied via setState', () => {
     useCartStore.getState().addItem(makeProduct({ sale_price: '100.00', tax_rate: '10' }));
     const item = useCartStore.getState().items[0]!;
-    expect(parseFloat(item.tax_amount)).toBeCloseTo(10);
+    // Tax-inclusive: 100 with 10% → tax = 100 - 100/1.1 = 9.09
+    expect(parseFloat(item.tax_amount)).toBeCloseTo(9.09);
 
     // Simulate line discount: 20% off → lineTotal = 80
     useCartStore.setState((state) => ({
@@ -149,26 +150,41 @@ describe('cartStore', () => {
         const grossTotal = parseFloat(i.unit_price) * i.quantity;
         const discountAmount = (grossTotal * 20) / 100;
         const lineTotal = Math.max(0, grossTotal - discountAmount);
+        const rate = parseFloat(i.tax_rate);
+        // Tax-inclusive extraction
+        const taxAmount = lineTotal - lineTotal / (1 + rate / 100);
         return {
           ...i,
           discount_type: 'percentage' as const,
           discount_percent: '20',
           discount_amount: discountAmount.toFixed(2),
           line_total: lineTotal.toFixed(2),
-          tax_amount: (lineTotal * parseFloat(i.tax_rate) / 100).toFixed(2),
+          tax_amount: taxAmount.toFixed(2),
         };
       }),
     }));
 
     const updated = useCartStore.getState().items[0]!;
-    expect(parseFloat(updated.tax_amount)).toBeCloseTo(8);
-    expect(useCartStore.getState().total()).toBeCloseTo(88);
+    // 80 with 10% inclusive: tax = 80 - 80/1.1 = 7.27
+    expect(parseFloat(updated.tax_amount)).toBeCloseTo(7.27);
+    // Total = subtotal (80), no tax added on top
+    expect(useCartStore.getState().total()).toBeCloseTo(80);
+  });
+
+  it('calculates total correctly with tax-inclusive pricing', () => {
+    useCartStore.getState().addItem(makeProduct({ sale_price: '100.00', tax_rate: '20' }));
+    // line_total = 100 (tax-inclusive), tax_amount = 16.67 (extracted)
+    // total = subtotal = 100 (NOT 100 + 16.67 = 116.67)
+    expect(useCartStore.getState().total()).toBeCloseTo(100);
+    expect(useCartStore.getState().taxAmount()).toBeCloseTo(16.67);
+    expect(useCartStore.getState().subtotal()).toBeCloseTo(100);
   });
 });
 
 describe('computeTaxAmount', () => {
-  it('calculates tax correctly', () => {
-    expect(computeTaxAmount(100, '20')).toBe('20.00');
+  it('extracts tax from tax-inclusive price', () => {
+    // 100 with 20% VAT: net = 100/1.2 = 83.33, tax = 16.67
+    expect(computeTaxAmount(100, '20')).toBe('16.67');
   });
 
   it('returns zero for zero tax rate', () => {
@@ -181,5 +197,10 @@ describe('computeTaxAmount', () => {
 
   it('handles negative tax rate', () => {
     expect(computeTaxAmount(100, '-5')).toBe('0.00');
+  });
+
+  it('extracts 10% tax correctly', () => {
+    // 2.000 TND with 10% VAT: net = 2/1.1 = 1.818, tax = 0.182
+    expect(computeTaxAmount(2, '10')).toBe('0.18');
   });
 });

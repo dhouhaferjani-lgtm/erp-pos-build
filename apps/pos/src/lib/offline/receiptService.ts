@@ -97,7 +97,7 @@ export async function createOfflineReceipt(
   const transactionDiscountAmount = input.transactionDiscount
     ? parseFloat(input.transactionDiscount.amount)
     : 0;
-  const total = Math.max(0, subtotal + taxAmount - transactionDiscountAmount);
+  const total = Math.max(0, subtotal - transactionDiscountAmount);
 
   // 3. Generate receipt number
   const newSequence = terminalState.hash_sequence + 1;

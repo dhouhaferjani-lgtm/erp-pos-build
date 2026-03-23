@@ -65,8 +65,9 @@ describe('receiptService - createOfflineReceipt', () => {
 
     expect(result.subtotal).toBe('150.00');
     expect(result.taxAmount).toBe('25.00');
-    expect(result.total).toBe('175.00');
-    expect(result.changeDue).toBe(25);
+    // Tax-inclusive: total = subtotal (tax already included in line_total)
+    expect(result.total).toBe('150.00');
+    expect(result.changeDue).toBe(50);
   });
 
   it('generates sequential receipt number from terminal state', async () => {

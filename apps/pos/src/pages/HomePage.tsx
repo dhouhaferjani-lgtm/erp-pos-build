@@ -298,11 +298,9 @@ export function HomePage() {
   const handleApplyTransactionDiscount = useCallback(
     (data: { type: 'percentage' | 'fixed'; value: string; reason: string }) => {
       const subtotal = useCartStore.getState().subtotal();
-      const tax = useCartStore.getState().taxAmount();
-      const totalBeforeDiscount = subtotal + tax;
       let discountAmount: number;
       if (data.type === 'percentage') {
-        discountAmount = (totalBeforeDiscount * parseFloat(data.value)) / 100;
+        discountAmount = (subtotal * parseFloat(data.value)) / 100;
       } else {
         discountAmount = parseFloat(data.value);
       }
