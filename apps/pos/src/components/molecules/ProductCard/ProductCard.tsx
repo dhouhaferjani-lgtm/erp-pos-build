@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils';
 import { useCurrency } from '@/lib/currency';
 import { Package, SlidersHorizontal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useProductImage } from '@/lib/images/useProductImage';
 import type { POSProduct } from '@/types/product';
 
 export interface ProductCardProps {
@@ -22,6 +23,8 @@ function ProductCardInner({
 }: ProductCardProps) {
   const { t } = useTranslation('pos');
   const { format } = useCurrency();
+  const localImage = useProductImage(product.id, product.image_url);
+  const imageSrc = localImage ?? product.image_url;
   const isOutOfStock = product.stock_quantity <= 0;
   const isLowStock = product.stock_quantity > 0 && product.stock_quantity <= 10;
   const hasModifiers = (product.modifier_groups?.length ?? 0) > 0;
@@ -63,9 +66,9 @@ function ProductCardInner({
         )}
 
         {/* Image area */}
-        {product.image_url ? (
+        {imageSrc ? (
           <img
-            src={product.image_url}
+            src={imageSrc}
             alt={product.name}
             className="mb-3 h-20 w-20 rounded-xl object-cover"
           />

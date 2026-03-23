@@ -229,4 +229,15 @@ export const migrations: Migration[] = [
     name: 'add_modifier_groups_to_products',
     sql: `ALTER TABLE products ADD COLUMN modifier_groups TEXT DEFAULT NULL`,
   },
+  {
+    version: 12,
+    name: 'create_product_images',
+    sql: `CREATE TABLE IF NOT EXISTS product_images (
+      product_id TEXT PRIMARY KEY,
+      remote_url TEXT NOT NULL,
+      local_path TEXT NOT NULL,
+      etag TEXT,
+      downloaded_at TEXT NOT NULL
+    )`,
+  },
 ];

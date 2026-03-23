@@ -21,6 +21,15 @@
     "notification:default",
     "os:default",
     "window-state:default",
-    "log:default"
+    "log:default",
+    "fs:default",
+    {
+      "identifier": "fs:allow-appdata-read-recursive",
+      "allow": [{ "path": "$APPDATA/images/**" }]
+    },
+    {
+      "identifier": "fs:allow-appdata-write-recursive",
+      "allow": [{ "path": "$APPDATA/images/**" }]
+    }
   ]
 }

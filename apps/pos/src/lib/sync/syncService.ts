@@ -371,6 +371,12 @@ export async function runFullSync(
   const terminalStatePulled = await pullTerminalState(db, terminalId);
   await pullZChainState(db, terminalId);
 
+  // Process pending image downloads (non-critical)
+  try {
+    const { processDownloadQueue } = await import('@/lib/images/imageCache');
+    await processDownloadQueue(db);
+  } catch { /* image caching is non-critical */ }
+
   return {
     receiptsPushed: pushed,
     receiptsFailed: failed,
