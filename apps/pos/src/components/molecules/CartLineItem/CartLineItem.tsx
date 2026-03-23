@@ -43,7 +43,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
 
       {/* Modifiers */}
       {item.product.selectedModifiers && item.product.selectedModifiers.length > 0 && (
-        <p className="mt-0.5 text-xs italic text-gray-500">
+        <p className="mt-0.5 text-xs text-gray-600">
           {item.product.selectedModifiers.map((m) => m.name).join(', ')}
         </p>
       )}
@@ -52,7 +52,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
       {item.product.comboComponents && item.product.comboComponents.length > 0 && (
         <div className="mt-1 space-y-0.5">
           {item.product.comboComponents.map((name, idx) => (
-            <p key={idx} className="text-xs text-gray-500 pl-2">
+            <p key={idx} className="text-xs text-gray-600 pl-2">
               &bull; {name}
             </p>
           ))}
@@ -71,7 +71,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
           {onRemoveDiscount && (
             <button
               onClick={() => onRemoveDiscount(item.id)}
-              className="rounded-md bg-red-50 px-1.5 py-0.5 text-red-600 hover:bg-red-100 active:bg-red-200"
+              className="rounded-md bg-red-50 px-1.5 py-0.5 text-red-700 hover:bg-red-100 active:bg-red-200"
               aria-label={t('pos:discount.removeLineDiscount')}
             >
               <X className="h-3 w-3" />
@@ -82,7 +82,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
 
       {/* Row 2: Price x Qty | Controls | Discount | Delete */}
       <div className="mt-2 flex items-center justify-between">
-        <span className="text-sm text-gray-600">
+        <span className="text-sm text-gray-700">
           {format(item.unit_price)} &times; {item.quantity}
         </span>
 
@@ -116,7 +116,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
           {onEditModifiers && item.product.selectedModifiers && item.product.selectedModifiers.length > 0 && (
             <button
               onClick={() => onEditModifiers(item.id)}
-              className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 active:bg-blue-100"
+              className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-700 active:bg-blue-100"
               aria-label={t('cart.editModifiers')}
               title={t('cart.editModifiers')}
             >
@@ -128,7 +128,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
           {onDiscount && (
             <button
               onClick={() => onDiscount(item.id)}
-              className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-50 text-primary-600 active:bg-primary-100"
+              className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-50 text-primary-700 active:bg-primary-100"
               aria-label={t('cart.lineDiscount')}
             >
               <Tag className="h-5 w-5" />
@@ -138,7 +138,7 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
           {/* Delete button */}
           <button
             onClick={() => onRemove(item.id)}
-            className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 text-red-600 active:bg-red-100"
+            className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 text-red-700 active:bg-red-100"
             aria-label={t('cart.removeItem')}
           >
             <Trash2 className="h-5 w-5" />

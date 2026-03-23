@@ -57,7 +57,7 @@ export function NumPad({
       <button
         type="button"
         onClick={() => handleKey('backspace')}
-        className={cn(actionClass, 'bg-red-50 text-red-600 active:bg-red-100')}
+        className={cn(actionClass, 'bg-red-50 text-red-700 active:bg-red-100')}
       >
         <Delete className="h-5 w-5" />
       </button>
@@ -69,7 +69,7 @@ export function NumPad({
       <button
         type="button"
         onClick={() => handleKey('clear')}
-        className={cn(actionClass, 'bg-orange-50 text-orange-600 active:bg-orange-100')}
+        className={cn(actionClass, 'bg-orange-50 text-orange-700 active:bg-orange-100')}
       >
         C
       </button>
@@ -93,7 +93,7 @@ export function NumPad({
           type="button"
           onClick={() => handleKey('.')}
           disabled={value.includes('.')}
-          className={cn(digitClass, 'disabled:opacity-30')}
+          className={cn(digitClass, 'disabled:opacity-50')}
         >
           .
         </button>
@@ -101,7 +101,7 @@ export function NumPad({
         <button
           type="button"
           onClick={() => handleKey('clear')}
-          className={cn(actionClass, 'bg-orange-50 text-orange-600 active:bg-orange-100')}
+          className={cn(actionClass, 'bg-orange-50 text-orange-700 active:bg-orange-100')}
         >
           C
         </button>

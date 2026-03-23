@@ -158,12 +158,12 @@ export function Header() {
               )}
             />
             {!isOnline && (
-              <span className="rounded bg-red-500/20 px-2 py-0.5 text-xs font-medium text-red-300">
+              <span className="rounded bg-red-500/20 px-2 py-0.5 text-xs font-medium text-red-200">
                 {t('sync.offline')}
               </span>
             )}
             {pendingReceiptCount > 0 && (
-              <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-xs font-medium text-orange-300">
+              <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-xs font-medium text-orange-200">
                 {pendingReceiptCount}
               </span>
             )}
@@ -176,12 +176,12 @@ export function Header() {
           {shift ? (
             <button
               onClick={() => setShowCloseShift(true)}
-              className="flex min-h-[44px] items-center rounded-lg bg-green-500/20 px-3 py-1.5 text-sm font-medium text-green-300 hover:bg-green-500/30"
+              className="flex min-h-[44px] items-center rounded-lg bg-green-500/20 px-3 py-1.5 text-sm font-medium text-green-200 hover:bg-green-500/30"
             >
               {t('shift.number', { number: shift.shift_number })}
             </button>
           ) : (
-            <span className="text-sm text-primary-300">{t('header.noShift')}</span>
+            <span className="text-sm text-primary-100">{t('header.noShift')}</span>
           )}
 
           {/* Operator name */}
@@ -225,7 +225,7 @@ export function Header() {
           {fullscreen && (
             <button
               onClick={() => void handleExitFullscreen()}
-              className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary-800 text-primary-400 hover:bg-primary-700 hover:text-primary-200"
+              className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary-800 text-primary-200 hover:bg-primary-700 hover:text-primary-100"
               title={t('settings.exitFullscreen')}
             >
               <Minimize2 className="h-4 w-4" />

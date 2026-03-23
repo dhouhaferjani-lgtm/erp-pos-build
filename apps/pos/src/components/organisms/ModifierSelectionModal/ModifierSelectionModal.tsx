@@ -128,7 +128,7 @@ export function ModifierSelectionModal({
         {/* Product header */}
         <div className="mb-4 rounded-xl bg-gray-50 px-4 py-3">
           <h3 className="text-lg font-bold text-gray-900">{product.name}</h3>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-700">
             {t('modifiers.basePrice')}: {format(product.sale_price ?? '0')}
           </p>
         </div>
@@ -150,7 +150,7 @@ export function ModifierSelectionModal({
                     )}
                   </span>
                   {group.selection_type === 'multiple' && (
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-gray-600">
                       {t('modifiers.selectUpTo', { max: group.max_selections })}
                       {' '}({selected.size}/{group.max_selections})
                     </span>
@@ -184,7 +184,7 @@ export function ModifierSelectionModal({
                           {priceAdj !== 0 && (
                             <span className={cn(
                               'text-xs',
-                              priceAdj > 0 ? 'text-gray-500' : 'text-green-600',
+                              priceAdj > 0 ? 'text-gray-600' : 'text-green-600',
                             )}>
                               {priceAdj > 0 ? '+' : ''}{format(modifier.price_adjustment)}
                             </span>
@@ -201,7 +201,7 @@ export function ModifierSelectionModal({
         {/* Footer: total + add to cart */}
         <div className="mt-2 border-t border-gray-200 pt-2">
           <div className="mb-3 flex items-center justify-between">
-            <span className="text-sm text-gray-500">
+            <span className="text-sm text-gray-600">
               {t('modifiers.selected')}: {Object.values(selections).reduce((sum, s) => sum + s.size, 0)}
             </span>
             <span className="text-xl font-bold text-gray-900">{format(totalPrice)}</span>

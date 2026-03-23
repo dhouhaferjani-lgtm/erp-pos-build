@@ -125,7 +125,7 @@ export function CheckoutSuccessModal({
 
         {/* Receipt number */}
         <div>
-          <p className="text-sm text-gray-500">{t('payment.transactionComplete')}</p>
+          <p className="text-sm text-gray-600">{t('payment.transactionComplete')}</p>
           <p className="mt-1 text-2xl font-bold text-gray-900">
             {t('payment.receiptNumber', { number: receiptNumber })}
           </p>
@@ -133,7 +133,7 @@ export function CheckoutSuccessModal({
 
         {/* Total */}
         <div className="rounded-xl bg-gray-50 p-4">
-          <p className="text-sm text-gray-500">{t('common:total')}</p>
+          <p className="text-sm text-gray-700">{t('common:total')}</p>
           <p className="text-xl font-bold text-gray-900">{format(total)}</p>
         </div>
 

@@ -37,13 +37,13 @@ export function PaymentSummary({
   return (
     <div className="space-y-2 border-t border-gray-200 pt-2">
       {/* Subtotal */}
-      <div className="flex justify-between text-sm text-gray-600">
+      <div className="flex justify-between text-sm text-gray-700">
         <span>{t('common:subtotal')}</span>
         <span>{format(subtotal)}</span>
       </div>
 
       {/* Tax */}
-      <div className="flex justify-between text-sm text-gray-600">
+      <div className="flex justify-between text-sm text-gray-700">
         <span>{t('common:tax')}</span>
         <span>{format(taxAmount)}</span>
       </div>

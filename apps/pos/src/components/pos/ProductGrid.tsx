@@ -72,7 +72,7 @@ export function ProductGrid({
       <div className="flex h-full items-center justify-center">
         <div className="text-center">
           <div className="mx-auto h-12 w-12 animate-spin rounded-full border-b-2 border-primary-600" />
-          <p className="mt-4 text-gray-600">{t('products.loading')}</p>
+          <p className="mt-4 text-gray-700">{t('products.loading')}</p>
         </div>
       </div>
     );
@@ -82,8 +82,8 @@ export function ProductGrid({
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-center">
-          <Package className="mx-auto mb-4 h-16 w-16 text-gray-400" />
-          <p className="text-lg text-gray-600">{t('products.empty')}</p>
+          <Package className="mx-auto mb-4 h-16 w-16 text-gray-500" />
+          <p className="text-lg text-gray-700">{t('products.empty')}</p>
         </div>
       </div>
     );
@@ -94,7 +94,7 @@ export function ProductGrid({
       {/* Search bar + display mode toggle */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-500" />
           <input
             type="text"
             value={searchQuery}
@@ -121,7 +121,7 @@ export function ProductGrid({
               'flex h-12 w-12 items-center justify-center rounded-l-lg transition-colors',
               displayMode === 'grid'
                 ? 'bg-primary-600 text-white'
-                : 'text-gray-500 hover:bg-gray-100',
+                : 'text-gray-700 hover:bg-gray-100',
             )}
             title={t('display.gridMode')}
           >
@@ -133,7 +133,7 @@ export function ProductGrid({
               'flex h-12 w-12 items-center justify-center rounded-r-lg transition-colors',
               displayMode === 'visual'
                 ? 'bg-primary-600 text-white'
-                : 'text-gray-500 hover:bg-gray-100',
+                : 'text-gray-700 hover:bg-gray-100',
             )}
             title={t('display.visualMode')}
           >
@@ -193,9 +193,9 @@ export function ProductGrid({
       {filteredProducts.length === 0 ? (
         <div className="flex flex-1 items-center justify-center">
           <div className="text-center">
-            <Package className="mx-auto mb-4 h-16 w-16 text-gray-400" />
-            <p className="text-lg text-gray-600">{t('products.notFound')}</p>
-            <p className="mt-2 text-sm text-gray-600">
+            <Package className="mx-auto mb-4 h-16 w-16 text-gray-500" />
+            <p className="text-lg text-gray-700">{t('products.notFound')}</p>
+            <p className="mt-2 text-sm text-gray-700">
               {t('products.tryAdjusting')}
             </p>
           </div>

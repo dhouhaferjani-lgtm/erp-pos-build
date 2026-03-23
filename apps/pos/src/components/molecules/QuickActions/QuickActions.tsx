@@ -54,7 +54,7 @@ export function QuickActions({
             disabled={action.disabled}
             className={cn(
               'relative flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100',
-              action.disabled && 'cursor-not-allowed opacity-40',
+              action.disabled && 'cursor-not-allowed opacity-50',
             )}
           >
             <Icon className="h-4 w-4" />

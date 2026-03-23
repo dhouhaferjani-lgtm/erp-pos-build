@@ -31,7 +31,7 @@ export function ProductCard({
           'relative flex min-h-[160px] flex-col items-center rounded-xl border-2 p-4 text-center',
           'transition-all duration-150 active:scale-[0.95]',
           isOutOfStock
-            ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-60'
+            ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-70'
             : isInCart
               ? 'border-l-4 border-l-primary-500 border-t-gray-200 border-r-gray-200 border-b-gray-200 bg-white shadow-sm'
               : 'border-gray-200 bg-white hover:border-primary-300 hover:shadow-md',
@@ -46,7 +46,7 @@ export function ProductCard({
           />
         ) : (
           <div className="mb-3 flex h-20 w-20 items-center justify-center rounded-xl bg-gray-100">
-            <Package className="h-8 w-8 text-gray-400" />
+            <Package className="h-8 w-8 text-gray-500" />
           </div>
         )}
 
@@ -90,7 +90,7 @@ export function ProductCard({
         'relative flex min-h-[100px] flex-col items-start rounded-xl border-2 p-4 text-left',
         'transition-all duration-150 active:scale-[0.95]',
         isOutOfStock
-          ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-60'
+          ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-70'
           : isInCart
             ? 'border-l-4 border-l-primary-500 border-t-gray-200 border-r-gray-200 border-b-gray-200 bg-white shadow-sm'
             : 'border-gray-200 bg-white hover:border-primary-300 hover:shadow-md',
