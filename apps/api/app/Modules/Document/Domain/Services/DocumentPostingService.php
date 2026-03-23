@@ -126,7 +126,9 @@ final class DocumentPostingService
             if ($requiresFiscalChain) {
                 $updateData['fiscal_status'] = FiscalStatus::Voided;
                 $document->update($updateData);
-                $this->dispatchCancellationEvent($document);
+                DB::afterCommit(function () use ($document): void {
+                    $this->dispatchCancellationEvent($document);
+                });
             } else {
                 $document->update($updateData);
             }
@@ -185,8 +187,11 @@ final class DocumentPostingService
             'chain_sequence' => $chainSequence,
         ]);
 
-        // Dispatch the fiscal event for audit log
-        $this->dispatchPostedEvent($document, $postedAt->toIso8601String());
+        // Dispatch the fiscal event for audit log (after transaction commits
+        // to prevent listener failures from rolling back the fiscal chain)
+        DB::afterCommit(function () use ($document, $postedAt): void {
+            $this->dispatchPostedEvent($document, $postedAt->toIso8601String());
+        });
     }
 
     /**
