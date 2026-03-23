@@ -195,7 +195,9 @@
     "apply": "Apply Discount",
     "remove": "Remove Discount",
     "maxExceeded": "Maximum discount is {{max}}%",
-    "transactionDiscount": "Transaction Discount"
+    "transactionDiscount": "Transaction Discount",
+    "notAllowed": "You are not allowed to apply discounts. Please ask a manager.",
+    "removeLineDiscount": "Remove discount"
   },
   "modifiers": {
     "basePrice": "Base price",

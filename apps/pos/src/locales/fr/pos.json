@@ -195,7 +195,9 @@
     "apply": "Appliquer la remise",
     "remove": "Supprimer la remise",
     "maxExceeded": "La remise maximale est de {{max}}%",
-    "transactionDiscount": "Remise sur transaction"
+    "transactionDiscount": "Remise sur transaction",
+    "notAllowed": "Vous n'êtes pas autorisé à appliquer des remises. Veuillez demander à un responsable.",
+    "removeLineDiscount": "Supprimer la remise"
   },
   "modifiers": {
     "basePrice": "Prix de base",

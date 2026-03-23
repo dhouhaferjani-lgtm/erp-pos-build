@@ -24,6 +24,7 @@ export interface TransactionCartProps {
   onHold?: () => void;
   onRecall?: () => void;
   onLineDiscount?: (itemId: string) => void;
+  onRemoveLineDiscount?: (itemId: string) => void;
   onEditModifiers?: (itemId: string) => void;
   onRemoveDiscount?: () => void;
   paymentMethods?: PaymentMethod[];
@@ -49,6 +50,7 @@ export function TransactionCart({
   onHold,
   onRecall,
   onLineDiscount,
+  onRemoveLineDiscount,
   onEditModifiers,
   onRemoveDiscount,
   paymentMethods,
@@ -89,6 +91,7 @@ export function TransactionCart({
           onHold={onHold}
           onRecall={onRecall}
           hasItems={items.length > 0}
+          hasDiscount={hasDiscount}
         />
       )}
 
@@ -111,6 +114,7 @@ export function TransactionCart({
                 onQuantityTap={onQuantityTap}
                 onDiscount={onLineDiscount}
                 onEditModifiers={onEditModifiers}
+                onRemoveDiscount={onRemoveLineDiscount}
               />
             ))}
           </div>

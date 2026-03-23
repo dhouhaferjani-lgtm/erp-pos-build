@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useCurrency } from '@/lib/currency';
-import { Plus, Minus, Trash2, Tag, SlidersHorizontal } from 'lucide-react';
+import { Plus, Minus, Trash2, Tag, SlidersHorizontal, X } from 'lucide-react';
 import type { CartItem } from '@/types/cart';
 
 export interface CartLineItemProps {
@@ -10,9 +10,10 @@ export interface CartLineItemProps {
   onQuantityTap?: (itemId: string) => void;
   onDiscount?: (itemId: string) => void;
   onEditModifiers?: (itemId: string) => void;
+  onRemoveDiscount?: (itemId: string) => void;
 }
 
-export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, onDiscount, onEditModifiers }: CartLineItemProps) {
+export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, onDiscount, onEditModifiers, onRemoveDiscount }: CartLineItemProps) {
   const { t } = useTranslation();
   const { format } = useCurrency();
 
@@ -60,12 +61,23 @@ export function CartLineItem({ item, onUpdateQuantity, onRemove, onQuantityTap, 
 
       {/* Line discount info */}
       {item.discount_amount && parseFloat(item.discount_amount) > 0 && (
-        <p className="mt-0.5 text-xs text-primary-600">
-          {item.discount_type === 'percentage' && item.discount_percent
-            ? `−${item.discount_percent}%`
-            : `−${format(item.discount_amount)}`}
-          {item.discount_reason ? ` (${item.discount_reason})` : ''}
-        </p>
+        <div className="mt-0.5 flex items-center gap-1">
+          <p className="text-xs text-red-600">
+            {item.discount_type === 'percentage' && item.discount_percent
+              ? `−${item.discount_percent}%`
+              : `−${format(item.discount_amount)}`}
+            {item.discount_reason ? ` (${item.discount_reason})` : ''}
+          </p>
+          {onRemoveDiscount && (
+            <button
+              onClick={() => onRemoveDiscount(item.id)}
+              className="rounded-md bg-red-50 px-1.5 py-0.5 text-red-600 hover:bg-red-100 active:bg-red-200"
+              aria-label={t('pos:discount.removeLineDiscount')}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
       )}
 
       {/* Row 2: Price x Qty | Controls | Discount | Delete */}

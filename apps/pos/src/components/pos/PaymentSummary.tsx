@@ -51,19 +51,19 @@ export function PaymentSummary({
       {/* Discount */}
       {hasDiscount && (
         <div className="flex items-center justify-between text-sm">
-          <div className="flex items-center gap-1">
-            <span className="text-primary-600 font-medium">{t('common:discount')}</span>
+          <span className="font-medium text-red-600">{t('common:discount')}</span>
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-red-600">-{format(discountAmount)}</span>
             {onRemoveDiscount && (
               <button
                 onClick={onRemoveDiscount}
-                className="ml-1 rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-red-500"
+                className="rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-100 active:bg-red-200"
                 title={t('pos:discount.remove')}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
-          <span className="font-medium text-primary-600">-{format(discountAmount)}</span>
         </div>
       )}
 
