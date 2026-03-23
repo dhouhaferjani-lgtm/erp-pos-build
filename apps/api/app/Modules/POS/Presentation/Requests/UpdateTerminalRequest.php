@@ -23,6 +23,9 @@ final class UpdateTerminalRequest extends FormRequest
             'location_id' => ['sometimes', 'required', 'uuid', 'exists:locations,id'],
             'description' => ['nullable', 'string', 'max:500'],
             'pos_software_version' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'max_discount_percent' => ['sometimes', 'numeric', 'min:0', 'max:100'],
+            'allow_line_discounts' => ['sometimes', 'boolean'],
+            'allow_transaction_discounts' => ['sometimes', 'boolean'],
         ];
     }
 
