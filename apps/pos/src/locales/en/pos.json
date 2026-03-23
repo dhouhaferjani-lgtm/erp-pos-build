@@ -57,7 +57,8 @@
     "changeDue": "Change Due",
     "exact": "Exact",
     "processing": "Processing...",
-    "complete": "Complete & Print Receipt"
+    "complete": "Complete & Print Receipt",
+    "discount": "Discount"
   },
   "cashTendered": {
     "title": "Cash Payment",

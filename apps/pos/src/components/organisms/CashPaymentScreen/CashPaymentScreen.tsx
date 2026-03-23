@@ -10,6 +10,8 @@ export interface CashPaymentScreenProps {
   onClose: () => void;
   onConfirm: (tenderedAmount: number) => void;
   total: number;
+  subtotal?: number;
+  discountAmount?: number;
   isProcessing: boolean;
   error?: string | null;
 }
@@ -19,6 +21,7 @@ export function CashPaymentScreen({
   onClose,
   onConfirm,
   total,
+  discountAmount,
   isProcessing,
   error,
 }: CashPaymentScreenProps) {
@@ -86,6 +89,15 @@ export function CashPaymentScreen({
             </p>
             <p className="mt-2 text-4xl font-bold">{format(total)}</p>
           </div>
+
+          {discountAmount != null && discountAmount > 0 && (
+            <div className="mt-4 text-center">
+              <p className="text-xs font-medium uppercase tracking-widest text-primary-400">
+                {t('cashPayment.discount')}
+              </p>
+              <p className="mt-1 text-lg font-bold text-primary-400">-{format(discountAmount)}</p>
+            </div>
+          )}
 
           <div className="mt-8 text-center">
             <p className="text-xs font-medium uppercase tracking-widest text-gray-400">

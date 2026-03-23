@@ -499,6 +499,7 @@ export function HomePage() {
         onClose={() => setShowCashModal(false)}
         onConfirm={(amount) => void handleCashConfirm(amount)}
         total={total()}
+        discountAmount={discountAmount()}
         isProcessing={isProcessing}
         error={paymentError}
       />

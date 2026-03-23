@@ -226,10 +226,18 @@ export const useCartStore = create<CartStore>()((set, get) => ({
   },
 
   taxAmount: () => {
-    return get().items.reduce(
+    const rawTax = get().items.reduce(
       (sum, item) => sum + parseFloat(item.tax_amount ?? '0'),
       0,
     );
+    // Adjust tax proportionally for transaction discount
+    const subtotal = get().subtotal();
+    const discount = get().discountAmount();
+    if (discount > 0 && subtotal > 0) {
+      const ratio = (subtotal - discount) / subtotal;
+      return rawTax * ratio;
+    }
+    return rawTax;
   },
 
   discountAmount: () => {

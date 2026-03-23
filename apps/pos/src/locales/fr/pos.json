@@ -57,7 +57,8 @@
     "changeDue": "Monnaie à rendre",
     "exact": "Exact",
     "processing": "Traitement...",
-    "complete": "Terminer et imprimer"
+    "complete": "Terminer et imprimer",
+    "discount": "Remise"
   },
   "cashTendered": {
     "title": "Paiement en espèces",
