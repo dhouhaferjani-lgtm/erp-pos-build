@@ -176,9 +176,11 @@ export function Header() {
           {shift ? (
             <button
               onClick={() => setShowCloseShift(true)}
-              className="flex min-h-[44px] items-center rounded-lg bg-green-500/20 px-3 py-1.5 text-sm font-medium text-green-200 hover:bg-green-500/30"
+              className="flex min-h-[44px] items-center gap-2 rounded-lg bg-green-500/20 px-3 py-1.5 text-sm font-medium text-green-200 hover:bg-green-500/30"
             >
-              {t('shift.number', { number: shift.shift_number })}
+              <span>{t('shift.number', { number: shift.shift_number })}</span>
+              <span className="text-xs text-green-300/80">|</span>
+              <span className="text-xs">{t('shift.opening', { amount: shift.opening_cash })}</span>
             </button>
           ) : (
             <span className="text-sm text-primary-100">{t('header.noShift')}</span>

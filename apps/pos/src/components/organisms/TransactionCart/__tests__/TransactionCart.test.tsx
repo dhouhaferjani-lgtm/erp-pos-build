@@ -39,8 +39,6 @@ function renderCart(overrides: Partial<TransactionCartProps> = {}) {
     onRemoveItem: vi.fn(),
     onClearCart: vi.fn(),
     onPayCash: vi.fn(),
-    shiftNumber: 1,
-    openingCash: '100.00',
   };
   return render(<TransactionCart {...defaults} {...overrides} />);
 }
@@ -97,8 +95,6 @@ describe('TransactionCart', () => {
         onRemoveItem={vi.fn()}
         onClearCart={vi.fn()}
         onPayCash={vi.fn()}
-        shiftNumber={1}
-        openingCash="100.00"
       />,
     );
     expect(screen.queryByText('cart.clear')).not.toBeInTheDocument();
@@ -116,8 +112,6 @@ describe('TransactionCart', () => {
         onRemoveItem={vi.fn()}
         onClearCart={vi.fn()}
         onPayCash={vi.fn()}
-        shiftNumber={1}
-        openingCash="100.00"
       />,
     );
     expect(screen.getByText('cart.clear')).toBeInTheDocument();
@@ -130,14 +124,6 @@ describe('TransactionCart', () => {
     fireEvent.click(screen.getByText('cart.clear'));
 
     expect(onClearCart).toHaveBeenCalledOnce();
-  });
-
-  it('shows shift info footer', () => {
-    renderCart({ shiftNumber: 3, openingCash: '250.00' });
-
-    // The t() mock returns key:opts format
-    expect(screen.getByText(/shift\.number/)).toBeInTheDocument();
-    expect(screen.getByText(/shift\.opening/)).toBeInTheDocument();
   });
 
   it('shows payment summary when items present', () => {

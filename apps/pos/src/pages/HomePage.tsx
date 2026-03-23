@@ -496,8 +496,6 @@ export function HomePage() {
           onRemoveLineDiscount={handleRemoveLineDiscount}
           onEditModifiers={handleEditModifiers}
           onRemoveDiscount={handleRemoveDiscount}
-          shiftNumber={shift.shift_number}
-          openingCash={shift.opening_cash}
           paymentMethods={paymentMethods}
         />
       </div>

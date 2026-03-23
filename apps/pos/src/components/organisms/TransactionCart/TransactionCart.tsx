@@ -28,8 +28,6 @@ export interface TransactionCartProps {
   onEditModifiers?: (itemId: string) => void;
   onRemoveDiscount?: () => void;
   paymentMethods?: PaymentMethod[];
-  shiftNumber: number;
-  openingCash: string;
 }
 
 export function TransactionCart({
@@ -54,8 +52,6 @@ export function TransactionCart({
   onEditModifiers,
   onRemoveDiscount,
   paymentMethods,
-  shiftNumber,
-  openingCash,
 }: TransactionCartProps) {
   const { t } = useTranslation('pos');
 
@@ -137,11 +133,6 @@ export function TransactionCart({
           />
         )}
 
-        {/* Shift info footer */}
-        <div className="mt-1 flex justify-between border-t border-gray-100 pt-1 text-xs text-gray-700">
-          <span>{t('shift.number', { number: shiftNumber })}</span>
-          <span>{t('shift.opening', { amount: openingCash })}</span>
-        </div>
       </div>
     </div>
   );
