@@ -62,6 +62,11 @@ final class RedemptionProcessingServiceTest extends TestCase
             ->andReturnUsing(function ($callback) {
                 return $callback();
             });
+
+        DB::shouldReceive('afterCommit')
+            ->andReturnUsing(function (callable $callback) {
+                $callback();
+            });
     }
 
     /** @test */
