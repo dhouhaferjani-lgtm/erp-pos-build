@@ -72,6 +72,12 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property bool $auto_print_receipts Whether to auto-print receipts after transaction
  * @property string|null $receipt_logo Path to receipt logo (can differ from main logo)
  * @property string|null $receipt_footer Custom footer text for receipts
+ * @property string|null $receipt_header Custom header text below logo
+ * @property bool $receipt_show_vat_breakdown Whether to show VAT breakdown on receipts
+ * @property bool $receipt_show_fiscal_info Whether to show fiscal information on receipts
+ * @property bool $receipt_show_payment_details Whether to show payment details on receipts
+ * @property bool $receipt_show_customer Whether to show customer name on receipts
+ * @property string|null $receipt_thank_you Custom thank-you message for receipts
  * @property VerificationTier $verification_tier Verification tier
  * @property VerificationStatus $verification_status Verification status
  * @property Carbon|null $verification_submitted_at When verification was submitted
@@ -223,6 +229,12 @@ class Company extends Model
         'auto_print_receipts',
         'receipt_logo',
         'receipt_footer',
+        'receipt_header',
+        'receipt_show_vat_breakdown',
+        'receipt_show_fiscal_info',
+        'receipt_show_payment_details',
+        'receipt_show_customer',
+        'receipt_thank_you',
         'verification_tier',
         'verification_status',
         'verification_submitted_at',
@@ -263,6 +275,10 @@ class Company extends Model
             'delivery_note_next_number' => 'integer',
             'receipt_next_number' => 'integer',
             'auto_print_receipts' => 'boolean',
+            'receipt_show_vat_breakdown' => 'boolean',
+            'receipt_show_fiscal_info' => 'boolean',
+            'receipt_show_payment_details' => 'boolean',
+            'receipt_show_customer' => 'boolean',
             'verification_tier' => VerificationTier::class,
             'verification_status' => VerificationStatus::class,
             'verification_submitted_at' => 'datetime',

@@ -33,7 +33,11 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::put('companies/{companyId}/reservation-settings', [CompanyController::class, 'updateReservationSettings'])
         ->name('companies.reservation-settings.update');
 
-    // POS settings (read-only for now)
+    // POS settings
     Route::get('companies/{companyId}/pos-settings', [CompanyController::class, 'getPOSSettings'])
         ->name('companies.pos-settings.show');
+
+    // Receipt customization settings
+    Route::put('companies/{companyId}/receipt-settings', [CompanyController::class, 'updateReceiptSettings'])
+        ->name('companies.receipt-settings.update');
 });

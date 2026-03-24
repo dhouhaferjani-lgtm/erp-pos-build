@@ -302,6 +302,11 @@
                     {{ __('pos.tel') }}: {{ $company->phone }}<br>
                 @endif
             </div>
+            @if(!empty($location->receipt_header))
+                <div class="custom-footer" style="margin-top: 8px;">{{ $location->receipt_header }}</div>
+            @elseif(!empty($company->receipt_header))
+                <div class="custom-footer" style="margin-top: 8px;">{{ $company->receipt_header }}</div>
+            @endif
         </div>
 
         {{-- Return Banner (for return receipts only) --}}

@@ -17,6 +17,7 @@ use App\Modules\Company\Domain\Services\CompanyTaxStatusValidationService;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Presentation\Requests\CreateCompanyRequest;
 use App\Modules\Company\Presentation\Requests\UpdateCompanyRequest;
+use App\Modules\Company\Presentation\Requests\UpdateReceiptSettingsRequest;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
 use Illuminate\Http\JsonResponse;
@@ -291,8 +292,47 @@ class CompanyController extends Controller
             'data' => [
                 'auto_print_receipts' => $company->auto_print_receipts,
                 'receipt_logo' => $company->receipt_logo,
+                'receipt_header' => $company->receipt_header,
                 'receipt_footer' => $company->receipt_footer,
+                'receipt_thank_you' => $company->receipt_thank_you,
+                'receipt_show_vat_breakdown' => $company->receipt_show_vat_breakdown,
+                'receipt_show_fiscal_info' => $company->receipt_show_fiscal_info,
+                'receipt_show_payment_details' => $company->receipt_show_payment_details,
+                'receipt_show_customer' => $company->receipt_show_customer,
             ],
+        ]);
+    }
+
+    /**
+     * Update receipt customization settings for the company.
+     */
+    public function updateReceiptSettings(UpdateReceiptSettingsRequest $request, string $companyId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $company = Company::where('tenant_id', $user->tenant_id)
+            ->where('id', $companyId)
+            ->firstOrFail();
+
+        /** @var array<string, mixed> $validated */
+        $validated = $request->validated();
+
+        $company->update($validated);
+
+        return response()->json([
+            'data' => [
+                'auto_print_receipts' => $company->auto_print_receipts,
+                'receipt_logo' => $company->receipt_logo,
+                'receipt_header' => $company->receipt_header,
+                'receipt_footer' => $company->receipt_footer,
+                'receipt_thank_you' => $company->receipt_thank_you,
+                'receipt_show_vat_breakdown' => $company->receipt_show_vat_breakdown,
+                'receipt_show_fiscal_info' => $company->receipt_show_fiscal_info,
+                'receipt_show_payment_details' => $company->receipt_show_payment_details,
+                'receipt_show_customer' => $company->receipt_show_customer,
+            ],
+            'message' => 'Receipt settings updated successfully',
         ]);
     }
 
