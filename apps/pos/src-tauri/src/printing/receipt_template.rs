@@ -32,6 +32,44 @@ pub struct ReceiptData {
     pub customer_name: Option<String>,
     /// Optional notes
     pub notes: Option<String>,
+    /// Localized labels (optional — English defaults if absent)
+    pub labels: Option<ReceiptLabels>,
+}
+
+/// Localized receipt labels. All fields optional with English defaults.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReceiptLabels {
+    pub receipt: Option<String>,
+    pub date: Option<String>,
+    pub terminal: Option<String>,
+    pub operator: Option<String>,
+    pub customer: Option<String>,
+    pub item: Option<String>,
+    pub qty: Option<String>,
+    pub amount: Option<String>,
+    pub subtotal: Option<String>,
+    pub discount: Option<String>,
+    pub tax: Option<String>,
+    pub total: Option<String>,
+    pub payments: Option<String>,
+    pub change_due: Option<String>,
+    pub vat_rate: Option<String>,
+    pub taxable: Option<String>,
+    pub tax_col: Option<String>,
+    pub thank_you: Option<String>,
+    pub tax_id: Option<String>,
+    pub tel: Option<String>,
+}
+
+impl ReceiptData {
+    /// Get a localized label with English fallback.
+    fn label(&self, getter: impl Fn(&ReceiptLabels) -> &Option<String>, default: &str) -> String {
+        self.labels
+            .as_ref()
+            .and_then(|l| getter(l).as_ref())
+            .map(|s| s.clone())
+            .unwrap_or_else(|| default.to_string())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,6 +141,15 @@ impl PrintSettings {
         }
     }
 
+    /// Return the `encoding_rs` encoding matching the configured code page.
+    fn encoding_rs(&self) -> &'static encoding_rs::Encoding {
+        match self.encoding.as_str() {
+            "cp1252" => encoding_rs::WINDOWS_1252,
+            "cp858" => encoding_rs::WINDOWS_1252, // CP858 ≈ CP850 + euro; 1252 covers French needs
+            _ => encoding_rs::WINDOWS_1252,        // default to 1252 instead of cp437
+        }
+    }
+
     fn cut_mode_enum(&self) -> Option<CutMode> {
         match self.cut_mode.as_str() {
             "full" => Some(CutMode::Full),
@@ -122,8 +169,9 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
     let columns = settings.map_or(42, |s| s.columns);
     let mut b = EscPosBuilder::with_columns(columns);
 
-    // Set code page if specified (after initialize, which is called in with_columns)
+    // Set encoding and code page if specified (after initialize, which is called in with_columns)
     if let Some(s) = settings {
+        b.set_encoding(s.encoding_rs());
         let page = s.code_page();
         if page != 0 {
             b.set_code_page(page);
@@ -147,21 +195,21 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
         data.company.postal_code, data.company.city
     ));
     if let Some(ref phone) = data.company.phone {
-        b.text_line(&format!("Tel: {}", phone));
+        b.text_line(&format!("{} {}", data.label(|l| &l.tel, "Tel:"), phone));
     }
-    b.text_line(&format!("Tax ID: {}", data.company.tax_id));
+    b.text_line(&format!("{} {}", data.label(|l| &l.tax_id, "Tax ID:"), data.company.tax_id));
 
     b.align(Alignment::Left);
     b.separator('-');
 
     // ── Receipt Meta ──
-    b.two_column("Receipt:", &data.receipt_number);
-    b.two_column("Date:", &data.date_time);
-    b.two_column("Terminal:", &data.terminal_name);
-    b.two_column("Operator:", &data.operator_name);
+    b.two_column(&data.label(|l| &l.receipt, "Receipt:"), &data.receipt_number);
+    b.two_column(&data.label(|l| &l.date, "Date:"), &data.date_time);
+    b.two_column(&data.label(|l| &l.terminal, "Terminal:"), &data.terminal_name);
+    b.two_column(&data.label(|l| &l.operator, "Operator:"), &data.operator_name);
 
     if let Some(ref customer) = data.customer_name {
-        b.two_column("Customer:", customer);
+        b.two_column(&data.label(|l| &l.customer, "Customer:"), customer);
     }
 
     b.separator('=');
@@ -169,7 +217,11 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
     // ── Line Items ──
     // Header
     b.bold(true);
-    b.three_column("Item", "Qty", "Amount");
+    b.three_column(
+        &data.label(|l| &l.item, "Item"),
+        &data.label(|l| &l.qty, "Qty"),
+        &data.label(|l| &l.amount, "Amount"),
+    );
     b.bold(false);
     b.separator('-');
 
@@ -202,7 +254,7 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
         // Line discount
         if let Some(ref discount) = line.discount {
             b.two_column(
-                "  Discount",
+                &format!("  {}", data.label(|l| &l.discount, "Discount")),
                 &format!("-{}{}", data.currency_symbol, discount),
             );
         }
@@ -211,20 +263,20 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
     b.separator('=');
 
     // ── Totals ──
-    b.two_column("Subtotal:", &format!("{}{}", data.currency_symbol, data.subtotal));
+    b.two_column(&data.label(|l| &l.subtotal, "Subtotal:"), &format!("{}{}", data.currency_symbol, data.subtotal));
 
     if data.discount_amount != "0.00" && data.discount_amount != "0" {
         b.two_column(
-            "Discount:",
+            &format!("{}:", data.label(|l| &l.discount, "Discount").trim_end_matches(':')),
             &format!("-{}{}", data.currency_symbol, data.discount_amount),
         );
     }
 
-    b.two_column("Tax:", &format!("{}{}", data.currency_symbol, data.tax_amount));
+    b.two_column(&data.label(|l| &l.tax, "Tax:"), &format!("{}{}", data.currency_symbol, data.tax_amount));
 
     b.bold(true);
     b.font_size(FontSize::DoubleHeight);
-    b.two_column("TOTAL:", &format!("{}{}", data.currency_symbol, data.total));
+    b.two_column(&data.label(|l| &l.total, "TOTAL:"), &format!("{}{}", data.currency_symbol, data.total));
     b.font_size(FontSize::Normal);
     b.bold(false);
 
@@ -232,7 +284,11 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
     if !data.vat_breakdown.is_empty() {
         b.separator('-');
         b.bold(true);
-        b.three_column("VAT %", "Taxable", "Tax");
+        b.three_column(
+            &data.label(|l| &l.vat_rate, "VAT %"),
+            &data.label(|l| &l.taxable, "Taxable"),
+            &data.label(|l| &l.tax_col, "Tax"),
+        );
         b.bold(false);
 
         for vat in &data.vat_breakdown {
@@ -247,7 +303,7 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
     // ── Payments ──
     b.separator('-');
     b.bold(true);
-    b.text_line("Payments:");
+    b.text_line(&data.label(|l| &l.payments, "Payments:"));
     b.bold(false);
 
     for payment in &data.payments {
@@ -260,7 +316,7 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
     if data.change_due != "0.00" && data.change_due != "0" {
         b.bold(true);
         b.two_column(
-            "Change Due:",
+            &data.label(|l| &l.change_due, "Change Due:"),
             &format!("{}{}", data.currency_symbol, data.change_due),
         );
         b.bold(false);
@@ -305,10 +361,11 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
     // ── Footer ──
     b.align(Alignment::Center);
     b.empty_line();
+    let default_thank_you = data.label(|l| &l.thank_you, "Thank you for your purchase!");
     let footer = settings
-        .and_then(|s| if s.footer_text.is_empty() { None } else { Some(s.footer_text.as_str()) })
-        .unwrap_or("Thank you for your purchase!");
-    b.text_line(footer);
+        .and_then(|s| if s.footer_text.is_empty() { None } else { Some(s.footer_text.clone()) })
+        .unwrap_or(default_thank_you);
+    b.text_line(&footer);
     b.empty_line();
 
     // Feed and cut

@@ -91,6 +91,8 @@ pub struct EscPosBuilder {
     buffer: Vec<u8>,
     /// Number of printable columns (typically 42 for 80mm paper, 32 for 58mm).
     columns: u8,
+    /// Character encoding for text output (default: Windows-1252 for French accented chars).
+    encoding: &'static encoding_rs::Encoding,
 }
 
 impl EscPosBuilder {
@@ -99,6 +101,7 @@ impl EscPosBuilder {
         let mut builder = Self {
             buffer: Vec::with_capacity(4096),
             columns: 42,
+            encoding: encoding_rs::WINDOWS_1252,
         };
         builder.initialize();
         builder
@@ -109,9 +112,23 @@ impl EscPosBuilder {
         let mut builder = Self {
             buffer: Vec::with_capacity(4096),
             columns,
+            encoding: encoding_rs::WINDOWS_1252,
         };
         builder.initialize();
         builder
+    }
+
+    /// Set the character encoding used for text output.
+    pub fn set_encoding(&mut self, enc: &'static encoding_rs::Encoding) -> &mut Self {
+        self.encoding = enc;
+        self
+    }
+
+    /// Encode a UTF-8 string into the target code page bytes.
+    /// Characters not representable in the target encoding become `?` (lossy).
+    fn encode_text(&self, s: &str) -> Vec<u8> {
+        let (cow, _encoding_used, _had_errors) = self.encoding.encode(s);
+        cow.into_owned()
     }
 
     /// ESC @ — Initialize printer (reset to default settings).
@@ -157,13 +174,13 @@ impl EscPosBuilder {
 
     /// Print text without a newline.
     pub fn text(&mut self, s: &str) -> &mut Self {
-        self.buffer.extend_from_slice(s.as_bytes());
+        self.buffer.extend_from_slice(&self.encode_text(s));
         self
     }
 
     /// Print text followed by a newline (LF).
     pub fn text_line(&mut self, s: &str) -> &mut Self {
-        self.buffer.extend_from_slice(s.as_bytes());
+        self.buffer.extend_from_slice(&self.encode_text(s));
         self.buffer.push(0x0A);
         self
     }
@@ -467,5 +484,58 @@ mod tests {
         assert_eq!(data[2], 0x1B);
         assert_eq!(data[3], 0x74);
         assert_eq!(data[4], 19);
+    }
+
+    #[test]
+    fn test_encode_french_accented_text_cp1252() {
+        let mut builder = EscPosBuilder::new(); // defaults to WINDOWS_1252
+        builder.text("Café crème");
+        let data = builder.build();
+        // Skip ESC @ (2 bytes), then check encoded text
+        let text_bytes = &data[2..];
+        // In CP1252: C=0x43, a=0x61, f=0x66, é=0xE9, space=0x20,
+        // c=0x63, r=0x72, è=0xE8, m=0x6D, e=0x65
+        assert_eq!(
+            text_bytes,
+            &[0x43, 0x61, 0x66, 0xE9, 0x20, 0x63, 0x72, 0xE8, 0x6D, 0x65]
+        );
+    }
+
+    #[test]
+    fn test_encode_ascii_passthrough() {
+        let mut builder = EscPosBuilder::new();
+        builder.text("Hello World");
+        let data = builder.build();
+        let text_bytes = &data[2..];
+        assert_eq!(text_bytes, b"Hello World");
+    }
+
+    #[test]
+    fn test_encode_unmappable_chars_no_panic() {
+        let mut builder = EscPosBuilder::new(); // WINDOWS_1252
+        // Chinese characters are not in CP1252 — should produce replacement bytes, not panic
+        builder.text("价格");
+        let data = builder.build();
+        // Should have ESC @ + some bytes (replacements), and not panic
+        assert!(data.len() > 2);
+    }
+
+    #[test]
+    fn test_set_encoding() {
+        let mut builder = EscPosBuilder::new();
+        builder.set_encoding(encoding_rs::WINDOWS_1252);
+        builder.text("à");
+        let data = builder.build();
+        // à in CP1252 = 0xE0
+        assert_eq!(data[2], 0xE0);
+    }
+
+    #[test]
+    fn test_text_line_encodes_accented_chars() {
+        let mut builder = EscPosBuilder::new();
+        builder.text_line("Pâté");
+        let data = builder.build();
+        // Skip ESC @ (2 bytes): P=0x50, â=0xE2, t=0x74, é=0xE9, LF=0x0A
+        assert_eq!(&data[2..], &[0x50, 0xE2, 0x74, 0xE9, 0x0A]);
     }
 }

@@ -32,7 +32,7 @@ const defaultSettings: PrinterSettings = {
   cutMode: 'partial',
   copies: 1,
   footerText: '',
-  encoding: 'cp437',
+  encoding: 'cp1252',
 };
 
 export const usePrinterStore = create<PrinterState>()(

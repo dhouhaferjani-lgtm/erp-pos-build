@@ -2230,6 +2230,7 @@ dependencies = [
  "aes-gcm",
  "base64 0.22.1",
  "dirs 5.0.1",
+ "encoding_rs",
  "log",
  "rand 0.8.5",
  "serde",
