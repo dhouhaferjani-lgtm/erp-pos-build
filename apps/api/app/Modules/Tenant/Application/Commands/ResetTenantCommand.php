@@ -22,6 +22,14 @@ class ResetTenantCommand extends Command
 
     public function handle(TenantInitializationService $initService): int
     {
+        if (app()->environment('production')) {
+            $this->error('tenant:reset is disabled in production.');
+            $this->error('This command destroys all tenant data including fiscally sealed receipts and hash chains.');
+            $this->error('If you need to reset a tenant in production, contact the engineering team.');
+
+            return self::FAILURE;
+        }
+
         /** @var string $slug */
         $slug = $this->argument('slug');
 
