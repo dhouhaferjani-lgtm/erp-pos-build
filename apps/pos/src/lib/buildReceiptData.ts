@@ -26,12 +26,24 @@ function getCurrencyDecimals(currencyCode: string): number {
   }
 }
 
+/** Receipt visibility settings matching company receipt configuration. */
+export interface ReceiptVisibilitySettings {
+  show_vat_breakdown?: boolean;
+  show_fiscal_info?: boolean;
+  show_payment_details?: boolean;
+  show_customer?: boolean;
+}
+
 /**
  * Transforms a full receipt API response into the ESC/POS ReceiptData
  * structure expected by the Tauri thermal printing backend.
+ *
+ * @param receipt Full receipt response from the API
+ * @param visibilitySettings Optional visibility flags from company receipt settings
  */
 export function buildEscPosReceiptData(
   receipt: FullReceiptResponse,
+  visibilitySettings?: ReceiptVisibilitySettings,
 ): ReceiptData {
   const currencySymbol = getCurrencySymbol(receipt.currency);
   const decimals = getCurrencyDecimals(receipt.currency);
@@ -85,6 +97,10 @@ export function buildEscPosReceiptData(
     customer_name: receipt.customer_name,
     notes: receipt.notes,
     labels: buildReceiptLabels(),
+    show_vat_breakdown: visibilitySettings?.show_vat_breakdown,
+    show_fiscal_info: visibilitySettings?.show_fiscal_info,
+    show_payment_details: visibilitySettings?.show_payment_details,
+    show_customer: visibilitySettings?.show_customer,
   };
 }
 

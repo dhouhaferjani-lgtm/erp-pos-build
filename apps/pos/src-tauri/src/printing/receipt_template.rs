@@ -34,6 +34,11 @@ pub struct ReceiptData {
     pub notes: Option<String>,
     /// Localized labels (optional — English defaults if absent)
     pub labels: Option<ReceiptLabels>,
+    /// Visibility flags — all default to true when absent (backward compatible)
+    pub show_vat_breakdown: Option<bool>,
+    pub show_fiscal_info: Option<bool>,
+    pub show_payment_details: Option<bool>,
+    pub show_customer: Option<bool>,
 }
 
 /// Localized receipt labels. All fields optional with English defaults.
@@ -208,8 +213,10 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
     b.two_column(&data.label(|l| &l.terminal, "Terminal:"), &data.terminal_name);
     b.two_column(&data.label(|l| &l.operator, "Operator:"), &data.operator_name);
 
-    if let Some(ref customer) = data.customer_name {
-        b.two_column(&data.label(|l| &l.customer, "Customer:"), customer);
+    if data.show_customer.unwrap_or(true) {
+        if let Some(ref customer) = data.customer_name {
+            b.two_column(&data.label(|l| &l.customer, "Customer:"), customer);
+        }
     }
 
     b.separator('=');
@@ -281,7 +288,7 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
     b.bold(false);
 
     // ── VAT Breakdown ──
-    if !data.vat_breakdown.is_empty() {
+    if data.show_vat_breakdown.unwrap_or(true) && !data.vat_breakdown.is_empty() {
         b.separator('-');
         b.bold(true);
         b.three_column(
@@ -301,25 +308,27 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
     }
 
     // ── Payments ──
-    b.separator('-');
-    b.bold(true);
-    b.text_line(&data.label(|l| &l.payments, "Payments:"));
-    b.bold(false);
-
-    for payment in &data.payments {
-        b.two_column(
-            &format!("  {}", payment.method),
-            &format!("{}{}", data.currency_symbol, payment.amount),
-        );
-    }
-
-    if data.change_due != "0.00" && data.change_due != "0" {
+    if data.show_payment_details.unwrap_or(true) {
+        b.separator('-');
         b.bold(true);
-        b.two_column(
-            &data.label(|l| &l.change_due, "Change Due:"),
-            &format!("{}{}", data.currency_symbol, data.change_due),
-        );
+        b.text_line(&data.label(|l| &l.payments, "Payments:"));
         b.bold(false);
+
+        for payment in &data.payments {
+            b.two_column(
+                &format!("  {}", payment.method),
+                &format!("{}{}", data.currency_symbol, payment.amount),
+            );
+        }
+
+        if data.change_due != "0.00" && data.change_due != "0" {
+            b.bold(true);
+            b.two_column(
+                &data.label(|l| &l.change_due, "Change Due:"),
+                &format!("{}{}", data.currency_symbol, data.change_due),
+            );
+            b.bold(false);
+        }
     }
 
     // ── Notes ──
@@ -329,7 +338,9 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
     }
 
     // ── Fiscal Compliance Footer ──
-    if data.fiscal_hash.is_some() || data.fiscal_signature.is_some() {
+    if data.show_fiscal_info.unwrap_or(true)
+        && (data.fiscal_hash.is_some() || data.fiscal_signature.is_some())
+    {
         b.separator('-');
         b.select_font(true); // Font B (smaller) for compliance data
         b.align(Alignment::Center);

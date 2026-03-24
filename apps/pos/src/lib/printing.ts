@@ -94,6 +94,11 @@ export interface ReceiptData {
   customer_name: string | null;
   notes: string | null;
   labels?: ReceiptLabels;
+  /** Visibility flags — all default to true when absent (backward compatible) */
+  show_vat_breakdown?: boolean;
+  show_fiscal_info?: boolean;
+  show_payment_details?: boolean;
+  show_customer?: boolean;
 }
 
 export interface PrinterConfig {
