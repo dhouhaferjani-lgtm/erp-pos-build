@@ -1,13 +1,23 @@
 /**
- * Decimal calculation utilities for precise financial calculations
+ * Decimal calculation utilities for precise financial calculations.
  *
- * These functions provide bcmath-like precision for monetary calculations,
- * avoiding floating-point precision errors.
+ * Uses big.js for arbitrary-precision arithmetic, eliminating
+ * IEEE 754 floating-point errors (e.g., 0.1 + 0.2 !== 0.3).
  *
  * All amounts are represented as strings to maintain precision.
  */
 
+import Big from 'big.js'
 import { getDecimals } from '../hooks/useCurrency'
+
+// Round half-up (matches PHP round() and PostgreSQL behavior)
+Big.RM = 1
+
+/** Safely construct a Big from potentially empty/falsy input */
+function safeBig(value: string): Big {
+  if (!value || value.trim() === '') return new Big(0)
+  return new Big(value)
+}
 
 /**
  * Add two decimal numbers
@@ -21,10 +31,7 @@ import { getDecimals } from '../hooks/useCurrency'
  * bcadd('10.50', '5.25') // '15.750'
  */
 export function bcadd(a: string, b: string, scale: number = 3): string {
-  const numA = parseFloat(a)
-  const numB = parseFloat(b)
-  const result = numA + numB
-  return result.toFixed(scale)
+  return safeBig(a).plus(safeBig(b)).toFixed(scale)
 }
 
 /**
@@ -39,10 +46,7 @@ export function bcadd(a: string, b: string, scale: number = 3): string {
  * bcsub('10.50', '5.25') // '5.250'
  */
 export function bcsub(a: string, b: string, scale: number = 3): string {
-  const numA = parseFloat(a)
-  const numB = parseFloat(b)
-  const result = numA - numB
-  return result.toFixed(scale)
+  return safeBig(a).minus(safeBig(b)).toFixed(scale)
 }
 
 /**
@@ -57,10 +61,7 @@ export function bcsub(a: string, b: string, scale: number = 3): string {
  * bcmul('10.50', '2') // '21.000'
  */
 export function bcmul(a: string, b: string, scale: number = 3): string {
-  const numA = parseFloat(a)
-  const numB = parseFloat(b)
-  const result = numA * numB
-  return result.toFixed(scale)
+  return safeBig(a).times(safeBig(b)).toFixed(scale)
 }
 
 /**
@@ -75,13 +76,11 @@ export function bcmul(a: string, b: string, scale: number = 3): string {
  * bcdiv('10.50', '2') // '5.250'
  */
 export function bcdiv(a: string, b: string, scale: number = 3): string {
-  const numA = parseFloat(a)
-  const numB = parseFloat(b)
-  if (numB === 0) {
+  const divisor = safeBig(b)
+  if (divisor.eq(0)) {
     throw new Error('Division by zero')
   }
-  const result = numA / numB
-  return result.toFixed(scale)
+  return safeBig(a).div(divisor).toFixed(scale)
 }
 
 /**
@@ -97,11 +96,7 @@ export function bcdiv(a: string, b: string, scale: number = 3): string {
  * bccomp('10.50', '10.50') // 0
  */
 export function bccomp(a: string, b: string): number {
-  const numA = parseFloat(a)
-  const numB = parseFloat(b)
-  if (numA < numB) return -1
-  if (numA > numB) return 1
-  return 0
+  return safeBig(a).cmp(safeBig(b))
 }
 
 /**
@@ -155,12 +150,12 @@ export function applyDiscount(
  *
  * @param amount Amount (as string or number)
  * @param includeCurrency Include currency code suffix (default: true)
- * @param currency Currency code (default: 'TND')
+ * @param currency Currency code (default: 'EUR')
  * @param scale Decimal places (defaults based on currency: TND=3, EUR/USD=2)
  * @returns Formatted currency string
  *
  * @example
- * formatCurrency('123.456') // '123.456 TND'
+ * formatCurrency('123.456') // '123.456 EUR'
  * formatCurrency('123.456', false) // '123.456'
  * formatCurrency('123.45', true, 'EUR', 2) // '123.45 EUR'
  */
@@ -170,8 +165,13 @@ export function formatCurrency(
   currency: string = 'EUR',
   scale?: number
 ): string {
-  const num = typeof amount === 'string' ? parseFloat(amount) : amount
   const decimals = scale ?? getDecimals(currency)
-  const formatted = num.toFixed(decimals)
+  let big: Big
+  try {
+    big = typeof amount === 'number' ? new Big(amount) : safeBig(String(amount))
+  } catch {
+    big = new Big(0)
+  }
+  const formatted = big.toFixed(decimals)
   return includeCurrency ? `${formatted} ${currency}` : formatted
 }
