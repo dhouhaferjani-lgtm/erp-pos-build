@@ -171,11 +171,13 @@ class TrialBalanceService
     private function queryAccountBalances(string $companyId, Carbon $asOfDate): \Illuminate\Support\Collection
     {
         return DB::table('accounts as a')
-            ->leftJoin('journal_lines as jl', 'jl.account_id', '=', 'a.id')
-            ->leftJoin('journal_entries as je', function ($join) use ($asOfDate) {
-                $join->on('je.id', '=', 'jl.journal_entry_id')
-                    ->where('je.status', '=', 'posted')
-                    ->where('je.entry_date', '<=', $asOfDate);
+            ->leftJoin('journal_lines as jl', function ($join) use ($asOfDate) {
+                $join->on('jl.account_id', '=', 'a.id')
+                    ->join('journal_entries as je', function ($entryJoin) use ($asOfDate) {
+                        $entryJoin->on('je.id', '=', 'jl.journal_entry_id')
+                            ->where('je.status', '=', 'posted')
+                            ->where('je.entry_date', '<=', $asOfDate);
+                    });
             })
             ->where('a.company_id', '=', $companyId)
             ->where('a.is_active', '=', true)
