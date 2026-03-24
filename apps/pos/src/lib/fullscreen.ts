@@ -11,30 +11,21 @@ import { useSettingsStore } from '@/stores/settingsStore';
 export async function applyFullscreen(enabled: boolean): Promise<void> {
   try {
     if (isTauriEnvironment()) {
-      const { getCurrentWindow, currentMonitor } = await import('@tauri-apps/api/window');
-      const { PhysicalPosition, PhysicalSize, LogicalSize } = await import('@tauri-apps/api/dpi');
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const { LogicalSize } = await import('@tauri-apps/api/dpi');
       const win = getCurrentWindow();
 
       if (enabled) {
-        const monitor = await currentMonitor();
-        // Order matters: remove decorations first, position/size, then raise above taskbar last
         await win.setDecorations(false);
-        if (monitor) {
-          const pos = monitor.position;
-          const size = monitor.size;
-          await win.setPosition(new PhysicalPosition(pos.x, pos.y));
-          await win.setSize(new PhysicalSize(size.width, size.height));
-        } else {
-          await win.setFullscreen(true);
-        }
+        await win.setFullscreen(true);
         await win.setSkipTaskbar(true);
         await win.setAlwaysOnTop(true);
       } else {
         await win.setAlwaysOnTop(false);
         await win.setSkipTaskbar(false);
         await win.setFullscreen(false);
+        await win.setSize(new LogicalSize(1024, 700));
         await win.setDecorations(true);
-        await win.setSize(new LogicalSize(1280, 800));
         await win.center();
       }
     } else if (enabled) {
