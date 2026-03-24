@@ -9,6 +9,7 @@ use App\Modules\Catalog\Domain\Entities\Recipe;
 use App\Modules\Catalog\Domain\Entities\RecipeLine;
 use App\Modules\Catalog\Domain\Enums\ComponentType;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Shared\Domain\CurrencyScale;
 
 final class CompositeItemAvailabilityService
 {
@@ -55,7 +56,7 @@ final class CompositeItemAvailabilityService
                 ->where('location_id', $locationId)
                 ->first();
 
-            $availableQty = $stockLevel !== null ? number_format((float) $stockLevel->quantity, 4, '.', '') : '0';
+            $availableQty = $stockLevel !== null ? CurrencyScale::bcformat($stockLevel->quantity, 4) : '0';
             /** @phpstan-var numeric-string $availableQty */
             /** @phpstan-var numeric-string $requiredQty */
             $maxProduces = (int) bcdiv($availableQty, $requiredQty, 0);
@@ -100,7 +101,7 @@ final class CompositeItemAvailabilityService
             }
 
             /** @phpstan-ignore argument.type */
-            $lineQty = bcmul(number_format((float) $line->quantity, 4, '.', ''), $multiplier, 4);
+            $lineQty = bcmul(CurrencyScale::bcformat($line->quantity, 4), $multiplier, 4);
 
             if ($line->component_type === ComponentType::CompositeItem) {
                 /** @var CompositeItem|null $compositeItem */

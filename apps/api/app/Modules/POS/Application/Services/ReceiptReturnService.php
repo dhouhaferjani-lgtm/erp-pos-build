@@ -22,6 +22,7 @@ use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -528,6 +529,6 @@ final class ReceiptReturnService
         $raw = (float) $netAmount * (float) $taxRate / 100.0;
 
         /** @var numeric-string */
-        return number_format(round($raw, $this->scale()), $this->scale(), '.', '');
+        return CurrencyScale::bcformat(round($raw, $this->scale()), $this->scale());
     }
 }

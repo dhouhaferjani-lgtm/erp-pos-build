@@ -6,6 +6,7 @@ namespace App\Modules\Service\Application\DTOs;
 
 use App\Modules\Service\Domain\Enums\PricingType;
 use App\Modules\Service\Domain\Service;
+use App\Shared\Domain\CurrencyScale;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -42,11 +43,11 @@ class ServiceData extends Data
                 ? ServiceCategoryData::fromModel($service->category)
                 : null,
             pricing_type: $service->pricing_type,
-            base_price: number_format((float) $service->base_price, $scale, '.', ''),
+            base_price: CurrencyScale::bcformat($service->base_price, $scale),
             currency: $service->currency,
             default_duration_minutes: $service->default_duration_minutes,
-            hourly_rate: $service->hourly_rate !== null ? number_format((float) $service->hourly_rate, $scale, '.', '') : null,
-            tax_rate: $service->tax_rate !== null ? number_format((float) $service->tax_rate, 2, '.', '') : null,
+            hourly_rate: $service->hourly_rate !== null ? CurrencyScale::bcformat($service->hourly_rate, $scale) : null,
+            tax_rate: $service->tax_rate !== null ? CurrencyScale::bcformat($service->tax_rate, 2) : null,
             is_active: $service->is_active,
             created_at: $service->created_at?->toIso8601String() ?? '',
             updated_at: $service->updated_at?->toIso8601String(),

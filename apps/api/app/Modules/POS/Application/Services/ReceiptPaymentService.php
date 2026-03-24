@@ -6,6 +6,7 @@ namespace App\Modules\POS\Application\Services;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Services\CompanyContext;
+use App\Shared\Domain\CurrencyScale;
 use App\Modules\POS\Domain\Events\ReceiptCompleted;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptPayment;
@@ -65,7 +66,7 @@ final class ReceiptPaymentService
             // Calculate total paid
             $totalPaid = '0.000';
             foreach ($payments as &$payment) {
-                $payment['amount'] = number_format((float) $payment['amount'], self::SCALE, '.', '');
+                $payment['amount'] = CurrencyScale::bcformat($payment['amount'], self::SCALE);
                 if (bccomp($payment['amount'], '0', self::SCALE) <= 0) {
                     throw new \InvalidArgumentException('Payment amount must be greater than zero');
                 }

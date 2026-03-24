@@ -36,6 +36,7 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Promotion\Domain\ValueObjects\CartContext;
 use App\Modules\Promotion\Domain\ValueObjects\CartItemContext;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -358,7 +359,7 @@ final class ReceiptCreationService
                 $validatedTransactionDiscount = $numericDiscountAmount;
                 $discountReason = $transactionDiscountReason;
                 $effectiveLimit = $this->discountCalculationService->getEffectiveDiscountLimit($terminal, $cashier);
-                $discountAuthorizedBy = number_format($effectiveLimit['limit'], 2, '.', '');
+                $discountAuthorizedBy = CurrencyScale::bcformat($effectiveLimit['limit'], 2);
             }
 
             // 4c. Resolve full discount breakdown via orchestrator (promotions + manual + coupon + loyalty)
@@ -413,7 +414,7 @@ final class ReceiptCreationService
                     manualDiscountReason: $discountReason,
                     couponCode: $couponCode,
                     customerId: $customerId,
-                    loyaltyDiscountAmount: $loyaltyDiscountAmount !== null ? number_format((float) $loyaltyDiscountAmount, $this->scale(), '.', '') : null,
+                    loyaltyDiscountAmount: $loyaltyDiscountAmount !== null ? CurrencyScale::bcformat($loyaltyDiscountAmount, $this->scale()) : null,
                     loyaltyRewardId: $loyaltyRewardId,
                 );
 
@@ -845,9 +846,13 @@ final class ReceiptCreationService
      */
     private function roundVat(string $netAmount, string $taxRate): string
     {
-        $raw = (float) $netAmount * (float) $taxRate / 100.0;
+        // Use bcmath for intermediate precision, then PHP round() for half-away-from-zero (matching PostgreSQL)
+        $extraPrecision = $this->scale() + 4;
+        /** @var numeric-string $netAmount */
+        /** @var numeric-string $taxRate */
+        $raw = bcdiv(bcmul($netAmount, $taxRate, $extraPrecision), '100', $extraPrecision);
 
-        return number_format(round($raw, $this->scale()), $this->scale(), '.', '');
+        return CurrencyScale::bcformat((string) round((float) $raw, $this->scale()), $this->scale());
     }
 
     /**
@@ -1081,8 +1086,8 @@ final class ReceiptCreationService
         foreach ($compositeItem->activeRecipe->lines as $line) {
             // required quantity = recipe line qty * sale quantity
             $requiredQty = bcmul(
-                number_format((float) $line->quantity, 4, '.', ''),
-                number_format((float) $saleQuantity, 4, '.', ''),
+                CurrencyScale::bcformat($line->quantity, 4),
+                CurrencyScale::bcformat($saleQuantity, 4),
                 4
             );
 
@@ -1147,8 +1152,8 @@ final class ReceiptCreationService
                 $taxRate = (string) ($line->product->tax_rate ?? '0');
             }
 
-            $priceStr = number_format((float) $standalonePrice, 4, '.', '');
-            $qtyStr = number_format((float) $line->quantity, 4, '.', '');
+            $priceStr = CurrencyScale::bcformat($standalonePrice, 4);
+            $qtyStr = CurrencyScale::bcformat($line->quantity, 4);
             /** @var numeric-string $priceStr */
             /** @var numeric-string $qtyStr */
             $lineStandalone = bcmul($priceStr, $qtyStr, 4);

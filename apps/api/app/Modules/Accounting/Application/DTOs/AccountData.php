@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Accounting\Application\DTOs;
 
 use App\Modules\Accounting\Domain\Account;
+use App\Shared\Domain\CurrencyScale;
 use Spatie\LaravelData\Data;
 
 final class AccountData extends Data
@@ -36,7 +37,7 @@ final class AccountData extends Data
             description: $account->description,
             is_active: $account->is_active,
             is_system: $account->is_system,
-            balance: number_format((float) $account->balance, $scale, '.', ''),
+            balance: CurrencyScale::bcformat($account->balance, $scale),
             created_at: $account->created_at?->toIso8601String() ?? '',
             updated_at: $account->updated_at?->toIso8601String() ?? '',
         );

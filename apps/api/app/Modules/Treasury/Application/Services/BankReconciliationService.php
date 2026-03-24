@@ -10,6 +10,7 @@ use App\Modules\Treasury\Domain\Enums\ReconciliationStatus;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Facades\DB;
 
 class BankReconciliationService
@@ -246,8 +247,8 @@ class BankReconciliationService
             'status' => $reconciliation->status->value,
             'matched_count' => $matchedItems->count(),
             'unmatched_count' => $unmatchedItems->count(),
-            'matched_total' => number_format($matchedTotal, $this->scale(), '.', ''),
-            'unmatched_total' => number_format($unmatchedTotal, $this->scale(), '.', ''),
+            'matched_total' => CurrencyScale::bcformat($matchedTotal, $this->scale()),
+            'unmatched_total' => CurrencyScale::bcformat($unmatchedTotal, $this->scale()),
             'can_complete' => $reconciliation->isEditable() && bccomp($reconciliation->difference, '0.00', $this->scale()) === 0,
         ];
     }
@@ -261,7 +262,7 @@ class BankReconciliationService
         $matchedTotal = $matchedItems->sum(fn ($item) => (float) $item->payment->amount);
 
         // Calculate expected balance based on matched transactions
-        $expectedBalance = bcadd($reconciliation->opening_balance, number_format($matchedTotal, $this->scale(), '.', ''), $this->scale());
+        $expectedBalance = bcadd($reconciliation->opening_balance, CurrencyScale::bcformat($matchedTotal, $this->scale()), $this->scale());
         $difference = bcsub($reconciliation->statement_balance, $expectedBalance, $this->scale());
 
         $reconciliation->update([

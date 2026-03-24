@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Catalog\Domain\Entities;
 
 use App\Modules\Catalog\Domain\Enums\PriceAdjustmentType;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -82,7 +83,7 @@ class CompositeItemVariant extends Model
      */
     public function calculatePrice(string $basePrice): string
     {
-        $adjustment = number_format((float) $this->price_adjustment, 4, '.', '');
+        $adjustment = CurrencyScale::bcformat($this->price_adjustment, 4);
         /** @phpstan-var numeric-string $adjustment */
         /** @var numeric-string $base */
         $base = $basePrice;

@@ -6,6 +6,7 @@ namespace App\Modules\Accounting\Application\Services\Reports;
 
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Shared\Domain\CurrencyScale;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -489,8 +490,8 @@ class GeneralLedgerReportService
                 'account_code' => $line->account_code,
                 'account_name' => $line->account_name,
                 'partner_name' => $line->partner_name,
-                'debit' => number_format((float) $line->debit, 4, '.', ''),
-                'credit' => number_format((float) $line->credit, 4, '.', ''),
+                'debit' => CurrencyScale::bcformat($line->debit, 4),
+                'credit' => CurrencyScale::bcformat($line->credit, 4),
                 'balance' => $runningBalance,
                 'source_type' => $line->source_type,
                 'source_id' => $line->source_id,

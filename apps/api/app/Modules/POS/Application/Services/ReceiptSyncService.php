@@ -6,6 +6,7 @@ namespace App\Modules\POS\Application\Services;
 
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Shared\Domain\CurrencyScale;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
@@ -444,6 +445,6 @@ final class ReceiptSyncService
     {
         $raw = (float) $netAmount * (float) $taxRate / 100.0;
 
-        return number_format(round($raw, $this->scale()), $this->scale(), '.', '');
+        return CurrencyScale::bcformat(round($raw, $this->scale()), $this->scale());
     }
 }

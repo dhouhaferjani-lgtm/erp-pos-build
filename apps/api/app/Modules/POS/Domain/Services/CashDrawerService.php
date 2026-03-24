@@ -9,6 +9,7 @@ use App\Modules\POS\Domain\CashDrawerOperation;
 use App\Modules\POS\Domain\Events\CashDrawerOperationRecorded;
 use App\Modules\POS\Domain\Shift;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 
 /**
  * Service for managing cash drawer operations.
@@ -286,7 +287,7 @@ final class CashDrawerService
             ->where('operation_type', $operationType)
             ->sum('amount');
 
-        return number_format((float) $total, $this->scale(), '.', '');
+        return CurrencyScale::bcformat($total, $this->scale());
     }
 
     /**

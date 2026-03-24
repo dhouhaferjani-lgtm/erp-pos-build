@@ -8,6 +8,7 @@ use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Domain\Enums\PricingMode;
 use App\Modules\Catalog\Domain\Enums\ProductionType;
 use App\Modules\Catalog\Domain\Enums\VerticalType;
+use App\Shared\Domain\CurrencyScale;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -54,7 +55,7 @@ class CompositeItemData extends Data
             code: $item->code,
             name: $item->name,
             vertical_type: $item->vertical_type,
-            base_price: number_format((float) $item->base_price, 4, '.', ''),
+            base_price: CurrencyScale::bcformat($item->base_price, 4),
             production_type: $item->production_type,
             pricing_mode: $item->pricing_mode ?? PricingMode::Standard,
             tax_rate: $item->tax_rate !== null ? (string) $item->tax_rate : null,

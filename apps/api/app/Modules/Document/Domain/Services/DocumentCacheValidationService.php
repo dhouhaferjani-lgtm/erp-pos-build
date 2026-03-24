@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Domain\Services;
 
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -114,7 +115,7 @@ final class DocumentCacheValidationService
         $totalInvoices = (int) $stats->total_invoices;
         $accurateInvoices = (int) $stats->accurate_invoices;
         $inconsistentInvoices = (int) $stats->inconsistent_invoices;
-        $maxDifference = number_format((float) ($stats->max_difference ?? 0), 2, '.', '');
+        $maxDifference = CurrencyScale::bcformat($stats->max_difference ?? 0, 2);
 
         $accuracyPercentage = $totalInvoices > 0
             ? ($accurateInvoices / $totalInvoices) * 100

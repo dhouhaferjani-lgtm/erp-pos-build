@@ -6,6 +6,7 @@ namespace App\Modules\Document\Application\Services;
 
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Shared\Domain\CurrencyScale;
 
 /**
  * Service for generating aged receivables reports
@@ -123,8 +124,8 @@ class AgedReceivablesService
                 'document_date' => $invoice->document_date->toDateString(),
                 'due_date' => $invoice->due_date?->toDateString(),
                 'days_overdue' => $daysOverdue,
-                'total' => number_format((float) $invoice->total, 2, '.', ''),
-                'outstanding' => number_format((float) $outstanding, 2, '.', ''),
+                'total' => CurrencyScale::bcformat($invoice->total, 2),
+                'outstanding' => CurrencyScale::bcformat($outstanding, 2),
                 'aging_bucket' => $agingBucket,
             ];
         }
@@ -137,7 +138,7 @@ class AgedReceivablesService
         /** @var array<string, mixed> */
         return [
             'as_of_date' => $asOfDate,
-            'total_outstanding' => number_format((float) $totalOutstanding, 2, '.', ''),
+            'total_outstanding' => CurrencyScale::bcformat($totalOutstanding, 2),
             'summary' => $summary,
             'by_partner' => $partnerList,
         ];
@@ -208,9 +209,9 @@ class AgedReceivablesService
                 'type' => 'Invoice',
                 'document_number' => $invoice->document_number,
                 'description' => 'Invoice',
-                'debit' => number_format((float) $amount, 2, '.', ''),
+                'debit' => CurrencyScale::bcformat($amount, 2),
                 'credit' => '0.00',
-                'balance' => number_format((float) $runningBalance, 2, '.', ''),
+                'balance' => CurrencyScale::bcformat($runningBalance, 2),
             ];
         }
 
@@ -233,8 +234,8 @@ class AgedReceivablesService
                 'document_number' => $payment->reference ?? 'Payment',
                 'description' => 'Payment received',
                 'debit' => '0.00',
-                'credit' => number_format((float) $amount, 2, '.', ''),
-                'balance' => number_format((float) $runningBalance, 2, '.', ''),
+                'credit' => CurrencyScale::bcformat($amount, 2),
+                'balance' => CurrencyScale::bcformat($runningBalance, 2),
             ];
         }
 
@@ -258,8 +259,8 @@ class AgedReceivablesService
                 'document_number' => $creditNote->document_number,
                 'description' => 'Credit note',
                 'debit' => '0.00',
-                'credit' => number_format((float) $amount, 2, '.', ''),
-                'balance' => number_format((float) $runningBalance, 2, '.', ''),
+                'credit' => CurrencyScale::bcformat($amount, 2),
+                'balance' => CurrencyScale::bcformat($runningBalance, 2),
             ];
         }
 
@@ -272,7 +273,7 @@ class AgedReceivablesService
             $debit = (float) $transaction['debit'];
             $credit = (float) $transaction['credit'];
             $runningBalance = bcadd(bcsub((string) $runningBalance, (string) $credit, 2), (string) $debit, 2);
-            $transaction['balance'] = number_format((float) $runningBalance, 2, '.', '');
+            $transaction['balance'] = CurrencyScale::bcformat($runningBalance, 2);
         }
 
         return [
@@ -280,8 +281,8 @@ class AgedReceivablesService
             'partner_name' => $partner->name,
             'from_date' => $fromDate,
             'to_date' => $toDate,
-            'opening_balance' => number_format((float) $openingBalance, 2, '.', ''),
-            'closing_balance' => number_format((float) $runningBalance, 2, '.', ''),
+            'opening_balance' => CurrencyScale::bcformat($openingBalance, 2),
+            'closing_balance' => CurrencyScale::bcformat($runningBalance, 2),
             'transactions' => $transactions,
         ];
     }
@@ -341,7 +342,7 @@ class AgedReceivablesService
         }
 
         return [
-            'total_overdue' => number_format((float) $totalOverdue, 2, '.', ''),
+            'total_overdue' => CurrencyScale::bcformat($totalOverdue, 2),
             'count' => $overdueInvoices->count(),
             'by_severity' => $bySeverity,
         ];

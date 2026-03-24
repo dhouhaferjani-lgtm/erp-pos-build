@@ -72,6 +72,37 @@ final class CurrencyScale extends ValueObject
         return $this->scale;
     }
 
+    /**
+     * Format a numeric value to a fixed decimal scale using bcmath (no float conversion).
+     *
+     * Replaces `number_format((float) $value, $scale, '.', '')` which suffers from
+     * IEEE 754 floating-point precision loss (e.g. 5.000 → 4.9999).
+     *
+     * @param  string|int|float|null  $value  The numeric value (string preferred to avoid float)
+     * @param  int  $scale  Number of decimal places
+     * @return numeric-string  Formatted decimal string
+     */
+    public static function bcformat(string|int|float|null $value, int $scale): string
+    {
+        if ($value === null) {
+            $str = '0';
+        } elseif (is_float($value)) {
+            // Avoid scientific notation from (string) cast (e.g., 1e-5 → "1.0E-5")
+            // which bcmath cannot parse. Use number_format with enough precision.
+            $str = number_format($value, max($scale, 14), '.', '');
+        } else {
+            $str = (string) $value;
+        }
+
+        // Handle empty/whitespace strings
+        if (trim($str) === '') {
+            $str = '0';
+        }
+
+        /** @phpstan-ignore argument.type */
+        return bcadd($str, '0', $scale);
+    }
+
     public function equals(ValueObject $other): bool
     {
         if (! $other instanceof self) {

@@ -9,6 +9,7 @@ use App\Modules\POS\Domain\GrandtotalEvent;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -177,8 +178,8 @@ final class GrandtotalService
             ->first();
 
         return [
-            'lifetime_sales' => number_format((float) ($totals->lifetime_sales ?? 0), $this->scale(), '.', ''),
-            'lifetime_tax' => number_format((float) ($totals->lifetime_tax ?? 0), $this->scale(), '.', ''),
+            'lifetime_sales' => CurrencyScale::bcformat($totals->lifetime_sales ?? 0, $this->scale()),
+            'lifetime_tax' => CurrencyScale::bcformat($totals->lifetime_tax ?? 0, $this->scale()),
             'lifetime_transactions' => (int) ($totals->lifetime_transactions ?? 0),
         ];
     }

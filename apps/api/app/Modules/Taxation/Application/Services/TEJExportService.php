@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Taxation\Application\Services;
 
 use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Collection;
 
 /**
@@ -117,12 +118,12 @@ class TEJExportService
         $beneficiaire->addChild('Nom', htmlspecialchars($partner->name));
 
         // Amounts
-        $retenue->addChild('MontantBrut', number_format((float) $certificate->gross_amount, 3, '.', ''));
+        $retenue->addChild('MontantBrut', CurrencyScale::bcformat($certificate->gross_amount, 3));
         $retenue->addChild(
             'TauxRetenue',
-            number_format($certificate->getRateAsPercentage(), 2, '.', '')
+            CurrencyScale::bcformat($certificate->getRateAsPercentage(), 2)
         );
-        $retenue->addChild('MontantRetenu', number_format((float) $certificate->withholding_amount, 3, '.', ''));
+        $retenue->addChild('MontantRetenu', CurrencyScale::bcformat($certificate->withholding_amount, 3));
 
         // Payment date
         $paymentDate = $payment->payment_date ?? $certificate->created_at;

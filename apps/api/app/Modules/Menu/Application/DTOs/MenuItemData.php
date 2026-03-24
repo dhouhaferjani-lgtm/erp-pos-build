@@ -7,6 +7,7 @@ namespace App\Modules\Menu\Application\DTOs;
 use App\Modules\Catalog\Application\DTOs\ModifierGroupData;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Domain\CurrencyScale;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -46,9 +47,9 @@ class MenuItemData extends Data
             sellable_type: 'composite_item',
             name: $item->name,
             code: $item->code,
-            base_price: number_format((float) $basePrice, 4, '.', ''),
-            override_price: $overridePrice !== null ? number_format((float) $overridePrice, 4, '.', '') : null,
-            effective_price: number_format((float) $effectivePrice, 4, '.', ''),
+            base_price: CurrencyScale::bcformat($basePrice, 4),
+            override_price: $overridePrice !== null ? CurrencyScale::bcformat($overridePrice, 4) : null,
+            effective_price: CurrencyScale::bcformat($effectivePrice, 4),
             tax_rate: $item->tax_rate !== null ? (string) $item->tax_rate : null,
             display_order: (int) ($pivot?->getAttribute('display_order') ?? 0),
             is_available: (bool) ($pivot?->getAttribute('is_available') ?? true),
@@ -77,9 +78,9 @@ class MenuItemData extends Data
             sellable_type: 'product',
             name: $product->name,
             code: $product->sku,
-            base_price: number_format((float) $basePrice, 4, '.', ''),
-            override_price: $overridePrice !== null ? number_format((float) $overridePrice, 4, '.', '') : null,
-            effective_price: number_format((float) $effectivePrice, 4, '.', ''),
+            base_price: CurrencyScale::bcformat($basePrice, 4),
+            override_price: $overridePrice !== null ? CurrencyScale::bcformat($overridePrice, 4) : null,
+            effective_price: CurrencyScale::bcformat($effectivePrice, 4),
             tax_rate: $product->tax_rate !== null ? (string) $product->tax_rate : null,
             display_order: (int) ($pivot?->getAttribute('display_order') ?? 0),
             is_available: (bool) ($pivot?->getAttribute('is_available') ?? true),

@@ -7,6 +7,7 @@ namespace App\Modules\Taxation\Domain\Services;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Taxation\Domain\Entities\StampDutyRule;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Carbon;
 
 class StampDutyService
@@ -44,7 +45,7 @@ class StampDutyService
         }
 
         return new StampDutyResult(
-            amount: number_format((float) $rule->stamp_amount, 3, '.', ''),
+            amount: CurrencyScale::bcformat($rule->stamp_amount, 3),
             name: 'Stamp Duty',
             countryCode: $rule->country_code,
             ruleId: $rule->id

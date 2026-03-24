@@ -6,6 +6,7 @@ namespace App\Modules\Catalog\Application\DTOs;
 
 use App\Modules\Catalog\Domain\Entities\RecipeLine;
 use App\Modules\Catalog\Domain\Enums\ComponentType;
+use App\Shared\Domain\CurrencyScale;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -54,14 +55,14 @@ class RecipeLineData extends Data
             component_id: $line->component_id,
             component_name: $componentName,
             component_sku: $componentSku,
-            quantity: number_format((float) $line->quantity, 4, '.', ''),
+            quantity: CurrencyScale::bcformat($line->quantity, 4),
             unit_id: $line->unit_id,
             unit_name: $line->relationLoaded('unit') && $line->unit !== null
                 ? $line->unit->name
                 : null,
             is_optional: $line->is_optional,
             is_scalable: $line->is_scalable,
-            wastage_percent: number_format((float) $line->wastage_percent, 2, '.', ''),
+            wastage_percent: CurrencyScale::bcformat($line->wastage_percent, 2),
             unit_cost: $line->unit_cost !== null ? (string) $line->unit_cost : null,
             line_cost: $line->line_cost !== null ? (string) $line->line_cost : null,
             display_order: $line->display_order,

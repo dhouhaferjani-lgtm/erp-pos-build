@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Document\Application\DTOs;
 
 use App\Modules\Document\Domain\DocumentLine;
+use App\Shared\Domain\CurrencyScale;
 use Spatie\LaravelData\Data;
 
 final class DocumentLineData extends Data
@@ -32,12 +33,12 @@ final class DocumentLineData extends Data
             product_id: $line->product_id,
             line_number: $line->line_number,
             description: $line->description,
-            quantity: number_format((float) $line->quantity, $scale, '.', ''),
-            unit_price: number_format((float) $line->unit_price, $scale, '.', ''),
-            discount_percent: $line->discount_percent !== null ? number_format((float) $line->discount_percent, 2, '.', '') : null,
-            discount_amount: $line->discount_amount !== null ? number_format((float) $line->discount_amount, $scale, '.', '') : null,
-            tax_rate: $line->tax_rate !== null ? number_format((float) $line->tax_rate, 2, '.', '') : null,
-            line_total: number_format((float) $line->line_total, $scale, '.', ''),
+            quantity: CurrencyScale::bcformat($line->quantity, $scale),
+            unit_price: CurrencyScale::bcformat($line->unit_price, $scale),
+            discount_percent: $line->discount_percent !== null ? CurrencyScale::bcformat($line->discount_percent, 2) : null,
+            discount_amount: $line->discount_amount !== null ? CurrencyScale::bcformat($line->discount_amount, $scale) : null,
+            tax_rate: $line->tax_rate !== null ? CurrencyScale::bcformat($line->tax_rate, 2) : null,
+            line_total: CurrencyScale::bcformat($line->line_total, $scale),
             notes: $line->notes,
         );
     }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Document\Application\DTOs;
 
 use App\Modules\Document\Domain\Document;
+use App\Shared\Domain\CurrencyScale;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -83,7 +84,7 @@ final class DocumentData extends Data
                 $payments[] = [
                     'id' => $allocation->id,
                     'payment_id' => $allocation->payment_id,
-                    'amount' => number_format((float) $allocation->amount, $scale, '.', ''),
+                    'amount' => CurrencyScale::bcformat($allocation->amount, $scale),
                     'payment_date' => $payment->payment_date->toDateString(),
                     'payment_reference' => $payment->reference,
                     'payment_method' => $payment->paymentMethod->name ?? null,
@@ -154,16 +155,16 @@ final class DocumentData extends Data
             due_date: $document->due_date?->toDateString(),
             valid_until: $document->valid_until?->toDateString(),
             currency: $document->currency,
-            subtotal: $document->subtotal !== null ? number_format((float) $document->subtotal, $scale, '.', '') : null,
-            discount_amount: $document->discount_amount !== null ? number_format((float) $document->discount_amount, $scale, '.', '') : null,
-            tax_amount: $document->tax_amount !== null ? number_format((float) $document->tax_amount, $scale, '.', '') : null,
-            total: $document->total !== null ? number_format($total, $scale, '.', '') : null,
-            balance_due: number_format($balanceDue, $scale, '.', ''),
+            subtotal: $document->subtotal !== null ? CurrencyScale::bcformat($document->subtotal, $scale) : null,
+            discount_amount: $document->discount_amount !== null ? CurrencyScale::bcformat($document->discount_amount, $scale) : null,
+            tax_amount: $document->tax_amount !== null ? CurrencyScale::bcformat($document->tax_amount, $scale) : null,
+            total: $document->total !== null ? CurrencyScale::bcformat($total, $scale) : null,
+            balance_due: CurrencyScale::bcformat($balanceDue, $scale),
             outstanding_amount: $outstandingAmount,
             payment_status: $paymentStatus,
             fulfillment_status: $fulfillmentStatus,
-            amount_paid: number_format($amountPaid, $scale, '.', ''),
-            amount_residual: number_format($balanceDue, $scale, '.', ''),
+            amount_paid: CurrencyScale::bcformat($amountPaid, $scale),
+            amount_residual: CurrencyScale::bcformat($balanceDue, $scale),
             notes: $document->notes,
             internal_notes: $document->internal_notes,
             reference: $document->reference,

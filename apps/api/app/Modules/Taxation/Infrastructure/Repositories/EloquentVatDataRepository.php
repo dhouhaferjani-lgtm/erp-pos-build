@@ -6,6 +6,7 @@ namespace App\Modules\Taxation\Infrastructure\Repositories;
 
 use App\Modules\Taxation\Domain\DTOs\VatAggregation;
 use App\Modules\Taxation\Domain\Repositories\VatDataRepositoryInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Facades\DB;
 
 class EloquentVatDataRepository implements VatDataRepositoryInterface
@@ -100,9 +101,9 @@ class EloquentVatDataRepository implements VatDataRepositoryInterface
 
         return $combined->map(fn (object $row): VatAggregation => new VatAggregation(
             direction: (string) $row->direction,
-            taxRate: number_format((float) $row->tax_rate, 2, '.', ''),
-            baseAmount: number_format((float) $row->base_amount, 3, '.', ''),
-            vatAmount: number_format((float) $row->vat_amount, 3, '.', ''),
+            taxRate: CurrencyScale::bcformat($row->tax_rate, 2),
+            baseAmount: CurrencyScale::bcformat($row->base_amount, 3),
+            vatAmount: CurrencyScale::bcformat($row->vat_amount, 3),
             documentCount: (int) $row->document_count,
             isRecoverable: (bool) $row->is_recoverable,
             taxConfigurationId: $row->tax_configuration_id,
