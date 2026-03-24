@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Edit2, Trash2, Power, PowerOff, Archive } from 'lucide-react'
+import { Edit2, Trash2, Power, PowerOff, Archive, GraduationCap } from 'lucide-react'
 import { TerminalStatusBadge } from './TerminalStatusBadge'
 import type { Terminal } from '../hooks/useTerminals'
 
@@ -11,6 +11,7 @@ interface TerminalListProps {
   onDelete: (terminal: Terminal) => void
   onActivate: (terminal: Terminal) => void
   onDeactivate: (terminal: Terminal) => void
+  onToggleTraining: (terminal: Terminal) => void
 }
 
 /**
@@ -24,6 +25,7 @@ export function TerminalList({
   onDelete,
   onActivate,
   onDeactivate,
+  onToggleTraining,
 }: TerminalListProps) {
   const { t } = useTranslation()
 
@@ -105,7 +107,15 @@ export function TerminalList({
                 {terminal.location?.name || '-'}
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
-                <TerminalStatusBadge isActive={terminal.is_active} />
+                <div className="flex items-center gap-2">
+                  <TerminalStatusBadge isActive={terminal.is_active} />
+                  {terminal.is_training_mode && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                      <GraduationCap className="h-3 w-3" />
+                      {t('pos.terminal.trainingMode')}
+                    </span>
+                  )}
+                </div>
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-end text-sm font-medium">
                 <div className="flex items-center justify-end gap-2">
@@ -137,6 +147,23 @@ export function TerminalList({
                       <Power className="h-4 w-4" />
                     </button>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={() => { onToggleTraining(terminal) }}
+                    className={
+                      terminal.is_training_mode
+                        ? 'text-amber-600 hover:text-amber-900'
+                        : 'text-gray-400 hover:text-amber-600'
+                    }
+                    title={
+                      terminal.is_training_mode
+                        ? t('pos.terminal.disableTraining')
+                        : t('pos.terminal.enableTraining')
+                    }
+                  >
+                    <GraduationCap className="h-4 w-4" />
+                  </button>
 
                   <button
                     type="button"

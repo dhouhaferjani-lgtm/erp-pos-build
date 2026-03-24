@@ -107,8 +107,57 @@ export function CheckoutSuccessModal({
     isTauriEnvironment() && printerConfig !== null && receiptData !== undefined;
   const canPdfPrint = isOnline && receiptId !== undefined;
 
+  const footerContent = (
+    <div className="space-y-3">
+      {/* ESC/POS thermal printer — primary action when physical printer is configured */}
+      {canEscPosPrint && (
+        <button
+          onClick={() => void handlePrint()}
+          disabled={isPrinting}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-6 py-3 text-base font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+        >
+          {isPrinting ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <Printer className="h-5 w-5" />
+          )}
+          {t('settings.printReceipt')}
+        </button>
+      )}
+
+      {/* PDF Print — secondary fallback, subtle link style when thermal is available */}
+      {canPdfPrint && (
+        <button
+          onClick={() => void handlePdfPrint()}
+          disabled={isPdfPrinting}
+          className={cn(
+            'flex w-full items-center justify-center gap-2 disabled:opacity-50',
+            canEscPosPrint
+              ? 'text-sm text-gray-500 underline hover:text-gray-700'
+              : 'rounded-xl border border-gray-300 bg-white px-6 py-3 text-base font-medium text-gray-700 transition-colors hover:bg-gray-50',
+          )}
+        >
+          {isPdfPrinting ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <FileText className="h-5 w-5" />
+          )}
+          {t('settings.printReceiptPdf')}
+        </button>
+      )}
+
+      {/* New sale button */}
+      <button
+        onClick={onClose}
+        className="w-full rounded-xl bg-blue-600 px-6 py-4 text-lg font-semibold text-white transition-colors hover:bg-blue-700"
+      >
+        {t('payment.newTransaction')}
+      </button>
+    </div>
+  );
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={t('payment.success')} size="md">
+    <Modal isOpen={isOpen} onClose={onClose} title={t('payment.success')} size="md" footer={footerContent}>
       <div className="space-y-6 text-center">
         {/* Success icon */}
         <div className="flex justify-center">
@@ -154,54 +203,6 @@ export function CheckoutSuccessModal({
             {printError}
           </div>
         )}
-
-        {/* Action buttons */}
-        <div className="space-y-3">
-          {/* ESC/POS thermal printer — primary action when physical printer is configured */}
-          {canEscPosPrint && (
-            <button
-              onClick={() => void handlePrint()}
-              disabled={isPrinting}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-6 py-3 text-base font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
-            >
-              {isPrinting ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <Printer className="h-5 w-5" />
-              )}
-              {t('settings.printReceipt')}
-            </button>
-          )}
-
-          {/* PDF Print — secondary fallback, subtle link style when thermal is available */}
-          {canPdfPrint && (
-            <button
-              onClick={() => void handlePdfPrint()}
-              disabled={isPdfPrinting}
-              className={cn(
-                'flex w-full items-center justify-center gap-2 disabled:opacity-50',
-                canEscPosPrint
-                  ? 'text-sm text-gray-500 underline hover:text-gray-700'
-                  : 'rounded-xl border border-gray-300 bg-white px-6 py-3 text-base font-medium text-gray-700 transition-colors hover:bg-gray-50',
-              )}
-            >
-              {isPdfPrinting ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <FileText className="h-5 w-5" />
-              )}
-              {t('settings.printReceiptPdf')}
-            </button>
-          )}
-
-          {/* New sale button */}
-          <button
-            onClick={onClose}
-            className="w-full rounded-xl bg-blue-600 px-6 py-4 text-lg font-semibold text-white transition-colors hover:bg-blue-700"
-          >
-            {t('payment.newTransaction')}
-          </button>
-        </div>
       </div>
     </Modal>
   );

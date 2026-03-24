@@ -15,6 +15,7 @@ export interface Terminal {
   location_id: string
   location?: Location | undefined
   is_active: boolean
+  is_training_mode: boolean
   activated_at: string | null
   deactivated_at: string | null
   deactivation_reason: string | null
@@ -116,4 +117,12 @@ export async function deactivateTerminal(
  */
 export async function getOrCreateWebTerminal(locationId: string): Promise<Terminal> {
   return apiPost<Terminal>('/pos/terminals/web', { location_id: locationId })
+}
+
+/**
+ * Toggle training mode on a terminal.
+ * Requires no open shift on the terminal.
+ */
+export async function toggleTrainingMode(id: string): Promise<Terminal> {
+  return apiPost<Terminal>(`/pos/terminals/${id}/toggle-training`)
 }

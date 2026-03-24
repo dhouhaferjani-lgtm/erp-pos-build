@@ -11,6 +11,7 @@ import {
   useDeleteTerminal,
   useActivateTerminal,
   useDeactivateTerminal,
+  useToggleTrainingMode,
   type Terminal,
   type CreateTerminalInput,
   type UpdateTerminalInput,
@@ -48,6 +49,7 @@ export function TerminalsPage() {
   const deleteTerminal = useDeleteTerminal()
   const activateTerminal = useActivateTerminal()
   const deactivateTerminal = useDeactivateTerminal()
+  const toggleTrainingMode = useToggleTrainingMode()
 
   // Handle form open
   const handleOpenCreateForm = () => {
@@ -132,6 +134,20 @@ export function TerminalsPage() {
     }
   }
 
+  // Handle training mode toggle
+  const handleToggleTraining = async (terminal: Terminal) => {
+    try {
+      await toggleTrainingMode.mutateAsync(terminal.id)
+      toast.success(
+        terminal.is_training_mode
+          ? t('pos.messages.trainingModeDisabled')
+          : t('pos.messages.trainingModeEnabled')
+      )
+    } catch (_err) {
+      toast.error(t('common.error'))
+    }
+  }
+
   // Handle deactivate - show reason input modal
   const handleDeactivate = (terminal: Terminal) => {
     setDeactivateTarget(terminal)
@@ -186,6 +202,7 @@ export function TerminalsPage() {
           onDelete={handleDelete}
           onActivate={handleActivate}
           onDeactivate={handleDeactivate}
+          onToggleTraining={(terminal) => void handleToggleTraining(terminal)}
         />
       </div>
 

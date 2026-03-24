@@ -1076,7 +1076,10 @@
       "confirmArchive": "Are you sure you want to archive {{resource}}? The terminal will be hidden but all transaction history will be preserved.",
       "cannotDeleteHasHistory": "Cannot delete — terminal has transaction history. Use archive instead.",
       "namePlaceholder": "e.g. Main Counter Terminal",
-      "descriptionPlaceholder": "Optional description for this terminal"
+      "descriptionPlaceholder": "Optional description for this terminal",
+      "trainingMode": "Training",
+      "enableTraining": "Enable training mode",
+      "disableTraining": "Disable training mode"
     },
     "messages": {
       "checkoutSuccess": "Checkout successful!",
@@ -1087,7 +1090,9 @@
       "terminalArchived": "Terminal archived successfully",
       "terminalDeleted": "Terminal deleted successfully",
       "terminalActivated": "Terminal activated successfully",
-      "terminalDeactivated": "Terminal deactivated successfully"
+      "terminalDeactivated": "Terminal deactivated successfully",
+      "trainingModeEnabled": "Training mode enabled — transactions won't affect fiscal records",
+      "trainingModeDisabled": "Training mode disabled — back to production"
     }
   },
   "realtime": {

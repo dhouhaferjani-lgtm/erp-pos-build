@@ -7,10 +7,11 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: ReactNode;
+  footer?: ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
 }
 
-export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, footer, size = 'md' }: ModalProps) {
   useEffect(() => {
     if (!isOpen) return;
 
@@ -36,7 +37,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
         className={cn(
           'relative z-10 flex w-full flex-col rounded-2xl bg-white shadow-2xl overflow-hidden',
           size === 'sm' && 'max-w-sm max-h-[45vh]',
-          size === 'md' && 'max-w-md max-h-[55vh]',
+          size === 'md' && 'max-w-md max-h-[80vh]',
           size === 'lg' && 'max-w-lg max-h-[70vh]',
           size === 'xl' && 'max-w-2xl max-h-[80vh]',
           size === 'full' && 'max-w-4xl max-h-[85vh]',
@@ -55,6 +56,11 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
 
         {/* Body */}
         <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4">{children}</div>
+
+        {/* Footer — always visible, never scrolls */}
+        {footer && (
+          <div className="shrink-0 border-t border-gray-200 px-6 py-4">{footer}</div>
+        )}
       </div>
     </div>
   );

@@ -33,6 +33,7 @@ const mockTerminal: Terminal = {
   location_id: 'loc-1',
   location: mockLocations[0],
   is_active: true,
+  is_training_mode: false,
   has_history: false,
   activated_at: '2025-01-01T00:00:00Z',
   deactivated_at: null,

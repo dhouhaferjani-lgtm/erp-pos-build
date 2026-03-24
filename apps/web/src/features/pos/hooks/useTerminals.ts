@@ -8,6 +8,7 @@ import {
   deleteTerminal,
   activateTerminal,
   deactivateTerminal,
+  toggleTrainingMode,
   type Terminal,
   type CreateTerminalInput,
   type UpdateTerminalInput,
@@ -129,6 +130,21 @@ export function useDeactivateTerminal() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data?: DeactivateTerminalInput | undefined }) =>
       deactivateTerminal(id, data),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: terminalKeys.lists() })
+      queryClient.invalidateQueries({ queryKey: terminalKeys.detail(data.id) })
+    },
+  })
+}
+
+/**
+ * Toggle training mode on a terminal
+ */
+export function useToggleTrainingMode() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (id: string) => toggleTrainingMode(id),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: terminalKeys.lists() })
       queryClient.invalidateQueries({ queryKey: terminalKeys.detail(data.id) })

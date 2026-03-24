@@ -43,6 +43,7 @@ final class TerminalResource extends JsonResource
             'hash_sequence' => max(0, $this->current_sequence - 1),
             'current_sequence' => $this->current_sequence,
             'current_year' => $this->current_year,
+            'is_training_mode' => (bool) $this->is_training_mode,
             'max_discount_percent' => (float) $this->max_discount_percent,
             'allow_line_discounts' => (bool) $this->allow_line_discounts,
             'allow_transaction_discounts' => (bool) $this->allow_transaction_discounts,

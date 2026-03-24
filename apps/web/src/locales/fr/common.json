@@ -1043,7 +1043,10 @@
       "confirmArchive": "Êtes-vous sûr de vouloir archiver {{resource}} ? Le terminal sera masqué mais tout l'historique des transactions sera conservé.",
       "cannotDeleteHasHistory": "Suppression impossible — le terminal a un historique de transactions. Utilisez l'archivage.",
       "namePlaceholder": "ex. Terminal du comptoir principal",
-      "descriptionPlaceholder": "Description optionnelle pour ce terminal"
+      "descriptionPlaceholder": "Description optionnelle pour ce terminal",
+      "trainingMode": "Formation",
+      "enableTraining": "Activer le mode formation",
+      "disableTraining": "Désactiver le mode formation"
     },
     "messages": {
       "checkoutSuccess": "Règlement effectué avec succès !",
@@ -1054,7 +1057,9 @@
       "terminalArchived": "Terminal archivé avec succès",
       "terminalDeleted": "Terminal supprimé avec succès",
       "terminalActivated": "Terminal activé avec succès",
-      "terminalDeactivated": "Terminal désactivé avec succès"
+      "terminalDeactivated": "Terminal désactivé avec succès",
+      "trainingModeEnabled": "Mode formation activé — les transactions n'affecteront pas les registres fiscaux",
+      "trainingModeDisabled": "Mode formation désactivé — retour en production"
     }
   },
   "realtime": {

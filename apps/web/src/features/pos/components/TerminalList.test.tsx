@@ -24,6 +24,7 @@ const mockTerminal: Terminal = {
     code: 'LOC01',
   },
   is_active: true,
+  is_training_mode: false,
   activated_at: '2025-01-01T00:00:00Z',
   deactivated_at: null,
   deactivation_reason: null,
@@ -64,6 +65,7 @@ describe('TerminalList', () => {
     onDelete: vi.fn(),
     onActivate: vi.fn(),
     onDeactivate: vi.fn(),
+    onToggleTraining: vi.fn(),
   }
 
   it('displays loading state', () => {
@@ -247,6 +249,55 @@ describe('TerminalList', () => {
     expect(editButtons).toHaveLength(2)
     expect(archiveButtons).toHaveLength(2)
     expect(deleteButtons).toHaveLength(2)
+  })
+
+  it('shows training mode badge when terminal is in training mode', () => {
+    const trainingTerminal: Terminal = {
+      ...mockTerminal,
+      id: '4',
+      is_training_mode: true,
+    }
+
+    render(<TerminalList {...defaultProps} terminals={[trainingTerminal]} />)
+
+    expect(screen.getByText('pos.terminal.trainingMode')).toBeInTheDocument()
+  })
+
+  it('does not show training mode badge when terminal is in production mode', () => {
+    render(<TerminalList {...defaultProps} terminals={[mockTerminal]} />)
+
+    expect(screen.queryByText('pos.terminal.trainingMode')).not.toBeInTheDocument()
+  })
+
+  it('calls onToggleTraining when training toggle button is clicked', async () => {
+    const user = userEvent.setup()
+    const onToggleTraining = vi.fn()
+
+    render(
+      <TerminalList
+        {...defaultProps}
+        terminals={[mockTerminal]}
+        onToggleTraining={onToggleTraining}
+      />
+    )
+
+    const toggleButton = screen.getByTitle('pos.terminal.enableTraining')
+    await user.click(toggleButton)
+
+    expect(onToggleTraining).toHaveBeenCalledTimes(1)
+    expect(onToggleTraining).toHaveBeenCalledWith(mockTerminal)
+  })
+
+  it('shows disable training title when terminal is in training mode', () => {
+    const trainingTerminal: Terminal = {
+      ...mockTerminal,
+      id: '4',
+      is_training_mode: true,
+    }
+
+    render(<TerminalList {...defaultProps} terminals={[trainingTerminal]} />)
+
+    expect(screen.getByTitle('pos.terminal.disableTraining')).toBeInTheDocument()
   })
 
   it('applies hover styles to table rows', () => {
