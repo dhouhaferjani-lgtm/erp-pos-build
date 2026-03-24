@@ -455,11 +455,6 @@
             </div>
         @endif
 
-        {{-- Custom Header (company or location level) --}}
-        @if($company->receipt_header ?? null)
-            <div class="custom-footer" style="margin-top: 8px;">{{ $company->receipt_header }}</div>
-        @endif
-
         {{-- Footer Section --}}
         <div class="footer">
             <div class="thank-you">{{ $company->receipt_thank_you ?? __('pos.thank_you') }}</div>

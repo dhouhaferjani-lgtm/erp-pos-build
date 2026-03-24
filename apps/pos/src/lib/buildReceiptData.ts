@@ -1,6 +1,7 @@
 import i18next from 'i18next';
 import type { FullReceiptResponse } from '@/types/receipt';
 import type { ReceiptData, ReceiptLabels } from '@/lib/printing';
+import { bcadd, bcsub, bccomp } from '@/lib/decimal';
 
 function getCurrencySymbol(currencyCode: string): string {
   try {
@@ -48,10 +49,12 @@ export function buildEscPosReceiptData(
   const currencySymbol = getCurrencySymbol(receipt.currency);
   const decimals = getCurrencyDecimals(receipt.currency);
   const totalPayments = receipt.payments.reduce(
-    (sum, p) => sum + parseFloat(p.amount),
-    0,
+    (sum, p) => bcadd(sum, p.amount, decimals),
+    '0',
   );
-  const changeDue = Math.max(0, totalPayments - parseFloat(receipt.total));
+  const changeDue = bccomp(totalPayments, receipt.total) > 0
+    ? bcsub(totalPayments, receipt.total, decimals)
+    : (0).toFixed(decimals);
 
   return {
     company: {
