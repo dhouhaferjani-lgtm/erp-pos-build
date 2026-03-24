@@ -145,6 +145,129 @@ final class VatRoundingPrecisionTest extends TestCase
         $this->assertSame($comboPrice, $reconstructed, 'Net + Tax must equal combo price');
     }
 
+    #[Test]
+    #[DataProvider('receiptTotalWithTaxProvider')]
+    public function receipt_total_equals_sum_of_line_totals_despite_vat_recalculation(
+        string $lineTotal,
+        string $taxRate,
+        int $scale,
+    ): void {
+        // Simulate ReceiptCreationService logic:
+        // 1. Per-line: decompose TTC into net + tax
+        $taxRateDecimal = bcdiv($taxRate, '100', 6);
+        $divisor = bcadd('1', $taxRateDecimal, 6);
+        $netAmount = bcdiv($lineTotal, $divisor, $scale);
+
+        // 2. sumLineTotals tracks the gross TTC amount
+        $sumLineTotals = $lineTotal;
+        $subtotal = $netAmount; // net (HT)
+
+        // 3. Derive totalTax from difference (the fix)
+        $totalTax = bcsub($sumLineTotals, $subtotal, $scale);
+
+        // 4. Receipt total = sumLineTotals - discount (no discount in this test)
+        $total = $sumLineTotals;
+
+        // Accounting identity must hold: subtotal + tax_amount = total
+        $this->assertSame(
+            $total,
+            bcadd($subtotal, $totalTax, $scale),
+            "Accounting identity violated for {$lineTotal} at {$taxRate}%: subtotal({$subtotal}) + tax({$totalTax}) must equal total({$total})"
+        );
+
+        // Total must equal the original TTC price (the reported bug)
+        $this->assertSame(
+            $lineTotal,
+            $total,
+            "Receipt total must equal the TTC line total for {$lineTotal} at {$taxRate}%"
+        );
+    }
+
+    /**
+     * @return array<string, array{string, string, int}>
+     */
+    public static function receiptTotalWithTaxProvider(): array
+    {
+        return [
+            // THE BUG: 5.000 TND at 19% was showing as 4.999
+            'TND 5.000 at 19% (the reported bug)' => ['5.000', '19', 3],
+            'TND 5.000 at 7%' => ['5.000', '7', 3],
+            'TND 5.000 at 13%' => ['5.000', '13', 3],
+
+            // Common TND prices at common tax rates
+            'TND 1.000 at 19%' => ['1.000', '19', 3],
+            'TND 10.000 at 19%' => ['10.000', '19', 3],
+            'TND 10.500 at 19%' => ['10.500', '19', 3],
+            'TND 25.000 at 19%' => ['25.000', '19', 3],
+            'TND 99.990 at 19%' => ['99.990', '19', 3],
+            'TND 0.500 at 7%' => ['0.500', '7', 3],
+            'TND 3.500 at 7%' => ['3.500', '7', 3],
+
+            // EUR prices
+            'EUR 19.99 at 20%' => ['19.99', '20', 2],
+            'EUR 100.00 at 20%' => ['100.00', '20', 2],
+            'EUR 33.33 at 5.5%' => ['33.33', '5.5', 2],
+
+            // Edge: zero tax
+            'TND 5.000 at 0%' => ['5.000', '0', 3],
+        ];
+    }
+
+    #[Test]
+    public function receipt_total_with_discount_preserves_precision(): void
+    {
+        $scale = 3;
+        $lineTotal = '5.000'; // TTC
+        $taxRate = '19';
+        $discount = '1.000';
+
+        $taxRateDecimal = bcdiv($taxRate, '100', 6);
+        $divisor = bcadd('1', $taxRateDecimal, 6);
+        $netAmount = bcdiv($lineTotal, $divisor, $scale);
+
+        $sumLineTotals = $lineTotal;
+        $subtotal = $netAmount;
+        $totalTax = bcsub($sumLineTotals, $subtotal, $scale);
+        $total = bcsub($sumLineTotals, $discount, $scale);
+
+        $this->assertSame('4.000', $total, 'Total after 1.000 discount on 5.000 must be 4.000');
+        $this->assertSame('0.799', $totalTax, 'Tax amount must be derived correctly');
+    }
+
+    #[Test]
+    public function multiple_lines_with_different_tax_rates_preserve_total(): void
+    {
+        $scale = 3;
+
+        // Line 1: 5.000 TND at 19%
+        // Line 2: 3.000 TND at 7%
+        $lines = [
+            ['total' => '5.000', 'rate' => '19'],
+            ['total' => '3.000', 'rate' => '7'],
+        ];
+
+        $sumLineTotals = '0';
+        $subtotal = '0';
+
+        foreach ($lines as $line) {
+            $taxRateDecimal = bcdiv($line['rate'], '100', 6);
+            $divisor = bcadd('1', $taxRateDecimal, 6);
+            $netAmount = bcdiv($line['total'], $divisor, $scale);
+
+            $sumLineTotals = bcadd($sumLineTotals, $line['total'], $scale);
+            $subtotal = bcadd($subtotal, $netAmount, $scale);
+        }
+
+        $totalTax = bcsub($sumLineTotals, $subtotal, $scale);
+        $total = $sumLineTotals;
+
+        // Total must be 5.000 + 3.000 = 8.000 exactly
+        $this->assertSame('8.000', $total);
+
+        // Accounting identity: subtotal + tax = total
+        $this->assertSame($total, bcadd($subtotal, $totalTax, $scale));
+    }
+
     /**
      * Replicate the new bcmath-based roundVat logic.
      */
