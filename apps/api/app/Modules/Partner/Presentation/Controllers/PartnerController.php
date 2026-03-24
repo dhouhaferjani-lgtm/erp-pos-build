@@ -8,6 +8,9 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Application\DTOs\PartnerData;
 use App\Modules\Partner\Domain\Enums\PartnerType;
+use App\Modules\Partner\Domain\Events\PartnerCreated;
+use App\Modules\Partner\Domain\Events\PartnerDeleted;
+use App\Modules\Partner\Domain\Events\PartnerUpdated;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Partner\Domain\Services\TaxIdValidationService;
 use App\Modules\Partner\Presentation\Requests\CreatePartnerRequest;
@@ -173,6 +176,17 @@ class PartnerController extends Controller
             ...$validated,
         ]);
 
+        event(new PartnerCreated(
+            partnerId: $partner->id,
+            tenantId: $tenantId,
+            companyId: $companyId,
+            name: $partner->name,
+            type: $partner->type->value,
+            email: $partner->email,
+            phone: $partner->phone,
+            createdAt: $partner->created_at->toIso8601String(),
+        ));
+
         return response()->json([
             'data' => PartnerData::fromModel($partner),
             'meta' => [
@@ -210,6 +224,19 @@ class PartnerController extends Controller
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
         $partnerModel->update($validated);
+
+        $changes = $partnerModel->getChanges();
+        unset($changes['updated_at']);
+
+        if ($changes !== []) {
+            event(new PartnerUpdated(
+                partnerId: $partnerModel->id,
+                tenantId: $partnerModel->tenant_id,
+                companyId: $partnerModel->company_id,
+                changes: $changes,
+                updatedAt: $partnerModel->updated_at->toIso8601String(),
+            ));
+        }
 
         /** @var Partner $freshPartner */
         $freshPartner = $partnerModel->fresh();
@@ -249,6 +276,13 @@ class PartnerController extends Controller
         }
 
         $partnerModel->delete();
+
+        event(new PartnerDeleted(
+            partnerId: $partnerModel->id,
+            tenantId: $partnerModel->tenant_id,
+            companyId: $partnerModel->company_id,
+            deletedAt: $partnerModel->deleted_at->toIso8601String(),
+        ));
 
         return response()->json(null, 204);
     }

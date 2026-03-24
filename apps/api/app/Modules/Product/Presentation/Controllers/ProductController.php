@@ -14,6 +14,9 @@ use App\Modules\Inventory\Application\DTOs\StockLevelData;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Application\DTOs\ProductData;
 use App\Modules\Product\Domain\Enums\ProductType;
+use App\Modules\Product\Domain\Events\ProductCreated;
+use App\Modules\Product\Domain\Events\ProductDeleted;
+use App\Modules\Product\Domain\Events\ProductUpdated;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Product\Presentation\Requests\CreateProductRequest;
 use App\Modules\Product\Presentation\Requests\UpdateProductRequest;
@@ -274,6 +277,17 @@ class ProductController extends Controller
             ...$validated,
         ]);
 
+        event(new ProductCreated(
+            productId: $product->id,
+            tenantId: $tenantId,
+            companyId: $companyId,
+            name: $product->name,
+            sku: $product->sku ?? '',
+            type: $product->type->value,
+            salePrice: (string) $product->sale_price,
+            createdAt: $product->created_at?->toIso8601String(),
+        ));
+
         // Create parapharmacy metadata if provided AND tenant is Parapharmacy vertical
         if ($parapharmacyMetadata !== null && is_array($parapharmacyMetadata) && $company->tenant->vertical === Vertical::Parapharmacy) {
             $product->parapharmacyMetadata()->create($parapharmacyMetadata);
@@ -383,6 +397,14 @@ class ProductController extends Controller
         // Update product core fields
         $productModel->update($validated);
 
+        event(new ProductUpdated(
+            productId: $productModel->id,
+            tenantId: $productModel->tenant_id,
+            companyId: $productModel->company_id,
+            changes: $productModel->getChanges(),
+            updatedAt: $productModel->updated_at?->toIso8601String(),
+        ));
+
         // Update or create parapharmacy metadata if provided AND tenant is Parapharmacy vertical
         if ($parapharmacyMetadata !== null && is_array($parapharmacyMetadata) && $company->tenant->vertical === Vertical::Parapharmacy) {
             $productModel->parapharmacyMetadata()->updateOrCreate(
@@ -487,6 +509,13 @@ class ProductController extends Controller
         }
 
         $productModel->delete();
+
+        event(new ProductDeleted(
+            productId: $productModel->id,
+            tenantId: $productModel->tenant_id,
+            companyId: $productModel->company_id,
+            deletedAt: now()->toIso8601String(),
+        ));
 
         return response()->json(null, 204);
     }

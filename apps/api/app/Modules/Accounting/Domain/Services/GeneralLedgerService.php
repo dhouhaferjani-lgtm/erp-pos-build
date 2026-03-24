@@ -8,6 +8,7 @@ use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Document\Domain\Document;
@@ -867,13 +868,35 @@ final class GeneralLedgerService
         $previousHash = $this->getPreviousHash($entry->company_id);
         $hash = $this->calculateHash($entry, $previousHash);
 
+        $postedAt = now();
+
         $entry->update([
             'status' => JournalEntryStatus::Posted,
             'fiscal_hash' => $hash,
             'previous_hash' => $previousHash,
-            'posted_at' => now(),
+            'posted_at' => $postedAt,
             'posted_by' => $user->id,
         ]);
+
+        // Calculate total debits and credits from lines for the event
+        $entry->load('lines');
+        $totalDebit = '0';
+        $totalCredit = '0';
+
+        foreach ($entry->lines as $line) {
+            $totalDebit = bcadd($totalDebit, $line->debit, $this->scale());
+            $totalCredit = bcadd($totalCredit, $line->credit, $this->scale());
+        }
+
+        event(new JournalEntryPosted(
+            entryId: $entry->id,
+            tenantId: $entry->tenant_id,
+            companyId: $entry->company_id,
+            entryNumber: $entry->entry_number,
+            totalDebit: $totalDebit,
+            totalCredit: $totalCredit,
+            postedAt: $postedAt->toIso8601String(),
+        ));
     }
 
     /**

@@ -8,6 +8,8 @@ use App\Http\Controllers\Controller;
 use App\Modules\Accounting\Application\DTOs\AccountData;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\Accounting\Domain\Events\AccountCreated;
+use App\Modules\Accounting\Domain\Events\AccountUpdated;
 use App\Modules\Accounting\Presentation\Requests\CreateAccountRequest;
 use App\Modules\Accounting\Presentation\Requests\UpdateAccountRequest;
 use App\Modules\Company\Services\CompanyContext;
@@ -105,17 +107,29 @@ class AccountController extends Controller
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
 
+        $accountType = AccountType::from((string) $validated['type']);
+
         $account = Account::create([
             'tenant_id' => $tenantId,
             'company_id' => $companyId,
             'code' => $validated['code'],
             'name' => $validated['name'],
-            'type' => AccountType::from((string) $validated['type']),
+            'type' => $accountType,
             'description' => $validated['description'] ?? null,
             'parent_id' => $validated['parent_id'] ?? null,
             'is_active' => $validated['is_active'] ?? true,
             'is_system' => false,
         ]);
+
+        event(new AccountCreated(
+            accountId: $account->id,
+            tenantId: $tenantId,
+            companyId: $companyId,
+            code: $validated['code'],
+            name: $validated['name'],
+            type: $accountType->value,
+            createdAt: $account->created_at->toIso8601String(),
+        ));
 
         return response()->json([
             'data' => AccountData::fromModel($account),
@@ -165,6 +179,14 @@ class AccountController extends Controller
 
         /** @var Account $freshAccount */
         $freshAccount = $account->fresh();
+
+        event(new AccountUpdated(
+            accountId: $freshAccount->id,
+            tenantId: $tenantId,
+            companyId: $companyId,
+            changes: $validated,
+            updatedAt: $freshAccount->updated_at->toIso8601String(),
+        ));
 
         return response()->json([
             'data' => AccountData::fromModel($freshAccount),

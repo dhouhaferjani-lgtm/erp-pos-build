@@ -7,6 +7,7 @@ namespace App\Modules\Accounting\Application\Services;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
+use App\Modules\Accounting\Domain\Events\OpeningBalancePosted;
 use App\Modules\Accounting\Domain\Enums\OpeningImportRowStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
@@ -213,7 +214,7 @@ class AccountingOpeningService
 
         $company = Company::findOrFail($batch->company_id);
 
-        return DB::transaction(function () use ($batch, $validRows, $company, $userId): JournalEntry {
+        $entry = DB::transaction(function () use ($batch, $validRows, $company, $userId): JournalEntry {
             $entryNumber = $this->generateEntryNumber($company->id);
 
             // Create historical journal entry
@@ -294,6 +295,29 @@ class AccountingOpeningService
 
             return $entry->load('lines');
         });
+
+        // Dispatch event after transaction succeeds
+        $totalDebit = '0';
+        $totalCredit = '0';
+
+        foreach ($entry->lines as $line) {
+            $totalDebit = bcadd($totalDebit, $line->debit, $this->scale());
+            $totalCredit = bcadd($totalCredit, $line->credit, $this->scale());
+        }
+
+        // Total amount is the greater of debit/credit (they should be equal)
+        $totalAmount = bccomp($totalDebit, $totalCredit, $this->scale()) >= 0 ? $totalDebit : $totalCredit;
+
+        event(new OpeningBalancePosted(
+            batchId: $batch->id,
+            tenantId: $company->tenant_id,
+            companyId: $company->id,
+            entryCount: $validRows->count(),
+            totalAmount: $totalAmount,
+            postedAt: now()->toIso8601String(),
+        ));
+
+        return $entry;
     }
 
     /**
