@@ -161,6 +161,7 @@ final class VerifyPosChainCommand extends Command
     {
         $count = Receipt::where('terminal_id', $terminal->id)
             ->where('is_voided', false)
+            ->where('is_training', false)
             ->count();
 
         if ($count === 0) {
@@ -192,6 +193,7 @@ final class VerifyPosChainCommand extends Command
     {
         $receipts = Receipt::where('terminal_id', $terminal->id)
             ->where('is_voided', false)
+            ->where('is_training', false)
             ->orderBy('chain_sequence')
             ->get();
 

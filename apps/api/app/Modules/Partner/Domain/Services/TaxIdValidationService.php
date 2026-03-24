@@ -51,7 +51,7 @@ final class TaxIdValidationService
         for ($i = 0; $i < 14; $i++) {
             $digit = (int) $siret[$i];
 
-            if ($i % 2 === 1) {
+            if ($i % 2 === 0) {
                 $digit *= 2;
                 if ($digit > 9) {
                     $digit -= 9;

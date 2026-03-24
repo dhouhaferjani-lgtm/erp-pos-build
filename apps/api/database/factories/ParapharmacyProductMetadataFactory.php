@@ -24,13 +24,6 @@ class ParapharmacyProductMetadataFactory extends Factory
             'product_id' => Product::factory(),
             'category' => fake()->randomElement(ParapharmacyCategory::cases()),
             'dosage_form' => fake()->randomElement(DosageForm::cases()),
-            'active_ingredients' => [
-                [
-                    'name' => fake()->word(),
-                    'concentration' => fake()->numberBetween(50, 1000).'mg',
-                ],
-            ],
-            'key_components' => [fake()->word(), fake()->word()],
             'usage_instructions' => fake()->sentence(10),
             'warnings' => fake()->sentence(8),
             'contraindications' => fake()->optional()->sentence(8),
@@ -38,11 +31,6 @@ class ParapharmacyProductMetadataFactory extends Factory
             'age_restriction' => fake()->optional()->randomElement(AgeRestriction::cases()),
             'requires_consultation' => fake()->boolean(30),
             'regulatory_code' => fake()->optional()->regexify('[A-Z]{2}[0-9]{6}'),
-            'health_claims' => fake()->optional()->words(3),
-            'certifications' => fake()->optional()->randomElements([
-                ['type' => 'ISO', 'code' => '9001'],
-                ['type' => 'CE', 'code' => 'CE-12345'],
-            ], 1),
             'storage_requirements' => fake()->optional()->randomElement([
                 'Store in cool, dry place',
                 'Refrigerate after opening',

@@ -315,13 +315,16 @@ final class ReportController extends Controller
 
         $chainLength = Receipt::where('terminal_id', $terminal->id)
             ->where('is_voided', false)
+            ->where('is_training', false)
             ->count();
         $firstReceipt = Receipt::where('terminal_id', $terminal->id)
             ->where('is_voided', false)
+            ->where('is_training', false)
             ->orderBy('chain_sequence')
             ->first();
         $lastReceipt = Receipt::where('terminal_id', $terminal->id)
             ->where('is_voided', false)
+            ->where('is_training', false)
             ->orderByDesc('chain_sequence')
             ->first();
 
@@ -337,6 +340,7 @@ final class ReportController extends Controller
         if (! $isValid) {
             $allReceipts = Receipt::where('terminal_id', $terminal->id)
                 ->where('is_voided', false)
+                ->where('is_training', false)
                 ->orderBy('chain_sequence')
                 ->get();
 
