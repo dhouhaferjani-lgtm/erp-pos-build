@@ -41,6 +41,10 @@
   },
   "company": {
     "title": "Company Settings",
+    "tabs": {
+      "general": "General",
+      "receipt": "Receipt"
+    },
     "sections": {
       "information": "Company Information",
       "contact": "Contact Information",
@@ -80,6 +84,50 @@
       "unsavedChanges": "You have unsaved changes",
       "uploadLogo": "Click to upload company logo",
       "logoFormats": "PNG, JPG, SVG up to 2MB"
+    }
+  },
+  "receipt": {
+    "title": "Receipt Settings",
+    "sections": {
+      "customText": "Custom Text",
+      "visibility": "Section Visibility",
+      "visibilityDescription": "Choose which sections to display on printed receipts.",
+      "printing": "Printing"
+    },
+    "fields": {
+      "header": "Receipt Header",
+      "footer": "Receipt Footer",
+      "thankYou": "Thank-You Message",
+      "showVatBreakdown": "Show VAT Breakdown",
+      "showFiscalInfo": "Show Fiscal Information",
+      "showPaymentDetails": "Show Payment Details",
+      "showCustomer": "Show Customer Name",
+      "autoPrint": "Auto-Print Receipts"
+    },
+    "descriptions": {
+      "showVatBreakdown": "Display a detailed VAT breakdown by tax rate on the receipt.",
+      "showFiscalInfo": "Display fiscal certification and hash chain information.",
+      "showPaymentDetails": "Display the payment method and amount tendered.",
+      "showCustomer": "Display the customer name when attached to the transaction.",
+      "autoPrint": "Automatically print a receipt after each completed transaction."
+    },
+    "placeholders": {
+      "header": "e.g. Welcome to our store!",
+      "footer": "e.g. Returns accepted within 30 days.",
+      "thankYou": "e.g. Thank you for your purchase!"
+    },
+    "help": {
+      "header": "Displayed at the top of the receipt, below the logo.",
+      "footer": "Displayed at the bottom of the receipt.",
+      "thankYou": "Short message printed after the transaction total."
+    },
+    "legal": {
+      "requiredByLaw": "Required by law in your country",
+      "requiredByNF525": "Required by NF525 certification"
+    },
+    "messages": {
+      "saved": "Receipt settings saved successfully.",
+      "loadError": "Error loading receipt settings. Please try again."
     }
   },
   "appInfo": {

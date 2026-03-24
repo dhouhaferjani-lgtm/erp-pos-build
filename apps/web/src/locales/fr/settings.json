@@ -41,6 +41,10 @@
   },
   "company": {
     "title": "Paramètres de l'entreprise",
+    "tabs": {
+      "general": "Général",
+      "receipt": "Ticket"
+    },
     "sections": {
       "information": "Informations de l'entreprise",
       "contact": "Coordonnées",
@@ -80,6 +84,50 @@
       "unsavedChanges": "Vous avez des modifications non enregistrées",
       "uploadLogo": "Cliquez pour télécharger le logo",
       "logoFormats": "PNG, JPG, SVG jusqu'à 2 Mo"
+    }
+  },
+  "receipt": {
+    "title": "Paramètres du ticket",
+    "sections": {
+      "customText": "Texte personnalisé",
+      "visibility": "Visibilité des sections",
+      "visibilityDescription": "Choisissez les sections à afficher sur les tickets imprimés.",
+      "printing": "Impression"
+    },
+    "fields": {
+      "header": "En-tête du ticket",
+      "footer": "Pied de page du ticket",
+      "thankYou": "Message de remerciement",
+      "showVatBreakdown": "Afficher le détail de la TVA",
+      "showFiscalInfo": "Afficher les informations fiscales",
+      "showPaymentDetails": "Afficher les détails du paiement",
+      "showCustomer": "Afficher le nom du client",
+      "autoPrint": "Impression automatique"
+    },
+    "descriptions": {
+      "showVatBreakdown": "Afficher le détail de la TVA par taux sur le ticket.",
+      "showFiscalInfo": "Afficher les informations de certification fiscale et de chaîne de hachage.",
+      "showPaymentDetails": "Afficher le mode de paiement et le montant remis.",
+      "showCustomer": "Afficher le nom du client lorsqu'il est associé à la transaction.",
+      "autoPrint": "Imprimer automatiquement un ticket après chaque transaction terminée."
+    },
+    "placeholders": {
+      "header": "ex: Bienvenue dans notre magasin !",
+      "footer": "ex: Retours acceptés sous 30 jours.",
+      "thankYou": "ex: Merci pour votre achat !"
+    },
+    "help": {
+      "header": "Affiché en haut du ticket, sous le logo.",
+      "footer": "Affiché en bas du ticket.",
+      "thankYou": "Court message imprimé après le total de la transaction."
+    },
+    "legal": {
+      "requiredByLaw": "Requis par la loi dans votre pays",
+      "requiredByNF525": "Requis par la certification NF525"
+    },
+    "messages": {
+      "saved": "Paramètres du ticket enregistrés avec succès.",
+      "loadError": "Erreur lors du chargement des paramètres du ticket. Veuillez réessayer."
     }
   },
   "appInfo": {

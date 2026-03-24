@@ -14,9 +14,11 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
+  Receipt,
 } from 'lucide-react'
 import { api, getErrorMessage } from '../../lib/api'
 import { countries } from '../../lib/countries'
+import { ReceiptSettingsTab } from './components/ReceiptSettingsTab'
 
 interface CompanySettings {
   name: string
@@ -46,10 +48,13 @@ interface CompanySettingsResponse {
   data: CompanySettings
 }
 
+type CompanyTab = 'general' | 'receipt'
+
 export function CompanyPage() {
   const { t } = useTranslation(['settings', 'common'])
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [activeTab, setActiveTab] = useState<CompanyTab>('general')
   const [notification, setNotification] = useState<{
     type: 'success' | 'error'
     message: string
@@ -244,6 +249,40 @@ export function CompanyPage() {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex gap-6" aria-label={t('settings:company.title')}>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('general') }}
+            className={`flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'general'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+            }`}
+          >
+            <Building2 className="h-4 w-4" />
+            {t('settings:company.tabs.general')}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('receipt') }}
+            className={`flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'receipt'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+            }`}
+          >
+            <Receipt className="h-4 w-4" />
+            {t('settings:company.tabs.receipt')}
+          </button>
+        </nav>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'receipt' ? (
+        <ReceiptSettingsTab />
+      ) : (
       <form onSubmit={handleSubmit}>
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Company Information */}
@@ -594,6 +633,7 @@ export function CompanyPage() {
           </button>
         </div>
       </form>
+      )}
     </div>
   )
 }
