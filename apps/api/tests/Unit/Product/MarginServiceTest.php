@@ -6,15 +6,18 @@ namespace Tests\Unit\Product;
 
 use App\Modules\Product\Application\Services\MarginService;
 use Tests\TestCase;
+use Tests\Traits\WithCurrencyScale;
 
 class MarginServiceTest extends TestCase
 {
+    use WithCurrencyScale;
+
     private MarginService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new MarginService;
+        $this->service = new MarginService($this->mockCurrencyScale(2));
     }
 
     public function test_calculate_margin_with_valid_inputs(): void

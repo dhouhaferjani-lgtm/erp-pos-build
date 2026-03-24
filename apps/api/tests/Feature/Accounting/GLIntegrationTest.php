@@ -146,18 +146,18 @@ class GLIntegrationTest extends TestCase
 
         // Accounts Receivable should be debited (asset increases)
         $receivableLine = $lines->firstWhere('account_id', $this->receivableAccount->id);
-        $this->assertEquals('120.00', $receivableLine->debit);
-        $this->assertEquals('0.00', $receivableLine->credit);
+        $this->assertEquals('120.000', $receivableLine->debit);
+        $this->assertEquals('0.000', $receivableLine->credit);
 
         // Revenue should be credited (revenue increases)
         $revenueLine = $lines->firstWhere('account_id', $this->revenueAccount->id);
-        $this->assertEquals('0.00', $revenueLine->debit);
-        $this->assertEquals('100.00', $revenueLine->credit);
+        $this->assertEquals('0.000', $revenueLine->debit);
+        $this->assertEquals('100.000', $revenueLine->credit);
 
         // Tax Payable should be credited (liability increases)
         $taxLine = $lines->firstWhere('account_id', $this->taxAccount->id);
-        $this->assertEquals('0.00', $taxLine->debit);
-        $this->assertEquals('20.00', $taxLine->credit);
+        $this->assertEquals('0.000', $taxLine->debit);
+        $this->assertEquals('20.000', $taxLine->credit);
     }
 
     public function test_invoice_journal_entry_is_balanced(): void
@@ -194,13 +194,13 @@ class GLIntegrationTest extends TestCase
 
         // For credit notes, receivable should be credited (reduces receivable)
         $receivableLine = $lines->firstWhere('account_id', $this->receivableAccount->id);
-        $this->assertEquals('0.00', $receivableLine->debit);
-        $this->assertEquals('60.00', $receivableLine->credit);
+        $this->assertEquals('0.000', $receivableLine->debit);
+        $this->assertEquals('60.000', $receivableLine->credit);
 
         // Revenue should be debited (reduces revenue)
         $revenueLine = $lines->firstWhere('account_id', $this->revenueAccount->id);
-        $this->assertEquals('50.00', $revenueLine->debit);
-        $this->assertEquals('0.00', $revenueLine->credit);
+        $this->assertEquals('50.000', $revenueLine->debit);
+        $this->assertEquals('0.000', $revenueLine->credit);
     }
 
     public function test_cash_payment_creates_journal_entry(): void
@@ -220,13 +220,13 @@ class GLIntegrationTest extends TestCase
 
         // Cash is debited (asset increases)
         $cashLine = $lines->firstWhere('account_id', $this->cashAccount->id);
-        $this->assertEquals('120.00', $cashLine->debit);
-        $this->assertEquals('0.00', $cashLine->credit);
+        $this->assertEquals('120.000', $cashLine->debit);
+        $this->assertEquals('0.000', $cashLine->credit);
 
         // Receivable is credited (asset decreases)
         $receivableLine = $lines->firstWhere('account_id', $this->receivableAccount->id);
-        $this->assertEquals('0.00', $receivableLine->debit);
-        $this->assertEquals('120.00', $receivableLine->credit);
+        $this->assertEquals('0.000', $receivableLine->debit);
+        $this->assertEquals('120.000', $receivableLine->credit);
     }
 
     public function test_journal_entry_has_draft_status_initially(): void
@@ -282,13 +282,13 @@ class GLIntegrationTest extends TestCase
 
         // Bank/Cash should be debited
         $cashLine = $journalEntry->lines->firstWhere('account_id', $this->cashAccount->id);
-        $this->assertEquals('500.00', $cashLine->debit);
-        $this->assertEquals('0.00', $cashLine->credit);
+        $this->assertEquals('500.000', $cashLine->debit);
+        $this->assertEquals('0.000', $cashLine->credit);
 
         // Customer Advances should be credited (with partner for subledger)
         $advanceLine = $journalEntry->lines->firstWhere('account_id', $advanceAccount->id);
-        $this->assertEquals('0.00', $advanceLine->debit);
-        $this->assertEquals('500.00', $advanceLine->credit);
+        $this->assertEquals('0.000', $advanceLine->debit);
+        $this->assertEquals('500.000', $advanceLine->credit);
         $this->assertEquals($this->partner->id, $advanceLine->partner_id);
     }
 
@@ -332,18 +332,18 @@ class GLIntegrationTest extends TestCase
 
         // Expense should be debited
         $expenseLine = $journalEntry->lines->firstWhere('account_id', $expenseAccount->id);
-        $this->assertEquals('100.00', $expenseLine->debit);
-        $this->assertEquals('0.00', $expenseLine->credit);
+        $this->assertEquals('100.000', $expenseLine->debit);
+        $this->assertEquals('0.000', $expenseLine->credit);
 
         // VAT Deductible should be debited
         $vatLine = $journalEntry->lines->firstWhere('account_id', $vatDeductibleAccount->id);
-        $this->assertEquals('19.00', $vatLine->debit);
-        $this->assertEquals('0.00', $vatLine->credit);
+        $this->assertEquals('19.000', $vatLine->debit);
+        $this->assertEquals('0.000', $vatLine->credit);
 
         // Accounts Payable should be credited (with partner for subledger)
         $payableLine = $journalEntry->lines->firstWhere('account_id', $payableAccount->id);
-        $this->assertEquals('0.00', $payableLine->debit);
-        $this->assertEquals('119.00', $payableLine->credit);
+        $this->assertEquals('0.000', $payableLine->debit);
+        $this->assertEquals('119.000', $payableLine->credit);
         $this->assertEquals($supplier->id, $payableLine->partner_id);
     }
 
@@ -375,14 +375,14 @@ class GLIntegrationTest extends TestCase
 
         // Accounts Payable should be debited (reduces liability, with partner for subledger)
         $payableLine = $journalEntry->lines->firstWhere('account_id', $payableAccount->id);
-        $this->assertEquals('500.00', $payableLine->debit);
-        $this->assertEquals('0.00', $payableLine->credit);
+        $this->assertEquals('500.000', $payableLine->debit);
+        $this->assertEquals('0.000', $payableLine->credit);
         $this->assertEquals($supplier->id, $payableLine->partner_id);
 
         // Bank/Cash should be credited
         $cashLine = $journalEntry->lines->firstWhere('account_id', $this->cashAccount->id);
-        $this->assertEquals('0.00', $cashLine->debit);
-        $this->assertEquals('500.00', $cashLine->credit);
+        $this->assertEquals('0.000', $cashLine->debit);
+        $this->assertEquals('500.000', $cashLine->credit);
     }
 
     public function test_invoice_entry_refreshes_partner_balance(): void

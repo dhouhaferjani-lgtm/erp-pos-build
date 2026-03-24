@@ -465,7 +465,7 @@ final class TierManagementServiceTest extends TestCase
             'current_balance' => 100.0,
             'lifetime_earned' => 500.0,
             'lifetime_redeemed' => 50.0,
-            'status' => 'ACTIVE',
+            'status' => 'active',
             'enrolled_at' => now(),
         ]);
 

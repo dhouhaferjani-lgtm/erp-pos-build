@@ -8,6 +8,7 @@ use App\Modules\Accounting\Application\Services\AccountingService;
 use App\Modules\Accounting\Application\Services\GeneralLedgerHashService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Exceptions\ImmutableJournalEntryException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
@@ -119,6 +120,7 @@ final class CompleteGLHashChainE2ETest extends TestCase
             'code' => '1100',
             'name' => 'Cash',
             'type' => AccountType::Asset,
+            'system_purpose' => SystemAccountPurpose::Bank,
         ]);
 
         $this->receivablesAccount = Account::create([
@@ -127,6 +129,7 @@ final class CompleteGLHashChainE2ETest extends TestCase
             'code' => '1200',
             'name' => 'Accounts Receivable',
             'type' => AccountType::Asset,
+            'system_purpose' => SystemAccountPurpose::CustomerReceivable,
         ]);
 
         $this->revenueAccount = Account::create([
@@ -135,6 +138,7 @@ final class CompleteGLHashChainE2ETest extends TestCase
             'code' => '4000',
             'name' => 'Sales Revenue',
             'type' => AccountType::Revenue,
+            'system_purpose' => SystemAccountPurpose::ProductRevenue,
         ]);
 
         $this->vatCollectedAccount = Account::create([
@@ -143,6 +147,17 @@ final class CompleteGLHashChainE2ETest extends TestCase
             'code' => '4450',
             'name' => 'VAT Collected',
             'type' => AccountType::Liability,
+            'system_purpose' => SystemAccountPurpose::VatCollected,
+        ]);
+
+        // Service revenue account (needed by AccountingService)
+        Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '4001',
+            'name' => 'Service Revenue',
+            'type' => AccountType::Revenue,
+            'system_purpose' => SystemAccountPurpose::ServiceRevenue,
         ]);
 
         // Inject services
@@ -291,6 +306,7 @@ final class CompleteGLHashChainE2ETest extends TestCase
             'code' => '1200',
             'name' => 'Accounts Receivable',
             'type' => AccountType::Asset,
+            'system_purpose' => SystemAccountPurpose::CustomerReceivable,
         ]);
 
         $revenueAccount2 = Account::create([
@@ -299,6 +315,7 @@ final class CompleteGLHashChainE2ETest extends TestCase
             'code' => '4000',
             'name' => 'Sales Revenue',
             'type' => AccountType::Revenue,
+            'system_purpose' => SystemAccountPurpose::ProductRevenue,
         ]);
 
         $vatAccount2 = Account::create([
@@ -307,6 +324,16 @@ final class CompleteGLHashChainE2ETest extends TestCase
             'code' => '4450',
             'name' => 'VAT Collected',
             'type' => AccountType::Liability,
+            'system_purpose' => SystemAccountPurpose::VatCollected,
+        ]);
+
+        Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $company2->id,
+            'code' => '4001',
+            'name' => 'Service Revenue',
+            'type' => AccountType::Revenue,
+            'system_purpose' => SystemAccountPurpose::ServiceRevenue,
         ]);
 
         // Create customer for company 2
@@ -366,7 +393,7 @@ final class CompleteGLHashChainE2ETest extends TestCase
             'document_number' => $documentNumber,
             'document_date' => now(),
             'subtotal' => $amount,
-            'total_tax' => bcmul($amount, '0.20', 2), // 20% VAT
+            'tax_amount' => bcmul($amount, '0.20', 2), // 20% VAT
             'total' => bcmul($amount, '1.20', 2),
             'status' => 'posted',
         ]);
@@ -378,10 +405,9 @@ final class CompleteGLHashChainE2ETest extends TestCase
             'quantity' => '1.00',
             'unit_price' => $amount,
             'tax_rate' => '20.00',
-            'subtotal' => $amount,
-            'tax_amount' => bcmul($amount, '0.20', 2),
-            'total' => bcmul($amount, '1.20', 2),
+            'line_total' => $amount,
             'line_order' => 1,
+            'line_number' => 1,
         ]);
 
         // Create GL entries (triggers hash chain logic)
@@ -400,7 +426,7 @@ final class CompleteGLHashChainE2ETest extends TestCase
             'document_number' => $documentNumber,
             'document_date' => now(),
             'subtotal' => $amount,
-            'total_tax' => bcmul($amount, '0.20', 2), // 20% VAT
+            'tax_amount' => bcmul($amount, '0.20', 2), // 20% VAT
             'total' => bcmul($amount, '1.20', 2),
             'status' => 'posted',
             'source_document_id' => $invoice->id,
@@ -413,10 +439,9 @@ final class CompleteGLHashChainE2ETest extends TestCase
             'quantity' => '1.00',
             'unit_price' => $amount,
             'tax_rate' => '20.00',
-            'subtotal' => $amount,
-            'tax_amount' => bcmul($amount, '0.20', 2),
-            'total' => bcmul($amount, '1.20', 2),
+            'line_total' => $amount,
             'line_order' => 1,
+            'line_number' => 1,
         ]);
 
         // Create GL entries (triggers hash chain logic)
@@ -452,10 +477,9 @@ final class CompleteGLHashChainE2ETest extends TestCase
             'quantity' => '1.00',
             'unit_price' => $amount,
             'tax_rate' => '20.00',
-            'subtotal' => $amount,
-            'tax_amount' => bcmul($amount, '0.20', 2),
-            'total' => bcmul($amount, '1.20', 2),
+            'line_total' => $amount,
             'line_order' => 1,
+            'line_number' => 1,
         ]);
 
         return $invoice->fresh('lines');

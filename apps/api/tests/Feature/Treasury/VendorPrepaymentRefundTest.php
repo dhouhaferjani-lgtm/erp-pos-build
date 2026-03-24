@@ -137,10 +137,10 @@ class VendorPrepaymentRefundTest extends TestCase
         );
 
         $this->assertEquals(PaymentType::Refund, $refund->payment_type);
-        $this->assertEquals('1000.00', $refund->amount);
+        $this->assertEquals('1000.000', $refund->amount);
 
         $po->refresh();
-        $this->assertEquals('1000.00', $po->balance_due);
+        $this->assertEquals('1000.000', $po->balance_due);
         $this->assertEquals(DocumentStatus::Confirmed, $po->status);
     }
 
@@ -158,10 +158,10 @@ class VendorPrepaymentRefundTest extends TestCase
             userId: $this->user->id,
         );
 
-        $this->assertEquals('400.00', $refund->amount);
+        $this->assertEquals('400.000', $refund->amount);
 
         $po->refresh();
-        $this->assertEquals('400.00', $po->balance_due);
+        $this->assertEquals('400.000', $po->balance_due);
         $this->assertEquals(DocumentStatus::Confirmed, $po->status);
     }
 
@@ -267,7 +267,7 @@ class VendorPrepaymentRefundTest extends TestCase
         $response->assertJsonPath('message', 'Prepayment refunded successfully');
 
         $po->refresh();
-        $this->assertEquals('1000.00', $po->balance_due);
+        $this->assertEquals('1000.000', $po->balance_due);
         $this->assertEquals(DocumentStatus::Confirmed, $po->status);
     }
 

@@ -291,8 +291,8 @@ class CreditNoteGLIntegrationTest extends TestCase
         // ASSERT: AR credit line (OPPOSITE of invoice debit)
         $arLine = $journalLines->where('account_id', $this->receivableAccount->id)->first();
         $this->assertNotNull($arLine, 'AR line should exist');
-        $this->assertEquals('0.00', $arLine->debit, 'AR should NOT be debited in credit note');
-        $this->assertEquals('1190.00', $arLine->credit, 'AR should be credited for total credit note amount (REVERSAL)');
+        $this->assertEquals('0.000', $arLine->debit, 'AR should NOT be debited in credit note');
+        $this->assertEquals('1190.000', $arLine->credit, 'AR should be credited for total credit note amount (REVERSAL)');
 
         // ASSERT: Revenue debit line (OPPOSITE of invoice credit)
         $revenueLines = $journalLines->where('account_id', $this->productRevenueAccount->id);
@@ -479,7 +479,7 @@ class CreditNoteGLIntegrationTest extends TestCase
 
         // AR should be credited for partial amount
         $arLine = $journalLines->where('account_id', $this->receivableAccount->id)->first();
-        $this->assertEquals('595.00', $arLine->credit, 'AR credit should match partial credit note total');
+        $this->assertEquals('595.000', $arLine->credit, 'AR credit should match partial credit note total');
 
         // Revenue should be debited for partial amount
         $revenueLines = $journalLines->where('account_id', $this->productRevenueAccount->id);

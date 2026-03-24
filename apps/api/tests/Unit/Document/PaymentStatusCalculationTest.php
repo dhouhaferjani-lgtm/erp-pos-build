@@ -26,7 +26,7 @@ class PaymentStatusCalculationTest extends TestCase
             'balance_due' => '100.00',
         ]);
 
-        $this->assertEquals('100.00', $invoice->getOutstandingAmount());
+        $this->assertEquals('100.000', $invoice->getOutstandingAmount());
         $this->assertEquals(PaymentStatus::Unpaid, $invoice->getPaymentStatus());
     }
 
@@ -50,7 +50,7 @@ class PaymentStatusCalculationTest extends TestCase
         // Refresh to get updated allocations
         $invoice = $invoice->fresh();
 
-        $this->assertEquals('40.00', $invoice->getOutstandingAmount());
+        $this->assertEquals('40.000', $invoice->getOutstandingAmount());
         $this->assertEquals(PaymentStatus::PartiallyPaid, $invoice->getPaymentStatus());
     }
 
@@ -73,7 +73,7 @@ class PaymentStatusCalculationTest extends TestCase
 
         $invoice = $invoice->fresh();
 
-        $this->assertEquals('0.00', $invoice->getOutstandingAmount());
+        $this->assertEquals('0.000', $invoice->getOutstandingAmount());
         $this->assertEquals(PaymentStatus::Paid, $invoice->getPaymentStatus());
     }
 
@@ -96,7 +96,7 @@ class PaymentStatusCalculationTest extends TestCase
 
         $invoice = $invoice->fresh();
 
-        $this->assertEquals('-50.00', $invoice->getOutstandingAmount());
+        $this->assertEquals('-50.000', $invoice->getOutstandingAmount());
         $this->assertEquals(PaymentStatus::Overpaid, $invoice->getPaymentStatus());
     }
 
@@ -133,7 +133,7 @@ class PaymentStatusCalculationTest extends TestCase
 
         $invoice = $invoice->fresh();
 
-        $this->assertEquals('50.00', $invoice->getOutstandingAmount());
+        $this->assertEquals('50.000', $invoice->getOutstandingAmount());
         $this->assertEquals(PaymentStatus::PartiallyPaid, $invoice->getPaymentStatus());
     }
 
@@ -145,7 +145,7 @@ class PaymentStatusCalculationTest extends TestCase
             'total' => '100.00',
         ]);
 
-        $this->assertEquals('0.00', $quote->getOutstandingAmount());
+        $this->assertEquals('0', $quote->getOutstandingAmount());
         $this->assertEquals(PaymentStatus::Unpaid, $quote->getPaymentStatus());
     }
 
@@ -158,7 +158,7 @@ class PaymentStatusCalculationTest extends TestCase
             'balance_due' => '0.00',
         ]);
 
-        $this->assertEquals('0.00', $invoice->getOutstandingAmount());
+        $this->assertEquals('0.000', $invoice->getOutstandingAmount());
         $this->assertEquals(PaymentStatus::Paid, $invoice->getPaymentStatus());
     }
 
@@ -186,7 +186,7 @@ class PaymentStatusCalculationTest extends TestCase
         $allocation->delete();
 
         $invoice = $invoice->fresh();
-        $this->assertEquals('100.00', $invoice->getOutstandingAmount());
+        $this->assertEquals('100.000', $invoice->getOutstandingAmount());
         $this->assertEquals(PaymentStatus::Unpaid, $invoice->getPaymentStatus());
     }
 }

@@ -13,10 +13,12 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Tests\Traits\WithCurrencyScale;
 
 class WeightedAverageCostServiceTest extends TestCase
 {
     use RefreshDatabase;
+    use WithCurrencyScale;
 
     private WeightedAverageCostService $service;
 
@@ -33,7 +35,7 @@ class WeightedAverageCostServiceTest extends TestCase
         parent::setUp();
 
         $marginService = $this->app->make(MarginService::class);
-        $this->service = new WeightedAverageCostService($marginService);
+        $this->service = new WeightedAverageCostService($marginService, $this->mockCurrencyScale());
 
         // Create test entities
         $this->tenant = Tenant::factory()->create();

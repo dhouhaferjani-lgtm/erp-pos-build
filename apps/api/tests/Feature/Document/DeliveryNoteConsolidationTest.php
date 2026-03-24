@@ -187,7 +187,7 @@ class DeliveryNoteConsolidationTest extends TestCase
         // Part A: 2 * 100 = 200
         // Part B: 1 * 300 = 300
         // Subtotal: 500
-        $this->assertEquals('500.00', $response->json('data.subtotal'));
+        $this->assertEquals('500.000', $response->json('data.subtotal'));
     }
 
     public function test_delivery_notes_are_marked_as_invoiced_after_consolidation(): void

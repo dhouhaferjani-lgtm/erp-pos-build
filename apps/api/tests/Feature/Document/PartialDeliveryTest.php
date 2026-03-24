@@ -268,9 +268,9 @@ class PartialDeliveryTest extends TestCase
             $line->id => '3.00',
         ]]);
 
-        $this->assertEquals('300.00', $delivery->subtotal);
-        $this->assertEquals('57.00', $delivery->tax_amount);
-        $this->assertEquals('357.00', $delivery->total);
+        $this->assertEquals('300.000', $delivery->subtotal);
+        $this->assertEquals('57.000', $delivery->tax_amount);
+        $this->assertEquals('357.000', $delivery->total);
     }
 
     public function test_delivery_notes_array_tracks_all_partial_deliveries(): void

@@ -249,21 +249,21 @@ class DocumentGLIntegrationTest extends TestCase
         // AR line - Debit
         $arLine = $entry->lines->where('account_id', $this->receivableAccount->id)->first();
         $this->assertNotNull($arLine);
-        $this->assertEquals('1200.00', $arLine->debit);
-        $this->assertEquals('0.00', $arLine->credit);
+        $this->assertEquals('1200.000', $arLine->debit);
+        $this->assertEquals('0.000', $arLine->credit);
         $this->assertEquals($this->customer->id, $arLine->partner_id);
 
         // Revenue line - Credit
         $revenueLine = $entry->lines->where('account_id', $this->revenueAccount->id)->first();
         $this->assertNotNull($revenueLine);
-        $this->assertEquals('0.00', $revenueLine->debit);
-        $this->assertEquals('1000.00', $revenueLine->credit);
+        $this->assertEquals('0.000', $revenueLine->debit);
+        $this->assertEquals('1000.000', $revenueLine->credit);
 
         // VAT line - Credit
         $vatLine = $entry->lines->where('account_id', $this->vatAccount->id)->first();
         $this->assertNotNull($vatLine);
-        $this->assertEquals('0.00', $vatLine->debit);
-        $this->assertEquals('200.00', $vatLine->credit);
+        $this->assertEquals('0.000', $vatLine->debit);
+        $this->assertEquals('200.000', $vatLine->credit);
     }
 
     public function test_credit_note_creates_reversal_entries(): void
@@ -282,20 +282,20 @@ class DocumentGLIntegrationTest extends TestCase
         // Revenue line - Debit (reversal)
         $revenueLine = $entry->lines->where('account_id', $this->revenueAccount->id)->first();
         $this->assertNotNull($revenueLine);
-        $this->assertEquals('500.00', $revenueLine->debit);
-        $this->assertEquals('0.00', $revenueLine->credit);
+        $this->assertEquals('500.000', $revenueLine->debit);
+        $this->assertEquals('0.000', $revenueLine->credit);
 
         // VAT line - Debit (reversal)
         $vatLine = $entry->lines->where('account_id', $this->vatAccount->id)->first();
         $this->assertNotNull($vatLine);
-        $this->assertEquals('100.00', $vatLine->debit);
-        $this->assertEquals('0.00', $vatLine->credit);
+        $this->assertEquals('100.000', $vatLine->debit);
+        $this->assertEquals('0.000', $vatLine->credit);
 
         // AR line - Credit (reduces receivable)
         $arLine = $entry->lines->where('account_id', $this->receivableAccount->id)->first();
         $this->assertNotNull($arLine);
-        $this->assertEquals('0.00', $arLine->debit);
-        $this->assertEquals('600.00', $arLine->credit);
+        $this->assertEquals('0.000', $arLine->debit);
+        $this->assertEquals('600.000', $arLine->credit);
         $this->assertEquals($this->customer->id, $arLine->partner_id);
     }
 
@@ -399,11 +399,11 @@ class DocumentGLIntegrationTest extends TestCase
 
         // Entry 1 AR should be 1200
         $ar1 = $entry1->lines->where('account_id', $this->receivableAccount->id)->first();
-        $this->assertEquals('1200.00', $ar1->debit);
+        $this->assertEquals('1200.000', $ar1->debit);
 
         // Entry 2 AR should be 2400
         $ar2 = $entry2->lines->where('account_id', $this->receivableAccount->id)->first();
-        $this->assertEquals('2400.00', $ar2->debit);
+        $this->assertEquals('2400.000', $ar2->debit);
     }
 
     public function test_gl_entry_can_be_posted(): void
@@ -462,12 +462,12 @@ class DocumentGLIntegrationTest extends TestCase
 
         // Invoice AR line
         $invoiceAr = $invoiceEntry->lines->where('account_id', $this->receivableAccount->id)->first();
-        $this->assertEquals('1200.00', $invoiceAr->debit);
-        $this->assertEquals('0.00', $invoiceAr->credit);
+        $this->assertEquals('1200.000', $invoiceAr->debit);
+        $this->assertEquals('0.000', $invoiceAr->credit);
 
         // Credit note AR line - opposite direction
         $creditAr = $creditEntry->lines->where('account_id', $this->receivableAccount->id)->first();
-        $this->assertEquals('0.00', $creditAr->debit);
-        $this->assertEquals('600.00', $creditAr->credit);
+        $this->assertEquals('0.000', $creditAr->debit);
+        $this->assertEquals('600.000', $creditAr->credit);
     }
 }

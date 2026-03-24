@@ -88,7 +88,7 @@ class PinDataEndpointTest extends TestCase
         UserCompanyMembership::create([
             'user_id' => $this->cashierUser->id,
             'company_id' => $this->company->id,
-            'role' => 'member',
+            'role' => 'cashier',
         ]);
     }
 

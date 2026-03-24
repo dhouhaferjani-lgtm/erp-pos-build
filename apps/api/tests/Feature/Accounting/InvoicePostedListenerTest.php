@@ -325,20 +325,20 @@ class InvoicePostedListenerTest extends TestCase
         // Assert: AR line exists with debit
         $arLine = $lines->where('account_id', $this->receivableAccount->id)->first();
         $this->assertNotNull($arLine, 'AR line should exist');
-        $this->assertEquals('600.00', $arLine->debit, 'AR should be debited for total invoice amount');
-        $this->assertEquals('0.00', $arLine->credit);
+        $this->assertEquals('600.000', $arLine->debit, 'AR should be debited for total invoice amount');
+        $this->assertEquals('0.000', $arLine->credit);
 
         // Assert: Revenue line exists with credit
         $revenueLine = $lines->where('account_id', $this->productRevenueAccount->id)->first();
         $this->assertNotNull($revenueLine, 'Revenue line should exist');
-        $this->assertEquals('0.00', $revenueLine->debit);
-        $this->assertEquals('500.00', $revenueLine->credit);
+        $this->assertEquals('0.000', $revenueLine->debit);
+        $this->assertEquals('500.000', $revenueLine->credit);
 
         // Assert: VAT line exists with credit
         $vatLine = $lines->where('account_id', $this->vatCollectedAccount->id)->first();
         $this->assertNotNull($vatLine, 'VAT line should exist');
-        $this->assertEquals('0.00', $vatLine->debit);
-        $this->assertEquals('100.00', $vatLine->credit);
+        $this->assertEquals('0.000', $vatLine->debit);
+        $this->assertEquals('100.000', $vatLine->credit);
     }
 
     /**
@@ -449,13 +449,13 @@ class InvoicePostedListenerTest extends TestCase
         $ar1 = JournalLine::where('journal_entry_id', $entry1->id)
             ->where('account_id', $this->receivableAccount->id)
             ->first();
-        $this->assertEquals('120.00', $ar1->debit, 'Invoice 1 AR should be €100 + €20 VAT = €120');
+        $this->assertEquals('120.000', $ar1->debit, 'Invoice 1 AR should be €100 + €20 VAT = €120');
 
         // Assert: Entry 2 has correct AR amount
         $ar2 = JournalLine::where('journal_entry_id', $entry2->id)
             ->where('account_id', $this->receivableAccount->id)
             ->first();
-        $this->assertEquals('240.00', $ar2->debit, 'Invoice 2 AR should be €200 + €40 VAT = €240');
+        $this->assertEquals('240.000', $ar2->debit, 'Invoice 2 AR should be €200 + €40 VAT = €240');
     }
 
     /**
@@ -570,7 +570,7 @@ class InvoicePostedListenerTest extends TestCase
 
         // Assert: AR line reflects invoice total
         $arLine = $lines->where('account_id', $this->receivableAccount->id)->first();
-        $this->assertEquals('100.00', $arLine->debit, 'AR should be €100 (no tax)');
+        $this->assertEquals('100.000', $arLine->debit, 'AR should be €100 (no tax)');
     }
 
     /**
@@ -683,11 +683,11 @@ class InvoicePostedListenerTest extends TestCase
 
         // Assert: Product revenue credit
         $productRevenueLine = $lines->where('account_id', $this->productRevenueAccount->id)->first();
-        $this->assertEquals('100.00', $productRevenueLine->credit, 'Product revenue should be €100');
+        $this->assertEquals('100.000', $productRevenueLine->credit, 'Product revenue should be €100');
 
         // Assert: Service revenue credit
         $serviceRevenueLine = $lines->where('account_id', $this->serviceRevenueAccount->id)->first();
-        $this->assertEquals('150.00', $serviceRevenueLine->credit, 'Service revenue should be €150');
+        $this->assertEquals('150.000', $serviceRevenueLine->credit, 'Service revenue should be €150');
     }
 
     // ==================== HELPER METHODS ====================

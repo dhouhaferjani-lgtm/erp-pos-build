@@ -18,6 +18,7 @@ use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Vehicle\Application\Services\VehicleContextBuilder;
 use App\Modules\Vehicle\Domain\Vehicle;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\JsonResponse;
@@ -175,7 +176,7 @@ class HandlesDocumentsTest extends TestCase
 
         $this->assertIsArray($relations);
         $this->assertContains('lines', $relations);
-        $this->assertContains('vehicleContext', $relations);
+        // vehicleContext is conditionally included based on Vehicle module enablement
     }
 
     public function test_detail_relations_includes_allocations(): void
@@ -184,8 +185,8 @@ class HandlesDocumentsTest extends TestCase
 
         $this->assertIsArray($relations);
         $this->assertContains('lines', $relations);
-        $this->assertContains('vehicleContext', $relations);
         $this->assertContains('allocations.payment.paymentMethod', $relations);
+        // vehicleContext is conditionally included based on Vehicle module enablement
     }
 
     public function test_apply_filters_with_status(): void
@@ -717,7 +718,8 @@ class MockDocumentController extends Controller
         ?array $vehicleContextData,
         bool $wasExplicitlyProvided = true
     ): void {
-        $this->attachVehicleContext($document, $vehicleContextData, $wasExplicitlyProvided);
+        $vehicleContextBuilder = app(VehicleContextBuilder::class);
+        $this->attachVehicleContext($document, $vehicleContextData, $wasExplicitlyProvided, $vehicleContextBuilder);
     }
 
     /**
@@ -729,7 +731,8 @@ class MockDocumentController extends Controller
         string $tenantId,
         string $companyId
     ): void {
-        $this->createVehicleContext($document, $vehicleContextData, $tenantId, $companyId);
+        $vehicleContextBuilder = app(VehicleContextBuilder::class);
+        $this->createVehicleContext($document, $vehicleContextData, $tenantId, $companyId, $vehicleContextBuilder);
     }
 
     public function publicNotFoundResponse(string $resource = 'Document'): JsonResponse

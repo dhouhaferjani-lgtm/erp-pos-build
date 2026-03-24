@@ -108,8 +108,8 @@ final class AccountingEventsTest extends TestCase
             return $event->companyId === $invoice->company_id
                 && $event->entryType === 'invoice'
                 && $event->sourceId === $invoice->id
-                && $event->totalDebit === $invoice->total
-                && $event->totalCredit === $invoice->total;
+                && bccomp($event->totalDebit, $invoice->total, 2) === 0
+                && bccomp($event->totalCredit, $invoice->total, 2) === 0;
         });
     }
 

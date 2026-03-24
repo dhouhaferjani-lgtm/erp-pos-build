@@ -169,9 +169,9 @@ class DocumentEntityTest extends TestCase
             'total' => '120.00',
         ]);
 
-        $this->assertEquals('100.00', $document->subtotal);
-        $this->assertEquals('20.00', $document->tax_amount);
-        $this->assertEquals('120.00', $document->total);
+        $this->assertEquals('100.000', $document->subtotal);
+        $this->assertEquals('20.000', $document->tax_amount);
+        $this->assertEquals('120.000', $document->total);
     }
 
     public function test_document_type_enum_values(): void

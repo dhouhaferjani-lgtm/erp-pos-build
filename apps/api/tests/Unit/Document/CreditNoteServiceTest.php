@@ -89,7 +89,7 @@ class CreditNoteServiceTest extends TestCase
         $this->assertEquals($invoice->id, $creditNote->source_document_id);
         $this->assertEquals($invoice->partner_id, $creditNote->partner_id);
         $this->assertEquals($invoice->company_id, $creditNote->company_id);
-        $this->assertEquals('1200.00', $creditNote->total);
+        $this->assertEquals('1200.000', $creditNote->total);
         $this->assertEquals(CreditNoteReason::RETURN, $creditNote->credit_note_reason);
         $this->assertEquals('Full refund - product return', $creditNote->notes);
     }
@@ -107,7 +107,7 @@ class CreditNoteServiceTest extends TestCase
             notes: 'Partial refund'
         );
 
-        $this->assertEquals('600.00', $creditNote->total);
+        $this->assertEquals('600.000', $creditNote->total);
         $this->assertEquals(CreditNoteReason::PRICE_ADJUSTMENT, $creditNote->credit_note_reason);
     }
 

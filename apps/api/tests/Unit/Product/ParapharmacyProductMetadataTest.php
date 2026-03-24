@@ -42,11 +42,6 @@ class ParapharmacyProductMetadataTest extends TestCase
             'product_id' => $product->id,
             'category' => ParapharmacyCategory::Supplement,
             'dosage_form' => DosageForm::Capsule,
-            'active_ingredients' => [
-                ['name' => 'Vitamin C', 'concentration' => '500mg'],
-                ['name' => 'Zinc', 'concentration' => '15mg'],
-            ],
-            'key_components' => ['Gelatin', 'Water'],
             'usage_instructions' => 'Take 2 capsules daily with food',
             'warnings' => 'Do not exceed recommended dose',
             'contraindications' => 'Not suitable for pregnant women',
@@ -54,8 +49,6 @@ class ParapharmacyProductMetadataTest extends TestCase
             'age_restriction' => AgeRestriction::AdultOnly,
             'requires_consultation' => true,
             'regulatory_code' => 'FR123456',
-            'health_claims' => ['Supports immune system', 'Antioxidant properties'],
-            'certifications' => [['type' => 'ISO', 'code' => '9001']],
             'storage_requirements' => 'Store in cool, dry place',
         ]);
 
@@ -63,8 +56,6 @@ class ParapharmacyProductMetadataTest extends TestCase
         $this->assertEquals($product->id, $metadata->product_id);
         $this->assertEquals(ParapharmacyCategory::Supplement, $metadata->category);
         $this->assertEquals(DosageForm::Capsule, $metadata->dosage_form);
-        $this->assertCount(2, $metadata->active_ingredients);
-        $this->assertEquals('Vitamin C', $metadata->active_ingredients[0]['name']);
         $this->assertTrue($metadata->requires_consultation);
         $this->assertEquals(18, $metadata->minimum_age);
         $this->assertEquals(AgeRestriction::AdultOnly, $metadata->age_restriction);
@@ -108,7 +99,7 @@ class ParapharmacyProductMetadataTest extends TestCase
     }
 
     /** @test */
-    public function it_casts_json_arrays_correctly(): void
+    public function it_has_relational_collections_for_ingredients_and_components(): void
     {
         $product = Product::factory()->create([
             'tenant_id' => $this->tenant->id,
@@ -117,20 +108,15 @@ class ParapharmacyProductMetadataTest extends TestCase
         $metadata = ParapharmacyProductMetadata::create([
             'product_id' => $product->id,
             'category' => ParapharmacyCategory::Supplement,
-            'active_ingredients' => [
-                ['name' => 'Vitamin D', 'concentration' => '1000IU'],
-            ],
-            'key_components' => ['Component A', 'Component B'],
-            'health_claims' => ['Claim 1', 'Claim 2'],
-            'certifications' => [['type' => 'CE', 'code' => 'CE-123']],
         ]);
 
-        $this->assertIsArray($metadata->active_ingredients);
-        $this->assertIsArray($metadata->key_components);
-        $this->assertIsArray($metadata->health_claims);
-        $this->assertIsArray($metadata->certifications);
-        $this->assertCount(1, $metadata->active_ingredients);
-        $this->assertCount(2, $metadata->key_components);
+        // These are now relational (BelongsToMany), not JSON columns
+        $this->assertInstanceOf(\Illuminate\Database\Eloquent\Collection::class, $metadata->ingredients);
+        $this->assertInstanceOf(\Illuminate\Database\Eloquent\Collection::class, $metadata->keyComponents);
+        $this->assertInstanceOf(\Illuminate\Database\Eloquent\Collection::class, $metadata->healthClaims);
+        $this->assertInstanceOf(\Illuminate\Database\Eloquent\Collection::class, $metadata->certifications);
+        $this->assertCount(0, $metadata->ingredients);
+        $this->assertCount(0, $metadata->keyComponents);
     }
 
     /** @test */
@@ -163,7 +149,6 @@ class ParapharmacyProductMetadataTest extends TestCase
         $this->assertNotNull($metadata->id);
         $this->assertEquals(ParapharmacyCategory::BabyCare, $metadata->category);
         $this->assertNull($metadata->dosage_form);
-        $this->assertNull($metadata->active_ingredients);
         $this->assertNull($metadata->usage_instructions);
     }
 

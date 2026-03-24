@@ -112,7 +112,7 @@ class PaymentRepositoryTest extends TestCase
         $response->assertStatus(201);
         $response->assertJsonPath('data.code', 'CASH_REG_01');
         $response->assertJsonPath('data.type', 'cash_register');
-        $response->assertJsonPath('data.balance', '0.00');
+        $response->assertJsonPath('data.balance', '0.000');
 
         $this->assertDatabaseHas('payment_repositories', [
             'tenant_id' => $this->tenant->id,
@@ -235,7 +235,7 @@ class PaymentRepositoryTest extends TestCase
         $response = $this->actingAs($this->user)->getJson("/api/v1/payment-repositories/{$repository->id}/balance");
 
         $response->assertStatus(200);
-        $response->assertJsonPath('data.balance', '1500.00');
+        $response->assertJsonPath('data.balance', '1500.000');
     }
 
     public function test_unauthorized_user_cannot_create_repository(): void

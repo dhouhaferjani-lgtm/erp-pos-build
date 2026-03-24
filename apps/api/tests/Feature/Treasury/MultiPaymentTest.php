@@ -199,19 +199,19 @@ class MultiPaymentTest extends TestCase
         $this->assertCount(2, $payments);
 
         // Verify first payment (cash)
-        $this->assertEquals('500.00', $payments[0]->amount);
+        $this->assertEquals('500.000', $payments[0]->amount);
         $this->assertEquals($this->cashMethod->id, $payments[0]->payment_method_id);
         $this->assertEquals($this->cashRegister->id, $payments[0]->repository_id);
         $this->assertEquals(PaymentStatus::Completed, $payments[0]->status);
 
         // Verify second payment (check)
-        $this->assertEquals('690.00', $payments[1]->amount);
+        $this->assertEquals('690.000', $payments[1]->amount);
         $this->assertEquals($this->checkMethod->id, $payments[1]->payment_method_id);
         $this->assertEquals($this->bankAccount->id, $payments[1]->repository_id);
 
         // Invoice should be fully paid
         $this->invoice->refresh();
-        $this->assertEquals('0.00', $this->invoice->balance_due);
+        $this->assertEquals('0.000', $this->invoice->balance_due);
         $this->assertEquals(DocumentStatus::Paid, $this->invoice->status);
 
         // Verify allocations exist
@@ -300,13 +300,13 @@ class MultiPaymentTest extends TestCase
         );
 
         $this->assertCount(3, $payments);
-        $this->assertEquals('400.00', $payments[0]->amount);
-        $this->assertEquals('500.00', $payments[1]->amount);
-        $this->assertEquals('290.00', $payments[2]->amount);
+        $this->assertEquals('400.000', $payments[0]->amount);
+        $this->assertEquals('500.000', $payments[1]->amount);
+        $this->assertEquals('290.000', $payments[2]->amount);
 
         // Invoice should be fully paid
         $this->invoice->refresh();
-        $this->assertEquals('0.00', $this->invoice->balance_due);
+        $this->assertEquals('0.000', $this->invoice->balance_due);
     }
 
     public function test_record_deposit_creates_unallocated_payment(): void
@@ -325,7 +325,7 @@ class MultiPaymentTest extends TestCase
             $this->user->id
         );
 
-        $this->assertEquals('500.00', $payment->amount);
+        $this->assertEquals('500.000', $payment->amount);
         $this->assertEquals(PaymentStatus::Completed, $payment->status);
         $this->assertStringContainsString('[UNALLOCATED]', $payment->notes);
 
@@ -375,7 +375,7 @@ class MultiPaymentTest extends TestCase
 
         // Invoice balance should be reduced
         $this->invoice->refresh();
-        $this->assertEquals('690.00', $this->invoice->balance_due);
+        $this->assertEquals('690.000', $this->invoice->balance_due);
     }
 
     public function test_apply_deposit_exceeds_unallocated_amount(): void
@@ -566,11 +566,11 @@ class MultiPaymentTest extends TestCase
         $this->assertCount(2, $payments);
 
         // Verify decimal precision is maintained
-        $this->assertEquals('133.33', $payments[0]->amount);
-        $this->assertEquals('266.67', $payments[1]->amount);
+        $this->assertEquals('133.330', $payments[0]->amount);
+        $this->assertEquals('266.670', $payments[1]->amount);
 
         $invoice->refresh();
-        $this->assertEquals('0.00', $invoice->balance_due);
+        $this->assertEquals('0.000', $invoice->balance_due);
     }
 
     public function test_split_payment_with_different_repositories(): void

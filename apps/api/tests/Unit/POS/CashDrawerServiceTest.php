@@ -16,10 +16,12 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Tests\Traits\WithCurrencyScale;
 
 class CashDrawerServiceTest extends TestCase
 {
     use RefreshDatabase;
+    use WithCurrencyScale;
 
     private CashDrawerService $service;
 
@@ -39,7 +41,7 @@ class CashDrawerServiceTest extends TestCase
     {
         parent::setUp();
 
-        $this->service = new CashDrawerService();
+        $this->service = new CashDrawerService($this->mockCurrencyScale(3));
 
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
@@ -59,7 +61,7 @@ class CashDrawerServiceTest extends TestCase
         $this->assertTrue($operation->exists);
         $this->assertEquals($this->shift->id, $operation->shift_id);
         $this->assertEquals('OPENING', $operation->operation_type);
-        $this->assertEquals('100.00', $operation->amount);
+        $this->assertEquals('100.000', $operation->amount);
         $this->assertEquals($this->cashier->id, $operation->user_id);
         $this->assertEquals('Shift opened with declared starting balance', $operation->reason);
         $this->assertNull($operation->receipt_id);
@@ -75,7 +77,7 @@ class CashDrawerServiceTest extends TestCase
         $this->assertTrue($operation->exists);
         $this->assertEquals($this->shift->id, $operation->shift_id);
         $this->assertEquals('SALE', $operation->operation_type);
-        $this->assertEquals('50.00', $operation->amount);
+        $this->assertEquals('50.000', $operation->amount);
         $this->assertEquals($this->cashier->id, $operation->user_id);
         $this->assertEquals('Cash sale', $operation->reason);
         $this->assertEquals($receiptId, $operation->receipt_id);
@@ -91,7 +93,7 @@ class CashDrawerServiceTest extends TestCase
         $this->assertTrue($operation->exists);
         $this->assertEquals($this->shift->id, $operation->shift_id);
         $this->assertEquals('REFUND', $operation->operation_type);
-        $this->assertEquals('25.00', $operation->amount);
+        $this->assertEquals('25.000', $operation->amount);
         $this->assertEquals($this->cashier->id, $operation->user_id);
         $this->assertEquals('Cash refund', $operation->reason);
         $this->assertEquals($receiptId, $operation->receipt_id);
@@ -109,7 +111,7 @@ class CashDrawerServiceTest extends TestCase
 
         $expected = $this->service->calculateExpectedCash($this->shift);
 
-        $this->assertEquals('145.00', $expected);
+        $this->assertEquals('145.000', $expected);
     }
 
     public function test_calculate_expected_cash_excludes_closing(): void
@@ -120,7 +122,7 @@ class CashDrawerServiceTest extends TestCase
 
         $expected = $this->service->calculateExpectedCash($this->shift);
 
-        $this->assertEquals('150.00', $expected);
+        $this->assertEquals('150.000', $expected);
     }
 
     public function test_get_total_by_type(): void
@@ -131,7 +133,7 @@ class CashDrawerServiceTest extends TestCase
 
         $total = $this->service->getTotalByType($this->shift, 'SALE');
 
-        $this->assertEquals('100.00', $total);
+        $this->assertEquals('100.000', $total);
     }
 
     public function test_get_shift_operations_ordered_by_created_at(): void

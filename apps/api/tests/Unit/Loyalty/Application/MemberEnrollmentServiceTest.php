@@ -10,6 +10,7 @@ use App\Modules\Loyalty\Domain\Entities\Enrollment;
 use App\Modules\Loyalty\Domain\Entities\LoyaltyMember;
 use App\Modules\Loyalty\Domain\Entities\LoyaltyProgram;
 use App\Modules\Loyalty\Domain\Entities\Transaction;
+use App\Modules\Loyalty\Domain\Enums\EnrollmentStatus;
 use App\Modules\Loyalty\Domain\Enums\ProgramStatus;
 use App\Modules\Loyalty\Domain\Events\MemberEnrolledV2;
 use App\Modules\Loyalty\Domain\Repositories\EnrollmentRepositoryInterface;
@@ -300,7 +301,7 @@ final class MemberEnrollmentServiceTest extends TestCase
         $this->service->optOut($enrollmentId);
 
         // Assert
-        $this->assertEquals('OPTED_OUT', $enrollment->status);
+        $this->assertEquals(EnrollmentStatus::OptedOut, $enrollment->status);
     }
 
     /** @test */
@@ -329,7 +330,7 @@ final class MemberEnrollmentServiceTest extends TestCase
         $enrollmentId = 'enrollment-123';
         $enrollment = $this->createMockEnrollment('program-1', 'member-1');
         $enrollment->id = $enrollmentId;
-        $enrollment->status = 'OPTED_OUT';
+        $enrollment->status = 'opted_out';
 
         $this->enrollmentRepository->expects($this->once())
             ->method('findById')
@@ -345,7 +346,7 @@ final class MemberEnrollmentServiceTest extends TestCase
         $this->service->reactivate($enrollmentId);
 
         // Assert
-        $this->assertEquals('ACTIVE', $enrollment->status);
+        $this->assertEquals(EnrollmentStatus::Active, $enrollment->status);
     }
 
     /** @test */
@@ -501,7 +502,7 @@ final class MemberEnrollmentServiceTest extends TestCase
             'current_balance' => 0,
             'lifetime_earned' => 0,
             'lifetime_redeemed' => 0,
-            'status' => 'ACTIVE',
+            'status' => 'active',
             'enrolled_at' => now(),
         ]);
 

@@ -13,9 +13,11 @@ use App\Modules\Promotion\Domain\ValueObjects\CartContext;
 use App\Modules\Promotion\Domain\ValueObjects\CartItemContext;
 use App\Modules\Promotion\Domain\ValueObjects\PromotionDiscount;
 use PHPUnit\Framework\TestCase;
+use Tests\Traits\WithCurrencyScale;
 
 final class DiscountOrchestratorServiceTest extends TestCase
 {
+    use WithCurrencyScale;
     private DiscountOrchestratorService $orchestrator;
 
     /** @var PromotionEvaluatorContract&\PHPUnit\Framework\MockObject\MockObject */
@@ -31,10 +33,13 @@ final class DiscountOrchestratorServiceTest extends TestCase
         $this->promotionEvaluator = $this->createMock(PromotionEvaluatorContract::class);
         $this->couponValidator = $this->createMock(CouponValidatorContract::class);
 
+        $scaleMock = $this->mockCurrencyScale(3);
+
         $this->orchestrator = new DiscountOrchestratorService(
             promotionEvaluator: $this->promotionEvaluator,
             couponValidator: $this->couponValidator,
-            stackingService: new DiscountStackingService(),
+            stackingService: new DiscountStackingService($scaleMock),
+            scaleResolver: $scaleMock,
         );
     }
 
@@ -84,7 +89,7 @@ final class DiscountOrchestratorServiceTest extends TestCase
             manualDiscountReason: 'VIP customer',
         );
 
-        $this->assertSame('15.00', $result->totalTransactionDiscount);
+        $this->assertSame('15.000', $result->totalTransactionDiscount);
         $this->assertCount(1, $result->lines);
         $this->assertSame('manual', $result->lines[0]->source);
         $this->assertSame('VIP customer', $result->lines[0]->label);
@@ -120,7 +125,7 @@ final class DiscountOrchestratorServiceTest extends TestCase
 
         $result = $this->orchestrator->resolve($this->makeCart());
 
-        $this->assertSame('10.00', $result->totalTransactionDiscount);
+        $this->assertSame('10.000', $result->totalTransactionDiscount);
         $this->assertCount(1, $result->lines);
         $this->assertSame('promotion', $result->lines[0]->source);
     }
@@ -147,7 +152,7 @@ final class DiscountOrchestratorServiceTest extends TestCase
             customerId: 'customer-1',
         );
 
-        $this->assertSame('10.00', $result->totalTransactionDiscount);
+        $this->assertSame('10.000', $result->totalTransactionDiscount);
         $this->assertSame('coupon', $result->lines[0]->source);
     }
 
@@ -161,7 +166,7 @@ final class DiscountOrchestratorServiceTest extends TestCase
             loyaltyRewardId: 'reward-1',
         );
 
-        $this->assertSame('5.00', $result->totalTransactionDiscount);
+        $this->assertSame('5.000', $result->totalTransactionDiscount);
         $this->assertSame('loyalty', $result->lines[0]->source);
         $this->assertSame('reward-1', $result->lines[0]->referenceId);
     }
@@ -204,7 +209,7 @@ final class DiscountOrchestratorServiceTest extends TestCase
         );
 
         // 10 (promo) + 5 (coupon) + 8 (manual) + 3 (loyalty) = 26
-        $this->assertSame('26.00', $result->totalTransactionDiscount);
+        $this->assertSame('26.000', $result->totalTransactionDiscount);
         $this->assertCount(4, $result->lines);
     }
 
@@ -219,7 +224,7 @@ final class DiscountOrchestratorServiceTest extends TestCase
         );
 
         // Manual discount still applied despite promotion failure
-        $this->assertSame('10.00', $result->totalTransactionDiscount);
+        $this->assertSame('10.000', $result->totalTransactionDiscount);
         $this->assertCount(1, $result->lines);
     }
 
@@ -236,7 +241,7 @@ final class DiscountOrchestratorServiceTest extends TestCase
         );
 
         // Manual discount still applied despite coupon failure
-        $this->assertSame('5.00', $result->totalTransactionDiscount);
+        $this->assertSame('5.000', $result->totalTransactionDiscount);
         $this->assertCount(1, $result->lines);
     }
 
@@ -259,7 +264,7 @@ final class DiscountOrchestratorServiceTest extends TestCase
 
         $this->assertSame('0.00', $result->totalTransactionDiscount);
         $this->assertArrayHasKey('product-1', $result->lineDiscounts);
-        $this->assertSame('7.50', $result->lineDiscounts['product-1']);
+        $this->assertSame('7.500', $result->lineDiscounts['product-1']);
     }
 
     public function test_null_coupon_result_is_skipped(): void

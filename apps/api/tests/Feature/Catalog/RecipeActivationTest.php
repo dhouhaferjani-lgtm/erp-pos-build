@@ -77,7 +77,7 @@ class RecipeActivationTest extends TestCase
         $response->assertStatus(201);
         $response->assertJsonPath('data.version', 1);
         $response->assertJsonPath('data.version_name', 'Original Recipe');
-        $response->assertJsonPath('data.is_active', false);
+        $response->assertJsonPath('data.is_active', true);
     }
 
     /** @test */

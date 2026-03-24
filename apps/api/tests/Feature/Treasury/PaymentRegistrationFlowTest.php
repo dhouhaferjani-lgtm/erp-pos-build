@@ -128,7 +128,7 @@ class PaymentRegistrationFlowTest extends TestCase
 
         // Verify invoice balance updated
         $invoice = $invoice->fresh();
-        $this->assertEquals('0.00', $invoice->balance_due);
+        $this->assertEquals('0.000', $invoice->balance_due);
         $this->assertEquals('paid', $invoice->getPaymentStatus()->value);
     }
 
@@ -167,7 +167,7 @@ class PaymentRegistrationFlowTest extends TestCase
         $invoice->update(['balance_due' => '400.00']);
 
         $invoice = $invoice->fresh();
-        $this->assertEquals('400.00', $invoice->balance_due);
+        $this->assertEquals('400.000', $invoice->balance_due);
         $this->assertEquals('partially_paid', $invoice->getPaymentStatus()->value);
     }
 
@@ -231,7 +231,7 @@ class PaymentRegistrationFlowTest extends TestCase
         // Verify both allocations exist
         $invoice = $invoice->fresh();
         $this->assertEquals(2, $invoice->allocations()->count());
-        $this->assertEquals('0.00', $invoice->balance_due);
+        $this->assertEquals('0.000', $invoice->balance_due);
         $this->assertEquals('paid', $invoice->getPaymentStatus()->value);
     }
 
@@ -301,7 +301,7 @@ class PaymentRegistrationFlowTest extends TestCase
                 'total',
                 'balance_due',
                 'payment_status',
-                'allocations' => [
+                'payment_allocations' => [
                     '*' => [
                         'id',
                         'payment_id',
@@ -315,9 +315,9 @@ class PaymentRegistrationFlowTest extends TestCase
             ],
         ]);
 
-        $this->assertEquals('0.00', $response->json('data.balance_due'));
+        $this->assertEquals('0.000', $response->json('data.balance_due'));
         $this->assertEquals('paid', $response->json('data.payment_status'));
-        $this->assertCount(2, $response->json('data.allocations'));
+        $this->assertCount(2, $response->json('data.payment_allocations'));
     }
 
     /** @test */
@@ -335,9 +335,9 @@ class PaymentRegistrationFlowTest extends TestCase
             ->getJson("/api/v1/documents/{$invoice->id}/payments");
 
         $response->assertOk();
-        $this->assertEquals('1000.00', $response->json('data.balance_due'));
+        $this->assertEquals('1000.000', $response->json('data.balance_due'));
         $this->assertEquals('unpaid', $response->json('data.payment_status'));
-        $this->assertCount(0, $response->json('data.allocations'));
+        $this->assertCount(0, $response->json('data.payment_allocations'));
     }
 
     /** @test */
@@ -402,7 +402,7 @@ class PaymentRegistrationFlowTest extends TestCase
         $response->assertOk();
 
         // Most recent should be first
-        $allocations = $response->json('data.allocations');
+        $allocations = $response->json('data.payment_allocations');
         $this->assertEquals('PAY-NEW', $allocations[0]['payment_reference']);
         $this->assertEquals('PAY-OLD', $allocations[1]['payment_reference']);
     }

@@ -355,8 +355,8 @@ class ReturnNoteIntegrationTest extends TestCase
         $returnNote->refresh();
         $this->assertEquals('Updated notes', $returnNote->notes);
         $this->assertEquals(ReturnCondition::Used->value, $returnNote->payload['return_condition'] ?? null);
-        $this->assertEquals('450.00', $returnNote->subtotal);
-        $this->assertEquals('535.50', $returnNote->total);
+        $this->assertEquals('450.000', $returnNote->subtotal);
+        $this->assertEquals('535.500', $returnNote->total);
     }
 
     /** @test */

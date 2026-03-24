@@ -7,6 +7,7 @@ namespace Tests\Unit\BatchExpiry;
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
+use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
@@ -21,6 +22,8 @@ class FEFOInventoryServiceTest extends TestCase
 
     private Tenant $tenant;
 
+    private Company $company;
+
     private Location $location;
 
     private Product $product;
@@ -33,8 +36,9 @@ class FEFOInventoryServiceTest extends TestCase
 
         // Create test data
         $this->tenant = Tenant::factory()->create();
-        $this->location = Location::factory()->create(['tenant_id' => $this->tenant->id]);
-        $this->product = Product::factory()->create(['tenant_id' => $this->tenant->id]);
+        $this->company = Company::factory()->for($this->tenant)->create();
+        $this->location = Location::factory()->create(['company_id' => $this->company->id]);
+        $this->product = Product::factory()->for($this->tenant)->for($this->company)->create();
     }
 
     public function test_fefo_suggests_earliest_expiry_first(): void
@@ -103,10 +107,11 @@ class FEFOInventoryServiceTest extends TestCase
             quantity: 10  // Request more than available
         );
 
-        $this->assertTrue($result->fullyFulfilled);
+        $this->assertFalse($result->fullyFulfilled);
         $this->assertCount(2, $result->suggestions);
         $this->assertEquals(3, $result->suggestions[0]->quantity); // First batch depleted
-        $this->assertEquals(7, $result->suggestions[1]->quantity); // Remaining from second batch
+        $this->assertEquals(5, $result->suggestions[1]->quantity); // Second batch fully used
+        $this->assertEquals(2, $result->shortfall); // 10 requested - 8 available = 2 shortfall
     }
 
     public function test_fefo_returns_shortfall_when_insufficient_stock(): void
@@ -129,10 +134,11 @@ class FEFOInventoryServiceTest extends TestCase
     public function test_fefo_respects_reserved_quantities(): void
     {
         // Create batch with reservations
-        $batch = Batch::factory()->create([
+        $batch = Batch::create([
             'tenant_id' => $this->tenant->id,
-            'company_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'product_id' => $this->product->id,
+            'batch_number' => 'BATCH-RESERVED',
             'expiry_date' => now()->addDays(30),
             'is_active' => true,
             'is_recalled' => false,
@@ -159,7 +165,7 @@ class FEFOInventoryServiceTest extends TestCase
 
     public function test_get_expiring_products_returns_batches_within_threshold(): void
     {
-        $companyId = $this->tenant->id;
+        $companyId = $this->company->id;
 
         // Create batches expiring at different times
         $this->createBatchWithStock(expiryDays: 20, quantity: 5);  // Within 30 days
@@ -186,10 +192,14 @@ class FEFOInventoryServiceTest extends TestCase
 
     private function createBatchWithStock(int $expiryDays, float $quantity, bool $isRecalled = false): Batch
     {
-        $batch = Batch::factory()->create([
+        static $batchCounter = 0;
+        $batchCounter++;
+
+        $batch = Batch::create([
             'tenant_id' => $this->tenant->id,
-            'company_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'product_id' => $this->product->id,
+            'batch_number' => 'BATCH-'.$batchCounter,
             'expiry_date' => now()->addDays($expiryDays),
             'is_active' => true,
             'is_recalled' => $isRecalled,

@@ -48,8 +48,8 @@ final class GeneralLedgerHashServiceTest extends TestCase
     {
         parent::setUp();
 
-        // Create hash service (will fail until implemented)
-        $this->hashService = new GeneralLedgerHashService;
+        // Create hash service via container (requires CurrencyScaleResolverInterface)
+        $this->hashService = app(GeneralLedgerHashService::class);
 
         // Create tenant
         $this->tenant = Tenant::create([

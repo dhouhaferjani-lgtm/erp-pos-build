@@ -283,9 +283,9 @@ class PaymentMethodTest extends TestCase
             'fee_percent' => '2.00',
         ]);
 
-        // Fee on 100.00 at 2% = 2.00
-        $this->assertEquals('2.00', $method->calculateFee('100.00'));
-        $this->assertEquals('98.00', $method->calculateNetAmount('100.00'));
+        // Fee on 100.00 at 2% = 2.000
+        $this->assertEquals('2.000', $method->calculateFee('100.00'));
+        $this->assertEquals('98.000', $method->calculateNetAmount('100.00'));
     }
 
     public function test_can_calculate_fee_for_fixed_method(): void
@@ -306,9 +306,9 @@ class PaymentMethodTest extends TestCase
             'fee_fixed' => '5.00',
         ]);
 
-        // Fixed fee of 5.00
-        $this->assertEquals('5.00', $method->calculateFee('100.00'));
-        $this->assertEquals('95.00', $method->calculateNetAmount('100.00'));
+        // Fixed fee of 5.000
+        $this->assertEquals('5.000', $method->calculateFee('100.00'));
+        $this->assertEquals('95.000', $method->calculateNetAmount('100.00'));
     }
 
     public function test_can_calculate_fee_for_mixed_method(): void
@@ -330,9 +330,9 @@ class PaymentMethodTest extends TestCase
             'fee_percent' => '1.00',
         ]);
 
-        // Mixed: 0.50 + 1% of 100 = 0.50 + 1.00 = 1.50
-        $this->assertEquals('1.50', $method->calculateFee('100.00'));
-        $this->assertEquals('98.50', $method->calculateNetAmount('100.00'));
+        // Mixed: 0.50 + 1% of 100 = 0.500 + 1.000 = 1.500
+        $this->assertEquals('1.500', $method->calculateFee('100.00'));
+        $this->assertEquals('98.500', $method->calculateNetAmount('100.00'));
     }
 
     public function test_unauthorized_user_cannot_create_payment_method(): void

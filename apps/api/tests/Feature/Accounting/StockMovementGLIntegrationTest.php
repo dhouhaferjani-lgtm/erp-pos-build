@@ -331,14 +331,14 @@ class StockMovementGLIntegrationTest extends TestCase
         // Find COGS line (debit to expense)
         $cogsLine = $entry->lines->where('account_id', $this->cogsAccount->id)->first();
         $this->assertNotNull($cogsLine);
-        $this->assertEquals('300.00', $cogsLine->debit);
-        $this->assertEquals('0.00', $cogsLine->credit);
+        $this->assertEquals('300.000', $cogsLine->debit);
+        $this->assertEquals('0.000', $cogsLine->credit);
 
         // Find Inventory line (credit to asset)
         $inventoryLine = $entry->lines->where('account_id', $this->inventoryAccount->id)->first();
         $this->assertNotNull($inventoryLine);
-        $this->assertEquals('0.00', $inventoryLine->debit);
-        $this->assertEquals('300.00', $inventoryLine->credit);
+        $this->assertEquals('0.000', $inventoryLine->debit);
+        $this->assertEquals('300.000', $inventoryLine->credit);
     }
 
     public function test_no_cogs_entry_for_zero_cost_products(): void
@@ -395,10 +395,10 @@ class StockMovementGLIntegrationTest extends TestCase
         $this->assertNotNull($entry);
 
         $cogsLine = $entry->lines->where('account_id', $this->cogsAccount->id)->first();
-        $this->assertEquals('155.00', $cogsLine->debit);
+        $this->assertEquals('155.000', $cogsLine->debit);
 
         $inventoryLine = $entry->lines->where('account_id', $this->inventoryAccount->id)->first();
-        $this->assertEquals('155.00', $inventoryLine->credit);
+        $this->assertEquals('155.000', $inventoryLine->credit);
     }
 
     public function test_cogs_entry_balances(): void
@@ -424,15 +424,15 @@ class StockMovementGLIntegrationTest extends TestCase
         $this->assertNotNull($entry);
 
         // Calculate total debits and credits
-        $totalDebits = '0.00';
-        $totalCredits = '0.00';
+        $totalDebits = '0.000';
+        $totalCredits = '0.000';
         foreach ($entry->lines as $line) {
-            $totalDebits = bcadd($totalDebits, $line->debit, 2);
-            $totalCredits = bcadd($totalCredits, $line->credit, 2);
+            $totalDebits = bcadd($totalDebits, $line->debit, 3);
+            $totalCredits = bcadd($totalCredits, $line->credit, 3);
         }
 
         $this->assertEquals($totalDebits, $totalCredits);
-        $this->assertEquals('300.00', $totalDebits);
+        $this->assertEquals('300.000', $totalDebits);
     }
 
     public function test_cogs_entry_links_to_source_invoice(): void
@@ -513,7 +513,7 @@ class StockMovementGLIntegrationTest extends TestCase
         $this->assertNotNull($entry);
 
         $cogsLine = $entry->lines->where('account_id', $this->cogsAccount->id)->first();
-        $this->assertEquals('100.50', $cogsLine->debit);
+        $this->assertEquals('100.500', $cogsLine->debit);
     }
 
     public function test_cogs_entry_company_id_matches(): void

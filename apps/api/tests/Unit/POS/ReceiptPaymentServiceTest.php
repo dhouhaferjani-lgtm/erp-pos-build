@@ -220,7 +220,7 @@ final class ReceiptPaymentServiceTest extends TestCase
 
         // Act & Assert
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Total paid (50.000) is less than receipt total (100.00)');
+        $this->expectExceptionMessage('Total paid (50.000) is less than receipt total (100.000)');
 
         $this->service->processReceiptPayments(
             receiptId: $receipt->id,

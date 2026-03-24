@@ -61,6 +61,7 @@ class RequireModuleTest extends TestCase
             vertical: Vertical::Mechanic,
             defaultModules: ['Identity', 'Vehicle', 'Workshop'],
             enabledExtras: ['Appointments'],
+            compatibleExtras: ['Appointments', 'Fleet'],
             allEnabledModules: ['Identity', 'Vehicle', 'Workshop', 'Appointments']
         );
 
@@ -89,6 +90,7 @@ class RequireModuleTest extends TestCase
             vertical: Vertical::Retail,
             defaultModules: ['Identity', 'Catalog', 'Inventory'],
             enabledExtras: [],
+            compatibleExtras: ['Loyalty', 'Ecommerce'],
             allEnabledModules: ['Identity', 'Catalog', 'Inventory']
         );
 
@@ -122,6 +124,7 @@ class RequireModuleTest extends TestCase
             vertical: Vertical::Pharmacy,
             defaultModules: ['Identity', 'Catalog', 'BatchExpiry'],
             enabledExtras: [],
+            compatibleExtras: ['BatchExpiry', 'Prescription'],
             allEnabledModules: ['Identity', 'Catalog', 'BatchExpiry']
         );
 
@@ -149,6 +152,7 @@ class RequireModuleTest extends TestCase
             vertical: Vertical::Mechanic,
             defaultModules: ['Identity', 'Vehicle', 'Workshop'],
             enabledExtras: ['Appointments', 'Fleet'],
+            compatibleExtras: ['Appointments', 'Fleet'],
             allEnabledModules: ['Identity', 'Vehicle', 'Workshop', 'Appointments', 'Fleet']
         );
 
@@ -176,6 +180,7 @@ class RequireModuleTest extends TestCase
             vertical: Vertical::Mechanic,
             defaultModules: ['Identity', 'Vehicle', 'Workshop'],
             enabledExtras: ['Appointments'], // Fleet is NOT enabled
+            compatibleExtras: ['Appointments', 'Fleet'],
             allEnabledModules: ['Identity', 'Vehicle', 'Workshop', 'Appointments']
         );
 
@@ -224,6 +229,7 @@ class RequireModuleTest extends TestCase
             vertical: Vertical::Mechanic,
             defaultModules: ['Identity', 'Vehicle', 'Workshop'],
             enabledExtras: [],
+            compatibleExtras: ['Appointments', 'Fleet'],
             allEnabledModules: ['Identity', 'Vehicle', 'Workshop']
         );
 
@@ -253,6 +259,7 @@ class RequireModuleTest extends TestCase
             vertical: Vertical::Retail,
             defaultModules: ['Identity', 'Tenant', 'Catalog', 'Inventory'],
             enabledExtras: [],
+            compatibleExtras: ['Loyalty', 'Ecommerce'],
             allEnabledModules: ['Identity', 'Tenant', 'Catalog', 'Inventory']
         );
 

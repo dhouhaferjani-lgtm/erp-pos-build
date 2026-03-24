@@ -163,12 +163,12 @@ class ProductStockLevelsTest extends TestCase
 
         $data = $response->json('data');
 
-        // Assert totals
-        $this->assertEquals('150.00', $data['totals']['quantity']);
-        $this->assertEquals('30.00', $data['totals']['reserved']);
-        $this->assertEquals('120.00', $data['totals']['available']);
-        $this->assertEquals('0.00', $data['totals']['incoming']);
-        $this->assertEquals('120.00', $data['totals']['projected_available']);
+        // Assert totals (use numeric comparison — API may return int or decimal string)
+        $this->assertEqualsWithDelta(150.00, (float) $data['totals']['quantity'], 0.001);
+        $this->assertEqualsWithDelta(30.00, (float) $data['totals']['reserved'], 0.001);
+        $this->assertEqualsWithDelta(120.00, (float) $data['totals']['available'], 0.001);
+        $this->assertEqualsWithDelta(0.00, (float) $data['totals']['incoming'], 0.001);
+        $this->assertEqualsWithDelta(120.00, (float) $data['totals']['projected_available'], 0.001);
 
         // Assert locations count
         $this->assertCount(2, $data['locations']);
@@ -214,6 +214,7 @@ class ProductStockLevelsTest extends TestCase
             'document_id' => $purchaseOrder->id,
             'product_id' => $product->id,
             'location_id' => $this->location1->id,
+            'line_number' => 1,
             'description' => 'Test Product',
             'quantity' => '100.00',
             'quantity_received' => '30.00', // 70 still pending
@@ -229,9 +230,9 @@ class ProductStockLevelsTest extends TestCase
 
         $data = $response->json('data');
 
-        // Assert incoming stock
-        $this->assertEquals('70.00', $data['totals']['incoming']);
-        $this->assertEquals('120.00', $data['totals']['projected_available']); // 50 available + 70 incoming
+        // Assert incoming stock (use numeric comparison)
+        $this->assertEqualsWithDelta(70.00, (float) $data['totals']['incoming'], 0.001);
+        $this->assertEqualsWithDelta(120.00, (float) $data['totals']['projected_available'], 0.001); // 50 available + 70 incoming
     }
 
     /** @test */
@@ -270,6 +271,7 @@ class ProductStockLevelsTest extends TestCase
             'document_id' => $draftPO->id,
             'product_id' => $product->id,
             'location_id' => $this->location1->id,
+            'line_number' => 1,
             'description' => 'Test Product',
             'quantity' => '100.00',
             'quantity_received' => '0.00',
@@ -285,9 +287,9 @@ class ProductStockLevelsTest extends TestCase
 
         $data = $response->json('data');
 
-        // Draft PO should NOT be included in incoming
-        $this->assertEquals('0.00', $data['totals']['incoming']);
-        $this->assertEquals('50.00', $data['totals']['projected_available']);
+        // Draft PO should NOT be included in incoming (use numeric comparison)
+        $this->assertEqualsWithDelta(0.00, (float) $data['totals']['incoming'], 0.001);
+        $this->assertEqualsWithDelta(50.00, (float) $data['totals']['projected_available'], 0.001);
     }
 
     /** @test */
@@ -326,6 +328,7 @@ class ProductStockLevelsTest extends TestCase
             'document_id' => $purchaseOrder->id,
             'product_id' => $product->id,
             'location_id' => $this->location1->id,
+            'line_number' => 1,
             'description' => 'Test Product',
             'quantity' => '100.00',
             'quantity_received' => '100.00', // Fully received
@@ -341,8 +344,8 @@ class ProductStockLevelsTest extends TestCase
 
         $data = $response->json('data');
 
-        // Fully received should NOT be in incoming
-        $this->assertEquals('0.00', $data['totals']['incoming']);
+        // Fully received should NOT be in incoming (use numeric comparison)
+        $this->assertEqualsWithDelta(0.00, (float) $data['totals']['incoming'], 0.001);
     }
 
     /** @test */
@@ -391,6 +394,7 @@ class ProductStockLevelsTest extends TestCase
             'document_id' => $purchaseOrder->id,
             'product_id' => $product->id,
             'location_id' => $this->location1->id,
+            'line_number' => 1,
             'description' => 'Test Product',
             'quantity' => '100.00',
             'quantity_received' => '0.00',
@@ -404,6 +408,7 @@ class ProductStockLevelsTest extends TestCase
             'document_id' => $purchaseOrder->id,
             'product_id' => $product->id,
             'location_id' => $this->location2->id,
+            'line_number' => 2,
             'description' => 'Test Product',
             'quantity' => '50.00',
             'quantity_received' => '0.00',
@@ -423,15 +428,15 @@ class ProductStockLevelsTest extends TestCase
         $loc1Data = collect($data['locations'])->firstWhere('location_id', $this->location1->id);
         $loc2Data = collect($data['locations'])->firstWhere('location_id', $this->location2->id);
 
-        // Assert per-location incoming
-        $this->assertEquals('100.00', $loc1Data['incoming']);
-        $this->assertEquals('150.00', $loc1Data['projected_available']); // 50 + 100
+        // Assert per-location incoming (use numeric comparison)
+        $this->assertEqualsWithDelta(100.00, (float) $loc1Data['incoming'], 0.001);
+        $this->assertEqualsWithDelta(150.00, (float) $loc1Data['projected_available'], 0.001); // 50 + 100
 
-        $this->assertEquals('50.00', $loc2Data['incoming']);
-        $this->assertEquals('80.00', $loc2Data['projected_available']); // 30 + 50
+        $this->assertEqualsWithDelta(50.00, (float) $loc2Data['incoming'], 0.001);
+        $this->assertEqualsWithDelta(80.00, (float) $loc2Data['projected_available'], 0.001); // 30 + 50
 
-        // Assert total incoming
-        $this->assertEquals('150.00', $data['totals']['incoming']);
+        // Assert total incoming (use numeric comparison)
+        $this->assertEqualsWithDelta(150.00, (float) $data['totals']['incoming'], 0.001);
     }
 
     /** @test */

@@ -60,7 +60,7 @@ class ServiceDataTest extends TestCase
         $this->assertEquals('Oil Change', $dto->name);
         $this->assertEquals('Engine oil replacement', $dto->description);
         $this->assertEquals(PricingType::FlatRate, $dto->pricing_type);
-        $this->assertEquals('45.00', $dto->base_price);
+        $this->assertEquals('45.000', $dto->base_price);
         $this->assertEquals('TND', $dto->currency);
         $this->assertEquals(30, $dto->default_duration_minutes);
         $this->assertEquals('19.00', $dto->tax_rate);
@@ -170,7 +170,7 @@ class ServiceDataTest extends TestCase
         $dto = ServiceData::fromModel($service);
 
         $this->assertEquals(PricingType::Hourly, $dto->pricing_type);
-        $this->assertEquals('75.00', $dto->hourly_rate);
+        $this->assertEquals('75.000', $dto->hourly_rate);
     }
 
     #[Test]
@@ -184,6 +184,6 @@ class ServiceDataTest extends TestCase
         $dto = ServiceData::fromModel($service);
 
         $this->assertEquals(PricingType::Percentage, $dto->pricing_type);
-        $this->assertEquals('15.00', $dto->base_price);
+        $this->assertEquals('15.000', $dto->base_price);
     }
 }

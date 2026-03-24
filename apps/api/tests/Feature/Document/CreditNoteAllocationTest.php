@@ -132,7 +132,7 @@ class CreditNoteAllocationTest extends TestCase
         $allocation = CreditNoteAllocation::where('credit_note_id', $postedCreditNote->id)->first();
         $this->assertNotNull($allocation);
         $this->assertEquals($invoice->id, $allocation->invoice_id);
-        $this->assertEquals('300.00', $allocation->amount);
+        $this->assertEquals('300.000', $allocation->amount);
     }
 
     /** @test */
@@ -140,7 +140,7 @@ class CreditNoteAllocationTest extends TestCase
     {
         // Arrange: Create and post an invoice with 1000.00
         $invoice = $this->createPostedInvoice('1000.00');
-        $this->assertEquals('1000.00', $invoice->balance_due);
+        $this->assertEquals('1000.000', $invoice->balance_due);
 
         // Create, confirm, and post a credit note for 300.00
         $creditNote = $this->createAndPostCreditNote($invoice, '300.00');
@@ -155,10 +155,10 @@ class CreditNoteAllocationTest extends TestCase
         $invoice->refresh();
 
         // Assert: balance_due reduced by credit note amount (trigger fired)
-        $this->assertEquals('700.00', $invoice->balance_due);
+        $this->assertEquals('700.000', $invoice->balance_due);
 
         // Assert: Outstanding amount computed correctly
-        $this->assertEquals('700.00', $invoice->getOutstandingAmount());
+        $this->assertEquals('700.000', $invoice->getOutstandingAmount());
 
         // Assert: Payment status is now PartiallyPaid
         $this->assertEquals(PaymentStatus::PartiallyPaid, $invoice->getPaymentStatus());
@@ -188,8 +188,8 @@ class CreditNoteAllocationTest extends TestCase
 
         // Assert: balance_due reflects all credits
         $invoice->refresh();
-        $this->assertEquals('400.00', $invoice->balance_due);
-        $this->assertEquals('400.00', $invoice->getOutstandingAmount());
+        $this->assertEquals('400.000', $invoice->balance_due);
+        $this->assertEquals('400.000', $invoice->getOutstandingAmount());
         $this->assertEquals(PaymentStatus::PartiallyPaid, $invoice->getPaymentStatus());
     }
 
@@ -206,8 +206,8 @@ class CreditNoteAllocationTest extends TestCase
 
         // Assert: Invoice is fully paid
         $invoice->refresh();
-        $this->assertEquals('0.00', $invoice->balance_due);
-        $this->assertEquals('0.00', $invoice->getOutstandingAmount());
+        $this->assertEquals('0.000', $invoice->balance_due);
+        $this->assertEquals('0.000', $invoice->getOutstandingAmount());
         $this->assertEquals(PaymentStatus::Paid, $invoice->getPaymentStatus());
     }
 
@@ -223,8 +223,8 @@ class CreditNoteAllocationTest extends TestCase
         $invoice->refresh();
 
         // Assert: PartiallyPaid with 600.00 outstanding
-        $this->assertEquals('600.00', $invoice->balance_due);
-        $this->assertEquals('600.00', $invoice->getOutstandingAmount());
+        $this->assertEquals('600.000', $invoice->balance_due);
+        $this->assertEquals('600.000', $invoice->getOutstandingAmount());
         $this->assertEquals(PaymentStatus::PartiallyPaid, $invoice->getPaymentStatus());
 
         // Act 2: Create credit note for 600.00
@@ -234,8 +234,8 @@ class CreditNoteAllocationTest extends TestCase
         $invoice->refresh();
 
         // Assert: Fully paid (payment + credit = total)
-        $this->assertEquals('0.00', $invoice->balance_due);
-        $this->assertEquals('0.00', $invoice->getOutstandingAmount());
+        $this->assertEquals('0.000', $invoice->balance_due);
+        $this->assertEquals('0.000', $invoice->getOutstandingAmount());
         $this->assertEquals(PaymentStatus::Paid, $invoice->getPaymentStatus());
     }
 
@@ -256,7 +256,7 @@ class CreditNoteAllocationTest extends TestCase
 
         // Assert: Trigger automatically updated balance_due
         $invoice->refresh();
-        $this->assertEquals('750.00', $invoice->balance_due);
+        $this->assertEquals('750.000', $invoice->balance_due);
     }
 
     /** @test */
@@ -279,8 +279,8 @@ class CreditNoteAllocationTest extends TestCase
         $outstandingAmount = $invoice->getOutstandingAmount();
 
         // Assert: Outstanding = Total - Payments - Credits = 1000 - 300 - 200 = 500
-        $this->assertEquals('500.00', $outstandingAmount);
-        $this->assertEquals('500.00', $invoice->balance_due);
+        $this->assertEquals('500.000', $outstandingAmount);
+        $this->assertEquals('500.000', $invoice->balance_due);
         $this->assertEquals(PaymentStatus::PartiallyPaid, $invoice->getPaymentStatus());
     }
 
@@ -340,7 +340,7 @@ class CreditNoteAllocationTest extends TestCase
         $paid = (string) ($invoice->allocations()->sum('amount') ?? '0.00');
         $credited = (string) ($invoice->creditNoteAllocations()->sum('amount') ?? '0.00');
 
-        $balanceDue = bcsub(bcsub($total, $paid, 2), $credited, 2);
+        $balanceDue = bcsub(bcsub($total, $paid, 3), $credited, 3);
 
         $invoice->update(['balance_due' => $balanceDue]);
     }

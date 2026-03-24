@@ -59,11 +59,11 @@ class TaxIdValidationServiceTest extends TestCase
 
     public function test_french_siret_strips_whitespace(): void
     {
-        // Same valid SIRET with spaces
+        // Same valid SIRET with spaces — whitespace is stripped, yielding 14 valid digits
         $result = $this->service->validate('FR', '732 829 320 00074');
 
-        // Whitespace is stripped, so length becomes 15 not 14 → invalid
-        $this->assertFalse($result->isValid);
+        $this->assertTrue($result->isValid);
+        $this->assertSame('SIRET', $result->format);
     }
 
     // ─── Tunisian Matricule Fiscale ────────────────────────────────────

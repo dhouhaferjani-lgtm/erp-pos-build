@@ -109,15 +109,17 @@ class UpdateTenantExtrasTest extends TestCase
             ->assertJsonPath('error', fn (string $msg) => str_contains($msg, 'coffee_shop'));
     }
 
-    public function test_update_extras_returns_422_when_tenant_has_no_vertical(): void
+    public function test_update_extras_succeeds_for_tenant_with_default_retail_vertical(): void
     {
+        // Tenant without explicit vertical gets 'retail' default from DB migration.
+        // Retail vertical supports ['Loyalty', 'Ecommerce'] as compatible extras.
         $response = $this->actingAs($this->superAdmin, 'sanctum-admin')
             ->postJson("/api/v1/admin/tenants/{$this->tenantWithoutVertical->id}/update-extras", [
                 'enabled_extras' => ['Loyalty'],
             ]);
 
-        $response->assertStatus(422)
-            ->assertJsonPath('error', 'Tenant has no vertical configured');
+        $response->assertOk()
+            ->assertJsonPath('data.enabled_extras', ['Loyalty']);
     }
 
     public function test_update_extras_requires_authentication(): void

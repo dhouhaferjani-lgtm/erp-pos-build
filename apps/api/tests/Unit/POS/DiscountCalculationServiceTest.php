@@ -11,6 +11,7 @@ use App\Modules\POS\Domain\Services\DiscountCalculationService;
 use App\Modules\POS\Domain\Terminal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Tests\Traits\WithCurrencyScale;
 
 /**
  * Unit tests for DiscountCalculationService
@@ -25,13 +26,14 @@ use Tests\TestCase;
 class DiscountCalculationServiceTest extends TestCase
 {
     use RefreshDatabase;
+    use WithCurrencyScale;
 
     private DiscountCalculationService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new DiscountCalculationService;
+        $this->service = new DiscountCalculationService($this->mockCurrencyScale(3));
     }
 
     /**
@@ -252,7 +254,7 @@ class DiscountCalculationServiceTest extends TestCase
 
         $discountAmount = $this->service->calculateLineDiscountAmount($baseAmount, $discountPercent);
 
-        $this->assertEquals('15.00', $discountAmount);
+        $this->assertEquals('15.000', $discountAmount);
     }
 
     /**
@@ -265,7 +267,7 @@ class DiscountCalculationServiceTest extends TestCase
 
         $discountAmount = $this->service->calculateLineDiscountAmount($baseAmount, $discountPercent);
 
-        $this->assertEquals('8.75', $discountAmount);
+        $this->assertEquals('8.750', $discountAmount);
     }
 
     /**
@@ -278,7 +280,7 @@ class DiscountCalculationServiceTest extends TestCase
 
         $discountAmount = $this->service->calculateLineDiscountAmount($baseAmount, $discountPercent);
 
-        $this->assertEquals('3.33', $discountAmount);
+        $this->assertEquals('3.333', $discountAmount);
     }
 
     /**
@@ -291,7 +293,7 @@ class DiscountCalculationServiceTest extends TestCase
 
         $discountAmount = $this->service->calculateFixedDiscountAmount($baseAmount, $fixedDiscount);
 
-        $this->assertEquals('25.00', $discountAmount);
+        $this->assertEquals('25.000', $discountAmount);
     }
 
     /**

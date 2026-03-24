@@ -157,7 +157,7 @@ class PaymentInstrumentTest extends TestCase
         $response->assertStatus(201);
         $response->assertJsonPath('data.reference', 'CHK-123456');
         $response->assertJsonPath('data.status', 'received');
-        $response->assertJsonPath('data.amount', '2500.00');
+        $response->assertJsonPath('data.amount', '2500.000');
     }
 
     public function test_can_create_pdc_with_maturity_date(): void

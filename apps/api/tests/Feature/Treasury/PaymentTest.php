@@ -150,7 +150,7 @@ class PaymentTest extends TestCase
         ]);
 
         $response->assertStatus(201);
-        $response->assertJsonPath('data.amount', '500.00');
+        $response->assertJsonPath('data.amount', '500.000');
         $response->assertJsonPath('data.status', 'completed');
     }
 
@@ -170,7 +170,7 @@ class PaymentTest extends TestCase
         ]);
 
         $response->assertStatus(201);
-        $response->assertJsonPath('data.amount', '1190.00');
+        $response->assertJsonPath('data.amount', '1190.000');
         $response->assertJsonCount(1, 'data.allocations');
     }
 
@@ -192,7 +192,7 @@ class PaymentTest extends TestCase
         $response->assertStatus(201);
 
         $this->invoice->refresh();
-        $this->assertEquals('690.00', $this->invoice->balance_due);
+        $this->assertEquals('690.000', $this->invoice->balance_due);
     }
 
     public function test_full_payment_marks_invoice_as_paid(): void
@@ -213,7 +213,7 @@ class PaymentTest extends TestCase
         $response->assertStatus(201);
 
         $this->invoice->refresh();
-        $this->assertEquals('0.00', $this->invoice->balance_due);
+        $this->assertEquals('0.000', $this->invoice->balance_due);
         $this->assertEquals(DocumentStatus::Paid, $this->invoice->status);
     }
 
@@ -247,7 +247,7 @@ class PaymentTest extends TestCase
 
         // Invoice should be fully paid
         $this->invoice->refresh();
-        $this->assertEquals('0.00', $this->invoice->balance_due);
+        $this->assertEquals('0.000', $this->invoice->balance_due);
         $this->assertEquals(DocumentStatus::Paid, $this->invoice->status);
     }
 
@@ -310,7 +310,7 @@ class PaymentTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertJsonPath('data.reference', 'PMT-001');
-        $response->assertJsonPath('data.amount', '500.00');
+        $response->assertJsonPath('data.amount', '500.000');
     }
 
     public function test_unauthorized_user_cannot_create_payment(): void
@@ -367,8 +367,8 @@ class PaymentTest extends TestCase
         $this->invoice->refresh();
         $invoice2->refresh();
 
-        $this->assertEquals('0.00', $this->invoice->balance_due);
-        $this->assertEquals('0.00', $invoice2->balance_due);
+        $this->assertEquals('0.000', $this->invoice->balance_due);
+        $this->assertEquals('0.000', $invoice2->balance_due);
     }
 
     public function test_allocation_amount_cannot_exceed_payment_amount(): void

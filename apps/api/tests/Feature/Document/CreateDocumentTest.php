@@ -47,6 +47,7 @@ class CreateDocumentTest extends TestCase
             'slug' => 'test-tenant',
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
+            'vertical' => \App\Enums\Vertical::Mechanic,
         ]);
 
         $this->company = Company::create([

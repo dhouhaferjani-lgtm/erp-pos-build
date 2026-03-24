@@ -55,6 +55,32 @@ class FiscalHardeningE2ETest extends TestCase
 
         $this->postingService = app(DocumentPostingService::class);
         $this->hashService = app(FiscalHashService::class);
+
+        // Create chart of accounts required by InvoicePostedListener
+        $this->createChartOfAccounts();
+    }
+
+    private function createChartOfAccounts(): void
+    {
+        $accounts = [
+            ['code' => '411000', 'name' => 'Customer Receivable', 'type' => 'asset', 'purpose' => 'customer_receivable'],
+            ['code' => '701000', 'name' => 'Product Sales', 'type' => 'revenue', 'purpose' => 'product_revenue'],
+            ['code' => '706000', 'name' => 'Service Revenue', 'type' => 'revenue', 'purpose' => 'service_revenue'],
+            ['code' => '445660', 'name' => 'VAT Collected', 'type' => 'liability', 'purpose' => 'vat_collected'],
+            ['code' => '709000', 'name' => 'Sales Returns', 'type' => 'revenue', 'purpose' => 'sales_return'],
+        ];
+
+        foreach ($accounts as $accountData) {
+            \App\Modules\Accounting\Domain\Account::create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'code' => $accountData['code'],
+                'name' => $accountData['name'],
+                'type' => \App\Modules\Accounting\Domain\Enums\AccountType::from($accountData['type']),
+                'system_purpose' => \App\Modules\Accounting\Domain\Enums\SystemAccountPurpose::from($accountData['purpose']),
+                'is_active' => true,
+            ]);
+        }
     }
 
     public function test_complete_fiscal_document_lifecycle(): void
@@ -197,7 +223,7 @@ class FiscalHardeningE2ETest extends TestCase
         $invoice->update(['balance_due' => '500.00']);
         $invoice->refresh();
 
-        $this->assertEquals('500.00', $invoice->balance_due);
+        $this->assertEquals('500.000', $invoice->balance_due);
         $this->assertEquals($originalTotal, $invoice->total); // Total unchanged
 
         echo "\n✓ Balance due updated on sealed document: {$invoice->balance_due}";
@@ -376,6 +402,26 @@ class FiscalHardeningE2ETest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $company2->id,
         ]);
+
+        // Create chart of accounts for company2
+        $accounts = [
+            ['code' => '411000', 'name' => 'Customer Receivable', 'type' => 'asset', 'purpose' => 'customer_receivable'],
+            ['code' => '701000', 'name' => 'Product Sales', 'type' => 'revenue', 'purpose' => 'product_revenue'],
+            ['code' => '706000', 'name' => 'Service Revenue', 'type' => 'revenue', 'purpose' => 'service_revenue'],
+            ['code' => '445660', 'name' => 'VAT Collected', 'type' => 'liability', 'purpose' => 'vat_collected'],
+            ['code' => '709000', 'name' => 'Sales Returns', 'type' => 'revenue', 'purpose' => 'sales_return'],
+        ];
+        foreach ($accounts as $accountData) {
+            \App\Modules\Accounting\Domain\Account::create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $company2->id,
+                'code' => $accountData['code'],
+                'name' => $accountData['name'],
+                'type' => \App\Modules\Accounting\Domain\Enums\AccountType::from($accountData['type']),
+                'system_purpose' => \App\Modules\Accounting\Domain\Enums\SystemAccountPurpose::from($accountData['purpose']),
+                'is_active' => true,
+            ]);
+        }
 
         // Create identical invoices in both companies
         $invoice1 = Document::create([

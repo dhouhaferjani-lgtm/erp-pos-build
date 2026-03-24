@@ -22,6 +22,7 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Tests\Traits\WithCurrencyScale;
 
 /**
  * Unit tests for ReceiptVoidService
@@ -35,6 +36,7 @@ use Tests\TestCase;
 class ReceiptVoidServiceTest extends TestCase
 {
     use RefreshDatabase;
+    use WithCurrencyScale;
 
     private ReceiptVoidService $service;
 
@@ -54,6 +56,7 @@ class ReceiptVoidServiceTest extends TestCase
 
         $this->service = new ReceiptVoidService(
             $this->app->make(CashDrawerService::class),
+            $this->mockCurrencyScale(3),
         );
 
         $this->tenant = Tenant::factory()->create();
@@ -180,7 +183,7 @@ class ReceiptVoidServiceTest extends TestCase
             ->first();
 
         $this->assertNotNull($refundOp);
-        $this->assertEquals('119.00', $refundOp->amount);
+        $this->assertEquals('119.000', $refundOp->amount);
     }
 
     public function test_voiding_skips_cash_drawer_when_no_open_shift(): void

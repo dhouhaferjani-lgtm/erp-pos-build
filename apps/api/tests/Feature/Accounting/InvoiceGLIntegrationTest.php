@@ -287,8 +287,8 @@ class InvoiceGLIntegrationTest extends TestCase
         // ASSERT: AR debit line
         $arLine = $journalLines->where('account_id', $this->receivableAccount->id)->first();
         $this->assertNotNull($arLine, 'AR line should exist');
-        $this->assertEquals('1127.50', $arLine->debit, 'AR should be debited for total invoice amount');
-        $this->assertEquals('0.00', $arLine->credit);
+        $this->assertEquals('1127.500', $arLine->debit, 'AR should be debited for total invoice amount');
+        $this->assertEquals('0.000', $arLine->credit);
 
         // ASSERT: Revenue credit lines (should match line subtotals)
         $revenueLines = $journalLines->where('account_id', $this->productRevenueAccount->id);

@@ -9,15 +9,18 @@ use App\Modules\Inventory\Application\Services\LandedCostService;
 use Illuminate\Database\Eloquent\Collection;
 use Mockery;
 use Tests\TestCase;
+use Tests\Traits\WithCurrencyScale;
 
 class LandedCostServiceTest extends TestCase
 {
+    use WithCurrencyScale;
+
     private LandedCostService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new LandedCostService;
+        $this->service = new LandedCostService($this->mockCurrencyScale());
     }
 
     public function test_calculate_allocated_cost_with_valid_inputs(): void
@@ -59,6 +62,7 @@ class LandedCostServiceTest extends TestCase
         $result = $this->service->calculateLandedUnitCost(
             lineTotal: 100.00,
             allocatedCost: 10.00,
+            nonRecoverableTax: 0.00,
             quantity: 5.00
         );
 
@@ -71,6 +75,7 @@ class LandedCostServiceTest extends TestCase
         $result = $this->service->calculateLandedUnitCost(
             lineTotal: 100.00,
             allocatedCost: 10.00,
+            nonRecoverableTax: 0.00,
             quantity: 0.00
         );
 
@@ -82,7 +87,7 @@ class LandedCostServiceTest extends TestCase
         // Test using pure calculation methods instead of mocking complex Eloquent relationships
         // Single line: 100.00 total, 5 quantity, 50.00 additional costs
         $allocatedCost = $this->service->calculateAllocatedCost(100.00, 100.00, 50.00);
-        $landedUnitCost = $this->service->calculateLandedUnitCost(100.00, $allocatedCost, 5.0);
+        $landedUnitCost = $this->service->calculateLandedUnitCost(100.00, $allocatedCost, 0.00, 5.0);
 
         // All costs allocated to single line
         $this->assertEquals(50.00, $allocatedCost);
@@ -95,7 +100,7 @@ class LandedCostServiceTest extends TestCase
         // Test proportional allocation calculation
         // Line 1: 300 out of 500 total (60%) -> should get 60% of 100 = 60
         $allocatedCost1 = $this->service->calculateAllocatedCost(300.00, 500.00, 100.00);
-        $landedUnitCost1 = $this->service->calculateLandedUnitCost(300.00, $allocatedCost1, 10.0);
+        $landedUnitCost1 = $this->service->calculateLandedUnitCost(300.00, $allocatedCost1, 0.00, 10.0);
 
         $this->assertEquals(60.00, $allocatedCost1);
         // (300 + 60) / 10 = 36
@@ -103,7 +108,7 @@ class LandedCostServiceTest extends TestCase
 
         // Line 2: 200 out of 500 total (40%) -> should get 40% of 100 = 40
         $allocatedCost2 = $this->service->calculateAllocatedCost(200.00, 500.00, 100.00);
-        $landedUnitCost2 = $this->service->calculateLandedUnitCost(200.00, $allocatedCost2, 5.0);
+        $landedUnitCost2 = $this->service->calculateLandedUnitCost(200.00, $allocatedCost2, 0.00, 5.0);
 
         $this->assertEquals(40.00, $allocatedCost2);
         // (200 + 40) / 5 = 48

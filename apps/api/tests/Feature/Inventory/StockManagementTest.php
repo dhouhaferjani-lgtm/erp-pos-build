@@ -207,7 +207,7 @@ class StockManagementTest extends TestCase
 
         $this->assertEquals('20.00', $stockLevel->quantity);
         $this->assertEquals('5.00', $stockLevel->reserved);
-        $this->assertEquals('15.00', $stockLevel->getAvailableQuantity());
+        $this->assertEquals('15.0000', $stockLevel->getAvailableQuantity());
     }
 
     public function test_cannot_reserve_more_than_available(): void
@@ -267,7 +267,7 @@ class StockManagementTest extends TestCase
             ->first();
 
         $this->assertEquals('2.00', $stockLevel->reserved);
-        $this->assertEquals('18.00', $stockLevel->getAvailableQuantity());
+        $this->assertEquals('18.0000', $stockLevel->getAvailableQuantity());
     }
 
     public function test_can_transfer_stock_between_locations(): void

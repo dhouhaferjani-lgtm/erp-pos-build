@@ -73,9 +73,8 @@ class PartnerPaginationTest extends TestCase
         app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
-    public function test_can_list_partners_with_cursor_pagination(): void
+    public function test_can_list_partners_with_offset_pagination(): void
     {
-        // Create 30 partners
         Partner::factory()->count(30)->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -91,23 +90,23 @@ class PartnerPaginationTest extends TestCase
                     '*' => ['id', 'name', 'type'],
                 ],
                 'meta' => [
+                    'current_page',
+                    'last_page',
                     'per_page',
-                    'has_more',
-                ],
-                'links' => [
-                    'next',
-                    'prev',
+                    'total',
+                    'from',
+                    'to',
                 ],
             ]);
 
+        $this->assertEquals(1, $response->json('meta.current_page'));
+        $this->assertEquals(3, $response->json('meta.last_page'));
         $this->assertEquals(10, $response->json('meta.per_page'));
-        $this->assertTrue($response->json('meta.has_more'));
-        $this->assertNotNull($response->json('links.next'));
+        $this->assertEquals(30, $response->json('meta.total'));
     }
 
     public function test_can_navigate_to_next_page(): void
     {
-        // Create 30 partners
         for ($i = 1; $i <= 30; $i++) {
             Partner::factory()->create([
                 'tenant_id' => $this->tenant->id,
@@ -120,16 +119,17 @@ class PartnerPaginationTest extends TestCase
         $response = $this->actingAs($this->user)
             ->getJson('/api/v1/partners?per_page=10');
 
-        $response->assertOk();
-        $nextCursor = $response->json('links.next');
-        $this->assertNotNull($nextCursor);
+        $response->assertOk()
+            ->assertJsonCount(10, 'data')
+            ->assertJsonPath('meta.current_page', 1);
 
         // Get second page
         $response2 = $this->actingAs($this->user)
-            ->getJson('/api/v1/partners?per_page=10&cursor='.urlencode($nextCursor));
+            ->getJson('/api/v1/partners?per_page=10&page=2');
 
         $response2->assertOk()
-            ->assertJsonCount(10, 'data');
+            ->assertJsonCount(10, 'data')
+            ->assertJsonPath('meta.current_page', 2);
 
         // Should have different partners
         $firstPageIds = collect($response->json('data'))->pluck('id')->toArray();
@@ -138,9 +138,8 @@ class PartnerPaginationTest extends TestCase
         $this->assertEmpty(array_intersect($firstPageIds, $secondPageIds));
     }
 
-    public function test_last_page_has_no_next_cursor(): void
+    public function test_last_page_returns_remaining_items(): void
     {
-        // Create exactly 25 partners
         Partner::factory()->count(25)->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -150,10 +149,10 @@ class PartnerPaginationTest extends TestCase
             ->getJson('/api/v1/partners?per_page=25');
 
         $response->assertOk()
-            ->assertJsonCount(25, 'data');
-
-        $this->assertFalse($response->json('meta.has_more'));
-        $this->assertNull($response->json('links.next'));
+            ->assertJsonCount(25, 'data')
+            ->assertJsonPath('meta.current_page', 1)
+            ->assertJsonPath('meta.last_page', 1)
+            ->assertJsonPath('meta.total', 25);
     }
 
     public function test_respects_per_page_parameter(): void
@@ -170,6 +169,7 @@ class PartnerPaginationTest extends TestCase
             ->assertJsonCount(15, 'data');
 
         $this->assertEquals(15, $response->json('meta.per_page'));
+        $this->assertEquals(50, $response->json('meta.total'));
     }
 
     public function test_default_per_page_is_25(): void
@@ -186,18 +186,17 @@ class PartnerPaginationTest extends TestCase
             ->assertJsonCount(25, 'data');
 
         $this->assertEquals(25, $response->json('meta.per_page'));
+        $this->assertEquals(30, $response->json('meta.total'));
     }
 
     public function test_pagination_works_with_search_filter(): void
     {
-        // Create partners with "garage" in the name
         Partner::factory()->count(20)->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'name' => 'Garage Auto',
         ]);
 
-        // Create partners without "garage"
         Partner::factory()->count(10)->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -208,9 +207,9 @@ class PartnerPaginationTest extends TestCase
             ->getJson('/api/v1/partners?search=garage&per_page=10');
 
         $response->assertOk()
-            ->assertJsonCount(10, 'data');
-
-        $this->assertTrue($response->json('meta.has_more'));
+            ->assertJsonCount(10, 'data')
+            ->assertJsonPath('meta.total', 20)
+            ->assertJsonPath('meta.last_page', 2);
     }
 
     public function test_pagination_works_with_type_filter(): void
@@ -231,9 +230,9 @@ class PartnerPaginationTest extends TestCase
             ->getJson('/api/v1/partners?type=customer&per_page=10');
 
         $response->assertOk()
-            ->assertJsonCount(10, 'data');
-
-        $this->assertTrue($response->json('meta.has_more'));
+            ->assertJsonCount(10, 'data')
+            ->assertJsonPath('meta.total', 15)
+            ->assertJsonPath('meta.last_page', 2);
     }
 
     public function test_pagination_works_with_active_filter(): void
@@ -254,9 +253,9 @@ class PartnerPaginationTest extends TestCase
             ->getJson('/api/v1/partners?is_active=1&per_page=10');
 
         $response->assertOk()
-            ->assertJsonCount(10, 'data');
-
-        $this->assertTrue($response->json('meta.has_more'));
+            ->assertJsonCount(10, 'data')
+            ->assertJsonPath('meta.total', 20)
+            ->assertJsonPath('meta.last_page', 2);
     }
 
     public function test_empty_results_return_empty_array(): void
@@ -265,10 +264,9 @@ class PartnerPaginationTest extends TestCase
             ->getJson('/api/v1/partners');
 
         $response->assertOk()
-            ->assertJsonCount(0, 'data');
-
-        $this->assertFalse($response->json('meta.has_more'));
-        $this->assertNull($response->json('links.next'));
+            ->assertJsonCount(0, 'data')
+            ->assertJsonPath('meta.total', 0)
+            ->assertJsonPath('meta.current_page', 1);
     }
 
     public function test_partners_are_isolated_by_company(): void
@@ -290,12 +288,12 @@ class PartnerPaginationTest extends TestCase
             ->getJson('/api/v1/partners');
 
         $response->assertOk()
-            ->assertJsonCount(5, 'data');
+            ->assertJsonCount(5, 'data')
+            ->assertJsonPath('meta.total', 5);
     }
 
     public function test_performance_with_large_dataset(): void
     {
-        // Create 100 partners to test performance
         Partner::factory()->count(100)->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -307,11 +305,11 @@ class PartnerPaginationTest extends TestCase
             ->getJson('/api/v1/partners?per_page=25');
 
         $endTime = microtime(true);
-        $executionTime = ($endTime - $startTime) * 1000; // Convert to milliseconds
+        $executionTime = ($endTime - $startTime) * 1000;
 
         $response->assertOk();
 
-        // Should complete in less than 200ms
-        $this->assertLessThan(200, $executionTime, 'Pagination should complete in less than 200ms');
+        // Should complete in less than 500ms (generous threshold for CI environments)
+        $this->assertLessThan(500, $executionTime, 'Pagination should complete in less than 500ms');
     }
 }

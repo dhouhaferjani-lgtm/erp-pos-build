@@ -398,7 +398,7 @@ final class EarningProcessingServiceTest extends TestCase
             'current_balance' => 50.0,
             'lifetime_earned' => 200.0,
             'lifetime_redeemed' => 150.0,
-            'status' => 'ACTIVE',
+            'status' => 'active',
             'enrolled_at' => now(),
         ]);
 

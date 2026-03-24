@@ -181,7 +181,7 @@ class CreditNoteIntegrationTest extends TestCase
         $response->assertCreated();
 
         $creditNote = Document::find($response->json('data.id'));
-        $this->assertEquals('595.00', $creditNote->total);
+        $this->assertEquals('595.000', $creditNote->total);
         $this->assertEquals(CreditNoteReason::PRICE_ADJUSTMENT, $creditNote->credit_note_reason);
     }
 
@@ -351,9 +351,9 @@ class CreditNoteIntegrationTest extends TestCase
         // Should calculate proportional tax
         // 595 / 1.19 = 500 subtotal
         // 595 - 500 = 95 tax
-        $this->assertEquals('500.00', $creditNote->subtotal);
-        $this->assertEquals('95.00', $creditNote->tax_amount);
-        $this->assertEquals('595.00', $creditNote->total);
+        $this->assertEquals('500.000', $creditNote->subtotal);
+        $this->assertEquals('95.000', $creditNote->tax_amount);
+        $this->assertEquals('595.000', $creditNote->total);
     }
 
     /** @test */

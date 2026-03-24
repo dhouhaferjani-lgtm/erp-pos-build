@@ -115,7 +115,7 @@ final class TreasuryEventsTest extends TestCase
             return $event->paymentId === $payment->id
                 && $event->companyId === $payment->company_id
                 && $event->partnerId === $payment->partner_id
-                && $event->amount === '500.00';
+                && $event->amount === '500.000';
         });
     }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Compliance;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
@@ -46,6 +47,8 @@ class DeliveryNoteHashChainTest extends TestCase
 
     private Partner $partner;
 
+    private Location $location;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -63,6 +66,33 @@ class DeliveryNoteHashChainTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
         ]);
+        $this->location = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'Main Warehouse',
+            'type' => \App\Modules\Company\Domain\Enums\LocationType::Warehouse,
+            'is_default' => true,
+            'is_active' => true,
+        ]);
+
+        // Create chart of accounts (required for invoice posting in chain separation test)
+        $accounts = [
+            ['code' => '411000', 'name' => 'Customer Receivable', 'type' => 'asset', 'purpose' => 'customer_receivable'],
+            ['code' => '701000', 'name' => 'Product Sales', 'type' => 'revenue', 'purpose' => 'product_revenue'],
+            ['code' => '706000', 'name' => 'Service Revenue', 'type' => 'revenue', 'purpose' => 'service_revenue'],
+            ['code' => '445660', 'name' => 'VAT Collected', 'type' => 'liability', 'purpose' => 'vat_collected'],
+            ['code' => '709000', 'name' => 'Sales Returns', 'type' => 'revenue', 'purpose' => 'sales_return'],
+        ];
+        foreach ($accounts as $accountData) {
+            \App\Modules\Accounting\Domain\Account::create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'code' => $accountData['code'],
+                'name' => $accountData['name'],
+                'type' => \App\Modules\Accounting\Domain\Enums\AccountType::from($accountData['type']),
+                'system_purpose' => \App\Modules\Accounting\Domain\Enums\SystemAccountPurpose::from($accountData['purpose']),
+                'is_active' => true,
+            ]);
+        }
     }
 
     public function test_confirming_delivery_note_creates_fiscal_hash(): void
@@ -244,11 +274,21 @@ class DeliveryNoteHashChainTest extends TestCase
         $dn1 = $this->createDraftDeliveryNote('DN-001');
         $confirmedDN1 = $this->deliveryNoteService->confirm($dn1);
 
+        // Create location for company 2
+        $location2 = Location::create([
+            'company_id' => $company2->id,
+            'name' => 'Warehouse 2',
+            'type' => \App\Modules\Company\Domain\Enums\LocationType::Warehouse,
+            'is_default' => true,
+            'is_active' => true,
+        ]);
+
         // Confirm DN for company 2
         $dn2 = Document::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $company2->id,
             'partner_id' => $partner2->id,
+            'location_id' => $location2->id,
             'type' => DocumentType::DeliveryNote,
             'status' => DocumentStatus::Draft,
             'document_number' => 'C2-DN-001',
@@ -348,6 +388,7 @@ class DeliveryNoteHashChainTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'partner_id' => $this->partner->id,
+            'location_id' => $this->location->id,
             'type' => DocumentType::DeliveryNote,
             'status' => DocumentStatus::Draft,
             'document_number' => $documentNumber,

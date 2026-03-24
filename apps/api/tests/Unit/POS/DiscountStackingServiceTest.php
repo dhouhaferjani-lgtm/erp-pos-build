@@ -7,15 +7,17 @@ namespace Tests\Unit\POS;
 use App\Modules\POS\Domain\Services\DiscountStackingService;
 use App\Modules\POS\Domain\ValueObjects\DiscountLine;
 use PHPUnit\Framework\TestCase;
+use Tests\Traits\WithCurrencyScale;
 
 final class DiscountStackingServiceTest extends TestCase
 {
+    use WithCurrencyScale;
     private DiscountStackingService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new DiscountStackingService();
+        $this->service = new DiscountStackingService($this->mockCurrencyScale(3));
     }
 
     public function test_empty_candidates_returns_zero_breakdown(): void
@@ -44,7 +46,7 @@ final class DiscountStackingServiceTest extends TestCase
 
         $result = $this->service->resolve($candidates, '100.00');
 
-        $this->assertSame('10.00', $result->totalTransactionDiscount);
+        $this->assertSame('10.000', $result->totalTransactionDiscount);
         $this->assertCount(1, $result->lines);
     }
 
@@ -75,7 +77,7 @@ final class DiscountStackingServiceTest extends TestCase
 
         $result = $this->service->resolve($candidates, '100.00');
 
-        $this->assertSame('8.00', $result->totalTransactionDiscount);
+        $this->assertSame('8.000', $result->totalTransactionDiscount);
         $this->assertCount(2, $result->lines);
     }
 
@@ -107,7 +109,7 @@ final class DiscountStackingServiceTest extends TestCase
         $result = $this->service->resolve($candidates, '100.00');
 
         // Only the exclusive discount survives
-        $this->assertSame('15.00', $result->totalTransactionDiscount);
+        $this->assertSame('15.000', $result->totalTransactionDiscount);
         $this->assertCount(1, $result->lines);
         $this->assertSame('Exclusive promo', $result->lines[0]->label);
     }
@@ -140,7 +142,7 @@ final class DiscountStackingServiceTest extends TestCase
         $result = $this->service->resolve($candidates, '100.00');
 
         // Lower priority number = higher priority
-        $this->assertSame('20.00', $result->totalTransactionDiscount);
+        $this->assertSame('20.000', $result->totalTransactionDiscount);
         $this->assertSame('High priority exclusive', $result->lines[0]->label);
     }
 
@@ -182,7 +184,7 @@ final class DiscountStackingServiceTest extends TestCase
         $result = $this->service->resolve($candidates, '100.00');
 
         // 10 + 5 + 3 = 18
-        $this->assertSame('18.00', $result->totalTransactionDiscount);
+        $this->assertSame('18.000', $result->totalTransactionDiscount);
         $this->assertCount(3, $result->lines);
     }
 
@@ -249,10 +251,10 @@ final class DiscountStackingServiceTest extends TestCase
 
         $result = $this->service->resolve($candidates, '100.00');
 
-        $this->assertSame('10.00', $result->totalTransactionDiscount);
+        $this->assertSame('10.000', $result->totalTransactionDiscount);
         $this->assertArrayHasKey('product-123', $result->lineDiscounts);
-        $this->assertSame('5.00', $result->lineDiscounts['product-123']);
-        $this->assertSame('15.00', $result->totalDiscount());
+        $this->assertSame('5.000', $result->lineDiscounts['product-123']);
+        $this->assertSame('15.000', $result->totalDiscount());
     }
 
     public function test_multiple_line_discounts_for_same_product_stack(): void
@@ -283,7 +285,7 @@ final class DiscountStackingServiceTest extends TestCase
         $result = $this->service->resolve($candidates, '100.00');
 
         $this->assertSame('0.00', $result->totalTransactionDiscount);
-        $this->assertSame('5.00', $result->lineDiscounts['product-123']);
+        $this->assertSame('5.000', $result->lineDiscounts['product-123']);
     }
 
     public function test_proportional_scaling_when_exceeding_subtotal(): void
@@ -315,9 +317,9 @@ final class DiscountStackingServiceTest extends TestCase
         $result = $this->service->resolve($candidates, '50.00');
 
         // Transaction: 60 * 0.5 = 30, Line: 40 * 0.5 = 20
-        $this->assertSame('30.00', $result->totalTransactionDiscount);
-        $this->assertSame('20.00', $result->lineDiscounts['product-456']);
-        $this->assertSame('50.00', $result->totalDiscount());
+        $this->assertSame('30.000', $result->totalTransactionDiscount);
+        $this->assertSame('20.000', $result->lineDiscounts['product-456']);
+        $this->assertSame('50.000', $result->totalDiscount());
     }
 
     public function test_to_array_includes_all_fields(): void
@@ -345,6 +347,6 @@ final class DiscountStackingServiceTest extends TestCase
         $this->assertCount(1, $array['lines']);
         $this->assertSame('manual', $array['lines'][0]['source']);
         $this->assertSame('10.00', $array['lines'][0]['discount_amount']);
-        $this->assertSame('10.00', $array['total_transaction_discount']);
+        $this->assertSame('10.000', $array['total_transaction_discount']);
     }
 }

@@ -11,6 +11,7 @@ use App\Modules\Document\Domain\DocumentVehicleContext;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
@@ -53,6 +54,15 @@ class DocumentConversionScenarioTest extends TestCase
             'company_id' => $this->company->id,
         ]);
 
+        // Create default location (required for SO→Invoice and SO→DN conversions)
+        Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'Main Warehouse',
+            'type' => \App\Modules\Company\Domain\Enums\LocationType::Warehouse,
+            'is_default' => true,
+            'is_active' => true,
+        ]);
+
         $this->converterRegistry = app(DocumentConverterRegistry::class);
     }
 
@@ -81,7 +91,7 @@ class DocumentConversionScenarioTest extends TestCase
     }
 
     #[\PHPUnit\Framework\Attributes\Test]
-    public function it_blocks_direct_invoicing_for_products_only_orders(): void
+    public function it_auto_creates_delivery_note_for_products_only_orders(): void
     {
         // Create a physical product
         $part = Product::factory()->create([
@@ -96,15 +106,15 @@ class DocumentConversionScenarioTest extends TestCase
             ['product_id' => $part->id, 'description' => 'Brake Pads'],
         ]);
 
-        // Should NOT allow direct conversion - needs delivery note first
-        $this->expectException(\DomainException::class);
-        $this->expectExceptionMessage('Physical products must be delivered before invoicing');
+        // Should auto-create a delivery note and proceed with invoicing
+        $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice);
 
-        $this->converterRegistry->convert($order, DocumentType::Invoice);
+        $this->assertNotNull($invoice);
+        $this->assertEquals(DocumentType::Invoice, $invoice->type);
     }
 
     #[\PHPUnit\Framework\Attributes\Test]
-    public function it_blocks_direct_invoicing_for_mixed_orders(): void
+    public function it_auto_creates_delivery_note_for_mixed_orders(): void
     {
         // Create both service and physical product
         $service = Product::factory()->create([
@@ -127,11 +137,11 @@ class DocumentConversionScenarioTest extends TestCase
             ['product_id' => $part->id, 'description' => 'Oil Filter'],
         ]);
 
-        // Should NOT allow direct conversion - physical items need delivery first
-        $this->expectException(\DomainException::class);
-        $this->expectExceptionMessage('Physical products in this order must be delivered before invoicing');
+        // Should auto-create a delivery note for physical items and proceed
+        $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice);
 
-        $this->converterRegistry->convert($order, DocumentType::Invoice);
+        $this->assertNotNull($invoice);
+        $this->assertEquals(DocumentType::Invoice, $invoice->type);
     }
 
     #[\PHPUnit\Framework\Attributes\Test]
@@ -181,7 +191,7 @@ class DocumentConversionScenarioTest extends TestCase
         ]);
 
         // First conversion should succeed
-        $invoice1 = $this->conversionService->convertOrderToInvoice($order);
+        $invoice1 = $this->converterRegistry->convert($order, DocumentType::Invoice);
         $this->assertNotNull($invoice1);
 
         // Refresh order to get updated payload

@@ -12,6 +12,7 @@ use App\Modules\Coupon\Domain\Services\CouponValidationService;
 use App\Modules\Promotion\Domain\Enums\DiscountAppliesTo;
 use App\Modules\Promotion\Domain\ValueObjects\CartContext;
 use App\Modules\Promotion\Domain\ValueObjects\CartItemContext;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Carbon;
 use PHPUnit\Framework\TestCase;
 
@@ -22,7 +23,9 @@ class CouponValidationServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new CouponValidationService();
+        $scaleResolver = $this->createMock(CurrencyScaleResolverInterface::class);
+        $scaleResolver->method('getScale')->willReturn(2);
+        $this->service = new CouponValidationService($scaleResolver);
     }
 
     private function makeCart(array $items = [], string $subtotal = '100.00'): CartContext

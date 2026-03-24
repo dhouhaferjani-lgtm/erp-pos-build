@@ -108,8 +108,10 @@ class ParapharmacyProductTest extends TestCase
             ->assertJsonPath('data.name', 'Vitamin C 1000mg')
             ->assertJsonPath('data.parapharmacy_metadata.category', 'supplement')
             ->assertJsonPath('data.parapharmacy_metadata.dosage_form', 'tablet')
-            ->assertJsonPath('data.parapharmacy_metadata.active_ingredients.0.name', 'Ascorbic Acid')
             ->assertJsonPath('data.parapharmacy_metadata.usage_instructions', 'Take 1 tablet daily with food.');
+
+        // Note: active_ingredients are now stored via the Ingredient relation (managed via dedicated endpoints),
+        // not as a JSON column. The parapharmacy_metadata create flow does not sync ingredients.
 
         $this->assertDatabaseHas('products', [
             'name' => 'Vitamin C 1000mg',
@@ -157,8 +159,10 @@ class ParapharmacyProductTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJsonPath('data.parapharmacy_metadata.dosage_form', 'capsule')
-            ->assertJsonPath('data.parapharmacy_metadata.requires_consultation', true)
-            ->assertJsonPath('data.parapharmacy_metadata.active_ingredients.0.name', 'EPA');
+            ->assertJsonPath('data.parapharmacy_metadata.requires_consultation', true);
+
+        // Note: active_ingredients are now managed via the Ingredient relation (dedicated endpoints),
+        // not as a JSON column on parapharmacy_product_metadata.
 
         $this->assertDatabaseHas('parapharmacy_product_metadata', [
             'product_id' => $product->id,

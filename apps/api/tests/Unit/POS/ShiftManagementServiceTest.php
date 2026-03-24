@@ -18,10 +18,12 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Tests\Traits\WithCurrencyScale;
 
 final class ShiftManagementServiceTest extends TestCase
 {
     use RefreshDatabase;
+    use WithCurrencyScale;
 
     private ShiftManagementService $service;
 
@@ -40,7 +42,7 @@ final class ShiftManagementServiceTest extends TestCase
         parent::setUp();
 
         $cashDrawerService = $this->app->make(CashDrawerService::class);
-        $this->service = new ShiftManagementService($cashDrawerService);
+        $this->service = new ShiftManagementService($cashDrawerService, $this->mockCurrencyScale(3));
 
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
@@ -59,7 +61,7 @@ final class ShiftManagementServiceTest extends TestCase
         $this->assertEquals($this->terminal->id, $shift->terminal_id);
         $this->assertEquals($this->cashier->id, $shift->cashier_id);
         $this->assertEquals(1, $shift->shift_number);
-        $this->assertEquals('100.00', $shift->opening_cash);
+        $this->assertEquals('100.000', $shift->opening_cash);
         $this->assertEquals(ShiftStatus::Open, $shift->status);
         $this->assertNotNull($shift->opened_at);
     }
@@ -90,7 +92,7 @@ final class ShiftManagementServiceTest extends TestCase
         $this->assertDatabaseHas('pos_cash_drawer_operations', [
             'shift_id' => $shift->id,
             'operation_type' => 'OPENING',
-            'amount' => '100.00',
+            'amount' => '100.000',
             'user_id' => $this->cashier->id,
         ]);
     }
@@ -102,9 +104,9 @@ final class ShiftManagementServiceTest extends TestCase
         $closedShift = $this->service->closeShift($shift, '95.00', $this->cashier);
 
         $this->assertEquals(ShiftStatus::Closed, $closedShift->status);
-        $this->assertEquals('100.00', $closedShift->expected_cash);
-        $this->assertEquals('95.00', $closedShift->actual_cash);
-        $this->assertEquals('-5.00', $closedShift->variance);
+        $this->assertEquals('100.000', $closedShift->expected_cash);
+        $this->assertEquals('95.000', $closedShift->actual_cash);
+        $this->assertEquals('-5.000', $closedShift->variance);
         $this->assertNotNull($closedShift->closed_at);
         $this->assertEquals($this->cashier->id, $closedShift->closed_by);
     }

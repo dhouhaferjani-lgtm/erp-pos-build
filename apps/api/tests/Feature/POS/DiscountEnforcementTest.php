@@ -70,13 +70,13 @@ final class DiscountEnforcementTest extends TestCase
         $receiptId = $response->json('data.id');
         $receipt = Receipt::find($receiptId);
         $this->assertNotNull($receipt);
-        $this->assertEquals('5.00', $receipt->discount_amount);
+        $this->assertEquals('5.000', $receipt->discount_amount);
         $this->assertEquals('Loyal customer', $receipt->discount_reason);
 
         // Total should be (subtotal + tax) - discount
         // Line total = 2 * 50 = 100, no tax on this product
         // Total = 100 - 5 = 95
-        $this->assertEquals('95.00', $receipt->total);
+        $this->assertEquals('95.000', $receipt->total);
     }
 
     public function test_line_discount_percentage_exceeding_limit_returns_422(): void
@@ -190,8 +190,8 @@ final class DiscountEnforcementTest extends TestCase
 
         $line = $receipt->lines->first();
         $this->assertNotNull($line);
-        $this->assertEquals('10.00', $line->discount_amount);
-        $this->assertEquals('90.00', $line->line_total);
+        $this->assertEquals('10.000', $line->discount_amount);
+        $this->assertEquals('90.000', $line->line_total);
     }
 
     public function test_receipt_without_discount_works_as_before(): void
@@ -212,7 +212,7 @@ final class DiscountEnforcementTest extends TestCase
         $receiptId = $response->json('data.id');
         $receipt = Receipt::find($receiptId);
         $this->assertNotNull($receipt);
-        $this->assertEquals('0.00', $receipt->discount_amount);
+        $this->assertEquals('0.000', $receipt->discount_amount);
         $this->assertNull($receipt->discount_reason);
     }
 
@@ -235,7 +235,7 @@ final class DiscountEnforcementTest extends TestCase
         $receiptId = $response->json('data.id');
         $receipt = Receipt::find($receiptId);
         $this->assertNotNull($receipt);
-        $this->assertEquals('8.00', $receipt->discount_amount);
+        $this->assertEquals('8.000', $receipt->discount_amount);
     }
 
     private function setupTestData(): void

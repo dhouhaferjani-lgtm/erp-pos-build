@@ -17,6 +17,7 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Tests\Traits\WithCurrencyScale;
 
 /**
  * Unit tests for ReportGenerationService
@@ -30,6 +31,7 @@ use Tests\TestCase;
 class ReportGenerationServiceTest extends TestCase
 {
     use RefreshDatabase;
+    use WithCurrencyScale;
 
     private ReportGenerationService $service;
 
@@ -50,6 +52,7 @@ class ReportGenerationServiceTest extends TestCase
             $this->app->make(CashDrawerService::class),
             $this->app->make(ZReportHashService::class),
             $this->app->make(GrandtotalService::class),
+            $this->mockCurrencyScale(3),
         );
 
         $this->tenant = Tenant::factory()->create();
@@ -86,9 +89,9 @@ class ReportGenerationServiceTest extends TestCase
         );
 
         $this->assertEquals(1, $result['sales_count']);
-        $this->assertEquals('119.00', $result['gross_sales']);
-        $this->assertEquals('100.00', $result['net_sales']);
-        $this->assertEquals('19.00', $result['tax_amount']);
+        $this->assertEquals('119.000', $result['gross_sales']);
+        $this->assertEquals('100.000', $result['net_sales']);
+        $this->assertEquals('19.000', $result['tax_amount']);
         $this->assertEquals(0, $result['voided_count']);
     }
 
@@ -125,7 +128,7 @@ class ReportGenerationServiceTest extends TestCase
         );
 
         $this->assertEquals(1, $result['sales_count']);
-        $this->assertEquals('59.50', $result['gross_sales']);
+        $this->assertEquals('59.500', $result['gross_sales']);
         $this->assertEquals(1, $result['voided_count']);
     }
 
@@ -161,9 +164,9 @@ class ReportGenerationServiceTest extends TestCase
         );
 
         $this->assertEquals(2, $result['sales_count']);
-        $this->assertEquals('178.50', $result['gross_sales']);
-        $this->assertEquals('150.00', $result['net_sales']);
-        $this->assertEquals('28.50', $result['tax_amount']);
+        $this->assertEquals('178.500', $result['gross_sales']);
+        $this->assertEquals('150.000', $result['net_sales']);
+        $this->assertEquals('28.500', $result['tax_amount']);
     }
 
     /**

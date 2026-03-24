@@ -13,6 +13,7 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Tests\Traits\WithCurrencyScale;
 
 /**
  * Unit tests for GrandtotalService
@@ -25,6 +26,7 @@ use Tests\TestCase;
 class GrandtotalServiceTest extends TestCase
 {
     use RefreshDatabase;
+    use WithCurrencyScale;
 
     private GrandtotalService $service;
 
@@ -39,7 +41,7 @@ class GrandtotalServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new GrandtotalService;
+        $this->service = new GrandtotalService($this->mockCurrencyScale(3));
 
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
@@ -69,9 +71,9 @@ class GrandtotalServiceTest extends TestCase
             now()->addHour()
         );
 
-        $this->assertEquals('119.00', $result['gross_sales']);
-        $this->assertEquals('100.00', $result['net_sales']);
-        $this->assertEquals('19.00', $result['tax_amount']);
+        $this->assertEquals('119.000', $result['gross_sales']);
+        $this->assertEquals('100.000', $result['net_sales']);
+        $this->assertEquals('19.000', $result['tax_amount']);
         $this->assertEquals(1, $result['sales_count']);
         $this->assertEquals(0, $result['refunds_count']);
     }
@@ -98,7 +100,7 @@ class GrandtotalServiceTest extends TestCase
         $this->assertEquals('0.00', $result['gross_sales']);
         $this->assertEquals(0, $result['sales_count']);
         $this->assertEquals(1, $result['refunds_count']);
-        $this->assertEquals('119.00', $result['refunds_amount']);
+        $this->assertEquals('119.000', $result['refunds_amount']);
     }
 
     /**
@@ -122,8 +124,8 @@ class GrandtotalServiceTest extends TestCase
 
         $result = $this->service->calculatePerpetualTotals($terminal);
 
-        $this->assertEquals('178.50', $result['lifetime_sales']);
-        $this->assertEquals('28.50', $result['lifetime_tax']);
+        $this->assertEquals('178.500', $result['lifetime_sales']);
+        $this->assertEquals('28.500', $result['lifetime_tax']);
         $this->assertEquals(2, $result['lifetime_transactions']);
     }
 
@@ -149,8 +151,8 @@ class GrandtotalServiceTest extends TestCase
 
         $result = $this->service->calculatePerpetualTotals($terminal);
 
-        $this->assertEquals('119.00', $result['lifetime_sales']);
-        $this->assertEquals('19.00', $result['lifetime_tax']);
+        $this->assertEquals('119.000', $result['lifetime_sales']);
+        $this->assertEquals('19.000', $result['lifetime_tax']);
         $this->assertEquals(1, $result['lifetime_transactions']);
     }
 
@@ -163,8 +165,8 @@ class GrandtotalServiceTest extends TestCase
 
         $result = $this->service->calculatePerpetualTotals($terminal);
 
-        $this->assertEquals('0.00', $result['lifetime_sales']);
-        $this->assertEquals('0.00', $result['lifetime_tax']);
+        $this->assertEquals('0.000', $result['lifetime_sales']);
+        $this->assertEquals('0.000', $result['lifetime_tax']);
         $this->assertEquals(0, $result['lifetime_transactions']);
     }
 

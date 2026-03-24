@@ -180,7 +180,7 @@ class ProductPaginationTest extends TestCase
         $this->assertEquals(15, $response->json('meta.per_page'));
     }
 
-    public function test_limits_per_page_to_maximum_100(): void
+    public function test_limits_per_page_to_maximum_2000(): void
     {
         Product::factory()->count(150)->create([
             'tenant_id' => $this->tenant->id,
@@ -188,12 +188,12 @@ class ProductPaginationTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/products?per_page=200');
+            ->getJson('/api/v1/products?per_page=2500');
 
         $response->assertOk()
-            ->assertJsonCount(100, 'data');
+            ->assertJsonCount(150, 'data');
 
-        $this->assertEquals(100, $response->json('meta.per_page'));
+        $this->assertEquals(2000, $response->json('meta.per_page'));
     }
 
     public function test_default_per_page_is_25(): void

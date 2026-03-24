@@ -10,6 +10,7 @@ use App\Modules\POS\Domain\Exceptions\DiscountNotAllowedException;
 use App\Modules\POS\Domain\Services\DiscountCalculationService;
 use App\Modules\POS\Domain\Terminal;
 use Tests\TestCase;
+use Tests\Traits\WithCurrencyScale;
 
 /**
  * Unit tests for transaction-level discount validation.
@@ -19,12 +20,14 @@ use Tests\TestCase;
  */
 class TransactionDiscountValidationTest extends TestCase
 {
+    use WithCurrencyScale;
+
     private DiscountCalculationService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new DiscountCalculationService();
+        $this->service = new DiscountCalculationService($this->mockCurrencyScale(3));
     }
 
     public function test_validates_transaction_discount_successfully(): void

@@ -401,7 +401,7 @@ final class RedemptionProcessingServiceTest extends TestCase
             'current_balance' => $balance,
             'lifetime_earned' => 200.0,
             'lifetime_redeemed' => 50.0,
-            'status' => 'ACTIVE',
+            'status' => 'active',
             'enrolled_at' => now(),
         ]);
 

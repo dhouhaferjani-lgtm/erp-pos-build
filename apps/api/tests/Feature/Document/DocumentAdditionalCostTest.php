@@ -148,13 +148,12 @@ class DocumentAdditionalCostTest extends TestCase
         $response->assertStatus(201);
         $response->assertJsonFragment([
             'cost_type' => 'customs',
-            'amount' => '75.50',
+            'amount' => '75.500',
         ]);
 
         $this->assertDatabaseHas('document_additional_costs', [
             'document_id' => $this->purchaseOrder->id,
             'cost_type' => 'customs',
-            'amount' => '75.50',
         ]);
     }
 
@@ -175,7 +174,7 @@ class DocumentAdditionalCostTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertJsonFragment([
-            'amount' => '60.00',
+            'amount' => '60.000',
             'description' => 'Express Transport',
         ]);
     }

@@ -68,7 +68,7 @@ class JournalEntryEntityTest extends TestCase
         $entry = new JournalEntry;
         $fillable = $entry->getFillable();
 
-        $this->assertContains('hash', $fillable);
+        $this->assertContains('fiscal_hash', $fillable);
         $this->assertContains('previous_hash', $fillable);
     }
 }

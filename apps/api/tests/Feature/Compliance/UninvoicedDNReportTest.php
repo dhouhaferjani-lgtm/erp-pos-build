@@ -282,12 +282,12 @@ class UninvoicedDNReportTest extends TestCase
         // Debit: 418 - Clients, produits non encore facturés
         $debitLine = $entry->lines->firstWhere('debit', '>', 0);
         $this->assertNotNull($debitLine);
-        $this->assertEquals('1190.00', $debitLine->debit);
+        $this->assertEquals('1190.000', $debitLine->debit);
 
         // Credit: 70x - Ventes
         $creditLine = $entry->lines->firstWhere('credit', '>', 0);
         $this->assertNotNull($creditLine);
-        $this->assertEquals('1190.00', $creditLine->credit);
+        $this->assertEquals('1190.000', $creditLine->credit);
     }
 
     public function test_generate_year_end_adjustment_returns_null_when_no_uninvoiced_dns(): void

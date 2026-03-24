@@ -147,7 +147,7 @@ class DocumentPaymentStatusTransitionTest extends TestCase
 
         $so->refresh();
         $this->assertEquals(DocumentStatus::Confirmed, $so->status, 'Sales Order must stay Confirmed after full payment');
-        $this->assertEquals('0.00', $so->balance_due, 'Balance should be zero');
+        $this->assertEquals('0.000', $so->balance_due, 'Balance should be zero');
     }
 
     public function test_fully_paid_purchase_order_retains_confirmed_status(): void
@@ -168,7 +168,7 @@ class DocumentPaymentStatusTransitionTest extends TestCase
 
         $po->refresh();
         $this->assertEquals(DocumentStatus::Confirmed, $po->status, 'Purchase Order must stay Confirmed after full payment');
-        $this->assertEquals('0.00', $po->balance_due, 'Balance should be zero');
+        $this->assertEquals('0.000', $po->balance_due, 'Balance should be zero');
     }
 
     public function test_fully_paid_invoice_transitions_to_paid_status(): void
@@ -189,7 +189,7 @@ class DocumentPaymentStatusTransitionTest extends TestCase
 
         $invoice->refresh();
         $this->assertEquals(DocumentStatus::Paid, $invoice->status, 'Invoice should transition to Paid');
-        $this->assertEquals('0.00', $invoice->balance_due, 'Balance should be zero');
+        $this->assertEquals('0.000', $invoice->balance_due, 'Balance should be zero');
     }
 
     public function test_partial_payment_on_sales_order_keeps_confirmed_status(): void
@@ -210,7 +210,7 @@ class DocumentPaymentStatusTransitionTest extends TestCase
 
         $so->refresh();
         $this->assertEquals(DocumentStatus::Confirmed, $so->status, 'Sales Order must stay Confirmed after partial payment');
-        $this->assertEquals('500.00', $so->balance_due, 'Balance should reflect partial payment');
+        $this->assertEquals('500.000', $so->balance_due, 'Balance should reflect partial payment');
     }
 
     public function test_split_payment_on_sales_order_retains_confirmed_status(): void
@@ -259,7 +259,7 @@ class DocumentPaymentStatusTransitionTest extends TestCase
 
         $so->refresh();
         $this->assertEquals(DocumentStatus::Confirmed, $so->status, 'Sales Order must stay Confirmed after split payment');
-        $this->assertEquals('0.00', $so->balance_due, 'Balance should be zero after full split payment');
+        $this->assertEquals('0.000', $so->balance_due, 'Balance should be zero after full split payment');
     }
 
     public function test_multi_document_payment_only_transitions_invoice_to_paid(): void
@@ -285,9 +285,9 @@ class DocumentPaymentStatusTransitionTest extends TestCase
         $invoice->refresh();
         $so->refresh();
 
-        $this->assertEquals('0.00', $invoice->balance_due, 'Invoice balance should be zero');
+        $this->assertEquals('0.000', $invoice->balance_due, 'Invoice balance should be zero');
         $this->assertEquals(DocumentStatus::Paid, $invoice->status, 'Invoice should transition to Paid');
-        $this->assertEquals('0.00', $so->balance_due, 'SO balance should be zero');
+        $this->assertEquals('0.000', $so->balance_due, 'SO balance should be zero');
         $this->assertEquals(DocumentStatus::Confirmed, $so->status, 'Sales Order must stay Confirmed even when fully paid');
     }
 

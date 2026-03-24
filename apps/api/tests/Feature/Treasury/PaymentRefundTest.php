@@ -177,7 +177,7 @@ class PaymentRefundTest extends TestCase
         );
 
         // Refund should be a negative amount
-        $this->assertEquals('-500.00', $refund->amount);
+        $this->assertEquals('-500.000', $refund->amount);
         $this->assertEquals(PaymentStatus::Completed, $refund->status);
         $this->assertStringContainsString('Refund for payment', $refund->reference);
         $this->assertStringContainsString('Refund: Customer requested refund', $refund->notes);
@@ -216,7 +216,7 @@ class PaymentRefundTest extends TestCase
         );
 
         // Refund should be negative partial amount
-        $this->assertEquals('-300.00', $refund->amount);
+        $this->assertEquals('-300.000', $refund->amount);
         $this->assertEquals(PaymentStatus::Completed, $refund->status);
 
         // Original payment should NOT be marked as reversed (partial refund)
@@ -253,7 +253,7 @@ class PaymentRefundTest extends TestCase
 
         // Should return the same refund payment
         $this->assertEquals($firstRefund->id, $secondRefund->id);
-        $this->assertEquals('-500.00', $secondRefund->amount);
+        $this->assertEquals('-500.000', $secondRefund->amount);
     }
 
     public function test_partial_refund_amount_must_be_positive(): void
@@ -295,7 +295,7 @@ class PaymentRefundTest extends TestCase
 
         $history = $this->refundService->getRefundHistory($payment);
 
-        $this->assertEquals('1000.00', $history['original_amount']);
+        $this->assertEquals('1000.000', $history['original_amount']);
         $this->assertEquals('500.00', $history['total_refunded']);
         $this->assertEquals('500.00', $history['remaining_amount']);
         $this->assertFalse($history['is_fully_refunded']);

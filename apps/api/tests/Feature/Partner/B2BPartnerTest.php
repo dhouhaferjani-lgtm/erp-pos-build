@@ -153,7 +153,8 @@ class B2BPartnerTest extends TestCase
             ]);
 
         $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['payment_terms']);
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonStructure(['error' => ['errors' => ['payment_terms']]]);
     }
 
     public function test_consolidation_frequency_must_be_valid_enum(): void
@@ -167,7 +168,8 @@ class B2BPartnerTest extends TestCase
             ]);
 
         $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['consolidation_frequency']);
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonStructure(['error' => ['errors' => ['consolidation_frequency']]]);
     }
 
     public function test_custom_payment_terms_requires_days(): void
@@ -180,7 +182,8 @@ class B2BPartnerTest extends TestCase
             ]);
 
         $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['payment_terms_days']);
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonStructure(['error' => ['errors' => ['payment_terms_days']]]);
     }
 
     public function test_custom_payment_terms_with_days_succeeds(): void
@@ -208,7 +211,8 @@ class B2BPartnerTest extends TestCase
             ]);
 
         $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['credit_limit']);
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonStructure(['error' => ['errors' => ['credit_limit']]]);
     }
 
     public function test_discount_percentage_max_100(): void
@@ -221,7 +225,8 @@ class B2BPartnerTest extends TestCase
             ]);
 
         $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['discount_percentage']);
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonStructure(['error' => ['errors' => ['discount_percentage']]]);
     }
 
     // ─── Update B2B fields ────────────────────────────────────────────
