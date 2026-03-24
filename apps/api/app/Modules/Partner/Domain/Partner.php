@@ -62,6 +62,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $state
  * @property string|null $postal_code
  * @property string|null $country
+ * @property bool $is_active
  * @property \Illuminate\Support\Carbon|null $deleted_at
  * @property-read Tenant $tenant
  * @property-read Company $company
@@ -74,6 +75,11 @@ class Partner extends Model
 
     use HasUuids;
     use SoftDeletes;
+
+    /** @var array<string, mixed> */
+    protected $attributes = [
+        'is_active' => true,
+    ];
 
     protected $fillable = [
         'tenant_id',
@@ -112,6 +118,7 @@ class Partner extends Model
         'state',
         'postal_code',
         'country',
+        'is_active',
     ];
 
     /**
@@ -135,6 +142,7 @@ class Partner extends Model
             'credit_balance' => 'decimal:4',
             'payable_balance' => 'decimal:4',
             'balance_updated_at' => 'datetime',
+            'is_active' => 'boolean',
         ];
     }
 

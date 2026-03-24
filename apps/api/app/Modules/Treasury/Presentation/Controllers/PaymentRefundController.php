@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\Services\PaymentRefundService;
@@ -18,7 +19,34 @@ class PaymentRefundController extends Controller
     public function __construct(
         private readonly PaymentRefundService $refundService,
         private readonly VendorRefundService $vendorRefundService,
+        private readonly CompanyContext $companyContext,
     ) {}
+
+    /**
+     * Find a payment scoped to the current tenant, or fail with 404.
+     */
+    private function findPaymentOrFail(string $id): Payment
+    {
+        $company = $this->companyContext->requireCompany();
+
+        /** @var Payment */
+        return Payment::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->findOrFail($id);
+    }
+
+    /**
+     * Find a document scoped to the current tenant, or fail with 404.
+     */
+    private function findDocumentOrFail(string $id): Document
+    {
+        $company = $this->companyContext->requireCompany();
+
+        /** @var Document */
+        return Document::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->findOrFail($id);
+    }
 
     /**
      * Refund a complete payment
@@ -29,8 +57,7 @@ class PaymentRefundController extends Controller
             'reason' => 'required|string|max:500',
         ]);
 
-        /** @var Payment $payment */
-        $payment = Payment::findOrFail($id);
+        $payment = $this->findPaymentOrFail($id);
 
         try {
             $userId = $request->user()?->id !== null ? (string) $request->user()->id : null;
@@ -61,8 +88,7 @@ class PaymentRefundController extends Controller
             'reason' => 'required|string|max:500',
         ]);
 
-        /** @var Payment $payment */
-        $payment = Payment::findOrFail($id);
+        $payment = $this->findPaymentOrFail($id);
 
         try {
             $userId = $request->user()?->id !== null ? (string) $request->user()->id : null;
@@ -93,8 +119,7 @@ class PaymentRefundController extends Controller
             'reason' => 'required|string|max:500',
         ]);
 
-        /** @var Payment $payment */
-        $payment = Payment::findOrFail($id);
+        $payment = $this->findPaymentOrFail($id);
 
         try {
             $userId = $request->user()?->id !== null ? (string) $request->user()->id : null;
@@ -120,7 +145,7 @@ class PaymentRefundController extends Controller
      */
     public function checkRefundable(string $id): JsonResponse
     {
-        $payment = Payment::findOrFail($id);
+        $payment = $this->findPaymentOrFail($id);
 
         try {
             $canRefund = $this->refundService->canRefund($payment);
@@ -144,7 +169,7 @@ class PaymentRefundController extends Controller
      */
     public function getRefundHistory(string $id): JsonResponse
     {
-        $payment = Payment::findOrFail($id);
+        $payment = $this->findPaymentOrFail($id);
 
         try {
             $history = $this->refundService->getRefundHistory($payment);
@@ -164,8 +189,7 @@ class PaymentRefundController extends Controller
      */
     public function refundPrepayment(RefundPrepaymentRequest $request, string $documentId): JsonResponse
     {
-        /** @var Document $document */
-        $document = Document::findOrFail($documentId);
+        $document = $this->findDocumentOrFail($documentId);
 
         try {
             /** @var numeric-string $amount */

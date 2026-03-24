@@ -23,7 +23,8 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 
     Route::get('partners/{partner}', [PartnerController::class, 'show'])
         ->middleware('can:partners.view')
-        ->name('partners.show');
+        ->name('partners.show')
+        ->whereUuid('partner');
 
     Route::post('partners', [PartnerController::class, 'store'])
         ->middleware('can:partners.create')
@@ -31,21 +32,26 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 
     Route::patch('partners/{partner}', [PartnerController::class, 'update'])
         ->middleware('can:partners.update')
-        ->name('partners.update');
+        ->name('partners.update')
+        ->whereUuid('partner');
 
     Route::delete('partners/{partner}', [PartnerController::class, 'destroy'])
         ->middleware('can:partners.delete')
-        ->name('partners.destroy');
+        ->name('partners.destroy')
+        ->whereUuid('partner');
 
     Route::post('partners/{partner}/validate-tax-id', [PartnerController::class, 'validateTaxId'])
         ->middleware('can:partners.update')
-        ->name('partners.validate-tax-id');
+        ->name('partners.validate-tax-id')
+        ->whereUuid('partner');
 
     Route::get('partners/{partner}/tax-status', [PartnerController::class, 'taxStatus'])
         ->middleware('can:partners.view')
-        ->name('partners.tax-status');
+        ->name('partners.tax-status')
+        ->whereUuid('partner');
 
     Route::get('partners/{partner}/contacts', [PartnerController::class, 'contacts'])
         ->middleware('can:partners.view')
-        ->name('partners.contacts');
+        ->name('partners.contacts')
+        ->whereUuid('partner');
 });

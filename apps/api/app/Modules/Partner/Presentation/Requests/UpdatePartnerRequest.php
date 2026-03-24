@@ -88,6 +88,7 @@ class UpdatePartnerRequest extends FormRequest
                 'nullable',
                 new Enum(ConsolidationFrequency::class),
             ],
+            'is_active' => ['sometimes', 'boolean'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
             'street_address' => ['sometimes', 'nullable', 'string', 'max:255'],
             'street_address_2' => ['sometimes', 'nullable', 'string', 'max:255'],

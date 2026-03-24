@@ -43,6 +43,7 @@ class PartnerData extends Data
         public ?string $state,
         public ?string $postal_code,
         public ?string $country,
+        public bool $is_active,
         public int $contacts_count,
         public ?string $primary_contact_name,
         public string $created_at,
@@ -79,6 +80,7 @@ class PartnerData extends Data
             state: $partner->state,
             postal_code: $partner->postal_code,
             country: $partner->country,
+            is_active: (bool) $partner->is_active,
             contacts_count: $partner->relationLoaded('partyContacts')
                 ? $partner->partyContacts->count()
                 : ($partner->party_contacts_count ?? 0),

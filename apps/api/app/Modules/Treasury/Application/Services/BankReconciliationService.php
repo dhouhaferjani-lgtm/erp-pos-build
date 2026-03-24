@@ -233,8 +233,17 @@ class BankReconciliationService
         $matchedItems = $reconciliation->items->where('is_matched', true);
         $unmatchedItems = $reconciliation->items->where('is_matched', false);
 
-        $matchedTotal = $matchedItems->sum(fn ($item) => (float) $item->payment->amount);
-        $unmatchedTotal = $unmatchedItems->sum(fn ($item) => (float) $item->payment->amount);
+        $scale = $this->scale();
+
+        $matchedTotal = '0';
+        foreach ($matchedItems as $item) {
+            $matchedTotal = bcadd($matchedTotal, (string) $item->payment->amount, $scale);
+        }
+
+        $unmatchedTotal = '0';
+        foreach ($unmatchedItems as $item) {
+            $unmatchedTotal = bcadd($unmatchedTotal, (string) $item->payment->amount, $scale);
+        }
 
         return [
             'reconciliation_id' => $reconciliation->id,
@@ -247,9 +256,9 @@ class BankReconciliationService
             'status' => $reconciliation->status->value,
             'matched_count' => $matchedItems->count(),
             'unmatched_count' => $unmatchedItems->count(),
-            'matched_total' => CurrencyScale::bcformat($matchedTotal, $this->scale()),
-            'unmatched_total' => CurrencyScale::bcformat($unmatchedTotal, $this->scale()),
-            'can_complete' => $reconciliation->isEditable() && bccomp($reconciliation->difference, '0.00', $this->scale()) === 0,
+            'matched_total' => CurrencyScale::bcformat($matchedTotal, $scale),
+            'unmatched_total' => CurrencyScale::bcformat($unmatchedTotal, $scale),
+            'can_complete' => $reconciliation->isEditable() && bccomp($reconciliation->difference, '0.00', $scale) === 0,
         ];
     }
 
@@ -259,11 +268,16 @@ class BankReconciliationService
     private function updateReconciliationDifference(BankReconciliation $reconciliation): void
     {
         $matchedItems = $reconciliation->items()->where('is_matched', true)->with('payment')->get();
-        $matchedTotal = $matchedItems->sum(fn ($item) => (float) $item->payment->amount);
+
+        $scale = $this->scale();
+        $matchedTotal = '0';
+        foreach ($matchedItems as $item) {
+            $matchedTotal = bcadd($matchedTotal, (string) $item->payment->amount, $scale);
+        }
 
         // Calculate expected balance based on matched transactions
-        $expectedBalance = bcadd($reconciliation->opening_balance, CurrencyScale::bcformat($matchedTotal, $this->scale()), $this->scale());
-        $difference = bcsub($reconciliation->statement_balance, $expectedBalance, $this->scale());
+        $expectedBalance = bcadd($reconciliation->opening_balance, $matchedTotal, $scale);
+        $difference = bcsub($reconciliation->statement_balance, $expectedBalance, $scale);
 
         $reconciliation->update([
             'closing_balance' => $expectedBalance,

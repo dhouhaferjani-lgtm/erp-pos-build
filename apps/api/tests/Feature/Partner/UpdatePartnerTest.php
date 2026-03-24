@@ -217,6 +217,56 @@ class UpdatePartnerTest extends TestCase
         $response->assertForbidden();
     }
 
+    public function test_returns_404_for_invalid_uuid_on_show(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/partners/not-a-uuid');
+
+        $response->assertNotFound();
+    }
+
+    public function test_returns_404_for_invalid_uuid_on_update(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson('/api/v1/partners/not-a-uuid', [
+                'name' => 'Updated Name',
+            ]);
+
+        $response->assertNotFound();
+    }
+
+    public function test_returns_404_for_invalid_uuid_on_delete(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->deleteJson('/api/v1/partners/not-a-uuid');
+
+        $response->assertNotFound();
+    }
+
+    public function test_returns_404_for_invalid_uuid_on_contacts(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/partners/not-a-uuid/contacts');
+
+        $response->assertNotFound();
+    }
+
+    public function test_returns_404_for_invalid_uuid_on_tax_status(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/partners/not-a-uuid/tax-status');
+
+        $response->assertNotFound();
+    }
+
+    public function test_returns_404_for_invalid_uuid_on_validate_tax_id(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/partners/not-a-uuid/validate-tax-id');
+
+        $response->assertNotFound();
+    }
+
     public function test_cannot_update_partner_from_another_tenant(): void
     {
         $otherTenant = Tenant::create([
