@@ -249,6 +249,7 @@ describe('syncService', () => {
       vi.mocked(apiGet).mockResolvedValue({
         id: 'term-1',
         code: 'T001',
+        location: { code: null },
         genesis_seed: 'abcd1234',
         last_hash: 'hash-xyz',
         hash_sequence: 10,
@@ -260,6 +261,7 @@ describe('syncService', () => {
       expect(upsertTerminalState).toHaveBeenCalledWith(db, {
         terminal_id: 'term-1',
         terminal_code: 'T001',
+        location_code: 'MAIN',
         genesis_seed: 'abcd1234',
         last_hash: 'hash-xyz',
         hash_sequence: 10,
@@ -271,6 +273,7 @@ describe('syncService', () => {
       vi.mocked(apiGet).mockResolvedValue({
         id: 'term-1',
         code: 'T001',
+        location: { code: 'SHOP1' },
         genesis_seed: 'abcd1234',
         last_hash: null,
         hash_sequence: 0,
@@ -283,6 +286,7 @@ describe('syncService', () => {
       expect(upsertTerminalState).toHaveBeenCalledWith(db, {
         terminal_id: 'term-1',
         terminal_code: 'T001',
+        location_code: 'SHOP1',
         genesis_seed: 'abcd1234',
         last_hash: 'genesis-hash-abc123',
         hash_sequence: 0,

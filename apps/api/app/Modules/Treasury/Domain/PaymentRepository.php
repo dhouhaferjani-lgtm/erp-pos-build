@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Domain;
 
+use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
@@ -34,11 +35,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $location_id
  * @property string|null $responsible_user_id
  * @property string|null $account_id
+ * @property string|null $gl_account_id
  * @property bool $is_active
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property-read Tenant $tenant
  * @property-read Company $company
+ * @property-read Account|null $glAccount
  * @property-read User|null $responsibleUser
  */
 class PaymentRepository extends Model
@@ -103,6 +106,14 @@ class PaymentRepository extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    /**
+     * @return BelongsTo<Account, $this>
+     */
+    public function glAccount(): BelongsTo
+    {
+        return $this->belongsTo(Account::class, 'gl_account_id');
     }
 
     /**

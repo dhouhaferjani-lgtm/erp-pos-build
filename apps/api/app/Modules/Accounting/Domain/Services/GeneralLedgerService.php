@@ -890,7 +890,9 @@ final class GeneralLedgerService
     ): JournalEntry {
         if ($repository->gl_account_id === null) {
             throw new \InvalidArgumentException(
-                "Payment repository '{$repository->name}' does not have a GL account configured"
+                "Cannot create GL entry: payment repository '{$repository->name}' ({$repository->code}) "
+                .'is not linked to a General Ledger account. '
+                .'Go to Settings → Treasury → Payment Repositories and assign a GL account to this repository.'
             );
         }
 

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Presentation\Controllers;
 
-use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
@@ -28,6 +27,7 @@ class PaymentRepositoryController extends Controller
 
         $repositories = PaymentRepository::query()
             ->where('tenant_id', $tenantId)
+            ->with('glAccount:id,code,name')
             ->orderBy('name')
             ->get();
 
@@ -44,6 +44,7 @@ class PaymentRepositoryController extends Controller
 
         $repository = PaymentRepository::query()
             ->where('tenant_id', $tenantId)
+            ->with('glAccount:id,code,name')
             ->findOrFail($id);
 
         return response()->json([
@@ -73,7 +74,7 @@ class PaymentRepositoryController extends Controller
             'location_id' => ['nullable', 'uuid'],
             'responsible_user_id' => ['nullable', 'uuid', 'exists:users,id'],
             'account_id' => ['nullable', 'uuid'],
-            'gl_account_id' => ['nullable', 'uuid', 'exists:accounts,id'],
+            'gl_account_id' => ['nullable', 'uuid', Rule::exists('accounts', 'id')->where('company_id', $companyId)],
         ]);
 
         $repository = PaymentRepository::create([
@@ -93,6 +94,8 @@ class PaymentRepositoryController extends Controller
             'gl_account_id' => $validated['gl_account_id'] ?? null,
             'is_active' => true,
         ]);
+
+        $repository->load('glAccount:id,code,name');
 
         return response()->json([
             'data' => $this->formatRepository($repository),
@@ -127,14 +130,14 @@ class PaymentRepositoryController extends Controller
             'location_id' => ['nullable', 'uuid'],
             'responsible_user_id' => ['nullable', 'uuid', 'exists:users,id'],
             'account_id' => ['nullable', 'uuid'],
-            'gl_account_id' => ['nullable', 'uuid', 'exists:accounts,id'],
+            'gl_account_id' => ['nullable', 'uuid', Rule::exists('accounts', 'id')->where('company_id', $companyId)],
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
         $repository->update($validated);
 
         /** @var PaymentRepository $freshRepository */
-        $freshRepository = $repository->fresh();
+        $freshRepository = $repository->fresh(['glAccount:id,code,name']);
 
         return response()->json([
             'data' => $this->formatRepository($freshRepository),
@@ -231,9 +234,7 @@ class PaymentRepositoryController extends Controller
             'balance' => $repository->balance,
             'is_active' => $repository->is_active,
             'gl_account_id' => $repository->gl_account_id,
-            'gl_account' => $repository->gl_account_id
-                ? Account::find($repository->gl_account_id)?->only(['id', 'code', 'name'])
-                : null,
+            'gl_account' => $repository->glAccount?->only(['id', 'code', 'name']),
         ];
     }
 }

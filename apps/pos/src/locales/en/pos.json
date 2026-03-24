@@ -125,7 +125,10 @@
     "loadingLocations": "Loading locations...",
     "terminalRequested": "Terminal <strong>{{name}}</strong> ({{code}}) has been requested.",
     "awaitingActivation": "Your terminal request is awaiting activation.",
-    "adminActivate": "An administrator must activate it from the web dashboard."
+    "adminActivate": "An administrator must activate it from the web dashboard.",
+    "changeTerminal": "Change Terminal",
+    "changeTerminalDesc": "Disconnect from the current terminal and select a new one.",
+    "changeTerminalConfirm": "Are you sure? This will disconnect from the current terminal. You will need to select or request a new terminal."
   },
   "pin": {
     "screenLocked": "Screen Locked",

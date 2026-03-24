@@ -4,10 +4,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Vault, Building2, CreditCard, Wallet, Calendar, ExternalLink, BookOpen, Pencil, Check, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { api } from '../../lib/api'
-import { apiPatch } from '../../lib/api'
+import { api, apiPatch } from '../../lib/api'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
+import { textColors, borderColors } from '../../lib/designTokens'
 import { useAccounts } from '../finance/hooks/useAccounts'
 
 interface Repository {
@@ -123,15 +123,15 @@ function GlAccountField({ repository }: { repository: Repository }) {
   if (isEditing) {
     return (
       <div className="flex justify-between items-start">
-        <dt className="text-gray-500 flex items-center gap-1">
+        <dt className={`${textColors.disabled} flex items-center gap-1`}>
           <BookOpen className="h-3.5 w-3.5" />
           {t('treasury.glAccount', 'GL Account')}
         </dt>
         <dd className="flex items-center gap-2">
           <select
             value={selectedAccountId}
-            onChange={(e) => setSelectedAccountId(e.target.value)}
-            className="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+            onChange={(e) => { setSelectedAccountId(e.target.value) }}
+            className={`rounded-md border ${borderColors.default} px-2 py-1 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none`}
           >
             <option value="">{t('treasury.noGlAccount', '— None —')}</option>
             {accounts.map((acc) => (
@@ -141,15 +141,15 @@ function GlAccountField({ repository }: { repository: Repository }) {
             ))}
           </select>
           <button
-            onClick={() => mutation.mutate(selectedAccountId || null)}
+            onClick={() => { mutation.mutate(selectedAccountId || null) }}
             disabled={mutation.isPending}
-            className="rounded p-1 text-green-600 hover:bg-green-50"
+            className={`rounded p-1 ${textColors.success} hover:bg-green-50`}
           >
             <Check className="h-4 w-4" />
           </button>
           <button
             onClick={() => { setIsEditing(false); setSelectedAccountId(repository.gl_account_id ?? '') }}
-            className="rounded p-1 text-gray-400 hover:bg-gray-50"
+            className={`rounded p-1 ${textColors.disabled} hover:bg-gray-50`}
           >
             <X className="h-4 w-4" />
           </button>
@@ -160,23 +160,23 @@ function GlAccountField({ repository }: { repository: Repository }) {
 
   return (
     <div className="flex justify-between">
-      <dt className="text-gray-500 flex items-center gap-1">
+      <dt className={`${textColors.disabled} flex items-center gap-1`}>
         <BookOpen className="h-3.5 w-3.5" />
         {t('treasury.glAccount', 'GL Account')}
       </dt>
       <dd className="flex items-center gap-2">
         {repository.gl_account ? (
-          <span className="text-gray-900 font-mono text-sm">
+          <span className={`${textColors.primary} font-mono text-sm`}>
             {repository.gl_account.code} - {repository.gl_account.name}
           </span>
         ) : (
-          <span className="text-amber-600 text-sm italic">
+          <span className={`${textColors.warningDark} text-sm italic`}>
             {t('treasury.noGlAccountWarning', 'Not configured')}
           </span>
         )}
         <button
-          onClick={() => setIsEditing(true)}
-          className="rounded p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-50"
+          onClick={() => { setIsEditing(true) }}
+          className={`rounded p-1 ${textColors.disabled} ${textColors.hoverSecondary} hover:bg-gray-50`}
         >
           <Pencil className="h-3.5 w-3.5" />
         </button>

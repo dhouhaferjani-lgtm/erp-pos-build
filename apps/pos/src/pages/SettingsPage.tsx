@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Monitor, Image, Globe, Printer, Search, CheckCircle, AlertCircle, Loader2, Hand, Maximize, Shield } from 'lucide-react';
+import { ArrowLeft, Monitor, Image, Globe, Printer, Search, CheckCircle, AlertCircle, Loader2, Hand, Maximize, Shield, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSettingsStore, SUPPORTED_LANGUAGES } from '@/stores/settingsStore';
 import { usePrinterStore } from '@/stores/printerStore';
@@ -549,6 +549,25 @@ export function SettingsPage() {
                 </div>
               )}
             </div>
+            {terminal && (
+              <div className="mt-4 border-t border-gray-100 pt-4">
+                <p className="mb-2 text-xs text-gray-500">
+                  {t('terminal.changeTerminalDesc')}
+                </p>
+                <button
+                  onClick={() => {
+                    if (window.confirm(t('terminal.changeTerminalConfirm'))) {
+                      useTerminalStore.getState().reset();
+                      navigate('/');
+                    }
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-orange-300 bg-orange-50 px-4 py-3 text-sm font-medium text-orange-700 hover:bg-orange-100"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  {t('terminal.changeTerminal')}
+                </button>
+              </div>
+            )}
           </section>
 
           {/* About */}

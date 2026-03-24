@@ -62,6 +62,7 @@ interface OperatorPinData {
 interface TerminalStateResponse {
   id: string;
   code: string;
+  location: { code: string | null } | null;
   genesis_seed: string;
   last_hash: string | null;
   hash_sequence: number;
@@ -293,6 +294,7 @@ export async function pullTerminalState(
       const hashState: TerminalHashState = {
         terminal_id: state.id,
         terminal_code: state.code,
+        location_code: (state.location?.code ?? 'MAIN').toUpperCase(),
         genesis_seed: state.genesis_seed,
         last_hash: initialHash,
         hash_sequence: state.hash_sequence,

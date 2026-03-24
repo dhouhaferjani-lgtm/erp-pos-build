@@ -125,7 +125,10 @@
     "loadingLocations": "Chargement des emplacements...",
     "terminalRequested": "Le terminal <strong>{{name}}</strong> ({{code}}) a été demandé.",
     "awaitingActivation": "Votre demande de terminal est en attente d'activation.",
-    "adminActivate": "Un administrateur doit l'activer depuis le tableau de bord."
+    "adminActivate": "Un administrateur doit l'activer depuis le tableau de bord.",
+    "changeTerminal": "Changer de terminal",
+    "changeTerminalDesc": "Se déconnecter du terminal actuel et en sélectionner un nouveau.",
+    "changeTerminalConfirm": "Êtes-vous sûr ? Cela vous déconnectera du terminal actuel. Vous devrez sélectionner ou demander un nouveau terminal."
   },
   "pin": {
     "screenLocked": "Écran verrouillé",

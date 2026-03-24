@@ -72,12 +72,13 @@ function computeVatBreakdown(cartItems: CartItem[], decimals: number): VatBreakd
 }
 
 function generateReceiptNumber(
+  locationCode: string,
   terminalCode: string,
   sequence: number,
 ): string {
   const year = new Date().getFullYear();
   const paddedSeq = String(sequence).padStart(8, '0');
-  return `${terminalCode}-${year}-${paddedSeq}`;
+  return `${locationCode}-${terminalCode}-${year}-${paddedSeq}`;
 }
 
 export async function createOfflineReceipt(
@@ -106,7 +107,7 @@ export async function createOfflineReceipt(
 
   // 3. Generate receipt number
   const newSequence = terminalState.hash_sequence + 1;
-  const receiptNumber = generateReceiptNumber(terminalState.terminal_code, newSequence);
+  const receiptNumber = generateReceiptNumber(terminalState.location_code, terminalState.terminal_code, newSequence);
 
   // 4. Compute fiscal hash with real VAT breakdown
   const postedAt = new Date().toISOString();

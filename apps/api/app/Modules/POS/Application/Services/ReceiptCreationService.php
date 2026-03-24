@@ -111,12 +111,14 @@ final class ReceiptCreationService
         $companyId = $this->companyContext->requireCompanyId();
 
         return DB::transaction(function () use ($terminalId, $lines, $customerId, $contactId, $notes, $companyId, $transactionDiscountAmount, $transactionDiscountReason, $couponCode, $loyaltyDiscountAmount, $loyaltyRewardId, $consumptionMode): Receipt {
-            // 1. Lock and load terminal
+            // 1. Lock and load terminal with location
             /** @var Terminal $terminal */
             $terminal = Terminal::where('company_id', $companyId)
                 ->where('id', $terminalId)
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            $terminal->load('location:id,code,name');
 
             if (! $terminal->isActive()) {
                 throw new \RuntimeException('Terminal is not active');
@@ -719,31 +721,52 @@ final class ReceiptCreationService
     }
 
     /**
-     * Generate receipt number using terminal code and sequence.
+     * Generate receipt number using location code, terminal code, and sequence.
      *
-     * Format: {terminal_code}-{year}-{sequence}
-     * Example: POS01-2026-00000001
+     * Format: {location_code}-{terminal_code}-{year}-{sequence}
+     * Example: MAIN-POS01-2026-00000001
+     *
+     * Per NF525 and industry standards, the receipt number embeds both the
+     * store/location and terminal identifiers for multi-location uniqueness.
      */
     private function generateReceiptNumber(Terminal $terminal, int $year, int $sequence): string
     {
+        $locationCode = $this->resolveLocationCode($terminal);
         $terminalCode = $terminal->code;
         $sequenceStr = str_pad((string) $sequence, 8, '0', STR_PAD_LEFT);
 
-        return "{$terminalCode}-{$year}-{$sequenceStr}";
+        return "{$locationCode}-{$terminalCode}-{$year}-{$sequenceStr}";
     }
 
     /**
      * Generate training receipt number with TRN- prefix.
      *
-     * Format: TRN-{terminal_code}-{year}-{sequence}
-     * Example: TRN-POS01-2026-00000001
+     * Format: TRN-{location_code}-{terminal_code}-{year}-{sequence}
+     * Example: TRN-MAIN-POS01-2026-00000001
      */
     private function generateTrainingReceiptNumber(Terminal $terminal, int $year, int $sequence): string
     {
+        $locationCode = $this->resolveLocationCode($terminal);
         $terminalCode = $terminal->code;
         $sequenceStr = str_pad((string) $sequence, 8, '0', STR_PAD_LEFT);
 
-        return "TRN-{$terminalCode}-{$year}-{$sequenceStr}";
+        return "TRN-{$locationCode}-{$terminalCode}-{$year}-{$sequenceStr}";
+    }
+
+    /**
+     * Resolve the location code for receipt number generation.
+     *
+     * Falls back to 'MAIN' if the location has no code set.
+     */
+    private function resolveLocationCode(Terminal $terminal): string
+    {
+        $code = $terminal->location->code;
+
+        if ($code === null || $code === '') {
+            return 'MAIN';
+        }
+
+        return strtoupper($code);
     }
 
     /**

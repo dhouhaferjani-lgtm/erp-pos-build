@@ -5,6 +5,7 @@ import type { ZChainState } from '@/lib/offline/types';
 export interface TerminalHashState {
   terminal_id: string;
   terminal_code: string;
+  location_code: string;
   genesis_seed: string;
   last_hash: string;
   hash_sequence: number;
@@ -27,15 +28,16 @@ export async function upsertTerminalState(
 ): Promise<void> {
   await execute(
     db,
-    `INSERT INTO terminal_state (terminal_id, terminal_code, genesis_seed, last_hash, hash_sequence, updated_at)
-     VALUES ($1, $2, $3, $4, $5, datetime('now'))
+    `INSERT INTO terminal_state (terminal_id, terminal_code, location_code, genesis_seed, last_hash, hash_sequence, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, datetime('now'))
      ON CONFLICT(terminal_id) DO UPDATE SET
        terminal_code = excluded.terminal_code,
+       location_code = excluded.location_code,
        genesis_seed = excluded.genesis_seed,
        last_hash = excluded.last_hash,
        hash_sequence = excluded.hash_sequence,
        updated_at = datetime('now')`,
-    [state.terminal_id, state.terminal_code, state.genesis_seed, state.last_hash, state.hash_sequence]
+    [state.terminal_id, state.terminal_code, state.location_code, state.genesis_seed, state.last_hash, state.hash_sequence]
   );
 }
 

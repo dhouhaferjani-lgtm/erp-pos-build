@@ -240,4 +240,19 @@ export const migrations: Migration[] = [
       downloaded_at TEXT NOT NULL
     )`,
   },
+  {
+    version: 13,
+    name: 'add_location_code_to_terminal_state',
+    sql: '',
+    async run(db) {
+      try {
+        await db.execute("ALTER TABLE terminal_state ADD COLUMN location_code TEXT NOT NULL DEFAULT 'MAIN'");
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : '';
+        if (!msg.includes('duplicate column')) {
+          throw error;
+        }
+      }
+    },
+  },
 ];

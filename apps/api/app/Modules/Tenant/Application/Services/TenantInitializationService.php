@@ -14,6 +14,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\FranceChartOfAccountsSeeder;
 use Database\Seeders\GenericChartOfAccountsSeeder;
 use Database\Seeders\PaymentMethodSeeder;
+use Database\Seeders\PaymentRepositorySeeder;
 use Database\Seeders\TunisiaChartOfAccountsSeeder;
 use Database\Seeders\TunisiaTaxConfigurationSeeder;
 
@@ -63,7 +64,11 @@ class TenantInitializationService
         // 7. Seed standard payment methods
         $this->seedPaymentMethods($company);
 
-        // 8. Auto-include Inventory for F&B verticals
+        // 8. Seed payment repositories (cash registers, bank accounts) with GL links
+        // Must run AFTER chart of accounts so GL account IDs can be resolved
+        $this->seedPaymentRepositories($company);
+
+        // 9. Auto-include Inventory for F&B verticals
         // Temporarily auto-include Inventory for F&B verticals
         // TODO: Remove when Inventory becomes a separately purchased module
         $this->enableInventoryForFnbVerticals($tenant);
@@ -158,6 +163,19 @@ class TenantInitializationService
     private function seedPaymentMethods(Company $company): void
     {
         $seeder = new PaymentMethodSeeder;
+        $seeder->run($company);
+    }
+
+    /**
+     * Seed payment repositories (cash registers, bank accounts) for the company.
+     *
+     * Creates default repositories linked to the chart of accounts GL accounts.
+     * Must run AFTER seedChartOfAccounts() so Cash and Bank system purpose
+     * accounts exist for GL linking.
+     */
+    private function seedPaymentRepositories(Company $company): void
+    {
+        $seeder = new PaymentRepositorySeeder;
         $seeder->run($company);
     }
 

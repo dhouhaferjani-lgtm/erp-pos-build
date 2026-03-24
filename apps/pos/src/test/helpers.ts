@@ -114,7 +114,7 @@ export function makeOfflineReceipt(overrides: Partial<OfflineReceipt> = {}): Off
   return {
     id: 'receipt-1',
     idempotency_key: 'idem-1',
-    receipt_number: 'T001-2026-00000001',
+    receipt_number: 'MAIN-T001-2026-00000001',
     terminal_id: 'terminal-1',
     terminal_code: 'T001',
     operator_id: 'op-1',

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Monitor, Play, Square, RefreshCw, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -32,13 +32,9 @@ export function CustomerDisplaySettings() {
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState('');
 
-  // Scan monitors on mount if Tauri
-  useEffect(() => {
-    if (isTauri && availableMonitors.length === 0) {
-      void handleScanMonitors();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isTauri]);
+  // Don't auto-scan monitors on mount — it can crash under certain
+  // display server configurations (e.g. VS Code snap + X11).
+  // Users click "Rescan" manually when they enable the feature.
 
   const handleScanMonitors = useCallback(async () => {
     setIsScanning(true);

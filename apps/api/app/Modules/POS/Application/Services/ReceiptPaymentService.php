@@ -93,9 +93,10 @@ final class ReceiptPaymentService
 
                 if ($repository->gl_account_id === null) {
                     throw new \RuntimeException(
-                        "Payment repository '{$repository->name}' ({$repository->code}) does not have a GL account configured. "
-                        .'Please assign a GL account to this repository in Treasury settings, or run: '
-                        .'php artisan migrate (to backfill from chart of accounts).'
+                        "Cannot process payment: the cash register/bank account '{$repository->name}' ({$repository->code}) "
+                        .'is not linked to a General Ledger account. Every payment repository must be linked to a GL account '
+                        .'(e.g., Cash account for cash registers, Bank account for bank accounts) to record transactions. '
+                        .'Go to Settings → Treasury → Payment Repositories and assign a GL account to this repository.'
                     );
                 }
 
@@ -116,7 +117,7 @@ final class ReceiptPaymentService
                     'status' => PaymentStatus::Completed,
                     'payment_type' => PaymentType::POS,
                     'reference' => "POS Receipt {$receipt->receipt_number} - Payment ".($index + 1),
-                    'notes' => "POS payment (".($index + 1).' of '.count($payments).')',
+                    'notes' => 'POS payment ('.($index + 1).' of '.count($payments).')',
                 ]);
 
                 // Create GL entry for this payment

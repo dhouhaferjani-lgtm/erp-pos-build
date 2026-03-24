@@ -32,6 +32,7 @@ function makeMockDb() {
 const terminalState = {
   terminal_id: 'terminal-1',
   terminal_code: 'T001',
+  location_code: 'MAIN',
   genesis_seed: 'seed-abc',
   last_hash: 'previous-hash-xyz',
   hash_sequence: 5,
@@ -85,7 +86,7 @@ describe('receiptService - createOfflineReceipt', () => {
     });
 
     const year = new Date().getFullYear();
-    expect(result.receiptNumber).toBe(`T001-${year}-00000006`);
+    expect(result.receiptNumber).toBe(`MAIN-T001-${year}-00000006`);
   });
 
   it('throws when terminal state is not initialized', async () => {

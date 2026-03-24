@@ -8,10 +8,10 @@ use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Factories\AccountFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
-use Database\Factories\AccountFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -48,6 +48,7 @@ class Account extends Model
 {
     /** @use HasFactory<AccountFactory> */
     use HasFactory;
+
     use HasUuids;
 
     /**
@@ -252,8 +253,10 @@ class Account extends Model
 
         if ($account === null) {
             throw new RuntimeException(
-                "No account found with purpose '{$purpose->value}' for company {$companyId}. ".
-                'Please ensure the chart of accounts has been properly seeded with system purposes.'
+                "Missing GL account: no account with system purpose '{$purpose->value}' ({$purpose->label()}) exists for this company. ".
+                'This account is required to process transactions. '.
+                "Go to Settings → Chart of Accounts and assign the '{$purpose->label()}' purpose to the appropriate account, ".
+                'or contact support if the chart of accounts was not properly initialized during registration.'
             );
         }
 
