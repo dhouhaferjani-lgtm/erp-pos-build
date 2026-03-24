@@ -31,6 +31,8 @@ yarn-error.log*
 # Testing
 coverage/
 .phpunit.result.cache
+**/playwright-report/
+**/test-results/
 
 # Laravel specific
 storage/*.key
@@ -47,6 +49,9 @@ phpstan.neon.local
 *.tmp
 *.temp
 apps/api/.deptrac.cache
+
+# Tauri auto-generated schemas
+apps/pos/src-tauri/gen/schemas/
 
 # Session artifacts (AI-generated status/plan files)
 docs/sessions/
