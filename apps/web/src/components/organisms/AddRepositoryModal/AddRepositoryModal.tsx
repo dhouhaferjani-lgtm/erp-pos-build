@@ -9,6 +9,7 @@ import { Input } from '../../atoms/Input'
 import { Select } from '../../atoms/Select'
 import { Button } from '../../atoms/Button'
 import { apiPost } from '../../../lib/api'
+import { useAccounts } from '../../../features/finance/hooks/useAccounts'
 
 interface Repository {
   id: string
@@ -21,6 +22,7 @@ interface Repository {
   bic: string | null
   balance: string
   is_active: boolean
+  gl_account_id: string | null
 }
 
 interface RepositoryFormData {
@@ -31,6 +33,7 @@ interface RepositoryFormData {
   account_number: string
   iban: string
   bic: string
+  gl_account_id: string
 }
 
 export interface AddRepositoryModalProps {
@@ -78,6 +81,9 @@ export function AddRepositoryModal({
   const queryClient = useQueryClient()
 
   // Form state with React Hook Form
+  const { data: accountsData } = useAccounts({ active: true })
+  const accounts = accountsData ?? []
+
   const {
     register,
     handleSubmit,
@@ -93,6 +99,7 @@ export function AddRepositoryModal({
       account_number: '',
       iban: '',
       bic: '',
+      gl_account_id: '',
     },
   })
 
@@ -107,6 +114,7 @@ export function AddRepositoryModal({
         account_number: '',
         iban: '',
         bic: '',
+        gl_account_id: '',
       })
     }
   }, [isOpen, reset])
@@ -127,6 +135,7 @@ export function AddRepositoryModal({
         account_number: data.account_number || null,
         iban: data.iban || null,
         bic: data.bic || null,
+        gl_account_id: data.gl_account_id || null,
       }
       return apiPost<{ data: Repository }>('/payment-repositories', payload)
     },
@@ -192,6 +201,24 @@ export function AddRepositoryModal({
                 <option value="safe">{t('treasury:repositories.types.safe', 'Safe')}</option>
                 <option value="bank_account">{t('treasury:repositories.types.bank_account', 'Bank Account')}</option>
                 <option value="virtual">{t('treasury:repositories.types.virtual', 'Virtual')}</option>
+              </Select>
+            </FormField>
+
+            {/* GL Account */}
+            <FormField
+              label={t('treasury:repositories.glAccount', 'GL Account')}
+              htmlFor="repository-gl-account"
+            >
+              <Select
+                id="repository-gl-account"
+                {...register('gl_account_id')}
+              >
+                <option value="">{t('treasury:repositories.noGlAccount', '— None —')}</option>
+                {accounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.code} - {acc.name}
+                  </option>
+                ))}
               </Select>
             </FormField>
 

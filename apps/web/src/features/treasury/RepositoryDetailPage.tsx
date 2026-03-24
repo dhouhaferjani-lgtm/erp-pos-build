@@ -1,10 +1,14 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Vault, Building2, CreditCard, Wallet, Calendar, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Vault, Building2, CreditCard, Wallet, Calendar, ExternalLink, BookOpen, Pencil, Check, X } from 'lucide-react'
+import { toast } from 'sonner'
 import { api } from '../../lib/api'
+import { apiPatch } from '../../lib/api'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
+import { useAccounts } from '../finance/hooks/useAccounts'
 
 interface Repository {
   id: string
@@ -17,6 +21,8 @@ interface Repository {
   bic: string | null
   balance: string
   is_active: boolean
+  gl_account_id: string | null
+  gl_account: { id: string; code: string; name: string } | null
 }
 
 interface RepositoryResponse {
@@ -90,6 +96,93 @@ const statusLabels: Record<string, string> = {
   cancelled: 'Cancelled',
   failed: 'Failed',
   reversed: 'Reversed',
+}
+
+function GlAccountField({ repository }: { repository: Repository }) {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const [isEditing, setIsEditing] = useState(false)
+  const [selectedAccountId, setSelectedAccountId] = useState(repository.gl_account_id ?? '')
+
+  const { data: accountsData } = useAccounts({ active: true })
+  const accounts = accountsData ?? []
+
+  const mutation = useMutation({
+    mutationFn: (glAccountId: string | null) =>
+      apiPatch(`/payment-repositories/${repository.id}`, { gl_account_id: glAccountId }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['payment-repository', repository.id] })
+      toast.success(t('treasury.glAccountUpdated', 'GL account updated'))
+      setIsEditing(false)
+    },
+    onError: () => {
+      toast.error(t('errors.generic', 'Failed to update'))
+    },
+  })
+
+  if (isEditing) {
+    return (
+      <div className="flex justify-between items-start">
+        <dt className="text-gray-500 flex items-center gap-1">
+          <BookOpen className="h-3.5 w-3.5" />
+          {t('treasury.glAccount', 'GL Account')}
+        </dt>
+        <dd className="flex items-center gap-2">
+          <select
+            value={selectedAccountId}
+            onChange={(e) => setSelectedAccountId(e.target.value)}
+            className="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+          >
+            <option value="">{t('treasury.noGlAccount', '— None —')}</option>
+            {accounts.map((acc) => (
+              <option key={acc.id} value={acc.id}>
+                {acc.code} - {acc.name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => mutation.mutate(selectedAccountId || null)}
+            disabled={mutation.isPending}
+            className="rounded p-1 text-green-600 hover:bg-green-50"
+          >
+            <Check className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => { setIsEditing(false); setSelectedAccountId(repository.gl_account_id ?? '') }}
+            className="rounded p-1 text-gray-400 hover:bg-gray-50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </dd>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex justify-between">
+      <dt className="text-gray-500 flex items-center gap-1">
+        <BookOpen className="h-3.5 w-3.5" />
+        {t('treasury.glAccount', 'GL Account')}
+      </dt>
+      <dd className="flex items-center gap-2">
+        {repository.gl_account ? (
+          <span className="text-gray-900 font-mono text-sm">
+            {repository.gl_account.code} - {repository.gl_account.name}
+          </span>
+        ) : (
+          <span className="text-amber-600 text-sm italic">
+            {t('treasury.noGlAccountWarning', 'Not configured')}
+          </span>
+        )}
+        <button
+          onClick={() => setIsEditing(true)}
+          className="rounded p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-50"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
+      </dd>
+    </div>
+  )
 }
 
 export function RepositoryDetailPage() {
@@ -237,6 +330,7 @@ export function RepositoryDetailPage() {
                 <dd className="text-gray-900 font-mono">{repository.bic}</dd>
               </div>
             )}
+            <GlAccountField repository={repository} />
           </dl>
         </div>
 

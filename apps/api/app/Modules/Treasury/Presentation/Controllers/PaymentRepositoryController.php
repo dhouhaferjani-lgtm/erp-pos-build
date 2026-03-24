@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Presentation\Controllers;
 
+use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
@@ -72,6 +73,7 @@ class PaymentRepositoryController extends Controller
             'location_id' => ['nullable', 'uuid'],
             'responsible_user_id' => ['nullable', 'uuid', 'exists:users,id'],
             'account_id' => ['nullable', 'uuid'],
+            'gl_account_id' => ['nullable', 'uuid', 'exists:accounts,id'],
         ]);
 
         $repository = PaymentRepository::create([
@@ -88,6 +90,7 @@ class PaymentRepositoryController extends Controller
             'location_id' => $validated['location_id'] ?? null,
             'responsible_user_id' => $validated['responsible_user_id'] ?? null,
             'account_id' => $validated['account_id'] ?? null,
+            'gl_account_id' => $validated['gl_account_id'] ?? null,
             'is_active' => true,
         ]);
 
@@ -124,6 +127,7 @@ class PaymentRepositoryController extends Controller
             'location_id' => ['nullable', 'uuid'],
             'responsible_user_id' => ['nullable', 'uuid', 'exists:users,id'],
             'account_id' => ['nullable', 'uuid'],
+            'gl_account_id' => ['nullable', 'uuid', 'exists:accounts,id'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
@@ -226,6 +230,10 @@ class PaymentRepositoryController extends Controller
             'bic' => $repository->bic,
             'balance' => $repository->balance,
             'is_active' => $repository->is_active,
+            'gl_account_id' => $repository->gl_account_id,
+            'gl_account' => $repository->gl_account_id
+                ? Account::find($repository->gl_account_id)?->only(['id', 'code', 'name'])
+                : null,
         ];
     }
 }
