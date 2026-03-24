@@ -340,7 +340,7 @@
                 <span class="label">{{ __('pos.cashier') }}:</span>
                 <span class="value">{{ $receipt->cashier_name }}</span>
             </div>
-            @if($receipt->customer_name)
+            @if(($company->receipt_show_customer ?? true) && $receipt->customer_name)
                 <div>
                     <span class="label">{{ __('pos.customer') }}:</span>
                     <span class="value">{{ $receipt->customer_name }}</span>
@@ -392,8 +392,8 @@
             </div>
         </div>
 
-        {{-- VAT Breakdown --}}
-        @if($vatDetails->isNotEmpty())
+        {{-- VAT Breakdown (legal override: FR, TN, IT, MA, DZ require it) --}}
+        @if($vatDetails->isNotEmpty() && (($forceVatBreakdown ?? false) || ($company->receipt_show_vat_breakdown ?? true)))
             <div class="vat-breakdown">
                 <h4>{{ __('pos.vat_breakdown') }}</h4>
                 @foreach($vatDetails as $vat)
@@ -405,55 +405,64 @@
             </div>
         @endif
 
-        {{-- Payment Methods --}}
-        <div class="payments">
-            <h4>{{ __('pos.payment_methods') }}</h4>
-            @foreach($payments as $payment)
-                <div>
-                    <div class="payment-line">
-                        <span>{{ $payment->payment_type }}:</span>
-                        <span>{{ $formatMoney($payment->amount) }}</span>
+        {{-- Payment Methods (legal override: FR, TN, IT require it) --}}
+        @if(($forcePaymentDetails ?? false) || ($company->receipt_show_payment_details ?? true))
+            <div class="payments">
+                <h4>{{ __('pos.payment_methods') }}</h4>
+                @foreach($payments as $payment)
+                    <div>
+                        <div class="payment-line">
+                            <span>{{ $payment->payment_type }}:</span>
+                            <span>{{ $formatMoney($payment->amount) }}</span>
+                        </div>
+                        @if($payment->isCard())
+                            <div class="payment-detail">{{ __('pos.card') }}: {{ $payment->getMaskedCardNumber() }}</div>
+                        @endif
+                        @if($payment->isVoucher())
+                            <div class="payment-detail">{{ __('pos.voucher') }}: {{ $payment->voucher_serial }}</div>
+                        @endif
                     </div>
-                    @if($payment->isCard())
-                        <div class="payment-detail">{{ __('pos.card') }}: {{ $payment->getMaskedCardNumber() }}</div>
-                    @endif
-                    @if($payment->isVoucher())
-                        <div class="payment-detail">{{ __('pos.voucher') }}: {{ $payment->voucher_serial }}</div>
-                    @endif
-                </div>
-            @endforeach
-            @if((float)$changeGiven > 0)
-                <div class="divider"></div>
-                <div class="payment-line bold">
-                    <span>{{ __('pos.change_given') }}:</span>
-                    <span>{{ $formatMoney($changeGiven) }}</span>
-                </div>
-            @endif
-        </div>
+                @endforeach
+                @if((float)$changeGiven > 0)
+                    <div class="divider"></div>
+                    <div class="payment-line bold">
+                        <span>{{ __('pos.change_given') }}:</span>
+                        <span>{{ $formatMoney($changeGiven) }}</span>
+                    </div>
+                @endif
+            </div>
+        @endif
 
-        {{-- Fiscal Section (CRITICAL for compliance) --}}
-        <div class="fiscal">
-            <h4>{{ __('pos.fiscal_information') }}</h4>
-            <div class="fiscal-line">
-                <strong>{{ __('pos.chain_sequence') }}:</strong> #{{ $receipt->chain_sequence }}
-            </div>
-            <div class="fiscal-line">
-                <strong>{{ __('pos.fiscal_hash') }}:</strong><br>
-                {{ substr($receipt->fiscal_hash, 0, 32) }}<br>
-                {{ substr($receipt->fiscal_hash, 32) }}
-            </div>
-            @if(!$receipt->isFirstInChain())
+        {{-- Fiscal Section (legal override: FR requires it — CRITICAL for NF525 compliance) --}}
+        @if(($forceFiscalInfo ?? false) || ($company->receipt_show_fiscal_info ?? true))
+            <div class="fiscal">
+                <h4>{{ __('pos.fiscal_information') }}</h4>
                 <div class="fiscal-line">
-                    <strong>{{ __('pos.previous_hash') }}:</strong><br>
-                    {{ substr($receipt->previous_hash, 0, 32) }}<br>
-                    {{ substr($receipt->previous_hash, 32) }}
+                    <strong>{{ __('pos.chain_sequence') }}:</strong> #{{ $receipt->chain_sequence }}
                 </div>
-            @endif
-        </div>
+                <div class="fiscal-line">
+                    <strong>{{ __('pos.fiscal_hash') }}:</strong><br>
+                    {{ substr($receipt->fiscal_hash, 0, 32) }}<br>
+                    {{ substr($receipt->fiscal_hash, 32) }}
+                </div>
+                @if(!$receipt->isFirstInChain())
+                    <div class="fiscal-line">
+                        <strong>{{ __('pos.previous_hash') }}:</strong><br>
+                        {{ substr($receipt->previous_hash, 0, 32) }}<br>
+                        {{ substr($receipt->previous_hash, 32) }}
+                    </div>
+                @endif
+            </div>
+        @endif
+
+        {{-- Custom Header (company or location level) --}}
+        @if($company->receipt_header ?? null)
+            <div class="custom-footer" style="margin-top: 8px;">{{ $company->receipt_header }}</div>
+        @endif
 
         {{-- Footer Section --}}
         <div class="footer">
-            <div class="thank-you">{{ __('pos.thank_you') }}</div>
+            <div class="thank-you">{{ $company->receipt_thank_you ?? __('pos.thank_you') }}</div>
             @if($company->receipt_footer ?? null)
                 <div class="custom-footer">{{ $company->receipt_footer }}</div>
             @endif

@@ -488,5 +488,27 @@
     "noCashMethod": "No cash payment method configured. Please set up a cash payment method in Settings → Payment Methods.",
     "noCashRegister": "No cash register configured. Please set up a cash register in Settings → Payment Repositories.",
     "checkoutFailed": "Checkout failed"
+  },
+  "receiptLabel": {
+    "receipt": "Receipt:",
+    "date": "Date:",
+    "terminal": "Terminal:",
+    "operator": "Operator:",
+    "customer": "Customer:",
+    "item": "Item",
+    "qty": "Qty",
+    "amount": "Amount",
+    "subtotal": "Subtotal:",
+    "discount": "Discount:",
+    "tax": "Tax:",
+    "total": "TOTAL:",
+    "payments": "Payments:",
+    "changeDue": "Change Due:",
+    "vatRate": "VAT %",
+    "taxable": "Taxable",
+    "taxCol": "Tax",
+    "thankYou": "Thank you for your purchase!",
+    "taxId": "Tax ID:",
+    "tel": "Tel:"
   }
 }

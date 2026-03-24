@@ -1,5 +1,6 @@
+import i18next from 'i18next';
 import type { FullReceiptResponse } from '@/types/receipt';
-import type { ReceiptData } from '@/lib/printing';
+import type { ReceiptData, ReceiptLabels } from '@/lib/printing';
 
 function getCurrencySymbol(currencyCode: string): string {
   try {
@@ -83,5 +84,33 @@ export function buildEscPosReceiptData(
     fiscal_signature: null,
     customer_name: receipt.customer_name,
     notes: receipt.notes,
+    labels: buildReceiptLabels(),
+  };
+}
+
+/** Build localized receipt labels from i18n. */
+function buildReceiptLabels(): ReceiptLabels {
+  const t = (key: string) => i18next.t(`pos:receiptLabel.${key}`);
+  return {
+    receipt: t('receipt'),
+    date: t('date'),
+    terminal: t('terminal'),
+    operator: t('operator'),
+    customer: t('customer'),
+    item: t('item'),
+    qty: t('qty'),
+    amount: t('amount'),
+    subtotal: t('subtotal'),
+    discount: t('discount'),
+    tax: t('tax'),
+    total: t('total'),
+    payments: t('payments'),
+    change_due: t('changeDue'),
+    vat_rate: t('vatRate'),
+    taxable: t('taxable'),
+    tax_col: t('taxCol'),
+    thank_you: t('thankYou'),
+    tax_id: t('taxId'),
+    tel: t('tel'),
   };
 }

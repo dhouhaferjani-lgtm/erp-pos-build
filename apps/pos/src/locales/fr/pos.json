@@ -488,5 +488,27 @@
     "noCashMethod": "Aucun moyen de paiement espèces configuré. Veuillez configurer un moyen de paiement espèces dans Paramètres → Moyens de paiement.",
     "noCashRegister": "Aucune caisse enregistreuse configurée. Veuillez configurer une caisse dans Paramètres → Dépôts de paiement.",
     "checkoutFailed": "Échec du paiement"
+  },
+  "receiptLabel": {
+    "receipt": "Reçu :",
+    "date": "Date :",
+    "terminal": "Terminal :",
+    "operator": "Opérateur :",
+    "customer": "Client :",
+    "item": "Article",
+    "qty": "Qté",
+    "amount": "Montant",
+    "subtotal": "Sous-total :",
+    "discount": "Remise :",
+    "tax": "TVA :",
+    "total": "TOTAL :",
+    "payments": "Paiements :",
+    "changeDue": "Monnaie Rendue :",
+    "vatRate": "TVA %",
+    "taxable": "Base HT",
+    "taxCol": "TVA",
+    "thankYou": "Merci pour votre achat !",
+    "taxId": "MF :",
+    "tel": "Tél :"
   }
 }

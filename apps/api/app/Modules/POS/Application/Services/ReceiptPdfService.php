@@ -132,6 +132,10 @@ final class ReceiptPdfService
             'copyNumber' => $copyNumber,
             'isDuplicate' => $copyNumber >= 2,
             'duplicateLabel' => $copyNumber >= 2 ? "DUPLICATA #{$copyNumber}" : null,
+            // Receipt customization: section visibility with legal overrides
+            'forceVatBreakdown' => in_array($company->country_code, ['FR', 'TN', 'IT', 'MA', 'DZ'], true),
+            'forceFiscalInfo' => in_array($company->country_code, ['FR'], true),
+            'forcePaymentDetails' => in_array($company->country_code, ['FR', 'TN', 'IT'], true),
             'formatMoney' => fn (string|float|null $amount) => $this->formatMoney($amount, $currency, $locale),
             'formatDate' => fn (Carbon|string|null $date) => $this->formatDate($date, $locale),
             'formatDateTime' => fn (Carbon|string|null $date) => $this->formatDateTime($date, $locale),

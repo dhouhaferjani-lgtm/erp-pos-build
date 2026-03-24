@@ -1,3 +1,28 @@
+/** Localized labels for ESC/POS thermal receipt printing. All optional — English defaults used if absent. */
+export interface ReceiptLabels {
+  receipt?: string
+  date?: string
+  terminal?: string
+  operator?: string
+  customer?: string
+  item?: string
+  qty?: string
+  amount?: string
+  subtotal?: string
+  discount?: string
+  tax?: string
+  total?: string
+  payments?: string
+  change_due?: string
+  vat_rate?: string
+  taxable?: string
+  tax_col?: string
+  thank_you?: string
+  tax_id?: string
+  tel?: string
+  notes?: string
+}
+
 export interface CreateReceiptRequest {
   terminal_id: string;
   lines: Array<{
