@@ -169,6 +169,8 @@ final class ReceiptCreationService
             $vatAggregates = []; // keyed by tax_rate
             $subtotal = '0.00';
             $totalTax = '0.00';
+            /** @var numeric-string $sumLineTotals Sum of gross line totals (TTC) — used for receipt total to avoid VAT rounding drift */
+            $sumLineTotals = '0';
 
             foreach ($lines as $index => $lineData) {
                 $isCompositeItem = ! empty($lineData['composite_item_id']);
@@ -222,6 +224,7 @@ final class ReceiptCreationService
 
                 // line_total = (qty * unit_price) - discount
                 $lineTotal = bcsub($grossLineTotal, $discountAmount, $this->scale());
+                $sumLineTotals = bcadd($sumLineTotals, $lineTotal, $this->scale());
 
                 // Check if this is a fixed_bundle composite item with mixed VAT rates
                 $isFixedBundle = $compositeItem !== null
@@ -439,7 +442,13 @@ final class ReceiptCreationService
                 ]);
             }
 
-            $total = bcsub(bcadd($subtotal, $totalTax, $this->scale()), $effectiveTransactionDiscount, $this->scale());
+            // Total = sum of line totals (TTC) - transaction discount
+            // Uses $sumLineTotals (gross) instead of $subtotal + recalculated $totalTax
+            // to avoid VAT recalculation rounding drift (e.g., 5.000 TND becoming 4.999).
+            // Then derive $totalTax from the difference to maintain the accounting identity:
+            // subtotal + tax_amount - discount = total
+            $total = bcsub($sumLineTotals, $effectiveTransactionDiscount, $this->scale());
+            $totalTax = bcsub($sumLineTotals, $subtotal, $this->scale());
 
             // 5. Generate receipt number and sequence
             $isTraining = $terminal->is_training_mode;
