@@ -3,6 +3,8 @@
  * Document Module - Credit Note Features
  */
 
+import { bcadd, bcsub } from '@/lib/decimal';
+
 // ============================================================================
 // Constants (instead of enums for erasableSyntaxOnly compatibility)
 // ============================================================================
@@ -247,14 +249,14 @@ export function validateCreditNoteAmount(
  */
 export function calculateRemainingCreditableAmount(
   invoiceTotal: string,
-  existingCredits: CreditNote[]
+  existingCredits: CreditNote[],
+  scale: number = 3
 ): string {
-  const totalNum = parseFloat(invoiceTotal);
   const creditsTotal = existingCredits.reduce((sum, cn) => {
-    return sum + (parseFloat(cn.total) || 0);
-  }, 0);
+    return bcadd(sum, cn.total || '0', scale);
+  }, '0');
 
-  return (totalNum - creditsTotal).toFixed(2);
+  return bcsub(invoiceTotal, creditsTotal, scale);
 }
 
 /**

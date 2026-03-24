@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X, AlertCircle, Calculator } from 'lucide-react'
 import { useWithholdingPreview } from '../hooks/useWithholding'
+import { useCurrency } from '@/hooks/useCurrency'
 import type { TransactionType } from '../types'
 
 interface WithholdingPreviewModalProps {
@@ -24,6 +25,7 @@ export function WithholdingPreviewModal({
   transactionType,
 }: WithholdingPreviewModalProps) {
   const { t } = useTranslation(['withholding', 'common'])
+  const { decimals } = useCurrency()
   const previewMutation = useWithholdingPreview()
 
   const [manualOverride, setManualOverride] = useState(false)
@@ -47,7 +49,7 @@ export function WithholdingPreviewModal({
   const handleApply = () => {
     if (manualOverride) {
       const rate = parseFloat(manualRate) / 100
-      const withholdingAmount = (parseFloat(amount) * rate).toFixed(3)
+      const withholdingAmount = (parseFloat(amount) * rate).toFixed(decimals)
       onApply(withholdingAmount, rate.toFixed(4))
     } else if (preview) {
       onApply(preview.withholding_amount ?? '', preview.withholding_rate ?? '')
@@ -56,11 +58,11 @@ export function WithholdingPreviewModal({
   }
 
   const calculatedWithholding = manualOverride
-    ? (parseFloat(amount) * parseFloat(manualRate) / 100).toFixed(3)
-    : preview?.withholding_amount ?? '0.000'
+    ? (parseFloat(amount) * parseFloat(manualRate) / 100).toFixed(decimals)
+    : preview?.withholding_amount ?? '0.' + '0'.repeat(decimals)
 
   const calculatedNet = manualOverride
-    ? (parseFloat(amount) - parseFloat(calculatedWithholding)).toFixed(3)
+    ? (parseFloat(amount) - parseFloat(calculatedWithholding)).toFixed(decimals)
     : preview?.net_amount ?? amount
 
   if (!isOpen) return null
@@ -147,7 +149,7 @@ export function WithholdingPreviewModal({
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-600">{t('certificates.grossAmount')}</span>
                     <span className="font-mono font-semibold text-gray-900">
-                      {parseFloat(amount).toFixed(3)} {currency}
+                      {parseFloat(amount).toFixed(decimals)} {currency}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm">

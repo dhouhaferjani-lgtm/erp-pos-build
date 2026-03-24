@@ -14,6 +14,7 @@ import {
   Hash,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useCurrency } from '@/hooks/useCurrency'
 
 export function ZReportDetailPage() {
   const { t } = useTranslation(['pos', 'common'])
@@ -207,11 +208,12 @@ function SummaryCard({
   reportData: ZReportItem['report_data']
 }) {
   const { t } = useTranslation(['pos'])
+  const { decimals } = useCurrency()
 
   const averageTicket =
     report.sales_count > 0
-      ? (parseFloat(report.gross_sales) / report.sales_count).toFixed(2)
-      : '0.00'
+      ? (parseFloat(report.gross_sales) / report.sales_count).toFixed(decimals)
+      : (0).toFixed(decimals)
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-6">

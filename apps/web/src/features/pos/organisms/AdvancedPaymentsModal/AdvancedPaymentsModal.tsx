@@ -12,6 +12,7 @@ import { ReceiptPrintButton } from '../../components/ReceiptPrintButton'
 import { useCompanySettings } from '../../hooks'
 import { useDiscountPermissions } from '../../hooks/useDiscountPermissions'
 import { useCurrency } from '@/hooks/useCurrency'
+import { bcadd, bcsub, bccomp } from '@/lib/decimal'
 import { fetchPaymentMethods } from '../../api/paymentMethodApi'
 import { fetchPaymentRepositories } from '../../api/paymentRepositoryApi'
 import type { CartItem } from '../../molecules/CartLineItem'
@@ -129,7 +130,7 @@ export function AdvancedPaymentsModal({
 }: AdvancedPaymentsModalProps) {
   const { t } = useTranslation('pos')
   const { autoPrintReceipts } = useCompanySettings()
-  const { currency, toFixed: toFixedCurrency } = useCurrency()
+  const { currency, decimals, toFixed: toFixedCurrency } = useCurrency()
   const { permissions } = useDiscountPermissions(terminalCode)
   const [showDiscountModal, setShowDiscountModal] = useState(false)
   const [completedReceipt, setCompletedReceipt] = useState<{ receiptId: string; receiptNumber: string } | null>(null)
@@ -161,37 +162,38 @@ export function AdvancedPaymentsModal({
 
   const { subtotal, discount, tax, total } = useMemo(() => {
     const subtotal = cartItems.reduce(
-      (sum, item) => sum + parseFloat(item.line_total),
-      0
+      (sum, item) => bcadd(sum, item.line_total, decimals),
+      '0'
     )
-    const discount = parseFloat(transactionDiscountAmount || '0')
-    const subtotalAfterDiscount = subtotal - discount
+    const discount = transactionDiscountAmount || '0'
+    const subtotalAfterDiscount = bccomp(subtotal, discount) > 0 ? bcsub(subtotal, discount, decimals) : toFixedCurrency(0)
     const tax = cartItems.reduce(
-      (sum, item) => sum + parseFloat(item.tax_amount || '0'),
-      0
+      (sum, item) => bcadd(sum, item.tax_amount || '0', decimals),
+      '0'
     )
-    const total = subtotalAfterDiscount + tax
+    const total = bcadd(subtotalAfterDiscount, tax, decimals)
 
     return {
-      subtotal: toFixedCurrency(subtotal),
-      discount: toFixedCurrency(discount),
-      tax: toFixedCurrency(tax),
-      total: toFixedCurrency(total),
+      subtotal,
+      discount,
+      tax,
+      total,
     }
-  }, [cartItems, transactionDiscountAmount, toFixedCurrency])
+  }, [cartItems, transactionDiscountAmount, decimals, toFixedCurrency])
 
   const activePaymentMethods = useMemo(
     () => paymentMethods.filter(m => m.is_active),
     [paymentMethods]
   )
 
-  const totalPaid = useMemo(
-    () => addedPayments.reduce((sum, l) => sum + l.amount, 0),
-    [addedPayments]
+  const totalPaidStr = useMemo(
+    () => addedPayments.reduce((sum, l) => bcadd(sum, String(l.amount), decimals), '0'),
+    [addedPayments, decimals]
   )
+  const totalPaid = parseFloat(totalPaidStr)
 
-  const remaining = parseFloat(total) - totalPaid
-  const hasOverpayment = totalPaid > parseFloat(total) + 0.001
+  const remaining = bcsub(total, totalPaidStr, decimals)
+  const hasOverpayment = bccomp(totalPaidStr, total) > 0
 
   /**
    * Sum of amounts from "immediate" (change-safe) payment methods:
@@ -208,7 +210,7 @@ export function AdvancedPaymentsModal({
       .reduce((sum, p) => sum + p.amount, 0)
   }, [addedPayments, paymentMethods])
 
-  const overpaymentAmount = hasOverpayment ? totalPaid - parseFloat(total) : 0
+  const overpaymentAmount = hasOverpayment ? parseFloat(bcsub(totalPaidStr, total, decimals)) : 0
   /** Maximum cash change that can safely be returned */
   const safeChangeLimit = Math.max(0, maxSafeChange - parseFloat(total))
   /** Whether all overpayment is covered by immediate methods */
@@ -263,19 +265,19 @@ export function AdvancedPaymentsModal({
     }
 
     // Pre-fill with remaining balance
-    const currentRemaining = parseFloat(total) - totalPaid
-    if (currentRemaining > 0) {
-      setEntryAmount(toFixedCurrency(currentRemaining))
+    const currentRemaining = bcsub(total, totalPaidStr, decimals)
+    if (bccomp(currentRemaining, '0') > 0) {
+      setEntryAmount(currentRemaining)
     } else {
       setEntryAmount('')
     }
-  }, [paymentMethods, paymentRepositories, total, totalPaid, toFixedCurrency])
+  }, [paymentMethods, paymentRepositories, total, totalPaidStr, decimals])
 
   const handlePayRemaining = useCallback(() => {
-    if (remaining > 0) {
-      setEntryAmount(toFixedCurrency(remaining))
+    if (bccomp(remaining, '0') > 0) {
+      setEntryAmount(remaining)
     }
-  }, [remaining, toFixedCurrency])
+  }, [remaining])
 
   const canAddPayment = useMemo(() => {
     const amount = parseFloat(entryAmount || '0')
@@ -315,7 +317,8 @@ export function AdvancedPaymentsModal({
     l.methodId && l.amount > 0 && l.repositoryId
   )
 
-  const isValid = (Math.abs(remaining) < 0.001 || hasOverpayment) && totalPaid > 0 && allConfigured
+  const remainingAbs = bccomp(remaining, '0') >= 0 ? remaining : bcsub('0', remaining, decimals)
+  const isValid = (bccomp(remainingAbs, '0.001') < 0 || hasOverpayment) && totalPaid > 0 && allConfigured
 
   const handleComplete = () => {
     if (!isValid || isProcessing) return
@@ -520,7 +523,7 @@ export function AdvancedPaymentsModal({
                               variant="secondary"
                               size="lg"
                               onClick={handlePayRemaining}
-                              disabled={remaining <= 0}
+                              disabled={bccomp(remaining, '0') <= 0}
                               className="min-h-[56px] whitespace-nowrap"
                               touchOptimized={touchOptimized}
                             >
@@ -919,9 +922,9 @@ export function AdvancedPaymentsModal({
                     </p>
                     <p className={cn(
                       'text-xl font-bold mt-0.5',
-                      Math.abs(remaining) < 0.001 ? textColors.success : textColors.error
+                      bccomp(remainingAbs, '0.001') < 0 ? textColors.success : textColors.error
                     )}>
-                      {toFixedCurrency(remaining)} {currency}
+                      {remaining} {currency}
                     </p>
                   </div>
                 </div>

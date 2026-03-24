@@ -10,6 +10,7 @@ import { OpenInvoicesList } from './OpenInvoicesList'
 import { AllocationPreview } from './AllocationPreview'
 import { usePaymentAllocationPreview, useApplyAllocation } from '../hooks/useSmartPayment'
 import { AllocationMethod, type OpenInvoice, type ManualAllocation } from '@/types/treasury'
+import { useCurrency } from '@/hooks/useCurrency'
 
 interface PaymentAllocationFormProps {
   paymentId: string
@@ -39,6 +40,7 @@ export function PaymentAllocationForm({
   onCancel,
 }: PaymentAllocationFormProps) {
   const { t } = useTranslation(['treasury', 'common'])
+  const { decimals } = useCurrency()
 
   // State
   const [allocationMethod, setAllocationMethod] = useState<AllocationMethod>(AllocationMethod.FIFO)
@@ -60,9 +62,9 @@ export function PaymentAllocationForm({
     }, 0)
   }, [manualAllocations])
 
-  // Format amount to 2 decimals
+  // Format amount to currency-aware decimals
   const formatAmount = (amount: string | number): string => {
-    return parseFloat(String(amount)).toFixed(2)
+    return parseFloat(String(amount)).toFixed(decimals)
   }
 
   // Validation: Check if manual allocations exceed payment amount

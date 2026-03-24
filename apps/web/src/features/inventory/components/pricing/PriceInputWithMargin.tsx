@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { DollarSign, TrendingUp, AlertCircle } from 'lucide-react'
 import { api } from '../../../../lib/api'
 import { MarginIndicator } from './MarginIndicator'
+import { useCurrency } from '@/hooks/useCurrency'
 
 interface MarginCheckResponse {
   data: {
@@ -40,6 +41,7 @@ export function PriceInputWithMargin({
   disabled = false,
   showSuggestedPrice = true,
 }: PriceInputWithMarginProps) {
+  const { decimals } = useCurrency()
   const [localValue, setLocalValue] = useState(value.toString())
   const [debouncedValue, setDebouncedValue] = useState(value)
 
@@ -79,7 +81,7 @@ export function PriceInputWithMargin({
   const applySuggestedPrice = () => {
     if (marginInfo?.suggested_price) {
       const suggested = parseFloat(marginInfo.suggested_price)
-      setLocalValue(suggested.toFixed(2))
+      setLocalValue(suggested.toFixed(decimals))
       onChange(suggested)
     }
   }
@@ -134,7 +136,7 @@ export function PriceInputWithMargin({
               <div>
                 <span className="text-gray-600">Cost Price:</span>
                 <span className="ms-1 font-medium text-gray-900">
-                  ${parseFloat(marginInfo.cost_price).toFixed(2)}
+                  ${parseFloat(marginInfo.cost_price).toFixed(decimals)}
                 </span>
               </div>
               <div>
@@ -169,7 +171,7 @@ export function PriceInputWithMargin({
                 <span>Suggested Price (Target Margin)</span>
               </div>
               <span className="font-semibold">
-                ${parseFloat(marginInfo.suggested_price).toFixed(2)}
+                ${parseFloat(marginInfo.suggested_price).toFixed(decimals)}
               </span>
             </button>
           )}

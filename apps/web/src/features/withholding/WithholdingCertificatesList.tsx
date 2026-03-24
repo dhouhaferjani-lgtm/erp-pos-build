@@ -17,6 +17,7 @@ import {
   downloadCertificateTEJXML,
   downloadBatchTEJXML,
 } from './api/withholdingApi'
+import { useCurrency } from '@/hooks/useCurrency'
 import {
   useWithholdingCertificates,
   useIssueWithholdingCertificate,
@@ -26,6 +27,7 @@ import type { CertificateFilters, WithholdingDirection, CertificateStatus } from
 
 export function WithholdingCertificatesList() {
   const { t } = useTranslation(['withholding', 'common'])
+  const { decimals } = useCurrency()
 
   const [filters, setFilters] = useState<CertificateFilters>({})
   const [showFilters, setShowFilters] = useState(false)
@@ -269,7 +271,7 @@ export function WithholdingCertificatesList() {
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-end">
                       <div className="text-sm font-mono text-gray-900">
-                        {parseFloat(cert.gross_amount).toFixed(3)} {cert.currency}
+                        {parseFloat(cert.gross_amount).toFixed(decimals)} {cert.currency}
                       </div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-end">
@@ -279,7 +281,7 @@ export function WithholdingCertificatesList() {
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-end">
                       <div className="text-sm font-mono font-semibold text-red-600">
-                        {parseFloat(cert.withholding_amount).toFixed(3)} {cert.currency}
+                        {parseFloat(cert.withholding_amount).toFixed(decimals)} {cert.currency}
                       </div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-center">

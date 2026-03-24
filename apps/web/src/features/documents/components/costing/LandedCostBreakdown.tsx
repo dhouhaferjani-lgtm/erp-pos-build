@@ -1,4 +1,5 @@
 import { Package, DollarSign, TrendingUp } from 'lucide-react'
+import { useCurrency } from '@/hooks/useCurrency'
 
 interface DocumentLine {
   id: string
@@ -16,6 +17,7 @@ interface LandedCostBreakdownProps {
 }
 
 export function LandedCostBreakdown({ lines, totalAdditionalCosts }: LandedCostBreakdownProps) {
+  const { decimals } = useCurrency()
   const subtotal = lines.reduce((sum, line) => sum + Number(line.total), 0)
   const grandTotal = subtotal + totalAdditionalCosts
 
@@ -36,7 +38,7 @@ export function LandedCostBreakdown({ lines, totalAdditionalCosts }: LandedCostB
             <span className="text-xs font-medium text-gray-600">Products Subtotal</span>
           </div>
           <p className="mt-2 text-lg font-semibold text-gray-900">
-            ${subtotal.toFixed(2)}
+            ${subtotal.toFixed(decimals)}
           </p>
         </div>
 
@@ -46,7 +48,7 @@ export function LandedCostBreakdown({ lines, totalAdditionalCosts }: LandedCostB
             <span className="text-xs font-medium text-gray-600">Additional Costs</span>
           </div>
           <p className="mt-2 text-lg font-semibold text-gray-900">
-            ${totalAdditionalCosts.toFixed(2)}
+            ${totalAdditionalCosts.toFixed(decimals)}
           </p>
         </div>
 
@@ -56,7 +58,7 @@ export function LandedCostBreakdown({ lines, totalAdditionalCosts }: LandedCostB
             <span className="text-xs font-medium text-blue-700">Total Landed Cost</span>
           </div>
           <p className="mt-2 text-lg font-semibold text-blue-900">
-            ${grandTotal.toFixed(2)}
+            ${grandTotal.toFixed(decimals)}
           </p>
         </div>
       </div>
@@ -102,19 +104,19 @@ export function LandedCostBreakdown({ lines, totalAdditionalCosts }: LandedCostB
                     {line.quantity}
                   </td>
                   <td className="px-4 py-3 text-end text-sm text-gray-900">
-                    ${Number(line.unit_price).toFixed(2)}
+                    ${Number(line.unit_price).toFixed(decimals)}
                   </td>
                   <td className="px-4 py-3 text-end text-sm text-gray-900">
-                    ${Number(line.total).toFixed(2)}
+                    ${Number(line.total).toFixed(decimals)}
                   </td>
                   <td className="px-4 py-3 text-end text-sm text-gray-600">
                     {percentage.toFixed(1)}%
                   </td>
                   <td className="px-4 py-3 text-end text-sm font-medium text-orange-600">
-                    ${allocatedCost.toFixed(2)}
+                    ${allocatedCost.toFixed(decimals)}
                   </td>
                   <td className="px-4 py-3 text-end text-sm font-semibold text-blue-600">
-                    ${landedUnitCost.toFixed(2)}
+                    ${landedUnitCost.toFixed(decimals)}
                   </td>
                 </tr>
               )
@@ -126,16 +128,16 @@ export function LandedCostBreakdown({ lines, totalAdditionalCosts }: LandedCostB
                 Totals:
               </td>
               <td className="px-4 py-3 text-end text-sm font-semibold text-gray-900">
-                ${subtotal.toFixed(2)}
+                ${subtotal.toFixed(decimals)}
               </td>
               <td className="px-4 py-3 text-end text-sm text-gray-600">
                 100.0%
               </td>
               <td className="px-4 py-3 text-end text-sm font-semibold text-orange-600">
-                ${totalAdditionalCosts.toFixed(2)}
+                ${totalAdditionalCosts.toFixed(decimals)}
               </td>
               <td className="px-4 py-3 text-end text-sm font-bold text-blue-600">
-                ${grandTotal.toFixed(2)}
+                ${grandTotal.toFixed(decimals)}
               </td>
             </tr>
           </tfoot>

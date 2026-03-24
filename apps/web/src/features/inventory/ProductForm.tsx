@@ -9,6 +9,7 @@ import { CategorySelect } from '../../components/catalog/CategorySelect'
 import { StickyFormFooter } from '../../components/molecules/StickyFormFooter/StickyFormFooter'
 import { ProductImageSection, ParapharmacyMetadataFields } from '../products/components'
 import { useCompanyConfig } from '../../contexts/CompanyConfigContext'
+import { useCurrency } from '../../hooks/useCurrency'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
 import { TaxConfigurationField } from '../../components/molecules/TaxConfigurationField'
 
@@ -77,6 +78,7 @@ export function ProductForm() {
   const { config } = useCompanyConfig()
   const isParapharmacy = config?.vertical === 'parapharmacy'
   const { isOtospex } = useProductConfig()
+  const { decimals } = useCurrency()
 
   const [oemInput, setOemInput] = useState('')
 
@@ -391,7 +393,7 @@ export function ProductForm() {
                   </span>
                   <input
                     type="text"
-                    value={product.cost_price ? parseFloat(product.cost_price).toFixed(2) : '0.00'}
+                    value={product.cost_price ? parseFloat(product.cost_price).toFixed(decimals) : (0).toFixed(decimals)}
                     readOnly
                     className="block w-full rounded-lg border border-gray-200 bg-gray-50 ps-7 pe-3 py-2 text-gray-600 cursor-not-allowed"
                   />

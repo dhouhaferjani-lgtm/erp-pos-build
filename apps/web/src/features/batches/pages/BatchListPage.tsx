@@ -7,12 +7,14 @@ import { BatchStatusBadge } from '../components/BatchStatusBadge'
 import { SearchInput } from '@/components/ui/SearchInput'
 import { FilterTabs } from '@/components/ui/FilterTabs'
 import type { ExpiryStatus } from '../types'
+import { useCurrency } from '@/hooks/useCurrency'
 
 type StatusFilter = 'all' | 'OK' | 'APPROACHING' | 'WARNING' | 'CRITICAL' | 'EXPIRED'
 type ActiveFilter = 'all' | 'active' | 'inactive'
 
 export function BatchListPage() {
   const { t } = useTranslation(['batches', 'common'])
+  const { decimals } = useCurrency()
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>('active')
@@ -202,7 +204,7 @@ export function BatchListPage() {
                       />
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                      {totalQuantity.toFixed(2)}
+                      {totalQuantity.toFixed(decimals)}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-end text-sm">
                       <Link

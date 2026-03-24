@@ -10,6 +10,11 @@ const CURRENCY_DECIMALS: Record<string, number> = {
   DZD: 2,
   LYD: 3,
   ITL: 2,
+  BHD: 3,
+  IQD: 3,
+  JOD: 3,
+  KWD: 3,
+  OMR: 3,
 }
 
 const CURRENCY_LOCALES: Record<string, string> = {

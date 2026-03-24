@@ -6,6 +6,7 @@
 import { useTranslation } from 'react-i18next'
 import { Truck } from 'lucide-react'
 import { DocumentSearchSelect } from './DocumentSearchSelect'
+import { useCurrency } from '@/hooks/useCurrency'
 
 interface DeliveryNote {
   id: string
@@ -37,6 +38,7 @@ interface DeliveryNoteSearchSelectProps {
 
 export function DeliveryNoteSearchSelect(props: DeliveryNoteSearchSelectProps) {
   const { t } = useTranslation()
+  const { decimals } = useCurrency()
 
   const itemCount = (deliveryNote: DeliveryNote): number => {
     const lines = deliveryNote.lines || []
@@ -92,7 +94,7 @@ export function DeliveryNoteSearchSelect(props: DeliveryNoteSearchSelectProps) {
               )}
             </div>
             <div className="flex-shrink-0 text-sm font-medium text-gray-900">
-              {parseFloat(deliveryNote.total).toFixed(2)}
+              {parseFloat(deliveryNote.total).toFixed(decimals)}
             </div>
           </>
         ),

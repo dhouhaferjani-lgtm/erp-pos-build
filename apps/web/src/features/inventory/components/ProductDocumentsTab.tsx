@@ -13,6 +13,7 @@ import {
 import { api } from '../../../lib/api'
 import { useCompanyStore } from '../../../stores/companyStore'
 import { formatCurrency } from '../../../lib/format'
+import { useCurrency } from '@/hooks/useCurrency'
 
 interface DocumentLine {
   id: string
@@ -100,6 +101,7 @@ const statusConfig: Record<string, { label: string; color: string }> = {
 
 export function ProductDocumentsTab({ productId }: ProductDocumentsTabProps) {
   const { t } = useTranslation(['inventory', 'common'])
+  const { decimals } = useCurrency()
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
 
   // Get company currency with fallback
@@ -303,7 +305,7 @@ export function ProductDocumentsTab({ productId }: ProductDocumentsTabProps) {
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
                       {doc.productQuantity > 0
-                        ? doc.productQuantity.toFixed(2)
+                        ? doc.productQuantity.toFixed(decimals)
                         : '-'}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">

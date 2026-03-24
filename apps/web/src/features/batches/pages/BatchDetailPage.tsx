@@ -5,6 +5,7 @@ import { ArrowLeft, Edit, Package, Calendar, AlertTriangle, Trash2 } from 'lucid
 import { useBatch, useBatchStock, useDeleteBatch, useRecallBatch } from '../hooks/useBatches'
 import { BatchStatusBadge } from '../components/BatchStatusBadge'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { useCurrency } from '@/hooks/useCurrency'
 
 type ConfirmAction = 'delete' | 'recall' | null
 
@@ -13,6 +14,7 @@ export function BatchDetailPage() {
   const { uuid = '' } = useParams<{ uuid: string }>()
   const navigate = useNavigate()
 
+  const { decimals } = useCurrency()
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
   const [recallReason, setRecallReason] = useState('')
 
@@ -261,13 +263,13 @@ export function BatchDetailPage() {
                       {level.location_name}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
-                      {parseFloat(level.quantity).toFixed(2)}
+                      {parseFloat(level.quantity).toFixed(decimals)}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-500">
-                      {parseFloat(level.reserved_quantity).toFixed(2)}
+                      {parseFloat(level.reserved_quantity).toFixed(decimals)}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-end text-sm font-medium text-gray-900">
-                      {parseFloat(level.available_quantity).toFixed(2)}
+                      {parseFloat(level.available_quantity).toFixed(decimals)}
                     </td>
                   </tr>
                 ))}
@@ -280,17 +282,17 @@ export function BatchDetailPage() {
                   <td className="px-6 py-3 text-end text-sm font-semibold text-gray-900">
                     {stockLevels
                       .reduce((sum, level) => sum + parseFloat(level.quantity), 0)
-                      .toFixed(2)}
+                      .toFixed(decimals)}
                   </td>
                   <td className="px-6 py-3 text-end text-sm font-semibold text-gray-500">
                     {stockLevels
                       .reduce((sum, level) => sum + parseFloat(level.reserved_quantity), 0)
-                      .toFixed(2)}
+                      .toFixed(decimals)}
                   </td>
                   <td className="px-6 py-3 text-end text-sm font-semibold text-gray-900">
                     {stockLevels
                       .reduce((sum, level) => sum + parseFloat(level.available_quantity), 0)
-                      .toFixed(2)}
+                      .toFixed(decimals)}
                   </td>
                 </tr>
               </tfoot>

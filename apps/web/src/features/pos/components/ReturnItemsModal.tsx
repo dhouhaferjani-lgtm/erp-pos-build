@@ -6,6 +6,7 @@ import { getReceiptDetail, processReturn } from '../api/receiptApi'
 import type { ProcessReturnRequest } from '../api/receiptApi'
 import { Loader2, RotateCcw, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useCurrency } from '@/hooks/useCurrency'
 
 interface ReturnLineState {
   lineId: string
@@ -43,6 +44,7 @@ export function ReturnItemsModal({
   onSuccess,
 }: ReturnItemsModalProps) {
   const { t } = useTranslation(['pos', 'common'])
+  const { decimals } = useCurrency()
   const [returnLines, setReturnLines] = useState<ReturnLineState[]>([])
   const [returnReason, setReturnReason] = useState<ReturnReasonValue>('customer_changed_mind')
   const [notes, setNotes] = useState('')
@@ -136,7 +138,7 @@ export function ReturnItemsModal({
       return_reason: returnReason,
       lines: selectedLines.map((line) => ({
         line_id: line.lineId,
-        quantity: line.returnQuantity.toFixed(3),
+        quantity: line.returnQuantity.toFixed(decimals),
       })),
       notes: notes || undefined,
     })
@@ -282,7 +284,7 @@ export function ReturnItemsModal({
                     </p>
                   </div>
                   <p className="text-lg font-bold text-red-700">
-                    -{returnTotal.toFixed(2)} {receipt.currency}
+                    -{returnTotal.toFixed(decimals)} {receipt.currency}
                   </p>
                 </div>
               </div>

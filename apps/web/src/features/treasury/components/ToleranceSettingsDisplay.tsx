@@ -6,6 +6,7 @@
 import { useTranslation } from 'react-i18next'
 import { Info } from 'lucide-react'
 import { useToleranceSettings } from '../hooks/useSmartPayment'
+import { useCurrency } from '@/hooks/useCurrency'
 
 /**
  * Display-only component showing effective tolerance settings
@@ -18,6 +19,7 @@ import { useToleranceSettings } from '../hooks/useSmartPayment'
  */
 export function ToleranceSettingsDisplay() {
   const { t } = useTranslation(['treasury', 'common'])
+  const { decimals } = useCurrency()
   const { data: settings, isLoading, error } = useToleranceSettings()
 
   if (isLoading) {
@@ -50,7 +52,7 @@ export function ToleranceSettingsDisplay() {
 
   // Convert decimal string to percentage (0.0050 → 0.50%)
   const percentageValue = (parseFloat(settings.percentage) * 100).toFixed(2)
-  const maxAmountValue = parseFloat(settings.max_amount).toFixed(2)
+  const maxAmountValue = parseFloat(settings.max_amount).toFixed(decimals)
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4">

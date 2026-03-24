@@ -9,6 +9,7 @@ import { SearchInput } from '../../components/ui/SearchInput'
 import { FilterTabs } from '../../components/ui/FilterTabs'
 import { LocationSelector } from '../location/LocationSelector'
 import { useLocation } from '../../hooks/useLocation'
+import { useCurrency } from '../../hooks/useCurrency'
 import { getLocations } from '../locations/api/locations'
 
 interface StockLevel {
@@ -58,6 +59,7 @@ export function StockLevelsPage() {
   usePageTitle('stockLevels.title', 'inventory')
   const queryClient = useQueryClient()
   const { currentLocationId } = useLocation()
+  const { decimals } = useCurrency()
   const [searchQuery, setSearchQuery] = useState('')
   const [stockFilter, setStockFilter] = useState<StockFilter>('all')
   const [selectedStock, setSelectedStock] = useState<StockLevel | null>(null)
@@ -511,7 +513,7 @@ export function StockLevelsPage() {
                 {adjustmentType === 'adjust' && adjustmentQuantity && (
                   <p className="mt-1 text-sm text-gray-500">
                     {t('inventory:stock.modal.change')}: {Number(adjustmentQuantity) - selectedStock.quantity >= 0 ? '+' : ''}
-                    {(Number(adjustmentQuantity) - selectedStock.quantity).toFixed(2)}
+                    {(Number(adjustmentQuantity) - selectedStock.quantity).toFixed(decimals)}
                   </p>
                 )}
               </div>

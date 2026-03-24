@@ -24,6 +24,7 @@ import { QuickAddCustomerModal } from '@/features/pos/components/QuickAddCustome
 import { isApiError, getErrorMessage } from '@/lib/api'
 import { useLocation } from '@/hooks/useLocation'
 import { useCompanyConfig } from '@/contexts/CompanyConfigContext'
+import { useCurrency } from '@/hooks/useCurrency'
 import type { ConsumptionMode } from '@/features/pos/atoms/ConsumptionModeToggle/ConsumptionModeToggle'
 import { Loader2, MapPin, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -57,6 +58,7 @@ export function POSTransactions() {
   const queryClient = useQueryClient()
   const { currentLocationId, currentLocation: _currentLocation, isLoading: isLocationLoading } = useLocation()
   const { hasModule } = useCompanyConfig()
+  const { decimals } = useCurrency()
   const isFnBVertical = hasModule('Menu')
 
   const [selectedCustomer, setSelectedCustomer] = useState<{
@@ -312,7 +314,7 @@ export function POSTransactions() {
         .filter((m) => m.amount > 0)
         .map((m) => ({
           payment_method_id: m.methodId,
-          amount: Number(m.amount.toFixed(3)),
+          amount: Number(m.amount.toFixed(decimals)),
           repository_id: m.repositoryId ?? '',
           card_last_four: m.cardLastFour,
           transaction_reference: m.transactionReference,

@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { ArrowLeft, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
+import { useCurrency } from '@/hooks/useCurrency'
 import { api } from '@/lib/api'
 import { InvoiceSearchSelect } from '@/components/ui/InvoiceSearchSelect'
 import { DeliveryNoteSearchSelect } from '@/components/ui/DeliveryNoteSearchSelect'
@@ -69,6 +70,7 @@ export function CreateReturnNotePage() {
   const { t } = useTranslation(['sales', 'common'])
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { decimals } = useCurrency()
 
   // Form state
   const [sourceType, setSourceType] = useState<SourceType>('delivery_note')
@@ -369,7 +371,7 @@ export function CreateReturnNotePage() {
                 <div>
                   <span className="font-medium text-gray-700">{t('sales:documents.total')}:</span>
                   <span className="ms-2 text-gray-900">
-                    {parseFloat(currentDocument.total || '0').toFixed(2)}
+                    {parseFloat(currentDocument.total || '0').toFixed(decimals)}
                   </span>
                 </div>
               </div>
@@ -489,10 +491,10 @@ export function CreateReturnNotePage() {
                               )}
                             </td>
                             <td className="px-3 py-3 text-end text-sm text-gray-900">
-                              {unitPrice.toFixed(2)}
+                              {unitPrice.toFixed(decimals)}
                             </td>
                             <td className="px-3 py-3 text-end text-sm font-medium text-gray-900">
-                              {isSelected ? total.toFixed(2) : '-'}
+                              {isSelected ? total.toFixed(decimals) : '-'}
                             </td>
                           </tr>
                         )
@@ -504,7 +506,7 @@ export function CreateReturnNotePage() {
                           {t('sales:returnNotes.form.returnTotal')}
                         </td>
                         <td className="px-3 py-3 text-end text-sm font-bold text-gray-900">
-                          {partialReturnTotal.toFixed(2)}
+                          {partialReturnTotal.toFixed(decimals)}
                         </td>
                       </tr>
                     </tfoot>

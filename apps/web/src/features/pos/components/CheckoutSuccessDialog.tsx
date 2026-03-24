@@ -4,6 +4,7 @@ import { Modal } from '@/components/organisms/Modal'
 import { POSButton } from '../atoms/POSButton'
 import { ReceiptPrintButton } from './ReceiptPrintButton'
 import { textColors } from '@/lib/designTokens'
+import { useCurrency } from '@/hooks/useCurrency'
 import { cn } from '@/lib/utils'
 
 export interface CheckoutSuccessDialogProps {
@@ -34,6 +35,7 @@ export function CheckoutSuccessDialog({
   loyaltyPointsEarned,
 }: CheckoutSuccessDialogProps) {
   const { t } = useTranslation(['pos', 'common'])
+  const { decimals } = useCurrency()
 
   return (
     <Modal
@@ -63,7 +65,7 @@ export function CheckoutSuccessDialog({
           {changeDue != null && changeDue > 0 && (
             <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3">
               <p className="text-lg font-bold text-green-700">
-                {t('pos:payment.changeDue', { amount: changeDue.toFixed(2) })}
+                {t('pos:payment.changeDue', { amount: changeDue.toFixed(decimals) })}
               </p>
             </div>
           )}

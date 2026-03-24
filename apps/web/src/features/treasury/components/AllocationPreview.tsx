@@ -6,6 +6,7 @@
 import { useTranslation } from 'react-i18next'
 import { AlertCircle, CheckCircle } from 'lucide-react'
 import type { PaymentAllocationPreview } from '@/types/treasury'
+import { useCurrency } from '@/hooks/useCurrency'
 
 interface AllocationPreviewProps {
   preview: PaymentAllocationPreview
@@ -23,6 +24,7 @@ interface AllocationPreviewProps {
  */
 export function AllocationPreview({ preview, isLoading }: AllocationPreviewProps) {
   const { t } = useTranslation(['treasury', 'common'])
+  const { decimals } = useCurrency()
 
   if (isLoading) {
     return (
@@ -37,9 +39,9 @@ export function AllocationPreview({ preview, isLoading }: AllocationPreviewProps
     )
   }
 
-  // Format amount to 2 decimals
+  // Format amount to currency-aware decimals
   const formatAmount = (amount: string): string => {
-    return parseFloat(amount).toFixed(2)
+    return parseFloat(amount).toFixed(decimals)
   }
 
   // Check if invoice is overdue

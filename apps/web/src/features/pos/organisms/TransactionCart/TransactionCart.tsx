@@ -8,6 +8,7 @@ import { PaymentPanel } from '../PaymentPanel/PaymentPanel'
 import { Modal } from '@/components/organisms/Modal/Modal'
 import { useDiscountPermissions } from '../../hooks/useDiscountPermissions'
 import { useCurrency } from '@/hooks/useCurrency'
+import { bcadd, bcmul } from '@/lib/decimal'
 import { LoyaltyMemberBadge } from '../../components/LoyaltyMemberBadge'
 import { LoyaltyRewardSelector } from '../../components/LoyaltyRewardSelector'
 import { EarnPointsPreview } from '../../components/EarnPointsPreview'
@@ -75,7 +76,7 @@ export function TransactionCart({
   onLoyaltyRewardRedeemed,
 }: TransactionCartProps) {
   const { t } = useTranslation(['pos', 'common'])
-  const { currency, toFixed: toFixedCurrency } = useCurrency()
+  const { currency, decimals, toFixed: toFixedCurrency } = useCurrency()
   const { permissions } = useDiscountPermissions(terminalCode)
   const [showTransactionDiscountModal, setShowTransactionDiscountModal] = useState(false)
   const [editingLineDiscountProductId, setEditingLineDiscountProductId] = useState<string | null>(null)
@@ -87,9 +88,8 @@ export function TransactionCart({
 
   // Calculate subtotal for discount validation
   const subtotal = useMemo(() => {
-    return toFixedCurrency(items
-      .reduce((sum, item) => sum + parseFloat(item.line_total), 0))
-  }, [items, toFixedCurrency])
+    return items.reduce((sum, item) => bcadd(sum, item.line_total, decimals), '0')
+  }, [items, decimals])
 
   const isEmpty = items.length === 0
 
@@ -341,7 +341,7 @@ export function TransactionCart({
       {editingLineDiscountProductId && permissions && onEditLineDiscount && (() => {
         const editingItem = items.find((i) => i.product.id === editingLineDiscountProductId)
         if (!editingItem) return null
-        const grossLineTotal = toFixedCurrency(parseFloat(editingItem.unit_price) * editingItem.quantity)
+        const grossLineTotal = bcmul(editingItem.unit_price, String(editingItem.quantity), decimals)
         return (
           <Modal
             isOpen={!!editingLineDiscountProductId}

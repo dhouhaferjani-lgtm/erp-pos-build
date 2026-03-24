@@ -6,6 +6,7 @@
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertCircle } from 'lucide-react'
+import { useCurrency } from '@/hooks/useCurrency'
 import type { CreditNote, CreditNoteReason } from '@/types/creditNote'
 
 interface CreditNoteListProps {
@@ -32,12 +33,13 @@ export function CreditNoteList({
   isLoading,
 }: CreditNoteListProps) {
   const { t } = useTranslation(['sales', 'common'])
+  const { decimals } = useCurrency()
   const [sortField, setSortField] = useState<SortField>('date')
   const [filterReason, setFilterReason] = useState<CreditNoteReason | 'all'>('all')
 
-  // Format amount to 2 decimals
+  // Format amount to currency-aware decimals
   const formatAmount = (amount: string): string => {
-    return parseFloat(amount).toFixed(2)
+    return parseFloat(amount).toFixed(decimals)
   }
 
   // Format date to locale string

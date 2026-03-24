@@ -10,6 +10,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useTranslation } from 'react-i18next'
 import { AlertCircle, Check } from 'lucide-react'
+import { useCurrency } from '@/hooks/useCurrency'
 import { useCreateCreditNote } from '../hooks/useCreditNotes'
 import type { InvoiceForCreditNote } from '@/types/creditNote'
 
@@ -72,6 +73,7 @@ export function CreateCreditNoteForm({
 }: CreateCreditNoteFormProps) {
   const { t } = useTranslation(['sales', 'common'])
   const createCreditNote = useCreateCreditNote()
+  const { decimals } = useCurrency()
 
   // Credit mode state
   const [creditMode, setCreditMode] = useState<CreditMode>('amount')
@@ -220,7 +222,7 @@ export function CreateCreditNoteForm({
 
   // Handle full refund button
   const handleFullRefund = () => {
-    setValue('amount', remainingCreditable.toFixed(2))
+    setValue('amount', remainingCreditable.toFixed(decimals))
   }
 
   const isSubmitting = createCreditNote.isPending
@@ -238,11 +240,11 @@ export function CreateCreditNoteForm({
           </p>
           <p>
             <span className="font-medium">{t('sales:documents.total')}:</span>{' '}
-            {invoiceTotal.toFixed(2)}
+            {invoiceTotal.toFixed(decimals)}
           </p>
           <p className="text-blue-700">
             {t('sales:creditNotes.form.remainingCreditable', {
-              amount: remainingCreditable.toFixed(2),
+              amount: remainingCreditable.toFixed(decimals),
             })}
           </p>
         </div>
@@ -324,7 +326,7 @@ export function CreateCreditNoteForm({
             </p>
           )}
           <p className="mt-1 text-xs text-gray-500">
-            {t('sales:creditNotes.form.maxAmount', { amount: remainingCreditable.toFixed(2) })}
+            {t('sales:creditNotes.form.maxAmount', { amount: remainingCreditable.toFixed(decimals) })}
           </p>
         </div>
       )}
@@ -406,10 +408,10 @@ export function CreateCreditNoteForm({
                         )}
                       </td>
                       <td className="px-3 py-2 text-end text-sm text-gray-900">
-                        {unitPrice.toFixed(2)}
+                        {unitPrice.toFixed(decimals)}
                       </td>
                       <td className="px-3 py-2 text-end text-sm font-medium text-gray-900">
-                        {isSelected ? total.toFixed(2) : '-'}
+                        {isSelected ? total.toFixed(decimals) : '-'}
                       </td>
                     </tr>
                   )
@@ -421,7 +423,7 @@ export function CreateCreditNoteForm({
                     {t('sales:documents.total')}
                   </td>
                   <td className="px-3 py-2 text-end text-sm font-bold text-gray-900">
-                    {lineBasedTotal.toFixed(2)}
+                    {lineBasedTotal.toFixed(decimals)}
                   </td>
                 </tr>
               </tfoot>

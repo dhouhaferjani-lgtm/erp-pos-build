@@ -8,6 +8,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, Search, Filter, FileText } from 'lucide-react'
+import { useCurrency } from '@/hooks/useCurrency'
 import { api } from '@/lib/api'
 import type { ReturnNote } from '@/types/returnNote'
 
@@ -17,6 +18,7 @@ interface ReturnNotesResponse {
 
 export function ReturnNoteListPage() {
   const { t } = useTranslation(['sales', 'common'])
+  const { decimals } = useCurrency()
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [reasonFilter, setReasonFilter] = useState<string>('')
@@ -205,7 +207,7 @@ export function ReturnNoteListPage() {
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-end text-sm font-medium text-gray-900">
-                    {parseFloat(returnNote.total).toFixed(2)} {returnNote.currency}
+                    {parseFloat(returnNote.total).toFixed(decimals)} {returnNote.currency}
                   </td>
                 </tr>
               ))}

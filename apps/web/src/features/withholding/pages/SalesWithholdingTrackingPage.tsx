@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AlertCircle, CheckCircle, FileText, Calendar } from 'lucide-react'
 import { useSalesWithholdingTracking, useMarkCertificateReceived } from '../hooks/useWithholding'
+import { useCurrency } from '@/hooks/useCurrency'
 import type { SalesWithholdingTrackingFilters, SalesWithholdingTrackingRecord } from '../types'
 
 /**
@@ -16,6 +17,7 @@ import type { SalesWithholdingTrackingFilters, SalesWithholdingTrackingRecord } 
  */
 export function SalesWithholdingTrackingPage() {
   const { t } = useTranslation(['withholding', 'common'])
+  const { decimals } = useCurrency()
 
   const [filters, setFilters] = useState<{
     certificate_received: boolean | undefined;
@@ -215,7 +217,7 @@ export function SalesWithholdingTrackingPage() {
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-end">
                       <div className="text-sm font-mono text-gray-900">
-                        {parseFloat(record.invoiceAmount).toFixed(3)}
+                        {parseFloat(record.invoiceAmount).toFixed(decimals)}
                       </div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-end">
@@ -225,12 +227,12 @@ export function SalesWithholdingTrackingPage() {
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-end">
                       <div className="text-sm font-mono font-semibold text-red-600">
-                        {parseFloat(record.withholdingAmount).toFixed(3)}
+                        {parseFloat(record.withholdingAmount).toFixed(decimals)}
                       </div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-end">
                       <div className="text-sm font-mono text-gray-900">
-                        {parseFloat(record.expectedReceivable).toFixed(3)}
+                        {parseFloat(record.expectedReceivable).toFixed(decimals)}
                       </div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-center">

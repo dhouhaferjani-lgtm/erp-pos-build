@@ -13,6 +13,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { ArrowLeft, Receipt } from 'lucide-react'
 import { toast } from 'sonner'
+import { useCurrency } from '@/hooks/useCurrency'
 import { api } from '@/lib/api'
 import { PartnerSearchSelect } from '@/components/ui/PartnerSearchSelect'
 import { InvoiceSearchSelect } from '@/components/ui/InvoiceSearchSelect'
@@ -45,6 +46,7 @@ export function CreateCreditNotePage() {
   const { t } = useTranslation(['sales', 'common'])
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { decimals } = useCurrency()
   // Mode states
   const [creditMode, setCreditMode] = useState<CreditMode>('invoice')
   const [lineMode, setLineMode] = useState<LineMode>('all')
@@ -553,10 +555,10 @@ export function CreateCreditNotePage() {
                               <span className="text-gray-400 ms-1">/ {line.quantity}</span>
                             </td>
                             <td className="px-3 py-4 text-end text-sm text-gray-900">
-                              {line.unit_price.toFixed(2)}
+                              {line.unit_price.toFixed(decimals)}
                             </td>
                             <td className="px-3 py-4 text-end text-sm font-medium text-gray-900">
-                              {((isSelected ? creditQty : 0) * line.unit_price * (1 + line.tax_rate / 100)).toFixed(2)}
+                              {((isSelected ? creditQty : 0) * line.unit_price * (1 + line.tax_rate / 100)).toFixed(decimals)}
                             </td>
                           </tr>
                         )
@@ -568,7 +570,7 @@ export function CreateCreditNotePage() {
                           {t('sales:documents.total')}:
                         </td>
                         <td className="px-3 py-3 text-end text-lg font-bold text-gray-900">
-                          {calculateTotal().toFixed(2)}
+                          {calculateTotal().toFixed(decimals)}
                         </td>
                       </tr>
                     </tfoot>

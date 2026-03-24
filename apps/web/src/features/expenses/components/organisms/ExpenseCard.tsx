@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { format } from 'date-fns'
 import { Calendar, FileText, Tag, TrendingUp, Trash2 } from 'lucide-react'
 import type { Expense } from '../../types'
+import { useCurrency } from '@/hooks/useCurrency'
 
 interface ExpenseCardProps {
   expense: Expense
@@ -18,6 +19,7 @@ interface ExpenseCardProps {
  */
 export function ExpenseCard({ expense, onDelete, onPost }: ExpenseCardProps) {
   const { t } = useTranslation(['expenses', 'common'])
+  const { decimals } = useCurrency()
 
   const statusColors = {
     draft: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
@@ -59,7 +61,7 @@ export function ExpenseCard({ expense, onDelete, onPost }: ExpenseCardProps) {
       <div className="mb-3">
         <div className="flex items-baseline gap-1">
           <span className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-            {parseFloat(expense.total).toFixed(2)}
+            {parseFloat(expense.total).toFixed(decimals)}
           </span>
           <span className="text-sm text-gray-500 dark:text-gray-400">
             {expense.currency}

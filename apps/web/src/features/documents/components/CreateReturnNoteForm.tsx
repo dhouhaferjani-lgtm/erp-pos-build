@@ -10,6 +10,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useTranslation } from 'react-i18next'
 import { AlertCircle, Check } from 'lucide-react'
+import { useCurrency } from '@/hooks/useCurrency'
 import { useCreateReturnNote } from '../hooks/useReturnNotes'
 import { ReturnReasonSelect } from './ReturnReasonSelect'
 import { ReturnConditionSelect } from './ReturnConditionSelect'
@@ -86,6 +87,7 @@ export function CreateReturnNoteForm({
 }: CreateReturnNoteFormProps) {
   const { t } = useTranslation(['sales', 'common'])
   const createReturnNote = useCreateReturnNote()
+  const { decimals } = useCurrency()
 
   // Form state
   const [returnMode, setReturnMode] = useState<ReturnMode>('full')
@@ -214,7 +216,7 @@ export function CreateReturnNoteForm({
           </p>
           <p>
             <span className="font-medium">{t('sales:documents.total')}:</span>{' '}
-            {parseFloat(sourceDocument.total).toFixed(2)}
+            {parseFloat(sourceDocument.total).toFixed(decimals)}
           </p>
         </div>
       </div>
@@ -337,10 +339,10 @@ export function CreateReturnNoteForm({
                         )}
                       </td>
                       <td className="px-3 py-2 text-end text-sm text-gray-900">
-                        {unitPrice.toFixed(2)}
+                        {unitPrice.toFixed(decimals)}
                       </td>
                       <td className="px-3 py-2 text-end text-sm font-medium text-gray-900">
-                        {isSelected ? total.toFixed(2) : '-'}
+                        {isSelected ? total.toFixed(decimals) : '-'}
                       </td>
                     </tr>
                   )
@@ -352,7 +354,7 @@ export function CreateReturnNoteForm({
                     {t('sales:returnNotes.form.returnTotal', 'Return Total')}
                   </td>
                   <td className="px-3 py-2 text-end text-sm font-bold text-gray-900">
-                    {partialReturnTotal.toFixed(2)}
+                    {partialReturnTotal.toFixed(decimals)}
                   </td>
                 </tr>
               </tfoot>

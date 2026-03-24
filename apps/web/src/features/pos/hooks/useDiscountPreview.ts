@@ -7,6 +7,7 @@ import {
   type DiscountLineData,
 } from '../api/discountApi'
 import type { CartItem } from '../molecules/CartLineItem'
+import { useCurrency } from '@/hooks/useCurrency'
 
 export interface DiscountPreviewInput {
   cartItems: CartItem[]
@@ -30,6 +31,7 @@ export interface DiscountPreviewResult {
 const DEBOUNCE_MS = 500
 
 export function useDiscountPreview(input: DiscountPreviewInput): DiscountPreviewResult {
+  const { decimals } = useCurrency()
   const {
     cartItems,
     subtotal,
@@ -99,12 +101,12 @@ export function useDiscountPreview(input: DiscountPreviewInput): DiscountPreview
   )
 
   const totalSavings = useMemo(() => {
-    if (!data) return '0.00'
+    if (!data) return (0).toFixed(decimals)
     return data.lines
       .filter((l) => l.source !== 'manual')
       .reduce((sum, l) => sum + parseFloat(l.discount_amount), 0)
-      .toFixed(2)
-  }, [data])
+      .toFixed(decimals)
+  }, [data, decimals])
 
   return {
     breakdown: data ?? null,

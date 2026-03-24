@@ -110,7 +110,7 @@ export function RecordPaymentModal({
   prefill,
 }: RecordPaymentModalProps) {
   const { t } = useTranslation(['treasury', 'common'])
-  const { currency, symbol, format: formatCurrencyAmount } = useCurrency()
+  const { currency, symbol, decimals, format: formatCurrencyAmount } = useCurrency()
   const queryClient = useQueryClient()
   const [showRepositoryModal, setShowRepositoryModal] = useState(false)
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0])
@@ -583,7 +583,7 @@ export function RecordPaymentModal({
                             {index === 0 && remaining > 0 && (
                               <button
                                 type="button"
-                                onClick={() => { updatePaymentLine(line.id, 'amount', remaining.toFixed(2)); }}
+                                onClick={() => { updatePaymentLine(line.id, 'amount', remaining.toFixed(decimals)); }}
                                 className="text-xs text-blue-600 hover:text-blue-800 font-medium"
                               >
                                 {t('treasury:unifiedPayment.payFullAmount')} ({formatAmount(remaining)})

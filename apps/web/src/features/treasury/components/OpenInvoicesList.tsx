@@ -7,6 +7,7 @@ import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertCircle } from 'lucide-react'
 import type { OpenInvoice, AllocationMethod, ManualAllocation } from '@/types/treasury'
+import { useCurrency } from '@/hooks/useCurrency'
 
 interface OpenInvoicesListProps {
   partnerId: string
@@ -39,6 +40,7 @@ export function OpenInvoicesList({
   isLoading,
 }: OpenInvoicesListProps) {
   const { t } = useTranslation(['treasury', 'common'])
+  const { decimals } = useCurrency()
   const [sortField, setSortField] = useState<SortField>('due_date')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
@@ -70,9 +72,9 @@ export function OpenInvoicesList({
     }, 0)
   }, [invoices])
 
-  // Format amount to 2 decimals
+  // Format amount to currency-aware decimals
   const formatAmount = (amount: string | number): string => {
-    return parseFloat(String(amount)).toFixed(2)
+    return parseFloat(String(amount)).toFixed(decimals)
   }
 
   // Check if invoice is selected

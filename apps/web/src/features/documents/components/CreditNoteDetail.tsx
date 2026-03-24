@@ -5,6 +5,7 @@
 
 import { useTranslation } from 'react-i18next'
 import { Printer, FileText, X } from 'lucide-react'
+import { useCurrency } from '@/hooks/useCurrency'
 import type { CreditNote } from '@/types/creditNote'
 
 interface CreditNoteDetailProps {
@@ -29,10 +30,11 @@ export function CreditNoteDetail({
   onViewInvoice,
 }: CreditNoteDetailProps) {
   const { t } = useTranslation(['sales', 'common'])
+  const { decimals } = useCurrency()
 
-  // Format amount to 2 decimals
+  // Format amount to currency-aware decimals
   const formatAmount = (amount: string): string => {
-    return parseFloat(amount).toFixed(2)
+    return parseFloat(amount).toFixed(decimals)
   }
 
   // Format date

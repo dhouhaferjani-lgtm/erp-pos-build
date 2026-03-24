@@ -77,7 +77,7 @@ interface PaymentFormData {
 
 export function PaymentForm() {
   const { t } = useTranslation(['treasury', 'common', 'sales', 'withholding'])
-  const { currency, symbol, format: formatCurrency } = useCurrency()
+  const { currency, symbol, decimals, format: formatCurrency } = useCurrency()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
@@ -269,7 +269,7 @@ export function PaymentForm() {
 
         allocations.push({
           document_id: invoiceId,
-          amount: allocationAmount.toFixed(2),
+          amount: allocationAmount.toFixed(decimals),
         })
       }
       // If no specific invoice, auto-allocate using FIFO to open invoices
@@ -289,7 +289,7 @@ export function PaymentForm() {
 
           allocations.push({
             document_id: invoice.id,
-            amount: allocationAmount.toFixed(2),
+            amount: allocationAmount.toFixed(decimals),
           })
 
           remainingAmount -= allocationAmount

@@ -5,6 +5,7 @@ import { POSButton } from '../../atoms'
 import { type CartItem } from '../../molecules'
 import { Calculator, Banknote, CreditCard } from 'lucide-react'
 import { useCurrency } from '@/hooks/useCurrency'
+import { bcadd, bcsub, bccomp } from '@/lib/decimal'
 
 export interface PaymentPanelProps {
   items: CartItem[]
@@ -42,29 +43,29 @@ export function PaymentPanel({
   transactionDiscountAmount = '0',
 }: PaymentPanelProps) {
   const { t } = useTranslation(['common', 'pos'])
-  const { toFixed: toFixedCurrency } = useCurrency()
+  const { decimals, toFixed: toFixedCurrency } = useCurrency()
 
   // Calculate totals
   const { subtotal, discount, tax, total } = useMemo(() => {
     const subtotal = items.reduce(
-      (sum, item) => sum + parseFloat(item.line_total),
-      0
+      (sum, item) => bcadd(sum, item.line_total, decimals),
+      '0'
     )
-    const discount = parseFloat(transactionDiscountAmount || '0')
-    const subtotalAfterDiscount = subtotal - discount
+    const discount = transactionDiscountAmount || '0'
+    const subtotalAfterDiscount = bccomp(subtotal, discount) > 0 ? bcsub(subtotal, discount, decimals) : toFixedCurrency(0)
     const tax = items.reduce(
-      (sum, item) => sum + parseFloat(item.tax_amount || '0'),
-      0
+      (sum, item) => bcadd(sum, item.tax_amount || '0', decimals),
+      '0'
     )
-    const total = subtotalAfterDiscount + tax
+    const total = bcadd(subtotalAfterDiscount, tax, decimals)
 
     return {
-      subtotal: toFixedCurrency(subtotal),
-      discount: toFixedCurrency(discount),
-      tax: toFixedCurrency(tax),
-      total: toFixedCurrency(total),
+      subtotal,
+      discount,
+      tax,
+      total,
     }
-  }, [items, transactionDiscountAmount, toFixedCurrency])
+  }, [items, transactionDiscountAmount, decimals, toFixedCurrency])
 
   const isEmpty = items.length === 0
 
@@ -111,7 +112,7 @@ export function PaymentPanel({
               </span>
             </div>
 
-            {parseFloat(discount) > 0 && (
+            {bccomp(discount, '0') > 0 && (
               <div className="flex justify-between">
                 <span
                   className={cn(

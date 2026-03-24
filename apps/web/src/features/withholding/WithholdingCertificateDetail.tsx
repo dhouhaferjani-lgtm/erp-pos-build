@@ -27,11 +27,13 @@ import {
   downloadCertificateTEJXML,
 } from './api/withholdingApi'
 import type { CertificateStatus, WithholdingDirection } from './types'
+import { useCurrency } from '@/hooks/useCurrency'
 
 export function WithholdingCertificateDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { t } = useTranslation(['withholding', 'common'])
+  const { decimals } = useCurrency()
 
   const { data: certificate, isLoading } = useWithholdingCertificate(id!)
   const issueMutation = useIssueWithholdingCertificate()
@@ -327,7 +329,7 @@ export function WithholdingCertificateDetail() {
           <div className="flex items-center justify-between border-b border-gray-200 pb-2">
             <span className="text-sm text-gray-600">{t('certificates.grossAmount')}</span>
             <span className="text-lg font-mono font-semibold text-gray-900">
-              {parseFloat(certificate.gross_amount).toFixed(3)} {certificate.currency}
+              {parseFloat(certificate.gross_amount).toFixed(decimals)} {certificate.currency}
             </span>
           </div>
           <div className="flex items-center justify-between border-b border-gray-200 pb-2">
@@ -335,13 +337,13 @@ export function WithholdingCertificateDetail() {
               {t('certificates.rate')} ({certificate.rate_percentage}%)
             </span>
             <span className="text-lg font-mono font-semibold text-red-600">
-              - {parseFloat(certificate.withholding_amount).toFixed(3)} {certificate.currency}
+              - {parseFloat(certificate.withholding_amount).toFixed(decimals)} {certificate.currency}
             </span>
           </div>
           <div className="flex items-center justify-between pt-2">
             <span className="text-base font-semibold text-gray-900">{t('certificates.netAmount')}</span>
             <span className="text-2xl font-mono font-bold text-gray-900">
-              {parseFloat(certificate.net_amount).toFixed(3)} {certificate.currency}
+              {parseFloat(certificate.net_amount).toFixed(decimals)} {certificate.currency}
             </span>
           </div>
         </div>

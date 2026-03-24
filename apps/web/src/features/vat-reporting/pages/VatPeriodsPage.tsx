@@ -7,9 +7,10 @@ import { useVatPeriods } from '../hooks/useVatPeriods'
 import { useVatPeriodActions } from '../hooks/useVatPeriodActions'
 import { VatPeriodList } from '../components/VatPeriodList'
 import { VatSummaryCards } from '../components/VatSummaryCards'
+import { useCurrency } from '@/hooks/useCurrency'
 import type { VatPeriod } from '../types'
 
-function computeYtdTotals(periods: VatPeriod[]) {
+function computeYtdTotals(periods: VatPeriod[], decimals: number) {
   let totalOutput = 0
   let totalInput = 0
   let creditCarried = '0'
@@ -31,8 +32,8 @@ function computeYtdTotals(periods: VatPeriod[]) {
   }
 
   return {
-    outputVat: totalOutput.toFixed(2),
-    inputVat: totalInput.toFixed(2),
+    outputVat: totalOutput.toFixed(decimals),
+    inputVat: totalInput.toFixed(decimals),
     creditBroughtForward: creditCarried,
     amountPayable,
   }
@@ -41,13 +42,14 @@ function computeYtdTotals(periods: VatPeriod[]) {
 export function VatPeriodsPage() {
   const { t } = useTranslation(['finance'])
   const navigate = useNavigate()
+  const { decimals } = useCurrency()
   const [year, setYear] = useState(new Date().getFullYear())
 
   const { data: periods, isLoading, error, refetch } = useVatPeriods({ year })
   const { generateMutation, closeMutation, reopenMutation, fileMutation } = useVatPeriodActions()
 
   const periodList = periods ?? []
-  const ytd = computeYtdTotals(periodList)
+  const ytd = computeYtdTotals(periodList, decimals)
 
   const currentYear = new Date().getFullYear()
   const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i)

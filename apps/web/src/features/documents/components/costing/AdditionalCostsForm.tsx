@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, DollarSign } from 'lucide-react'
+import { useCurrency } from '@/hooks/useCurrency'
 import { api } from '../../../../lib/api'
 import { Button } from '../../../../components/atoms/Button/Button'
 
@@ -28,6 +29,7 @@ const COST_TYPE_LABELS = {
 
 export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: AdditionalCostsFormProps) {
   const queryClient = useQueryClient()
+  const { decimals } = useCurrency()
   const [newCost, setNewCost] = useState<Partial<AdditionalCost>>({
     cost_type: 'shipping',
     amount: 0,
@@ -92,7 +94,7 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
         <h3 className="text-sm font-medium text-gray-900">Additional Costs</h3>
         {totalCosts > 0 && (
           <div className="text-sm font-semibold text-gray-900">
-            Total: ${totalCosts.toFixed(2)}
+            Total: ${totalCosts.toFixed(decimals)}
           </div>
         )}
       </div>
@@ -112,7 +114,7 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
                     {COST_TYPE_LABELS[cost.cost_type]}
                   </span>
                   <span className="text-sm font-semibold text-gray-900">
-                    ${Number(cost.amount).toFixed(2)}
+                    ${Number(cost.amount).toFixed(decimals)}
                   </span>
                 </div>
                 {cost.description && (

@@ -3,6 +3,8 @@
  * Smart Payment Features
  */
 
+import { bcadd } from '@/lib/decimal'
+
 // ============================================================================
 // Constants (instead of enums for erasableSyntaxOnly compatibility)
 // ============================================================================
@@ -157,12 +159,10 @@ export function isToleranceSettings(value: unknown): value is ToleranceSettings 
 /**
  * Calculate total manual allocations
  */
-export function calculateManualAllocationsTotal(allocations: ManualAllocation[]): string {
+export function calculateManualAllocationsTotal(allocations: ManualAllocation[], scale: number = 3): string {
   return allocations.reduce((total, allocation) => {
-    const current = parseFloat(total) || 0;
-    const amount = parseFloat(allocation.amount) || 0;
-    return (current + amount).toFixed(4);
-  }, '0.0000');
+    return bcadd(total, allocation.amount || '0', scale);
+  }, '0.' + '0'.repeat(scale));
 }
 
 /**
@@ -207,15 +207,13 @@ export function hasToleranceWriteoff(preview: PaymentAllocationPreview): boolean
 /**
  * Get total tolerance writeoff amount
  */
-export function getTotalToleranceWriteoff(preview: PaymentAllocationPreview): string {
+export function getTotalToleranceWriteoff(preview: PaymentAllocationPreview, scale: number = 3): string {
   return preview.allocations.reduce((total, item) => {
     if (item.tolerance_writeoff) {
-      const current = parseFloat(total) || 0;
-      const writeoff = parseFloat(item.tolerance_writeoff) || 0;
-      return (current + writeoff).toFixed(4);
+      return bcadd(total, item.tolerance_writeoff, scale);
     }
     return total;
-  }, '0.0000');
+  }, '0.' + '0'.repeat(scale));
 }
 
 // ============================================================================

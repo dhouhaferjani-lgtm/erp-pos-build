@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { getProductStock } from '@/features/products/api/productStock'
 import { formatCurrency } from '@/lib/format'
+import { useCurrency } from '@/hooks/useCurrency'
 
 interface ProductStockLevelsProps {
   productId: string
@@ -17,6 +18,7 @@ export function ProductStockLevels({
   locale = 'en-US',
 }: ProductStockLevelsProps) {
   const { t } = useTranslation('inventory')
+  const { decimals } = useCurrency()
 
   // Helper to format currency
   const formatAmount = (value: string | null) => {
@@ -79,10 +81,10 @@ export function ProductStockLevels({
               {t('stock.stockValue')}
             </div>
             <div className="mt-1 text-xl font-bold text-blue-900">
-              {formatAmount(stockValue.toFixed(2))}
+              {formatAmount(stockValue.toFixed(decimals))}
             </div>
             <div className="mt-1 text-xs text-blue-600">
-              {parseFloat(totals.quantity).toFixed(2)} × {formatAmount(costPrice)} (WAC)
+              {parseFloat(totals.quantity).toFixed(decimals)} × {formatAmount(costPrice)} (WAC)
             </div>
           </div>
         )}
@@ -93,7 +95,7 @@ export function ProductStockLevels({
               {t('stock.onHand')}
             </div>
             <div className="mt-1 text-base font-semibold text-gray-900">
-              {parseFloat(totals.quantity).toFixed(2)}
+              {parseFloat(totals.quantity).toFixed(decimals)}
             </div>
           </div>
           <div>
@@ -101,7 +103,7 @@ export function ProductStockLevels({
               {t('stock.available')}
             </div>
             <div className="mt-1 text-base font-semibold text-green-600">
-              {parseFloat(totals.available).toFixed(2)}
+              {parseFloat(totals.available).toFixed(decimals)}
             </div>
           </div>
         </div>
@@ -112,7 +114,7 @@ export function ProductStockLevels({
               {t('stock.reserved')}
             </div>
             <div className="mt-1 text-base font-semibold text-orange-600">
-              {parseFloat(totals.reserved).toFixed(2)}
+              {parseFloat(totals.reserved).toFixed(decimals)}
             </div>
           </div>
           <div>
@@ -120,7 +122,7 @@ export function ProductStockLevels({
               {t('stock.incoming')}
             </div>
             <div className="mt-1 text-base font-semibold text-blue-600">
-              {parseFloat(totals.incoming).toFixed(2)}
+              {parseFloat(totals.incoming).toFixed(decimals)}
             </div>
           </div>
         </div>
@@ -130,7 +132,7 @@ export function ProductStockLevels({
             {t('stock.projectedAvailable')}
           </div>
           <div className="mt-1 text-base font-semibold text-gray-900">
-            {parseFloat(totals.projected_available).toFixed(2)}
+            {parseFloat(totals.projected_available).toFixed(decimals)}
           </div>
         </div>
       </div>
@@ -148,18 +150,18 @@ export function ProductStockLevels({
                 <div className="grid grid-cols-3 gap-4 text-sm">
                   <div>
                     <span className="text-gray-500">{t('stock.onHand')}:</span>{' '}
-                    <span className="font-medium">{parseFloat(loc.quantity).toFixed(2)}</span>
+                    <span className="font-medium">{parseFloat(loc.quantity).toFixed(decimals)}</span>
                   </div>
                   <div>
                     <span className="text-gray-500">{t('stock.available')}:</span>{' '}
                     <span className="font-medium text-green-600">
-                      {parseFloat(loc.available).toFixed(2)}
+                      {parseFloat(loc.available).toFixed(decimals)}
                     </span>
                   </div>
                   <div>
                     <span className="text-gray-500">{t('stock.incoming')}:</span>{' '}
                     <span className="font-medium text-blue-600">
-                      {parseFloat(loc.incoming).toFixed(2)}
+                      {parseFloat(loc.incoming).toFixed(decimals)}
                     </span>
                   </div>
                 </div>

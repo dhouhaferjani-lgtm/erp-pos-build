@@ -9,6 +9,7 @@ import type { Product } from '../../molecules'
 import type { Customer } from '../../organisms/TransactionCart'
 import type { CartItem, SelectedModifier } from '../../molecules/CartLineItem'
 import { useCurrency } from '@/hooks/useCurrency'
+import { bcadd, bcsub, bcmul, bcdiv, bccomp } from '@/lib/decimal'
 import { useBarcodeScanner } from '../../hooks/useBarcodeScanner'
 import { useBarcodeLookup } from '../../hooks/useBarcodeLookup'
 import { ConsumptionModeToggle, type ConsumptionMode } from '../../atoms/ConsumptionModeToggle/ConsumptionModeToggle'
@@ -83,7 +84,7 @@ export function POSPage({
 
   // Calculate subtotal for discount preview
   const cartSubtotal = useMemo(() => {
-    return cartItems.reduce((sum, item) => sum + parseFloat(item.line_total), 0).toFixed(decimals)
+    return cartItems.reduce((sum, item) => bcadd(sum, item.line_total, decimals), '0')
   }, [cartItems, decimals])
 
   // Discount preview — calls backend to resolve promotions, coupons, loyalty
@@ -150,32 +151,31 @@ export function POSPage({
             if (item.product.id !== product.id || item.product.selectedModifiers?.length) return item
 
             const newQty = item.quantity + 1
-            const grossTotal = parseFloat(item.unit_price) * newQty
-            let discountAmount = 0
+            const grossTotal = bcmul(item.unit_price, String(newQty), decimals)
+            let discountAmount = '0'
 
             if (item.discount_type === 'percentage' && item.discount_percent) {
-              discountAmount = (grossTotal * parseFloat(item.discount_percent)) / 100
+              discountAmount = bcdiv(bcmul(grossTotal, item.discount_percent, decimals + 2), '100', decimals)
             } else if (item.discount_amount && item.discount_type === 'fixed') {
-              discountAmount = parseFloat(item.discount_amount)
+              discountAmount = item.discount_amount
             }
 
-            const lineTotal = Math.max(0, grossTotal - discountAmount)
+            const lineTotal = bccomp(grossTotal, discountAmount) > 0 ? bcsub(grossTotal, discountAmount, decimals) : '0'
 
             return {
               ...item,
               quantity: newQty,
-              ...(item.discount_type === 'percentage' ? { discount_amount: discountAmount.toFixed(decimals) } : {}),
-              line_total: lineTotal.toFixed(decimals),
+              ...(item.discount_type === 'percentage' ? { discount_amount: discountAmount } : {}),
+              line_total: lineTotal,
             }
           })
         } else {
           // Add new item
-          const basePrice = parseFloat(product.sale_price || '0')
+          const basePrice = product.sale_price || '0'
           const modifierAdjustment = hasModifiers
-            ? selectedModifiers.reduce((sum, m) => sum + parseFloat(m.price_adjustment), 0)
-            : 0
-          const unitPrice = basePrice + modifierAdjustment
-          const priceValue = unitPrice.toFixed(decimals)
+            ? selectedModifiers.reduce((sum, m) => bcadd(sum, m.price_adjustment, decimals), '0')
+            : '0'
+          const priceValue = bcadd(basePrice, modifierAdjustment, decimals)
 
           const cartProduct: CartItem['product'] = {
             id: product.id,
@@ -197,7 +197,7 @@ export function POSPage({
               product: cartProduct,
               quantity: 1,
               unit_price: priceValue,
-              line_total: unitPrice.toFixed(decimals),
+              line_total: priceValue,
               tax_amount: (0).toFixed(decimals),
             } satisfies CartItem,
           ]
@@ -330,22 +330,22 @@ export function POSPage({
       prev.map((item): CartItem => {
         if (item.product.id !== productId) return item
 
-        const grossTotal = parseFloat(item.unit_price) * quantity
-        let discountAmount = 0
+        const grossTotal = bcmul(item.unit_price, String(quantity), decimals)
+        let discountAmount = '0'
 
         if (item.discount_type === 'percentage' && item.discount_percent) {
-          discountAmount = (grossTotal * parseFloat(item.discount_percent)) / 100
+          discountAmount = bcdiv(bcmul(grossTotal, item.discount_percent, decimals + 2), '100', decimals)
         } else if (item.discount_amount && item.discount_type === 'fixed') {
-          discountAmount = parseFloat(item.discount_amount)
+          discountAmount = item.discount_amount
         }
 
-        const lineTotal = Math.max(0, grossTotal - discountAmount)
+        const lineTotal = bccomp(grossTotal, discountAmount) > 0 ? bcsub(grossTotal, discountAmount, decimals) : '0'
 
         return {
           ...item,
           quantity,
-          ...(item.discount_type === 'percentage' ? { discount_amount: discountAmount.toFixed(decimals) } : {}),
-          line_total: lineTotal.toFixed(decimals),
+          ...(item.discount_type === 'percentage' ? { discount_amount: discountAmount } : {}),
+          line_total: lineTotal,
         }
       })
     )
@@ -370,32 +370,32 @@ export function POSPage({
       prev.map((item): CartItem => {
         if (item.product.id !== productId) return item
 
-        const grossTotal = parseFloat(item.unit_price) * item.quantity
+        const grossTotal = bcmul(item.unit_price, String(item.quantity), decimals)
 
         if (!discount) {
           // Clear discount — omit discount fields entirely
           const { discount_type: _dt, discount_percent: _dp, discount_amount: _da, discount_reason: _dr, ...rest } = item
           return {
             ...rest,
-            line_total: grossTotal.toFixed(decimals),
+            line_total: grossTotal,
           }
         }
 
-        let discountAmount: number
+        let discountAmount: string
 
         if (discount.type === 'percentage') {
-          discountAmount = (grossTotal * parseFloat(discount.value)) / 100
+          discountAmount = bcdiv(bcmul(grossTotal, discount.value, decimals + 2), '100', decimals)
         } else {
-          discountAmount = parseFloat(discount.value)
+          discountAmount = discount.value
         }
 
-        const lineTotal = Math.max(0, grossTotal - discountAmount)
+        const lineTotal = bccomp(grossTotal, discountAmount) > 0 ? bcsub(grossTotal, discountAmount, decimals) : '0'
 
         return {
           ...item,
           discount_type: discount.type,
-          discount_amount: discountAmount.toFixed(decimals),
-          line_total: lineTotal.toFixed(decimals),
+          discount_amount: discountAmount,
+          line_total: lineTotal,
           ...(discount.type === 'percentage' ? { discount_percent: discount.value } : {}),
           ...(discount.reason != null ? { discount_reason: discount.reason } : {}),
         }

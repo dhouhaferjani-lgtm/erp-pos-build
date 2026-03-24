@@ -1,5 +1,6 @@
 import { DollarSign, TrendingUp, Shield, Calendar } from 'lucide-react'
 import { MarginBadge } from './MarginIndicator'
+import { useCurrency } from '@/hooks/useCurrency'
 
 interface Product {
   id: string
@@ -26,6 +27,7 @@ export function ProductPricingCard({
   defaultMinimumMargin = 15,
   canViewCosts = true,
 }: ProductPricingCardProps) {
+  const { decimals } = useCurrency()
   const costPrice = parseFloat(product.cost_price || '0')
   const listPrice = parseFloat(product.list_price || '0')
   const targetMargin = parseFloat(product.target_margin_override || String(defaultTargetMargin))
@@ -81,11 +83,11 @@ export function ProductPricingCard({
               <span>Cost Price</span>
             </div>
             <p className="mt-1 text-lg font-semibold text-gray-900">
-              ${costPrice.toFixed(2)}
+              ${costPrice.toFixed(decimals)}
             </p>
             {lastPurchaseCost > 0 && lastPurchaseCost !== costPrice && (
               <p className="text-xs text-gray-500">
-                Last: ${lastPurchaseCost.toFixed(2)}
+                Last: ${lastPurchaseCost.toFixed(decimals)}
               </p>
             )}
           </div>
@@ -98,7 +100,7 @@ export function ProductPricingCard({
             <span>List Price</span>
           </div>
           <p className="mt-1 text-lg font-semibold text-gray-900">
-            ${listPrice.toFixed(2)}
+            ${listPrice.toFixed(decimals)}
           </p>
           {currentMargin > 0 && (
             <p className="text-xs text-gray-500">
@@ -131,7 +133,7 @@ export function ProductPricingCard({
               <span>Suggested Price</span>
             </div>
             <p className="mt-1 text-lg font-semibold text-blue-600">
-              ${suggestedPrice.toFixed(2)}
+              ${suggestedPrice.toFixed(decimals)}
             </p>
             <p className="text-xs text-gray-500">
               @ {targetMargin.toFixed(1)}% margin
@@ -157,7 +159,7 @@ export function ProductPricingCard({
             <div className="flex justify-between">
               <span className="text-gray-600">Markup:</span>
               <span className="font-medium text-gray-900">
-                ${(listPrice - costPrice).toFixed(2)}
+                ${(listPrice - costPrice).toFixed(decimals)}
               </span>
             </div>
             <div className="flex justify-between">
@@ -173,7 +175,7 @@ export function ProductPricingCard({
             </div>
             {currentMargin < targetMargin && (
               <div className="rounded-md bg-yellow-50 p-2 text-yellow-800">
-                <span className="font-medium">Below target:</span> Consider raising price to ${suggestedPrice.toFixed(2)}
+                <span className="font-medium">Below target:</span> Consider raising price to ${suggestedPrice.toFixed(decimals)}
               </div>
             )}
           </div>

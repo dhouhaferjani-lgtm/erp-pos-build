@@ -5,6 +5,7 @@ import { FilterTabs } from '@/components/molecules/FilterTabs/FilterTabs'
 import { cn } from '@/lib/utils'
 import { tokens, textColors } from '@/lib/designTokens'
 import { useCurrency } from '@/hooks/useCurrency'
+import { bcadd, bccomp } from '@/lib/decimal'
 import { POSButton } from '../../atoms'
 import type { Product } from '../../molecules/ProductCard/ProductCard'
 import type { SelectedModifier } from '../../molecules/CartLineItem/CartLineItem'
@@ -91,8 +92,7 @@ export function ModifierSelectionModal({
 
   // Calculate total price
   const totalPrice = useMemo(() => {
-    const basePrice = parseFloat(product.sale_price ?? '0')
-    let adjustmentTotal = 0
+    let total = product.sale_price ?? '0'
 
     for (const group of groups) {
       const selectedIds = selections[group.id]
@@ -100,12 +100,12 @@ export function ModifierSelectionModal({
 
       for (const mod of group.modifiers ?? []) {
         if (selectedIds.has(mod.id)) {
-          adjustmentTotal += parseFloat(mod.price_adjustment)
+          total = bcadd(total, mod.price_adjustment, decimals)
         }
       }
     }
 
-    return (basePrice + adjustmentTotal).toFixed(decimals)
+    return total
   }, [product.sale_price, groups, selections, decimals])
 
   // Build tabs for FilterTabs
@@ -265,7 +265,7 @@ function ModifierGroupSection({
       <div className="space-y-2">
         {activeModifiers.map((mod) => {
           const isSelected = selectedIds.has(mod.id)
-          const adjustment = parseFloat(mod.price_adjustment)
+          const adjustmentCmp = bccomp(mod.price_adjustment, '0')
 
           return (
             <label
@@ -292,15 +292,15 @@ function ModifierGroupSection({
                 </span>
               </div>
 
-              {adjustment !== 0 && (
+              {adjustmentCmp !== 0 && (
                 <span
                   className={cn(
                     'text-sm font-medium',
-                    adjustment > 0 ? textColors.tertiary : textColors.success,
+                    adjustmentCmp > 0 ? textColors.tertiary : textColors.success,
                   )}
                 >
-                  {adjustment > 0 ? '+' : ''}
-                  {adjustment.toFixed(decimals)} {currency}
+                  {adjustmentCmp > 0 ? '+' : ''}
+                  {parseFloat(mod.price_adjustment).toFixed(decimals)} {currency}
                 </span>
               )}
             </label>

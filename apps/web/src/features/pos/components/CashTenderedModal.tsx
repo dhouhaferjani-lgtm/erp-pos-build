@@ -23,14 +23,14 @@ export function CashTenderedModal({
   isProcessing,
 }: CashTenderedModalProps) {
   const { t } = useTranslation(['pos'])
-  const { currency, format: formatMoney } = useCurrency()
+  const { currency, decimals, format: formatMoney } = useCurrency()
   const totalNum = parseFloat(total)
   const [tenderedStr, setTenderedStr] = useState('')
 
   // Reset tendered amount when modal opens with a new total
   useEffect(() => {
     if (isOpen) {
-      setTenderedStr(totalNum.toFixed(2))
+      setTenderedStr(totalNum.toFixed(decimals))
     }
   }, [isOpen, totalNum])
 
@@ -39,12 +39,12 @@ export function CashTenderedModal({
   const isValid = tenderedNum >= totalNum && tenderedStr !== ''
 
   const handleDenomination = useCallback((amount: number) => {
-    setTenderedStr(amount.toFixed(2))
+    setTenderedStr(amount.toFixed(decimals))
   }, [])
 
   const handleExact = useCallback(() => {
-    setTenderedStr(totalNum.toFixed(2))
-  }, [totalNum])
+    setTenderedStr(totalNum.toFixed(decimals))
+  }, [totalNum, decimals])
 
   const handleConfirm = useCallback(() => {
     if (isValid) {
