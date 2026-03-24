@@ -35,11 +35,11 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
       <div
         className={cn(
           'relative z-10 flex w-full flex-col rounded-2xl bg-white shadow-2xl overflow-hidden',
-          size === 'sm' && 'max-w-sm h-[45vh]',
-          size === 'md' && 'max-w-md h-[55vh]',
-          size === 'lg' && 'max-w-lg h-[70vh]',
-          size === 'xl' && 'max-w-2xl h-[80vh]',
-          size === 'full' && 'max-w-4xl h-[85vh]',
+          size === 'sm' && 'max-w-sm max-h-[45vh]',
+          size === 'md' && 'max-w-md max-h-[55vh]',
+          size === 'lg' && 'max-w-lg max-h-[70vh]',
+          size === 'xl' && 'max-w-2xl max-h-[80vh]',
+          size === 'full' && 'max-w-4xl max-h-[85vh]',
         )}
       >
         {/* Header */}

@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { cn } from '@/lib/utils';
 import { useCurrency } from '@/lib/currency';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { usePrinterStore } from '@/stores/printerStore';
@@ -156,23 +157,7 @@ export function CheckoutSuccessModal({
 
         {/* Action buttons */}
         <div className="space-y-3">
-          {/* PDF Print — always available when online */}
-          {canPdfPrint && (
-            <button
-              onClick={() => void handlePdfPrint()}
-              disabled={isPdfPrinting}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-6 py-3 text-base font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
-            >
-              {isPdfPrinting ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <FileText className="h-5 w-5" />
-              )}
-              {t('settings.printReceiptPdf')}
-            </button>
-          )}
-
-          {/* ESC/POS thermal printer — only when physical printer is configured */}
+          {/* ESC/POS thermal printer — primary action when physical printer is configured */}
           {canEscPosPrint && (
             <button
               onClick={() => void handlePrint()}
@@ -185,6 +170,27 @@ export function CheckoutSuccessModal({
                 <Printer className="h-5 w-5" />
               )}
               {t('settings.printReceipt')}
+            </button>
+          )}
+
+          {/* PDF Print — secondary fallback, subtle link style when thermal is available */}
+          {canPdfPrint && (
+            <button
+              onClick={() => void handlePdfPrint()}
+              disabled={isPdfPrinting}
+              className={cn(
+                'flex w-full items-center justify-center gap-2 disabled:opacity-50',
+                canEscPosPrint
+                  ? 'text-sm text-gray-500 underline hover:text-gray-700'
+                  : 'rounded-xl border border-gray-300 bg-white px-6 py-3 text-base font-medium text-gray-700 transition-colors hover:bg-gray-50',
+              )}
+            >
+              {isPdfPrinting ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <FileText className="h-5 w-5" />
+              )}
+              {t('settings.printReceiptPdf')}
             </button>
           )}
 
