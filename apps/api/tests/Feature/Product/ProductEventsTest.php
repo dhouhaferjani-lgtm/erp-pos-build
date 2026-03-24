@@ -131,6 +131,28 @@ class ProductEventsTest extends TestCase
         });
     }
 
+    public function test_product_updated_event_not_dispatched_on_noop_update(): void
+    {
+        $product = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Same Name',
+            'sku' => 'SKU-NOOP',
+            'type' => 'part',
+            'sale_price' => '10.00',
+        ]);
+
+        Event::fake([ProductUpdated::class]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/products/{$product->id}", [
+                'name' => 'Same Name',
+            ])
+            ->assertStatus(200);
+
+        Event::assertNotDispatched(ProductUpdated::class);
+    }
+
     public function test_product_deleted_event_is_dispatched_on_destroy(): void
     {
         $product = Product::create([

@@ -255,6 +255,100 @@ class TrialBalanceTest extends TestCase
         $this->assertNotNull($bankLine2, 'Zero-balance accounts should appear when include_zero_balances=true');
     }
 
+    public function test_left_join_preserves_zero_balance_accounts_with_include_flag(): void
+    {
+        // Scenario 1: Account with NO journal entries at all
+        $noEntriesAccount = Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '1200',
+            'name' => 'Bank Account (No Entries)',
+            'type' => AccountType::Asset,
+        ]);
+
+        // Scenario 2: Account WITH journal entries that net to zero balance
+        // (debit and credit cancel out)
+        $zeroNetAccount = Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '1300',
+            'name' => 'Clearing Account (Zero Net)',
+            'type' => AccountType::Asset,
+        ]);
+
+        // Create entries that net to zero on the clearing account:
+        // Entry 1: debit clearing 500, credit revenue 500
+        $this->createPostedEntry('2025-06-10', [
+            ['account_id' => $zeroNetAccount->id, 'debit' => '500.00', 'credit' => '0.00'],
+            ['account_id' => $this->revenueAccount->id, 'debit' => '0.00', 'credit' => '500.00'],
+        ]);
+        // Entry 2: credit clearing 500, debit cash 500 (nets clearing to zero)
+        $this->createPostedEntry('2025-06-15', [
+            ['account_id' => $this->cashAccount->id, 'debit' => '500.00', 'credit' => '0.00'],
+            ['account_id' => $zeroNetAccount->id, 'debit' => '0.00', 'credit' => '500.00'],
+        ]);
+
+        // Scenario 3: Account with a non-zero balance (cash has net 500 debit)
+        // (already created by entries above — cashAccount has debit 500, no credits to it directly)
+
+        // --- Test with include_zero_balances=false ---
+        $response = $this->actingAs($this->user)
+            ->getJson('/api/v1/reports/trial-balance?as_of_date=2025-12-31&include_zero_balances=false&include_hierarchy=false');
+
+        $response->assertOk();
+        $data = $response->json('data');
+        $lines = collect($data['lines']);
+
+        // No-entries account should be excluded (zero balance, no flag)
+        $this->assertNull(
+            $lines->firstWhere('account_code', '1200'),
+            'Account with no entries should be excluded when include_zero_balances=false'
+        );
+
+        // Zero-net account should be excluded (has entries but balance is zero)
+        $this->assertNull(
+            $lines->firstWhere('account_code', '1300'),
+            'Account with zero net balance should be excluded when include_zero_balances=false'
+        );
+
+        // Non-zero balance account should always appear
+        $cashLine = $lines->firstWhere('account_code', '1100');
+        $this->assertNotNull($cashLine, 'Account with non-zero balance must always appear');
+        $this->assertEquals(0, bccomp($cashLine['debit'], '500.0000', 4), 'Cash should have 500 debit balance');
+
+        // --- Test with include_zero_balances=true ---
+        $response2 = $this->actingAs($this->user)
+            ->getJson('/api/v1/reports/trial-balance?as_of_date=2025-12-31&include_zero_balances=true&include_hierarchy=false');
+
+        $response2->assertOk();
+        $data2 = $response2->json('data');
+        $lines2 = collect($data2['lines']);
+
+        // No-entries account SHOULD appear (LEFT JOIN must preserve it)
+        $noEntriesLine = $lines2->firstWhere('account_code', '1200');
+        $this->assertNotNull(
+            $noEntriesLine,
+            'Account with no entries MUST appear when include_zero_balances=true — '
+            . 'if missing, the LEFT JOIN is being converted to INNER JOIN'
+        );
+
+        // Zero-net account SHOULD appear (has entries but zero net)
+        $zeroNetLine = $lines2->firstWhere('account_code', '1300');
+        $this->assertNotNull(
+            $zeroNetLine,
+            'Account with zero net balance MUST appear when include_zero_balances=true'
+        );
+
+        // Non-zero balance account should still appear
+        $this->assertNotNull(
+            $lines2->firstWhere('account_code', '1100'),
+            'Account with non-zero balance must appear regardless of flag'
+        );
+
+        // Verify balance is still correct
+        $this->assertTrue($data2['is_balanced'], 'Trial balance must remain balanced');
+    }
+
     public function test_trial_balance_date_range_filtering(): void
     {
         // Entry in January

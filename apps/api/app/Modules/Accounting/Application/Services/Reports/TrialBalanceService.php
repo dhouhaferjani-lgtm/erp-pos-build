@@ -170,6 +170,13 @@ class TrialBalanceService
      */
     private function queryAccountBalances(string $companyId, Carbon $asOfDate): \Illuminate\Support\Collection
     {
+        // NOTE: The nested $join->join() inside leftJoin() is intentional and correct.
+        // Laravel compiles this as a parenthesized join group:
+        //   LEFT JOIN ("journal_lines" INNER JOIN "journal_entries" ON ...) ON "jl"."account_id" = "a"."id"
+        // The INNER JOIN between journal_lines and journal_entries is evaluated FIRST within
+        // the parentheses, producing a derived set of only posted lines. The LEFT JOIN then
+        // connects accounts to this derived set, preserving accounts with no matching lines
+        // (they get NULLs, handled by COALESCE). This is valid PostgreSQL syntax.
         return DB::table('accounts as a')
             ->leftJoin('journal_lines as jl', function ($join) use ($asOfDate) {
                 $join->on('jl.account_id', '=', 'a.id')

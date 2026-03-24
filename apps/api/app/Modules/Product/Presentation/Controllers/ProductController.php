@@ -397,13 +397,18 @@ class ProductController extends Controller
         // Update product core fields
         $productModel->update($validated);
 
-        event(new ProductUpdated(
-            productId: $productModel->id,
-            tenantId: $productModel->tenant_id,
-            companyId: $productModel->company_id,
-            changes: $productModel->getChanges(),
-            updatedAt: $productModel->updated_at?->toIso8601String(),
-        ));
+        $changes = $productModel->getChanges();
+        unset($changes['updated_at']);
+
+        if ($changes !== []) {
+            event(new ProductUpdated(
+                productId: $productModel->id,
+                tenantId: $productModel->tenant_id,
+                companyId: $productModel->company_id,
+                changes: $changes,
+                updatedAt: $productModel->updated_at?->toIso8601String(),
+            ));
+        }
 
         // Update or create parapharmacy metadata if provided AND tenant is Parapharmacy vertical
         if ($parapharmacyMetadata !== null && is_array($parapharmacyMetadata) && $company->tenant->vertical === Vertical::Parapharmacy) {
