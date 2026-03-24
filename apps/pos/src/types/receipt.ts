@@ -45,6 +45,68 @@ export interface ProcessReceiptPaymentsRequest {
   customer_id?: string;
 }
 
+/** Full receipt detail returned by GET /pos/receipts/{id} */
+export interface FullReceiptResponse {
+  id: string;
+  receipt_number: string;
+  receipt_type: string;
+  posted_at: string;
+  cashier_name: string;
+  subtotal: string;
+  tax_amount: string;
+  discount_amount: string;
+  total: string;
+  currency: string;
+  fiscal_hash: string | null;
+  customer_name: string | null;
+  notes: string | null;
+  company: {
+    name: string;
+    address_street: string | null;
+    address_street_2: string | null;
+    address_city: string | null;
+    address_postal_code: string | null;
+    country_code: string;
+    tax_id: string | null;
+    phone: string | null;
+  };
+  terminal: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  lines: Array<{
+    id: string;
+    line_number: number;
+    product_code: string;
+    product_name: string;
+    quantity: string;
+    unit_price: string;
+    line_total: string;
+    tax_rate: string;
+    tax_amount: string;
+    discount_amount: string;
+    modifiers: Array<{ name: string; price: string }> | null;
+  }>;
+  vat_details: Array<{
+    tax_rate: string;
+    net_amount: string;
+    vat_amount: string;
+    gross_amount: string;
+  }>;
+  payments: Array<{
+    id: string;
+    payment_method_id: string;
+    payment_type: string;
+    amount: string;
+    payment_method: {
+      id: string;
+      name: string;
+      code: string;
+    };
+  }>;
+}
+
 export interface ProcessReceiptPaymentsResponse {
   receipt: {
     id: string;

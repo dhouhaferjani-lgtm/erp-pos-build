@@ -1,10 +1,15 @@
-import { apiPost } from '@/lib/api';
+import { apiGet, apiPost } from '@/lib/api';
 import type {
   CreateReceiptRequest,
   CreateReceiptResponse,
+  FullReceiptResponse,
   ProcessReceiptPaymentsRequest,
   ProcessReceiptPaymentsResponse,
 } from '@/types/receipt';
+
+export async function fetchReceipt(id: string): Promise<FullReceiptResponse> {
+  return apiGet<FullReceiptResponse>(`/pos/receipts/${id}`);
+}
 
 export async function createReceipt(
   data: CreateReceiptRequest,

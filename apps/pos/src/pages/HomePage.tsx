@@ -10,6 +10,9 @@ import { useScannerStore } from '@/stores/scannerStore';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { getErrorMessage } from '@/lib/api';
 import { useCurrency } from '@/lib/currency';
+import { fetchReceipt } from '@/api/receiptApi';
+import { buildEscPosReceiptData } from '@/lib/buildReceiptData';
+import type { ReceiptData } from '@/lib/printing';
 import { hasModule } from '@/stores/productStore';
 import { ConsumptionModeToggle } from '@/components/atoms/ConsumptionModeToggle';
 import { TableSelector } from '@/components/atoms/TableSelector';
@@ -87,6 +90,9 @@ export function HomePage() {
   const [showVoidReturnModal, setShowVoidReturnModal] = useState(false);
   const [quantityEditItemId, setQuantityEditItemId] = useState<string | null>(null);
 
+  // ESC/POS receipt data for thermal printing
+  const [escPosData, setEscPosData] = useState<ReceiptData | null>(null);
+
   // Modifier selection state
   const [modifierProduct, setModifierProduct] = useState<POSProduct | null>(null);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
@@ -147,6 +153,30 @@ export function HomePage() {
       usePaymentStore.setState({ error: null });
     }
   }, [showCashModal]);
+
+  // Fetch full receipt for ESC/POS thermal printing when success modal opens
+  useEffect(() => {
+    if (!showSuccessModal) {
+      setEscPosData(null);
+      return;
+    }
+    if (!lastReceipt || escPosData) return;
+
+    let cancelled = false;
+    fetchReceipt(lastReceipt.id)
+      .then((fullReceipt) => {
+        if (!cancelled) {
+          setEscPosData(buildEscPosReceiptData(fullReceipt));
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error('[POS] Failed to fetch receipt for thermal print:', err);
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [showSuccessModal, lastReceipt, escPosData]);
 
   // Cart product IDs for highlighting in grid
   const cartProductIds = useMemo(
@@ -534,6 +564,7 @@ export function HomePage() {
           total={lastReceipt.total}
           changeDue={changeDue}
           receiptId={lastReceipt.id}
+          receiptData={escPosData ?? undefined}
         />
       )}
 
