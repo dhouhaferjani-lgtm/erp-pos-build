@@ -283,7 +283,7 @@ class ProductController extends Controller
             companyId: $companyId,
             name: $product->name,
             sku: $product->sku ?? '',
-            type: $product->type->value,
+            type: $product->type?->value ?? '',
             salePrice: (string) $product->sale_price,
             createdAt: $product->created_at?->toIso8601String(),
         ));
