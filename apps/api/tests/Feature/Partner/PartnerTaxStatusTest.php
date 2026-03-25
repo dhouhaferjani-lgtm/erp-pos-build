@@ -198,6 +198,28 @@ class PartnerTaxStatusTest extends TestCase
         $this->assertEquals('warning', $warnings[0]['severity']);
     }
 
+    public function test_no_expiring_soon_warning_for_certificate_far_in_future(): void
+    {
+        $partner = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Far Future Cert Partner',
+            'type' => PartnerType::Customer,
+            'tax_status' => PartnerTaxStatus::EXEMPT,
+            'tax_exemption_certificate_media_id' => Str::uuid()->toString(),
+            'tax_exemption_valid_until' => now()->addDays(275),
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/partners/{$partner->id}/tax-status");
+
+        $response->assertOk()
+            ->assertJsonPath('data.has_valid_exemption', true);
+
+        $warnings = $response->json('data.warnings');
+        $this->assertEmpty($warnings, 'Certificate 275 days away should not trigger expiring_soon warning');
+    }
+
     public function test_tax_status_returns_404_for_nonexistent_partner(): void
     {
         $fakeId = Str::uuid()->toString();

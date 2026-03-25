@@ -335,7 +335,7 @@ class Partner extends Model
                     'message' => 'Exemption certificate expired on '.$this->tax_exemption_valid_until->format('Y-m-d'),
                     'severity' => 'error',
                 ];
-            } elseif ($this->tax_exemption_valid_until->diffInDays(now()) <= 30) {
+            } elseif ($this->tax_exemption_valid_until->diffInDays(now(), absolute: true) <= 30) {
                 $warnings[] = [
                     'type' => 'expiring_soon',
                     'message' => 'Exemption certificate expires on '.$this->tax_exemption_valid_until->format('Y-m-d'),
