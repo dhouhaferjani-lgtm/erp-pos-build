@@ -16,6 +16,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 /**
  * Integration tests for Sales Withholding Tracking
@@ -24,6 +25,7 @@ use Tests\TestCase;
  */
 class SalesWithholdingTrackingTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -139,7 +141,7 @@ class SalesWithholdingTrackingTest extends TestCase
         ]);
 
         // Assert
-        $response->assertStatus(500);
+        $response->assertStatus(409);
         $this->assertStringContainsString('already recorded', $response->json('message'));
     }
 
@@ -287,7 +289,7 @@ class SalesWithholdingTrackingTest extends TestCase
         ]);
 
         // Assert
-        $response->assertStatus(500);
+        $response->assertStatus(409);
         $this->assertStringContainsString('already marked', $response->json('message'));
     }
 
@@ -301,14 +303,13 @@ class SalesWithholdingTrackingTest extends TestCase
         $response = $this->postJson("/api/v1/documents/{$invoice->id}/record-withholding", []);
 
         // Assert
-        $response->assertStatus(422)
-            ->assertJsonValidationErrors([
-                'customer_id',
-                'invoice_amount',
-                'withholding_rate',
-                'withholding_amount',
-                'expected_receivable',
-            ]);
+        $this->assertApiValidationErrors($response, [
+            'customer_id',
+            'invoice_amount',
+            'withholding_rate',
+            'withholding_amount',
+            'expected_receivable',
+        ]);
     }
 
     /**
