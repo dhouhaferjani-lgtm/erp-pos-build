@@ -287,11 +287,16 @@ class AccountingOpeningService
                 ]);
             }
 
+            // Mark batch as validated BEFORE marking rows posted
+            // (markBatchValidated checks valid row count, which would be 0 after markRowsPosted)
+            $this->batchService->markBatchValidated($batch, $userId);
+
             // Mark rows as posted
             $this->batchService->markRowsPosted($rowEntityMap);
 
-            // Mark batch as validated (posted in GL context)
-            $this->batchService->markBatchValidated($batch, $userId);
+            // Lock batch for immutability (Validated → Locked)
+            $batch->refresh();
+            $this->batchService->lockBatch($batch, $userId);
 
             return $entry->load('lines');
         });

@@ -345,23 +345,65 @@ class OpeningBalanceBatchTest extends TestCase
 
     public function test_post_batch_creates_journal_entry_and_lines(): void
     {
-        // BUG: AccountingOpeningService::postBatch() calls markRowsPosted()
-        // before markBatchValidated(). After markRowsPosted(), all rows have
-        // status=POSTED, so markBatchValidated() sees 0 valid rows and throws
-        // "no valid rows to process". The fix is to call markBatchValidated()
-        // before markRowsPosted(), or skip the valid row count check.
-        $this->markTestSkipped(
-            'Skipped: postBatch() has a bug — markRowsPosted() is called before markBatchValidated(), ' .
-            'causing "no valid rows to process" error. See AccountingOpeningService lines 291-294.'
+        $batch = $this->createBatchWithValidatedRows([
+            ['account_code' => '5100', 'debit' => '10000.00', 'credit' => '0.00', 'description' => 'Cash opening'],
+            ['account_code' => '5120', 'debit' => '25000.00', 'credit' => '0.00', 'description' => 'Bank opening'],
+            ['account_code' => '3900', 'debit' => '0.00', 'credit' => '35000.00', 'description' => 'OBE offset'],
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson(
+            "/api/v1/companies/{$this->company->id}/opening-batches/{$batch->id}/post"
         );
+
+        $response->assertOk();
+
+        // Verify journal entry created
+        $this->assertDatabaseHas('journal_entries', [
+            'source_type' => 'opening_balance',
+            'source_id' => $batch->id,
+            'is_historical' => true,
+        ]);
+
+        $entry = JournalEntry::where('source_id', $batch->id)->first();
+        $this->assertNotNull($entry);
+
+        // Verify journal lines
+        $lines = JournalLine::where('journal_entry_id', $entry->id)->orderBy('line_order')->get();
+        $this->assertCount(3, $lines);
+
+        // Verify batch is now Locked (not just Validated)
+        $batch->refresh();
+        $this->assertEquals(OpeningBatchStatus::Locked, $batch->status);
+        $this->assertNotNull($batch->locked_at);
+        $this->assertNotNull($batch->hash);
+        $this->assertEquals($this->user->id, $batch->locked_by);
+
+        // Verify all rows are posted
+        $postedRows = OpeningBalanceImportRow::where('batch_id', $batch->id)
+            ->where('status', OpeningImportRowStatus::Posted)
+            ->count();
+        $this->assertEquals(3, $postedRows);
     }
 
     public function test_cannot_post_already_posted_batch(): void
     {
-        // Depends on posting working — skip due to same bug as above
-        $this->markTestSkipped(
-            'Skipped: depends on postBatch() which has the markRowsPosted/markBatchValidated ordering bug.'
+        $batch = $this->createBatchWithValidatedRows([
+            ['account_code' => '5100', 'debit' => '10000.00', 'credit' => '0.00', 'description' => 'Cash'],
+            ['account_code' => '3900', 'debit' => '0.00', 'credit' => '10000.00', 'description' => 'OBE'],
+        ]);
+
+        // Post the batch first time
+        $this->actingAs($this->user)->postJson(
+            "/api/v1/companies/{$this->company->id}/opening-batches/{$batch->id}/post"
+        )->assertOk();
+
+        // Attempt to post again — should fail because batch is now Locked
+        $response = $this->actingAs($this->user)->postJson(
+            "/api/v1/companies/{$this->company->id}/opening-batches/{$batch->id}/post"
         );
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'POST_FAILED');
     }
 
     // ---------------------------------------------------------------
@@ -541,10 +583,22 @@ class OpeningBalanceBatchTest extends TestCase
 
     public function test_opening_balance_posted_event_dispatched_on_post(): void
     {
-        // Depends on postBatch() working — skip due to same ordering bug
-        $this->markTestSkipped(
-            'Skipped: depends on postBatch() which has the markRowsPosted/markBatchValidated ordering bug.'
-        );
+        Event::fake([OpeningBalancePosted::class]);
+
+        $batch = $this->createBatchWithValidatedRows([
+            ['account_code' => '5100', 'debit' => '10000.00', 'credit' => '0.00', 'description' => 'Cash'],
+            ['account_code' => '3900', 'debit' => '0.00', 'credit' => '10000.00', 'description' => 'OBE'],
+        ]);
+
+        $this->actingAs($this->user)->postJson(
+            "/api/v1/companies/{$this->company->id}/opening-batches/{$batch->id}/post"
+        )->assertOk();
+
+        Event::assertDispatched(OpeningBalancePosted::class, function (OpeningBalancePosted $event) use ($batch): bool {
+            return $event->batchId === $batch->id
+                && $event->companyId === $this->company->id
+                && $event->entryCount === 2;
+        });
     }
 
     // ---------------------------------------------------------------
