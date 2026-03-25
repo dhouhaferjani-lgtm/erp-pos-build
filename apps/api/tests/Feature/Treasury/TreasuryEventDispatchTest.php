@@ -148,4 +148,21 @@ class TreasuryEventDispatchTest extends TestCase
                 && $event->reason === 'Customer request';
         });
     }
+
+    // --- Task 2: PaymentReversed ---
+
+    public function test_reverse_payment_dispatches_payment_reversed_event(): void
+    {
+        Event::fake([PaymentReversed::class]);
+
+        $payment = $this->createCompletedPayment();
+        $service = app(PaymentRefundService::class);
+        $service->reversePayment($payment, 'Entry error');
+
+        Event::assertDispatched(PaymentReversed::class, function (PaymentReversed $event) use ($payment) {
+            return $event->paymentId === $payment->id
+                && $event->amount === $payment->amount
+                && $event->currency === 'TND';
+        });
+    }
 }

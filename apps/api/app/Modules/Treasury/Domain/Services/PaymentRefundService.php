@@ -6,6 +6,7 @@ namespace App\Modules\Treasury\Domain\Services;
 
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Events\PaymentRefunded;
+use App\Modules\Treasury\Domain\Events\PaymentReversed;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -242,6 +243,17 @@ class PaymentRefundService
                 'status' => PaymentStatus::Reversed,
                 'notes' => ($payment->notes ?? '')."\n\nReversed: {$reason}",
             ]);
+
+            DB::afterCommit(function () use ($payment): void {
+                event(new PaymentReversed(
+                    paymentId: $payment->id,
+                    tenantId: $payment->tenant_id,
+                    companyId: $payment->company_id,
+                    amount: $payment->amount,
+                    currency: $payment->currency,
+                    reversedAt: now()->toIso8601String(),
+                ));
+            });
         });
     }
 
