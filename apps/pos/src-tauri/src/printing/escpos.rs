@@ -205,10 +205,15 @@ impl EscPosBuilder {
 
     /// Print a line with left-aligned and right-aligned text on the same row.
     /// If the combined text exceeds column width, right text is truncated.
+    ///
+    /// Uses `.chars().count()` for width measurement because the printer receives
+    /// single-byte encoded text (CP1252/CP437), where each character = 1 column.
+    /// Using `.len()` would overcount non-ASCII chars (e.g., 'ç' is 2 bytes in
+    /// UTF-8 but 1 byte/column in CP1252).
     pub fn two_column(&mut self, left: &str, right: &str) -> &mut Self {
         let cols = self.columns as usize;
-        let left_len = left.len();
-        let right_len = right.len();
+        let left_len = left.chars().count();
+        let right_len = right.chars().count();
 
         if left_len + right_len >= cols {
             // Truncate: show as much as fits
@@ -217,14 +222,16 @@ impl EscPosBuilder {
             } else {
                 cols
             };
-            let truncated_left = &left[..left_len.min(max_left)];
-            let remaining = cols.saturating_sub(truncated_left.len());
+            let truncated_chars = left.chars().take(left_len.min(max_left));
+            let truncated_left: String = truncated_chars.collect();
+            let truncated_left_len = truncated_left.chars().count();
+            let remaining = cols.saturating_sub(truncated_left_len);
             let padded_right = if remaining >= right_len {
                 format!("{:>width$}", right, width = remaining)
             } else {
-                right[..remaining].to_string()
+                right.chars().take(remaining).collect::<String>()
             };
-            self.text(truncated_left);
+            self.text(&truncated_left);
             self.text_line(&padded_right);
         } else {
             let padding = cols - left_len - right_len;
@@ -237,9 +244,11 @@ impl EscPosBuilder {
     }
 
     /// Print a three-column line (left, center, right).
+    ///
+    /// Uses `.chars().count()` for width measurement (see `two_column` doc).
     pub fn three_column(&mut self, left: &str, center: &str, right: &str) -> &mut Self {
         let cols = self.columns as usize;
-        let total_content = left.len() + center.len() + right.len();
+        let total_content = left.chars().count() + center.chars().count() + right.chars().count();
 
         if total_content >= cols {
             // Fall back to two-column with center+right merged
@@ -537,5 +546,50 @@ mod tests {
         let data = builder.build();
         // Skip ESC @ (2 bytes): P=0x50, â=0xE2, t=0x74, é=0xE9, LF=0x0A
         assert_eq!(&data[2..], &[0x50, 0xE2, 0x74, 0xE9, 0x0A]);
+    }
+
+    #[test]
+    fn test_two_column_accented_french_alignment() {
+        // "Reçu :" has 6 chars but 7 UTF-8 bytes (ç = 2 bytes in UTF-8).
+        // In CP1252, ç is 1 byte, so the printed width is 6 columns.
+        // The column output must be exactly 42 encoded bytes (+ LF), not 43.
+        let mut builder = EscPosBuilder::new(); // 42 columns
+        builder.two_column("Reçu :", "12345");
+        let data = builder.build();
+        let text_start = 2; // skip ESC @
+        let line_bytes = &data[text_start..];
+        let lf_pos = line_bytes.iter().position(|&b| b == 0x0A).unwrap();
+        // Encoded line should be exactly 42 bytes: 6 (left) + 31 (spaces) + 5 (right)
+        assert_eq!(
+            lf_pos, 42,
+            "Accented text line should be exactly 42 encoded bytes, got {}",
+            lf_pos
+        );
+
+        // Compare with ASCII-only equivalent: "Recu :" (also 6 chars)
+        let mut builder_ascii = EscPosBuilder::new();
+        builder_ascii.two_column("Recu :", "12345");
+        let data_ascii = builder_ascii.build();
+        let line_ascii = &data_ascii[2..];
+        let lf_pos_ascii = line_ascii.iter().position(|&b| b == 0x0A).unwrap();
+        assert_eq!(
+            lf_pos, lf_pos_ascii,
+            "Accented and ASCII lines must have the same encoded width"
+        );
+    }
+
+    #[test]
+    fn test_three_column_accented_alignment() {
+        let mut builder = EscPosBuilder::new(); // 42 columns
+        builder.three_column("Réf", "Désignation", "Prix");
+        let data = builder.build();
+        let text_start = 2;
+        let line_bytes = &data[text_start..];
+        let lf_pos = line_bytes.iter().position(|&b| b == 0x0A).unwrap();
+        assert_eq!(
+            lf_pos, 42,
+            "Three-column accented text should be exactly 42 encoded bytes, got {}",
+            lf_pos
+        );
     }
 }

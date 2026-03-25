@@ -12,6 +12,7 @@ import { getErrorMessage } from '@/lib/api';
 import { useCurrency } from '@/lib/currency';
 import { fetchReceipt } from '@/api/receiptApi';
 import { buildEscPosReceiptData } from '@/lib/buildReceiptData';
+import type { ReceiptVisibilitySettings } from '@/lib/buildReceiptData';
 import type { ReceiptData } from '@/lib/printing';
 import { hasModule } from '@/stores/productStore';
 import { ConsumptionModeToggle } from '@/components/atoms/ConsumptionModeToggle';
@@ -154,6 +155,18 @@ export function HomePage() {
     }
   }, [showCashModal]);
 
+  // Derive receipt visibility settings from company config
+  const receiptVisibility: ReceiptVisibilitySettings | undefined = useMemo(() => {
+    const v = companyConfig?.receipt_visibility;
+    if (!v) return undefined;
+    return {
+      show_vat_breakdown: v.show_vat_breakdown,
+      show_fiscal_info: v.show_fiscal_info,
+      show_payment_details: v.show_payment_details,
+      show_customer: v.show_customer,
+    };
+  }, [companyConfig?.receipt_visibility]);
+
   // Fetch full receipt for ESC/POS thermal printing when success modal opens
   useEffect(() => {
     if (!showSuccessModal) {
@@ -166,7 +179,7 @@ export function HomePage() {
     fetchReceipt(lastReceipt.id)
       .then((fullReceipt) => {
         if (!cancelled) {
-          setEscPosData(buildEscPosReceiptData(fullReceipt));
+          setEscPosData(buildEscPosReceiptData(fullReceipt, receiptVisibility));
         }
       })
       .catch((err) => {
@@ -176,7 +189,7 @@ export function HomePage() {
       });
 
     return () => { cancelled = true; };
-  }, [showSuccessModal, lastReceipt, escPosData]);
+  }, [showSuccessModal, lastReceipt, escPosData, receiptVisibility]);
 
   // Cart product IDs for highlighting in grid
   const cartProductIds = useMemo(

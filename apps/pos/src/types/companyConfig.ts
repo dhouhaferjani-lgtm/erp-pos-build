@@ -1,3 +1,11 @@
+export interface ReceiptVisibility {
+  show_vat_breakdown: boolean;
+  show_fiscal_info: boolean;
+  show_payment_details: boolean;
+  show_customer: boolean;
+}
+
 export interface CompanyConfig {
   all_enabled_modules: string[];
+  receipt_visibility?: ReceiptVisibility;
 }

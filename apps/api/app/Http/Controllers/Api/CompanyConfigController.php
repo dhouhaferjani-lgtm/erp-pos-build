@@ -60,9 +60,10 @@ class CompanyConfigController
             ->with('company')
             ->first();
 
-        $currency = $primaryMembership?->company->currency ?? 'USD';
-        $locale = $primaryMembership?->company->locale ?? 'en';
-        $countryCode = $primaryMembership?->company->country_code ?? null;
+        $company = $primaryMembership?->company;
+        $currency = $company->currency ?? 'USD';
+        $locale = $company->locale ?? 'en';
+        $countryCode = $company->country_code ?? null;
 
         // Return configuration as array
         return response()->json([
@@ -75,6 +76,12 @@ class CompanyConfigController
                 'currency' => $currency,
                 'locale' => $locale,
                 'country_code' => $countryCode,
+                'receipt_visibility' => [
+                    'show_vat_breakdown' => (bool) ($company?->receipt_show_vat_breakdown ?? true),
+                    'show_fiscal_info' => (bool) ($company?->receipt_show_fiscal_info ?? true),
+                    'show_payment_details' => (bool) ($company?->receipt_show_payment_details ?? true),
+                    'show_customer' => (bool) ($company?->receipt_show_customer ?? true),
+                ],
             ],
         ]);
     }
