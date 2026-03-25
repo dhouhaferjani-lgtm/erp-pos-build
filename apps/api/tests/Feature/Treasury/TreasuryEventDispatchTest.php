@@ -254,6 +254,32 @@ class TreasuryEventDispatchTest extends TestCase
         });
     }
 
+    // --- Task 5: RepositoryBalanceChanged from PaymentController::store() ---
+
+    public function test_payment_store_dispatches_repository_balance_changed_event(): void
+    {
+        Event::fake([RepositoryBalanceChanged::class]);
+
+        $repository = $this->createBankRepository();
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/payments', [
+                'partner_id' => $this->partner->id,
+                'payment_method_id' => $this->paymentMethod->id,
+                'amount' => '250.000',
+                'currency' => 'TND',
+                'payment_date' => now()->toDateString(),
+                'repository_id' => $repository->id,
+            ])
+            ->assertCreated();
+
+        Event::assertDispatched(RepositoryBalanceChanged::class, function (RepositoryBalanceChanged $event) use ($repository) {
+            return $event->repositoryId === $repository->id
+                && $event->previousBalance === '0.000'
+                && $event->changeAmount === '250.000';
+        });
+    }
+
     // --- Task 4: ReconciliationCompleted ---
 
     public function test_complete_reconciliation_dispatches_reconciliation_completed_event(): void
