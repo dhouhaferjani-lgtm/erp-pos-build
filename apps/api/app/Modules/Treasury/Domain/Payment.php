@@ -24,7 +24,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $tenant_id
  * @property string $company_id
  * @property string $partner_id
- * @property string $payment_method_id
+ * @property string|null $payment_method_id
  * @property string|null $instrument_id
  * @property string|null $repository_id
  * @property numeric-string $amount
@@ -35,6 +35,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $reference
  * @property string|null $notes
  * @property string|null $journal_entry_id
+ * @property bool $is_reconciled
+ * @property \Illuminate\Support\Carbon|null $reconciled_at
  * @property string|null $created_by
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
@@ -72,6 +74,8 @@ class Payment extends Model
         'reference',
         'notes',
         'journal_entry_id',
+        'is_reconciled',
+        'reconciled_at',
         'created_by',
     ];
 
@@ -85,6 +89,8 @@ class Payment extends Model
             'payment_date' => 'date',
             'status' => PaymentStatus::class,
             'payment_type' => PaymentType::class,
+            'is_reconciled' => 'boolean',
+            'reconciled_at' => 'datetime',
         ];
     }
 

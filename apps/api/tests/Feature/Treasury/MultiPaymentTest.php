@@ -461,13 +461,25 @@ class MultiPaymentTest extends TestCase
 
     public function test_record_payment_on_account(): void
     {
-        // SKIPPED: The service's recordPaymentOnAccount() sets payment_method_id to null,
-        // but the database has a NOT NULL constraint on that column.
-        // This is a known limitation - on-account payments need schema change to support.
-        $this->markTestSkipped(
-            'Service sets payment_method_id to null but DB requires it. '.
-            'On-account payments need schema migration to make payment_method_id nullable.'
+        $result = $this->multiPaymentService->recordPaymentOnAccount(
+            $this->tenant->id,
+            $this->company->id,
+            $this->customer->id,
+            '750.00',
+            'EUR',
+            'ON-ACCT-001',
+            'On-account credit for customer',
+            $this->user->id
         );
+
+        $this->assertArrayHasKey('payment', $result);
+        $this->assertArrayHasKey('account_balance', $result);
+
+        /** @var Payment $payment */
+        $payment = $result['payment'];
+        $this->assertEquals('750.000', $payment->amount);
+        $this->assertNull($payment->payment_method_id);
+        $this->assertEquals(PaymentStatus::Completed, $payment->status);
     }
 
     public function test_validate_split_amounts(): void

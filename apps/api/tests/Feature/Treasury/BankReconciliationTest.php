@@ -368,16 +368,39 @@ class BankReconciliationTest extends TestCase
 
     public function test_complete_reconciliation_marks_matched_payments_as_reconciled(): void
     {
-        // NOTE: Payment model does not include 'is_reconciled' / 'reconciled_at' in $fillable.
-        // The service uses $payment->update(['is_reconciled' => true, ...]) which will silently
-        // fail due to mass-assignment protection. This is a known bug — the Payment model's
-        // $fillable array needs to include 'is_reconciled' and 'reconciled_at'.
-        // This test documents the expected behavior once that bug is fixed.
-        $this->markTestSkipped(
-            'Payment model $fillable does not include is_reconciled/reconciled_at — '
-            . 'BankReconciliationService::completeReconciliation silently fails to mark payments as reconciled. '
-            . 'Fix: add is_reconciled and reconciled_at to Payment::$fillable.'
+        $payment1 = $this->createPayment('3000.00', 'PMT-REC-1');
+        $payment2 = $this->createPayment('2000.00', 'PMT-REC-2');
+
+        // Start reconciliation with statement_balance matching total payments
+        $startResponse = $this->actingAs($this->user)->postJson('/api/v1/bank-reconciliations', [
+            'repository_id' => $this->bankAccount->id,
+            'statement_date' => '2026-03-20',
+            'statement_balance' => '5000.00',
+        ]);
+        $reconciliationId = $startResponse->json('data.id');
+
+        // Match both payments
+        $this->actingAs($this->user)->postJson(
+            "/api/v1/bank-reconciliations/{$reconciliationId}/match/{$payment1->id}"
         );
+        $this->actingAs($this->user)->postJson(
+            "/api/v1/bank-reconciliations/{$reconciliationId}/match/{$payment2->id}"
+        );
+
+        // Complete
+        $response = $this->actingAs($this->user)->postJson(
+            "/api/v1/bank-reconciliations/{$reconciliationId}/complete"
+        );
+        $response->assertStatus(200);
+
+        // Both payments should now be marked as reconciled
+        $payment1->refresh();
+        $payment2->refresh();
+
+        $this->assertTrue($payment1->is_reconciled);
+        $this->assertNotNull($payment1->reconciled_at);
+        $this->assertTrue($payment2->is_reconciled);
+        $this->assertNotNull($payment2->reconciled_at);
     }
 
     // ---------------------------------------------------------------
