@@ -61,21 +61,6 @@ class CreateCompanyTest extends TestCase
         ]);
     }
 
-    /**
-     * Skip test if blocked by production bug: CompanyController::formatCompany()
-     * accesses $company->tax_status->value but tax_status is not set during
-     * Company::create() and the model is not refreshed after insert.
-     */
-    private function skipIfFormatCompanyBug(\Illuminate\Testing\TestResponse $response): void
-    {
-        if ($response->status() === 500) {
-            $this->markTestSkipped(
-                'Blocked by production bug: CompanyController::formatCompany() null tax_status — '
-                .'Company::create() does not include tax_status and model is not refreshed to pick up DB default.'
-            );
-        }
-    }
-
     public function test_authenticated_user_can_create_company(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
@@ -88,7 +73,6 @@ class CreateCompanyTest extends TestCase
                 'timezone' => 'Europe/Paris',
             ]);
 
-        $this->skipIfFormatCompanyBug($response);
         $response->assertCreated()
             ->assertJsonPath('data.name', 'New Company')
             ->assertJsonPath('data.legal_name', 'New Company LLC')
@@ -108,7 +92,6 @@ class CreateCompanyTest extends TestCase
                 'timezone' => 'Europe/Paris',
             ]);
 
-        $this->skipIfFormatCompanyBug($response);
         $response->assertCreated();
 
         $companyId = $response->json('data.id');
@@ -131,7 +114,6 @@ class CreateCompanyTest extends TestCase
                 'timezone' => 'Europe/Paris',
             ]);
 
-        $this->skipIfFormatCompanyBug($response);
         $response->assertCreated();
 
         $companyId = $response->json('data.id');
@@ -154,7 +136,6 @@ class CreateCompanyTest extends TestCase
                 'timezone' => 'Europe/Paris',
             ]);
 
-        $this->skipIfFormatCompanyBug($response);
         $response->assertCreated();
 
         $companyId = $response->json('data.id');
@@ -268,7 +249,6 @@ class CreateCompanyTest extends TestCase
                 'address_postal_code' => '75001',
             ]);
 
-        $this->skipIfFormatCompanyBug($response);
         $response->assertCreated()
             ->assertJsonPath('data.name', 'Full Company')
             ->assertJsonPath('data.legal_name', 'Full Company SARL')

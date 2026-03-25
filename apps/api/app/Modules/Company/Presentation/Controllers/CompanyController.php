@@ -72,6 +72,7 @@ class CompanyController extends Controller
                 'address_city' => $validated['address_city'] ?? null,
                 'address_state' => $validated['address_state'] ?? null,
                 'address_postal_code' => $validated['address_postal_code'] ?? null,
+                'tax_status' => CompanyTaxStatus::REGISTERED,
                 'status' => CompanyStatus::Active,
                 'fiscal_year_start_month' => 1,
                 'date_format' => 'Y-m-d',
