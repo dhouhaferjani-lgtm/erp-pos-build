@@ -298,7 +298,7 @@ final class ReceiptPaymentServiceTest extends TestCase
 
         // Act & Assert
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('does not have a GL account configured');
+        $this->expectExceptionMessage('is not linked to a General Ledger account');
 
         $this->service->processReceiptPayments(
             receiptId: $receipt->id,

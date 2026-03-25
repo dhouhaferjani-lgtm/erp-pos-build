@@ -108,7 +108,7 @@ class VerticalMigrationTest extends TestCase
         // Should default to 'retail' based on migration
         $this->assertEquals(
             'retail',
-            $tenant->vertical,
+            $tenant->vertical->value,
             'vertical column should default to retail'
         );
     }

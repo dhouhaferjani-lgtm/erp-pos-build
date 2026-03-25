@@ -497,6 +497,7 @@ class ImportInfrastructureTest extends TestCase
             'original_filename' => 'customers.csv',
             'file_path' => 'imports/test.csv',
             'total_rows' => 1,
+            'successful_rows' => 1,
         ]);
 
         ImportRow::create([

@@ -432,6 +432,14 @@ final class ReceiptCreationService
                     $vatAggregates,
                 );
 
+                // Recompute sumLineTotals from adjusted lines after promotion discounts
+                if (count($breakdown->lineDiscounts) > 0) {
+                    $sumLineTotals = '0';
+                    foreach ($receiptLines as $rl) {
+                        $sumLineTotals = bcadd($sumLineTotals, (string) $rl['line_total'], $this->scale());
+                    }
+                }
+
                 // Use orchestrator's resolved transaction discount (includes manual + promo stacking)
                 $effectiveTransactionDiscount = $breakdown->totalTransactionDiscount;
             } catch (\Throwable $e) {

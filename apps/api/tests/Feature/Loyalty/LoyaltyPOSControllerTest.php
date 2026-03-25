@@ -143,7 +143,7 @@ final class LoyaltyPOSControllerTest extends TestCase
         $response->assertOk();
         // Only Free Coffee should be affordable (500 >= 100, 500 < 1000)
         $response->assertJsonCount(1, 'data.rewards');
-        $response->assertJsonPath('data.current_balance', '500.00');
+        $response->assertJsonPath('data.current_balance', '500.000');
     }
 
     public function test_rewards_endpoint_scoped_to_tenant(): void
