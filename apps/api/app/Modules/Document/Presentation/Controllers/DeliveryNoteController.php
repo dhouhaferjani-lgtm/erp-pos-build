@@ -247,7 +247,7 @@ class DeliveryNoteController extends Controller
             /** @var Document $freshDocument */
             $freshDocument = $document->fresh($this->defaultRelations());
 
-            return $this->documentCreatedResponse($freshDocument);
+            return $this->documentCreatedResponse($freshDocument, $this->scale());
         });
     }
 
