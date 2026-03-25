@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Billing\Notifications;
 
 use App\Modules\Billing\Domain\Payment;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -36,7 +37,7 @@ final class AdminPaymentAlertNotification extends Notification implements Should
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $amount = number_format((float) $this->payment->amount, 2);
+        $amount = CurrencyScale::bcformat($this->payment->amount, 2);
         $currency = strtoupper($this->payment->currency);
 
         $subject = match ($this->alertType) {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Billing\Notifications;
 
 use App\Modules\Billing\Domain\Invoice;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -33,7 +34,7 @@ final class InvoicePaidNotification extends Notification implements ShouldQueue
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $amount = number_format((float) $this->invoice->total, 2);
+        $amount = CurrencyScale::bcformat($this->invoice->total, 2);
         $currency = strtoupper($this->invoice->currency);
 
         return (new MailMessage)

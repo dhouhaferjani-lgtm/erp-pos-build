@@ -1,3 +1,4 @@
+import Big from 'big.js'
 import { useCallback } from 'react'
 import { useCompanyStore } from '../stores/companyStore'
 
@@ -107,7 +108,7 @@ export function useCurrency() {
    */
   const toFixed = useCallback(
     (value: number): string => {
-      return value.toFixed(decimals)
+      return new Big(value).toFixed(decimals)
     },
     [decimals]
   )
