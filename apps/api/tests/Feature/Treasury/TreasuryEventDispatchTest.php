@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Treasury;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
@@ -69,6 +70,12 @@ class TreasuryEventDispatchTest extends TestCase
             'status' => UserStatus::Active,
         ]);
         $this->user->assignRole('admin');
+
+        UserCompanyMembership::create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'role' => 'admin',
+        ]);
 
         $this->partner = Partner::factory()->create([
             'tenant_id' => $this->tenant->id,
@@ -163,6 +170,85 @@ class TreasuryEventDispatchTest extends TestCase
             return $event->paymentId === $payment->id
                 && $event->amount === $payment->amount
                 && $event->currency === 'TND';
+        });
+    }
+
+    // --- Task 3: Instrument Events ---
+
+    public function test_deposit_instrument_dispatches_instrument_deposited_event(): void
+    {
+        Event::fake([InstrumentDeposited::class]);
+
+        $instrument = $this->createInstrument(InstrumentStatus::Received);
+        $repository = $this->createBankRepository();
+
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/payment-instruments/{$instrument->id}/deposit", [
+                'repository_id' => $repository->id,
+            ])
+            ->assertOk();
+
+        Event::assertDispatched(InstrumentDeposited::class, function (InstrumentDeposited $event) use ($instrument, $repository) {
+            return $event->instrumentId === $instrument->id
+                && $event->repositoryId === $repository->id
+                && $event->amount === '500.000';
+        });
+    }
+
+    public function test_clear_instrument_dispatches_instrument_cleared_event(): void
+    {
+        Event::fake([InstrumentCleared::class]);
+
+        $instrument = $this->createInstrument(InstrumentStatus::Deposited);
+
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/payment-instruments/{$instrument->id}/clear")
+            ->assertOk();
+
+        Event::assertDispatched(InstrumentCleared::class, function (InstrumentCleared $event) use ($instrument) {
+            return $event->instrumentId === $instrument->id
+                && $event->amount === '500.000';
+        });
+    }
+
+    public function test_bounce_instrument_dispatches_instrument_bounced_event(): void
+    {
+        Event::fake([InstrumentBounced::class]);
+
+        $instrument = $this->createInstrument(InstrumentStatus::Deposited);
+
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/payment-instruments/{$instrument->id}/bounce", [
+                'reason' => 'Insufficient funds',
+            ])
+            ->assertOk();
+
+        Event::assertDispatched(InstrumentBounced::class, function (InstrumentBounced $event) use ($instrument) {
+            return $event->instrumentId === $instrument->id
+                && $event->reason === 'Insufficient funds';
+        });
+    }
+
+    public function test_transfer_instrument_dispatches_instrument_transferred_event(): void
+    {
+        Event::fake([InstrumentTransferred::class]);
+
+        $originalRepo = $this->createBankRepository();
+        $instrument = $this->createInstrument(InstrumentStatus::Received);
+        $instrument->update(['repository_id' => $originalRepo->id]);
+
+        $targetRepo = $this->createBankRepository();
+
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/payment-instruments/{$instrument->id}/transfer", [
+                'to_repository_id' => $targetRepo->id,
+            ])
+            ->assertOk();
+
+        Event::assertDispatched(InstrumentTransferred::class, function (InstrumentTransferred $event) use ($instrument, $originalRepo, $targetRepo) {
+            return $event->instrumentId === $instrument->id
+                && $event->fromRepositoryId === $originalRepo->id
+                && $event->toRepositoryId === $targetRepo->id;
         });
     }
 }
