@@ -9,6 +9,7 @@ use App\Modules\Treasury\Domain\BankReconciliationItem;
 use App\Modules\Treasury\Domain\Enums\ReconciliationStatus;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Modules\Treasury\Domain\Events\ReconciliationCompleted;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Facades\DB;
@@ -189,6 +190,25 @@ class BankReconciliationService
                 'completed_by' => $userId,
                 'completed_at' => now(),
             ]);
+
+            $matchedCount = $matchedItems->count();
+            /** @var numeric-string $matchedTotal */
+            $matchedTotal = '0.000';
+            foreach ($matchedItems as $item) {
+                $matchedTotal = bcadd($matchedTotal, (string) ($item->amount ?? '0'), $this->scaleResolver->getScale());
+            }
+
+            DB::afterCommit(function () use ($reconciliation, $matchedCount, $matchedTotal): void {
+                event(new ReconciliationCompleted(
+                    reconciliationId: $reconciliation->id,
+                    tenantId: $reconciliation->tenant_id,
+                    companyId: $reconciliation->company_id,
+                    repositoryId: $reconciliation->repository_id,
+                    matchedCount: $matchedCount,
+                    matchedTotal: $matchedTotal,
+                    completedAt: now()->toIso8601String(),
+                ));
+            });
 
             /** @var BankReconciliation $freshReconciliation */
             $freshReconciliation = $reconciliation->fresh(['items.payment', 'repository']);
