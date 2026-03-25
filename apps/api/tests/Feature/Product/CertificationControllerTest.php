@@ -80,8 +80,7 @@ class CertificationControllerTest extends TestCase
         app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
-    /** @test */
-    public function it_can_list_certifications(): void
+    public function test_list_certifications(): void
     {
         $cert = Certification::create([
             'type' => 'organic',
@@ -110,8 +109,7 @@ class CertificationControllerTest extends TestCase
         $this->assertNotEmpty($data);
     }
 
-    /** @test */
-    public function it_can_create_certification(): void
+    public function test_create_certification(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/parapharmacy/certifications', [
@@ -151,8 +149,7 @@ class CertificationControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function it_can_update_certification(): void
+    public function test_update_certification(): void
     {
         $cert = Certification::create([
             'type' => 'bio',
@@ -194,8 +191,7 @@ class CertificationControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function it_can_delete_certification(): void
+    public function test_delete_certification(): void
     {
         $cert = Certification::create([
             'type' => 'halal',
@@ -220,8 +216,7 @@ class CertificationControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function it_prevents_deletion_of_in_use_certification(): void
+    public function test_prevents_deletion_of_in_use_certification(): void
     {
         $cert = Certification::create([
             'type' => 'vegan',
@@ -264,16 +259,14 @@ class CertificationControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function unauthenticated_user_cannot_access_certifications(): void
+    public function test_unauthenticated_user_cannot_access_certifications(): void
     {
         $response = $this->getJson('/api/v1/parapharmacy/certifications');
 
         $response->assertStatus(401);
     }
 
-    /** @test */
-    public function user_without_settings_manage_permission_cannot_create_certification(): void
+    public function test_user_without_settings_manage_permission_cannot_create_certification(): void
     {
         $limitedUser = User::create([
             'tenant_id' => $this->tenant->id,

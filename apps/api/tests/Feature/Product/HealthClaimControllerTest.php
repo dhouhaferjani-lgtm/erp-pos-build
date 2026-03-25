@@ -80,8 +80,7 @@ class HealthClaimControllerTest extends TestCase
         app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
-    /** @test */
-    public function it_can_list_health_claims(): void
+    public function test_list_health_claims(): void
     {
         $claim = HealthClaim::create([
             'claim_type' => 'function',
@@ -109,8 +108,7 @@ class HealthClaimControllerTest extends TestCase
         $this->assertNotEmpty($data);
     }
 
-    /** @test */
-    public function it_can_create_health_claim(): void
+    public function test_create_health_claim(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/parapharmacy/health-claims', [
@@ -150,8 +148,7 @@ class HealthClaimControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function it_can_update_health_claim(): void
+    public function test_update_health_claim(): void
     {
         $claim = HealthClaim::create([
             'claim_type' => 'function',
@@ -194,8 +191,7 @@ class HealthClaimControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function it_can_delete_health_claim(): void
+    public function test_delete_health_claim(): void
     {
         $claim = HealthClaim::create([
             'claim_type' => 'function',
@@ -220,8 +216,7 @@ class HealthClaimControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function it_prevents_deletion_of_in_use_health_claim(): void
+    public function test_prevents_deletion_of_in_use_health_claim(): void
     {
         $claim = HealthClaim::create([
             'claim_type' => 'function',
@@ -264,16 +259,14 @@ class HealthClaimControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function unauthenticated_user_cannot_access_health_claims(): void
+    public function test_unauthenticated_user_cannot_access_health_claims(): void
     {
         $response = $this->getJson('/api/v1/parapharmacy/health-claims');
 
         $response->assertStatus(401);
     }
 
-    /** @test */
-    public function user_without_settings_manage_permission_cannot_create_health_claim(): void
+    public function test_user_without_settings_manage_permission_cannot_create_health_claim(): void
     {
         $limitedUser = User::create([
             'tenant_id' => $this->tenant->id,
