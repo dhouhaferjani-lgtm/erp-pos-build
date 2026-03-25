@@ -13,8 +13,10 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\BankReconciliation;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
+use App\Modules\Treasury\Domain\Enums\ReconciliationStatus;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Events\InstrumentBounced;
 use App\Modules\Treasury\Domain\Events\InstrumentCleared;
@@ -249,6 +251,38 @@ class TreasuryEventDispatchTest extends TestCase
             return $event->instrumentId === $instrument->id
                 && $event->fromRepositoryId === $originalRepo->id
                 && $event->toRepositoryId === $targetRepo->id;
+        });
+    }
+
+    // --- Task 4: ReconciliationCompleted ---
+
+    public function test_complete_reconciliation_dispatches_reconciliation_completed_event(): void
+    {
+        Event::fake([ReconciliationCompleted::class]);
+
+        $repository = $this->createBankRepository();
+
+        $reconciliation = BankReconciliation::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'repository_id' => $repository->id,
+            'statement_date' => now()->toDateString(),
+            'opening_balance' => '0.000',
+            'closing_balance' => '10000.000',
+            'statement_balance' => '10000.000',
+            'difference' => '0.000',
+            'status' => ReconciliationStatus::Draft,
+            'created_by' => $this->user->id,
+        ]);
+
+        $service = app(\App\Modules\Treasury\Application\Services\BankReconciliationService::class);
+        $service->completeReconciliation($reconciliation->id, $this->user->id);
+
+        Event::assertDispatched(ReconciliationCompleted::class, function (ReconciliationCompleted $event) use ($reconciliation, $repository) {
+            return $event->reconciliationId === $reconciliation->id
+                && $event->repositoryId === $repository->id
+                && $event->matchedCount === 0;
         });
     }
 }
