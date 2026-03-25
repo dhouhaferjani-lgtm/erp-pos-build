@@ -53,6 +53,8 @@ class TaxConfiguration extends Model
         'tax_type' => TaxType::class,
         'applies_to' => TaxApplicationLevel::class,
         'stacks_on' => StackingBehavior::class,
+        'percentage_rate' => 'decimal:4',
+        'fixed_amount' => 'decimal:3',
         'is_default' => 'boolean',
         'is_active' => 'boolean',
         'sequence_order' => 'integer',

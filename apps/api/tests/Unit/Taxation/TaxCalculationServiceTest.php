@@ -83,12 +83,7 @@ class TaxCalculationServiceTest extends TestCase
         $document->load('lines');
 
         // Execute
-        try {
-            $result = $this->service->calculateDocumentTaxes($document);
-        } catch (\TypeError $e) {
-            // Production bug: TaxCalculationService passes int to CalculatedTax::__construct($rate) which expects ?string
-            $this->markTestSkipped('Blocked by production bug: '.$e->getMessage());
-        }
+        $result = $this->service->calculateDocumentTaxes($document);
 
         // Assert
         $this->assertCount(1, $result->taxes);
@@ -144,12 +139,7 @@ class TaxCalculationServiceTest extends TestCase
         $document->load('lines');
 
         // Execute
-        try {
-            $result = $this->service->calculateDocumentTaxes($document);
-        } catch (\TypeError $e) {
-            // Production bug: TaxConfiguration::calculateAmount() returns int instead of string
-            $this->markTestSkipped('Blocked by production bug: '.$e->getMessage());
-        }
+        $result = $this->service->calculateDocumentTaxes($document);
 
         // Assert
         $this->assertCount(1, $result->taxes);
