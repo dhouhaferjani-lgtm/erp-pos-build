@@ -7,9 +7,9 @@ namespace App\Modules\Treasury\Application\Services;
 use App\Modules\Treasury\Domain\BankReconciliation;
 use App\Modules\Treasury\Domain\BankReconciliationItem;
 use App\Modules\Treasury\Domain\Enums\ReconciliationStatus;
+use App\Modules\Treasury\Domain\Events\ReconciliationCompleted;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentRepository;
-use App\Modules\Treasury\Domain\Events\ReconciliationCompleted;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Facades\DB;
@@ -195,7 +195,9 @@ class BankReconciliationService
             /** @var numeric-string $matchedTotal */
             $matchedTotal = '0.000';
             foreach ($matchedItems as $item) {
-                $matchedTotal = bcadd($matchedTotal, (string) ($item->amount ?? '0'), $this->scaleResolver->getScale());
+                /** @var numeric-string $itemAmount */
+                $itemAmount = (string) ($item->amount ?? '0');
+                $matchedTotal = bcadd($matchedTotal, $itemAmount, $this->scaleResolver->getScale());
             }
 
             DB::afterCommit(function () use ($reconciliation, $matchedCount, $matchedTotal): void {
