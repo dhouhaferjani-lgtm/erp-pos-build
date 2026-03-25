@@ -26,7 +26,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property string $id UUID of the user
  * @property string $tenant_id UUID of the tenant
  * @property string $name Full name
- * @property string $email Email address
+ * @property string|null $email Email address (null for PIN-only cashiers)
  * @property string|null $phone Phone number
  * @property string $password Hashed password
  * @property UserStatus $status Account status

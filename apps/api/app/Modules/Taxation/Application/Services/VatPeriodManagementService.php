@@ -13,7 +13,6 @@ use App\Modules\Taxation\Domain\Enums\VatPeriodStatus;
 use App\Modules\Taxation\Domain\Events\VatPeriodClosed;
 use App\Modules\Taxation\Domain\Events\VatPeriodFiled;
 use App\Modules\Taxation\Domain\Repositories\VatPeriodRepositoryInterface;
-use App\Modules\Taxation\Domain\Services\VatCreditService;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -27,7 +26,6 @@ class VatPeriodManagementService
     public function __construct(
         private readonly VatPeriodRepositoryInterface $periodRepository,
         private readonly VatReportGenerationService $reportService,
-        private readonly VatCreditService $creditService,
     ) {}
 
     /**
@@ -86,7 +84,7 @@ class VatPeriodManagementService
         return DB::transaction(function () use ($period, $notes, $userId): VatPeriodData {
             // Get credit brought forward from previous period
             $previousPeriod = $this->periodRepository->findPreviousPeriod($period);
-            $creditBroughtForward = $previousPeriod?->credit_carried_forward ?? '0.000';
+            $creditBroughtForward = $previousPeriod !== null ? $previousPeriod->credit_carried_forward : '0.000';
 
             // Generate summary using report service
             $summary = $this->reportService->generateSummary(

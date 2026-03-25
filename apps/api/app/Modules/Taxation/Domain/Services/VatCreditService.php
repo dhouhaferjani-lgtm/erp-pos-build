@@ -17,6 +17,9 @@ class VatCreditService
      * - If net VAT is positive and credit brought forward only partially covers it,
      *   the uncovered balance is the amount payable and carried-forward credit is zero.
      *
+     * @param  numeric-string  $totalOutputVat
+     * @param  numeric-string  $totalInputVat
+     * @param  numeric-string  $creditBroughtForward
      * @return array{net_vat: string, amount_payable: string, credit_carried_forward: string}
      */
     public function calculate(

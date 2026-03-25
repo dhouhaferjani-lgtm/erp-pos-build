@@ -51,6 +51,8 @@ class VatReportGenerationService
      *
      * Aggregates document tax data, applies the country strategy for declaration mapping,
      * and calculates VAT credit/payable amounts.
+     *
+     * @param  numeric-string  $creditBroughtForward
      */
     public function generateSummary(
         string $companyId,

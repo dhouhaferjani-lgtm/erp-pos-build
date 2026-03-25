@@ -13,10 +13,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $id
  * @property string $vat_period_id
  * @property VatDirection $direction
- * @property string $tax_rate
+ * @property numeric-string $tax_rate
  * @property string|null $tax_configuration_id
- * @property string $base_amount
- * @property string $vat_amount
+ * @property numeric-string $base_amount
+ * @property numeric-string $vat_amount
  * @property int $document_count
  * @property bool $is_recoverable
  * @property \Illuminate\Support\Carbon|null $created_at

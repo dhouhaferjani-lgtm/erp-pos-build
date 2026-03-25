@@ -18,7 +18,7 @@ final readonly class AuthUserData
         public string $id,
         public string $tenantId,
         public string $name,
-        public string $email,
+        public ?string $email,
         public ?string $phone,
         public string $status,
         public ?string $locale,

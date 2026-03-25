@@ -176,27 +176,45 @@ class VatReportController extends Controller
 
         $vatSummary = new VatSummary(
             outputBreakdowns: array_map(
-                static fn (array $b): VatAggregation => new VatAggregation(
-                    direction: (string) ($b['direction'] ?? 'OUTPUT'),
-                    taxRate: (string) $b['tax_rate'],
-                    baseAmount: (string) $b['base_amount'],
-                    vatAmount: (string) $b['vat_amount'],
-                    documentCount: (int) $b['document_count'],
-                    isRecoverable: (bool) ($b['is_recoverable'] ?? false),
-                    taxConfigurationId: isset($b['tax_configuration_id']) ? (string) $b['tax_configuration_id'] : null,
-                ),
+                static function (array $b): VatAggregation {
+                    /** @var numeric-string $taxRate */
+                    $taxRate = (string) $b['tax_rate'];
+                    /** @var numeric-string $baseAmount */
+                    $baseAmount = (string) $b['base_amount'];
+                    /** @var numeric-string $vatAmount */
+                    $vatAmount = (string) $b['vat_amount'];
+
+                    return new VatAggregation(
+                        direction: (string) ($b['direction'] ?? 'OUTPUT'),
+                        taxRate: $taxRate,
+                        baseAmount: $baseAmount,
+                        vatAmount: $vatAmount,
+                        documentCount: (int) $b['document_count'],
+                        isRecoverable: (bool) ($b['is_recoverable'] ?? false),
+                        taxConfigurationId: isset($b['tax_configuration_id']) ? (string) $b['tax_configuration_id'] : null,
+                    );
+                },
                 $summaryData->outputVat['breakdowns'],
             ),
             inputBreakdowns: array_map(
-                static fn (array $b): VatAggregation => new VatAggregation(
-                    direction: (string) ($b['direction'] ?? 'INPUT'),
-                    taxRate: (string) $b['tax_rate'],
-                    baseAmount: (string) $b['base_amount'],
-                    vatAmount: (string) $b['vat_amount'],
-                    documentCount: (int) $b['document_count'],
-                    isRecoverable: (bool) ($b['is_recoverable'] ?? true),
-                    taxConfigurationId: isset($b['tax_configuration_id']) ? (string) $b['tax_configuration_id'] : null,
-                ),
+                static function (array $b): VatAggregation {
+                    /** @var numeric-string $taxRate */
+                    $taxRate = (string) $b['tax_rate'];
+                    /** @var numeric-string $baseAmount */
+                    $baseAmount = (string) $b['base_amount'];
+                    /** @var numeric-string $vatAmount */
+                    $vatAmount = (string) $b['vat_amount'];
+
+                    return new VatAggregation(
+                        direction: (string) ($b['direction'] ?? 'INPUT'),
+                        taxRate: $taxRate,
+                        baseAmount: $baseAmount,
+                        vatAmount: $vatAmount,
+                        documentCount: (int) $b['document_count'],
+                        isRecoverable: (bool) ($b['is_recoverable'] ?? true),
+                        taxConfigurationId: isset($b['tax_configuration_id']) ? (string) $b['tax_configuration_id'] : null,
+                    );
+                },
                 $summaryData->inputVat['breakdowns'],
             ),
             totalOutputVat: $summaryData->getTotalOutputVat(),

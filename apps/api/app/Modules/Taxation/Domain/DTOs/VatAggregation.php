@@ -6,6 +6,11 @@ namespace App\Modules\Taxation\Domain\DTOs;
 
 readonly class VatAggregation
 {
+    /**
+     * @param  numeric-string  $taxRate
+     * @param  numeric-string  $baseAmount
+     * @param  numeric-string  $vatAmount
+     */
     public function __construct(
         public string $direction,
         public string $taxRate,

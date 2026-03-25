@@ -24,9 +24,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $total_output_vat
  * @property string|null $total_input_vat
  * @property string|null $net_vat
- * @property string $credit_brought_forward
- * @property string $credit_carried_forward
- * @property string $amount_payable
+ * @property numeric-string $credit_brought_forward
+ * @property numeric-string $credit_carried_forward
+ * @property numeric-string $amount_payable
  * @property array<string, mixed>|null $special_items
  * @property array<string, mixed>|null $declaration_data
  * @property \Illuminate\Support\Carbon|null $closed_at
