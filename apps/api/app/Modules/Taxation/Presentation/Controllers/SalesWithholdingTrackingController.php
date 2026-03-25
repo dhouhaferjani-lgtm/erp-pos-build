@@ -52,12 +52,17 @@ class SalesWithholdingTrackingController extends Controller
         );
 
         $company = $this->companyContext->requireCompany();
-        $tracking = $this->service->recordWithholding(
-            $document,
-            $data,
-            $company->id,
-            $company->tenant_id
-        );
+
+        try {
+            $tracking = $this->service->recordWithholding(
+                $document,
+                $data,
+                $company->id,
+                $company->tenant_id
+            );
+        } catch (\DomainException $e) {
+            return response()->json(['message' => $e->getMessage()], 409);
+        }
 
         return response()->json([
             'data' => $tracking,
@@ -131,10 +136,14 @@ class SalesWithholdingTrackingController extends Controller
             abort(403, 'Tracking record does not belong to your company');
         }
 
-        $updatedTracking = $this->service->markCertificateReceived(
-            $id,
-            $request->validated('certificate_number')
-        );
+        try {
+            $updatedTracking = $this->service->markCertificateReceived(
+                $id,
+                $request->validated('certificate_number')
+            );
+        } catch (\DomainException $e) {
+            return response()->json(['message' => $e->getMessage()], 409);
+        }
 
         return response()->json([
             'data' => $updatedTracking,

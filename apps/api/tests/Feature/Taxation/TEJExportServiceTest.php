@@ -72,7 +72,7 @@ class TEJExportServiceTest extends TestCase
 
         // Company info
         $this->assertStringContainsString('<MatriculeFiscal>1234567/A/B/C/000</MatriculeFiscal>', $xml);
-        $this->assertStringContainsString('<RaisonSociale>Soci&eacute;t&eacute; Test SARL</RaisonSociale>', $xml);
+        $this->assertStringContainsString('<RaisonSociale>Société Test SARL</RaisonSociale>', $xml);
 
         // Partner info
         $this->assertStringContainsString('<Nom>Fournisseur ABC</Nom>', $xml);

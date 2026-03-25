@@ -23,7 +23,7 @@ class TaxCalculationService
     {
         $company = $document->company;
         $partner = $document->partner;
-        $documentType = $document->type->value;
+        $documentType = $document->fiscal_category?->value ?? $document->type->value;
         $countryCode = $company->country_code;
 
         // Get line items subtotal (before any taxes)

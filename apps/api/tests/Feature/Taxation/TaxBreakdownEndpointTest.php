@@ -93,8 +93,8 @@ class TaxBreakdownEndpointTest extends TestCase
         // Grant permissions
         $this->user->givePermissionTo('documents.view');
 
-        // Seed Tunisia stamp duty rules
-        $this->seed(TunisiaStampDutySeeder::class);
+        // Seed Tunisia tax configurations (VAT + stamp duties)
+        $this->seed(\Database\Seeders\TunisiaTaxConfigurationSeeder::class);
 
         // Create a dummy partner for documents
         $this->partner = Partner::create([
@@ -171,8 +171,8 @@ class TaxBreakdownEndpointTest extends TestCase
         // Verify tax_details array contains both VAT and stamp duty
         $taxDetails = $response->json('data.tax_details');
         $this->assertCount(2, $taxDetails, 'Should have 2 tax details (VAT + stamp duty)');
-        $this->assertEquals('TVA 19.00%', $taxDetails[0]['tax_name'] ?? '', 'First detail should be VAT');
-        $this->assertEquals('Stamp Duty', $taxDetails[1]['tax_name'] ?? '', 'Second detail should be stamp duty');
+        $this->assertEquals('TVA 19%', $taxDetails[0]['tax_name'] ?? '', 'First detail should be VAT');
+        $this->assertEquals('Timbre Fiscal - Facture', $taxDetails[1]['tax_name'] ?? '', 'Second detail should be stamp duty');
         $this->assertTrue($taxDetails[1]['is_stamp_duty'] ?? false, 'Second detail should be marked as stamp duty');
     }
 

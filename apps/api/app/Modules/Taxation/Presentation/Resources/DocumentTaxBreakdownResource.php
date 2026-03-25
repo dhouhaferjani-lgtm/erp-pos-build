@@ -23,6 +23,8 @@ class DocumentTaxBreakdownResource extends JsonResource
         $resource = $this->resource;
 
         return [
+            'subtotal' => $resource->subtotal,
+            'discount' => '0.00',
             'line_tax_amount' => $resource->lineItemsTaxTotal,
             'stamp_duty_amount' => $resource->documentTaxTotal,
             'total_tax_amount' => $resource->totalTax,
