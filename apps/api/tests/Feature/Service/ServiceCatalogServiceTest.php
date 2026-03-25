@@ -64,7 +64,7 @@ class ServiceCatalogServiceTest extends TestCase
         $this->assertEquals('SRV-001', $result->code);
         $this->assertEquals('Oil Change', $result->name);
         $this->assertEquals(PricingType::FlatRate, $result->pricing_type);
-        $this->assertEquals('45.00', $result->base_price);
+        $this->assertEquals('45.000', $result->base_price);
 
         $this->assertDatabaseHas('services', [
             'company_id' => $this->company->id,
@@ -110,7 +110,7 @@ class ServiceCatalogServiceTest extends TestCase
         ]);
 
         $this->assertEquals('Premium Oil Change', $result->name);
-        $this->assertEquals('65.00', $result->base_price);
+        $this->assertEquals('65.000', $result->base_price);
         $this->assertEquals('SRV-001', $result->code); // Code unchanged
     }
 
