@@ -94,7 +94,7 @@ class PaymentRefundService
                     amount: $refund->amount,
                     currency: $refund->currency,
                     reason: $reason,
-                    refundedAt: $refund->created_at->toIso8601String(),
+                    refundedAt: ($refund->created_at ?? now())->toIso8601String(),
                 ));
             });
 
@@ -160,7 +160,7 @@ class PaymentRefundService
                     amount: $refund->amount,
                     currency: $refund->currency,
                     reason: $reason,
-                    refundedAt: $refund->created_at->toIso8601String(),
+                    refundedAt: ($refund->created_at ?? now())->toIso8601String(),
                 ));
             });
 
