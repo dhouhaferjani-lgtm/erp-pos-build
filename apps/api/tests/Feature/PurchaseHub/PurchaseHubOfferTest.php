@@ -18,6 +18,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\Test;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -79,7 +80,7 @@ class PurchaseHubOfferTest extends TestCase
         config(['services.platform.api_key' => 'test-api-key']);
     }
 
-    /** @test */
+    #[Test]
     public function it_lists_offers_from_platform(): void
     {
         Http::fake([
@@ -111,7 +112,7 @@ class PurchaseHubOfferTest extends TestCase
             ->assertJsonStructure(['data', 'meta' => ['timestamp']]);
     }
 
-    /** @test */
+    #[Test]
     public function it_returns_502_when_platform_unavailable(): void
     {
         Http::fake([
@@ -128,7 +129,7 @@ class PurchaseHubOfferTest extends TestCase
             ->assertJsonPath('data', null);
     }
 
-    /** @test */
+    #[Test]
     public function it_shows_single_offer_from_platform(): void
     {
         Http::fake([
