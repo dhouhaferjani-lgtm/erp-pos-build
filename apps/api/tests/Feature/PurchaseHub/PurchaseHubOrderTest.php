@@ -18,6 +18,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\Test;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -79,7 +80,7 @@ class PurchaseHubOrderTest extends TestCase
         config(['services.platform.api_key' => 'test-api-key']);
     }
 
-    /** @test */
+    #[Test]
     public function it_places_order_through_platform(): void
     {
         Http::fake([
@@ -111,7 +112,7 @@ class PurchaseHubOrderTest extends TestCase
             ->assertJsonPath('data.total', 125);
     }
 
-    /** @test */
+    #[Test]
     public function it_validates_order_request(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
@@ -121,7 +122,7 @@ class PurchaseHubOrderTest extends TestCase
             ->assertJsonValidationErrors(['campaign_id', 'items'], 'error.errors');
     }
 
-    /** @test */
+    #[Test]
     public function it_returns_502_when_order_fails(): void
     {
         Http::fake([
@@ -143,7 +144,7 @@ class PurchaseHubOrderTest extends TestCase
             ->assertJsonPath('error.code', 'ORDER_FAILED');
     }
 
-    /** @test */
+    #[Test]
     public function it_lists_orders_from_platform(): void
     {
         Http::fake([
@@ -162,7 +163,7 @@ class PurchaseHubOrderTest extends TestCase
             ->assertJsonCount(2, 'data');
     }
 
-    /** @test */
+    #[Test]
     public function it_receives_webhook(): void
     {
         $response = $this->postJson('/api/webhooks/purchase-hub', [
