@@ -296,6 +296,7 @@ class Company extends Model
             'max_payment_tolerance_amount' => 'string',
             'reservation_settings' => 'array',
             'smart_prompts_enabled' => 'boolean',
+            'smart_prompts_variant' => \App\Modules\SmartPrompts\Domain\Enums\SmartPromptsVariant::class,
         ];
     }
 
