@@ -1,0 +1,33 @@
+{
+  "section_title": "AI Suggestions",
+  "dismiss": "Dismiss",
+  "toast_collapsed": "{{count}} AI suggestions for this cart",
+  "info_title": "Why this suggestion?",
+  "info_source": "Source: {{source}}",
+  "info_confidence": "Confidence: {{level}}",
+  "add_to_cart": "Add",
+  "skin_type_question": "What's the customer's skin type?",
+  "skin_type": {
+    "normal": "Normal",
+    "oily": "Oily",
+    "dry": "Dry",
+    "combination": "Combination",
+    "sensitive": "Sensitive"
+  },
+  "hair_type_question": "What's the customer's hair type?",
+  "hair_type": {
+    "straight": "Straight",
+    "wavy": "Wavy",
+    "curly": "Curly",
+    "coily": "Coily"
+  },
+  "strategy": {
+    "curated_relationships": "Curated",
+    "routine_completion": "Routine",
+    "ingredient_similarity": "Similar",
+    "concern_based": "Concern",
+    "same_brand_line": "Brand line",
+    "basket_analysis": "Trending",
+    "reorder_prediction": "Reorder"
+  }
+}

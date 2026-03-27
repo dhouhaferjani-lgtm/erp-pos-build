@@ -1,0 +1,33 @@
+{
+  "section_title": "Suggestions IA",
+  "dismiss": "Masquer",
+  "toast_collapsed": "{{count}} suggestions IA pour ce panier",
+  "info_title": "Pourquoi cette suggestion ?",
+  "info_source": "Source : {{source}}",
+  "info_confidence": "Confiance : {{level}}",
+  "add_to_cart": "Ajouter",
+  "skin_type_question": "Quel est le type de peau du client ?",
+  "skin_type": {
+    "normal": "Normal",
+    "oily": "Grasse",
+    "dry": "Sèche",
+    "combination": "Mixte",
+    "sensitive": "Sensible"
+  },
+  "hair_type_question": "Quel est le type de cheveux du client ?",
+  "hair_type": {
+    "straight": "Lisses",
+    "wavy": "Ondulés",
+    "curly": "Bouclés",
+    "coily": "Crépus"
+  },
+  "strategy": {
+    "curated_relationships": "Curé",
+    "routine_completion": "Routine",
+    "ingredient_similarity": "Similaire",
+    "concern_based": "Soin",
+    "same_brand_line": "Même gamme",
+    "basket_analysis": "Tendance",
+    "reorder_prediction": "Réapprovisionnement"
+  }
+}
