@@ -67,6 +67,7 @@ class Contact extends Model
         'avatar_media_id',
         'notes',
         'is_active',
+        'profile_metadata',
     ];
 
     /**
@@ -78,6 +79,7 @@ class Contact extends Model
             'date_of_birth' => 'date',
             'is_active' => 'boolean',
             'gender' => Gender::class,
+            'profile_metadata' => 'array',
         ];
     }
 
