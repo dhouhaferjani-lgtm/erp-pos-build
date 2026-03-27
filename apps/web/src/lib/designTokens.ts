@@ -74,6 +74,7 @@ export const colors = {
 
   // Hover states
   hover: {
+    gray50: 'hover:bg-gray-50',
     gray100: 'hover:bg-gray-100',
   },
 }
@@ -105,7 +106,12 @@ export const borderColors = {
   primary: 'border-blue-500',
   error: 'border-red-500',
   success: 'border-green-500',
+  warning: 'border-yellow-500',
   hover: 'hover:border-gray-300',
+  divideLight: 'divide-gray-100',
+  leftError: 'border-l-red-500',
+  leftWarning: 'border-l-yellow-500',
+  leftPrimary: 'border-l-blue-500',
 }
 
 /**
@@ -301,6 +307,7 @@ export const tokens = {
     green: 'bg-green-100 text-green-800',
     red: 'bg-red-100 text-red-800',
     yellow: 'bg-yellow-100 text-yellow-800',
+    purple: 'bg-purple-100 text-purple-800',
   },
 }
 

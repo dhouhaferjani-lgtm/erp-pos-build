@@ -98,4 +98,20 @@ return [
         'cache_ttl' => (int) env('VIN_DECODER_CACHE_TTL', 86400),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Growth Advisor Service
+    |--------------------------------------------------------------------------
+    */
+
+    'growth_advisor' => [
+        'url' => env('GROWTH_ADVISOR_URL', 'http://localhost:8004'),
+        'timeout' => 30,
+        'connect_timeout' => 10,
+        'retry_times' => 2,
+        'retry_delay' => 200,
+        'circuit_breaker_threshold' => 3,
+        'circuit_breaker_cooldown' => 30,
+    ],
+
 ];
