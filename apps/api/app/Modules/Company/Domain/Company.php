@@ -255,6 +255,8 @@ class Company extends Model
         'max_payment_tolerance_amount',
         'fiscal_chain_seed',
         'reservation_settings',
+        'smart_prompts_enabled',
+        'smart_prompts_variant',
     ];
 
     /**
@@ -293,6 +295,7 @@ class Company extends Model
             'payment_tolerance_percentage' => 'string',
             'max_payment_tolerance_amount' => 'string',
             'reservation_settings' => 'array',
+            'smart_prompts_enabled' => 'boolean',
         ];
     }
 
