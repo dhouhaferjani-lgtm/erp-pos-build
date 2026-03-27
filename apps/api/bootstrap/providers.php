@@ -38,6 +38,7 @@ return [
     App\Modules\PlatformIntegration\Providers\PlatformIntegrationServiceProvider::class,
     App\Modules\Contact\Providers\ContactServiceProvider::class,
     App\Modules\Marketplace\Providers\MarketplaceServiceProvider::class,
+    App\Modules\PurchaseHub\Providers\PurchaseHubServiceProvider::class,
     App\Modules\Cart\Providers\CartServiceProvider::class,
     App\Modules\Progression\Providers\ProgressionServiceProvider::class,
 ];
