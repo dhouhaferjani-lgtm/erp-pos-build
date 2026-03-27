@@ -30,6 +30,7 @@ import enCompliance from '../locales/en/compliance.json'
 import enWithholding from '../locales/en/withholding.json'
 import enMarketing from '../locales/en/marketing.json'
 import enCountries from '../locales/en/countries.json'
+import enProgression from '../locales/en/progression.json'
 
 import frCommon from '../locales/fr/common.json'
 import frAuth from '../locales/fr/auth.json'
@@ -58,6 +59,7 @@ import frCompliance from '../locales/fr/compliance.json'
 import frWithholding from '../locales/fr/withholding.json'
 import frMarketing from '../locales/fr/marketing.json'
 import frCountries from '../locales/fr/countries.json'
+import frProgression from '../locales/fr/progression.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -96,6 +98,7 @@ const resources = {
     withholding: enWithholding,
     marketing: enMarketing,
     countries: enCountries,
+    progression: enProgression,
   },
   fr: {
     common: frCommon,
@@ -125,6 +128,7 @@ const resources = {
     withholding: frWithholding,
     marketing: frMarketing,
     countries: frCountries,
+    progression: frProgression,
   },
   ar: {
     // Arabic falls back to English - translations to be added later
@@ -155,6 +159,7 @@ const resources = {
     withholding: enWithholding,
     marketing: enMarketing,
     countries: enCountries,
+    progression: enProgression,
   },
 }
 
@@ -166,6 +171,7 @@ void i18n
     fallbackLng: 'en',
     defaultNS: 'common',
     ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

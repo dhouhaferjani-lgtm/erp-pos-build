@@ -39,4 +39,5 @@ return [
     App\Modules\Contact\Providers\ContactServiceProvider::class,
     App\Modules\Marketplace\Providers\MarketplaceServiceProvider::class,
     App\Modules\Cart\Providers\CartServiceProvider::class,
+    App\Modules\Progression\Providers\ProgressionServiceProvider::class,
 ];

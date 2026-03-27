@@ -1,0 +1,44 @@
+{
+  "dashboard": {
+    "greeting": "Good morning",
+    "title": "Growth Dashboard",
+    "subtitle": "Here's what needs your attention today",
+    "milestones": "Milestone Progress",
+    "recommendations": "Recommendations",
+    "unavailable": "Growth Advisor is temporarily unavailable",
+    "retry": "Retry",
+    "stage": {
+      "launch": "Launch",
+      "stabilize": "Stabilize",
+      "optimize": "Optimize",
+      "expand": "Expand"
+    }
+  },
+  "modules": {
+    "title": "Modules",
+    "subtitle": "Unlock features as your business grows. Higher readiness means bigger discount.",
+    "activate": "Activate Now",
+    "active": "Active",
+    "ready": "Ready!",
+    "locked": "Locked",
+    "available": "Available",
+    "readyPercent": "{{percent}}% ready",
+    "discountAvailable": "{{percent}}% discount available",
+    "needsRequirements": "Needs: {{requirements}}",
+    "availableAtStage": "Available at {{stage}} stage",
+    "viewRoadmap": "Roadmap",
+    "viewGrid": "Grid",
+    "activated": "Module activated"
+  },
+  "recommendation": {
+    "showMeHow": "Show me how",
+    "accepted": "Accepted",
+    "dismissed": "Dismissed",
+    "dismiss": "Dismiss",
+    "dismissedSuccess": "Recommendation dismissed"
+  },
+  "sidebar": {
+    "growth": "Growth",
+    "modules": "Modules"
+  }
+}

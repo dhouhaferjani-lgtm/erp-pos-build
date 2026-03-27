@@ -225,6 +225,13 @@ const LoyaltyMemberDetailPage = lazy(() => import('../features/loyalty').then((m
 const PrivacyPolicyPage = lazy(() => import('../pages/legal/PrivacyPolicyPage').then((m) => ({ default: m.PrivacyPolicyPage })))
 const TermsOfServicePage = lazy(() => import('../pages/legal/TermsOfServicePage').then((m) => ({ default: m.TermsOfServicePage })))
 
+// Progression module
+const GrowthPage = lazy(() => import('../features/progression').then((m) => ({ default: m.GrowthPage })))
+const ProgressionModulesPage = lazy(() => import('../features/progression').then((m) => ({ default: m.ModulesPage })))
+
+// Legal pages
+const PrivacyPolicyPage = lazy(() => import('../pages/legal/PrivacyPolicyPage').then((m) => ({ default: m.PrivacyPolicyPage })))
+const TermsOfServicePage = lazy(() => import('../pages/legal/TermsOfServicePage').then((m) => ({ default: m.TermsOfServicePage })))
 function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   return (
     <Suspense fallback={<LoadingSpinner fullScreen />}>
@@ -2266,6 +2273,26 @@ export function AppRoutes() {
                   <LoyaltyMemberFormPage />
                 </SuspenseWrapper>
               </RequirePermission>
+            }
+          />
+        </Route>
+
+        {/* Progression Module */}
+        <Route path="growth">
+          <Route
+            index
+            element={
+              <SuspenseWrapper>
+                <GrowthPage />
+              </SuspenseWrapper>
+            }
+          />
+          <Route
+            path="modules"
+            element={
+              <SuspenseWrapper>
+                <ProgressionModulesPage />
+              </SuspenseWrapper>
             }
           />
         </Route>
