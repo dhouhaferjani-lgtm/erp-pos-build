@@ -41,4 +41,5 @@ return [
     App\Modules\PurchaseHub\Providers\PurchaseHubServiceProvider::class,
     App\Modules\Cart\Providers\CartServiceProvider::class,
     App\Modules\Progression\Providers\ProgressionServiceProvider::class,
+    App\Modules\SmartPrompts\Providers\SmartPromptsServiceProvider::class,
 ];

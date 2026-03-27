@@ -82,6 +82,10 @@ class CompanyConfigController
                     'show_payment_details' => (bool) ($company?->receipt_show_payment_details ?? true),
                     'show_customer' => (bool) ($company?->receipt_show_customer ?? true),
                 ],
+                'smart_prompts_enabled' => (bool) $company?->smart_prompts_enabled,
+                'smart_prompts_variant' => $company?->getAttribute('smart_prompts_variant') instanceof \App\Modules\SmartPrompts\Domain\Enums\SmartPromptsVariant
+                    ? $company->getAttribute('smart_prompts_variant')->value
+                    : 'inline',
             ],
         ]);
     }

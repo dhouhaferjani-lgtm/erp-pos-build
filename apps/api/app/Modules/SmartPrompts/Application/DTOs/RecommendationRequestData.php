@@ -10,7 +10,7 @@ use App\Modules\SmartPrompts\Domain\Enums\SkinType;
 final readonly class RecommendationRequestData
 {
     /**
-     * @param list<string> $productIds
+     * @param  list<string>  $productIds
      */
     public function __construct(
         public array $productIds,
