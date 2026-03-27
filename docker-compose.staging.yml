@@ -1,23 +1,26 @@
 # =============================================================================
-# AutoERP - Docker Compose for Dokploy
+# AutoERP - Docker Compose for Dokploy (Staging / Dev Branch)
 # =============================================================================
-# Deploy this file directly in Dokploy as a "Compose" project.
-# Set environment variables in Dokploy's UI or create a .env file.
+# Mirrors production architecture exactly to catch deployment issues early.
+# Deploys from the `dev` branch. Set environment variables in Dokploy's UI.
 #
-# Architecture: One process per container
+# Architecture: One process per container (same as production)
 #   - api:       nginx + php-fpm (runs migrations on startup)
 #   - worker:    Laravel Horizon queue worker
 #   - scheduler: Laravel task scheduler
 #   - websocket: Laravel Reverb WebSocket server
+#   - web:       React frontend (nginx)
+#
+# Infrastructure: postgres, redis, pgbouncer, meilisearch, minio
 # =============================================================================
 
 # Reusable environment block for all Laravel services
 x-api-env: &api-env
-  APP_ENV: production
-  APP_DEBUG: "false"
+  APP_ENV: staging
+  APP_DEBUG: "true"
   APP_KEY: ${APP_KEY}
-  APP_URL: https://api.riserpos.app
-  FRONTEND_URL: https://riserpos.app
+  APP_URL: ${APP_URL:-https://api.erp.otospex.dev}
+  FRONTEND_URL: ${FRONTEND_URL:-https://erp.otospex.dev}
   DB_CONNECTION: pgsql
   DB_HOST: postgres
   DB_PORT: "5432"
@@ -39,7 +42,7 @@ x-api-env: &api-env
   AWS_DEFAULT_REGION: us-east-1
   AWS_BUCKET: autoerp
   AWS_USE_PATH_STYLE_ENDPOINT: "true"
-  REVERB_APP_ID: ${REVERB_APP_ID:-autoerp}
+  REVERB_APP_ID: ${REVERB_APP_ID:-autoerp-staging}
   REVERB_APP_KEY: ${REVERB_APP_KEY}
   REVERB_APP_SECRET: ${REVERB_APP_SECRET}
   REVERB_SERVER_HOST: websocket
@@ -166,6 +169,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+
   # ---------------------------------------------------------------------------
   # Worker (Laravel Horizon queue worker)
   # ---------------------------------------------------------------------------
@@ -222,6 +226,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+
   # ---------------------------------------------------------------------------
   # Web (React Frontend)
   # ---------------------------------------------------------------------------
@@ -230,10 +235,10 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
-        VITE_API_URL: https://api.riserpos.app
+        VITE_API_URL: ${APP_URL:-https://api.erp.otospex.dev}
     restart: unless-stopped
     environment:
-      API_URL: https://api.riserpos.app
+      API_URL: ${APP_URL:-https://api.erp.otospex.dev}
     depends_on:
       - api
     healthcheck:
@@ -241,6 +246,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
 volumes:
   postgres_data:
   redis_data:
