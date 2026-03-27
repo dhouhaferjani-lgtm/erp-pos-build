@@ -114,4 +114,20 @@ return [
         'circuit_breaker_cooldown' => 30,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Recommendation Engine Service (erp-ml)
+    |--------------------------------------------------------------------------
+    */
+
+    'recommendation_engine' => [
+        'url' => env('RECOMMENDATION_ENGINE_URL', 'http://localhost:8002'),
+        'timeout' => 5,
+        'connect_timeout' => 3,
+        'retry_times' => 2,
+        'retry_delay' => 200,
+        'circuit_breaker_threshold' => 3,
+        'circuit_breaker_cooldown' => 30,
+    ],
+
 ];

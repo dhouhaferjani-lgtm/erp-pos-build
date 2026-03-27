@@ -7,7 +7,7 @@ namespace App\Modules\SmartPrompts\Application\DTOs;
 final readonly class RecommendationResponseData
 {
     /**
-     * @param list<RecommendationData> $recommendations
+     * @param  list<RecommendationData>  $recommendations
      */
     public function __construct(
         public array $recommendations,
@@ -16,7 +16,7 @@ final readonly class RecommendationResponseData
     ) {}
 
     /**
-     * @param array<string, mixed> $response
+     * @param  array<string, mixed>  $response
      */
     public static function fromApiResponse(array $response): self
     {
@@ -26,7 +26,7 @@ final readonly class RecommendationResponseData
         );
 
         return new self(
-            recommendations: $recommendations,
+            recommendations: array_values($recommendations),
             context: (string) ($response['context'] ?? 'cart'),
             generatedAt: (string) ($response['generated_at'] ?? ''),
         );
