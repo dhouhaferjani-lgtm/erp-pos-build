@@ -14,6 +14,8 @@ export interface CompanyConfig {
   currency: string
   locale: string
   country_code: string | null
+  smart_prompts_enabled: boolean
+  smart_prompts_variant: 'inline' | 'toast' | 'off'
 }
 
 /**
