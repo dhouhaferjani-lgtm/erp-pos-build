@@ -14,7 +14,7 @@ use App\Modules\Identity\Domain\User;
  * In a multi-company environment, this service helps determine
  * which company the current request is operating on.
  */
-final class CompanyContext
+class CompanyContext
 {
     private ?string $currentCompanyId = null;
 

@@ -19,9 +19,13 @@ class BarcodeLookupController extends Controller
     {
         $request->validate([
             'barcode' => ['required', 'string', 'max:100'],
+            'vertical' => ['sometimes', 'nullable', 'string', 'max:50'],
         ]);
 
-        $result = $this->barcodeLookupService->lookup((string) $request->input('barcode'));
+        $result = $this->barcodeLookupService->lookup(
+            (string) $request->input('barcode'),
+            $request->input('vertical') !== null ? (string) $request->input('vertical') : null,
+        );
 
         return response()->json([
             'data' => $result,

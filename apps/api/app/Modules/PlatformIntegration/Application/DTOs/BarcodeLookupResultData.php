@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\PlatformIntegration\Application\DTOs;
 
+use App\Modules\PlatformIntegration\Domain\ValueObjects\PlatformProductData;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -11,40 +12,38 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 class BarcodeLookupResultData extends Data
 {
     /**
-     * @param array<string, mixed>|null $article
-     * @param array<string, mixed>|null $suggestedProduct
+     * @param  array<string, mixed>|null  $suggestedProduct
      */
     public function __construct(
         public string $status,
         public ?string $barcode,
-        public ?array $article,
+        public ?PlatformProductData $product,
+        public ?string $trackingId,
         public ?array $suggestedProduct,
-        public ?string $error_reason,
+        public ?string $errorReason,
     ) {}
 
-    /**
-     * @param array<string, mixed> $article
-     * @param array<string, mixed> $suggestedProduct
-     */
-    public static function found(string $barcode, array $article, array $suggestedProduct): self
+    public static function found(string $barcode, PlatformProductData $product): self
     {
         return new self(
             status: 'found',
             barcode: $barcode,
-            article: $article,
-            suggestedProduct: $suggestedProduct,
-            error_reason: null,
+            product: $product,
+            trackingId: null,
+            suggestedProduct: self::buildSuggestedProduct($product),
+            errorReason: null,
         );
     }
 
-    public static function notFound(string $barcode): self
+    public static function notFound(string $barcode, ?string $trackingId = null): self
     {
         return new self(
             status: 'not_found',
             barcode: $barcode,
-            article: null,
+            product: null,
+            trackingId: $trackingId,
             suggestedProduct: null,
-            error_reason: null,
+            errorReason: null,
         );
     }
 
@@ -53,9 +52,27 @@ class BarcodeLookupResultData extends Data
         return new self(
             status: 'error',
             barcode: $barcode,
-            article: null,
+            product: null,
+            trackingId: null,
             suggestedProduct: null,
-            error_reason: $reason,
+            errorReason: $reason,
         );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function buildSuggestedProduct(PlatformProductData $product): array
+    {
+        return [
+            'name' => $product->name,
+            'barcode' => $product->barcode,
+            'brand' => $product->brand,
+            'description' => $product->description,
+            'platform_product_id' => $product->id,
+            'classification' => $product->classification,
+            'ingredients' => $product->ingredients,
+            'images' => $product->images,
+        ];
     }
 }
