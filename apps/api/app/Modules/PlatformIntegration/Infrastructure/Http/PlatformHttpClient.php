@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
-class PlatformHttpClient
+final class PlatformHttpClient
 {
     private const CIRCUIT_BREAKER_KEY = 'platform:circuit_breaker';
     private const CIRCUIT_FAILURE_COUNT_KEY = 'platform:circuit_failures';
