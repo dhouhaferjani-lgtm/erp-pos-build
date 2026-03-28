@@ -44,6 +44,9 @@ class RolesAndPermissionsSeeder extends Seeder
             'products.update',
             'products.delete',
             'products.import',
+            'enrichment.view',
+            'enrichment.review',
+            'enrichment.submit',
 
             // Composite Items / Catalog
             'composite-items.view',
@@ -271,6 +274,7 @@ class RolesAndPermissionsSeeder extends Seeder
         $manager->syncPermissions([
             'partners.view', 'partners.create', 'partners.update',
             'products.view', 'products.create', 'products.update', 'products.import',
+            'enrichment.view', 'enrichment.review', 'enrichment.submit',
             'vehicles.view', 'vehicles.create', 'vehicles.update',
             'documents.view',
             'quotes.view', 'quotes.create', 'quotes.update', 'quotes.convert',
