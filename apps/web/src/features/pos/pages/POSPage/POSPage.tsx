@@ -17,6 +17,9 @@ import { TableSelector } from '../../components/TableSelector'
 import { toast } from 'sonner'
 import type { POSProduct } from '../../api/productApi'
 import { useDiscountPreview } from '../../hooks/useDiscountPreview'
+import { SmartPromptsContainer } from '../../smart-prompts/containers/SmartPromptsContainer'
+import { useCompanyConfig } from '@/contexts/CompanyConfigContext'
+import { apiGet } from '@/lib/api'
 
 export interface POSPageProps {
   products: Product[]
@@ -81,6 +84,8 @@ export function POSPage({
   const [scanFlash, setScanFlash] = useState(false)
   const [barcodeMatchProducts, setBarcodeMatchProducts] = useState<POSProduct[]>([])
   const [barcodeMatchCode, setBarcodeMatchCode] = useState<string | null>(null)
+
+  const { config } = useCompanyConfig()
 
   // Calculate subtotal for discount preview
   const cartSubtotal = useMemo(() => {
@@ -206,6 +211,39 @@ export function POSPage({
     },
     [decimals],
   )
+
+  // Handle adding a recommended product to cart
+  const handleAddRecommendation = useCallback(async (productId: string) => {
+    try {
+      const productData = await apiGet<{
+        id: string
+        name: string
+        sku: string
+        barcode?: string | null
+        sale_price: string | null
+        stock_quantity: number
+        image_url?: string
+        category?: string
+        sellable_type?: string
+      }>(`/products/${productId}`)
+      if (productData) {
+        const mapped: Product = {
+          id: productData.id,
+          name: productData.name,
+          sku: productData.sku,
+          barcode: productData.barcode ?? null,
+          sale_price: productData.sale_price,
+          stock_quantity: productData.stock_quantity,
+          ...(productData.image_url ? { image_url: productData.image_url } : {}),
+          ...(productData.category ? { category: productData.category } : {}),
+          ...(productData.sellable_type ? { sellableType: productData.sellable_type as Product['sellableType'] } : {}),
+        }
+        addItemToCart(mapped)
+      }
+    } catch {
+      // Silently fail — recommendation add is best-effort
+    }
+  }, [addItemToCart])
 
   // Convert Product to POSProduct shape for the barcode lookup hook
   const posProducts: POSProduct[] = useMemo(
@@ -488,6 +526,17 @@ export function POSPage({
           />
         </div>
 
+        {/* Smart Prompts — toast variant overlays product grid area */}
+        {config?.smart_prompts_variant === 'toast' && (
+          <div className="relative">
+            <SmartPromptsContainer
+              cartItems={cartItems}
+              customerId={selectedCustomer?.id ?? null}
+              onAddRecommendation={handleAddRecommendation}
+            />
+          </div>
+        )}
+
         {/* Transaction Cart - 40% wide on desktop, 50% tall on narrow screens */}
         <div
           className={cn(
@@ -497,6 +546,13 @@ export function POSPage({
         >
           <TransactionCart
             items={cartItems}
+            smartPromptsSlot={config?.smart_prompts_variant === 'inline' ? (
+              <SmartPromptsContainer
+                cartItems={cartItems}
+                customerId={selectedCustomer?.id ?? null}
+                onAddRecommendation={handleAddRecommendation}
+              />
+            ) : undefined}
             onUpdateQuantity={handleUpdateQuantity}
             onRemoveItem={handleRemoveItem}
             onEditLineDiscount={handleEditLineDiscount}
