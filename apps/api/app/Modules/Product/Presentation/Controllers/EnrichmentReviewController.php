@@ -10,11 +10,11 @@ use App\Modules\Product\Application\DTOs\EnrichmentResultData;
 use App\Modules\Product\Application\Services\EnrichmentReviewService;
 use App\Modules\Product\Domain\EnrichmentResult;
 use App\Modules\Product\Domain\Enums\EnrichmentReviewStatus;
+use App\Modules\Product\Presentation\Requests\AcceptEnrichmentRequest;
+use App\Modules\Product\Presentation\Requests\RejectEnrichmentRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use App\Modules\Product\Presentation\Requests\AcceptEnrichmentRequest;
-use App\Modules\Product\Presentation\Requests\RejectEnrichmentRequest;
 
 final class EnrichmentReviewController extends Controller
 {

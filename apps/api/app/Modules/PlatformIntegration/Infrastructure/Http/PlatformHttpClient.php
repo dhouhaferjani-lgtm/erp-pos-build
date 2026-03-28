@@ -13,13 +13,17 @@ use Illuminate\Support\Facades\Log;
 final class PlatformHttpClient
 {
     private const CIRCUIT_BREAKER_KEY = 'platform:circuit_breaker';
+
     private const CIRCUIT_FAILURE_COUNT_KEY = 'platform:circuit_failures';
+
     private const CIRCUIT_FAILURE_THRESHOLD = 3;
+
     private const CIRCUIT_FAILURE_WINDOW = 30;
+
     private const CIRCUIT_OPEN_DURATION = 30;
 
     /**
-     * @param array<string, string> $queryParams
+     * @param  array<string, string>  $queryParams
      * @return array<string, mixed>|null
      */
     public function get(string $path, array $queryParams = []): ?array
@@ -40,6 +44,7 @@ final class PlatformHttpClient
                 $this->resetCircuitFailures();
                 /** @var array<string, mixed> $data */
                 $data = $response->json('data');
+
                 return $data;
             }
 
@@ -57,7 +62,7 @@ final class PlatformHttpClient
     }
 
     /**
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      * @return array<string, mixed>|null
      */
     public function post(string $path, array $data = []): ?array
@@ -78,10 +83,12 @@ final class PlatformHttpClient
                 $this->resetCircuitFailures();
                 /** @var array<string, mixed>|null $result */
                 $result = $response->json('data');
+
                 return $result;
             }
 
             $this->recordFailure();
+
             return null;
         } catch (\Throwable $e) {
             $this->recordFailure();
@@ -119,6 +126,7 @@ final class PlatformHttpClient
                 $this->resetCircuitFailures();
                 /** @var array<string, mixed>|null $result */
                 $result = $response->json();
+
                 return $result;
             }
 
@@ -165,6 +173,7 @@ final class PlatformHttpClient
                 $this->resetCircuitFailures();
                 /** @var array<string, mixed>|null $result */
                 $result = $response->json();
+
                 return $result;
             }
 

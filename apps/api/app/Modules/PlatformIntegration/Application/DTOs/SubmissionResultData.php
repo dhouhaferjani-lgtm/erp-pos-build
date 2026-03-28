@@ -17,7 +17,7 @@ class SubmissionResultData extends Data
     ) {}
 
     /**
-     * @param array<string, mixed> $response
+     * @param  array<string, mixed>  $response
      */
     public static function fromApiResponse(array $response): self
     {

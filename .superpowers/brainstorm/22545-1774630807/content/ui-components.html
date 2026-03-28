@@ -1,0 +1,153 @@
+<h2>Smart Prompts — UI Component Breakdown</h2>
+<p class="subtitle">Shared hook + card atom, two container variants, vertical-specific context selector</p>
+
+<div style="margin-bottom: 2rem;">
+  <h3>Component Tree</h3>
+  <pre style="background: #1a1a2e; color: #e0e0e0; padding: 16px; border-radius: 8px; font-size: 13px; line-height: 1.6; overflow-x: auto;">
+features/smart-prompts/
+├── hooks/
+│   └── useCartRecommendations.ts    ← core hook, calls ERP backend
+├── api/
+│   └── smartPromptsApi.ts           ← apiPost to /smart-prompts/recommendations
+├── atoms/
+│   ├── SmartPromptCard.tsx          ← single recommendation card (shared)
+│   └── ContextQuestion.tsx          ← "What skin type?" selector (shared)
+├── organisms/
+│   ├── InlineSmartPrompts.tsx       ← Variant A: in-cart section
+│   └── ToastSmartPrompts.tsx        ← Variant B: slide-up bar
+├── containers/
+│   └── SmartPromptsContainer.tsx    ← picks variant based on company setting
+└── config/
+    └── verticalContextFields.ts     ← maps vertical → context questions
+  </pre>
+</div>
+
+<!-- Interaction flow -->
+<h3>Interaction Flows</h3>
+
+<div class="split">
+  <!-- Flow 1: Add item → recommendations appear -->
+  <div class="mockup">
+    <div class="mockup-header">Flow 1: Item Added → Recommendations</div>
+    <div class="mockup-body" style="background: #1a1a2e; color: #e0e0e0; font-family: system-ui; padding: 16px;">
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 24px; height: 24px; background: #4ade80; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #000; font-weight: bold;">1</div>
+          <span style="font-size: 13px;">Cashier scans / taps "Avène Cleanance Gel"</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 24px; height: 24px; background: #818cf8; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #fff; font-weight: bold;">2</div>
+          <span style="font-size: 13px;">Hook debounces 800ms, calls backend</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 24px; height: 24px; background: #818cf8; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #fff; font-weight: bold;">3</div>
+          <span style="font-size: 13px;">Backend → erp-ml (circuit breaker protected)</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 24px; height: 24px; background: #f59e0b; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #000; font-weight: bold;">4</div>
+          <span style="font-size: 13px;">Smart prompts appear (3-5 cards, fade in)</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 24px; height: 24px; background: #4ade80; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #000; font-weight: bold;">5</div>
+          <span style="font-size: 13px;">Cashier taps card → product added to cart</span>
+        </div>
+        <div style="margin-top: 8px; padding: 10px; background: rgba(99, 102, 241, 0.08); border-radius: 8px; font-size: 11px; color: #888;">
+          If offline or erp-ml down → step 4 simply doesn't happen. No error shown. Cart works normally.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Flow 2: Skin type question -->
+  <div class="mockup">
+    <div class="mockup-header">Flow 2: Context Question → Refined Results</div>
+    <div class="mockup-body" style="background: #1a1a2e; color: #e0e0e0; font-family: system-ui; padding: 16px;">
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 24px; height: 24px; background: #4ade80; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #000; font-weight: bold;">1</div>
+          <span style="font-size: 13px;">Recommendations have skin-type-dependent options</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 24px; height: 24px; background: #f59e0b; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #000; font-weight: bold;">2</div>
+          <span style="font-size: 13px;">Context question appears above recommendations:</span>
+        </div>
+
+        <!-- Inline skin type selector mockup -->
+        <div style="margin: 4px 0 4px 32px; padding: 10px 12px; background: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.15); border-radius: 8px;">
+          <div style="font-size: 11px; color: #fbbf24; margin-bottom: 8px;">What's the customer's skin type?</div>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <div style="padding: 4px 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; font-size: 11px; cursor: pointer;">Normal</div>
+            <div style="padding: 4px 10px; background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 16px; font-size: 11px; color: #818cf8; cursor: pointer;">Oily ✓</div>
+            <div style="padding: 4px 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; font-size: 11px; cursor: pointer;">Dry</div>
+            <div style="padding: 4px 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; font-size: 11px; cursor: pointer;">Combination</div>
+            <div style="padding: 4px 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; font-size: 11px; cursor: pointer;">Sensitive</div>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 24px; height: 24px; background: #818cf8; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #fff; font-weight: bold;">3</div>
+          <span style="font-size: 13px;">Cashier taps "Oily" → recommendations refresh</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 24px; height: 24px; background: #4ade80; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #000; font-weight: bold;">4</div>
+          <span style="font-size: 13px;">If customer selected → skin type saved to profile</span>
+        </div>
+
+        <div style="margin-top: 8px; padding: 10px; background: rgba(99, 102, 241, 0.08); border-radius: 8px; font-size: 11px; color: #888;">
+          If customer already has skin_type on profile → pills are pre-selected, cashier can override. Selection persists for this cart.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SmartPromptCard anatomy -->
+<h3 style="margin-top: 2rem;">SmartPromptCard Anatomy</h3>
+<div style="max-width: 480px; margin: 0 auto;">
+  <div style="background: #1a1a2e; border-radius: 12px; padding: 16px; border: 1px solid rgba(99, 102, 241, 0.12);">
+    <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: rgba(99, 102, 241, 0.06); border-radius: 8px; border: 1px solid rgba(99, 102, 241, 0.1);">
+      <!-- Product image placeholder -->
+      <div style="width: 44px; height: 44px; background: rgba(99, 102, 241, 0.15); border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+        <span style="font-size: 11px; color: #818cf8;">IMG</span>
+      </div>
+      <!-- Content -->
+      <div style="flex: 1; min-width: 0;">
+        <div style="font-size: 13px; font-weight: 500; color: #e0e0e0;">Product Name</div>
+        <div style="font-size: 11px; color: #818cf8; margin-top: 2px;">
+          <span style="background: rgba(99, 102, 241, 0.15); padding: 1px 6px; border-radius: 4px; font-size: 10px;">routine</span>
+          Reason string from erp-ml
+        </div>
+      </div>
+      <!-- Actions -->
+      <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+        <div style="font-size: 12px; color: #4ade80; font-weight: 500;">€18.90</div>
+        <div style="width: 28px; height: 28px; background: rgba(255,255,255,0.06); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+          <span style="font-size: 11px; color: #888;">ℹ</span>
+        </div>
+        <div style="width: 28px; height: 28px; background: rgba(99, 102, 241, 0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+          <span style="font-size: 14px; color: #818cf8;">+</span>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top: 12px; font-size: 11px; color: #666; display: flex; gap: 16px;">
+      <span>← <strong>Tap card</strong> = add to cart</span>
+      <span><strong>ℹ</strong> = show why (strategy, score, ingredients)</span>
+      <span><strong>+</strong> = quick add</span>
+    </div>
+  </div>
+</div>
+
+<h3 style="margin-top: 2rem;">Info Popover (on ℹ tap)</h3>
+<div style="max-width: 320px; margin: 0 auto;">
+  <div style="background: #2a2a3e; border-radius: 10px; padding: 14px; border: 1px solid rgba(99, 102, 241, 0.2); font-size: 12px; color: #ccc; line-height: 1.5;">
+    <div style="font-weight: 600; color: #e0e0e0; margin-bottom: 6px;">Why this suggestion?</div>
+    <div style="margin-bottom: 8px;">
+      <span style="background: rgba(99, 102, 241, 0.15); padding: 2px 8px; border-radius: 4px; font-size: 10px; color: #818cf8;">routine_completion</span>
+      <span style="font-size: 10px; color: #666; margin-left: 4px;">score: 0.85</span>
+    </div>
+    <div style="color: #aaa;">Complete your routine: this moisturizer is the next step after your cleanser for acne-prone skin.</div>
+    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.05); font-size: 10px; color: #666;">
+      Source: Expert curated • Confidence: High
+    </div>
+  </div>
+</div>

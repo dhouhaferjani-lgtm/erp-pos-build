@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Log;
 final class BarcodeLookupService
 {
     private const CACHE_PREFIX = 'platform:lookup:';
+
     private const CACHE_TTL_SECONDS = 3600;
 
     public function __construct(
@@ -38,7 +39,7 @@ final class BarcodeLookupService
             return BarcodeLookupResultData::error($normalizedBarcode, 'vertical_not_supported');
         }
 
-        $cacheKey = self::CACHE_PREFIX . $vertical . ':' . $normalizedBarcode;
+        $cacheKey = self::CACHE_PREFIX.$vertical.':'.$normalizedBarcode;
 
         // Check cache — stores BarcodeLookupResultData objects directly
         $cached = Cache::get($cacheKey);
@@ -107,12 +108,12 @@ final class BarcodeLookupService
 
         // UPC-12 to EAN-13 conversion (12 digits -> prepend 0)
         if (preg_match('/^\d{12}$/', $barcode) === 1) {
-            $barcode = '0' . $barcode;
+            $barcode = '0'.$barcode;
         }
 
         // EAN-13 check digit validation
         if (preg_match('/^\d{13}$/', $barcode) === 1) {
-            if (!$this->isValidEan13($barcode)) {
+            if (! $this->isValidEan13($barcode)) {
                 return null;
             }
         }
