@@ -29,3 +29,8 @@ Schedule::job(\App\Modules\Inventory\Application\Jobs\ExpireReservationsJob::cla
 Schedule::job(\App\Modules\BatchExpiry\Jobs\DailyExpiryCheck::class)
     ->dailyAt('01:30')
     ->withoutOverlapping();
+
+// Schedule: Poll platform for pending enrichment status updates
+Schedule::command('enrichment:check-pending')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping();
