@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Product\Domain;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Product\Domain\Enums\EnrichmentStatus;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Uom\Domain\Entities\Unit;
@@ -40,6 +41,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $minimum_margin_override
  * @property string|null $last_purchase_cost
  * @property \Illuminate\Support\Carbon|null $cost_updated_at
+ * @property string|null $platform_product_id
+ * @property string|null $platform_submission_id
+ * @property EnrichmentStatus|null $enrichment_status
  * @property bool $is_physical False for services, true for parts/consumables
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
@@ -51,6 +55,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property-read Unit|null $unitOfMeasure
  * @property-read ParapharmacyProductMetadata|null $parapharmacyMetadata
  * @property-read AutomotiveProductMetadata|null $automotiveMetadata
+ * @property-read EnrichmentResult|null $latestEnrichmentResult
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, EnrichmentResult> $enrichmentResults
  */
 class Product extends Model implements SellableContract
 {
@@ -84,6 +90,9 @@ class Product extends Model implements SellableContract
         'minimum_margin_override',
         'last_purchase_cost',
         'cost_updated_at',
+        'platform_product_id',
+        'platform_submission_id',
+        'enrichment_status',
     ];
 
     /**
@@ -107,6 +116,7 @@ class Product extends Model implements SellableContract
             'oem_numbers' => 'array',
             'cross_references' => 'array',
             'cost_updated_at' => 'datetime',
+            'enrichment_status' => EnrichmentStatus::class,
         ];
     }
 
@@ -294,5 +304,25 @@ class Product extends Model implements SellableContract
     public function stockLevels(): HasMany
     {
         return $this->hasMany(\App\Modules\Inventory\Domain\StockLevel::class);
+    }
+
+    /**
+     * Get the latest enrichment result for this product.
+     *
+     * @return HasOne<EnrichmentResult, $this>
+     */
+    public function latestEnrichmentResult(): HasOne
+    {
+        return $this->hasOne(EnrichmentResult::class)->latestOfMany();
+    }
+
+    /**
+     * Get all enrichment results for this product.
+     *
+     * @return HasMany<EnrichmentResult, $this>
+     */
+    public function enrichmentResults(): HasMany
+    {
+        return $this->hasMany(EnrichmentResult::class);
     }
 }
