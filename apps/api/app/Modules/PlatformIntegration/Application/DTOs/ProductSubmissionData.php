@@ -9,8 +9,8 @@ use Spatie\LaravelData\Data;
 class ProductSubmissionData extends Data
 {
     /**
-     * @param array<string, mixed>|null $attributes
-     * @param array<int, string> $photoIds
+     * @param  array<string, mixed>|null  $attributes
+     * @param  array<int, string>  $photoIds
      */
     public function __construct(
         public ?string $barcode,

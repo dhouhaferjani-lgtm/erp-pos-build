@@ -27,9 +27,9 @@ final class VerifySynerivaWebhookSignature
             throw new HttpException(403, 'Webhook timestamp expired.');
         }
 
-        $expectedSignature = 'sha256=' . hash_hmac(
+        $expectedSignature = 'sha256='.hash_hmac(
             'sha256',
-            $timestamp . '.' . $request->getContent(),
+            $timestamp.'.'.$request->getContent(),
             (string) $secret,
         );
 

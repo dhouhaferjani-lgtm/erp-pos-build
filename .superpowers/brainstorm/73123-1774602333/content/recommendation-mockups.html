@@ -1,0 +1,195 @@
+<h2>Smart Prompts: Both Variants Side by Side</h2>
+<p class="subtitle">Both built, toggled by company setting. Cashier sees one or the other.</p>
+
+<div class="split">
+  <!-- VARIANT A: Inline in Cart -->
+  <div class="mockup">
+    <div class="mockup-header">Variant A — Inline Cart Prompts</div>
+    <div class="mockup-body" style="background: #1a1a2e; color: #e0e0e0; font-family: system-ui; padding: 0; overflow: hidden;">
+      <!-- Cart items -->
+      <div style="padding: 12px 16px; border-bottom: 1px solid #333;">
+        <div style="font-size: 11px; text-transform: uppercase; color: #888; margin-bottom: 8px;">Cart (2 items)</div>
+        <div style="display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px;">
+          <span>Avène Cleanance Gel Nettoyant</span>
+          <span style="color: #4ade80;">€14.90</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px;">
+          <span>Bioderma Sébium H2O</span>
+          <span style="color: #4ade80;">€12.50</span>
+        </div>
+      </div>
+
+      <!-- SMART PROMPTS — translucent section -->
+      <div style="padding: 10px 16px; background: rgba(99, 102, 241, 0.08); border-bottom: 1px solid rgba(99, 102, 241, 0.15);">
+        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/></svg>
+          <span style="font-size: 11px; color: #818cf8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">AI Suggestions</span>
+          <span style="font-size: 10px; color: #666; margin-left: auto;">Dismiss ✕</span>
+        </div>
+
+        <!-- Recommendation card 1 -->
+        <div style="display: flex; align-items: center; gap: 10px; padding: 8px; background: rgba(99, 102, 241, 0.06); border-radius: 8px; margin-bottom: 6px; cursor: pointer; border: 1px solid rgba(99, 102, 241, 0.1);">
+          <div style="width: 36px; height: 36px; background: rgba(99, 102, 241, 0.15); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;">🧴</div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-size: 12px; font-weight: 500; color: #e0e0e0;">Avène Cleanance Comedomed</div>
+            <div style="font-size: 10px; color: #818cf8;">Complete your routine: moisturizer</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+            <div style="width: 24px; height: 24px; background: rgba(255,255,255,0.08); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #888; cursor: pointer;" title="Why this suggestion?">ℹ️</div>
+            <div style="font-size: 11px; color: #4ade80;">€18.90</div>
+            <div style="font-size: 16px; color: #818cf8;">+</div>
+          </div>
+        </div>
+
+        <!-- Recommendation card 2 -->
+        <div style="display: flex; align-items: center; gap: 10px; padding: 8px; background: rgba(99, 102, 241, 0.06); border-radius: 8px; margin-bottom: 6px; cursor: pointer; border: 1px solid rgba(99, 102, 241, 0.1);">
+          <div style="width: 36px; height: 36px; background: rgba(99, 102, 241, 0.15); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;">🧪</div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-size: 12px; font-weight: 500; color: #e0e0e0;">La Roche-Posay Effaclar Duo+</div>
+            <div style="font-size: 10px; color: #818cf8;">Also for acne: treatment step</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+            <div style="width: 24px; height: 24px; background: rgba(255,255,255,0.08); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #888; cursor: pointer;">ℹ️</div>
+            <div style="font-size: 11px; color: #4ade80;">€16.50</div>
+            <div style="font-size: 16px; color: #818cf8;">+</div>
+          </div>
+        </div>
+
+        <!-- Recommendation card 3 (more subtle) -->
+        <div style="display: flex; align-items: center; gap: 10px; padding: 8px; background: rgba(99, 102, 241, 0.06); border-radius: 8px; cursor: pointer; border: 1px solid rgba(99, 102, 241, 0.1);">
+          <div style="width: 36px; height: 36px; background: rgba(99, 102, 241, 0.15); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;">☀️</div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-size: 12px; font-weight: 500; color: #e0e0e0;">Avène Cleanance SPF50+</div>
+            <div style="font-size: 10px; color: #818cf8;">Same line: Cleanance by Avène</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+            <div style="width: 24px; height: 24px; background: rgba(255,255,255,0.08); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #888; cursor: pointer;">ℹ️</div>
+            <div style="font-size: 11px; color: #4ade80;">€15.90</div>
+            <div style="font-size: 16px; color: #818cf8;">+</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Totals -->
+      <div style="padding: 12px 16px;">
+        <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px;">
+          <span style="color: #888;">Subtotal</span><span>€27.40</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 600;">
+          <span>Total</span><span style="color: #4ade80;">€27.40</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VARIANT B: Slide-up Toast -->
+  <div class="mockup">
+    <div class="mockup-header">Variant B — Slide-up Toast</div>
+    <div class="mockup-body" style="background: #1a1a2e; color: #e0e0e0; font-family: system-ui; padding: 0; overflow: hidden; position: relative; min-height: 420px;">
+      <!-- Product grid area -->
+      <div style="padding: 12px 16px;">
+        <div style="font-size: 11px; text-transform: uppercase; color: #888; margin-bottom: 12px;">Products</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+          <div style="background: #2a2a3e; border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 24px; margin-bottom: 4px;">🧴</div>
+            <div style="font-size: 10px;">CeraVe Cleanser</div>
+            <div style="font-size: 11px; color: #4ade80;">€11.90</div>
+          </div>
+          <div style="background: #2a2a3e; border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 24px; margin-bottom: 4px;">💊</div>
+            <div style="font-size: 10px;">Nuxe Crème</div>
+            <div style="font-size: 11px; color: #4ade80;">€22.50</div>
+          </div>
+          <div style="background: #2a2a3e; border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 24px; margin-bottom: 4px;">🌿</div>
+            <div style="font-size: 10px;">Vichy Mineral</div>
+            <div style="font-size: 11px; color: #4ade80;">€19.90</div>
+          </div>
+          <div style="background: #2a2a3e; border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 24px; margin-bottom: 4px;">☀️</div>
+            <div style="font-size: 10px;">LRP Anthelios</div>
+            <div style="font-size: 11px; color: #4ade80;">€16.90</div>
+          </div>
+          <div style="background: #2a2a3e; border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 24px; margin-bottom: 4px;">💧</div>
+            <div style="font-size: 10px;">Bioderma Atoderm</div>
+            <div style="font-size: 11px; color: #4ade80;">€14.50</div>
+          </div>
+          <div style="background: #2a2a3e; border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 24px; margin-bottom: 4px;">🧪</div>
+            <div style="font-size: 10px;">SVR Sebiaclear</div>
+            <div style="font-size: 11px; color: #4ade80;">€13.90</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cart area (right side in real layout, shown below for mockup) -->
+      <div style="padding: 8px 16px; border-top: 1px solid #333; margin-top: 8px;">
+        <div style="font-size: 11px; text-transform: uppercase; color: #888; margin-bottom: 6px;">Cart</div>
+        <div style="display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0;">
+          <span>Avène Cleanance Gel</span><span style="color: #4ade80;">€14.90</span>
+        </div>
+      </div>
+
+      <!-- SLIDE-UP TOAST — collapsed state -->
+      <div style="position: absolute; bottom: 0; left: 0; right: 0;">
+        <!-- Collapsed toast bar -->
+        <div style="background: rgba(99, 102, 241, 0.12); backdrop-filter: blur(8px); border-top: 1px solid rgba(99, 102, 241, 0.2); padding: 10px 16px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/></svg>
+          <span style="font-size: 12px; color: #818cf8; font-weight: 500;">3 AI suggestions for this cart</span>
+          <span style="margin-left: auto; font-size: 18px; color: #818cf8;">⌃</span>
+        </div>
+
+        <!-- Expanded state (shown below for reference) -->
+        <div style="background: rgba(26, 26, 46, 0.95); backdrop-filter: blur(12px); border-top: 1px solid rgba(99, 102, 241, 0.2); padding: 12px 16px;">
+          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 10px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/></svg>
+            <span style="font-size: 11px; color: #818cf8; font-weight: 600; text-transform: uppercase;">AI Suggestions</span>
+            <span style="font-size: 10px; color: #666; margin-left: auto;">✕ Close</span>
+          </div>
+
+          <!-- Horizontal scrollable cards -->
+          <div style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px;">
+            <div style="min-width: 160px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.12); border-radius: 8px; padding: 10px; cursor: pointer;">
+              <div style="font-size: 11px; font-weight: 500; color: #e0e0e0; margin-bottom: 4px;">Avène Comedomed</div>
+              <div style="font-size: 10px; color: #818cf8; margin-bottom: 6px;">Complete routine: moisturizer</div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 11px; color: #4ade80;">€18.90</span>
+                <span style="font-size: 14px; color: #818cf8;">+ Add</span>
+              </div>
+            </div>
+            <div style="min-width: 160px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.12); border-radius: 8px; padding: 10px; cursor: pointer;">
+              <div style="font-size: 11px; font-weight: 500; color: #e0e0e0; margin-bottom: 4px;">LRP Effaclar Duo+</div>
+              <div style="font-size: 10px; color: #818cf8;">Also for acne: treatment</div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 11px; color: #4ade80;">€16.50</span>
+                <span style="font-size: 14px; color: #818cf8;">+ Add</span>
+              </div>
+            </div>
+            <div style="min-width: 160px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.12); border-radius: 8px; padding: 10px; cursor: pointer;">
+              <div style="font-size: 11px; font-weight: 500; color: #e0e0e0; margin-bottom: 4px;">Avène SPF50+</div>
+              <div style="font-size: 10px; color: #818cf8;">Same line: Cleanance</div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 11px; color: #4ade80;">€15.90</span>
+                <span style="font-size: 14px; color: #818cf8;">+ Add</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top: 1.5rem; padding: 16px; background: rgba(99, 102, 241, 0.08); border-radius: 8px; border: 1px solid rgba(99, 102, 241, 0.15);">
+  <h3 style="margin-top: 0;">Implementation approach: Build both, toggle via config</h3>
+  <ul style="margin: 8px 0; font-size: 14px; line-height: 1.6;">
+    <li><strong>Company setting:</strong> <code>smart_prompts_variant: "inline" | "toast" | "off"</code></li>
+    <li><strong>Both variants</strong> share the same backend service + hook — only the UI component differs</li>
+    <li><strong>Dev branch only</strong> — test both variants, settle on one before merging to main</li>
+    <li><strong>ℹ️ button</strong> on each card opens a popover with: strategy reason, ingredient overlap %, or routine step explanation</li>
+    <li>Tapping the card itself → adds product to cart immediately</li>
+  </ul>
+</div>
+
+<p style="margin-top: 1rem; opacity: 0.7;">Both variants use the same <code>useCartRecommendations</code> hook and <code>SmartPromptCard</code> atom — only the container layout differs. This keeps the A/B test clean.</p>

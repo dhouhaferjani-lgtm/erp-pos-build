@@ -20,7 +20,7 @@ class EnrichmentWebhookPayload extends Data
     ) {}
 
     /**
-     * @param array<string, mixed> $webhook
+     * @param  array<string, mixed>  $webhook
      */
     public static function fromWebhook(array $webhook): self
     {

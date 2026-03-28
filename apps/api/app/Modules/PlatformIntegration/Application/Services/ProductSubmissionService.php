@@ -70,7 +70,7 @@ final class ProductSubmissionService
     /**
      * Submit multiple products in a single bulk request.
      *
-     * @param array<int, ProductSubmissionData> $submissions
+     * @param  array<int, ProductSubmissionData>  $submissions
      * @return array<string, mixed>|null
      */
     public function bulkSubmit(string $vertical, array $submissions, bool $autoEnrich): ?array
@@ -95,7 +95,7 @@ final class ProductSubmissionService
     /**
      * Lookup multiple barcodes in a single request.
      *
-     * @param array<int, string> $barcodes
+     * @param  array<int, string>  $barcodes
      * @return array<string, mixed>|null
      */
     public function bulkLookup(array $barcodes, string $vertical): ?array
@@ -113,7 +113,7 @@ final class ProductSubmissionService
      */
     public function checkStatus(string $trackingId): ?array
     {
-        return $this->platformClient->getRaw('/api/v1/products/status/' . $trackingId);
+        return $this->platformClient->getRaw('/api/v1/products/status/'.$trackingId);
     }
 
     /**
@@ -121,7 +121,7 @@ final class ProductSubmissionService
      */
     public function triggerEnrichment(string $trackingId): ?SubmissionResultData
     {
-        $response = $this->platformClient->postRaw('/api/v1/products/' . $trackingId . '/enrich');
+        $response = $this->platformClient->postRaw('/api/v1/products/'.$trackingId.'/enrich');
 
         if ($response === null) {
             return null;
@@ -137,6 +137,6 @@ final class ProductSubmissionService
      */
     public function getCategoryAttributes(string $vertical, string $category): ?array
     {
-        return $this->platformClient->getRaw('/api/v1/products/categories/' . $vertical . '/' . $category . '/attributes');
+        return $this->platformClient->getRaw('/api/v1/products/categories/'.$vertical.'/'.$category.'/attributes');
     }
 }

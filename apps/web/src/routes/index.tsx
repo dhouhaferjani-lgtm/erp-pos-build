@@ -229,9 +229,6 @@ const TermsOfServicePage = lazy(() => import('../pages/legal/TermsOfServicePage'
 const GrowthPage = lazy(() => import('../features/progression').then((m) => ({ default: m.GrowthPage })))
 const ProgressionModulesPage = lazy(() => import('../features/progression').then((m) => ({ default: m.ModulesPage })))
 
-// Legal pages
-const PrivacyPolicyPage = lazy(() => import('../pages/legal/PrivacyPolicyPage').then((m) => ({ default: m.PrivacyPolicyPage })))
-const TermsOfServicePage = lazy(() => import('../pages/legal/TermsOfServicePage').then((m) => ({ default: m.TermsOfServicePage })))
 function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   return (
     <Suspense fallback={<LoadingSpinner fullScreen />}>
