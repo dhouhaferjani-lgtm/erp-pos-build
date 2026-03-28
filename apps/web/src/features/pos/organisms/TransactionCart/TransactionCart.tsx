@@ -48,6 +48,7 @@ export interface TransactionCartProps {
   onCouponApplied?: ((code: string, discountAmount: string, promotionName: string) => void) | undefined
   onCouponRemoved?: (() => void) | undefined
   onLoyaltyRewardRedeemed?: ((rewardValue: string, rewardName: string, rewardId: string) => void) | undefined
+  smartPromptsSlot?: React.ReactNode | undefined
 }
 
 export function TransactionCart({
@@ -74,6 +75,7 @@ export function TransactionCart({
   onCouponApplied,
   onCouponRemoved,
   onLoyaltyRewardRedeemed,
+  smartPromptsSlot,
 }: TransactionCartProps) {
   const { t } = useTranslation(['pos', 'common'])
   const { currency, decimals, toFixed: toFixedCurrency } = useCurrency()
@@ -237,6 +239,9 @@ export function TransactionCart({
           ))
         )}
       </div>
+
+      {/* Smart Prompts Slot (inline variant) */}
+      {smartPromptsSlot}
 
       {/* Transaction Discount Section */}
       {!isEmpty && permissions?.canApplyTransactionDiscounts && onUpdateTransactionDiscount && (
