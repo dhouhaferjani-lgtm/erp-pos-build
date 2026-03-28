@@ -89,6 +89,7 @@ return [
     'platform' => [
         'url' => env('SYNERIVA_PLATFORM_URL', 'http://localhost:8080'),
         'api_key' => env('SYNERIVA_PLATFORM_API_KEY'),
+        'webhook_secret' => env('SYNERIVA_WEBHOOK_SECRET'),
     ],
 
     'vin_decoder' => [
