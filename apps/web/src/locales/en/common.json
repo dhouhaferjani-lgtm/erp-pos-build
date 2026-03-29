@@ -197,6 +197,7 @@
     "stockLevels": "Stock Levels",
     "stockMovements": "Stock Movements",
     "counting": "Inventory Counting",
+    "enrichmentQueue": "Enrichment Queue",
     "inventoryCounting": "Inventory Counting",
     "priceLists": "Price Lists",
     "compositeItems": "Composite Items",

@@ -104,6 +104,10 @@ export const PERMISSIONS = {
   'contacts.create': ['admin', 'manager', 'sales', 'cashier'],
   'contacts.update': ['admin', 'manager', 'sales'],
   'contacts.delete': ['admin', 'manager'],
+
+  // Enrichment
+  'enrichment.view': ['admin', 'manager'],
+  'enrichment.review': ['admin', 'manager'],
 } as const
 
 export type Permission = keyof typeof PERMISSIONS
@@ -131,6 +135,7 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   coupons: ['coupons.view'],
   loyalty: ['loyalty.view'],
   contacts: ['contacts.view'],
+  enrichment: ['enrichment.view'],
 }
 
 /**

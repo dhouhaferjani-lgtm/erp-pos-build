@@ -1,0 +1,43 @@
+{
+  "queue": {
+    "title": "File d'enrichissement",
+    "summary": "{{total}} éléments en attente de révision",
+    "summaryDetail": "{{high}} haute · {{medium}} moyenne · {{low}} basse",
+    "filterAll": "Toutes les qualités",
+    "filterHigh": "Haute",
+    "filterMedium": "Moyenne",
+    "filterLow": "Basse",
+    "bulkAcceptHigh": "Accepter tous (haute confiance)",
+    "bulkAcceptConfirm": "Accepter {{count}} enrichissements haute confiance ? Tous les champs seront fusionnés.",
+    "bulkAcceptProgress": "Acceptation de {{count}} enrichissements...",
+    "bulkAcceptSuccess": "{{count}} enrichissements acceptés.",
+    "emptyState": "Aucun résultat d'enrichissement à réviser.",
+    "columns": {
+      "product": "Produit",
+      "barcode": "Code-barres",
+      "quality": "Qualité",
+      "assignedBarcode": "Code-barres attribué",
+      "submitted": "Soumis"
+    }
+  },
+  "review": {
+    "yourData": "Vos données",
+    "enrichedData": "Données enrichies",
+    "acceptSelected": "Accepter les champs sélectionnés",
+    "reject": "Rejeter",
+    "rejectReason": "Raison (optionnel)",
+    "confirmReject": "Confirmer le rejet",
+    "cancelReject": "Annuler",
+    "accepted": "Enrichissement accepté.",
+    "rejected": "Enrichissement rejeté.",
+    "acceptFailed": "Échec de l'acceptation. Veuillez réessayer.",
+    "rejectFailed": "Échec du rejet. Veuillez réessayer.",
+    "barcodeAssigned": "Code-barres Syneriva attribué : {{barcode}}",
+    "checkboxHint": "✓ coché = haute confiance · ☐ décoché = basse confiance · Basculer n'importe quel champ"
+  },
+  "quality": {
+    "high": "Haute",
+    "medium": "Moyenne",
+    "low": "Basse"
+  }
+}
