@@ -10,7 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 
-class EnrichmentWebhookController extends Controller
+final class EnrichmentWebhookController extends Controller
 {
     public function __invoke(Request $request): JsonResponse
     {
@@ -26,11 +26,11 @@ class EnrichmentWebhookController extends Controller
                 /** @var array<string, mixed> $item */
                 $item['event'] = 'enrichment.resolved';
                 $payload = EnrichmentWebhookPayload::fromWebhook($item);
-                ProcessEnrichmentWebhookJob::dispatch($payload);
+                ProcessEnrichmentWebhookJob::dispatch($payload)->onQueue('enrichment');
             }
         } else {
             $payload = EnrichmentWebhookPayload::fromWebhook($data);
-            ProcessEnrichmentWebhookJob::dispatch($payload);
+            ProcessEnrichmentWebhookJob::dispatch($payload)->onQueue('enrichment');
         }
 
         return response()->json(['received' => true]);
