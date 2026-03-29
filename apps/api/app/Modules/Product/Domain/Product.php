@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Product\Domain;
 
 use App\Modules\Company\Domain\Company;
-use App\Modules\Product\Domain\Enums\EnrichmentStatus;
+use App\Shared\Enums\EnrichmentStatus;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Uom\Domain\Entities\Unit;

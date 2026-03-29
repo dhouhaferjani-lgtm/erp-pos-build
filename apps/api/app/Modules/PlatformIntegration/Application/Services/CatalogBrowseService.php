@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\PlatformIntegration\Application\Services;
 
 use App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient;
-use App\Modules\Product\Domain\Product;
+use App\Shared\Contracts\ProductInventoryQueryInterface;
 use Illuminate\Support\Facades\Cache;
 
 final class CatalogBrowseService
@@ -14,6 +14,7 @@ final class CatalogBrowseService
 
     public function __construct(
         private readonly PlatformHttpClient $platformClient,
+        private readonly ProductInventoryQueryInterface $productInventoryQuery,
     ) {}
 
     /**
@@ -281,31 +282,19 @@ final class CatalogBrowseService
             return $articles;
         }
 
-        // Find local products linked to these platform articles
-        $localProducts = Product::query()
-            ->where('company_id', $companyId)
-            ->whereHas('automotiveMetadata', function ($query) use ($platformArticleIds) {
-                $query->whereIn('platform_article_id', $platformArticleIds);
-            })
-            ->with(['automotiveMetadata', 'stockLevels'])
-            ->get()
-            ->keyBy(fn (Product $p): string => (string) ($p->automotiveMetadata->platform_article_id ?? ''));
+        $localProducts = $this->productInventoryQuery->findByPlatformArticleIds($companyId, $platformArticleIds);
 
         foreach ($articles as &$article) {
             $articleId = $article['id'] ?? null;
-            $localProduct = $articleId !== null ? $localProducts->get($articleId) : null;
+            $inventoryDTO = $articleId !== null ? $localProducts->get($articleId) : null;
 
-            if ($localProduct !== null) {
-                /** @var numeric-string $totalStock */
-                $totalStock = (string) $localProduct->stockLevels->sum('quantity');
-                /** @var numeric-string $totalReserved */
-                $totalReserved = (string) $localProduct->stockLevels->sum('reserved');
+            if ($inventoryDTO !== null) {
                 $article['local_inventory'] = [
                     'in_stock' => true,
-                    'product_id' => $localProduct->id,
-                    'quantity' => $totalStock,
-                    'available' => bcsub($totalStock, $totalReserved, 2),
-                    'sale_price' => $localProduct->sale_price,
+                    'product_id' => $inventoryDTO->productId,
+                    'quantity' => $inventoryDTO->totalStock,
+                    'available' => $inventoryDTO->available,
+                    'sale_price' => $inventoryDTO->salePrice,
                 ];
             } else {
                 $article['local_inventory'] = [

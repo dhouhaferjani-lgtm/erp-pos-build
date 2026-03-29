@@ -4,18 +4,19 @@ declare(strict_types=1);
 
 namespace App\Modules\Product\Application\Services;
 
-use App\Modules\PlatformIntegration\Application\Services\ProductSubmissionService;
 use App\Modules\Product\Application\DTOs\EnrichedProductData;
 use App\Modules\Product\Domain\EnrichmentResult;
 use App\Modules\Product\Domain\Enums\EnrichmentReviewStatus;
-use App\Modules\Product\Domain\Enums\EnrichmentStatus;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Contracts\PlatformSubmissionInterface;
+use App\Shared\DTOs\SubmissionStatusDTO;
+use App\Shared\Enums\EnrichmentStatus;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 final class EnrichmentReviewService
 {
     public function __construct(
-        private readonly ProductSubmissionService $submissionService,
+        private readonly PlatformSubmissionInterface $submissionService,
     ) {}
 
     /**
@@ -23,13 +24,13 @@ final class EnrichmentReviewService
      */
     public function fetchAndStore(string $trackingId, Product $product): ?EnrichmentResult
     {
-        $response = $this->submissionService->checkStatus($trackingId);
+        $statusDTO = $this->submissionService->checkStatus($trackingId);
 
-        if ($response === null) {
+        if ($statusDTO === null) {
             return null;
         }
 
-        $enrichedData = $response['enriched_data'] ?? [];
+        $enrichedData = $statusDTO->enrichedData;
 
         return EnrichmentResult::updateOrCreate(
             ['tracking_id' => $trackingId],
@@ -52,8 +53,8 @@ final class EnrichmentReviewService
                     assigned_barcode: $enrichedData['assigned_barcode'] ?? null,
                     assigned_barcode_type: $enrichedData['assigned_barcode_type'] ?? null,
                 ),
-                'enrichment_quality' => $response['enrichment_quality'] ?? 'unknown',
-                'assigned_barcode' => $enrichedData['assigned_barcode'] ?? null,
+                'enrichment_quality' => $statusDTO->enrichmentQuality ?? 'unknown',
+                'assigned_barcode' => $statusDTO->assignedBarcode,
             ],
         );
     }

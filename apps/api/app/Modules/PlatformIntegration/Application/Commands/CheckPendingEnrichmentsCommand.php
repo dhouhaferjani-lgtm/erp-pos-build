@@ -5,9 +5,10 @@ declare(strict_types=1);
 namespace App\Modules\PlatformIntegration\Application\Commands;
 
 use App\Modules\PlatformIntegration\Application\Services\ProductSubmissionService;
-use App\Modules\Product\Domain\Enums\EnrichmentStatus;
 use App\Modules\Product\Domain\Events\EnrichmentWebhookReceived;
-use App\Modules\Product\Domain\Product;
+use App\Shared\Contracts\EnrichmentQueryInterface;
+use App\Shared\DTOs\PendingEnrichmentDTO;
+use App\Shared\Enums\EnrichmentStatus;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
@@ -25,39 +26,33 @@ final class CheckPendingEnrichmentsCommand extends Command
 
     public function __construct(
         private readonly ProductSubmissionService $submissionService,
+        private readonly EnrichmentQueryInterface $enrichmentQuery,
     ) {
         parent::__construct();
     }
 
     public function handle(): int
     {
-        $products = Product::query()
-            ->whereIn('enrichment_status', [EnrichmentStatus::Pending, EnrichmentStatus::Enriching])
-            ->whereNotNull('platform_submission_id')
-            ->where('updated_at', '<', now()->subMinutes(10))
-            ->limit(50)
-            ->get();
+        $pendingProducts = $this->enrichmentQuery->findPendingEnrichments(limit: 50, staleMinutes: 10);
 
-        if ($products->isEmpty()) {
+        if ($pendingProducts->isEmpty()) {
             $this->info('No pending enrichments to check.');
 
             return self::SUCCESS;
         }
 
-        $this->info("Checking {$products->count()} pending enrichment(s)...");
+        $this->info("Checking {$pendingProducts->count()} pending enrichment(s)...");
 
         $updatedCount = 0;
 
-        foreach ($products as $product) {
-            /** @var string $trackingId */
-            $trackingId = $product->platform_submission_id;
-
-            $response = $this->submissionService->checkStatus($trackingId);
+        /** @var PendingEnrichmentDTO $dto */
+        foreach ($pendingProducts as $dto) {
+            $response = $this->submissionService->checkStatusRaw($dto->platformSubmissionId);
 
             if ($response === null) {
                 Log::warning('Failed to check enrichment status', [
-                    'product_id' => $product->id,
-                    'tracking_id' => $trackingId,
+                    'product_id' => $dto->productId,
+                    'tracking_id' => $dto->platformSubmissionId,
                 ]);
 
                 continue;
@@ -71,13 +66,13 @@ final class CheckPendingEnrichmentsCommand extends Command
 
             $newStatus = EnrichmentStatus::fromPlatformStatus($platformStatus);
 
-            if ($newStatus === $product->enrichment_status) {
+            if ($newStatus === $dto->enrichmentStatus) {
                 continue;
             }
 
             // Status changed — dispatch event for the listener to handle
             EnrichmentWebhookReceived::dispatch(
-                $trackingId,
+                $dto->platformSubmissionId,
                 $platformStatus,
                 $response['enrichment_quality'] ?? null,
                 isset($response['assigned_barcode']),
@@ -87,9 +82,9 @@ final class CheckPendingEnrichmentsCommand extends Command
             $updatedCount++;
 
             Log::info('Enrichment status changed via polling', [
-                'product_id' => $product->id,
-                'tracking_id' => $trackingId,
-                'old_status' => $product->enrichment_status->value,
+                'product_id' => $dto->productId,
+                'tracking_id' => $dto->platformSubmissionId,
+                'old_status' => $dto->enrichmentStatus->value,
                 'new_status' => $newStatus->value,
             ]);
         }

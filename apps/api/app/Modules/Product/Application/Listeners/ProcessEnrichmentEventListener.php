@@ -4,14 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\Product\Application\Listeners;
 
-use App\Modules\Identity\Domain\User;
-use App\Modules\Product\Application\Notifications\EnrichmentCompletedNotification;
 use App\Modules\Product\Application\Services\EnrichmentReviewService;
-use App\Modules\Product\Domain\Enums\EnrichmentStatus;
 use App\Modules\Product\Domain\Events\EnrichmentWebhookReceived;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Enums\EnrichmentStatus;
+use App\Shared\Events\EnrichmentResultReadyEvent;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Notification;
 
 final class ProcessEnrichmentEventListener
 {
@@ -49,23 +47,16 @@ final class ProcessEnrichmentEventListener
                 $product,
             );
 
-            // For completed enrichments, notify company users
+            // For completed enrichments, dispatch event for notification delivery
             if ($enrichmentStatus === EnrichmentStatus::Completed && $enrichmentResult !== null) {
-                $enrichmentResult->load('product');
-
-                $users = User::whereRaw('company_id = ?', [$product->company_id])
-                    ->permission('enrichment.view')
-                    ->get();
-
-                if ($users->isNotEmpty()) {
-                    Notification::send($users, new EnrichmentCompletedNotification($enrichmentResult));
-
-                    Log::info('Sent enrichment completed notifications', [
-                        'product_id' => $product->id,
-                        'company_id' => $product->company_id,
-                        'user_count' => $users->count(),
-                    ]);
-                }
+                EnrichmentResultReadyEvent::dispatch(
+                    $enrichmentResult->id,
+                    $product->company_id,
+                    $product->id,
+                    $product->name,
+                    $enrichmentResult->enrichment_quality ?? 'unknown',
+                    $enrichmentResult->assigned_barcode,
+                );
             }
         }
 

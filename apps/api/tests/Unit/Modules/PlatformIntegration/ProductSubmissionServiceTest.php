@@ -66,16 +66,16 @@ class ProductSubmissionServiceTest extends TestCase
         });
     }
 
-    public function test_check_status_returns_tracking_data(): void
+    public function test_check_status_returns_submission_status_dto(): void
     {
         Http::fake([
             'platform.test/*' => Http::response([
                 'tracking_id' => 'trk-sub-001',
                 'status' => 'enriched',
                 'enrichment_quality' => 'full',
-                'product' => [
+                'enriched_data' => [
                     'name' => 'Brake Pad Set',
-                    'barcode' => '3017620422003',
+                    'assigned_barcode' => '3017620422003',
                 ],
             ]),
         ]);
@@ -83,13 +83,35 @@ class ProductSubmissionServiceTest extends TestCase
         $result = $this->service->checkStatus('trk-sub-001');
 
         $this->assertNotNull($result);
-        $this->assertSame('trk-sub-001', $result['tracking_id']);
-        $this->assertSame('enriched', $result['status']);
+        $this->assertInstanceOf(\App\Shared\DTOs\SubmissionStatusDTO::class, $result);
+        $this->assertSame('trk-sub-001', $result->trackingId);
+        $this->assertSame('enriched', $result->status);
+        $this->assertSame('full', $result->enrichmentQuality);
+        $this->assertSame('3017620422003', $result->assignedBarcode);
+        $this->assertSame('Brake Pad Set', $result->enrichedData['name']);
 
         Http::assertSent(function (\Illuminate\Http\Client\Request $request) {
             return str_contains($request->url(), '/api/v1/products/lookup-status/trk-sub-001')
                 && $request->method() === 'GET';
         });
+    }
+
+    public function test_check_status_raw_returns_array(): void
+    {
+        Http::fake([
+            'platform.test/*' => Http::response([
+                'tracking_id' => 'trk-sub-001',
+                'status' => 'enriched',
+                'enrichment_quality' => 'full',
+            ]),
+        ]);
+
+        $result = $this->service->checkStatusRaw('trk-sub-001');
+
+        $this->assertNotNull($result);
+        $this->assertIsArray($result);
+        $this->assertSame('trk-sub-001', $result['tracking_id']);
+        $this->assertSame('enriched', $result['status']);
     }
 
     public function test_request_upload_url_returns_presigned_data(): void
