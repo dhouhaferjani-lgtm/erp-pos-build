@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Plus, X, Image } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPost, apiPatch } from '../../lib/api'
+import { colors } from '../../lib/designTokens'
 import { CategorySelect } from '../../components/catalog/CategorySelect'
 import { StickyFormFooter } from '../../components/molecules/StickyFormFooter/StickyFormFooter'
 import { BarcodeLookupInput } from './components/BarcodeLookupInput'
@@ -153,6 +154,7 @@ export function ProductForm() {
     setLookupState(state)
     if (state === 'idle') {
       suggestedProductRef.current = null
+      setPrefilledFields(new Set())
     }
   }, [])
 
@@ -336,8 +338,7 @@ export function ProductForm() {
                     })
                   },
                 })}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                style={prefilledFields.has('name') ? { backgroundColor: '#f0fdf4' } : undefined}
+                className={`mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ${prefilledFields.has('name') ? colors.success[50] : ''}`}
               />
               {errors.name && (
                 <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
@@ -456,8 +457,7 @@ export function ProductForm() {
                     })
                   },
                 })}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                style={prefilledFields.has('description') ? { backgroundColor: '#f0fdf4' } : undefined}
+                className={`mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ${prefilledFields.has('description') ? colors.success[50] : ''}`}
               />
             </div>
           </div>
