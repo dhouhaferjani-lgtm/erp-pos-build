@@ -87,7 +87,7 @@ class ProductSubmissionServiceTest extends TestCase
         $this->assertSame('enriched', $result['status']);
 
         Http::assertSent(function (\Illuminate\Http\Client\Request $request) {
-            return str_contains($request->url(), '/api/v1/products/status/trk-sub-001')
+            return str_contains($request->url(), '/api/v1/products/lookup-status/trk-sub-001')
                 && $request->method() === 'GET';
         });
     }
@@ -109,7 +109,7 @@ class ProductSubmissionServiceTest extends TestCase
         $this->assertSame('photo-abc-123', $result['photo_id']);
 
         Http::assertSent(function (\Illuminate\Http\Client\Request $request) {
-            return str_contains($request->url(), '/api/v1/products/uploads/request')
+            return str_contains($request->url(), '/api/v1/products/upload-url')
                 && $request->data()['filename'] === 'product.jpg'
                 && $request->data()['content_type'] === 'image/jpeg'
                 && $request->data()['size_bytes'] === 524288;
@@ -158,7 +158,7 @@ class ProductSubmissionServiceTest extends TestCase
         $this->assertCount(2, $result['attributes']);
 
         Http::assertSent(function (\Illuminate\Http\Client\Request $request) {
-            return str_contains($request->url(), '/api/v1/products/categories/automotive/brake-pads/attributes')
+            return str_contains($request->url(), '/api/v1/verticals/automotive/categories/brake-pads/attributes')
                 && $request->method() === 'GET';
         });
     }

@@ -23,7 +23,7 @@ final class ProductSubmissionService
      */
     public function requestUploadUrl(string $filename, string $contentType, int $sizeBytes): ?array
     {
-        return $this->platformClient->postRaw('/api/v1/products/uploads/request', [
+        return $this->platformClient->postRaw('/api/v1/products/upload-url', [
             'filename' => $filename,
             'content_type' => $contentType,
             'size_bytes' => $sizeBytes,
@@ -85,7 +85,7 @@ final class ProductSubmissionService
             'photo_ids' => $s->photoIds,
         ], $submissions);
 
-        return $this->platformClient->postRaw('/api/v1/products/submit/bulk', [
+        return $this->platformClient->postRaw('/api/v1/products/bulk-submit', [
             'vertical' => $vertical,
             'auto_enrich' => $autoEnrich,
             'items' => $items,
@@ -100,7 +100,7 @@ final class ProductSubmissionService
      */
     public function bulkLookup(array $barcodes, string $vertical): ?array
     {
-        return $this->platformClient->postRaw('/api/v1/products/lookup/bulk', [
+        return $this->platformClient->postRaw('/api/v1/products/bulk-lookup', [
             'barcodes' => $barcodes,
             'vertical' => $vertical,
         ]);
@@ -113,7 +113,7 @@ final class ProductSubmissionService
      */
     public function checkStatus(string $trackingId): ?array
     {
-        return $this->platformClient->getRaw('/api/v1/products/status/'.$trackingId);
+        return $this->platformClient->getRaw('/api/v1/products/lookup-status/'.$trackingId);
     }
 
     /**
@@ -137,6 +137,6 @@ final class ProductSubmissionService
      */
     public function getCategoryAttributes(string $vertical, string $category): ?array
     {
-        return $this->platformClient->getRaw('/api/v1/products/categories/'.$vertical.'/'.$category.'/attributes');
+        return $this->platformClient->getRaw('/api/v1/verticals/'.$vertical.'/categories/'.$category.'/attributes');
     }
 }
