@@ -15,7 +15,10 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
 use App\Modules\Inventory\Application\Services\InventoryService;
 use App\Modules\Partner\Application\Services\PartnerService;
+use App\Modules\PlatformIntegration\Application\Services\ProductSubmissionService;
 use App\Modules\Product\Application\Services\ProductService;
+use App\Modules\Product\Infrastructure\Services\ProductEnrichmentQueryService;
+use App\Modules\Product\Infrastructure\Services\ProductInventoryQueryService;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Observers\TenantObserver;
 use App\Services\CompanyConfigService;
@@ -23,9 +26,12 @@ use App\Services\ProductService as AppProductService;
 use App\Services\VerticalConfigService;
 use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\EnrichmentQueryInterface;
 use App\Shared\Contracts\InventoryServiceInterface;
 use App\Shared\Contracts\LocationServiceInterface;
 use App\Shared\Contracts\PartnerServiceInterface;
+use App\Shared\Contracts\PlatformSubmissionInterface;
+use App\Shared\Contracts\ProductInventoryQueryInterface;
 use App\Shared\Contracts\ProductServiceInterface;
 use App\Shared\Infrastructure\CurrencyScaleResolver;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -70,6 +76,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(InventoryServiceInterface::class, InventoryService::class);
         $this->app->bind(LocationServiceInterface::class, LocationService::class);
         $this->app->bind(AccountingServiceInterface::class, AccountingService::class);
+        $this->app->bind(PlatformSubmissionInterface::class, ProductSubmissionService::class);
+        $this->app->bind(EnrichmentQueryInterface::class, ProductEnrichmentQueryService::class);
+        $this->app->bind(ProductInventoryQueryInterface::class, ProductInventoryQueryService::class);
     }
 
     /**

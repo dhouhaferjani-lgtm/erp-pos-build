@@ -13,7 +13,7 @@ use App\Modules\Product\Application\DTOs\EnrichedProductData;
 use App\Modules\Product\Application\Services\EnrichmentReviewService;
 use App\Modules\Product\Domain\EnrichmentResult;
 use App\Modules\Product\Domain\Enums\EnrichmentReviewStatus;
-use App\Modules\Product\Domain\Enums\EnrichmentStatus;
+use App\Shared\Enums\EnrichmentStatus;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;

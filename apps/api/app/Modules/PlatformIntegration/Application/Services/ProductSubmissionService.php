@@ -7,10 +7,12 @@ namespace App\Modules\PlatformIntegration\Application\Services;
 use App\Modules\PlatformIntegration\Application\DTOs\ProductSubmissionData;
 use App\Modules\PlatformIntegration\Application\DTOs\SubmissionResultData;
 use App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient;
+use App\Shared\Contracts\PlatformSubmissionInterface;
+use App\Shared\DTOs\SubmissionStatusDTO;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
-final class ProductSubmissionService
+final class ProductSubmissionService implements PlatformSubmissionInterface
 {
     public function __construct(
         private readonly PlatformHttpClient $platformClient,
@@ -107,11 +109,27 @@ final class ProductSubmissionService
     }
 
     /**
-     * Check the enrichment status of a previously submitted product.
+     * Check the enrichment status of a previously submitted product (typed DTO).
+     *
+     * Implements PlatformSubmissionInterface for cross-module use.
+     */
+    public function checkStatus(string $trackingId): ?SubmissionStatusDTO
+    {
+        $response = $this->checkStatusRaw($trackingId);
+
+        if ($response === null) {
+            return null;
+        }
+
+        return SubmissionStatusDTO::fromApiResponse($response);
+    }
+
+    /**
+     * Check the enrichment status — raw array response for internal use.
      *
      * @return array<string, mixed>|null
      */
-    public function checkStatus(string $trackingId): ?array
+    public function checkStatusRaw(string $trackingId): ?array
     {
         return $this->platformClient->getRaw('/api/v1/products/lookup-status/'.$trackingId);
     }
