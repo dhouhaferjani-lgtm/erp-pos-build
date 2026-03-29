@@ -1,4 +1,4 @@
-import { textColors, colors } from '@/lib/designTokens'
+import { tokens, textColors, colors } from '@/lib/designTokens'
 
 interface FieldComparisonRowProps {
   label: string
@@ -32,7 +32,7 @@ export function FieldComparisonRow({
           type="checkbox"
           checked={checked}
           onChange={onToggle}
-          className="mt-1 h-4 w-4 rounded accent-green-600"
+          className={`mt-1 ${tokens.checkbox.base}`}
         />
         <div className="flex-1">
           <div className={`mb-1 text-xs ${textColors.secondary}`}>{label}</div>

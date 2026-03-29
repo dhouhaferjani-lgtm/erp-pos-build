@@ -109,6 +109,7 @@ export const borderColors = {
   warning: 'border-yellow-500',
   hover: 'hover:border-gray-300',
   divideLight: 'divide-gray-100',
+  divideDefault: 'divide-gray-200',
   leftError: 'border-l-red-500',
   leftWarning: 'border-l-yellow-500',
   leftPrimary: 'border-l-blue-500',
