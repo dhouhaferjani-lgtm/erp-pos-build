@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { tokens } from '@/lib/designTokens'
+import { tokens, borderColors } from '@/lib/designTokens'
 import type { LookupState } from '../types/platform'
 
 interface CatalogBannerProps {
@@ -17,7 +17,7 @@ export function CatalogBanner({ state, confidenceTier }: CatalogBannerProps) {
   if (state === 'found') {
     return (
       <div
-        className={`flex items-center gap-2 rounded-lg border px-3.5 py-2.5 text-sm ${tokens.alert.success}`}
+        className={`flex items-center gap-2 rounded-lg border px-3.5 py-2.5 text-sm ${tokens.alert.success} ${borderColors.success}`}
       >
         <span className="text-base">{'\u2713'}</span>
         <span className="font-medium">{t('barcodeLookup.catalogFound')}</span>
@@ -33,7 +33,7 @@ export function CatalogBanner({ state, confidenceTier }: CatalogBannerProps) {
   if (state === 'not_found') {
     return (
       <div
-        className={`flex items-center gap-2 rounded-lg border px-3.5 py-2.5 text-sm ${tokens.alert.warning}`}
+        className={`flex items-center gap-2 rounded-lg border px-3.5 py-2.5 text-sm ${tokens.alert.warning} ${borderColors.warning}`}
       >
         <span className="text-base">{'\u2139'}</span>
         <span className="font-medium">{t('barcodeLookup.notInCatalog')}</span>
@@ -43,7 +43,7 @@ export function CatalogBanner({ state, confidenceTier }: CatalogBannerProps) {
 
   return (
     <div
-      className={`flex items-center gap-2 rounded-lg border px-3.5 py-2.5 text-sm ${tokens.alert.error}`}
+      className={`flex items-center gap-2 rounded-lg border px-3.5 py-2.5 text-sm ${tokens.alert.error} ${borderColors.error}`}
     >
       <span className="text-base">{'\u26A0'}</span>
       <span className="font-medium">{t('barcodeLookup.catalogUnavailable')}</span>
