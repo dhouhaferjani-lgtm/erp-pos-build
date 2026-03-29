@@ -38,7 +38,7 @@ export function EnrichmentQueueTable({
 
   return (
     <div className={`overflow-x-auto rounded-lg border ${borderColors.light}`}>
-      <table className="min-w-full divide-y divide-gray-200">
+      <table className={`min-w-full divide-y ${borderColors.divideDefault}`}>
         <thead className={colors.neutral[50]}>
           <tr>
             <th className="w-10 px-3 py-3">
@@ -66,12 +66,12 @@ export function EnrichmentQueueTable({
             </th>
           </tr>
         </thead>
-        <tbody className={`${colors.white} divide-y divide-gray-200`}>
+        <tbody className={`${colors.white} divide-y ${borderColors.divideDefault}`}>
           {results.map((result) => (
             <tr
               key={result.id}
               onClick={() => onRowClick(result.id)}
-              className="cursor-pointer hover:bg-gray-50 transition-colors"
+              className={`cursor-pointer ${colors.hover.gray50} transition-colors`}
             >
               <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                 <input
