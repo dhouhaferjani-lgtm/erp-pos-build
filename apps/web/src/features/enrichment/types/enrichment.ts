@@ -1,0 +1,53 @@
+export interface EnrichedProductData {
+  name: string
+  brand: string | null
+  description: string | null
+  classification: Record<string, unknown>
+  ingredients: string[]
+  images: Array<{ url: string; type?: string }>
+  confidence_score: number
+  enrichment_tier: string | null
+  field_confidence: Record<string, number> | null
+  enrichment_sources: string[] | null
+  assigned_barcode: string | null
+  assigned_barcode_type: string | null
+}
+
+export interface EnrichmentResult {
+  id: string
+  product_id: string
+  product_name: string
+  product_barcode: string | null
+  product_sku: string | null
+  tracking_id: string
+  status: 'pending_review' | 'accepted' | 'rejected'
+  enriched_data: EnrichedProductData
+  enrichment_quality: 'high' | 'medium' | 'low'
+  assigned_barcode: string | null
+  reviewed_at: string | null
+  reviewed_by: string | null
+  accepted_fields: Record<string, boolean> | null
+  rejection_reason: string | null
+  created_at: string
+}
+
+export interface EnrichmentResultsPage {
+  data: EnrichmentResult[]
+  meta: {
+    current_page: number
+    last_page: number
+    per_page: number
+    total: number
+    timestamp: string
+    request_id: string
+  }
+}
+
+export interface ComparisonField {
+  key: string
+  label: string
+  userValue: string | null
+  enrichedValue: string | null
+  confidence: number | null
+  checked: boolean
+}
