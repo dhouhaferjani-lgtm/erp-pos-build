@@ -11,7 +11,8 @@
     "enrichmentDescription": "Product data will be enriched by Syneriva after saving",
     "toastSavedWithCatalog": "Product saved with catalog data.",
     "toastSavedWithEnrichment": "Product saved. Submitted for catalog enrichment.",
-    "toastEnrichmentFailed": "Product saved but enrichment submission failed."
+    "toastEnrichmentFailed": "Product saved but enrichment submission failed.",
+    "clearBarcode": "Clear barcode"
   },
   "goodsReceipt": {
     "title": "Goods Receipts",
