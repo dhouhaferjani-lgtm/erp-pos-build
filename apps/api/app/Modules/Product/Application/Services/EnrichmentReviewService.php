@@ -83,8 +83,9 @@ final class EnrichmentReviewService
             $product->update($updates);
         }
 
-        // Clear enrichment tracking from product
+        // Link to platform product and clear enrichment tracking
         $product->update([
+            'platform_product_id' => $enrichmentResult->tracking_id,
             'enrichment_status' => null,
             'platform_submission_id' => null,
         ]);
@@ -117,6 +118,7 @@ final class EnrichmentReviewService
 
         $enrichmentResult->product->update([
             'enrichment_status' => EnrichmentStatus::Rejected,
+            'platform_submission_id' => null,
         ]);
     }
 
