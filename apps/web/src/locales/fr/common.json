@@ -150,6 +150,7 @@
     "stockLevels": "Niveaux de stock",
     "stockMovements": "Mouvements de stock",
     "counting": "Inventaire physique",
+    "enrichmentQueue": "File d'enrichissement",
     "inventoryCounting": "Inventaire physique",
     "priceLists": "Listes de prix",
     "compositeItems": "Articles composés",

@@ -50,6 +50,7 @@ import {
   Ticket,
   Building2,
   Search,
+  Sparkles,
 } from 'lucide-react'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useCompanyConfig } from '../../../contexts'
@@ -136,6 +137,7 @@ function buildNavigation(isOtospex: boolean): NavModule[] {
     { key: 'stockLevels', href: '/inventory/stock', icon: Layers },
     { key: 'stockMovements', href: '/inventory/movements', icon: ArrowLeftRight },
     { key: 'counting', href: '/inventory/counting', icon: ClipboardCheck },
+    { key: 'enrichmentQueue', href: '/inventory/enrichment-results', icon: Sparkles },
     { key: 'priceLists', href: '/pricing/price-lists', icon: Tag, module: 'pricing' },
     { key: 'compositeItems', href: '/catalog/composite-items', icon: Combine, module: 'composite-items' },
     { key: 'modifierGroups', href: '/catalog/modifier-groups', icon: Layers, module: 'modifier-groups' },

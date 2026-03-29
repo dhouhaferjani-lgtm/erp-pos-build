@@ -98,6 +98,9 @@ const CountingDetailPage = lazy(() => import('../features/inventory-counting/pag
 const CountingReviewPage = lazy(() => import('../features/inventory-counting/pages/CountingReviewPage').then((m) => ({ default: m.CountingReviewPage })))
 const DiscrepancyReportPage = lazy(() => import('../features/inventory-counting/pages/DiscrepancyReportPage').then((m) => ({ default: m.DiscrepancyReportPage })))
 
+// Enrichment module
+const EnrichmentQueuePage = lazy(() => import('../features/enrichment/pages/EnrichmentQueuePage').then((m) => ({ default: m.EnrichmentQueuePage })))
+
 // Parts Catalog module
 const PartsCatalogPage = lazy(() => import('../features/parts-catalog/pages/PartsCatalogPage').then((m) => ({ default: m.PartsCatalogPage })))
 const ArticleDetailPageCatalog = lazy(() => import('../features/parts-catalog/pages/ArticleDetailPage').then((m) => ({ default: m.ArticleDetailPage })))
@@ -1033,6 +1036,17 @@ export function AppRoutes() {
               <RequirePermission moduleKey="inventory">
                 <SuspenseWrapper>
                   <DiscrepancyReportPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+
+          <Route
+            path="enrichment-results"
+            element={
+              <RequirePermission moduleKey="inventory">
+                <SuspenseWrapper>
+                  <EnrichmentQueuePage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

@@ -1,0 +1,43 @@
+{
+  "queue": {
+    "title": "Enrichment Queue",
+    "summary": "{{total}} items pending review",
+    "summaryDetail": "{{high}} high · {{medium}} medium · {{low}} low",
+    "filterAll": "All qualities",
+    "filterHigh": "High",
+    "filterMedium": "Medium",
+    "filterLow": "Low",
+    "bulkAcceptHigh": "Accept all high-confidence",
+    "bulkAcceptConfirm": "Accept {{count}} high-confidence enrichments? All fields will be merged.",
+    "bulkAcceptProgress": "Accepting {{count}} enrichments...",
+    "bulkAcceptSuccess": "{{count}} enrichments accepted.",
+    "emptyState": "No enrichment results to review.",
+    "columns": {
+      "product": "Product",
+      "barcode": "Barcode",
+      "quality": "Quality",
+      "assignedBarcode": "Assigned Barcode",
+      "submitted": "Submitted"
+    }
+  },
+  "review": {
+    "yourData": "Your Data",
+    "enrichedData": "Enriched Data",
+    "acceptSelected": "Accept selected fields",
+    "reject": "Reject",
+    "rejectReason": "Reason (optional)",
+    "confirmReject": "Confirm reject",
+    "cancelReject": "Cancel",
+    "accepted": "Enrichment accepted.",
+    "rejected": "Enrichment rejected.",
+    "acceptFailed": "Failed to accept enrichment. Please try again.",
+    "rejectFailed": "Failed to reject enrichment. Please try again.",
+    "barcodeAssigned": "Syneriva barcode assigned: {{barcode}}",
+    "checkboxHint": "✓ checked = high confidence · ☐ unchecked = low confidence · Toggle any field"
+  },
+  "quality": {
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low"
+  }
+}
