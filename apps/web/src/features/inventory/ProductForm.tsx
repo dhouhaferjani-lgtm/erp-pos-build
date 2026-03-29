@@ -1,12 +1,17 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Plus, X, Image } from 'lucide-react'
+import { toast } from 'sonner'
 import { api, apiPost, apiPatch } from '../../lib/api'
 import { CategorySelect } from '../../components/catalog/CategorySelect'
 import { StickyFormFooter } from '../../components/molecules/StickyFormFooter/StickyFormFooter'
+import { BarcodeLookupInput } from './components/BarcodeLookupInput'
+import { CatalogBanner } from './components/CatalogBanner'
+import { useProductSubmission } from './api/platformQueries'
+import type { LookupState, SuggestedProduct } from './types/platform'
 import { ProductImageSection, ParapharmacyMetadataFields } from '../products/components'
 import { useCompanyConfig } from '../../contexts/CompanyConfigContext'
 import { useCurrency } from '../../hooks/useCurrency'
@@ -81,6 +86,12 @@ export function ProductForm() {
   const { decimals } = useCurrency()
 
   const [oemInput, setOemInput] = useState('')
+  const [lookupState, setLookupState] = useState<LookupState>('idle')
+  const [enrichmentOptIn, setEnrichmentOptIn] = useState(true)
+  const suggestedProductRef = useRef<SuggestedProduct | null>(null)
+  const [prefilledFields, setPrefilledFields] = useState<Set<string>>(new Set())
+
+  const submissionMutation = useProductSubmission()
 
   const {
     register,
@@ -120,6 +131,30 @@ export function ProductForm() {
       },
     },
   })
+
+  const handleProductData = useCallback((data: SuggestedProduct) => {
+    suggestedProductRef.current = data
+    const filled = new Set<string>()
+    if (data.name) {
+      setValue('name', data.name, { shouldDirty: false })
+      filled.add('name')
+    }
+    if (data.description) {
+      setValue('description', data.description, { shouldDirty: false })
+      filled.add('description')
+    }
+    if (data.barcode) {
+      setValue('barcode', data.barcode, { shouldDirty: false })
+    }
+    setPrefilledFields(filled)
+  }, [setValue])
+
+  const handleLookupStateChange = useCallback((state: LookupState) => {
+    setLookupState(state)
+    if (state === 'idle') {
+      suggestedProductRef.current = null
+    }
+  }, [])
 
   const oemNumbers = watch('oem_numbers')
   const categoryId = watch('category_id')
@@ -180,7 +215,6 @@ export function ProductForm() {
     mutationFn: (data: ProductFormData) => apiPost<Product>('/products', data),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['products'] })
-      void navigate('/inventory/products')
     },
   })
 
@@ -193,11 +227,35 @@ export function ProductForm() {
     },
   })
 
-  const onSubmit = (data: ProductFormData) => {
+  const onSubmit = async (data: ProductFormData) => {
     if (isEditing) {
       updateMutation.mutate(data)
-    } else {
-      createMutation.mutate(data)
+      return
+    }
+
+    try {
+      await createMutation.mutateAsync(data)
+
+      if (lookupState === 'not_found' && enrichmentOptIn) {
+        const payload: Parameters<typeof submissionMutation.mutate>[0] = {
+          barcode: data.barcode || null,
+          name: data.name,
+          brand: suggestedProductRef.current?.brand ?? '',
+        }
+        if (data.description) {
+          payload.description = data.description
+        }
+        submissionMutation.mutate(payload)
+        toast.success(t('inventory:barcodeLookup.toastSavedWithEnrichment'))
+      } else if (lookupState === 'found') {
+        toast.success(t('inventory:barcodeLookup.toastSavedWithCatalog'))
+      } else {
+        toast.success(t('inventory:barcodeLookup.toastProductSaved'))
+      }
+
+      void navigate('/inventory/products')
+    } catch {
+      // Error handling via react-query
     }
   }
 
@@ -246,6 +304,16 @@ export function ProductForm() {
 
       {/* Form */}
       <form onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="flex flex-1 flex-col gap-6">
+        {/* Catalog Lookup Banner */}
+        <CatalogBanner
+          state={lookupState}
+          confidenceTier={
+            lookupState === 'found' && suggestedProductRef.current
+              ? (suggestedProductRef.current.classification?.['enrichment_tier'] as string) ?? null
+              : null
+          }
+        />
+
         {/* Basic Information */}
         <div className="rounded-lg border border-gray-200 bg-white p-6">
           <h2 className="mb-4 text-lg font-semibold text-gray-900">Basic Information</h2>
@@ -257,8 +325,19 @@ export function ProductForm() {
               <input
                 type="text"
                 id="name"
-                {...register('name', { required: 'Name is required' })}
+                {...register('name', {
+                  required: 'Name is required',
+                  onChange: () => {
+                    setPrefilledFields((prev) => {
+                      if (!prev.has('name')) return prev
+                      const next = new Set(prev)
+                      next.delete('name')
+                      return next
+                    })
+                  },
+                })}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                style={prefilledFields.has('name') ? { backgroundColor: '#f0fdf4' } : undefined}
               />
               {errors.name && (
                 <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
@@ -322,15 +401,30 @@ export function ProductForm() {
             </div>
 
             <div>
-              <label htmlFor="barcode" className="block text-sm font-medium text-gray-700">
-                Barcode
-              </label>
-              <input
-                type="text"
-                id="barcode"
-                {...register('barcode')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              <BarcodeLookupInput
+                onProductData={handleProductData}
+                onLookupStateChange={handleLookupStateChange}
+                defaultBarcode={product?.barcode ?? ''}
               />
+              <input type="hidden" {...register('barcode')} />
+
+              {/* Enrichment opt-in checkbox */}
+              {lookupState === 'not_found' && (
+                <div className="mt-3 flex items-center gap-2.5 rounded-lg bg-neutral-100 px-3.5 py-3">
+                  <input
+                    type="checkbox"
+                    id="enrichment-opt-in"
+                    checked={enrichmentOptIn}
+                    onChange={(e) => setEnrichmentOptIn(e.target.checked)}
+                    className="h-4 w-4 rounded"
+                  />
+                  <label htmlFor="enrichment-opt-in" className="text-sm">
+                    <span className="font-medium">{t('inventory:barcodeLookup.enrichmentCheckbox')}</span>
+                    <br />
+                    <span className="text-xs opacity-70">{t('inventory:barcodeLookup.enrichmentDescription')}</span>
+                  </label>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
@@ -352,8 +446,18 @@ export function ProductForm() {
               <textarea
                 id="description"
                 rows={3}
-                {...register('description')}
+                {...register('description', {
+                  onChange: () => {
+                    setPrefilledFields((prev) => {
+                      if (!prev.has('description')) return prev
+                      const next = new Set(prev)
+                      next.delete('description')
+                      return next
+                    })
+                  },
+                })}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                style={prefilledFields.has('description') ? { backgroundColor: '#f0fdf4' } : undefined}
               />
             </div>
           </div>

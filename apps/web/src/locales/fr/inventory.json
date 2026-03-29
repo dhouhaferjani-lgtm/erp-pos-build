@@ -12,7 +12,8 @@
     "toastSavedWithCatalog": "Produit enregistr\u00e9 avec les donn\u00e9es du catalogue.",
     "toastSavedWithEnrichment": "Produit enregistr\u00e9. Soumis pour enrichissement catalogue.",
     "toastEnrichmentFailed": "Produit enregistr\u00e9 mais la soumission d'enrichissement a \u00e9chou\u00e9.",
-    "clearBarcode": "Effacer le code-barres"
+    "clearBarcode": "Effacer le code-barres",
+    "toastProductSaved": "Produit enregistr\u00e9 avec succ\u00e8s."
   },
   "goodsReceipt": {
     "title": "Bons de reception",
