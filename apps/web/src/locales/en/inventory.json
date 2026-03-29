@@ -1,4 +1,18 @@
 {
+  "barcodeLookup": {
+    "placeholder": "Scan or type barcode...",
+    "searching": "Looking up...",
+    "catalogFound": "Data from Syneriva Catalog",
+    "confidence": "Confidence: {{tier}}",
+    "notInCatalog": "Not in catalog — fill in details manually",
+    "catalogUnavailable": "Catalog unavailable — enter details manually",
+    "invalidBarcode": "Invalid barcode format",
+    "enrichmentCheckbox": "Submit for catalog enrichment",
+    "enrichmentDescription": "Product data will be enriched by Syneriva after saving",
+    "toastSavedWithCatalog": "Product saved with catalog data.",
+    "toastSavedWithEnrichment": "Product saved. Submitted for catalog enrichment.",
+    "toastEnrichmentFailed": "Product saved but enrichment submission failed."
+  },
   "goodsReceipt": {
     "title": "Goods Receipts",
     "description": "Receive goods from confirmed purchase orders",
