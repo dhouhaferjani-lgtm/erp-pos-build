@@ -83,9 +83,10 @@ final class EnrichmentReviewService
             $product->update($updates);
         }
 
-        // Link to platform product and clear enrichment tracking
+        // Clear enrichment tracking from product
+        // Note: platform_product_id is set during barcode lookup when a match is found.
+        // The enrichment flow uses tracking_id (submission ID), not the canonical product ID.
         $product->update([
-            'platform_product_id' => $enrichmentResult->tracking_id,
             'enrichment_status' => null,
             'platform_submission_id' => null,
         ]);

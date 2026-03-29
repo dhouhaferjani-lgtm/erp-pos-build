@@ -10,7 +10,7 @@ use Illuminate\Notifications\Notification;
 /**
  * Notification sent to company users when product enrichment completes.
  */
-class EnrichmentCompletedNotification extends Notification
+final class EnrichmentCompletedNotification extends Notification
 {
     public function __construct(
         private readonly EnrichmentResult $enrichmentResult,
