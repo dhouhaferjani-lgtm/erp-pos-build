@@ -118,7 +118,7 @@ export function BarcodeLookupInput({
               type="button"
               onClick={handleClear}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-sm opacity-50 hover:opacity-100"
-              aria-label="Clear barcode"
+              aria-label={t('barcodeLookup.clearBarcode')}
             >
               {'\u2715'}
             </button>
