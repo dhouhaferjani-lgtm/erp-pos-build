@@ -527,7 +527,7 @@ export function POSPage({
         </div>
 
         {/* Smart Prompts — toast variant overlays product grid area */}
-        {config?.smart_prompts_variant === 'toast' && (
+        {(config?.smart_prompts_variant === 'toast' || config?.smart_prompts_variant === 'both') && (
           <div className="relative">
             <SmartPromptsContainer
               cartItems={cartItems}
@@ -546,7 +546,7 @@ export function POSPage({
         >
           <TransactionCart
             items={cartItems}
-            smartPromptsSlot={config?.smart_prompts_variant === 'inline' ? (
+            smartPromptsSlot={(config?.smart_prompts_variant === 'inline' || config?.smart_prompts_variant === 'both') ? (
               <SmartPromptsContainer
                 cartItems={cartItems}
                 customerId={selectedCustomer?.id ?? null}
