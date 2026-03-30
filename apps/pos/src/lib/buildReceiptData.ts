@@ -96,7 +96,7 @@ export function buildEscPosReceiptData(
       method: p.payment_method.name,
       amount: p.amount,
     })),
-    change_due: changeDue.toFixed(decimals),
+    change_due: changeDue,
     fiscal_hash: receipt.fiscal_hash,
     fiscal_signature: null,
     customer_name: receipt.customer_name,
