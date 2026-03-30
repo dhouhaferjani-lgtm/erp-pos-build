@@ -8,5 +8,6 @@ enum SmartPromptsVariant: string
 {
     case Inline = 'inline';
     case Toast = 'toast';
+    case Both = 'both';
     case Off = 'off';
 }

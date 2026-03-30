@@ -533,7 +533,7 @@ export function HomePage() {
   };
 
   const smartPromptsInline =
-    smartPromptsVariant === 'inline' ? (
+    smartPromptsVariant === 'inline' || smartPromptsVariant === 'both' ? (
       <InlineSmartPrompts {...smartPromptsSharedProps} />
     ) : undefined;
 
@@ -647,7 +647,7 @@ export function HomePage() {
             />
           ) : undefined}
         />
-        {smartPromptsVariant === 'toast' && (
+        {(smartPromptsVariant === 'toast' || smartPromptsVariant === 'both') && (
           <div className="relative">
             <ToastSmartPrompts {...smartPromptsSharedProps} />
           </div>

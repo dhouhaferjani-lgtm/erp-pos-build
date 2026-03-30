@@ -62,6 +62,15 @@ export function SmartPromptsContainer({
     isLoading: result.isLoading,
   }
 
+  if (variant === 'both') {
+    return (
+      <>
+        <InlineSmartPrompts {...sharedProps} />
+        <ToastSmartPrompts {...sharedProps} />
+      </>
+    )
+  }
+
   if (variant === 'toast') {
     return <ToastSmartPrompts {...sharedProps} />
   }

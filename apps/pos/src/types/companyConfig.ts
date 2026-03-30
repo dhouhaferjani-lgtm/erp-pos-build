@@ -10,5 +10,5 @@ export interface CompanyConfig {
   receipt_visibility?: ReceiptVisibility;
   vertical?: string;
   smart_prompts_enabled?: boolean;
-  smart_prompts_variant?: 'inline' | 'toast' | 'off';
+  smart_prompts_variant?: 'inline' | 'toast' | 'both' | 'off';
 }
