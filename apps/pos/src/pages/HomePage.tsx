@@ -29,6 +29,10 @@ import { LineDiscountModal } from '@/components/organisms/LineDiscountModal';
 import { ModifierSelectionModal } from '@/components/organisms/ModifierSelectionModal';
 import { VoidReturnModal } from '@/components/organisms/VoidReturnModal';
 import { QuantityNumpad } from '@/components/organisms/QuantityNumpad';
+import { useSmartPromptsStore } from '@/stores/smartPromptsStore';
+import { InlineSmartPrompts } from '@/components/organisms/InlineSmartPrompts';
+import { ToastSmartPrompts } from '@/components/organisms/ToastSmartPrompts';
+import { apiGet } from '@/lib/api';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { ConsumptionMode } from '@/components/atoms/ConsumptionModeToggle';
 import type { POSProduct } from '@/types/product';
@@ -64,6 +68,16 @@ export function HomePage() {
   const discountAmount = useCartStore((s) => s.discountAmount);
   const total = useCartStore((s) => s.total);
   const itemCount = useCartStore((s) => s.itemCount);
+
+  // Smart Prompts
+  const spRecommendations = useSmartPromptsStore((s) => s.recommendations);
+  const spIsLoading = useSmartPromptsStore((s) => s.isLoading);
+  const spContextFields = useSmartPromptsStore((s) => s.contextFields);
+  const spSkinType = useSmartPromptsStore((s) => s.skinType);
+  const spFetchForCart = useSmartPromptsStore((s) => s.fetchForCart);
+  const spSetSkinType = useSmartPromptsStore((s) => s.setSkinType);
+  const spClear = useSmartPromptsStore((s) => s.clear);
+  const smartPromptsVariant = companyConfig?.smart_prompts_variant ?? 'off';
 
   // Payment store
   const fetchPaymentConfig = usePaymentStore((s) => s.fetchPaymentConfig);
@@ -223,6 +237,23 @@ export function HomePage() {
     return () => { cancelled = true; };
   }, [showSuccessModal, lastReceipt, escPosData, receiptVisibility, isOfflineReceipt, cartItems, terminal, operator, paymentMethods, changeDue]);
 
+  // Smart Prompts: fetch recommendations when cart changes
+  useEffect(() => {
+    const productIds = cartItems.map((item) => item.product.id);
+    if (productIds.length > 0) {
+      spFetchForCart(productIds);
+    } else {
+      spClear();
+    }
+  }, [cartItems, spFetchForCart, spClear]);
+
+  useEffect(() => {
+    const productIds = cartItems.map((item) => item.product.id);
+    if (productIds.length > 0 && spSkinType !== null) {
+      spFetchForCart(productIds);
+    }
+  }, [spSkinType]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Cart product IDs for highlighting in grid
   const cartProductIds = useMemo(
     () => cartItems.map((item) => item.product.id),
@@ -255,6 +286,20 @@ export function HomePage() {
       }
     },
     [addItem, addItemWithDefaults],
+  );
+
+  const handleAddRecommendation = useCallback(
+    async (productId: string) => {
+      try {
+        const productData = await apiGet<POSProduct>(`/products/${productId}`);
+        if (productData) {
+          addItem(productData);
+        }
+      } catch {
+        // Silently fail — recommendation add is best-effort
+      }
+    },
+    [addItem],
   );
 
   const handleCustomize = useCallback(
@@ -478,6 +523,20 @@ export function HomePage() {
     }
   }, [clearCart, clearLastReceipt]);
 
+  const smartPromptsSharedProps = {
+    recommendations: spRecommendations,
+    contextFields: spContextFields,
+    skinType: spSkinType,
+    onSkinTypeChange: spSetSkinType,
+    onAdd: handleAddRecommendation,
+    isLoading: spIsLoading,
+  };
+
+  const smartPromptsInline =
+    smartPromptsVariant === 'inline' ? (
+      <InlineSmartPrompts {...smartPromptsSharedProps} />
+    ) : undefined;
+
   // Open shift screen
   if (!shift) {
     return (
@@ -560,6 +619,7 @@ export function HomePage() {
           onEditModifiers={handleEditModifiers}
           onRemoveDiscount={handleRemoveDiscount}
           paymentMethods={paymentMethods}
+          smartPromptsSlot={smartPromptsInline}
         />
       </div>
 
@@ -587,6 +647,11 @@ export function HomePage() {
             />
           ) : undefined}
         />
+        {smartPromptsVariant === 'toast' && (
+          <div className="relative">
+            <ToastSmartPrompts {...smartPromptsSharedProps} />
+          </div>
+        )}
       </div>
 
       {/* Cash payment screen */}
