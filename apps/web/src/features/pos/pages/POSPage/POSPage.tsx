@@ -524,18 +524,16 @@ export function POSPage({
             onBarcodeSubmit={handleBarcodeSubmit}
             isBarcodeSearching={barcodeStatus === 'searching'}
           />
-        </div>
 
-        {/* Smart Prompts — toast variant overlays product grid area */}
-        {(config?.smart_prompts_variant === 'toast' || config?.smart_prompts_variant === 'both') && (
-          <div className="relative">
+          {/* Smart Prompts — toast variant sticks to bottom of product grid */}
+          {(config?.smart_prompts_variant === 'toast' || config?.smart_prompts_variant === 'both') && (
             <SmartPromptsContainer
               cartItems={cartItems}
               customerId={selectedCustomer?.id ?? null}
               onAddRecommendation={handleAddRecommendation}
             />
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Transaction Cart - 40% wide on desktop, 50% tall on narrow screens */}
         <div

@@ -648,9 +648,7 @@ export function HomePage() {
           ) : undefined}
         />
         {(smartPromptsVariant === 'toast' || smartPromptsVariant === 'both') && (
-          <div className="relative">
-            <ToastSmartPrompts {...smartPromptsSharedProps} />
-          </div>
+          <ToastSmartPrompts {...smartPromptsSharedProps} />
         )}
       </div>
 
