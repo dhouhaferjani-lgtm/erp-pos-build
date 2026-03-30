@@ -28,6 +28,7 @@ export interface TransactionCartProps {
   onEditModifiers?: (itemId: string) => void;
   onRemoveDiscount?: () => void;
   paymentMethods?: PaymentMethod[];
+  smartPromptsSlot?: React.ReactNode;
 }
 
 export function TransactionCart({
@@ -52,6 +53,7 @@ export function TransactionCart({
   onEditModifiers,
   onRemoveDiscount,
   paymentMethods,
+  smartPromptsSlot,
 }: TransactionCartProps) {
   const { t } = useTranslation('pos');
 
@@ -116,6 +118,8 @@ export function TransactionCart({
           </div>
         )}
       </div>
+
+      {smartPromptsSlot}
 
       {/* Payment summary + actions */}
       <div className="px-3 pb-2">
