@@ -92,11 +92,10 @@ async function request<T>(
   });
 
   if (response.status === 401) {
-    const reqUrl = url;
-    if (!reqUrl.includes('/auth/me')) {
-      console.warn('[API] 401 on', reqUrl, '— triggering logout');
-      useAuthStore.getState().logout();
-    }
+    // Do NOT call logout() here — authStore.initialize() handles 401 from /auth/me.
+    // Calling logout() on any 401 causes a race condition during startup where
+    // terminal/sync API calls can trigger logout before session validation completes.
+    // Callers should handle 401 errors explicitly if needed.
     throw new ApiRequestError(401, 'Unauthorized', 'UNAUTHORIZED');
   }
 
