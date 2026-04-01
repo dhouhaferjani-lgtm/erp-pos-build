@@ -5,6 +5,8 @@ import { createReceipt, processReceiptPayments } from '@/api/receiptApi';
 import { useCartStore } from '@/stores/cartStore';
 import { useAuthStore } from '@/stores/authStore';
 import { getCurrencyDecimals } from '@/lib/currency';
+import { getDatabase } from '@/lib/db';
+import { getAllPaymentMethods, getAllPaymentRepositories } from '@/lib/db/repositories/paymentRepository';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import type { CartItem } from '@/types/cart';
 import type { CreateReceiptResponse, ProcessReceiptPaymentsResponse } from '@/types/receipt';
@@ -152,7 +154,21 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       ]);
       set({ paymentMethods: methods, paymentRepositories: repositories });
     } catch (error) {
-      console.error('Failed to fetch payment config:', error);
+      console.warn('[POS] API payment config failed, loading from SQLite:', error);
+      try {
+        const { companyId } = useAuthStore.getState();
+        const db = await getDatabase(companyId ?? '');
+        const [methods, repositories] = await Promise.all([
+          getAllPaymentMethods(db),
+          getAllPaymentRepositories(db),
+        ]);
+        if (methods.length > 0) {
+          set({ paymentMethods: methods, paymentRepositories: repositories });
+          console.info('[POS] Loaded payment config from SQLite cache');
+        }
+      } catch (dbError) {
+        console.error('[POS] SQLite fallback also failed:', dbError);
+      }
     }
   },
 
