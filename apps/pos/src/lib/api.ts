@@ -88,7 +88,7 @@ async function request<T>(
     method,
     headers: getHeaders(),
     body: body ? JSON.stringify(body) : undefined,
-    connectTimeout: 30000,
+    connectTimeout: 10000,
   });
 
   if (response.status === 401) {
