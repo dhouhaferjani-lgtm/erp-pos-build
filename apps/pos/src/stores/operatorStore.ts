@@ -1,5 +1,9 @@
 import { create } from 'zustand';
+import bcrypt from 'bcryptjs';
 import { apiGet, apiPost } from '@/lib/api';
+import { getDatabase } from '@/lib/db';
+import { getAllOperators, hasOperatorPins } from '@/lib/db/repositories/operatorPinRepository';
+import { useAuthStore } from '@/stores/authStore';
 
 export interface Operator {
   id: string;
@@ -36,16 +40,48 @@ const initialState: OperatorState = {
   hasPins: null,
 };
 
+async function getDb(): Promise<import('@tauri-apps/plugin-sql').default> {
+  const { companyId } = useAuthStore.getState();
+  return getDatabase(companyId ?? '');
+}
+
 export const useOperatorStore = create<OperatorStore>()((set) => ({
   ...initialState,
 
   verifyPin: async (pin: string) => {
-    const operator = await apiPost<Operator>('/pos/auth/verify-pin', { pin });
-    set({
-      operator,
-      isLocked: false,
-      lastActivity: Date.now(),
-    });
+    try {
+      const operator = await apiPost<Operator>('/pos/auth/verify-pin', { pin });
+      set({
+        operator,
+        isLocked: false,
+        lastActivity: Date.now(),
+      });
+    } catch {
+      // Offline fallback: verify against cached bcrypt hashes in SQLite
+      const db = await getDb();
+      const operators = await getAllOperators(db);
+
+      for (const op of operators) {
+        if (bcrypt.compareSync(pin, op.pin_hash)) {
+          set({
+            operator: {
+              id: op.id,
+              name: op.name,
+              email: op.email,
+              roles: op.roles,
+              permissions: op.permissions,
+              can_discount: op.can_discount,
+              max_discount_percent: op.max_discount_percent,
+            },
+            isLocked: false,
+            lastActivity: Date.now(),
+          });
+          return;
+        }
+      }
+
+      throw new Error('Invalid PIN');
+    }
   },
 
   setupPin: async (pin: string) => {
@@ -59,9 +95,21 @@ export const useOperatorStore = create<OperatorStore>()((set) => ({
   },
 
   checkHasPins: async () => {
-    const result = await apiGet<{ has_pins: boolean }>('/pos/auth/has-pins');
-    set({ hasPins: result.has_pins });
-    return result.has_pins;
+    try {
+      const result = await apiGet<{ has_pins: boolean }>('/pos/auth/has-pins');
+      set({ hasPins: result.has_pins });
+      return result.has_pins;
+    } catch {
+      // Offline fallback: check local SQLite cache
+      try {
+        const db = await getDb();
+        const hasPins = await hasOperatorPins(db);
+        set({ hasPins });
+        return hasPins;
+      } catch {
+        return false;
+      }
+    }
   },
 
   lock: () => {
