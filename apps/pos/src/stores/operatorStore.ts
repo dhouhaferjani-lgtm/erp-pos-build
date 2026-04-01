@@ -58,26 +58,30 @@ export const useOperatorStore = create<OperatorStore>()((set) => ({
       });
     } catch {
       // Offline fallback: verify against cached bcrypt hashes in SQLite
-      const db = await getDb();
-      const operators = await getAllOperators(db);
+      try {
+        const db = await getDb();
+        const operators = await getAllOperators(db);
 
-      for (const op of operators) {
-        if (bcrypt.compareSync(pin, op.pin_hash)) {
-          set({
-            operator: {
-              id: op.id,
-              name: op.name,
-              email: op.email,
-              roles: op.roles,
-              permissions: op.permissions,
-              can_discount: op.can_discount,
-              max_discount_percent: op.max_discount_percent,
-            },
-            isLocked: false,
-            lastActivity: Date.now(),
-          });
-          return;
+        for (const op of operators) {
+          if (bcrypt.compareSync(pin, op.pin_hash)) {
+            set({
+              operator: {
+                id: op.id,
+                name: op.name,
+                email: op.email,
+                roles: op.roles,
+                permissions: op.permissions,
+                can_discount: op.can_discount,
+                max_discount_percent: op.max_discount_percent,
+              },
+              isLocked: false,
+              lastActivity: Date.now(),
+            });
+            return;
+          }
         }
+      } catch (dbError) {
+        console.error('[POS] Offline PIN verification failed:', dbError);
       }
 
       throw new Error('Invalid PIN');
