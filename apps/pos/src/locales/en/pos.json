@@ -47,7 +47,10 @@
     "cardLastFour": "Last 4 digits",
     "transactionRef": "Reference",
     "morePaymentMethods": "More...",
-    "processingQuickCheckout": "Processing cash payment..."
+    "processingQuickCheckout": "Processing cash payment...",
+    "offlineSaved": "Sale saved locally",
+    "offlineWillSync": "Will sync automatically when connection resumes",
+    "pendingSyncCount": "{{count}} sale(s) pending sync"
   },
   "cashPayment": {
     "back": "Back",
