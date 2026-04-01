@@ -1,12 +1,12 @@
 import { create } from 'zustand';
 import i18n from '@/lib/i18n';
 import { fetchPaymentMethods, fetchPaymentRepositories } from '@/api/paymentApi';
-import { createReceipt, processReceiptPayments } from '@/api/receiptApi';
 import { useCartStore } from '@/stores/cartStore';
 import { useAuthStore } from '@/stores/authStore';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { getDatabase } from '@/lib/db';
 import { getAllPaymentMethods, getAllPaymentRepositories } from '@/lib/db/repositories/paymentRepository';
+import { executeCheckout, type CheckoutResult } from '@/lib/offline/offlineCheckoutService';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import type { CartItem } from '@/types/cart';
 import type { CreateReceiptResponse, ProcessReceiptPaymentsResponse } from '@/types/receipt';
@@ -15,6 +15,7 @@ interface PaymentState {
   paymentMethods: PaymentMethod[];
   paymentRepositories: PaymentRepository[];
   isProcessing: boolean;
+  isOfflineReceipt: boolean;
   lastReceipt: CreateReceiptResponse | null;
   lastPaymentResponse: ProcessReceiptPaymentsResponse | null;
   pendingReceiptId: string | null;
@@ -66,6 +67,7 @@ const initialState: PaymentState = {
   paymentMethods: [],
   paymentRepositories: [],
   isProcessing: false,
+  isOfflineReceipt: false,
   lastReceipt: null,
   lastPaymentResponse: null,
   pendingReceiptId: null,
@@ -122,25 +124,70 @@ function buildReceiptData(
   };
 }
 
-async function getOrCreateReceipt(
-  get: () => PaymentState,
+function resultToReceiptResponse(result: CheckoutResult): CreateReceiptResponse {
+  if (result.onlineReceipt) {
+    return result.onlineReceipt;
+  }
+  return {
+    id: result.receiptId,
+    receipt_number: result.receiptNumber,
+    total: result.total,
+    subtotal: result.subtotal,
+    tax_amount: result.taxAmount,
+    discount_amount: result.discountAmount,
+    currency: 'EUR',
+  };
+}
+
+function getCompanyCurrency(): string {
+  const authState = useAuthStore.getState();
+  const company = authState.companies.find((c) => c.id === authState.companyId);
+  return company?.currency ?? 'EUR';
+}
+
+async function getDb(): Promise<import('@tauri-apps/plugin-sql').default> {
+  const { companyId } = useAuthStore.getState();
+  return getDatabase(companyId ?? '');
+}
+
+async function runCheckout(
   set: (partial: Partial<PaymentState>) => void,
   terminalId: string,
   cartItems: CartItem[],
+  paymentMethodId: string,
+  paymentRepositoryId: string,
+  tenderedAmount: number,
   transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string },
   consumptionMode?: string,
   tableId?: string | null,
-): Promise<CreateReceiptResponse> {
-  const { pendingReceiptId } = get();
-  if (pendingReceiptId && get().lastReceipt) {
-    return get().lastReceipt!;
-  }
+): Promise<CheckoutResult> {
+  const authState = useAuthStore.getState();
+  const operator = authState.user ?? { id: authState.userId ?? '', name: 'Operator' };
+  const db = await getDb();
 
-  const receiptData = buildReceiptData(terminalId, cartItems, transactionDiscount, consumptionMode, tableId);
-  console.log('[POS] Creating receipt:', JSON.stringify(receiptData, null, 2));
-  const receipt = await createReceipt(receiptData);
-  set({ lastReceipt: receipt, pendingReceiptId: receipt.id });
-  return receipt;
+  const result = await executeCheckout(db, {
+    terminalId,
+    operatorId: operator.id ?? '',
+    operatorName: operator.name ?? 'Operator',
+    cartItems,
+    currency: getCompanyCurrency(),
+    paymentMethodId,
+    paymentRepositoryId,
+    tenderedAmount,
+    receiptData: buildReceiptData(terminalId, cartItems, transactionDiscount, consumptionMode, tableId),
+    transactionDiscount,
+  });
+
+  set({
+    lastReceipt: resultToReceiptResponse(result),
+    lastPaymentResponse: result.onlinePayment,
+    isOfflineReceipt: result.isOffline,
+    pendingReceiptId: null,
+    changeDue: result.changeDue,
+    isProcessing: false,
+  });
+
+  return result;
 }
 
 export const usePaymentStore = create<PaymentStore>()((set, get) => ({
@@ -156,8 +203,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     } catch (error) {
       console.warn('[POS] API payment config failed, loading from SQLite:', error);
       try {
-        const { companyId } = useAuthStore.getState();
-        const db = await getDatabase(companyId ?? '');
+        const db = await getDb();
         const [methods, repositories] = await Promise.all([
           getAllPaymentMethods(db),
           getAllPaymentRepositories(db),
@@ -182,7 +228,6 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
   ) => {
     const { paymentMethods, paymentRepositories } = get();
 
-    // Find cash payment method (physical, no maturity = cash)
     const cashMethod = paymentMethods.find(
       (m) => m.is_physical && !m.has_maturity && m.is_active,
     );
@@ -192,7 +237,6 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       throw new Error(msg);
     }
 
-    // Find cash register repository
     const cashRegister = paymentRepositories.find(
       (r) => r.type === 'cash_register' && r.is_active,
     );
@@ -205,28 +249,11 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     set({ isProcessing: true, error: null });
 
     try {
-      const receipt = await getOrCreateReceipt(get, set, terminalId, cartItems, transactionDiscount, consumptionMode, tableId);
-
-      const totalAmount = parseFloat(receipt.total);
-      const paymentResponse = await processReceiptPayments(receipt.id, {
-        payments: [
-          {
-            payment_method_id: cashMethod.id,
-            amount: totalAmount,
-            repository_id: cashRegister.id,
-          },
-        ],
-      });
-
-      const changeDue = Math.max(0, tenderedAmount - totalAmount);
-
-      set({
-        lastReceipt: receipt,
-        lastPaymentResponse: paymentResponse,
-        pendingReceiptId: null,
-        changeDue,
-        isProcessing: false,
-      });
+      await runCheckout(
+        set, terminalId, cartItems,
+        cashMethod.id, cashRegister.id, tenderedAmount,
+        transactionDiscount, consumptionMode, tableId,
+      );
     } catch (error) {
       set({
         isProcessing: false,
@@ -270,28 +297,11 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     set({ isProcessing: true, error: null });
 
     try {
-      const receipt = await getOrCreateReceipt(get, set, terminalId, cartItems, transactionDiscount, consumptionMode, tableId);
-
-      const totalAmount = parseFloat(receipt.total);
-      const paymentResponse = await processReceiptPayments(receipt.id, {
-        payments: [
-          {
-            payment_method_id: cardMethod.id,
-            amount: totalAmount,
-            repository_id: cardRepo.id,
-            ...(cardData?.lastFour ? { card_last_four: cardData.lastFour } : {}),
-            ...(cardData?.reference ? { transaction_reference: cardData.reference } : {}),
-          },
-        ],
-      });
-
-      set({
-        lastReceipt: receipt,
-        lastPaymentResponse: paymentResponse,
-        pendingReceiptId: null,
-        changeDue: 0,
-        isProcessing: false,
-      });
+      await runCheckout(
+        set, terminalId, cartItems,
+        cardMethod.id, cardRepo.id, 0,
+        transactionDiscount, consumptionMode, tableId,
+      );
     } catch (error) {
       set({
         isProcessing: false,
@@ -312,27 +322,18 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     set({ isProcessing: true, error: null });
 
     try {
-      const receipt = await getOrCreateReceipt(get, set, terminalId, cartItems, transactionDiscount, consumptionMode, tableId);
+      // For advanced checkout, use the first payment line for the offline receipt
+      const primaryPayment = payments[0];
+      if (!primaryPayment) {
+        throw new Error('No payment lines provided');
+      }
 
-      const paymentResponse = await processReceiptPayments(receipt.id, {
-        payments: payments.map((p) => ({
-          payment_method_id: p.payment_method_id,
-          amount: p.amount,
-          repository_id: p.repository_id,
-          ...(p.card_last_four ? { card_last_four: p.card_last_four } : {}),
-          ...(p.transaction_reference ? { transaction_reference: p.transaction_reference } : {}),
-        })),
-      });
-
-      const changeDue = parseFloat(paymentResponse.change_due);
-
-      set({
-        lastReceipt: receipt,
-        lastPaymentResponse: paymentResponse,
-        pendingReceiptId: null,
-        changeDue,
-        isProcessing: false,
-      });
+      await runCheckout(
+        set, terminalId, cartItems,
+        primaryPayment.payment_method_id, primaryPayment.repository_id,
+        payments.reduce((sum, p) => sum + p.amount, 0),
+        transactionDiscount, consumptionMode, tableId,
+      );
     } catch (error) {
       set({
         isProcessing: false,
@@ -343,7 +344,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
   },
 
   clearLastReceipt: () => {
-    set({ lastReceipt: null, lastPaymentResponse: null, pendingReceiptId: null, changeDue: 0 });
+    set({ lastReceipt: null, lastPaymentResponse: null, pendingReceiptId: null, changeDue: 0, isOfflineReceipt: false });
   },
 
   reset: () => {
