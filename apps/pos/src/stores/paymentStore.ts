@@ -7,6 +7,7 @@ import { getCurrencyDecimals } from '@/lib/currency';
 import { getDatabase } from '@/lib/db';
 import { getAllPaymentMethods, getAllPaymentRepositories } from '@/lib/db/repositories/paymentRepository';
 import { executeCheckout, type CheckoutResult } from '@/lib/offline/offlineCheckoutService';
+import { useSyncStore } from '@/stores/syncStore';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import type { CartItem } from '@/types/cart';
 import type { CreateReceiptResponse, ProcessReceiptPaymentsResponse } from '@/types/receipt';
@@ -186,6 +187,12 @@ async function runCheckout(
     changeDue: result.changeDue,
     isProcessing: false,
   });
+
+  // Update pending sync count when receipt was created offline
+  if (result.isOffline) {
+    const { pendingReceiptCount } = useSyncStore.getState();
+    useSyncStore.getState().setPendingCount(pendingReceiptCount + 1);
+  }
 
   return result;
 }
