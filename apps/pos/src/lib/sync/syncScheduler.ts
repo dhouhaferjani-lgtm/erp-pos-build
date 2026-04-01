@@ -13,6 +13,7 @@ export class SyncScheduler {
   private currentInterval = BASE_INTERVAL_MS;
   private db: Database;
   private terminalId: string;
+  private unsubscribeConnectivity: (() => void) | null = null;
 
   constructor(db: Database, terminalId: string) {
     this.db = db;
@@ -28,12 +29,27 @@ export class SyncScheduler {
     this.intervalId = setInterval(() => {
       void this.tick();
     }, this.currentInterval);
+
+    // Trigger immediate sync when connectivity resumes
+    this.unsubscribeConnectivity = useConnectivityStore.subscribe(
+      (state, prev) => {
+        if (state.isOnline && !prev.isOnline) {
+          console.info('[SyncScheduler] Connectivity restored, triggering immediate sync');
+          this.resetInterval();
+          void this.tick();
+        }
+      },
+    );
   }
 
   stop(): void {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
+    }
+    if (this.unsubscribeConnectivity) {
+      this.unsubscribeConnectivity();
+      this.unsubscribeConnectivity = null;
     }
     this.currentInterval = BASE_INTERVAL_MS;
   }
