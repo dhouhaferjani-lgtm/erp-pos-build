@@ -135,7 +135,7 @@ function resultToReceiptResponse(result: CheckoutResult): CreateReceiptResponse 
     subtotal: result.subtotal,
     tax_amount: result.taxAmount,
     discount_amount: result.discountAmount,
-    currency: 'EUR',
+    currency: result.currency,
   };
 }
 

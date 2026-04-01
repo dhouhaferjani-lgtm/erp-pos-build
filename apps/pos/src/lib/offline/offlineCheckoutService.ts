@@ -36,6 +36,7 @@ export interface CheckoutResult {
   taxAmount: string;
   discountAmount: string;
   changeDue: number;
+  currency: string;
   fiscalHash?: string;
   onlineReceipt: CreateReceiptResponse | null;
   onlinePayment: ProcessReceiptPaymentsResponse | null;
@@ -84,6 +85,7 @@ async function onlineCheckout(
     taxAmount: receipt.tax_amount,
     discountAmount: receipt.discount_amount,
     changeDue,
+    currency: input.currency,
     onlineReceipt: receipt,
     onlinePayment: paymentResponse,
   };
@@ -114,6 +116,7 @@ async function offlineCheckout(
     taxAmount: result.taxAmount,
     discountAmount: result.discountAmount,
     changeDue: result.changeDue,
+    currency: input.currency,
     fiscalHash: result.fiscalHash,
     onlineReceipt: null,
     onlinePayment: null,
