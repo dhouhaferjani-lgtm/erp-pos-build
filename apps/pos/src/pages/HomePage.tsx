@@ -184,12 +184,13 @@ export function HomePage() {
   }, [companyConfig?.receipt_visibility]);
 
   // Fetch full receipt for ESC/POS thermal printing when success modal opens
+  // Skip API fetch for offline receipts — the receipt doesn't exist on the server yet
   useEffect(() => {
     if (!showSuccessModal) {
       setEscPosData(null);
       return;
     }
-    if (!lastReceipt || escPosData) return;
+    if (!lastReceipt || escPosData || isOfflineReceipt) return;
 
     // Offline receipts: build ESC/POS data from local cart data
     if (isOfflineReceipt) {
