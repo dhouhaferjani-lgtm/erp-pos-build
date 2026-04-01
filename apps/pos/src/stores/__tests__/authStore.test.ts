@@ -7,10 +7,23 @@ vi.mock('@tauri-apps/plugin-os', () => ({
   platform: vi.fn(() => 'macos'),
 }));
 
-vi.mock('@/lib/api', () => ({
-  apiGet: vi.fn(),
-  apiPost: vi.fn(),
-}));
+vi.mock('@/lib/api', () => {
+  class ApiRequestError extends Error {
+    constructor(
+      public readonly status: number,
+      public readonly apiMessage: string,
+      public readonly code: string,
+    ) {
+      super(apiMessage);
+      this.name = 'ApiRequestError';
+    }
+  }
+  return {
+    apiGet: vi.fn(),
+    apiPost: vi.fn(),
+    ApiRequestError,
+  };
+});
 
 vi.mock('@/lib/echo', () => ({
   disconnectEcho: vi.fn(),
@@ -223,5 +236,46 @@ describe('authStore', () => {
     expect(state.isAuthenticated).toBe(false);
     expect(state.serverUrl).toBeTruthy();
     expect(state.isInitialized).toBe(true);
+  });
+
+  it('keeps auth state when checkSession fails with network error (offline)', async () => {
+    vi.mocked(getStoredValue)
+      .mockResolvedValueOnce('jwt-token-123')
+      .mockResolvedValueOnce(mockUser)
+      .mockResolvedValueOnce('company-1')
+      .mockResolvedValueOnce(mockCompanies);
+
+    // Network error — NOT a 401
+    vi.mocked(apiGet).mockRejectedValue(new Error('Failed to fetch'));
+
+    await useAuthStore.getState().initialize();
+
+    const state = useAuthStore.getState();
+    expect(state.isAuthenticated).toBe(true);
+    expect(state.token).toBe('jwt-token-123');
+    expect(state.user).toEqual(mockUser);
+    expect(state.companyId).toBe('company-1');
+    expect(state.isInitialized).toBe(true);
+  });
+
+  it('logs out when checkSession returns 401 (token expired)', async () => {
+    vi.mocked(getStoredValue)
+      .mockResolvedValueOnce('expired-token')
+      .mockResolvedValueOnce(mockUser)
+      .mockResolvedValueOnce('company-1')
+      .mockResolvedValueOnce(mockCompanies);
+
+    // 401 — token genuinely expired
+    const { ApiRequestError } = await import('@/lib/api');
+    vi.mocked(apiGet).mockRejectedValue(
+      new ApiRequestError(401, 'Unauthorized', 'UNAUTHORIZED'),
+    );
+
+    await useAuthStore.getState().initialize();
+
+    const state = useAuthStore.getState();
+    expect(state.isAuthenticated).toBe(false);
+    expect(state.token).toBeNull();
+    expect(state.user).toBeNull();
   });
 });
