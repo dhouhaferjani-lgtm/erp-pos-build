@@ -169,12 +169,13 @@ export function HomePage() {
   }, [companyConfig?.receipt_visibility]);
 
   // Fetch full receipt for ESC/POS thermal printing when success modal opens
+  // Skip API fetch for offline receipts — the receipt doesn't exist on the server yet
   useEffect(() => {
     if (!showSuccessModal) {
       setEscPosData(null);
       return;
     }
-    if (!lastReceipt || escPosData) return;
+    if (!lastReceipt || escPosData || isOfflineReceipt) return;
 
     let cancelled = false;
     fetchReceipt(lastReceipt.id)
@@ -190,7 +191,7 @@ export function HomePage() {
       });
 
     return () => { cancelled = true; };
-  }, [showSuccessModal, lastReceipt, escPosData, receiptVisibility]);
+  }, [showSuccessModal, lastReceipt, escPosData, receiptVisibility, isOfflineReceipt]);
 
   // Cart product IDs for highlighting in grid
   const cartProductIds = useMemo(
