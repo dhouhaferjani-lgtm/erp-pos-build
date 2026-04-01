@@ -1,6 +1,7 @@
 import type Database from '@tauri-apps/plugin-sql';
 import { runFullSync, type SyncResult } from './syncService';
 import { useConnectivityStore } from '@/stores/connectivityStore';
+import { useAuthStore } from '@/stores/authStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { useProductStore } from '@/stores/productStore';
 
@@ -77,8 +78,25 @@ export class SyncScheduler {
 
       useSyncStore.getState().completeSync(result);
 
+      // If sync errors contain "Unauthorized" (401), the token may be expired.
+      // Re-validate via /auth/me — on confirmed 401, logout so user can re-login.
+      const hasUnauthorized = result.errors.some((e) => e.includes('Unauthorized'));
+      if (hasUnauthorized) {
+        console.warn('[SyncScheduler] Sync returned 401 errors — re-validating session');
+        try {
+          await useAuthStore.getState().checkSession();
+        } catch (sessionError) {
+          const { ApiRequestError } = await import('@/lib/api');
+          if (sessionError instanceof ApiRequestError && sessionError.status === 401) {
+            console.warn('[SyncScheduler] Token confirmed expired — logging out');
+            useAuthStore.getState().logout();
+          }
+          // Network error → ignore, token might still be valid when server is reachable
+        }
+      }
+
       // Reset backoff on success
-      if (result.receiptsFailed === 0) {
+      if (result.receiptsFailed === 0 && !hasUnauthorized) {
         this.resetInterval();
       } else {
         this.backoff();
