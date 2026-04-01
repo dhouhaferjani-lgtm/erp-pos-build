@@ -224,9 +224,16 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
 
     try {
       const shift = await apiGet<Shift | null>(`/pos/shifts/current/${terminal.code}`);
+      if (shift) {
+        await setStoredValue(StorageKeys.SHIFT, shift);
+      } else {
+        await removeStoredValue(StorageKeys.SHIFT);
+      }
       set({ shift });
     } catch {
-      set({ shift: null });
+      // Offline fallback: restore from persistent storage
+      const cachedShift = await getStoredValue<Shift>(StorageKeys.SHIFT);
+      set({ shift: cachedShift });
     }
   },
 
@@ -244,10 +251,26 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
         body['cashier_id'] = cashierId;
       }
       const shift = await apiPost<Shift>('/pos/shifts/open', body);
+      await setStoredValue(StorageKeys.SHIFT, shift);
       set({ shift, isLoading: false });
-    } catch (error) {
-      set({ isLoading: false });
-      throw error;
+    } catch {
+      // Offline fallback: create local shift
+      const authState = useAuthStore.getState();
+      const user = authState.user;
+      const offlineShift: Shift = {
+        id: `offline-${crypto.randomUUID()}`,
+        terminal_id: terminal.id,
+        shift_number: 0,
+        status: 'OPEN',
+        opening_cash: openingCash,
+        opened_at: new Date().toISOString(),
+        user: {
+          id: cashierId ?? user?.id ?? '',
+          name: user?.name ?? 'Operator',
+        },
+      };
+      await setStoredValue(StorageKeys.SHIFT, offlineShift);
+      set({ shift: offlineShift, isLoading: false });
     }
   },
 
@@ -260,11 +283,11 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
       await apiPost<Shift>(`/pos/shifts/${shift.id}/close`, {
         actual_cash: actualCash,
       });
-      set({ shift: null, isLoading: false });
-    } catch (error) {
-      set({ isLoading: false });
-      throw error;
+    } catch {
+      console.warn('[Terminal] Shift close API failed (offline), closing locally');
     }
+    await removeStoredValue(StorageKeys.SHIFT);
+    set({ shift: null, isLoading: false });
   },
 
   reset: () => {
@@ -274,5 +297,6 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     set(initialState);
     void removeStoredValue(StorageKeys.TERMINAL);
     void removeStoredValue(StorageKeys.PENDING_TERMINAL_ID);
+    void removeStoredValue(StorageKeys.SHIFT);
   },
 }));
