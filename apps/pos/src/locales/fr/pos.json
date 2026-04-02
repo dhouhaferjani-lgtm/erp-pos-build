@@ -101,7 +101,9 @@
     "password": "Mot de passe",
     "signIn": "Se connecter",
     "signingIn": "Connexion...",
-    "selectCompany": "Sélectionner l'entreprise"
+    "selectCompany": "Sélectionner l'entreprise",
+    "noConnection": "Pas de connexion Internet",
+    "noConnectionMessage": "Une connexion Internet est nécessaire pour se connecter. Veuillez vérifier votre connexion et réessayer."
   },
   "terminal": {
     "setup": "Configuration du terminal",
