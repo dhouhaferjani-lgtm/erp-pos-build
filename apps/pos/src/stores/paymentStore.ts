@@ -201,26 +201,41 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
   ...initialState,
 
   fetchPaymentConfig: async () => {
+    // Step 1: Load from SQLite immediately (instant, always available)
+    try {
+      const db = await getDb();
+      const [cachedMethods, cachedRepos] = await Promise.all([
+        getAllPaymentMethods(db),
+        getAllPaymentRepositories(db),
+      ]);
+      if (cachedMethods.length > 0) {
+        set({ paymentMethods: cachedMethods, paymentRepositories: cachedRepos });
+      }
+    } catch {
+      // SQLite not ready yet — continue to API
+    }
+
+    // Step 2: Try API for fresh data (updates SQLite cache for next time)
     try {
       const [methods, repositories] = await Promise.all([
         fetchPaymentMethods(),
         fetchPaymentRepositories(),
       ]);
       set({ paymentMethods: methods, paymentRepositories: repositories });
-    } catch (error) {
-      console.warn('[POS] API payment config failed, loading from SQLite:', error);
+
+      // Persist to SQLite so offline fallback has fresh data
       try {
         const db = await getDb();
-        const [methods, repositories] = await Promise.all([
-          getAllPaymentMethods(db),
-          getAllPaymentRepositories(db),
-        ]);
-        if (methods.length > 0) {
-          set({ paymentMethods: methods, paymentRepositories: repositories });
-          console.info('[POS] Loaded payment config from SQLite cache');
-        }
-      } catch (dbError) {
-        console.error('[POS] SQLite fallback also failed:', dbError);
+        const { upsertPaymentMethods, upsertPaymentRepositories } = await import('@/lib/db/repositories/paymentRepository');
+        await upsertPaymentMethods(db, methods);
+        await upsertPaymentRepositories(db, repositories);
+      } catch {
+        // Non-critical — sync scheduler also handles this
+      }
+    } catch (error) {
+      // API failed — SQLite data (if loaded in Step 1) is already in state
+      if (get().paymentMethods.length === 0) {
+        console.warn('[POS] No payment config available — neither API nor SQLite cache');
       }
     }
   },

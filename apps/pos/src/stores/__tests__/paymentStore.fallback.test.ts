@@ -69,17 +69,20 @@ describe('paymentStore - SQLite fallback', () => {
     expect(state.paymentRepositories[0]!.id).toBe('repo-cached');
   });
 
-  it('does NOT call SQLite when API succeeds', async () => {
+  it('uses API data over SQLite when both are available', async () => {
     const apiMethod = makePaymentMethod({ id: 'pm-api' });
     const apiRepo = makePaymentRepository({ id: 'repo-api' });
+    const cachedMethod = makePaymentMethod({ id: 'pm-cached' });
+    const cachedRepo = makePaymentRepository({ id: 'repo-cached' });
 
+    vi.mocked(getAllPaymentMethods).mockResolvedValue([cachedMethod]);
+    vi.mocked(getAllPaymentRepositories).mockResolvedValue([cachedRepo]);
     vi.mocked(fetchPaymentMethods).mockResolvedValue([apiMethod]);
     vi.mocked(fetchPaymentRepositories).mockResolvedValue([apiRepo]);
 
     await usePaymentStore.getState().fetchPaymentConfig();
 
-    expect(getAllPaymentMethods).not.toHaveBeenCalled();
-    expect(getAllPaymentRepositories).not.toHaveBeenCalled();
+    // API data takes precedence over SQLite cache
     expect(usePaymentStore.getState().paymentMethods[0]!.id).toBe('pm-api');
   });
 
