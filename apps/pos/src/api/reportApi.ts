@@ -200,7 +200,22 @@ export async function fetchShiftReceipts(shiftId: string): Promise<ShiftReceipt[
 }
 
 export async function fetchCashDrawerOps(shiftId: string): Promise<CashDrawerOperation[]> {
-  return apiGet<CashDrawerOperation[]>(`/pos/cash-drawer/${shiftId}/operations`);
+  try {
+    return await apiGet<CashDrawerOperation[]>(`/pos/cash-drawer/${shiftId}/operations`);
+  } catch {
+    // Offline fallback: load from local SQLite
+    const db = await getDb();
+    const { getCashDrawerOpsForShift } = await import('@/lib/db/repositories/cashDrawerRepository');
+    const localOps = await getCashDrawerOpsForShift(db, shiftId);
+    return localOps.map((op) => ({
+      id: op.id,
+      type: op.type,
+      amount: op.amount,
+      reason: op.reason,
+      created_at: op.created_at,
+      user_name: op.operator_name,
+    }));
+  }
 }
 
 // ── Offline report helpers ──

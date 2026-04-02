@@ -426,7 +426,9 @@
     "selectLines": "Select items to return",
     "confirmVoid": "Confirm Void",
     "confirmReturn": "Confirm Return",
-    "receiptNotFound": "Receipt not found"
+    "receiptNotFound": "Receipt not found",
+    "offlineNoReceipt": "No unsynced receipts found. Synced receipts require an internet connection to void.",
+    "localReceipt": "This is a locally saved receipt that has not been synced yet."
   },
   "cashDrawer": {
     "title": "Cash Drawer",
