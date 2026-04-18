@@ -1,0 +1,97 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Using nullsafe property access "\?\-\>receipt_show_customer" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Http/Controllers/Api/CompanyConfigController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>receipt_show_fiscal_info" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Http/Controllers/Api/CompanyConfigController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>receipt_show_payment_details" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Http/Controllers/Api/CompanyConfigController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>receipt_show_vat_breakdown" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Http/Controllers/Api/CompanyConfigController.php
+
+		-
+			message: '#^Cannot call method toIso8601String\(\) on Illuminate\\Support\\Carbon\|null\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Modules/Accounting/Presentation/Controllers/AccountController.php
+
+		-
+			message: '#^Parameter \#2 \$num2 of function bcadd expects numeric\-string, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Modules/POS/Application/Services/ReceiptCreationService.php
+
+		-
+			message: '#^Cannot call method toIso8601String\(\) on Illuminate\\Support\\Carbon\|null\.$#'
+			identifier: method.nonObject
+			count: 3
+			path: app/Modules/Partner/Presentation/Controllers/PartnerController.php
+
+		-
+			message: '#^Generic type Illuminate\\Contracts\\Pagination\\LengthAwarePaginator\<App\\Modules\\Product\\Domain\\EnrichmentResult\> in PHPDoc tag @return does not specify all template types of interface Illuminate\\Contracts\\Pagination\\LengthAwarePaginator\: TKey, TValue$#'
+			identifier: generics.lessTypes
+			count: 1
+			path: app/Modules/Product/Application/Services/EnrichmentReviewService.php
+
+		-
+			message: '#^Method App\\Modules\\Product\\Application\\Services\\EnrichmentReviewService\:\:listForReview\(\) should return Illuminate\\Contracts\\Pagination\\LengthAwarePaginator\<App\\Modules\\Product\\Domain\\EnrichmentResult\> but returns Illuminate\\Pagination\\LengthAwarePaginator\<int, App\\Modules\\Product\\Domain\\EnrichmentResult\>\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Modules/Product/Application/Services/EnrichmentReviewService.php
+
+		-
+			message: '#^Type App\\Modules\\Product\\Domain\\EnrichmentResult in generic type Illuminate\\Contracts\\Pagination\\LengthAwarePaginator\<App\\Modules\\Product\\Domain\\EnrichmentResult\> in PHPDoc tag @return is not subtype of template type TKey of \(int\|string\) of interface Illuminate\\Contracts\\Pagination\\LengthAwarePaginator\.$#'
+			identifier: generics.notSubtype
+			count: 1
+			path: app/Modules/Product/Application/Services/EnrichmentReviewService.php
+
+		-
+			message: '#^Cannot call method toIso8601String\(\) on Illuminate\\Support\\Carbon\|null\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Modules/Product/Presentation/Controllers/EnrichmentReviewController.php
+
+		-
+			message: '#^Parameter \#1 \$value of function collect expects Illuminate\\Contracts\\Support\\Arrayable\<\(int\|string\), mixed\>\|iterable\<\(int\|string\), mixed\>\|null, array\<App\\Modules\\Product\\Domain\\EnrichmentResult, mixed\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Modules/Product/Presentation/Controllers/EnrichmentReviewController.php
+
+		-
+			message: '#^Unable to resolve the template type TKey in call to function collect$#'
+			identifier: argument.templateType
+			count: 1
+			path: app/Modules/Product/Presentation/Controllers/EnrichmentReviewController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>value" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Modules/Product/Presentation/Controllers/ProductController.php
+
+		-
+			message: '#^Method App\\Modules\\PurchaseHub\\Application\\Services\\PurchaseHubService\:\:getOffers\(\) should return array\<int, array\<string, mixed\>\>\|null but returns array\<string, mixed\>\|null\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Modules/PurchaseHub/Application/Services/PurchaseHubService.php
+
+		-
+			message: '#^Expression on left side of \?\? is not nullable\.$#'
+			identifier: nullCoalesce.expr
+			count: 1
+			path: app/Modules/Taxation/Domain/Services/TaxCalculationService.php
