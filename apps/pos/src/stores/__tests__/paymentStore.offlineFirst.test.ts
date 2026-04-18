@@ -168,4 +168,102 @@ describe('paymentStore offline-first cash checkout', () => {
       }),
     );
   });
+
+  it('card checkout writes to SQLite with card metadata in payments', async () => {
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+    usePaymentStore.setState({
+      paymentMethods: [
+        makePaymentMethod({ id: 'pm-card', code: 'CARD', is_physical: false, requires_third_party: true }),
+      ],
+      paymentRepositories: [
+        makePaymentRepository({ id: 'repo-bank', type: 'bank_account' }),
+      ],
+    });
+
+    await usePaymentStore.getState().processCardCheckout(
+      'term-1',
+      useCartStore.getState().items,
+      { lastFour: '4242', reference: 'AUTH-XY' },
+    );
+
+    expect(createOfflineReceipt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        payments: [expect.objectContaining({
+          methodCode: 'CARD',
+          cardLastFour: '4242',
+          transactionReference: 'AUTH-XY',
+        })],
+      }),
+    );
+  });
+
+  it('advanced split payment writes all payment lines to SQLite', async () => {
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+    usePaymentStore.setState({
+      paymentMethods: [
+        makePaymentMethod({ id: 'pm-cash', code: 'CASH' }),
+        makePaymentMethod({ id: 'pm-card', code: 'CARD', is_physical: false, requires_third_party: true }),
+      ],
+      paymentRepositories: [
+        makePaymentRepository({ id: 'repo-cash', type: 'cash_register' }),
+        makePaymentRepository({ id: 'repo-bank', type: 'bank_account' }),
+      ],
+    });
+
+    await usePaymentStore.getState().processAdvancedCheckout(
+      'term-1',
+      useCartStore.getState().items,
+      [
+        { payment_method_id: 'pm-cash', amount: 20, repository_id: 'repo-cash' },
+        { payment_method_id: 'pm-card', amount: 30, repository_id: 'repo-bank', card_last_four: '1234', transaction_reference: 'AUTH-2' },
+      ],
+    );
+
+    expect(createOfflineReceipt).toHaveBeenCalledOnce();
+    const callArgs = vi.mocked(createOfflineReceipt).mock.calls[0]![1];
+    expect(callArgs.payments).toHaveLength(2);
+    expect(callArgs.payments[0]).toEqual(expect.objectContaining({ methodCode: 'CASH', amount: '20.00' }));
+    expect(callArgs.payments[1]).toEqual(expect.objectContaining({ methodCode: 'CARD', amount: '30.00', cardLastFour: '1234' }));
+  });
+
+  it('advanced checkout throws clearly when a payment method is unknown', async () => {
+    usePaymentStore.setState({
+      paymentMethods: [makePaymentMethod({ id: 'pm-cash', code: 'CASH' })],
+      paymentRepositories: [makePaymentRepository({ id: 'repo-cash', type: 'cash_register' })],
+    });
+
+    await expect(
+      usePaymentStore.getState().processAdvancedCheckout(
+        'term-1',
+        useCartStore.getState().items,
+        [{ payment_method_id: 'pm-ghost', amount: 50, repository_id: 'repo-cash' }],
+      ),
+    ).rejects.toThrow(/unknown payment method|method not found/i);
+  });
+
+  it('card checkout honors currency decimals (TND = 3 decimals)', async () => {
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+    useAuthStore.setState({
+      ...useAuthStore.getState(),
+      companies: [{ id: 'company-1', name: 'Test Co', legalName: 'Test SA', countryCode: 'TN', currency: 'TND', locale: 'fr', timezone: 'Africa/Tunis' }],
+    });
+    useCartStore.setState({
+      items: [makeCartItem({ line_total: '50.000', tax_amount: '0.000' })],
+    });
+    usePaymentStore.setState({
+      paymentMethods: [makePaymentMethod({ id: 'pm-card', code: 'CARD', is_physical: false, requires_third_party: true })],
+      paymentRepositories: [makePaymentRepository({ id: 'repo-bank', type: 'bank_account' })],
+    });
+
+    await usePaymentStore.getState().processCardCheckout('term-1', useCartStore.getState().items, { lastFour: '1111', reference: 'X' });
+
+    expect(createOfflineReceipt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        currency: 'TND',
+        payments: [expect.objectContaining({ methodCode: 'CARD', amount: '50.000' })],
+      }),
+    );
+  });
 });

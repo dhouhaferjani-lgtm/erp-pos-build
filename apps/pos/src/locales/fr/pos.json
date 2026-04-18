@@ -497,7 +497,8 @@
     "checkoutFailed": "Échec du paiement",
     "noCompanySelected": "Aucune entreprise sélectionnée. Veuillez sélectionner une entreprise avant d'encaisser.",
     "noOperatorIdentified": "Aucun opérateur identifié. Veuillez vous connecter avec votre code PIN avant d'encaisser.",
-    "noPaymentProvided": "Au moins un moyen de paiement est requis."
+    "noPaymentProvided": "Au moins un moyen de paiement est requis.",
+    "unknownPaymentMethod": "Moyen de paiement inconnu dans le paiement mixte."
   },
   "receiptLabel": {
     "receipt": "Reçu :",

@@ -497,7 +497,8 @@
     "checkoutFailed": "Checkout failed",
     "noCompanySelected": "No company selected. Please select a company before taking payment.",
     "noOperatorIdentified": "No operator identified. Please log in with your PIN before taking payment.",
-    "noPaymentProvided": "At least one payment method is required."
+    "noPaymentProvided": "At least one payment method is required.",
+    "unknownPaymentMethod": "Unknown payment method in split payment."
   },
   "receiptLabel": {
     "receipt": "Receipt:",

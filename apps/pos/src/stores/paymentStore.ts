@@ -1,18 +1,16 @@
 import { create } from 'zustand';
 import i18n from '@/lib/i18n';
 import { fetchPaymentMethods, fetchPaymentRepositories } from '@/api/paymentApi';
-import { useCartStore } from '@/stores/cartStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { getDatabase } from '@/lib/db';
 import { getAllPaymentMethods, getAllPaymentRepositories } from '@/lib/db/repositories/paymentRepository';
-import { executeCheckout, type CheckoutResult } from '@/lib/offline/offlineCheckoutService';
 import { createOfflineReceipt, type OfflineReceiptResult } from '@/lib/offline/receiptService';
 import { useSyncStore } from '@/stores/syncStore';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import type { CartItem } from '@/types/cart';
-import type { CreateReceiptResponse, ProcessReceiptPaymentsResponse } from '@/types/receipt';
+import type { CreateReceiptResponse } from '@/types/receipt';
 
 interface PaymentState {
   paymentMethods: PaymentMethod[];
@@ -20,7 +18,6 @@ interface PaymentState {
   isProcessing: boolean;
   isOfflineReceipt: boolean;
   lastReceipt: CreateReceiptResponse | null;
-  lastPaymentResponse: ProcessReceiptPaymentsResponse | null;
   pendingReceiptId: string | null;
   changeDue: number;
   error: string | null;
@@ -72,134 +69,14 @@ const initialState: PaymentState = {
   isProcessing: false,
   isOfflineReceipt: false,
   lastReceipt: null,
-  lastPaymentResponse: null,
   pendingReceiptId: null,
   changeDue: 0,
   error: null,
 };
 
-function buildReceiptData(
-  terminalId: string,
-  cartItems: CartItem[],
-  transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string },
-  consumptionMode?: string,
-  tableId?: string | null,
-) {
-  return {
-    terminal_id: terminalId,
-    lines: cartItems.map((item) => ({
-      ...(item.product.sellableType === 'composite_item'
-        ? { composite_item_id: item.product.id }
-        : { product_id: item.product.id }),
-      quantity: item.quantity,
-      unit_price: item.unit_price,
-      ...(item.product.selectedModifiers?.length
-        ? {
-            modifiers: item.product.selectedModifiers.map((m) => ({
-              modifier_id: m.modifier_id,
-              modifier_group_id: m.modifier_group_id,
-              price_adjustment: m.price_adjustment,
-            })),
-          }
-        : {}),
-      ...(item.discount_type
-        ? {
-            discount_type: item.discount_type,
-            discount_percent: item.discount_percent,
-            discount_amount: item.discount_amount,
-            discount_reason: item.discount_reason,
-          }
-        : {}),
-    })),
-    ...(transactionDiscount
-      ? {
-          transaction_discount_amount: (() => {
-            const authState = useAuthStore.getState();
-            const company = authState.companies.find((c) => c.id === authState.companyId);
-            const decimals = getCurrencyDecimals(company?.currency ?? 'EUR');
-            return useCartStore.getState().discountAmount().toFixed(decimals);
-          })(),
-          transaction_discount_reason: transactionDiscount.reason,
-        }
-      : {}),
-    ...(consumptionMode ? { consumption_mode: consumptionMode } : {}),
-    ...(tableId ? { table_id: tableId } : {}),
-  };
-}
-
-function resultToReceiptResponse(result: CheckoutResult): CreateReceiptResponse {
-  if (result.onlineReceipt) {
-    return result.onlineReceipt;
-  }
-  return {
-    id: result.receiptId,
-    receipt_number: result.receiptNumber,
-    total: result.total,
-    subtotal: result.subtotal,
-    tax_amount: result.taxAmount,
-    discount_amount: result.discountAmount,
-    currency: result.currency,
-  };
-}
-
-function getCompanyCurrency(): string {
-  const authState = useAuthStore.getState();
-  const company = authState.companies.find((c) => c.id === authState.companyId);
-  return company?.currency ?? 'EUR';
-}
-
 async function getDb(): Promise<import('@tauri-apps/plugin-sql').default> {
   const { companyId } = useAuthStore.getState();
   return getDatabase(companyId ?? '');
-}
-
-// TEMP: Task C left these API-first helpers in place because
-// processCardCheckout + processAdvancedCheckout still depend on them.
-// Task D rewrites both to use createReceiptLocalFirst; this block will be deleted then.
-async function runCheckout(
-  set: (partial: Partial<PaymentState>) => void,
-  terminalId: string,
-  cartItems: CartItem[],
-  paymentMethodId: string,
-  paymentRepositoryId: string,
-  tenderedAmount: number,
-  transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string },
-  consumptionMode?: string,
-  tableId?: string | null,
-): Promise<CheckoutResult> {
-  const authState = useAuthStore.getState();
-  const operator = authState.user ?? { id: authState.userId ?? '', name: 'Operator' };
-  const db = await getDb();
-
-  const result = await executeCheckout(db, {
-    terminalId,
-    operatorId: operator.id ?? '',
-    operatorName: operator.name ?? 'Operator',
-    cartItems,
-    currency: getCompanyCurrency(),
-    paymentMethodId,
-    paymentRepositoryId,
-    tenderedAmount,
-    receiptData: buildReceiptData(terminalId, cartItems, transactionDiscount, consumptionMode, tableId),
-    transactionDiscount,
-  });
-
-  set({
-    lastReceipt: resultToReceiptResponse(result),
-    lastPaymentResponse: result.onlinePayment,
-    isOfflineReceipt: result.isOffline,
-    pendingReceiptId: null,
-    changeDue: result.changeDue,
-    isProcessing: false,
-  });
-
-  // Update pending sync count when receipt was created offline
-  if (result.isOffline) {
-    const { pendingReceiptCount } = useSyncStore.getState();
-    useSyncStore.getState().setPendingCount(pendingReceiptCount + 1);
-  }
-
-  return result;
 }
 
 interface LocalFirstPaymentLine {
@@ -396,18 +273,18 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
   },
 
   processCardCheckout: async (
-    terminalId: string,
-    cartItems: CartItem[],
-    cardData?: { lastFour?: string; reference?: string },
-    transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string },
-    consumptionMode?: string,
-    tableId?: string | null,
+    terminalId,
+    cartItems,
+    cardData,
+    transactionDiscount,
+    consumptionMode,
+    tableId,
   ) => {
     const { paymentMethods, paymentRepositories } = get();
 
     const cardMethod = paymentMethods.find(
       (m) =>
-        (m.code === 'card' ||
+        (m.code === 'card' || m.code === 'CARD' ||
           (!m.is_physical && m.requires_third_party && m.is_active)) &&
         m.is_active,
     );
@@ -429,11 +306,32 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     set({ isProcessing: true, error: null });
 
     try {
-      await runCheckout(
-        set, terminalId, cartItems,
-        cardMethod.id, cardRepo.id, 0,
-        transactionDiscount, consumptionMode, tableId,
+      const authState = useAuthStore.getState();
+      const company = authState.companies.find((c) => c.id === authState.companyId);
+      const currency = company?.currency ?? 'EUR';
+      const decimals = getCurrencyDecimals(currency);
+      const totalEstimate = cartItems.reduce((sum, i) => sum + parseFloat(i.line_total), 0);
+
+      const result = await createReceiptLocalFirst(
+        set,
+        terminalId,
+        cartItems,
+        [{
+          methodCode: cardMethod.code,
+          amount: totalEstimate.toFixed(decimals),
+          paymentMethodId: cardMethod.id,
+          repositoryId: cardRepo.id,
+          cardLastFour: cardData?.lastFour,
+          transactionReference: cardData?.reference,
+        }],
+        0, // tenderedAmount = 0 for card (no cash in hand)
+        transactionDiscount,
+        consumptionMode,
+        tableId,
       );
+
+      void result;
+      set({ changeDue: 0, isProcessing: false });
     } catch (error) {
       set({
         isProcessing: false,
@@ -444,28 +342,51 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
   },
 
   processAdvancedCheckout: async (
-    terminalId: string,
-    cartItems: CartItem[],
-    payments: AdvancedPaymentLine[],
-    transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string },
-    consumptionMode?: string,
-    tableId?: string | null,
+    terminalId,
+    cartItems,
+    payments,
+    transactionDiscount,
+    consumptionMode,
+    tableId,
   ) => {
     set({ isProcessing: true, error: null });
 
     try {
-      // For advanced checkout, use the first payment line for the offline receipt
-      const primaryPayment = payments[0];
-      if (!primaryPayment) {
-        throw new Error('No payment lines provided');
-      }
+      const authState = useAuthStore.getState();
+      const company = authState.companies.find((c) => c.id === authState.companyId);
+      const currency = company?.currency ?? 'EUR';
+      const decimals = getCurrencyDecimals(currency);
 
-      await runCheckout(
-        set, terminalId, cartItems,
-        primaryPayment.payment_method_id, primaryPayment.repository_id,
-        payments.reduce((sum, p) => sum + p.amount, 0),
-        transactionDiscount, consumptionMode, tableId,
+      const { paymentMethods } = get();
+      const enriched = payments.map((p) => {
+        const method = paymentMethods.find((m) => m.id === p.payment_method_id);
+        if (!method) {
+          throw new Error(i18n.t('errors.unknownPaymentMethod', { ns: 'pos' }));
+        }
+        return {
+          methodCode: method.code,
+          amount: p.amount.toFixed(decimals),
+          paymentMethodId: p.payment_method_id,
+          repositoryId: p.repository_id,
+          cardLastFour: p.card_last_four,
+          transactionReference: p.transaction_reference,
+        };
+      });
+
+      const tenderedAmount = payments.reduce((sum, p) => sum + p.amount, 0);
+
+      const result = await createReceiptLocalFirst(
+        set,
+        terminalId,
+        cartItems,
+        enriched,
+        tenderedAmount,
+        transactionDiscount,
+        consumptionMode,
+        tableId,
       );
+
+      set({ changeDue: result.changeDue, isProcessing: false });
     } catch (error) {
       set({
         isProcessing: false,
@@ -476,7 +397,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
   },
 
   clearLastReceipt: () => {
-    set({ lastReceipt: null, lastPaymentResponse: null, pendingReceiptId: null, changeDue: 0, isOfflineReceipt: false });
+    set({ lastReceipt: null, pendingReceiptId: null, changeDue: 0, isOfflineReceipt: false });
   },
 
   reset: () => {
