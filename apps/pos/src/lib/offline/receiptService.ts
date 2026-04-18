@@ -17,10 +17,25 @@ interface OfflineReceiptInput {
   operatorName: string;
   cartItems: CartItem[];
   currency: string;
+  /** Primary payment method (first entry in `payments`) — used for the denormalized column on offline_receipts */
   paymentMethodId: string;
+  /** Primary payment repository (first entry in `payments`) */
   paymentRepositoryId: string;
   tenderedAmount: number;
   transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string };
+  /** Payments breakdown for fiscal hash + sync payload. Required. For single-payment flows, pass one entry. */
+  payments: Array<{
+    methodCode: string;
+    amount: string;
+    paymentMethodId?: string;
+    repositoryId?: string;
+    cardLastFour?: string;
+    transactionReference?: string;
+  }>;
+  /** F&B: 'SUR_PLACE' | 'A_EMPORTER' — omit for retail */
+  consumptionMode?: string;
+  /** F&B: table UUID — omit for retail or takeout */
+  tableId?: string;
 }
 
 interface OfflineReceiptResult {
@@ -119,7 +134,7 @@ export async function createOfflineReceipt(
     total: total.toFixed(decimals),
     currency: input.currency,
     vatBreakdown,
-    payments: [{ methodCode: 'CASH', amount: total.toFixed(decimals) }],
+    payments: input.payments.map((p) => ({ methodCode: p.methodCode, amount: p.amount })),
   });
 
   // 5. Store offline receipt
@@ -127,7 +142,17 @@ export async function createOfflineReceipt(
   const idempotencyKey = crypto.randomUUID();
   const changeDue = Math.max(0, input.tenderedAmount - total);
 
-  const offlineReceipt: Omit<OfflineReceipt, 'created_at' | 'synced_at' | 'sync_error'> = {
+  const paymentsJson = JSON.stringify(
+    input.payments.map((p) => ({
+      payment_method_id: p.paymentMethodId ?? input.paymentMethodId,
+      repository_id: p.repositoryId ?? input.paymentRepositoryId,
+      amount: p.amount,
+      card_last_four: p.cardLastFour ?? null,
+      transaction_reference: p.transactionReference ?? null,
+    }))
+  );
+
+  const offlineReceipt: Omit<OfflineReceipt, 'created_at' | 'synced_at' | 'sync_error' | 'retry_count' | 'server_receipt_id'> = {
     id: receiptId,
     idempotency_key: idempotencyKey,
     receipt_number: receiptNumber,
@@ -170,7 +195,9 @@ export async function createOfflineReceipt(
     payment_method_id: input.paymentMethodId,
     payment_repository_id: input.paymentRepositoryId,
     status: 'pending',
-    retry_count: 0,
+    payments_json: paymentsJson,
+    consumption_mode: input.consumptionMode ?? null,
+    table_id: input.tableId ?? null,
   };
 
   // 5b. Wrap receipt insert + hash chain advance in a transaction

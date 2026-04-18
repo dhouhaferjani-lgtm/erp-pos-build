@@ -28,6 +28,12 @@ export interface OfflineReceipt {
   payment_repository_id: string;
   status: OfflineReceiptStatus;
   retry_count: number;
+  /** JSON-encoded array of {payment_method_id, repository_id, amount, card_last_four?, transaction_reference?} */
+  payments_json: string;
+  consumption_mode: string | null;
+  table_id: string | null;
+  /** Set after first successful sync; null until then. */
+  server_receipt_id: string | null;
   created_at: string;
   synced_at: string | null;
   sync_error: string | null;
@@ -35,7 +41,7 @@ export interface OfflineReceipt {
 
 export async function insertOfflineReceipt(
   db: Database,
-  receipt: Omit<OfflineReceipt, 'created_at' | 'synced_at' | 'sync_error' | 'retry_count'>,
+  receipt: Omit<OfflineReceipt, 'created_at' | 'synced_at' | 'sync_error' | 'retry_count' | 'server_receipt_id'>,
 ): Promise<void> {
   await execute(
     db,
@@ -44,8 +50,9 @@ export async function insertOfflineReceipt(
       operator_id, operator_name, lines, subtotal, tax_amount, discount_amount,
       total, currency, fiscal_hash, previous_hash, hash_sequence,
       transaction_discount_amount, transaction_discount_reason,
-      tendered_amount, change_due, payment_method_id, payment_repository_id, status
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
+      tendered_amount, change_due, payment_method_id, payment_repository_id, status,
+      payments_json, consumption_mode, table_id
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)`,
     [
       receipt.id, receipt.idempotency_key, receipt.receipt_number,
       receipt.terminal_id, receipt.terminal_code,
@@ -56,6 +63,7 @@ export async function insertOfflineReceipt(
       receipt.transaction_discount_reason, receipt.tendered_amount,
       receipt.change_due, receipt.payment_method_id, receipt.payment_repository_id,
       receipt.status,
+      receipt.payments_json, receipt.consumption_mode, receipt.table_id,
     ]
   );
 }
@@ -151,5 +159,28 @@ export async function cleanupStuckReceipts(db: Database): Promise<void> {
      WHERE status = 'failed' AND retry_count >= $1
      AND created_at < datetime('now', '-90 days')`,
     [MAX_SYNC_RETRIES]
+  );
+}
+
+export async function setServerReceiptId(
+  db: Database,
+  idempotencyKey: string,
+  serverReceiptId: string,
+): Promise<void> {
+  await execute(
+    db,
+    'UPDATE offline_receipts SET server_receipt_id = $1 WHERE idempotency_key = $2',
+    [serverReceiptId, idempotencyKey]
+  );
+}
+
+export async function getOfflineReceiptById(
+  db: Database,
+  id: string,
+): Promise<OfflineReceipt | null> {
+  return queryOne<OfflineReceipt>(
+    db,
+    'SELECT * FROM offline_receipts WHERE id = $1',
+    [id]
   );
 }

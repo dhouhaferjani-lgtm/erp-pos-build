@@ -25,6 +25,17 @@ export interface CheckoutInput {
     value: string;
     reason?: string;
   };
+  /** Payments breakdown for fiscal hash + sync payload. Defaults to single CASH entry if omitted. */
+  payments?: Array<{
+    methodCode: string;
+    amount: string;
+    paymentMethodId?: string;
+    repositoryId?: string;
+    cardLastFour?: string;
+    transactionReference?: string;
+  }>;
+  consumptionMode?: string;
+  tableId?: string;
 }
 
 export interface CheckoutResult {
@@ -95,6 +106,11 @@ async function offlineCheckout(
   db: Database,
   input: CheckoutInput,
 ): Promise<CheckoutResult> {
+  const cartTotal = input.cartItems
+    .reduce((sum, item) => sum + parseFloat(item.line_total), 0)
+    .toFixed(2);
+  const defaultPayments = [{ methodCode: 'CASH', amount: cartTotal }];
+
   const result = await createOfflineReceipt(db, {
     terminalId: input.terminalId,
     operatorId: input.operatorId,
@@ -105,6 +121,9 @@ async function offlineCheckout(
     paymentRepositoryId: input.paymentRepositoryId,
     tenderedAmount: input.tenderedAmount,
     transactionDiscount: input.transactionDiscount,
+    payments: input.payments ?? defaultPayments,
+    consumptionMode: input.consumptionMode,
+    tableId: input.tableId,
   });
 
   return {
