@@ -29,6 +29,7 @@ export interface TransactionCartProps {
   onRemoveDiscount?: () => void;
   paymentMethods?: PaymentMethod[];
   smartPromptsSlot?: React.ReactNode;
+  checkoutDisabled?: boolean;
 }
 
 export function TransactionCart({
@@ -54,6 +55,7 @@ export function TransactionCart({
   onRemoveDiscount,
   paymentMethods,
   smartPromptsSlot,
+  checkoutDisabled = false,
 }: TransactionCartProps) {
   const { t } = useTranslation('pos');
 
@@ -134,6 +136,7 @@ export function TransactionCart({
             onAdvancedPayments={onAdvancedPayments}
             onRemoveDiscount={onRemoveDiscount}
             paymentMethods={paymentMethods}
+            disabled={checkoutDisabled}
           />
         )}
 

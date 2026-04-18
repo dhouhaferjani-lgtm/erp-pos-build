@@ -49,6 +49,7 @@ interface TerminalState {
   pendingTerminalId: string | null;
   shift: Shift | null;
   isLoading: boolean;
+  hashChainReady: boolean;
 }
 
 interface TerminalActions {
@@ -61,6 +62,7 @@ interface TerminalActions {
   openShift: (openingCash: string, cashierId?: string) => Promise<void>;
   closeShift: (actualCash: string) => Promise<void>;
   reset: () => void;
+  refreshHashChainReady: () => Promise<void>;
 }
 
 type TerminalStore = TerminalState & TerminalActions;
@@ -70,6 +72,7 @@ const initialState: TerminalState = {
   pendingTerminalId: null,
   shift: null,
   isLoading: false,
+  hashChainReady: false,
 };
 
 /**
@@ -84,6 +87,12 @@ async function seedOfflineHashChain(terminalId: string): Promise<void> {
     const db = await getDatabase(companyId);
     await pullTerminalState(db, terminalId);
     await pullZChainState(db, terminalId);
+
+    // Update the ready flag whether or not the pull succeeded —
+    // the flag reflects SQLite state, not network state.
+    const { getTerminalState } = await import('@/lib/db/repositories/terminalStateRepository');
+    const stateRow = await getTerminalState(db, terminalId);
+    useTerminalStore.setState({ hashChainReady: stateRow !== null });
 
     // Hydrate in-memory image cache from SQLite manifest
     try {
@@ -298,5 +307,26 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     void removeStoredValue(StorageKeys.TERMINAL);
     void removeStoredValue(StorageKeys.PENDING_TERMINAL_ID);
     void removeStoredValue(StorageKeys.SHIFT);
+  },
+
+  refreshHashChainReady: async () => {
+    const { terminal } = get();
+    if (!terminal) {
+      set({ hashChainReady: false });
+      return;
+    }
+    const companyId = useAuthStore.getState().companyId;
+    if (!companyId) {
+      set({ hashChainReady: false });
+      return;
+    }
+    try {
+      const db = await getDatabase(companyId);
+      const { getTerminalState } = await import('@/lib/db/repositories/terminalStateRepository');
+      const state = await getTerminalState(db, terminal.id);
+      set({ hashChainReady: state !== null });
+    } catch {
+      set({ hashChainReady: false });
+    }
   },
 }));

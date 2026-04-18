@@ -502,6 +502,11 @@
     "noCardMethod": "No card payment method is configured for this terminal.",
     "noCardRepository": "No card repository (virtual or bank account) is configured for this terminal."
   },
+  "terminalNotReady": {
+    "title": "Terminal setup required",
+    "description": "This terminal must go online once to initialize its fiscal hash chain. Checkout is disabled until this completes.",
+    "syncNow": "Try activation now"
+  },
   "chainBreak": {
     "title": "Fiscal receipt chain broken",
     "description": "The receipt hash chain has a break after receipt {{receiptNumber}}. Subsequent receipts will be rejected by the server. Stop taking payments and contact support immediately.",

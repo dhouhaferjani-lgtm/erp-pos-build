@@ -16,6 +16,7 @@ import type { ReceiptVisibilitySettings } from '@/lib/buildReceiptData';
 import type { ReceiptData } from '@/lib/printing';
 import { hasModule } from '@/stores/productStore';
 import { ChainBreakAlert } from '@/components/atoms/ChainBreakAlert';
+import { TerminalNotReadyBanner } from '@/components/atoms/TerminalNotReadyBanner';
 import { ConsumptionModeToggle } from '@/components/atoms/ConsumptionModeToggle';
 import { TableSelector } from '@/components/atoms/TableSelector';
 import { ProductGrid } from '@/components/organisms/ProductGrid';
@@ -42,6 +43,7 @@ export function HomePage() {
   const { t } = useTranslation();
   const { decimals: currencyDecimals } = useCurrency();
   const { shift, terminal, openShift, isLoading: terminalLoading } = useTerminalStore();
+  const hashChainReady = useTerminalStore((s) => s.hashChainReady);
   const operator = useOperatorStore((s) => s.operator);
   const [openingCash, setOpeningCash] = useState('0.00');
   const [shiftError, setShiftError] = useState<string | null>(null);
@@ -535,6 +537,7 @@ export function HomePage() {
   if (!shift) {
     return (
       <div className="flex h-full flex-col">
+        <TerminalNotReadyBanner />
         <ChainBreakAlert />
         <div className="flex flex-1 items-center justify-center">
         <div className="w-full max-w-sm text-center">
@@ -579,6 +582,7 @@ export function HomePage() {
 
   return (
     <div className="flex h-full flex-col">
+      <TerminalNotReadyBanner />
       <ChainBreakAlert />
       <div className={`flex flex-1 relative ${cartPosition === 'end' ? 'flex-row-reverse' : 'flex-row'}`}>
       {/* Barcode scan feedback */}
@@ -619,6 +623,7 @@ export function HomePage() {
           onRemoveDiscount={handleRemoveDiscount}
           paymentMethods={paymentMethods}
           smartPromptsSlot={smartPromptsInline}
+          checkoutDisabled={!hashChainReady || isProcessing}
         />
       </div>
 
