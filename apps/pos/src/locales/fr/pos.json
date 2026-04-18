@@ -498,7 +498,9 @@
     "noCompanySelected": "Aucune entreprise sélectionnée. Veuillez sélectionner une entreprise avant d'encaisser.",
     "noOperatorIdentified": "Aucun opérateur identifié. Veuillez vous connecter avec votre code PIN avant d'encaisser.",
     "noPaymentProvided": "Au moins un moyen de paiement est requis.",
-    "unknownPaymentMethod": "Moyen de paiement inconnu dans le paiement mixte."
+    "unknownPaymentMethod": "Moyen de paiement inconnu dans le paiement mixte.",
+    "noCardMethod": "Aucun moyen de paiement par carte n'est configuré pour ce terminal.",
+    "noCardRepository": "Aucun dépôt carte (virtuel ou compte bancaire) n'est configuré pour ce terminal."
   },
   "receiptLabel": {
     "receipt": "Reçu :",

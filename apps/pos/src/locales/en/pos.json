@@ -498,7 +498,9 @@
     "noCompanySelected": "No company selected. Please select a company before taking payment.",
     "noOperatorIdentified": "No operator identified. Please log in with your PIN before taking payment.",
     "noPaymentProvided": "At least one payment method is required.",
-    "unknownPaymentMethod": "Unknown payment method in split payment."
+    "unknownPaymentMethod": "Unknown payment method in split payment.",
+    "noCardMethod": "No card payment method is configured for this terminal.",
+    "noCardRepository": "No card repository (virtual or bank account) is configured for this terminal."
   },
   "receiptLabel": {
     "receipt": "Receipt:",

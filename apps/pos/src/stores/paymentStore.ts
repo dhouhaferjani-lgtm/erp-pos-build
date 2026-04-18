@@ -289,7 +289,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         m.is_active,
     );
     if (!cardMethod) {
-      const msg = i18n.t('errors.checkoutFailed', { ns: 'pos' });
+      const msg = i18n.t('errors.noCardMethod', { ns: 'pos' });
       set({ error: msg });
       throw new Error(msg);
     }
@@ -298,7 +298,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       (r) => (r.type === 'virtual' || r.type === 'bank_account') && r.is_active,
     );
     if (!cardRepo) {
-      const msg = i18n.t('errors.checkoutFailed', { ns: 'pos' });
+      const msg = i18n.t('errors.noCardRepository', { ns: 'pos' });
       set({ error: msg });
       throw new Error(msg);
     }
@@ -312,7 +312,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       const decimals = getCurrencyDecimals(currency);
       const totalEstimate = cartItems.reduce((sum, i) => sum + parseFloat(i.line_total), 0);
 
-      const result = await createReceiptLocalFirst(
+      await createReceiptLocalFirst(
         set,
         terminalId,
         cartItems,
@@ -330,7 +330,6 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         tableId,
       );
 
-      void result;
       set({ changeDue: 0, isProcessing: false });
     } catch (error) {
       set({
