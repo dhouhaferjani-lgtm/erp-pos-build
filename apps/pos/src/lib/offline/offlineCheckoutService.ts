@@ -73,7 +73,7 @@ async function onlineCheckout(
   input: CheckoutInput,
 ): Promise<CheckoutResult> {
   const receipt = await createReceipt(
-    input.receiptData as Parameters<typeof createReceipt>[0],
+    input.receiptData as unknown as Parameters<typeof createReceipt>[0],
   );
   const paymentResponse = await processReceiptPayments(receipt.id, {
     payments: [

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { apiGet, getErrorMessage, ApiRequestError } from '@/lib/api';
+import { apiGet, getErrorMessage } from '@/lib/api';
 import { getDeviceId } from '@/lib/device';
 import { useAuthStore } from '@/stores/authStore';
 import { useTerminalActivation } from '@/hooks/useTerminalActivation';
