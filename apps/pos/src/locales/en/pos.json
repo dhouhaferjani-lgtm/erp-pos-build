@@ -502,6 +502,13 @@
     "noCardMethod": "No card payment method is configured for this terminal.",
     "noCardRepository": "No card repository (virtual or bank account) is configured for this terminal."
   },
+  "chainBreak": {
+    "title": "Fiscal receipt chain broken",
+    "description": "The receipt hash chain has a break after receipt {{receiptNumber}}. Subsequent receipts will be rejected by the server. Stop taking payments and contact support immediately.",
+    "contactSupport": "Reference this alert when contacting support. Do not delete or modify any receipts.",
+    "acknowledge": "I understand",
+    "unknownReceipt": "(unknown)"
+  },
   "receiptLabel": {
     "receipt": "Receipt:",
     "date": "Date:",

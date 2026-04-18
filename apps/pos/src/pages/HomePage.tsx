@@ -15,6 +15,7 @@ import { buildEscPosReceiptData } from '@/lib/buildReceiptData';
 import type { ReceiptVisibilitySettings } from '@/lib/buildReceiptData';
 import type { ReceiptData } from '@/lib/printing';
 import { hasModule } from '@/stores/productStore';
+import { ChainBreakAlert } from '@/components/atoms/ChainBreakAlert';
 import { ConsumptionModeToggle } from '@/components/atoms/ConsumptionModeToggle';
 import { TableSelector } from '@/components/atoms/TableSelector';
 import { ProductGrid } from '@/components/organisms/ProductGrid';
@@ -574,7 +575,9 @@ export function HomePage() {
   }
 
   return (
-    <div className={`flex h-full relative ${cartPosition === 'end' ? 'flex-row-reverse' : 'flex-row'}`}>
+    <div className="flex h-full flex-col">
+      <ChainBreakAlert />
+      <div className={`flex flex-1 relative ${cartPosition === 'end' ? 'flex-row-reverse' : 'flex-row'}`}>
       {/* Barcode scan feedback */}
       {scanMessage && (
         <div
@@ -732,6 +735,7 @@ export function HomePage() {
         currentQuantity={quantityEditItem?.quantity ?? 1}
         onConfirm={handleQuantityConfirm}
       />
+      </div>
     </div>
   );
 }

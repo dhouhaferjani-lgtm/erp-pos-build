@@ -184,3 +184,11 @@ export async function getOfflineReceiptById(
     [id]
   );
 }
+
+export async function getLastSyncedReceiptNumber(db: Database): Promise<string | null> {
+  const row = await queryOne<{ receipt_number: string }>(
+    db,
+    "SELECT receipt_number FROM offline_receipts WHERE status = 'synced' ORDER BY hash_sequence DESC LIMIT 1",
+  );
+  return row?.receipt_number ?? null;
+}

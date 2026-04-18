@@ -502,6 +502,13 @@
     "noCardMethod": "Aucun moyen de paiement par carte n'est configuré pour ce terminal.",
     "noCardRepository": "Aucun dépôt carte (virtuel ou compte bancaire) n'est configuré pour ce terminal."
   },
+  "chainBreak": {
+    "title": "Chaîne fiscale rompue",
+    "description": "La chaîne de hash des tickets est rompue après le ticket {{receiptNumber}}. Les tickets suivants seront rejetés par le serveur. Arrêtez d'encaisser et contactez le support immédiatement.",
+    "contactSupport": "Mentionnez cette alerte lors du contact avec le support. Ne supprimez ni ne modifiez aucun ticket.",
+    "acknowledge": "J'ai compris",
+    "unknownReceipt": "(inconnu)"
+  },
   "receiptLabel": {
     "receipt": "Reçu :",
     "date": "Date :",

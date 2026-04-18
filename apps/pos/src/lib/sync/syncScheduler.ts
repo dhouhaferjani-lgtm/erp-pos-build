@@ -76,6 +76,13 @@ export class SyncScheduler {
         console.error('[SyncScheduler] refreshFromSQLite failed:', err);
       });
 
+      if (result.chainBreak) {
+        // Try to identify the last successfully synced receipt for operator context
+        const { getLastSyncedReceiptNumber } = await import('@/lib/db/repositories/offlineReceiptRepository');
+        const lastSynced = await getLastSyncedReceiptNumber(this.db);
+        useSyncStore.getState().setChainBreak(true, lastSynced);
+      }
+
       useSyncStore.getState().completeSync(result);
 
       // If sync errors contain "Unauthorized" (401), the token may be expired.
