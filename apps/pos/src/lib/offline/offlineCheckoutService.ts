@@ -2,6 +2,7 @@ import type Database from '@tauri-apps/plugin-sql';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { createReceipt, processReceiptPayments } from '@/api/receiptApi';
 import { createOfflineReceipt } from '@/lib/offline/receiptService';
+import { getCurrencyDecimals } from '@/lib/currency';
 import type { CartItem } from '@/types/cart';
 import type {
   CreateReceiptResponse,
@@ -108,7 +109,7 @@ async function offlineCheckout(
 ): Promise<CheckoutResult> {
   const cartTotal = input.cartItems
     .reduce((sum, item) => sum + parseFloat(item.line_total), 0)
-    .toFixed(2);
+    .toFixed(getCurrencyDecimals(input.currency));
   const defaultPayments = [{ methodCode: 'CASH', amount: cartTotal }];
 
   const result = await createOfflineReceipt(db, {
