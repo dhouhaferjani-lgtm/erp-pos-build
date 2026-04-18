@@ -238,6 +238,66 @@ describe('syncService', () => {
       expect(setServerReceiptId).toHaveBeenCalledWith(expect.anything(), 'idem-1', 'server-uuid-99');
     });
 
+    it('setServerReceiptId failure does not clobber synced status or decrement pushed count', async () => {
+      const receipt = makeOfflineReceipt({
+        id: 'r-writeback',
+        idempotency_key: 'idem-writeback',
+        status: 'pending',
+      });
+      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
+      vi.mocked(apiPost).mockResolvedValueOnce({
+        results: [{
+          idempotency_key: 'idem-writeback',
+          status: 'synced',
+          receipt_id: 'server-uuid-wb',
+          server_fiscal_hash: 'hash-wb',
+          error: null,
+        }],
+        total: 1, synced: 1, duplicates: 0, failed: 0,
+      });
+      vi.mocked(setServerReceiptId).mockRejectedValueOnce(new Error('SQLite write error'));
+
+      const result = await pushOfflineReceipts(db);
+
+      // Receipt must be counted as pushed, not failed
+      expect(result.pushed).toBe(1);
+      expect(result.failed).toBe(0);
+      // Status must remain 'synced' — the last call to updateReceiptStatus for this receipt should be 'synced'
+      const statusCalls = vi.mocked(updateReceiptStatus).mock.calls.filter(
+        (c) => c[1] === 'r-writeback',
+      );
+      const finalStatus = statusCalls[statusCalls.length - 1]![2];
+      expect(finalStatus).toBe('synced');
+    });
+
+    it('malformed payments_json falls back to synthesized entry and warns', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      const receipt = makeOfflineReceipt({
+        idempotency_key: 'idem-corrupt',
+        payments_json: 'not-json',
+      });
+      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
+      vi.mocked(apiPost).mockResolvedValueOnce({
+        results: [{ idempotency_key: 'idem-corrupt', status: 'synced', receipt_id: 'srv-c', server_fiscal_hash: 'h', error: null }],
+        total: 1, synced: 1, duplicates: 0, failed: 0,
+      });
+
+      await pushOfflineReceipts(db);
+
+      const callArgs = vi.mocked(apiPost).mock.calls[0]![1] as { receipts: Record<string, unknown>[] };
+      const payload = callArgs['receipts'][0]!;
+      expect(Array.isArray(payload['payments'])).toBe(true);
+      expect((payload['payments'] as unknown[]).length).toBe(1);
+      expect((payload['payments'] as Record<string, unknown>[])[0]!['payment_method_id']).toBe(receipt.payment_method_id);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('malformed payments_json'),
+        expect.anything(),
+      );
+
+      warnSpy.mockRestore();
+    });
+
     it('sends payments[], consumption_mode, table_id in sync payload', async () => {
       const receipt = makeOfflineReceipt({
         idempotency_key: 'idem-fnb',

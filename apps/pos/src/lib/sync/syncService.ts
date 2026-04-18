@@ -120,11 +120,12 @@ export interface SyncResult {
  * These errors are unrecoverable without operator intervention.
  */
 function isChainBreakError(error: unknown): boolean {
-  if (error instanceof Error) {
-    const msg = error.message.toLowerCase();
-    return msg.includes('hash chain') || msg.includes('hash mismatch') || msg.includes('chain break');
-  }
-  return false;
+  const msg = (
+    error instanceof Error ? error.message :
+    typeof error === 'string' ? error :
+    ''
+  ).toLowerCase();
+  return msg.includes('hash chain') || msg.includes('hash mismatch') || msg.includes('chain break');
 }
 
 /**
@@ -161,11 +162,16 @@ export async function pushOfflineReceipts(db: Database): Promise<{
       if (resultItem.status === 'synced' || resultItem.status === 'duplicate') {
         await updateReceiptStatus(db, receipt.id, 'synced');
         if (resultItem.receipt_id) {
-          await setServerReceiptId(db, receipt.idempotency_key, resultItem.receipt_id);
+          try {
+            await setServerReceiptId(db, receipt.idempotency_key, resultItem.receipt_id);
+          } catch (writebackError) {
+            const msg = writebackError instanceof Error ? writebackError.message : 'unknown';
+            await logSyncOperation(db, 'push', 'receipt', receipt.id, 'error', `server_receipt_id writeback failed (server sync succeeded): ${msg}`);
+          }
         }
         await logSyncOperation(db, 'push', 'receipt', receipt.id, 'success', resultItem.status);
         pushed++;
-      } else if (resultItem.status === 'chain_broken' || (resultItem.status === 'failed' && isChainBreakError(new Error(resultItem.error ?? '')))) {
+      } else if (resultItem.status === 'chain_broken' || (resultItem.status === 'failed' && isChainBreakError(resultItem.error))) {
         await incrementRetryCount(db, receipt.id);
         await updateReceiptStatus(db, receipt.id, 'failed', resultItem.error ?? 'chain_broken');
         await logSyncOperation(db, 'push', 'receipt', receipt.id, 'error', `chain_broken: ${resultItem.error ?? ''}`);
@@ -497,25 +503,39 @@ export async function runFullSync(
 }
 
 function receiptToPayload(receipt: OfflineReceipt): SyncReceiptPayload {
-  let parsedPayments: SyncReceiptPayloadPayment[] = [];
-  try {
-    const raw = JSON.parse(receipt.payments_json) as Array<Partial<SyncReceiptPayloadPayment>>;
-    parsedPayments = raw.map((p) => ({
-      payment_method_id: String(p.payment_method_id ?? receipt.payment_method_id),
-      repository_id: String(p.repository_id ?? receipt.payment_repository_id),
-      amount: String(p.amount ?? receipt.total),
-      card_last_four: p.card_last_four ?? null,
-      transaction_reference: p.transaction_reference ?? null,
-    }));
-  } catch {
-    // Back-compat: pre-v16 receipts have no payments_json; synthesize a single-payment entry
-    parsedPayments = [{
-      payment_method_id: receipt.payment_method_id,
-      repository_id: receipt.payment_repository_id,
-      amount: receipt.total,
-      card_last_four: null,
-      transaction_reference: null,
-    }];
+  const synthesize = (): SyncReceiptPayloadPayment[] => [{
+    payment_method_id: receipt.payment_method_id,
+    repository_id: receipt.payment_repository_id,
+    amount: receipt.total,
+    card_last_four: null,
+    transaction_reference: null,
+  }];
+
+  let parsedPayments: SyncReceiptPayloadPayment[];
+  if (!receipt.payments_json) {
+    // Pre-v16 receipt: column was NULL/empty. Synthesize silently.
+    parsedPayments = synthesize();
+  } else {
+    try {
+      const raw = JSON.parse(receipt.payments_json) as unknown;
+      if (!Array.isArray(raw)) {
+        throw new Error('payments_json is not an array');
+      }
+      parsedPayments = (raw as Array<Partial<SyncReceiptPayloadPayment>>).map((p) => ({
+        payment_method_id: String(p.payment_method_id ?? receipt.payment_method_id),
+        repository_id: String(p.repository_id ?? receipt.payment_repository_id),
+        amount: String(p.amount ?? receipt.total),
+        card_last_four: p.card_last_four ?? null,
+        transaction_reference: p.transaction_reference ?? null,
+      }));
+    } catch (parseError) {
+      // v16+ receipt with malformed payments_json — fall back but log loudly.
+      console.warn(
+        `[sync] malformed payments_json for receipt ${receipt.receipt_number}; falling back to flat columns`,
+        parseError,
+      );
+      parsedPayments = synthesize();
+    }
   }
 
   return {
