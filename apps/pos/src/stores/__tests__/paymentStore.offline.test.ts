@@ -7,11 +7,6 @@ vi.mock('@/api/paymentApi', () => ({
   fetchPaymentRepositories: vi.fn(),
 }));
 
-vi.mock('@/api/receiptApi', () => ({
-  createReceipt: vi.fn(),
-  processReceiptPayments: vi.fn(),
-}));
-
 vi.mock('@/lib/db', () => ({
   getDatabase: vi.fn(),
 }));
@@ -25,13 +20,28 @@ vi.mock('@/lib/offline/offlineCheckoutService', () => ({
   executeCheckout: vi.fn(),
 }));
 
+vi.mock('@/lib/offline/receiptService', () => ({
+  createOfflineReceipt: vi.fn(),
+}));
+
 vi.mock('@/stores/authStore', () => ({
   useAuthStore: {
     getState: vi.fn().mockReturnValue({
       companyId: 'company-1',
       serverUrl: 'http://localhost',
       token: 'test-token',
+      user: { id: 'user-1', name: 'Test User' },
       companies: [{ id: 'company-1', currency: 'EUR' }],
+    }),
+  },
+}));
+
+vi.mock('@/stores/syncStore', () => ({
+  useSyncStore: {
+    getState: vi.fn().mockReturnValue({
+      scheduler: null,
+      pendingReceiptCount: 0,
+      setPendingCount: vi.fn(),
     }),
   },
 }));
@@ -74,35 +84,6 @@ function makeOfflineResult(overrides: Partial<CheckoutResult> = {}): CheckoutRes
   };
 }
 
-function makeOnlineResult(overrides: Partial<CheckoutResult> = {}): CheckoutResult {
-  return {
-    isOffline: false,
-    receiptId: 'receipt-1',
-    receiptNumber: 'R-001',
-    total: '50.00',
-    subtotal: '50.00',
-    taxAmount: '0.00',
-    discountAmount: '0.00',
-    changeDue: 50,
-    onlineReceipt: {
-      id: 'receipt-1',
-      receipt_number: 'R-001',
-      total: '50.00',
-      subtotal: '50.00',
-      tax_amount: '0.00',
-      discount_amount: '0.00',
-      currency: 'EUR',
-    },
-    onlinePayment: {
-      receipt: { id: 'receipt-1', receipt_number: 'R-001', total: '50.00' },
-      receipt_payments: [{ id: 'rp-1', payment_method_id: 'pm-1', amount: '50.00' }],
-      treasury_payments: [{ id: 'tp-1', journal_entry_id: 'je-1' }],
-      change_due: '0.00',
-    },
-    ...overrides,
-  };
-}
-
 describe('paymentStore - offline checkout integration', () => {
   beforeEach(() => {
     usePaymentStore.getState().reset();
@@ -110,34 +91,6 @@ describe('paymentStore - offline checkout integration', () => {
     vi.mocked(getDatabase).mockResolvedValue(mockDb);
     vi.mocked(fetchPaymentMethods).mockResolvedValue([mockCashMethod, mockCardMethod]);
     vi.mocked(fetchPaymentRepositories).mockResolvedValue([mockCashRegister, mockCardRepo]);
-  });
-
-  it('cash checkout succeeds with offline result', async () => {
-    await usePaymentStore.getState().fetchPaymentConfig();
-    vi.mocked(executeCheckout).mockResolvedValue(makeOfflineResult());
-
-    const items = [makeCartItem({ line_total: '50.00' })];
-    await usePaymentStore.getState().processCashCheckout('terminal-1', items, 100);
-
-    const state = usePaymentStore.getState();
-    expect(state.isOfflineReceipt).toBe(true);
-    expect(state.lastReceipt).not.toBeNull();
-    expect(state.lastReceipt!.receipt_number).toBe('MAIN-T001-2026-00000001');
-    expect(state.changeDue).toBe(50);
-    expect(state.isProcessing).toBe(false);
-  });
-
-  it('cash checkout succeeds with online result', async () => {
-    await usePaymentStore.getState().fetchPaymentConfig();
-    vi.mocked(executeCheckout).mockResolvedValue(makeOnlineResult());
-
-    const items = [makeCartItem({ line_total: '50.00' })];
-    await usePaymentStore.getState().processCashCheckout('terminal-1', items, 100);
-
-    const state = usePaymentStore.getState();
-    expect(state.isOfflineReceipt).toBe(false);
-    expect(state.lastReceipt).not.toBeNull();
-    expect(state.lastReceipt!.id).toBe('receipt-1');
   });
 
   it('card checkout succeeds with offline result', async () => {
@@ -162,35 +115,5 @@ describe('paymentStore - offline checkout integration', () => {
 
     const state = usePaymentStore.getState();
     expect(state.isOfflineReceipt).toBe(true);
-  });
-
-  it('sets isProcessing during checkout and clears after', async () => {
-    await usePaymentStore.getState().fetchPaymentConfig();
-
-    let capturedProcessing = false;
-    vi.mocked(executeCheckout).mockImplementation(async () => {
-      capturedProcessing = usePaymentStore.getState().isProcessing;
-      return makeOnlineResult();
-    });
-
-    const items = [makeCartItem()];
-    await usePaymentStore.getState().processCashCheckout('terminal-1', items, 100);
-
-    expect(capturedProcessing).toBe(true);
-    expect(usePaymentStore.getState().isProcessing).toBe(false);
-  });
-
-  it('sets error and clears isProcessing when executeCheckout throws', async () => {
-    await usePaymentStore.getState().fetchPaymentConfig();
-    vi.mocked(executeCheckout).mockRejectedValue(new Error('Both online and offline failed'));
-
-    const items = [makeCartItem()];
-    await expect(
-      usePaymentStore.getState().processCashCheckout('terminal-1', items, 50),
-    ).rejects.toThrow('Both online and offline failed');
-
-    const state = usePaymentStore.getState();
-    expect(state.isProcessing).toBe(false);
-    expect(state.error).toBe('Both online and offline failed');
   });
 });

@@ -3,10 +3,12 @@ import i18n from '@/lib/i18n';
 import { fetchPaymentMethods, fetchPaymentRepositories } from '@/api/paymentApi';
 import { useCartStore } from '@/stores/cartStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useOperatorStore } from '@/stores/operatorStore';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { getDatabase } from '@/lib/db';
 import { getAllPaymentMethods, getAllPaymentRepositories } from '@/lib/db/repositories/paymentRepository';
 import { executeCheckout, type CheckoutResult } from '@/lib/offline/offlineCheckoutService';
+import { createOfflineReceipt, type OfflineReceiptResult } from '@/lib/offline/receiptService';
 import { useSyncStore } from '@/stores/syncStore';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import type { CartItem } from '@/types/cart';
@@ -197,6 +199,98 @@ async function runCheckout(
   return result;
 }
 
+interface LocalFirstPaymentLine {
+  methodCode: string;
+  amount: string;
+  paymentMethodId: string;
+  repositoryId: string;
+  cardLastFour?: string;
+  transactionReference?: string;
+}
+
+async function createReceiptLocalFirst(
+  set: (partial: Partial<PaymentState>) => void,
+  terminalId: string,
+  cartItems: CartItem[],
+  payments: LocalFirstPaymentLine[],
+  tenderedAmount: number,
+  transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string },
+  consumptionMode?: string,
+  tableId?: string | null,
+): Promise<OfflineReceiptResult> {
+  const authState = useAuthStore.getState();
+  const operatorState = useOperatorStore.getState();
+
+  const companyId = authState.companyId;
+  if (!companyId) {
+    throw new Error(i18n.t('errors.noCompanySelected', { ns: 'pos' }));
+  }
+  const company = authState.companies.find((c) => c.id === companyId);
+  const currency = company?.currency ?? 'EUR';
+
+  // Prefer PIN-verified operator; fall back to logged-in user for pre-PIN terminals
+  const operator = operatorState.operator;
+  const operatorId = operator?.id ?? authState.user?.id;
+  const operatorName = operator?.name ?? authState.user?.name;
+  if (!operatorId || !operatorName) {
+    throw new Error(i18n.t('errors.noOperatorIdentified', { ns: 'pos' }));
+  }
+
+  const primary = payments[0];
+  if (!primary) {
+    throw new Error(i18n.t('errors.noPaymentProvided', { ns: 'pos' }));
+  }
+
+  const db = await getDatabase(companyId);
+
+  const result = await createOfflineReceipt(db, {
+    terminalId,
+    operatorId,
+    operatorName,
+    cartItems,
+    currency,
+    paymentMethodId: primary.paymentMethodId,
+    paymentRepositoryId: primary.repositoryId,
+    tenderedAmount,
+    transactionDiscount,
+    payments: payments.map((p) => ({
+      methodCode: p.methodCode,
+      amount: p.amount,
+      paymentMethodId: p.paymentMethodId,
+      repositoryId: p.repositoryId,
+      cardLastFour: p.cardLastFour,
+      transactionReference: p.transactionReference,
+    })),
+    consumptionMode,
+    tableId: tableId ?? undefined,
+  });
+
+  // Fire-and-forget background sync; errors are surfaced by the scheduler, not at checkout
+  const scheduler = useSyncStore.getState().scheduler;
+  if (scheduler) {
+    void scheduler.syncNow().catch((err: unknown) => {
+      console.warn('[POS] Background sync attempt failed (will retry on next tick):', err);
+    });
+  }
+
+  // Expose the client-generated receipt identity to the UI.
+  // id = local SQLite row id; serverReceiptId is null until sync completes.
+  set({
+    lastReceipt: {
+      id: result.receiptNumber, // using receipt_number as a stable identifier for UI; real UUID is idempotencyKey
+      receipt_number: result.receiptNumber,
+      total: result.total,
+      subtotal: result.subtotal,
+      tax_amount: result.taxAmount,
+      discount_amount: result.discountAmount,
+      currency,
+    } satisfies CreateReceiptResponse,
+    pendingReceiptId: null,
+  });
+
+  return result;
+}
+
 export const usePaymentStore = create<PaymentStore>()((set, get) => ({
   ...initialState,
 
@@ -241,12 +335,12 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
   },
 
   processCashCheckout: async (
-    terminalId: string,
-    cartItems: CartItem[],
-    tenderedAmount: number,
-    transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string },
-    consumptionMode?: string,
-    tableId?: string | null,
+    terminalId,
+    cartItems,
+    tenderedAmount,
+    transactionDiscount,
+    consumptionMode,
+    tableId,
   ) => {
     const { paymentMethods, paymentRepositories } = get();
 
@@ -271,11 +365,25 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     set({ isProcessing: true, error: null });
 
     try {
-      await runCheckout(
-        set, terminalId, cartItems,
-        cashMethod.id, cashRegister.id, tenderedAmount,
-        transactionDiscount, consumptionMode, tableId,
+      const totalEstimate = cartItems.reduce((sum, i) => sum + parseFloat(i.line_total), 0);
+
+      const result = await createReceiptLocalFirst(
+        set,
+        terminalId,
+        cartItems,
+        [{
+          methodCode: cashMethod.code,
+          amount: totalEstimate.toFixed(2),
+          paymentMethodId: cashMethod.id,
+          repositoryId: cashRegister.id,
+        }],
+        tenderedAmount,
+        transactionDiscount,
+        consumptionMode,
+        tableId,
       );
+
+      set({ changeDue: result.changeDue, isProcessing: false });
     } catch (error) {
       set({
         isProcessing: false,

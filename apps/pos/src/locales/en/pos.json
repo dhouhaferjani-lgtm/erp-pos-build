@@ -494,7 +494,10 @@
     "unexpected": "An unexpected error occurred",
     "noCashMethod": "No cash payment method configured. Please set up a cash payment method in Settings → Payment Methods.",
     "noCashRegister": "No cash register configured. Please set up a cash register in Settings → Payment Repositories.",
-    "checkoutFailed": "Checkout failed"
+    "checkoutFailed": "Checkout failed",
+    "noCompanySelected": "No company selected. Please select a company before taking payment.",
+    "noOperatorIdentified": "No operator identified. Please log in with your PIN before taking payment.",
+    "noPaymentProvided": "At least one payment method is required."
   },
   "receiptLabel": {
     "receipt": "Receipt:",

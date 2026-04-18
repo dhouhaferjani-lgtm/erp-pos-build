@@ -38,7 +38,7 @@ interface OfflineReceiptInput {
   tableId?: string;
 }
 
-interface OfflineReceiptResult {
+export interface OfflineReceiptResult {
   receiptNumber: string;
   total: string;
   subtotal: string;

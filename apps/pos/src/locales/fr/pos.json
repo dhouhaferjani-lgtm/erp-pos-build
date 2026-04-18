@@ -494,7 +494,10 @@
     "unexpected": "Une erreur inattendue s'est produite",
     "noCashMethod": "Aucun moyen de paiement espèces configuré. Veuillez configurer un moyen de paiement espèces dans Paramètres → Moyens de paiement.",
     "noCashRegister": "Aucune caisse enregistreuse configurée. Veuillez configurer une caisse dans Paramètres → Dépôts de paiement.",
-    "checkoutFailed": "Échec du paiement"
+    "checkoutFailed": "Échec du paiement",
+    "noCompanySelected": "Aucune entreprise sélectionnée. Veuillez sélectionner une entreprise avant d'encaisser.",
+    "noOperatorIdentified": "Aucun opérateur identifié. Veuillez vous connecter avec votre code PIN avant d'encaisser.",
+    "noPaymentProvided": "Au moins un moyen de paiement est requis."
   },
   "receiptLabel": {
     "receipt": "Reçu :",
