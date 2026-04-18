@@ -153,6 +153,9 @@ async function getDb(): Promise<import('@tauri-apps/plugin-sql').default> {
   return getDatabase(companyId ?? '');
 }
 
+// TEMP: Task C left these API-first helpers in place because
+// processCardCheckout + processAdvancedCheckout still depend on them.
+// Task D rewrites both to use createReceiptLocalFirst; this block will be deleted then.
 async function runCheckout(
   set: (partial: Partial<PaymentState>) => void,
   terminalId: string,
@@ -265,13 +268,8 @@ async function createReceiptLocalFirst(
     tableId: tableId ?? undefined,
   });
 
-  // Fire-and-forget background sync; errors are surfaced by the scheduler, not at checkout
-  const scheduler = useSyncStore.getState().scheduler;
-  if (scheduler) {
-    void scheduler.syncNow().catch((err: unknown) => {
-      console.warn('[POS] Background sync attempt failed (will retry on next tick):', err);
-    });
-  }
+  // Fire-and-forget background sync; triggerSync() guards against concurrent calls via isSyncing.
+  useSyncStore.getState().triggerSync();
 
   // Expose the client-generated receipt identity to the UI.
   // id = local SQLite row id; serverReceiptId is null until sync completes.
@@ -365,6 +363,10 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     set({ isProcessing: true, error: null });
 
     try {
+      const authState = useAuthStore.getState();
+      const company = authState.companies.find((c) => c.id === authState.companyId);
+      const currency = company?.currency ?? 'EUR';
+      const decimals = getCurrencyDecimals(currency);
       const totalEstimate = cartItems.reduce((sum, i) => sum + parseFloat(i.line_total), 0);
 
       const result = await createReceiptLocalFirst(
@@ -373,7 +375,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         cartItems,
         [{
           methodCode: cashMethod.code,
-          amount: totalEstimate.toFixed(2),
+          amount: totalEstimate.toFixed(decimals),
           paymentMethodId: cashMethod.id,
           repositoryId: cashRegister.id,
         }],

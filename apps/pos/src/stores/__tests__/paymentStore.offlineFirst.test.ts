@@ -47,6 +47,7 @@ vi.mock('@/stores/syncStore', () => ({
       scheduler: null,
       pendingReceiptCount: 0,
       setPendingCount: vi.fn(),
+      triggerSync: vi.fn(),
     }),
   },
 }));
@@ -143,6 +144,28 @@ describe('paymentStore offline-first cash checkout', () => {
     expect(createOfflineReceipt).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ consumptionMode: 'SUR_PLACE', tableId: 'table-7' }),
+    );
+  });
+
+  it('formats payment amount with 3 decimals for TND currency', async () => {
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+
+    // Switch company to TND
+    useAuthStore.setState({
+      companies: [{ id: 'company-1', name: 'Test Co', legalName: 'Test SA', countryCode: 'TN', currency: 'TND', locale: 'fr', timezone: 'Africa/Tunis' }],
+    });
+    useCartStore.setState({
+      items: [makeCartItem({ line_total: '50.000', tax_amount: '0.000' })],
+    });
+
+    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 60);
+
+    expect(createOfflineReceipt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        currency: 'TND',
+        payments: [expect.objectContaining({ methodCode: 'CASH', amount: '50.000' })],
+      }),
     );
   });
 });
