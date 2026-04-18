@@ -32,12 +32,19 @@ final class SyncReceiptsTest extends TestCase
     use RefreshDatabase;
 
     private Tenant $tenant;
+
     private Company $company;
+
     private User $user;
+
     private Location $location;
+
     private Terminal $terminal;
+
     private Product $product;
+
     private PaymentMethod $paymentMethod;
+
     private PaymentRepository $paymentRepo;
 
     protected function setUp(): void
@@ -157,6 +164,77 @@ final class SyncReceiptsTest extends TestCase
         $response->assertJsonPath('data.synced', 1);
     }
 
+    public function test_sync_receipt_with_split_payments_persists_all_payment_rows(): void
+    {
+        $paymentMethod2 = \App\Modules\Treasury\Domain\PaymentMethod::factory()->create([
+            'company_id' => $this->company->id,
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Card',
+            'code' => 'CARD',
+        ]);
+        $paymentRepo2 = \App\Modules\Treasury\Domain\PaymentRepository::factory()->create([
+            'company_id' => $this->company->id,
+            'tenant_id' => $this->tenant->id,
+        ]);
+
+        $payload = $this->buildReceiptPayload([
+            'total' => '30.00',
+            'payments' => [
+                ['payment_method_id' => $this->paymentMethod->id, 'repository_id' => $this->paymentRepo->id, 'amount' => '10.00'],
+                ['payment_method_id' => $paymentMethod2->id, 'repository_id' => $paymentRepo2->id, 'amount' => '20.00', 'card_last_four' => '4242', 'transaction_reference' => 'AUTH-123'],
+            ],
+        ]);
+
+        $response = $this->postJson('/api/v1/pos/receipts/sync', $payload);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('data.results.0.status', 'synced');
+
+        $receipt = \App\Modules\POS\Domain\Receipt::where('idempotency_key', $payload['idempotency_key'])->first();
+        $this->assertNotNull($receipt);
+        $this->assertCount(2, $receipt->payments);
+        $this->assertEquals('10.000', $receipt->payments->firstWhere('payment_method_id', $this->paymentMethod->id)->amount);
+        $this->assertEquals('20.000', $receipt->payments->firstWhere('payment_method_id', $paymentMethod2->id)->amount);
+        $cardPayment = $receipt->payments->firstWhere('payment_method_id', $paymentMethod2->id);
+        $this->assertEquals('4242', $cardPayment->card_last_four);
+        $this->assertEquals('AUTH-123', $cardPayment->transaction_reference);
+    }
+
+    public function test_sync_receipt_persists_fnb_consumption_mode_and_table_id(): void
+    {
+        // Table has no factory — insert raw so we don't depend on one being added.
+        $tableId = \Illuminate\Support\Str::uuid()->toString();
+        \Illuminate\Support\Facades\DB::table('pos_tables')->insert([
+            'id' => $tableId,
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'table_number' => 'T1',
+            'label' => 'Table 1',
+            'seats' => 4,
+            'status' => 'available',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $payload = $this->buildReceiptPayload([
+            'consumption_mode' => 'SUR_PLACE',
+            'table_id' => $tableId,
+            'payments' => [
+                ['payment_method_id' => $this->paymentMethod->id, 'repository_id' => $this->paymentRepo->id, 'amount' => '20.00'],
+            ],
+        ]);
+
+        $response = $this->postJson('/api/v1/pos/receipts/sync', $payload);
+
+        $response->assertStatus(200);
+
+        $receipt = \App\Modules\POS\Domain\Receipt::where('idempotency_key', $payload['idempotency_key'])->first();
+        $this->assertNotNull($receipt);
+        // consumption_mode is cast to ConsumptionMode enum on the Receipt model — assert via enum equality.
+        $this->assertSame(\App\Modules\POS\Domain\Enums\ConsumptionMode::SurPlace, $receipt->consumption_mode);
+        $this->assertEquals($tableId, $receipt->table_id);
+    }
+
     /**
      * Build a valid receipt sync payload.
      *
@@ -166,7 +244,7 @@ final class SyncReceiptsTest extends TestCase
     private function buildReceiptPayload(array $overrides = []): array
     {
         $defaults = [
-            'idempotency_key' => 'test-' . uniqid(),
+            'idempotency_key' => 'test-'.uniqid(),
             'receipt_number' => 'POS01-2026-00000001',
             'terminal_id' => $this->terminal->id,
             'operator_id' => $this->user->id,
@@ -192,6 +270,11 @@ final class SyncReceiptsTest extends TestCase
             'payment_method_id' => $this->paymentMethod->id,
             'payment_repository_id' => $this->paymentRepo->id,
             'created_at' => now()->toIso8601String(),
+            'payments' => [
+                ['payment_method_id' => $this->paymentMethod->id, 'repository_id' => $this->paymentRepo->id, 'amount' => '20.00'],
+            ],
+            'consumption_mode' => null,
+            'table_id' => null,
         ];
 
         return array_merge($defaults, $overrides);

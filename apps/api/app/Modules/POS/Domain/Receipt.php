@@ -143,6 +143,8 @@ class Receipt extends Model
         'total',
         'currency',
         'consumption_mode',
+        'table_id',
+        'fiscal_status',
         'customer_name',
         'customer_identifier',
         'partner_id',

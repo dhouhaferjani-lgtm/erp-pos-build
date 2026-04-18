@@ -24,15 +24,18 @@ final readonly class SyncReceiptPayload
      * @param  string  $total  Gross total
      * @param  string  $currency  ISO currency code
      * @param  string  $offlineFiscalHash  Hash computed offline by the client
-     * @param  string  $previousHash  Previous hash the client used for chain
+     * @param  string|null  $previousHash  Previous hash the client used for chain
      * @param  int  $hashSequence  Chain sequence number from client
      * @param  string|null  $transactionDiscountAmount  Optional transaction discount
      * @param  string|null  $transactionDiscountReason  Optional discount reason
      * @param  string|null  $tenderedAmount  Amount tendered by customer
      * @param  string|null  $changeDue  Change returned
-     * @param  string  $paymentMethodId  Payment method UUID
-     * @param  string  $paymentRepositoryId  Payment repository UUID
+     * @param  string  $paymentMethodId  Payment method UUID (legacy single-pay field)
+     * @param  string  $paymentRepositoryId  Payment repository UUID (legacy single-pay field)
      * @param  string  $createdAt  ISO 8601 timestamp when receipt was created offline
+     * @param  array<int, array{payment_method_id: string, repository_id: string, amount: string, card_last_four?: string|null, transaction_reference?: string|null}>  $payments  Per-payment entries (split-pay support)
+     * @param  string|null  $consumptionMode  F&B consumption mode: SUR_PLACE or A_EMPORTER
+     * @param  string|null  $tableId  F&B table UUID (dine-in only)
      */
     public function __construct(
         public string $idempotencyKey,
@@ -55,6 +58,10 @@ final readonly class SyncReceiptPayload
         public string $paymentMethodId,
         public string $paymentRepositoryId,
         public string $createdAt,
+        /** @var array<int, array{payment_method_id: string, repository_id: string, amount: string, card_last_four?: string|null, transaction_reference?: string|null}> */
+        public array $payments,
+        public ?string $consumptionMode,
+        public ?string $tableId,
     ) {}
 
     /**
@@ -64,6 +71,16 @@ final readonly class SyncReceiptPayload
      */
     public static function fromArray(array $data): self
     {
+        /** @var array<int, array<string, mixed>> $rawPayments */
+        $rawPayments = $data['payments'] ?? [];
+        $payments = array_map(static fn (array $p): array => [
+            'payment_method_id' => (string) $p['payment_method_id'],
+            'repository_id' => (string) $p['repository_id'],
+            'amount' => (string) $p['amount'],
+            'card_last_four' => isset($p['card_last_four']) ? (string) $p['card_last_four'] : null,
+            'transaction_reference' => isset($p['transaction_reference']) ? (string) $p['transaction_reference'] : null,
+        ], $rawPayments);
+
         return new self(
             idempotencyKey: (string) $data['idempotency_key'],
             receiptNumber: (string) $data['receipt_number'],
@@ -85,6 +102,9 @@ final readonly class SyncReceiptPayload
             paymentMethodId: (string) $data['payment_method_id'],
             paymentRepositoryId: (string) $data['payment_repository_id'],
             createdAt: (string) $data['created_at'],
+            payments: $payments,
+            consumptionMode: isset($data['consumption_mode']) ? (string) $data['consumption_mode'] : null,
+            tableId: isset($data['table_id']) ? (string) $data['table_id'] : null,
         );
     }
 }
