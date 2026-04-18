@@ -31,4 +31,25 @@ describe('ChainBreakAlert', () => {
     fireEvent.click(screen.getByRole('button'));
     expect(useSyncStore.getState().chainBreakAcknowledgedAt).toBeTruthy();
   });
+
+  it('after acknowledge, renders compact acknowledged variant', () => {
+    useSyncStore.setState({
+      chainBreak: true,
+      chainBreakReceiptNumber: 'R1',
+      chainBreakAcknowledgedAt: null,
+    });
+    render(<ChainBreakAlert />);
+    fireEvent.click(screen.getByRole('button'));
+    // description and contactSupport text no longer visible
+    expect(
+      screen.queryByText(/hash chain has a break/i),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Reference this alert/i),
+    ).not.toBeInTheDocument();
+    // title and acknowledgedAt line are still visible
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(screen.getByText(/Fiscal receipt chain broken/i)).toBeInTheDocument();
+    expect(screen.getByText(/Acknowledged at/i)).toBeInTheDocument();
+  });
 });

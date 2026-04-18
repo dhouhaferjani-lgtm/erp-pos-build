@@ -8,6 +8,7 @@ function makeSyncResult(overrides: Partial<SyncResult> = {}): SyncResult {
     receiptsFailed: 0,
     zReportsPushed: 0,
     zReportsFailed: 0,
+    cashDrawerOpsPushed: 0,
     productsPulled: 10,
     paymentConfigPulled: true,
     operatorsPulled: 2,
@@ -98,5 +99,31 @@ describe('syncStore', () => {
     expect(state.lastSyncAt).toBeNull();
     expect(state.lastError).toBeNull();
     expect(state.pendingReceiptCount).toBe(0);
+  });
+
+  it('setChainBreak(true, "R1") sets the flag and clears prior acknowledgement', () => {
+    useSyncStore.setState({ chainBreakAcknowledgedAt: '2026-04-01T00:00:00.000Z' });
+    useSyncStore.getState().setChainBreak(true, 'R1');
+    const s = useSyncStore.getState();
+    expect(s.chainBreak).toBe(true);
+    expect(s.chainBreakReceiptNumber).toBe('R1');
+    expect(s.chainBreakAcknowledgedAt).toBeNull();
+  });
+
+  it('setChainBreak(false, null) clears the flag and records resolution timestamp', () => {
+    useSyncStore.setState({ chainBreak: true, chainBreakReceiptNumber: 'R1', chainBreakAcknowledgedAt: null });
+    useSyncStore.getState().setChainBreak(false, null);
+    const s = useSyncStore.getState();
+    expect(s.chainBreak).toBe(false);
+    expect(s.chainBreakReceiptNumber).toBeNull();
+    expect(s.chainBreakAcknowledgedAt).toBeTruthy();
+  });
+
+  it('acknowledgeChainBreak records a timestamp but does NOT clear the chainBreak flag', () => {
+    useSyncStore.setState({ chainBreak: true, chainBreakReceiptNumber: 'R1', chainBreakAcknowledgedAt: null });
+    useSyncStore.getState().acknowledgeChainBreak();
+    const s = useSyncStore.getState();
+    expect(s.chainBreak).toBe(true); // NOT cleared
+    expect(s.chainBreakAcknowledgedAt).toBeTruthy();
   });
 });

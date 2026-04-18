@@ -507,7 +507,8 @@
     "description": "La chaîne de hash des tickets est rompue après le ticket {{receiptNumber}}. Les tickets suivants seront rejetés par le serveur. Arrêtez d'encaisser et contactez le support immédiatement.",
     "contactSupport": "Mentionnez cette alerte lors du contact avec le support. Ne supprimez ni ne modifiez aucun ticket.",
     "acknowledge": "J'ai compris",
-    "unknownReceipt": "(inconnu)"
+    "unknownReceipt": "(inconnu)",
+    "acknowledgedAt": "Accusé de réception à {{time}} — l'alerte persiste jusqu'à la résolution par le support."
   },
   "receiptLabel": {
     "receipt": "Reçu :",
