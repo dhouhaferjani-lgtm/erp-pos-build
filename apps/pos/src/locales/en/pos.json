@@ -503,8 +503,8 @@
     "noCardRepository": "No card repository (virtual or bank account) is configured for this terminal."
   },
   "terminalNotReady": {
-    "title": "Terminal setup required",
-    "description": "This terminal must go online once to initialize its fiscal hash chain. Checkout is disabled until this completes.",
+    "title": "Terminal not activated",
+    "description": "This terminal needs to connect to the internet once to activate its fiscal hash chain. Checkout is disabled until activation completes.",
     "syncNow": "Try activation now"
   },
   "chainBreak": {

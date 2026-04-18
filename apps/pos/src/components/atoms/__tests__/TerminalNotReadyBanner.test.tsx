@@ -26,6 +26,6 @@ describe('TerminalNotReadyBanner', () => {
     useTerminalStore.setState({ hashChainReady: false });
     render(<TerminalNotReadyBanner />);
     expect(screen.getByRole('alert')).toBeInTheDocument();
-    expect(screen.getByText(/activate|activation|connect/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Try activation now/i })).toBeInTheDocument();
   });
 });
