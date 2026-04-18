@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { TerminalNotReadyBanner } from '@/components/atoms/TerminalNotReadyBanner';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useSyncStore } from '@/stores/syncStore';
@@ -27,5 +27,16 @@ describe('TerminalNotReadyBanner', () => {
     render(<TerminalNotReadyBanner />);
     expect(screen.getByRole('alert')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Try activation now/i })).toBeInTheDocument();
+  });
+
+  it('button click invokes scheduler.syncNow()', async () => {
+    const syncNow = vi.fn().mockResolvedValue({ chainBreak: false });
+    useSyncStore.setState({ scheduler: { syncNow } as any });
+    useTerminalStore.setState({ hashChainReady: false });
+
+    render(<TerminalNotReadyBanner />);
+    fireEvent.click(screen.getByRole('button', { name: /Try activation now/i }));
+
+    expect(syncNow).toHaveBeenCalledOnce();
   });
 });

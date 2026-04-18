@@ -4,6 +4,7 @@ import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { useProductStore } from '@/stores/productStore';
+import { useTerminalStore } from '@/stores/terminalStore';
 
 const BASE_INTERVAL_MS = 60_000; // 1 minute
 const MAX_INTERVAL_MS = 5 * 60_000; // 5 minutes
@@ -84,6 +85,12 @@ export class SyncScheduler {
       }
 
       useSyncStore.getState().completeSync(result);
+
+      // After any sync that pulled terminal_state, refresh the hashChainReady flag so
+      // cold-start banners disappear as soon as the terminal is bootstrapped.
+      if (result.terminalStatePulled) {
+        await useTerminalStore.getState().refreshHashChainReady();
+      }
 
       // If sync errors contain "Unauthorized" (401), the token may be expired.
       // Re-validate via /auth/me — on confirmed 401, logout so user can re-login.

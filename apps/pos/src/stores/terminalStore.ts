@@ -325,7 +325,8 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
       const { getTerminalState } = await import('@/lib/db/repositories/terminalStateRepository');
       const state = await getTerminalState(db, terminal.id);
       set({ hashChainReady: state !== null });
-    } catch {
+    } catch (error) {
+      console.error('[Terminal] refreshHashChainReady failed:', error);
       set({ hashChainReady: false });
     }
   },
