@@ -110,6 +110,7 @@ export function HomePage() {
 
   // ESC/POS receipt data for thermal printing
   const [escPosData, setEscPosData] = useState<ReceiptData | null>(null);
+  const [escPosSource, setEscPosSource] = useState<'local' | 'server' | null>(null);
 
   // Modifier selection state
   const [modifierProduct, setModifierProduct] = useState<POSProduct | null>(null);
@@ -186,27 +187,38 @@ export function HomePage() {
 
   // Fetch full receipt for ESC/POS thermal printing when success modal opens.
   // Prefer API when server ID is known (post-sync); fall back to local SQLite for pending receipts.
+  // escPosSource tracks whether we already have 'server' data (no upgrade needed) or only 'local'
+  // data (upgrade when lastReceiptServerId becomes available mid-modal).
   useEffect(() => {
     if (!showSuccessModal) {
       setEscPosData(null);
+      setEscPosSource(null);
       return;
     }
-    if (!lastReceipt || escPosData) return;
+    if (!lastReceipt) return;
+    // Already have the best-available data
+    if (escPosSource === 'server') return;
+    if (escPosSource === 'local' && !lastReceiptServerId) return;
 
     let cancelled = false;
 
     const loader = async () => {
       try {
-        // Prefer API when server ID is known (post-sync); fall back to local SQLite for pending receipts
         if (lastReceiptServerId) {
           const fullReceipt = await fetchReceipt(lastReceiptServerId);
-          if (!cancelled) setEscPosData(buildEscPosReceiptData(fullReceipt, receiptVisibility));
+          if (!cancelled) {
+            setEscPosData(buildEscPosReceiptData(fullReceipt, receiptVisibility));
+            setEscPosSource('server');
+          }
           return;
         }
         if (lastReceiptIdempotencyKey) {
           const { getOfflineReceiptForPrint } = await import('@/lib/offline/getOfflineReceiptForPrint');
           const localReceipt = await getOfflineReceiptForPrint(lastReceiptIdempotencyKey);
-          if (!cancelled) setEscPosData(buildEscPosReceiptData(localReceipt, receiptVisibility));
+          if (!cancelled) {
+            setEscPosData(buildEscPosReceiptData(localReceipt, receiptVisibility));
+            setEscPosSource('local');
+          }
         }
       } catch (err) {
         if (!cancelled) console.error('[POS] Failed to assemble receipt for thermal print:', err);
@@ -216,7 +228,7 @@ export function HomePage() {
     void loader();
 
     return () => { cancelled = true; };
-  }, [showSuccessModal, lastReceipt, lastReceiptIdempotencyKey, lastReceiptServerId, escPosData, receiptVisibility]);
+  }, [showSuccessModal, lastReceipt, lastReceiptIdempotencyKey, lastReceiptServerId, escPosSource, receiptVisibility]);
 
   // Smart Prompts: fetch recommendations when cart changes
   useEffect(() => {

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { getOfflineReceiptForPrint } from '../getOfflineReceiptForPrint';
 import * as repo from '@/lib/db/repositories/offlineReceiptRepository';
-import { makeOfflineReceipt } from '@/test/helpers';
+import { makeOfflineReceipt, makePaymentMethod } from '@/test/helpers';
 
 vi.mock('@/lib/db', () => ({ getDatabase: vi.fn(async () => ({ execute: vi.fn() })) }));
 
@@ -14,8 +14,20 @@ vi.mock('@/stores/authStore', () => ({
   },
 }));
 
+vi.mock('@/stores/paymentStore', () => ({
+  usePaymentStore: {
+    getState: vi.fn().mockReturnValue({ paymentMethods: [] }),
+  },
+}));
+
+import { usePaymentStore } from '@/stores/paymentStore';
+
 describe('getOfflineReceiptForPrint', () => {
-  it('assembles FullReceiptResponse-shaped data from offline_receipts + authStore', async () => {
+  it('assembles FullReceiptResponse-shaped data from offline_receipts + authStore, resolving payment method names', async () => {
+    (usePaymentStore.getState as ReturnType<typeof vi.fn>).mockReturnValue({
+      paymentMethods: [makePaymentMethod({ id: 'pm-1', name: 'Cash', code: 'CASH' })],
+    });
+
     vi.spyOn(repo, 'getReceiptByIdempotencyKey').mockResolvedValueOnce(
       makeOfflineReceipt({
         idempotency_key: 'idem-1',
@@ -37,6 +49,8 @@ describe('getOfflineReceiptForPrint', () => {
     expect(result.lines).toHaveLength(1);
     expect(result.lines[0]!.product_name).toBe('Coffee');
     expect(result.payments).toHaveLength(1);
+    expect(result.payments[0]!.payment_method.name).toBe('Cash');
+    expect(result.payments[0]!.payment_type).toBe('CASH');
     expect(result.company.name).toBe('Coffee Co');
   });
 
@@ -44,5 +58,34 @@ describe('getOfflineReceiptForPrint', () => {
     vi.spyOn(repo, 'getReceiptByIdempotencyKey').mockResolvedValueOnce(null);
 
     await expect(getOfflineReceiptForPrint('idem-missing')).rejects.toThrow(/not found/i);
+  });
+
+  it('resolves split payment names and falls back to UUID for unknown methods', async () => {
+    (usePaymentStore.getState as ReturnType<typeof vi.fn>).mockReturnValue({
+      paymentMethods: [makePaymentMethod({ id: 'pm-1', name: 'Cash', code: 'CASH' })],
+    });
+
+    vi.spyOn(repo, 'getReceiptByIdempotencyKey').mockResolvedValueOnce(
+      makeOfflineReceipt({
+        idempotency_key: 'idem-split',
+        total: '100.00',
+        subtotal: '100.00',
+        payments_json: JSON.stringify([
+          { payment_method_id: 'pm-1', repository_id: 'repo-1', amount: '60.00' },
+          { payment_method_id: 'pm-unknown-uuid', repository_id: 'repo-1', amount: '40.00' },
+        ]),
+      }),
+    );
+
+    const result = await getOfflineReceiptForPrint('idem-split');
+
+    expect(result.payments).toHaveLength(2);
+    // First payment: resolved from paymentMethods
+    expect(result.payments[0]!.payment_method.name).toBe('Cash');
+    expect(result.payments[0]!.payment_type).toBe('CASH');
+    // Second payment: no match — falls back to UUID
+    expect(result.payments[1]!.payment_method.name).toBe('pm-unknown-uuid');
+    expect(result.payments[1]!.payment_type).toBe('unknown');
+    expect(result.payments[1]!.payment_method.code).toBe('unknown');
   });
 });

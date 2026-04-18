@@ -1,6 +1,7 @@
 import { getDatabase } from '@/lib/db';
 import { getReceiptByIdempotencyKey } from '@/lib/db/repositories/offlineReceiptRepository';
 import { useAuthStore } from '@/stores/authStore';
+import { usePaymentStore } from '@/stores/paymentStore';
 import type { FullReceiptResponse } from '@/types/receipt';
 
 interface OfflineReceiptLine {
@@ -61,13 +62,21 @@ export async function getOfflineReceiptForPrint(
     modifiers: l.modifiers ?? null,
   }));
 
-  const payments = (JSON.parse(receipt.payments_json) as OfflinePaymentEntry[]).map((p, idx) => ({
-    id: `local-pay-${String(idx)}`,
-    payment_method_id: p.payment_method_id,
-    payment_type: 'unknown',
-    amount: p.amount,
-    payment_method: { id: p.payment_method_id, name: p.payment_method_id, code: 'unknown' },
-  }));
+  const methods = usePaymentStore.getState().paymentMethods;
+  const payments = (JSON.parse(receipt.payments_json) as OfflinePaymentEntry[]).map((p, idx) => {
+    const method = methods.find((m) => m.id === p.payment_method_id);
+    return {
+      id: `local-pay-${String(idx)}`,
+      payment_method_id: p.payment_method_id,
+      payment_type: method?.code ?? 'unknown',
+      amount: p.amount,
+      payment_method: {
+        id: p.payment_method_id,
+        name: method?.name ?? p.payment_method_id,
+        code: method?.code ?? 'unknown',
+      },
+    };
+  });
 
   return {
     id: receipt.id,
