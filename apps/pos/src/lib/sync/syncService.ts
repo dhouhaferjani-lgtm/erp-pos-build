@@ -30,6 +30,7 @@ import { logSyncOperation, getSyncMetadata, setSyncMetadata, cleanupOldSyncLogs 
 import type { LocalZReport } from '@/lib/offline/types';
 import type { POSProduct } from '@/types/product';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
+import { usePaymentStore } from '@/stores/paymentStore';
 
 interface SyncReceiptPayloadPayment {
   payment_method_id: string;
@@ -164,6 +165,11 @@ export async function pushOfflineReceipts(db: Database): Promise<{
         if (resultItem.receipt_id) {
           try {
             await setServerReceiptId(db, receipt.idempotency_key, resultItem.receipt_id);
+            // If this is the receipt currently shown in the success modal, update the store
+            // so HomePage can switch from local SQLite print to the richer API receipt.
+            if (usePaymentStore.getState().lastReceiptIdempotencyKey === receipt.idempotency_key) {
+              usePaymentStore.setState({ lastReceiptServerId: resultItem.receipt_id });
+            }
           } catch (writebackError) {
             const msg = writebackError instanceof Error ? writebackError.message : 'unknown';
             await logSyncOperation(db, 'push', 'receipt', receipt.id, 'error', `server_receipt_id writeback failed (server sync succeeded): ${msg}`);

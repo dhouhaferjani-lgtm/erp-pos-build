@@ -46,6 +46,8 @@ export interface OfflineReceiptResult {
   discountAmount: string;
   changeDue: number;
   fiscalHash: string;
+  idempotencyKey: string;
+  localId: string;
 }
 
 interface VatBreakdownEntry {
@@ -220,5 +222,7 @@ export async function createOfflineReceipt(
     discountAmount: transactionDiscountAmount.toFixed(decimals),
     changeDue,
     fiscalHash,
+    idempotencyKey,
+    localId: receiptId,
   };
 }

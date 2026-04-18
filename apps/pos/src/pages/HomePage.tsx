@@ -5,14 +5,13 @@ import { useOperatorStore } from '@/stores/operatorStore';
 import { useProductStore } from '@/stores/productStore';
 import { useCartStore, computeTaxAmount } from '@/stores/cartStore';
 import { usePaymentStore } from '@/stores/paymentStore';
-import { useAuthStore } from '@/stores/authStore';
 import { useHoldStore } from '@/stores/holdStore';
 import { useScannerStore } from '@/stores/scannerStore';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { getErrorMessage } from '@/lib/api';
 import { useCurrency } from '@/lib/currency';
 import { fetchReceipt } from '@/api/receiptApi';
-import { buildEscPosReceiptData, buildEscPosFromOfflineReceipt } from '@/lib/buildReceiptData';
+import { buildEscPosReceiptData } from '@/lib/buildReceiptData';
 import type { ReceiptVisibilitySettings } from '@/lib/buildReceiptData';
 import type { ReceiptData } from '@/lib/printing';
 import { hasModule } from '@/stores/productStore';
@@ -90,6 +89,8 @@ export function HomePage() {
   const changeDue = usePaymentStore((s) => s.changeDue);
   const isOfflineReceipt = usePaymentStore((s) => s.isOfflineReceipt);
   const clearLastReceipt = usePaymentStore((s) => s.clearLastReceipt);
+  const lastReceiptIdempotencyKey = usePaymentStore((s) => s.lastReceiptIdempotencyKey);
+  const lastReceiptServerId = usePaymentStore((s) => s.lastReceiptServerId);
   const paymentError = usePaymentStore((s) => s.error);
 
   // Hold store
@@ -183,60 +184,39 @@ export function HomePage() {
     };
   }, [companyConfig?.receipt_visibility]);
 
-  // Fetch full receipt for ESC/POS thermal printing when success modal opens
-  // Skip API fetch for offline receipts — the receipt doesn't exist on the server yet
+  // Fetch full receipt for ESC/POS thermal printing when success modal opens.
+  // Prefer API when server ID is known (post-sync); fall back to local SQLite for pending receipts.
   useEffect(() => {
     if (!showSuccessModal) {
       setEscPosData(null);
       return;
     }
-    if (!lastReceipt || escPosData || isOfflineReceipt) return;
+    if (!lastReceipt || escPosData) return;
 
-    // Offline receipts: build ESC/POS data from local cart data
-    if (isOfflineReceipt) {
-      const authState = useAuthStore.getState();
-      const company = authState.companies.find((c) => c.id === authState.companyId);
-      const cashMethod = paymentMethods.find((m) => m.is_physical && !m.has_maturity && m.is_active);
-      setEscPosData(buildEscPosFromOfflineReceipt(
-        {
-          isOffline: true,
-          receiptId: lastReceipt.id,
-          receiptNumber: lastReceipt.receipt_number,
-          total: lastReceipt.total,
-          subtotal: lastReceipt.subtotal,
-          taxAmount: lastReceipt.tax_amount,
-          discountAmount: lastReceipt.discount_amount,
-          changeDue,
-          currency: lastReceipt.currency ?? company?.currency ?? 'EUR',
-          onlineReceipt: null,
-          onlinePayment: null,
-        },
-        cartItems,
-        company?.name ?? '',
-        terminal?.name ?? '',
-        operator?.name ?? '',
-        cashMethod?.name ?? 'Cash',
-        receiptVisibility,
-      ));
-      return;
-    }
-
-    // Online receipts: fetch full receipt from API
     let cancelled = false;
-    fetchReceipt(lastReceipt.id)
-      .then((fullReceipt) => {
-        if (!cancelled) {
-          setEscPosData(buildEscPosReceiptData(fullReceipt, receiptVisibility));
+
+    const loader = async () => {
+      try {
+        // Prefer API when server ID is known (post-sync); fall back to local SQLite for pending receipts
+        if (lastReceiptServerId) {
+          const fullReceipt = await fetchReceipt(lastReceiptServerId);
+          if (!cancelled) setEscPosData(buildEscPosReceiptData(fullReceipt, receiptVisibility));
+          return;
         }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          console.error('[POS] Failed to fetch receipt for thermal print:', err);
+        if (lastReceiptIdempotencyKey) {
+          const { getOfflineReceiptForPrint } = await import('@/lib/offline/getOfflineReceiptForPrint');
+          const localReceipt = await getOfflineReceiptForPrint(lastReceiptIdempotencyKey);
+          if (!cancelled) setEscPosData(buildEscPosReceiptData(localReceipt, receiptVisibility));
         }
-      });
+      } catch (err) {
+        if (!cancelled) console.error('[POS] Failed to assemble receipt for thermal print:', err);
+      }
+    };
+
+    void loader();
 
     return () => { cancelled = true; };
-  }, [showSuccessModal, lastReceipt, escPosData, receiptVisibility, isOfflineReceipt, cartItems, terminal, operator, paymentMethods, changeDue]);
+  }, [showSuccessModal, lastReceipt, lastReceiptIdempotencyKey, lastReceiptServerId, escPosData, receiptVisibility]);
 
   // Smart Prompts: fetch recommendations when cart changes
   useEffect(() => {

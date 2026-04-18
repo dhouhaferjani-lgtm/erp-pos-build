@@ -21,6 +21,10 @@ interface PaymentState {
   pendingReceiptId: string | null;
   changeDue: number;
   error: string | null;
+  /** Idempotency key (= SQLite offline_receipts.idempotency_key) for local-first print lookup. Null before first checkout. */
+  lastReceiptIdempotencyKey: string | null;
+  /** Server-assigned receipt UUID, populated when sync completes. Null while pending. */
+  lastReceiptServerId: string | null;
 }
 
 export interface AdvancedPaymentLine {
@@ -72,6 +76,8 @@ const initialState: PaymentState = {
   pendingReceiptId: null,
   changeDue: 0,
   error: null,
+  lastReceiptIdempotencyKey: null,
+  lastReceiptServerId: null,
 };
 
 async function getDb(): Promise<import('@tauri-apps/plugin-sql').default> {
@@ -152,7 +158,7 @@ async function createReceiptLocalFirst(
   // id = local SQLite row id; serverReceiptId is null until sync completes.
   set({
     lastReceipt: {
-      id: result.receiptNumber, // using receipt_number as a stable identifier for UI; real UUID is idempotencyKey
+      id: result.localId,
       receipt_number: result.receiptNumber,
       total: result.total,
       subtotal: result.subtotal,
@@ -160,6 +166,8 @@ async function createReceiptLocalFirst(
       discount_amount: result.discountAmount,
       currency,
     } satisfies CreateReceiptResponse,
+    lastReceiptIdempotencyKey: result.idempotencyKey,
+    lastReceiptServerId: null,
     pendingReceiptId: null,
   });
 
@@ -396,7 +404,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
   },
 
   clearLastReceipt: () => {
-    set({ lastReceipt: null, pendingReceiptId: null, changeDue: 0, isOfflineReceipt: false });
+    set({ lastReceipt: null, pendingReceiptId: null, changeDue: 0, isOfflineReceipt: false, lastReceiptIdempotencyKey: null, lastReceiptServerId: null });
   },
 
   reset: () => {
