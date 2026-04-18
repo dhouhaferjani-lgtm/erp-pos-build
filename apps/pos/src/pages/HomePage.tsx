@@ -534,7 +534,9 @@ export function HomePage() {
   // Open shift screen
   if (!shift) {
     return (
-      <div className="flex h-full items-center justify-center">
+      <div className="flex h-full flex-col">
+        <ChainBreakAlert />
+        <div className="flex flex-1 items-center justify-center">
         <div className="w-full max-w-sm text-center">
           <h2 className="text-xl font-bold text-gray-900">{t('shift.openTitle')}</h2>
           <p className="mt-1 text-sm text-gray-500">
@@ -569,6 +571,7 @@ export function HomePage() {
           >
             {terminalLoading ? t('shift.openingLoading') : t('shift.openingButton')}
           </button>
+        </div>
         </div>
       </div>
     );
