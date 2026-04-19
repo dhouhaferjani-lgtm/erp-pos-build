@@ -24,7 +24,9 @@ export interface ProductDocument {
   document_number: string
   document_date: string
   partner_id: string | null
-  partner_name?: string
+  // Accept `undefined` so tests for the "missing partner" code path can
+  // spread with `partner_name: undefined` (exactOptionalPropertyTypes).
+  partner_name?: string | undefined
   total: string
   currency: string
   lines?: ProductDocumentLine[]

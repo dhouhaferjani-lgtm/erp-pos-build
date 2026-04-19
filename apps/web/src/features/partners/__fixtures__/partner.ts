@@ -97,7 +97,7 @@ export function makePartnersListResponse(
   overrides: Partial<PartnersListResponse> = {},
 ): PartnersListResponse {
   const data = overrides.data ?? [makePartnerListRow()]
-  return {
+  const base: PartnersListResponse = {
     data,
     meta: overrides.meta ?? {
       total: data.length,
@@ -107,8 +107,13 @@ export function makePartnersListResponse(
       from: data.length > 0 ? 1 : null,
       to: data.length > 0 ? data.length : null,
     },
-    aggregates: overrides.aggregates,
   }
+  // Only attach `aggregates` when the caller provided one — the field is
+  // optional in the wire shape and `exactOptionalPropertyTypes: true`
+  // rejects `aggregates: undefined`.
+  return overrides.aggregates
+    ? { ...base, aggregates: overrides.aggregates }
+    : base
 }
 
 export function makePartnerDetail(

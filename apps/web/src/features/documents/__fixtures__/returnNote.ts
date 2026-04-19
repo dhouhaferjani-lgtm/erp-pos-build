@@ -44,10 +44,17 @@ export function makeSourceDocumentLine(
   }
 }
 
+// `lines` is optional on the component's contract, so allow tests to
+// spread `lines: undefined` to drop the default two lines under
+// `exactOptionalPropertyTypes: true`.
+type SourceDocumentOverrides = Partial<Omit<SourceDocument, 'lines'>> & {
+  lines?: SourceDocumentLine[] | undefined
+}
+
 export function makeSourceDocument(
-  overrides: Partial<SourceDocument> = {},
+  overrides: SourceDocumentOverrides = {},
 ): SourceDocument {
-  return {
+  const base: SourceDocument = {
     id: 'doc-1',
     document_number: 'INV-001',
     document_date: '2024-01-15',
@@ -67,6 +74,17 @@ export function makeSourceDocument(
         total: '360.00',
       }),
     ],
-    ...overrides,
   }
+  // Honour an explicit `lines: undefined` override (tests use it to
+  // simulate a document without line items). Under
+  // `exactOptionalPropertyTypes: true` we must delete the key rather
+  // than assign `undefined`.
+  if ('lines' in overrides && overrides.lines === undefined) {
+    const { lines: _droppedLines, ...rest } = overrides
+    void _droppedLines
+    const { lines: _baseLines, ...baseWithoutLines } = base
+    void _baseLines
+    return { ...baseWithoutLines, ...rest } as SourceDocument
+  }
+  return { ...base, ...overrides } as SourceDocument
 }
