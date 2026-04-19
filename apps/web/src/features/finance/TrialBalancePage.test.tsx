@@ -2,6 +2,10 @@ import { screen, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { TrialBalancePage } from './pages/TrialBalancePage'
+import {
+  makeTrialBalanceLine,
+  makeTrialBalanceReport,
+} from './__fixtures__/trialBalance'
 
 const { mockApiGet } = vi.hoisted(() => ({
   mockApiGet: vi.fn(),
@@ -23,7 +27,7 @@ describe('TrialBalancePage', () => {
   })
 
   it('renders page title', () => {
-    mockApiGet.mockResolvedValue([])
+    mockApiGet.mockResolvedValue(makeTrialBalanceReport({ lines: [] }))
 
     renderWithProviders(<TrialBalancePage />)
 
@@ -41,24 +45,28 @@ describe('TrialBalancePage', () => {
   })
 
   it('displays trial balance data', async () => {
-    const mockData = [
-      {
-        account_code: '1000',
-        account_name: 'Cash',
-        account_type: 'asset',
-        debit: '5000.00',
-        credit: '0.00',
-      },
-      {
-        account_code: '3000',
-        account_name: 'Capital',
-        account_type: 'equity',
-        debit: '0.00',
-        credit: '5000.00',
-      },
-    ]
-
-    mockApiGet.mockResolvedValue(mockData)
+    mockApiGet.mockResolvedValue(
+      makeTrialBalanceReport({
+        lines: [
+          makeTrialBalanceLine({
+            account_code: '1000',
+            account_name: 'Cash',
+            account_type: 'asset',
+            debit: '5000.00',
+            credit: '0.00',
+          }),
+          makeTrialBalanceLine({
+            account_code: '3000',
+            account_name: 'Capital',
+            account_type: 'equity',
+            debit: '0.00',
+            credit: '5000.00',
+          }),
+        ],
+        total_debit: '5000.00',
+        total_credit: '5000.00',
+      }),
+    )
 
     renderWithProviders(<TrialBalancePage />)
 
@@ -71,24 +79,28 @@ describe('TrialBalancePage', () => {
   })
 
   it('displays totals row', async () => {
-    const mockData = [
-      {
-        account_code: '1000',
-        account_name: 'Cash',
-        account_type: 'asset',
-        debit: '5000.00',
-        credit: '0.00',
-      },
-      {
-        account_code: '3000',
-        account_name: 'Capital',
-        account_type: 'equity',
-        debit: '0.00',
-        credit: '5000.00',
-      },
-    ]
-
-    mockApiGet.mockResolvedValue(mockData)
+    mockApiGet.mockResolvedValue(
+      makeTrialBalanceReport({
+        lines: [
+          makeTrialBalanceLine({
+            account_code: '1000',
+            account_name: 'Cash',
+            account_type: 'asset',
+            debit: '5000.00',
+            credit: '0.00',
+          }),
+          makeTrialBalanceLine({
+            account_code: '3000',
+            account_name: 'Capital',
+            account_type: 'equity',
+            debit: '0.00',
+            credit: '5000.00',
+          }),
+        ],
+        total_debit: '5000.00',
+        total_credit: '5000.00',
+      }),
+    )
 
     renderWithProviders(<TrialBalancePage />)
 
@@ -101,7 +113,7 @@ describe('TrialBalancePage', () => {
   })
 
   it('has export button', () => {
-    mockApiGet.mockResolvedValue([])
+    mockApiGet.mockResolvedValue(makeTrialBalanceReport({ lines: [] }))
 
     renderWithProviders(<TrialBalancePage />)
 
@@ -109,7 +121,7 @@ describe('TrialBalancePage', () => {
   })
 
   it('has date filter', () => {
-    mockApiGet.mockResolvedValue([])
+    mockApiGet.mockResolvedValue(makeTrialBalanceReport({ lines: [] }))
 
     renderWithProviders(<TrialBalancePage />)
 
