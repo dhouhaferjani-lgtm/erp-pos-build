@@ -1,13 +1,17 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, fireEvent, waitFor } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { fireEvent, waitFor } from '@testing-library/react'
+import { renderWithProviders } from '@/test/renderWithProviders'
 import { POSPage } from './POSPage'
 import type { Product } from '../../molecules'
 
 // Mock react-router-dom
-vi.mock('react-router-dom', () => ({
-  useNavigate: () => vi.fn(),
-}))
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
+  return {
+    ...actual,
+    useNavigate: () => vi.fn(),
+  }
+})
 
 // Mock useCurrency hook
 vi.mock('@/hooks/useCurrency', () => ({
@@ -31,17 +35,8 @@ vi.mock('@/hooks/useCurrency', () => ({
   },
 }))
 
-function createTestQueryClient() {
-  return new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-    },
-  })
-}
-
 function renderWithClient(ui: React.ReactElement) {
-  const queryClient = createTestQueryClient()
-  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
+  return renderWithProviders(ui, { productConfig: { product: 'izipos' } })
 }
 
 describe('POSPage', () => {
