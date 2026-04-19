@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter } from 'react-router-dom'
+import { renderWithProviders } from '@/test/renderWithProviders'
 import { GeneralLedgerPage } from './pages/GeneralLedgerPage'
 
 const { mockApiGet } = vi.hoisted(() => ({
@@ -59,23 +58,6 @@ const mockLedgerLines = [
   },
 ]
 
-function createTestQueryClient() {
-  return new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  })
-}
-
-function TestWrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <QueryClientProvider client={createTestQueryClient()}>
-      <BrowserRouter>{children}</BrowserRouter>
-    </QueryClientProvider>
-  )
-}
-
 describe('GeneralLedgerPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -92,7 +74,7 @@ describe('GeneralLedgerPage', () => {
       return Promise.resolve([])
     })
 
-    render(<GeneralLedgerPage />, { wrapper: TestWrapper })
+    renderWithProviders(<GeneralLedgerPage />)
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /general ledger/i })).toBeInTheDocument()
@@ -102,7 +84,7 @@ describe('GeneralLedgerPage', () => {
   it('displays loading state initially', () => {
     mockApiGet.mockImplementation(() => new Promise(() => {}))
 
-    render(<GeneralLedgerPage />, { wrapper: TestWrapper })
+    renderWithProviders(<GeneralLedgerPage />)
 
     expect(screen.getByText(/loading/i)).toBeInTheDocument()
   })
@@ -118,7 +100,7 @@ describe('GeneralLedgerPage', () => {
       return Promise.resolve([])
     })
 
-    render(<GeneralLedgerPage />, { wrapper: TestWrapper })
+    renderWithProviders(<GeneralLedgerPage />)
 
     await waitFor(() => {
       const entryNumbers = screen.getAllByText('JE-001')
@@ -140,7 +122,7 @@ describe('GeneralLedgerPage', () => {
       return Promise.resolve([])
     })
 
-    render(<GeneralLedgerPage />, { wrapper: TestWrapper })
+    renderWithProviders(<GeneralLedgerPage />)
 
     await waitFor(() => {
       expect(screen.getByLabelText(/account/i)).toBeInTheDocument()
@@ -158,7 +140,7 @@ describe('GeneralLedgerPage', () => {
       return Promise.resolve([])
     })
 
-    render(<GeneralLedgerPage />, { wrapper: TestWrapper })
+    renderWithProviders(<GeneralLedgerPage />)
 
     await waitFor(() => {
       expect(screen.getByLabelText(/from date/i)).toBeInTheDocument()
@@ -178,7 +160,7 @@ describe('GeneralLedgerPage', () => {
       return Promise.resolve([])
     })
 
-    render(<GeneralLedgerPage />, { wrapper: TestWrapper })
+    renderWithProviders(<GeneralLedgerPage />)
 
     await waitFor(() => {
       expect(screen.getByLabelText(/account/i)).toBeInTheDocument()

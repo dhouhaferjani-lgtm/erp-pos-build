@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { renderWithProviders } from '@/test/renderWithProviders'
 import { AgedReceivablesPage } from './pages/AgedReceivablesPage'
 
 const { mockApiGet } = vi.hoisted(() => ({
@@ -18,25 +18,14 @@ vi.mock('@/hooks/usePermissions', () => ({
 }))
 
 describe('AgedReceivablesPage', () => {
-  let queryClient: QueryClient
-
   beforeEach(() => {
-    queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-      },
-    })
     vi.clearAllMocks()
   })
 
   it('renders page title', () => {
     mockApiGet.mockResolvedValue([])
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <AgedReceivablesPage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<AgedReceivablesPage />)
 
     expect(screen.getByText(/Aged Receivables/i)).toBeInTheDocument()
   })
@@ -46,11 +35,7 @@ describe('AgedReceivablesPage', () => {
       () => new Promise(() => {}) // Never resolves
     )
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <AgedReceivablesPage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<AgedReceivablesPage />)
 
     expect(screen.getByText(/loading/i)).toBeInTheDocument()
   })
@@ -71,11 +56,7 @@ describe('AgedReceivablesPage', () => {
 
     mockApiGet.mockResolvedValue(mockData)
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <AgedReceivablesPage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<AgedReceivablesPage />)
 
     await waitFor(() => {
       expect(screen.getByText('ACME Corp')).toBeInTheDocument()
@@ -97,11 +78,7 @@ describe('AgedReceivablesPage', () => {
   it('displays column headers for aging buckets', async () => {
     mockApiGet.mockResolvedValue([])
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <AgedReceivablesPage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<AgedReceivablesPage />)
 
     await waitFor(() => {
       expect(screen.getByText('Current')).toBeInTheDocument()
@@ -138,11 +115,7 @@ describe('AgedReceivablesPage', () => {
 
     mockApiGet.mockResolvedValue(mockData)
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <AgedReceivablesPage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<AgedReceivablesPage />)
 
     await waitFor(() => {
       const totals = screen.getAllByText('Total')
@@ -155,11 +128,7 @@ describe('AgedReceivablesPage', () => {
   it('has export button', () => {
     mockApiGet.mockResolvedValue([])
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <AgedReceivablesPage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<AgedReceivablesPage />)
 
     expect(screen.getByText(/export/i)).toBeInTheDocument()
   })
@@ -167,11 +136,7 @@ describe('AgedReceivablesPage', () => {
   it('has date filter', () => {
     mockApiGet.mockResolvedValue([])
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <AgedReceivablesPage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<AgedReceivablesPage />)
 
     expect(screen.getByLabelText(/as of date/i)).toBeInTheDocument()
   })

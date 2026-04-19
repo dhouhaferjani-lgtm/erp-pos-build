@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { renderWithProviders } from '@/test/renderWithProviders'
 import { AgedPayablesPage } from './pages/AgedPayablesPage'
 
 const { mockApiGet } = vi.hoisted(() => ({
@@ -18,25 +18,14 @@ vi.mock('@/hooks/usePermissions', () => ({
 }))
 
 describe('AgedPayablesPage', () => {
-  let queryClient: QueryClient
-
   beforeEach(() => {
-    queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-      },
-    })
     vi.clearAllMocks()
   })
 
   it('renders page title', () => {
     mockApiGet.mockResolvedValue([])
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <AgedPayablesPage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<AgedPayablesPage />)
 
     expect(screen.getByText(/Aged Payables/i)).toBeInTheDocument()
   })
@@ -46,11 +35,7 @@ describe('AgedPayablesPage', () => {
       () => new Promise(() => {}) // Never resolves
     )
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <AgedPayablesPage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<AgedPayablesPage />)
 
     expect(screen.getByText(/loading/i)).toBeInTheDocument()
   })
@@ -71,11 +56,7 @@ describe('AgedPayablesPage', () => {
 
     mockApiGet.mockResolvedValue(mockData)
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <AgedPayablesPage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<AgedPayablesPage />)
 
     await waitFor(() => {
       expect(screen.getByText('Supplier Co')).toBeInTheDocument()
@@ -100,11 +81,7 @@ describe('AgedPayablesPage', () => {
 
     mockApiGet.mockResolvedValue(mockData)
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <AgedPayablesPage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<AgedPayablesPage />)
 
     await waitFor(() => {
       const totals = screen.getAllByText('Total')
@@ -115,11 +92,7 @@ describe('AgedPayablesPage', () => {
   it('has export button', () => {
     mockApiGet.mockResolvedValue([])
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <AgedPayablesPage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<AgedPayablesPage />)
 
     expect(screen.getByText(/export/i)).toBeInTheDocument()
   })
@@ -127,11 +100,7 @@ describe('AgedPayablesPage', () => {
   it('has date filter', () => {
     mockApiGet.mockResolvedValue([])
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <AgedPayablesPage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<AgedPayablesPage />)
 
     expect(screen.getByLabelText(/as of date/i)).toBeInTheDocument()
   })

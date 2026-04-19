@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { renderWithProviders } from '@/test/renderWithProviders'
 import { TrialBalancePage } from './pages/TrialBalancePage'
 
 const { mockApiGet } = vi.hoisted(() => ({
@@ -18,25 +18,14 @@ vi.mock('@/hooks/usePermissions', () => ({
 }))
 
 describe('TrialBalancePage', () => {
-  let queryClient: QueryClient
-
   beforeEach(() => {
-    queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-      },
-    })
     vi.clearAllMocks()
   })
 
   it('renders page title', () => {
     mockApiGet.mockResolvedValue([])
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <TrialBalancePage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<TrialBalancePage />)
 
     expect(screen.getByText('Trial Balance')).toBeInTheDocument()
   })
@@ -46,11 +35,7 @@ describe('TrialBalancePage', () => {
       () => new Promise(() => {}) // Never resolves
     )
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <TrialBalancePage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<TrialBalancePage />)
 
     expect(screen.getByText(/loading/i)).toBeInTheDocument()
   })
@@ -75,11 +60,7 @@ describe('TrialBalancePage', () => {
 
     mockApiGet.mockResolvedValue(mockData)
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <TrialBalancePage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<TrialBalancePage />)
 
     await waitFor(() => {
       expect(screen.getByText('1000')).toBeInTheDocument()
@@ -109,11 +90,7 @@ describe('TrialBalancePage', () => {
 
     mockApiGet.mockResolvedValue(mockData)
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <TrialBalancePage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<TrialBalancePage />)
 
     await waitFor(() => {
       expect(screen.getByText('Total')).toBeInTheDocument()
@@ -126,11 +103,7 @@ describe('TrialBalancePage', () => {
   it('has export button', () => {
     mockApiGet.mockResolvedValue([])
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <TrialBalancePage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<TrialBalancePage />)
 
     expect(screen.getByText(/export/i)).toBeInTheDocument()
   })
@@ -138,11 +111,7 @@ describe('TrialBalancePage', () => {
   it('has date filter', () => {
     mockApiGet.mockResolvedValue([])
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <TrialBalancePage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<TrialBalancePage />)
 
     expect(screen.getByLabelText(/as of date/i)).toBeInTheDocument()
   })
