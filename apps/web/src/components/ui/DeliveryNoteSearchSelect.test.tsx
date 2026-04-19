@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { renderWithProviders } from '@/test/renderWithProviders'
 import { DeliveryNoteSearchSelect } from './DeliveryNoteSearchSelect'
 import * as api from '../../lib/api'
 
@@ -46,23 +46,12 @@ const mockDeliveryNotes = [
 ]
 
 describe('DeliveryNoteSearchSelect', () => {
-  let queryClient: QueryClient
-
   beforeEach(() => {
-    queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-      },
-    })
     vi.clearAllMocks()
   })
 
   const renderComponent = (props = {}) => {
-    return render(
-      <QueryClientProvider client={queryClient}>
-        <DeliveryNoteSearchSelect onChange={vi.fn()} {...props} />
-      </QueryClientProvider>
-    )
+    return renderWithProviders(<DeliveryNoteSearchSelect onChange={vi.fn()} {...props} />)
   }
 
   it('renders with label when provided', () => {

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { renderWithProviders } from '@/test/renderWithProviders'
 import { InvoiceSearchSelect } from './InvoiceSearchSelect'
 import type { Invoice } from './InvoiceSearchSelect'
 import { api } from '../../lib/api'
@@ -50,26 +50,16 @@ const mockInvoices: Invoice[] = [
 ]
 
 describe('InvoiceSearchSelect', () => {
-  let queryClient: QueryClient
   const user = userEvent.setup()
   const onChangeMock = vi.fn()
 
   beforeEach(() => {
-    queryClient = new QueryClient({
-      defaultOptions: {
-        queries: {
-          retry: false,
-        },
-      },
-    })
     vi.clearAllMocks()
   })
 
   const renderComponent = (props = {}) => {
-    return render(
-      <QueryClientProvider client={queryClient}>
-        <InvoiceSearchSelect value={null} onChange={onChangeMock} {...props} />
-      </QueryClientProvider>
+    return renderWithProviders(
+      <InvoiceSearchSelect value={null} onChange={onChangeMock} {...props} />
     )
   }
 

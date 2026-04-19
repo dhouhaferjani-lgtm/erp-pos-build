@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
-import { BrowserRouter } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { CompanyConfigProvider } from '../../../../contexts/CompanyConfigContext'
+import { screen } from '@testing-library/react'
+import { renderWithProviders } from '@/test/renderWithProviders'
 import { Sidebar } from '../Sidebar'
 import * as api from '../../../../lib/api'
 
@@ -35,19 +33,11 @@ vi.mock('../../../../contexts/ProductConfigContext', () => ({
     productName: 'IziPOS',
     productDescription: 'Point of Sale',
   }),
+  ProductConfigProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }))
 
 describe('Sidebar - Vertical-Based Navigation Filtering', () => {
-  let queryClient: QueryClient
-
   beforeEach(() => {
-    queryClient = new QueryClient({
-      defaultOptions: {
-        queries: {
-          retry: false,
-        },
-      },
-    })
     vi.clearAllMocks()
 
     // Default: All permissions granted (we're testing vertical filtering, not permissions)
@@ -55,15 +45,9 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
   })
 
   const renderSidebar = () => {
-    return render(
-      <BrowserRouter>
-        <QueryClientProvider client={queryClient}>
-          <CompanyConfigProvider>
-            <Sidebar isOpen={true} />
-          </CompanyConfigProvider>
-        </QueryClientProvider>
-      </BrowserRouter>
-    )
+    return renderWithProviders(<Sidebar isOpen={true} />, {
+      productConfig: { product: 'izipos' },
+    })
   }
 
   describe('Mechanic Vertical (Automotive)', () => {
