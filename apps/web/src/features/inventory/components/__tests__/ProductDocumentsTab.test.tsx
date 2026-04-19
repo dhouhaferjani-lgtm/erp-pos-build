@@ -1,8 +1,7 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter } from 'react-router-dom'
+import { screen, waitFor } from '@testing-library/react'
+import { renderWithProviders } from '@/test/renderWithProviders'
 import { ProductDocumentsTab } from '../ProductDocumentsTab'
 
 // Mock the api module
@@ -106,26 +105,6 @@ const mockDocuments = [
     ],
   },
 ]
-
-function createTestQueryClient() {
-  return new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false,
-        gcTime: 0,
-      },
-    },
-  })
-}
-
-function renderWithProviders(ui: React.ReactElement) {
-  const queryClient = createTestQueryClient()
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>{ui}</BrowserRouter>
-    </QueryClientProvider>
-  )
-}
 
 describe('ProductDocumentsTab', () => {
   beforeEach(() => {
