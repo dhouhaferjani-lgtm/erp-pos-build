@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { useProductConfig } from '@/contexts/ProductConfigContext'
 import { useCompanyConfig } from '@/contexts/CompanyConfigContext'
 import { renderWithProviders } from '../renderWithProviders'
+import { pharmacyCompanyConfig } from '../fixtures/companyConfig'
 
 function Probe() {
   const product = useProductConfig()
@@ -24,19 +25,9 @@ describe('renderWithProviders', () => {
   it('accepts overrides', () => {
     const { getByTestId } = renderWithProviders(<Probe />, {
       productConfig: { product: 'otospex' },
-      companyConfig: {
-        vertical: 'pharmacy',
-        default_modules: [],
-        enabled_extras: [],
-        all_enabled_modules: [],
-        currency: 'EUR',
-        locale: 'en',
-        country_code: null,
-        smart_prompts_enabled: false,
-        smart_prompts_variant: 'off',
-      },
+      companyConfig: pharmacyCompanyConfig,
     })
     expect(getByTestId('product').textContent).toBe('otospex')
-    expect(getByTestId('vertical').textContent).toBe('pharmacy')
+    expect(getByTestId('vertical').textContent).toBe(pharmacyCompanyConfig.vertical)
   })
 })

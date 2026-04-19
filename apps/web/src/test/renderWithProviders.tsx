@@ -12,11 +12,23 @@ import { defaultCompanyConfig, type TestCompanyConfig } from './fixtures/company
  *
  * - `route`: initial entry for `MemoryRouter`.
  * - `queryClient`: override the default in-memory client (useful when a test
- *   needs to inspect cache or pre-seed additional queries).
+ *   needs to inspect cache or pre-seed additional queries). Note: the helper
+ *   will call `setQueryData(['company-config'], companyConfig)` on whichever
+ *   client you pass, mutating it. If you rely on cache isolation, use the
+ *   default.
  * - `productConfig`: seed for `ProductConfigProvider` (forwarded as the
  *   `initialProduct` prop).
  * - `companyConfig`: seed pre-populated into the query cache under the
  *   `company-config` key so `useCompanyConfig()` resolves synchronously.
+ *   Caveats:
+ *   (a) The helper does not mock `apiGet`. Any refetch (e.g. via
+ *       `invalidateQueries` or a hook that calls `apiGet('/company/config')`
+ *       without its own mock) will replace the seed with the real network
+ *       response.
+ *   (b) `isAuthenticated` defaults to `false` in tests, so the underlying
+ *       query is `enabled: false` and returns the seeded data synchronously
+ *       with no loading state. Tests that assert on a loading state will
+ *       diverge from production flow.
  *
  * Extends RTL `RenderOptions` minus `wrapper`, which this helper owns.
  */
