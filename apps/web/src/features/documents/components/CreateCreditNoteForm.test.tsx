@@ -8,16 +8,36 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { CreateCreditNoteForm } from './CreateCreditNoteForm'
-import type { InvoiceForCreditNote } from '@/types/creditNote'
-import { DocumentStatus } from '@/types/creditNote'
+import { makeInvoiceForCreditNote } from '../__fixtures__/creditNote'
 
-// Note: Hooks are not mocked here - using real React Query hooks with QueryClientProvider
-// The component should render with isSubmitting=false initially, showing 'Save' button
+// Mock the credit-note hook at the module level so every render sees the
+// same mutation shape. A hoisted `mutationState` lets individual tests flip
+// `isPending` (e.g. the "displays loading state" test) without using
+// `vi.mock` inside `it`, which Vitest hoists to the top of the file and
+// would otherwise leak into every test in the suite.
+const { mutationState, mockMutate } = vi.hoisted(() => ({
+  mutationState: {
+    isPending: false,
+    isError: false,
+    error: null as unknown,
+  },
+  mockMutate: vi.fn(),
+}))
+
+vi.mock('../hooks/useCreditNotes', () => ({
+  useCreateCreditNote: () => ({
+    mutate: mockMutate,
+    mutateAsync: mockMutate,
+    isPending: mutationState.isPending,
+    isError: mutationState.isError,
+    error: mutationState.error,
+  }),
+}))
 
 // Mock the translation hook
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, params?: Record<string, unknown>) => {
+    t: (key: string, params?: Record<string, unknown> | string) => {
       const translations: Record<string, string> = {
         // Sales namespace (unprefixed - default when using useTranslation(['sales', 'common']))
         'creditNotes.createFromInvoice': 'Create Credit Note',
@@ -72,7 +92,7 @@ vi.mock('react-i18next', () => ({
         'common:status.saving': 'Saving...',
       }
       let result = translations[key] || key
-      if (params) {
+      if (params && typeof params === 'object') {
         Object.entries(params).forEach(([k, v]) => {
           result = result.replace(`{{${k}}}`, String(v))
         })
@@ -83,22 +103,15 @@ vi.mock('react-i18next', () => ({
 }))
 
 describe('CreateCreditNoteForm', () => {
-  const mockInvoice: InvoiceForCreditNote = {
-    id: 'invoice-1',
-    document_number: 'INV-00001',
-    document_date: '2025-12-01',
-    partner: {
-      id: 'partner-1',
-      name: 'Test Customer',
-    },
-    total: '1190.0000',
-    balance_due: '1190.0000',
-    currency: 'TND',
-    status: DocumentStatus.POSTED,
-  }
+  const mockInvoice = makeInvoiceForCreditNote()
 
   beforeEach(() => {
     vi.clearAllMocks()
+    // Reset mutation state between tests — no leaking isPending from the
+    // "displays loading state" case.
+    mutationState.isPending = false
+    mutationState.isError = false
+    mutationState.error = null
   })
 
   it('renders form with all required fields', () => {
@@ -119,16 +132,15 @@ describe('CreateCreditNoteForm', () => {
     expect(screen.getByText('Remaining creditable: 1190.00')).toBeInTheDocument()
   })
 
-  it('validates that amount is required', async () => {
-    const user = userEvent.setup()
+  // The Save button is disabled until a reason is selected (post-Phase-4
+  // behaviour), so Zod's "amount required" message never surfaces from a
+  // plain click. Instead we check that the submit button is unclickable
+  // with an empty form — same safety invariant, matching current UI.
+  it('blocks submission when amount and reason are both empty', () => {
     renderWithProviders(<CreateCreditNoteForm invoice={mockInvoice} />)
 
-    const submitButton = screen.getByText('Save')
-    await user.click(submitButton)
-
-    await waitFor(() => {
-      expect(screen.getByText('Amount is required')).toBeInTheDocument()
-    })
+    const submitButton = screen.getByRole('button', { name: 'Save' })
+    expect(submitButton).toBeDisabled()
   })
 
   it('validates that amount must be positive', async () => {
@@ -158,10 +170,9 @@ describe('CreateCreditNoteForm', () => {
   })
 
   it('validates that amount does not exceed remaining creditable', async () => {
-    const partiallyRefundedInvoice: InvoiceForCreditNote = {
-      ...mockInvoice,
+    const partiallyRefundedInvoice = makeInvoiceForCreditNote({
       balance_due: '690.0000',
-    }
+    })
 
     const user = userEvent.setup()
     renderWithProviders(<CreateCreditNoteForm invoice={partiallyRefundedInvoice} />)
@@ -175,18 +186,24 @@ describe('CreateCreditNoteForm', () => {
     })
   })
 
-  it('validates that reason is required', async () => {
+  it('keeps submit disabled until a reason is selected', async () => {
     const user = userEvent.setup()
     renderWithProviders(<CreateCreditNoteForm invoice={mockInvoice} />)
 
     const amountInput = screen.getByLabelText('Amount')
     await user.type(amountInput, '100')
 
-    const submitButton = screen.getByText('Save')
-    await user.click(submitButton)
+    // Even with an amount filled in, Save stays disabled until reason
+    // is chosen — no "Reason is required" message because the submit
+    // handler is never invoked.
+    const submitButton = screen.getByRole('button', { name: 'Save' })
+    expect(submitButton).toBeDisabled()
+
+    const reasonSelect = screen.getByLabelText('Reason')
+    await user.selectOptions(reasonSelect, 'return')
 
     await waitFor(() => {
-      expect(screen.getByText('Reason is required')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled()
     })
   })
 
@@ -210,14 +227,22 @@ describe('CreateCreditNoteForm', () => {
     const onSuccess = vi.fn()
     const user = userEvent.setup()
 
+    // The mocked mutation calls `mockMutate`; the component's onSubmit
+    // invokes the mutation with its own `onSuccess` handler. We simulate
+    // the success side-effect by dispatching `onSuccess` from the mock.
+    mockMutate.mockImplementation(
+      (_req: unknown, opts?: { onSuccess?: (data: unknown) => void }) => {
+        opts?.onSuccess?.({ id: 'credit-note-1' })
+      },
+    )
+
     renderWithProviders(<CreateCreditNoteForm invoice={mockInvoice} onSuccess={onSuccess} />)
 
     const amountInput = screen.getByLabelText('Amount')
     await user.type(amountInput, '100')
 
     const reasonSelect = screen.getByLabelText('Reason')
-    await user.click(reasonSelect)
-    await user.click(screen.getByText('Product Return'))
+    await user.selectOptions(reasonSelect, 'return')
 
     const notesInput = screen.getByLabelText('Notes')
     await user.type(notesInput, 'Customer returned product')
@@ -225,7 +250,6 @@ describe('CreateCreditNoteForm', () => {
     const submitButton = screen.getByText('Save')
     await user.click(submitButton)
 
-    // Form should be valid and mutation should be called
     await waitFor(() => {
       expect(onSuccess).toHaveBeenCalled()
     })
@@ -243,56 +267,25 @@ describe('CreateCreditNoteForm', () => {
     expect(onCancel).toHaveBeenCalled()
   })
 
-  it('displays loading state when submitting', async () => {
-    vi.mock('../hooks/useCreditNotes', () => ({
-      useCreateCreditNote: () => ({
-        mutate: vi.fn(),
-        isPending: true,
-        isError: false,
-        error: null,
-      }),
-    }))
+  it('displays loading state when submitting', () => {
+    // Flip the hoisted mutation state so `isSubmitting` is true on mount.
+    mutationState.isPending = true
 
     renderWithProviders(<CreateCreditNoteForm invoice={mockInvoice} />)
 
-    // Submit button should show loading state
-    expect(screen.getByText('Save')).toBeDisabled()
+    // Submit button should show loading state and be disabled.
+    expect(screen.getByText('Saving...')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Saving...' })).toBeDisabled()
   })
 
   it('pre-fills amount with remaining creditable when "Full Refund" button is clicked', async () => {
     const user = userEvent.setup()
     renderWithProviders(<CreateCreditNoteForm invoice={mockInvoice} />)
 
-    // Assuming there's a "Full Refund" button
-    const fullRefundButton = screen.queryByText('Full Refund')
-    if (fullRefundButton) {
-      await user.click(fullRefundButton)
+    const fullRefundButton = screen.getByText('Full Refund')
+    await user.click(fullRefundButton)
 
-      const amountInput = screen.getByLabelText('Amount')
-      expect((amountInput as HTMLInputElement).value).toBe('1190.00')
-    }
-  })
-
-  it('shows confirmation dialog for large credit notes (>50%)', async () => {
-    const user = userEvent.setup()
-    renderWithProviders(<CreateCreditNoteForm invoice={mockInvoice} />)
-
-    const amountInput = screen.getByLabelText('Amount')
-    await user.type(amountInput, '700') // >50% of 1190
-
-    const reasonSelect = screen.getByLabelText('Reason')
-    await user.click(reasonSelect)
-    await user.click(screen.getByText('Price Adjustment'))
-
-    const submitButton = screen.getByText('Save')
-    await user.click(submitButton)
-
-    // Should show confirmation dialog (if implemented)
-    await waitFor(() => {
-      const confirmText = screen.queryByText(/large credit note/i)
-      if (confirmText) {
-        expect(confirmText).toBeInTheDocument()
-      }
-    })
+    const amountInput = screen.getByLabelText('Amount') as HTMLInputElement
+    expect(amountInput.value).toBe('1190.00')
   })
 })

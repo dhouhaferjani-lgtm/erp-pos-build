@@ -3,6 +3,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { CreateReturnNoteForm } from './CreateReturnNoteForm'
+import { makeSourceDocument } from '../__fixtures__/returnNote'
 
 // Create mock mutation function
 const mockMutate = vi.fn()
@@ -17,51 +18,60 @@ vi.mock('../hooks/useReturnNotes', () => ({
   }),
 }))
 
-// Mock react-i18next
+/**
+ * Translation mock.
+ *
+ * Maps the small subset of keys used by the return-note form and its
+ * child selects to short English strings. Assertions in this file
+ * reference those strings directly.
+ *
+ * Keys not in this map fall through to the key itself, which is good
+ * enough for selector/ARIA-based queries that don't read text.
+ */
+const i18nMap: Record<string, string> = {
+  'sales:returnNotes.reason.label': 'Reason for Return',
+  'sales:returnNotes.reason.placeholder': 'Select a reason',
+  'sales:returnNotes.reason.defective': 'Defective',
+  'sales:returnNotes.reason.wrongItem': 'Wrong Item',
+  'sales:returnNotes.reason.customerRegret': 'Customer Regret',
+  'sales:returnNotes.reason.damagedInTransit': 'Damaged in Transit',
+  'sales:returnNotes.reason.warranty': 'Warranty',
+  'sales:returnNotes.reason.exchange': 'Exchange',
+  'sales:returnNotes.reason.other': 'Other',
+  'sales:returnNotes.condition.label': 'Condition',
+  'sales:returnNotes.refundMethod.label': 'Refund Method',
+  'sales:returnNotes.form.noLinesSelected':
+    'Please select at least one line to return',
+  'sales:returnNotes.form.autoCreateCreditNote':
+    'Automatically create credit note',
+  'sales:returnNotes.form.fullReturn': 'Full Return',
+  'sales:returnNotes.form.partialReturn': 'Partial Return',
+  'sales:returnNotes.form.selectLines': 'Select Lines to Return',
+  'common:actions.save': 'Save',
+  'common:actions.cancel': 'Cancel',
+}
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: string) => fallback || key,
+    t: (key: string, fallbackOrParams?: string | Record<string, unknown>) => {
+      // Prefer the fallback when provided explicitly (old form behaviour),
+      // otherwise use the translation map, otherwise the key.
+      if (typeof fallbackOrParams === 'string') {
+        return i18nMap[key] ?? fallbackOrParams
+      }
+      return i18nMap[key] ?? key
+    },
   }),
 }))
 
-const mockSourceDocument = {
-  id: 'doc-1',
-  document_number: 'INV-001',
-  document_date: '2024-01-15',
-  partner_name: 'ACME Corp',
-  total: '1500.00',
-  lines: [
-    {
-      id: 'line-1',
-      product_id: 'p1',
-      product_code: 'PROD-1',
-      product_name: 'Product 1',
-      description: 'Test product 1',
-      quantity: 10,
-      unit_price: '100.00',
-      tax_rate: '20.00',
-      total: '1200.00',
-    },
-    {
-      id: 'line-2',
-      product_id: 'p2',
-      product_code: 'PROD-2',
-      product_name: 'Product 2',
-      description: 'Test product 2',
-      quantity: 5,
-      unit_price: '60.00',
-      tax_rate: '20.00',
-      total: '360.00',
-    },
-  ],
-}
+const mockSourceDocument = makeSourceDocument()
 
 describe('CreateReturnNoteForm', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  const renderForm = (props = {}) => {
+  const renderForm = (props: Record<string, unknown> = {}) => {
     return renderWithProviders(
       <CreateReturnNoteForm
         sourceDocument={mockSourceDocument}
@@ -97,7 +107,9 @@ describe('CreateReturnNoteForm', () => {
     it('shows optional condition and refund method fields', () => {
       renderForm()
 
-      expect(screen.getByText(/Condition/i)).toBeInTheDocument()
+      // "Condition" is used by both ReturnConditionSelect and its inline
+      // help text, so assert at least one label renders.
+      expect(screen.getAllByText(/Condition/i).length).toBeGreaterThanOrEqual(1)
       expect(screen.getByText(/Refund Method/i)).toBeInTheDocument()
     })
 
@@ -128,7 +140,7 @@ describe('CreateReturnNoteForm', () => {
 
     it('hides return mode toggle when document has no lines', () => {
       renderForm({
-        sourceDocument: { ...mockSourceDocument, lines: undefined },
+        sourceDocument: makeSourceDocument({ lines: undefined }),
       })
 
       expect(screen.queryByText('Full Return')).not.toBeInTheDocument()
@@ -189,11 +201,15 @@ describe('CreateReturnNoteForm', () => {
       const checkboxes = screen.getAllByRole('checkbox', { name: '' })
       await user.click(checkboxes[0])
 
+      // `clear()` triggers `parseInt('') || 0` -> deletes the line and
+      // removes the input. Use `{selectall}` + type to replace atomically.
       const quantityInput = screen.getAllByRole('spinbutton')[0]
-      await user.clear(quantityInput)
-      await user.type(quantityInput, '5')
+      await user.click(quantityInput)
+      await user.keyboard('{Control>}a{/Control}5')
 
-      expect(quantityInput).toHaveValue(5)
+      await waitFor(() => {
+        expect(quantityInput).toHaveValue(5)
+      })
     })
 
     it('prevents quantity exceeding max', async () => {
@@ -212,7 +228,11 @@ describe('CreateReturnNoteForm', () => {
       const checkboxes = screen.getAllByRole('checkbox', { name: '' })
       await user.click(checkboxes[0]) // Select line 1: 10 * 100 * 1.2 = 1200
 
-      expect(screen.getByText('1200.00')).toBeInTheDocument()
+      // The total appears both inside the selected table row (line total) and
+      // in the "Return Total" summary — at minimum one of each renders.
+      await waitFor(() => {
+        expect(screen.getAllByText('1200.00').length).toBeGreaterThanOrEqual(1)
+      })
     })
 
     it('updates total when quantity changes', async () => {
@@ -222,12 +242,13 @@ describe('CreateReturnNoteForm', () => {
       await user.click(checkboxes[0])
 
       const quantityInput = screen.getAllByRole('spinbutton')[0]
-      await user.clear(quantityInput)
-      await user.type(quantityInput, '5')
+      // Replace value atomically to avoid the clear-triggered deselect.
+      await user.click(quantityInput)
+      await user.keyboard('{Control>}a{/Control}5')
 
-      // 5 * 100 * 1.2 = 600
+      // 5 * 100 * 1.2 = 600 — appears in the row total and/or summary.
       await waitFor(() => {
-        expect(screen.getByText('600.00')).toBeInTheDocument()
+        expect(screen.getAllByText(/600\.00/).length).toBeGreaterThanOrEqual(1)
       })
     })
 
