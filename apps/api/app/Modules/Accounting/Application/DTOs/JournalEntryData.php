@@ -7,7 +7,9 @@ namespace App\Modules\Accounting\Application\DTOs;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\JournalEntry;
 use Illuminate\Support\Carbon;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
+#[TypeScript]
 final readonly class JournalEntryData
 {
     /**
