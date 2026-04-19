@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter, MemoryRouter, Routes, Route } from 'react-router-dom'
+import { Routes, Route } from 'react-router-dom'
+import { renderWithProviders } from '@/test/renderWithProviders'
 import { PartnerListPage } from './PartnerListPage'
 import { PartnerDetailPage } from './PartnerDetailPage'
 import { PartnerForm } from './PartnerForm'
@@ -48,22 +48,6 @@ const mockGetCountries = vi.hoisted(() => vi.fn())
 vi.mock('../settings/api/country', () => ({
   getCountries: mockGetCountries,
 }))
-
-const createTestQueryClient = () =>
-  new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  })
-
-function TestWrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <QueryClientProvider client={createTestQueryClient()}>
-      <BrowserRouter>{children}</BrowserRouter>
-    </QueryClientProvider>
-  )
-}
 
 const mockPartners = [
   {
@@ -132,7 +116,7 @@ describe('Partner Management', () => {
     it('renders the partner list page with title', () => {
       mockApiGet.mockResolvedValue({ data: [], meta: { total: 0 } })
 
-      render(<PartnerListPage />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerListPage />)
 
       expect(screen.getByRole('heading', { name: /partners/i })).toBeInTheDocument()
     })
@@ -142,7 +126,7 @@ describe('Partner Management', () => {
         () => new Promise((resolve) => setTimeout(resolve, 1000))
       )
 
-      render(<PartnerListPage />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerListPage />)
 
       expect(screen.getByText(/loading/i)).toBeInTheDocument()
     })
@@ -150,7 +134,7 @@ describe('Partner Management', () => {
     it('displays list of partners', async () => {
       mockApiGet.mockResolvedValue({ data: mockPartners, meta: { total: 2 } })
 
-      render(<PartnerListPage />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerListPage />)
 
       await waitFor(() => {
         expect(screen.getByText('Acme Corp')).toBeInTheDocument()
@@ -161,7 +145,7 @@ describe('Partner Management', () => {
     it('displays empty state when no partners', async () => {
       mockApiGet.mockResolvedValue({ data: [], meta: { total: 0 } })
 
-      render(<PartnerListPage />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerListPage />)
 
       await waitFor(() => {
         expect(screen.getByText(/no partners/i)).toBeInTheDocument()
@@ -171,7 +155,7 @@ describe('Partner Management', () => {
     it('has a button to add new partner', () => {
       mockApiGet.mockResolvedValue({ data: [], meta: { total: 0 } })
 
-      render(<PartnerListPage />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerListPage />)
 
       expect(screen.getByRole('link', { name: /add partner/i })).toBeInTheDocument()
     })
@@ -179,7 +163,7 @@ describe('Partner Management', () => {
     it('displays partner type badges', async () => {
       mockApiGet.mockResolvedValue({ data: mockPartners, meta: { total: 2 } })
 
-      render(<PartnerListPage />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerListPage />)
 
       await waitFor(() => {
         expect(screen.getByText('Customer')).toBeInTheDocument()
@@ -192,14 +176,11 @@ describe('Partner Management', () => {
     it('displays partner details', async () => {
       mockApiGet.mockResolvedValue(mockPartners[0])
 
-      render(
-        <QueryClientProvider client={createTestQueryClient()}>
-          <MemoryRouter initialEntries={['/partners/1']}>
-            <Routes>
-              <Route path="/partners/:id" element={<PartnerDetailPage />} />
-            </Routes>
-          </MemoryRouter>
-        </QueryClientProvider>
+      renderWithProviders(
+        <Routes>
+          <Route path="/partners/:id" element={<PartnerDetailPage />} />
+        </Routes>,
+        { route: '/partners/1' }
       )
 
       await waitFor(() => {
@@ -213,14 +194,11 @@ describe('Partner Management', () => {
         () => new Promise((resolve) => setTimeout(resolve, 1000))
       )
 
-      render(
-        <QueryClientProvider client={createTestQueryClient()}>
-          <MemoryRouter initialEntries={['/partners/1']}>
-            <Routes>
-              <Route path="/partners/:id" element={<PartnerDetailPage />} />
-            </Routes>
-          </MemoryRouter>
-        </QueryClientProvider>
+      renderWithProviders(
+        <Routes>
+          <Route path="/partners/:id" element={<PartnerDetailPage />} />
+        </Routes>,
+        { route: '/partners/1' }
       )
 
       expect(screen.getByText(/loading/i)).toBeInTheDocument()
@@ -229,14 +207,11 @@ describe('Partner Management', () => {
     it('shows error state when partner not found', async () => {
       mockApiGet.mockRejectedValue({ response: { status: 404 } })
 
-      render(
-        <QueryClientProvider client={createTestQueryClient()}>
-          <MemoryRouter initialEntries={['/partners/999']}>
-            <Routes>
-              <Route path="/partners/:id" element={<PartnerDetailPage />} />
-            </Routes>
-          </MemoryRouter>
-        </QueryClientProvider>
+      renderWithProviders(
+        <Routes>
+          <Route path="/partners/:id" element={<PartnerDetailPage />} />
+        </Routes>,
+        { route: '/partners/999' }
       )
 
       await waitFor(() => {
@@ -247,14 +222,11 @@ describe('Partner Management', () => {
     it('has edit and back buttons', async () => {
       mockApiGet.mockResolvedValue(mockPartners[0])
 
-      render(
-        <QueryClientProvider client={createTestQueryClient()}>
-          <MemoryRouter initialEntries={['/partners/1']}>
-            <Routes>
-              <Route path="/partners/:id" element={<PartnerDetailPage />} />
-            </Routes>
-          </MemoryRouter>
-        </QueryClientProvider>
+      renderWithProviders(
+        <Routes>
+          <Route path="/partners/:id" element={<PartnerDetailPage />} />
+        </Routes>,
+        { route: '/partners/1' }
       )
 
       await waitFor(() => {
@@ -269,7 +241,7 @@ describe('Partner Management', () => {
     // Basic rendering
     // ──────────────────────────────────────────────
     it('renders empty form for creating partner', () => {
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       expect(screen.getByLabelText(/name/i)).toHaveValue('')
       expect(screen.getByLabelText(/email/i)).toHaveValue('')
@@ -277,14 +249,14 @@ describe('Partner Management', () => {
     })
 
     it('renders section headings for General Information and Address', () => {
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       expect(screen.getByText('General Information')).toBeInTheDocument()
       expect(screen.getByText('Address')).toBeInTheDocument()
     })
 
     it('renders all address fields including state', () => {
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       expect(screen.getByLabelText(/street address/i)).toBeInTheDocument()
       expect(screen.getByLabelText(/city/i)).toBeInTheDocument()
@@ -293,20 +265,20 @@ describe('Partner Management', () => {
     })
 
     it('renders VAT Number field (not Tax ID)', () => {
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       expect(screen.getByLabelText(/vat number/i)).toBeInTheDocument()
     })
 
     it('renders Country (VAT) dropdown field', () => {
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       // The country_code select for VAT
       expect(screen.getByLabelText(/country \(vat\)/i)).toBeInTheDocument()
     })
 
     it('has cancel button that navigates back', () => {
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       expect(screen.getByRole('link', { name: /cancel/i })).toBeInTheDocument()
     })
@@ -315,7 +287,7 @@ describe('Partner Management', () => {
     // Country dropdown (not free text input)
     // ──────────────────────────────────────────────
     it('renders country as a select dropdown, not a text input', () => {
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       const countryField = screen.getByLabelText('Country')
       expect(countryField.tagName).toBe('SELECT')
@@ -324,7 +296,7 @@ describe('Partner Management', () => {
     it('populates country dropdown with countries from the API', async () => {
       mockGetCountries.mockResolvedValue(mockCountries)
 
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       await waitFor(() => {
         const countrySelect = screen.getByLabelText('Country')
@@ -342,7 +314,7 @@ describe('Partner Management', () => {
     it('shows pinned countries before non-pinned countries in dropdown', async () => {
       mockGetCountries.mockResolvedValue(mockCountries)
 
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       await waitFor(() => {
         const countrySelect = screen.getByLabelText('Country')
@@ -358,7 +330,7 @@ describe('Partner Management', () => {
     it('populates country code (VAT) dropdown with countries from the API', async () => {
       mockGetCountries.mockResolvedValue(mockCountries)
 
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       await waitFor(() => {
         const countryCodeSelect = screen.getByLabelText(/country \(vat\)/i)
@@ -371,7 +343,7 @@ describe('Partner Management', () => {
     })
 
     it('fetches only active countries', () => {
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       expect(mockGetCountries).toHaveBeenCalledWith({ is_active: true })
     })
@@ -391,7 +363,7 @@ describe('Partner Management', () => {
       ]
       mockGetCountries.mockResolvedValue(countriesWithDifferentApiName)
 
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       await waitFor(() => {
         const countrySelect = screen.getByLabelText('Country')
@@ -411,7 +383,7 @@ describe('Partner Management', () => {
       ]
       mockGetCountries.mockResolvedValue(countriesWithUnknown)
 
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       await waitFor(() => {
         const countrySelect = screen.getByLabelText('Country')
@@ -429,7 +401,7 @@ describe('Partner Management', () => {
       ]
       mockGetCountries.mockResolvedValue(countriesWithAE)
 
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       await waitFor(() => {
         const vatSelect = screen.getByLabelText(/country \(vat\)/i)
@@ -447,7 +419,7 @@ describe('Partner Management', () => {
     // ──────────────────────────────────────────────
     it('shows validation errors for required fields', async () => {
       const user = userEvent.setup()
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       const submitButton = screen.getByRole('button', { name: /save/i })
       await user.click(submitButton)
@@ -464,7 +436,7 @@ describe('Partner Management', () => {
       // is registered by checking the register call includes validation.
       // The actual validation is covered by the backend 422 error handling tests.
       const user = userEvent.setup()
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       // Verify the email field exists and accepts input
       const emailInput = screen.getByLabelText(/^Email$/)
@@ -479,7 +451,7 @@ describe('Partner Management', () => {
       const user = userEvent.setup()
       mockApiPost.mockResolvedValue({ id: '3', name: 'Test' })
 
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       await user.type(screen.getByLabelText(/name/i), 'Test Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
@@ -501,7 +473,7 @@ describe('Partner Management', () => {
       const user = userEvent.setup()
       mockApiPost.mockResolvedValue({ id: '3', name: 'Test' })
 
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       await user.type(screen.getByLabelText(/name/i), 'Test Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
@@ -523,7 +495,7 @@ describe('Partner Management', () => {
       mockApiPost.mockResolvedValue({ id: '3', name: 'Test' })
       mockGetCountries.mockResolvedValue(mockCountries)
 
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       await user.type(screen.getByLabelText(/name/i), 'Test Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
@@ -549,7 +521,7 @@ describe('Partner Management', () => {
       const user = userEvent.setup()
       mockApiPost.mockResolvedValue({ id: '3', name: 'Test' })
 
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       await user.type(screen.getByLabelText(/name/i), 'Test Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
@@ -571,7 +543,7 @@ describe('Partner Management', () => {
       const user = userEvent.setup()
       mockApiPost.mockResolvedValue({ id: '3', name: 'Test' })
 
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       // Fill only required fields
       await user.type(screen.getByLabelText(/name/i), 'Minimal Partner')
@@ -602,7 +574,7 @@ describe('Partner Management', () => {
       const user = userEvent.setup()
       mockApiPost.mockResolvedValue({ id: '3', name: 'New Partner' })
 
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       await user.type(screen.getByLabelText(/name/i), 'New Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
@@ -626,14 +598,11 @@ describe('Partner Management', () => {
 
       const user = userEvent.setup()
 
-      render(
-        <QueryClientProvider client={createTestQueryClient()}>
-          <MemoryRouter initialEntries={['/partners/1/edit']}>
-            <Routes>
-              <Route path="/partners/:id/edit" element={<PartnerForm />} />
-            </Routes>
-          </MemoryRouter>
-        </QueryClientProvider>
+      renderWithProviders(
+        <Routes>
+          <Route path="/partners/:id/edit" element={<PartnerForm />} />
+        </Routes>,
+        { route: '/partners/1/edit' }
       )
 
       await waitFor(() => {
@@ -659,7 +628,7 @@ describe('Partner Management', () => {
       mockIsApiError.mockReturnValue(false)
       mockGetErrorMessage.mockReturnValue('Network error')
 
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       await user.type(screen.getByLabelText(/name/i), 'Test')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
@@ -691,7 +660,7 @@ describe('Partner Management', () => {
       mockApiPost.mockRejectedValue(validationError)
       mockIsApiError.mockReturnValue(true)
 
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       await user.type(screen.getByLabelText(/name/i), 'Test')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
@@ -723,7 +692,7 @@ describe('Partner Management', () => {
       mockApiPost.mockRejectedValue(validationError)
       mockIsApiError.mockReturnValue(true)
 
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       await user.type(screen.getByLabelText(/name/i), 'Test')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
@@ -747,14 +716,11 @@ describe('Partner Management', () => {
       })
       mockGetCountries.mockResolvedValue(mockCountries)
 
-      render(
-        <QueryClientProvider client={createTestQueryClient()}>
-          <MemoryRouter initialEntries={['/partners/1/edit']}>
-            <Routes>
-              <Route path="/partners/:id/edit" element={<PartnerForm />} />
-            </Routes>
-          </MemoryRouter>
-        </QueryClientProvider>
+      renderWithProviders(
+        <Routes>
+          <Route path="/partners/:id/edit" element={<PartnerForm />} />
+        </Routes>,
+        { route: '/partners/1/edit' }
       )
 
       await waitFor(() => {
@@ -776,14 +742,11 @@ describe('Partner Management', () => {
       })
       mockGetCountries.mockResolvedValue(mockCountries)
 
-      render(
-        <QueryClientProvider client={createTestQueryClient()}>
-          <MemoryRouter initialEntries={['/partners/1/edit']}>
-            <Routes>
-              <Route path="/partners/:id/edit" element={<PartnerForm />} />
-            </Routes>
-          </MemoryRouter>
-        </QueryClientProvider>
+      renderWithProviders(
+        <Routes>
+          <Route path="/partners/:id/edit" element={<PartnerForm />} />
+        </Routes>,
+        { route: '/partners/1/edit' }
       )
 
       await waitFor(() => {
@@ -802,14 +765,11 @@ describe('Partner Management', () => {
 
       const user = userEvent.setup()
 
-      render(
-        <QueryClientProvider client={createTestQueryClient()}>
-          <MemoryRouter initialEntries={['/partners/1/edit']}>
-            <Routes>
-              <Route path="/partners/:id/edit" element={<PartnerForm />} />
-            </Routes>
-          </MemoryRouter>
-        </QueryClientProvider>
+      renderWithProviders(
+        <Routes>
+          <Route path="/partners/:id/edit" element={<PartnerForm />} />
+        </Routes>,
+        { route: '/partners/1/edit' }
       )
 
       await waitFor(() => {
@@ -835,7 +795,7 @@ describe('Partner Management', () => {
     // ──────────────────────────────────────────────
     it('shows exemption fields only when tax status is EXEMPT', async () => {
       const user = userEvent.setup()
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       // Initially not visible (default is REGISTERED)
       expect(screen.queryByLabelText(/exemption reason/i)).not.toBeInTheDocument()
@@ -853,7 +813,7 @@ describe('Partner Management', () => {
       const user = userEvent.setup()
       mockApiPost.mockResolvedValue({ id: '3', name: 'New Partner' })
 
-      render(<PartnerForm />, { wrapper: TestWrapper })
+      renderWithProviders(<PartnerForm />)
 
       await user.type(screen.getByLabelText(/name/i), 'New Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')

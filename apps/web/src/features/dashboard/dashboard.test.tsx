@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter } from 'react-router-dom'
+import { screen, waitFor } from '@testing-library/react'
+import { renderWithProviders } from '@/test/renderWithProviders'
 import { Dashboard } from './Dashboard'
 
 // Mock the API
@@ -18,22 +17,6 @@ vi.mock('../../lib/api', () => ({
     delete: vi.fn(),
   },
 }))
-
-const createTestQueryClient = () =>
-  new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  })
-
-function TestWrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <QueryClientProvider client={createTestQueryClient()}>
-      <BrowserRouter>{children}</BrowserRouter>
-    </QueryClientProvider>
-  )
-}
 
 const mockDashboardStats = {
   revenue: {
@@ -115,7 +98,7 @@ describe('Dashboard', () => {
       return Promise.resolve({ data: [] })
     })
 
-    render(<Dashboard />, { wrapper: TestWrapper })
+    renderWithProviders(<Dashboard />)
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /dashboard/i })).toBeInTheDocument()
@@ -136,7 +119,7 @@ describe('Dashboard', () => {
       return Promise.resolve({ data: [] })
     })
 
-    render(<Dashboard />, { wrapper: TestWrapper })
+    renderWithProviders(<Dashboard />)
 
     await waitFor(() => {
       expect(screen.getByText(/revenue/i)).toBeInTheDocument()
@@ -149,7 +132,7 @@ describe('Dashboard', () => {
       () => new Promise((resolve) => setTimeout(resolve, 1000))
     )
 
-    render(<Dashboard />, { wrapper: TestWrapper })
+    renderWithProviders(<Dashboard />)
 
     expect(screen.getByText(/loading/i)).toBeInTheDocument()
   })
@@ -168,7 +151,7 @@ describe('Dashboard', () => {
       return Promise.resolve({ data: [] })
     })
 
-    render(<Dashboard />, { wrapper: TestWrapper })
+    renderWithProviders(<Dashboard />)
 
     await waitFor(() => {
       expect(screen.getByText(/recent documents/i)).toBeInTheDocument()
@@ -190,7 +173,7 @@ describe('Dashboard', () => {
       return Promise.resolve({ data: [] })
     })
 
-    render(<Dashboard />, { wrapper: TestWrapper })
+    renderWithProviders(<Dashboard />)
 
     await waitFor(() => {
       expect(screen.getByText(/recent payments/i)).toBeInTheDocument()
@@ -212,7 +195,7 @@ describe('Dashboard', () => {
       return Promise.resolve({ data: [] })
     })
 
-    render(<Dashboard />, { wrapper: TestWrapper })
+    renderWithProviders(<Dashboard />)
 
     await waitFor(() => {
       expect(screen.getByRole('link', { name: /new invoice/i })).toBeInTheDocument()
