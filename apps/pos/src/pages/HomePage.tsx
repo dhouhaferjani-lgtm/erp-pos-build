@@ -90,7 +90,6 @@ export function HomePage() {
   const isProcessing = usePaymentStore((s) => s.isProcessing);
   const lastReceipt = usePaymentStore((s) => s.lastReceipt);
   const changeDue = usePaymentStore((s) => s.changeDue);
-  const isOfflineReceipt = usePaymentStore((s) => s.isOfflineReceipt);
   const clearLastReceipt = usePaymentStore((s) => s.clearLastReceipt);
   const lastReceiptIdempotencyKey = usePaymentStore((s) => s.lastReceiptIdempotencyKey);
   const lastReceiptServerId = usePaymentStore((s) => s.lastReceiptServerId);
@@ -677,7 +676,6 @@ export function HomePage() {
           changeDue={changeDue}
           receiptId={lastReceipt.id}
           receiptData={escPosData ?? undefined}
-          isOfflineReceipt={isOfflineReceipt}
         />
       )}
 

@@ -16,7 +16,6 @@ interface PaymentState {
   paymentMethods: PaymentMethod[];
   paymentRepositories: PaymentRepository[];
   isProcessing: boolean;
-  isOfflineReceipt: boolean;
   lastReceipt: CreateReceiptResponse | null;
   pendingReceiptId: string | null;
   changeDue: number;
@@ -71,7 +70,6 @@ const initialState: PaymentState = {
   paymentMethods: [],
   paymentRepositories: [],
   isProcessing: false,
-  isOfflineReceipt: false,
   lastReceipt: null,
   pendingReceiptId: null,
   changeDue: 0,
@@ -404,7 +402,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
   },
 
   clearLastReceipt: () => {
-    set({ lastReceipt: null, pendingReceiptId: null, changeDue: 0, isOfflineReceipt: false, lastReceiptIdempotencyKey: null, lastReceiptServerId: null });
+    set({ lastReceipt: null, pendingReceiptId: null, changeDue: 0, lastReceiptIdempotencyKey: null, lastReceiptServerId: null });
   },
 
   reset: () => {

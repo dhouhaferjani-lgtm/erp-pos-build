@@ -48,8 +48,6 @@
     "transactionRef": "Référence",
     "morePaymentMethods": "Plus...",
     "processingQuickCheckout": "Traitement du paiement...",
-    "offlineSaved": "Vente enregistrée localement",
-    "offlineWillSync": "Synchronisation automatique au retour de la connexion",
     "pendingSyncCount": "{{count}} vente(s) en attente de synchronisation"
   },
   "cashPayment": {
