@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter } from 'react-router-dom'
+import { renderWithProviders } from '@/test/renderWithProviders'
 import { UnitsSettingsPage } from './UnitsSettingsPage'
 import type { UnitCategory } from '../api/uomApi'
 
@@ -63,22 +62,6 @@ vi.mock('sonner', () => ({
     error: vi.fn(),
   },
 }))
-
-const createTestQueryClient = () =>
-  new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  })
-
-function TestWrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <QueryClientProvider client={createTestQueryClient()}>
-      <BrowserRouter>{children}</BrowserRouter>
-    </QueryClientProvider>
-  )
-}
 
 /**
  * Mock data matching the backend DTO structure
@@ -163,7 +146,7 @@ describe('UnitsSettingsPage', () => {
     it('renders categories with their units', async () => {
       mockApiGet.mockResolvedValue(mockCategories)
 
-      render(<UnitsSettingsPage />, { wrapper: TestWrapper })
+      renderWithProviders(<UnitsSettingsPage />)
 
       // Wait for data to load by checking for content
       await waitFor(() => {
@@ -186,7 +169,7 @@ describe('UnitsSettingsPage', () => {
     it('displays unit properties correctly', async () => {
       mockApiGet.mockResolvedValue(mockCategories)
 
-      render(<UnitsSettingsPage />, { wrapper: TestWrapper })
+      renderWithProviders(<UnitsSettingsPage />)
 
       await waitFor(() => {
         expect(screen.getByText('Gram')).toBeInTheDocument()
@@ -218,7 +201,7 @@ describe('UnitsSettingsPage', () => {
 
       mockApiGet.mockResolvedValue([emptyCategory])
 
-      render(<UnitsSettingsPage />, { wrapper: TestWrapper })
+      renderWithProviders(<UnitsSettingsPage />)
 
       await waitFor(() => {
         expect(screen.getByText('Empty Category')).toBeInTheDocument()
@@ -240,7 +223,7 @@ describe('UnitsSettingsPage', () => {
     it('disables edit button for system units', async () => {
       mockApiGet.mockResolvedValue(mockCategories)
 
-      render(<UnitsSettingsPage />, { wrapper: TestWrapper })
+      renderWithProviders(<UnitsSettingsPage />)
 
       await waitFor(() => {
         expect(screen.getByText('Gram')).toBeInTheDocument()
@@ -257,7 +240,7 @@ describe('UnitsSettingsPage', () => {
     it('disables delete button for system units', async () => {
       mockApiGet.mockResolvedValue(mockCategories)
 
-      render(<UnitsSettingsPage />, { wrapper: TestWrapper })
+      renderWithProviders(<UnitsSettingsPage />)
 
       await waitFor(() => {
         expect(screen.getByText('Gram')).toBeInTheDocument()
@@ -275,7 +258,7 @@ describe('UnitsSettingsPage', () => {
       mockApiGet.mockResolvedValue(mockCategories)
 
       const user = userEvent.setup()
-      render(<UnitsSettingsPage />, { wrapper: TestWrapper })
+      renderWithProviders(<UnitsSettingsPage />)
 
       await waitFor(() => {
         expect(screen.getByText('Gram')).toBeInTheDocument()
@@ -325,7 +308,7 @@ describe('UnitsSettingsPage', () => {
 
       mockApiGet.mockResolvedValue(categoriesWithCustomUnit)
 
-      render(<UnitsSettingsPage />, { wrapper: TestWrapper })
+      renderWithProviders(<UnitsSettingsPage />)
 
       await waitFor(() => {
         expect(screen.getByText('Tablespoon')).toBeInTheDocument()
@@ -370,7 +353,7 @@ describe('UnitsSettingsPage', () => {
       mockApiDelete.mockResolvedValue(undefined)
 
       const user = userEvent.setup()
-      render(<UnitsSettingsPage />, { wrapper: TestWrapper })
+      renderWithProviders(<UnitsSettingsPage />)
 
       await waitFor(() => {
         expect(screen.getByText('Tablespoon')).toBeInTheDocument()
@@ -396,7 +379,7 @@ describe('UnitsSettingsPage', () => {
     it('shows loading state initially', () => {
       mockApiGet.mockImplementation(() => new Promise(() => {})) // Never resolves
 
-      render(<UnitsSettingsPage />, { wrapper: TestWrapper })
+      renderWithProviders(<UnitsSettingsPage />)
 
       // Check for spinner using SVG class
       const spinnerSvg = document.querySelector('.animate-spin')
@@ -406,7 +389,7 @@ describe('UnitsSettingsPage', () => {
     it('shows error state when API fails', async () => {
       mockApiGet.mockRejectedValue(new Error('API Error'))
 
-      render(<UnitsSettingsPage />, { wrapper: TestWrapper })
+      renderWithProviders(<UnitsSettingsPage />)
 
       await waitFor(() => {
         expect(screen.getByText('An error occurred')).toBeInTheDocument()
@@ -416,7 +399,7 @@ describe('UnitsSettingsPage', () => {
     it('renders page title and description', async () => {
       mockApiGet.mockResolvedValue(mockCategories)
 
-      render(<UnitsSettingsPage />, { wrapper: TestWrapper })
+      renderWithProviders(<UnitsSettingsPage />)
 
       await waitFor(() => {
         expect(screen.getByRole('heading', { name: 'Units of Measure' })).toBeInTheDocument()
@@ -433,7 +416,7 @@ describe('UnitsSettingsPage', () => {
     it('shows add unit button in header', async () => {
       mockApiGet.mockResolvedValue(mockCategories)
 
-      render(<UnitsSettingsPage />, { wrapper: TestWrapper })
+      renderWithProviders(<UnitsSettingsPage />)
 
       await waitFor(() => {
         expect(screen.getByText('Weight')).toBeInTheDocument()
@@ -447,7 +430,7 @@ describe('UnitsSettingsPage', () => {
     it('shows add unit button for each category', async () => {
       mockApiGet.mockResolvedValue(mockCategories)
 
-      render(<UnitsSettingsPage />, { wrapper: TestWrapper })
+      renderWithProviders(<UnitsSettingsPage />)
 
       await waitFor(() => {
         expect(screen.getByText('Weight')).toBeInTheDocument()
@@ -468,7 +451,7 @@ describe('UnitsSettingsPage', () => {
     it('calls fetchCategories on mount', async () => {
       mockApiGet.mockResolvedValue(mockCategories)
 
-      render(<UnitsSettingsPage />, { wrapper: TestWrapper })
+      renderWithProviders(<UnitsSettingsPage />)
 
       await waitFor(() => {
         expect(mockApiGet).toHaveBeenCalledWith('/uom/categories')
@@ -478,7 +461,7 @@ describe('UnitsSettingsPage', () => {
     it('displays all categories returned from API', async () => {
       mockApiGet.mockResolvedValue(mockCategories)
 
-      render(<UnitsSettingsPage />, { wrapper: TestWrapper })
+      renderWithProviders(<UnitsSettingsPage />)
 
       await waitFor(() => {
         expect(screen.getByText('Weight')).toBeInTheDocument()
@@ -492,7 +475,7 @@ describe('UnitsSettingsPage', () => {
     it('displays all units within each category', async () => {
       mockApiGet.mockResolvedValue(mockCategories)
 
-      render(<UnitsSettingsPage />, { wrapper: TestWrapper })
+      renderWithProviders(<UnitsSettingsPage />)
 
       await waitFor(() => {
         expect(screen.getByText('Gram')).toBeInTheDocument()
