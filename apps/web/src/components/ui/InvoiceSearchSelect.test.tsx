@@ -5,6 +5,7 @@ import { renderWithProviders } from '@/test/renderWithProviders'
 import { InvoiceSearchSelect } from './InvoiceSearchSelect'
 import type { Invoice } from './InvoiceSearchSelect'
 import { api } from '../../lib/api'
+import { makeInvoice } from '@/features/documents/__fixtures__/invoice'
 
 // Mock the API
 vi.mock('../../lib/api', () => ({
@@ -13,15 +14,33 @@ vi.mock('../../lib/api', () => ({
   },
 }))
 
-// Mock react-i18next
+/**
+ * Translation mock.
+ *
+ * `DocumentSearchSelect` calls `t('common:actions.select') || 'Select'`.
+ * If the mock returns the key, the `||` fallback never fires because the
+ * key is truthy. Pin the small subset of keys to their expected values.
+ */
+const i18nMap: Record<string, string> = {
+  'common:actions.select': 'Select',
+  'common:unknown': 'Unknown',
+  'common:status.loading': 'Loading...',
+  'common:loading': 'Loading...',
+  'sales:invoices.searchPlaceholder':
+    'Search by invoice number or partner name...',
+  'sales:invoices.noResults': 'No invoices found',
+  'sales:invoices.noPosted': 'No posted invoices available',
+  'sales:balance': 'Balance',
+}
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: string) => fallback || key,
+    t: (key: string, fallback?: string) => i18nMap[key] ?? fallback ?? key,
   }),
 }))
 
 const mockInvoices: Invoice[] = [
-  {
+  makeInvoice({
     id: '1',
     number: 'INV-00001',
     document_date: '2024-12-20',
@@ -33,8 +52,8 @@ const mockInvoices: Invoice[] = [
       id: 'p1',
       name: 'ACME Corp',
     },
-  } as Invoice,
-  {
+  }),
+  makeInvoice({
     id: '2',
     number: 'INV-00002',
     document_date: '2024-12-21',
@@ -46,7 +65,7 @@ const mockInvoices: Invoice[] = [
       id: 'p2',
       name: 'TechStart Inc',
     },
-  } as Invoice,
+  }),
 ]
 
 describe('InvoiceSearchSelect', () => {
@@ -158,19 +177,23 @@ describe('InvoiceSearchSelect', () => {
     const selectedInvoice = mockInvoices[0]
     renderComponent({ value: selectedInvoice })
 
-    expect(screen.getByRole('button')).toHaveTextContent('INV-00001')
-    expect(screen.getByRole('button')).toHaveTextContent('ACME Corp')
-    expect(screen.getByRole('button')).toHaveTextContent('Balance')
+    // The trigger is now a `div role="button"`; when a value is selected
+    // the inner `<button aria-label="Clear selection">` is also present,
+    // so `getByRole('button')` would be ambiguous. Narrow by name.
+    const trigger = screen.getAllByRole('button').find(
+      (el) => el.getAttribute('aria-label') !== 'Clear selection',
+    )!
+    expect(trigger).toHaveTextContent('INV-00001')
+    expect(trigger).toHaveTextContent('ACME Corp')
+    expect(trigger).toHaveTextContent('Balance')
   })
 
   it('clears selection when clear button is clicked', async () => {
     const selectedInvoice = mockInvoices[0]
     renderComponent({ value: selectedInvoice })
 
-    const clearButton = screen.getByRole('button', { name: '' }).querySelector('svg')
-    expect(clearButton).toBeInTheDocument()
-
-    await user.click(clearButton!.parentElement!)
+    const clearButton = screen.getByRole('button', { name: /clear selection/i })
+    await user.click(clearButton)
 
     expect(onChangeMock).toHaveBeenCalledWith(null)
   })
@@ -178,8 +201,11 @@ describe('InvoiceSearchSelect', () => {
   it('disables the component when disabled prop is true', () => {
     renderComponent({ disabled: true })
 
+    // Trigger is a `div role="button"`; disabled is exposed as
+    // `aria-disabled` + `tabindex="-1"`.
     const button = screen.getByRole('button')
-    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute('aria-disabled', 'true')
+    expect(button).toHaveAttribute('tabindex', '-1')
   })
 
   it('shows error message when error prop is provided', () => {
