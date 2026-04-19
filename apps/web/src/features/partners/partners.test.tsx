@@ -6,6 +6,11 @@ import { renderWithProviders } from '@/test/renderWithProviders'
 import { PartnerListPage } from './PartnerListPage'
 import { PartnerDetailPage } from './PartnerDetailPage'
 import { PartnerForm } from './PartnerForm'
+import {
+  makePartnerListRow,
+  makePartnerDetail,
+  makePartnersListResponse,
+} from './__fixtures__/partner'
 
 // Mock the API - must use vi.hoisted for variables used in vi.mock factory
 const { mockApiGet, mockApiPost, mockApiPatch, mockApiDelete, mockGetErrorMessage, mockIsApiError } = vi.hoisted(() => ({
@@ -50,23 +55,32 @@ vi.mock('../settings/api/country', () => ({
 }))
 
 const mockPartners = [
-  {
+  makePartnerListRow({
     id: '1',
     name: 'Acme Corp',
     type: 'customer',
     email: 'contact@acme.com',
     phone: '+1234567890',
     created_at: '2025-01-01T00:00:00Z',
-  },
-  {
+  }),
+  makePartnerListRow({
     id: '2',
     name: 'Supplier Inc',
     type: 'supplier',
     email: 'info@supplier.com',
     phone: '+0987654321',
     created_at: '2025-01-02T00:00:00Z',
-  },
+  }),
 ]
+
+const mockPartnerDetailAcme = makePartnerDetail({
+  id: '1',
+  name: 'Acme Corp',
+  type: 'customer',
+  email: 'contact@acme.com',
+  phone: '+1234567890',
+  created_at: '2025-01-01T00:00:00Z',
+})
 
 /** Full partner data matching the Partner interface for edit tests */
 const mockFullPartner = {
@@ -114,7 +128,9 @@ describe('Partner Management', () => {
 
   describe('PartnerListPage', () => {
     it('renders the partner list page with title', () => {
-      mockApiGet.mockResolvedValue({ data: [], meta: { total: 0 } })
+      mockApiInstance.get.mockResolvedValue({
+        data: makePartnersListResponse({ data: [] }),
+      })
 
       renderWithProviders(<PartnerListPage />)
 
@@ -122,7 +138,7 @@ describe('Partner Management', () => {
     })
 
     it('displays loading state initially', () => {
-      mockApiGet.mockImplementation(
+      mockApiInstance.get.mockImplementation(
         () => new Promise((resolve) => setTimeout(resolve, 1000))
       )
 
@@ -132,7 +148,9 @@ describe('Partner Management', () => {
     })
 
     it('displays list of partners', async () => {
-      mockApiGet.mockResolvedValue({ data: mockPartners, meta: { total: 2 } })
+      mockApiInstance.get.mockResolvedValue({
+        data: makePartnersListResponse({ data: mockPartners }),
+      })
 
       renderWithProviders(<PartnerListPage />)
 
@@ -143,7 +161,9 @@ describe('Partner Management', () => {
     })
 
     it('displays empty state when no partners', async () => {
-      mockApiGet.mockResolvedValue({ data: [], meta: { total: 0 } })
+      mockApiInstance.get.mockResolvedValue({
+        data: makePartnersListResponse({ data: [] }),
+      })
 
       renderWithProviders(<PartnerListPage />)
 
@@ -153,7 +173,9 @@ describe('Partner Management', () => {
     })
 
     it('has a button to add new partner', () => {
-      mockApiGet.mockResolvedValue({ data: [], meta: { total: 0 } })
+      mockApiInstance.get.mockResolvedValue({
+        data: makePartnersListResponse({ data: [] }),
+      })
 
       renderWithProviders(<PartnerListPage />)
 
@@ -161,7 +183,9 @@ describe('Partner Management', () => {
     })
 
     it('displays partner type badges', async () => {
-      mockApiGet.mockResolvedValue({ data: mockPartners, meta: { total: 2 } })
+      mockApiInstance.get.mockResolvedValue({
+        data: makePartnersListResponse({ data: mockPartners }),
+      })
 
       renderWithProviders(<PartnerListPage />)
 
@@ -173,8 +197,35 @@ describe('Partner Management', () => {
   })
 
   describe('PartnerDetailPage', () => {
+    /**
+     * The detail page fires several parallel queries (partner, documents,
+     * payments, vehicles, balance). Route the mock by URL so each returns a
+     * shape its reducer expects — otherwise `.map()` is called on the partner.
+     */
+    function routeDetailMock(partner = mockPartnerDetailAcme) {
+      mockApiInstance.get.mockImplementation((url: string) => {
+        if (url.startsWith('/partners/') && !url.includes('/account-balance')) {
+          return Promise.resolve({ data: { data: partner } })
+        }
+        if (url.includes('/account-balance')) {
+          return Promise.resolve({
+            data: {
+              data: {
+                partner_id: partner.id,
+                currency: 'TND',
+                unallocated_balance: '0.00',
+                deposit_count: 0,
+              },
+            },
+          })
+        }
+        // documents, payments, vehicles — all array payloads
+        return Promise.resolve({ data: { data: [] } })
+      })
+    }
+
     it('displays partner details', async () => {
-      mockApiGet.mockResolvedValue(mockPartners[0])
+      routeDetailMock()
 
       renderWithProviders(
         <Routes>
@@ -190,7 +241,7 @@ describe('Partner Management', () => {
     })
 
     it('shows loading state while fetching', () => {
-      mockApiGet.mockImplementation(
+      mockApiInstance.get.mockImplementation(
         () => new Promise((resolve) => setTimeout(resolve, 1000))
       )
 
@@ -205,7 +256,7 @@ describe('Partner Management', () => {
     })
 
     it('shows error state when partner not found', async () => {
-      mockApiGet.mockRejectedValue({ response: { status: 404 } })
+      mockApiInstance.get.mockRejectedValue({ response: { status: 404 } })
 
       renderWithProviders(
         <Routes>
@@ -220,7 +271,7 @@ describe('Partner Management', () => {
     })
 
     it('has edit and back buttons', async () => {
-      mockApiGet.mockResolvedValue(mockPartners[0])
+      routeDetailMock()
 
       renderWithProviders(
         <Routes>
