@@ -164,9 +164,13 @@ Merci de confirmer, corriger ou compléter la liste suivante pour **[Pays]** :
 - **France :** certification NF525 des systèmes de caisse ; articles 32, 33 et 34 du RGPD (sécurité et notification de violation).
 - **Royaume-Uni :** règles HMRC *Making Tax Digital* en matière de conservation ; UK GDPR.
 - **Italie :** certification *Registratore Telematico* (RT) ; RGPD ; règles de transmission télématique de l'Agenzia delle Entrate.
-- **Tunisie :** régime de certification fiscale des systèmes de caisse (le cas échéant) ; cadre de protection des données personnelles INPDP.
-- **Maroc :** loi 09-08 (protection des données), autorité CNDP ; modernisation fiscale en cours (SIMPL et initiatives connexes).
+- **Tunisie :** régime de certification fiscale des systèmes de caisse (le cas échéant) ; loi n° 2004-63 relative à la protection des données à caractère personnel ; cadre INPDP.
+- **Maroc :** loi 09-08 (protection des données à caractère personnel), autorité CNDP ; modernisation fiscale en cours (SIMPL et initiatives connexes).
 - **Côte d'Ivoire :** cadre de protection des données ; mise en place de la facturation électronique FNE.
+- **Royaume d'Arabie saoudite (déploiement futur) :** réglementation de la facturation électronique de la ZATCA (*Zakat, Tax and Customs Authority* — Fatoorah, phases 1 et 2) ; loi sur la protection des données à caractère personnel (PDPL, 2021) et ses textes d'application ; contrôles essentiels de cybersécurité (ECC) de la NCA le cas échéant.
+- **Émirats arabes unis (déploiement futur) :** cadre de facturation électronique de la FTA (en cours de mise en œuvre) ; décret fédéral n° 45/2021 relatif à la protection des données à caractère personnel ; réglementations spécifiques des zones franches DIFC ou ADGM le cas échéant.
+- **Égypte (déploiement futur) :** obligations de facturation électronique de l'ETA (*Egyptian Tax Authority*) ; loi n° 151/2020 relative à la protection des données à caractère personnel.
+- **Qatar (déploiement futur) :** loi n° 13/2016 relative à la protection de la vie privée des données à caractère personnel.
 
 ---
 

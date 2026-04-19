@@ -164,9 +164,13 @@ Please confirm, correct, or extend the following for **[Country]**:
 - **France:** NF525 cash-register certification; GDPR Articles 32, 33, 34 (security + breach notification).
 - **United Kingdom:** HMRC Making Tax Digital record-keeping rules; UK GDPR.
 - **Italy:** *Registratore Telematico* (RT) certification; GDPR; Agenzia delle Entrate telematic-transmission rules.
-- **Tunisia:** Cash-register fiscal-certification regime (as applicable); INPDP personal-data-protection framework.
-- **Morocco:** Law 09-08 (data protection), CNDP regulator; ongoing fiscal modernization (SIMPL and related initiatives).
+- **Tunisia:** Cash-register fiscal-certification regime (as applicable); Law No. 2004-63 on protection of personal data; INPDP framework.
+- **Morocco:** Law 09-08 (protection of personal data), CNDP regulator; ongoing fiscal modernization (SIMPL and related initiatives).
 - **Côte d'Ivoire:** Personal-data-protection framework; FNE electronic-invoicing rollout.
+- **Kingdom of Saudi Arabia (prospective):** ZATCA (Zakat, Tax and Customs Authority) e-invoicing regulations (Fatoorah, Phase 1 & 2); PDPL (Personal Data Protection Law, 2021) and its implementing regulations; NCA Essential Cybersecurity Controls (ECC) where applicable.
+- **United Arab Emirates (prospective):** FTA e-invoicing framework (scheduled); Federal Decree-Law No. 45/2021 on Personal Data Protection; DIFC or ADGM data-protection regulations where a free-zone establishment applies.
+- **Egypt (prospective):** ETA (Egyptian Tax Authority) e-invoicing obligations; Law No. 151/2020 on Personal Data Protection.
+- **Qatar (prospective):** Law No. 13/2016 on Personal Data Privacy Protection.
 
 ---
 
