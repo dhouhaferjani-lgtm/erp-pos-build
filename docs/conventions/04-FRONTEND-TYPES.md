@@ -182,3 +182,89 @@ export interface Expense {
 - [ ] Run `php artisan typescript:transform` after changes
 - [ ] Import from `@autoerp/shared/types/generated`
 - [ ] Never manually edit `generated.ts`
+
+## Fixture factories for tests
+
+Frontend tests MUST use typed fixture factories instead of ad-hoc mock literals. This prevents drift when types change.
+
+### Why this rule exists
+
+Tests historically mocked API responses with inline object literals that had the wrong shape. The type system never caught it because `mockResolvedValue` of a `vi.fn()` is typed as `any`. The 2026-04-19 test-suite remediation traced 80+ test failures to this class of drift — the fix was to make every mock type-checked against the same interface the page consumes.
+
+### Pattern
+
+Colocate fixtures next to the test under a `__fixtures__/` directory. Type the factory return against the hand-written frontend interface (or, when the types pipeline is restored, the generated DTO — tracked separately in `docs/sessions/2026-04-19-investigate-types-pipeline-prompt.md`):
+
+```ts
+// src/features/finance/__fixtures__/agedReceivables.ts
+import type { AgedReceivablesData, AgedReceivablesLine } from '../types'
+
+export function makeAgedReceivablesLine(
+  overrides: Partial<AgedReceivablesLine> = {},
+): AgedReceivablesLine {
+  return {
+    customer_id: '00000000-0000-4000-8000-000000000001',
+    customer_name: 'ACME Corp',
+    current: '1000.00',
+    days_30: '500.00',
+    days_60: '200.00',
+    days_90: '100.00',
+    over_90: '50.00',
+    total: '1850.00',
+    ...overrides,
+  }
+}
+
+export function makeAgedReceivablesReport(
+  overrides: Partial<AgedReceivablesData> = {},
+): AgedReceivablesData {
+  const defaultLines = [makeAgedReceivablesLine()]
+  const lines = overrides.lines ?? defaultLines
+  return {
+    as_of_date: '2026-04-19',
+    lines,
+    total_current: '1000.00',
+    total_days_30: '500.00',
+    total_days_60: '200.00',
+    total_days_90: '100.00',
+    total_over_90: '50.00',
+    grand_total: '1850.00',
+    ...overrides,
+  }
+}
+```
+
+Tests consume factories:
+
+```ts
+import { makeAgedReceivablesReport, makeAgedReceivablesLine } from './__fixtures__/agedReceivables'
+
+mockApiGet.mockResolvedValue(
+  makeAgedReceivablesReport({
+    lines: [makeAgedReceivablesLine({ customer_name: 'ACME Corp' })],
+  }),
+)
+```
+
+### Rules
+
+1. **Factory return type MUST be the interface the component consumes.** Never `any`, never `Partial<X>`, never an inline type. If the interface doesn't exist, create or export it first.
+2. **Every test mock that returns an API response MUST call a factory.** No raw object literals in `mockResolvedValue`, `mockReturnValue`, etc.
+3. **Defaults must be plausible production values.** UUIDs should be real UUIDs (not `'1'`), currency fields should be strings matching the DTO convention (`'1000.00'`), enums should be valid values.
+4. **Overrides must be `Partial<X>`.** Never wider than the type — callers cannot add fields that don't exist on the real DTO.
+5. **Colocate.** Fixtures live in `__fixtures__/` next to the tests that use them. Cross-cutting fixtures (e.g. `companyConfig`, `productConfig` used by `renderWithProviders`) live under `apps/web/src/test/fixtures/`.
+6. **Wrapper factories for wrapped shapes.** If an endpoint returns `{ lines: [], grand_total: '0' }`, provide both `makeXLine()` and `makeXReport()`. The line factory composes into the report factory's default `lines` array.
+7. **No factory should call `faker`, `uuid()`, `new Date()`, or anything non-deterministic.** Tests must be reproducible; pin all values.
+
+### When a DTO changes
+
+1. Add/rename/remove the field in the backend DTO.
+2. Run `php artisan typescript:transform` (regenerates `packages/shared/types/generated.ts`).
+3. Update the hand-written interface in `features/<module>/types.ts` (until the types pipeline is restored — see investigation prompt above).
+4. Update the factory default in `__fixtures__/<name>.ts`.
+5. TypeScript will fail-compile every consumer until step 4 is done. This is the property we want.
+
+### Related
+
+- `renderWithProviders` (at `apps/web/src/test/renderWithProviders.tsx`) — the shared test wrapper that mounts `ProductConfigProvider` + `CompanyConfigProvider` and accepts seed overrides. Required for tests that render components consuming those contexts.
+- `scripts/preflight.sh` — runs `php artisan typescript:transform` and fails on drift between DTOs and the committed `packages/shared/types/generated.ts`.
