@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { UnitsSettingsPage } from './UnitsSettingsPage'
 import type { UnitCategory } from '../api/uomApi'
+import { makeUnit, makeUnitCategory } from '../__fixtures__/unit'
 
 // Mock the API - must use vi.hoisted for variables used in vi.mock factory
 const { mockApiGet, mockApiPost, mockApiDelete } = vi.hoisted(() => ({
@@ -67,65 +68,54 @@ vi.mock('sonner', () => ({
  * Mock data matching the backend DTO structure
  */
 const mockCategories: UnitCategory[] = [
-  {
+  makeUnitCategory({
     id: 'cat-weight-1',
     code: 'weight',
     name: 'Weight',
     description: 'Units for measuring weight',
     base_unit_id: 'unit-gram-1',
-    is_active: true,
     units: [
-      {
+      makeUnit({
         id: 'unit-gram-1',
         category_id: 'cat-weight-1',
         code: 'g',
         name: 'Gram',
         symbol: 'g',
         conversion_factor: '1',
-        decimal_places: 2,
-        rounding_method: 'half_up',
         is_base_unit: true,
         is_system: true,
-        is_active: true,
-      },
-      {
+      }),
+      makeUnit({
         id: 'unit-kg-1',
         category_id: 'cat-weight-1',
         code: 'kg',
         name: 'Kilogram',
         symbol: 'kg',
         conversion_factor: '1000',
-        decimal_places: 2,
-        rounding_method: 'half_up',
         is_base_unit: false,
         is_system: true,
-        is_active: true,
-      },
+      }),
     ],
-  },
-  {
+  }),
+  makeUnitCategory({
     id: 'cat-volume-1',
     code: 'volume',
     name: 'Volume',
     description: 'Units for measuring volume',
     base_unit_id: 'unit-liter-1',
-    is_active: true,
     units: [
-      {
+      makeUnit({
         id: 'unit-liter-1',
         category_id: 'cat-volume-1',
         code: 'l',
         name: 'Liter',
         symbol: 'L',
         conversion_factor: '1',
-        decimal_places: 2,
-        rounding_method: 'half_up',
         is_base_unit: true,
         is_system: true,
-        is_active: true,
-      },
+      }),
     ],
-  },
+  }),
 ]
 
 describe('UnitsSettingsPage', () => {
@@ -285,25 +275,22 @@ describe('UnitsSettingsPage', () => {
   describe('Custom units management', () => {
     it('enables edit and delete for custom units', async () => {
       const categoriesWithCustomUnit: UnitCategory[] = [
-        {
+        makeUnitCategory({
           ...mockCategories[1],
           units: [
             ...(mockCategories[1].units ?? []),
-            {
+            makeUnit({
               id: 'unit-custom-1',
               category_id: 'cat-volume-1',
               code: 'tbsp',
               name: 'Tablespoon',
               symbol: 'tbsp',
               conversion_factor: '0.015',
-              decimal_places: 2,
-              rounding_method: 'half_up' as const,
               is_base_unit: false,
               is_system: false, // CUSTOM UNIT
-              is_active: true,
-            },
+            }),
           ],
-        },
+        }),
       ]
 
       mockApiGet.mockResolvedValue(categoriesWithCustomUnit)
@@ -329,24 +316,21 @@ describe('UnitsSettingsPage', () => {
 
     it('shows confirmation dialog when deleting custom unit', async () => {
       const categoriesWithCustomUnit: UnitCategory[] = [
-        {
+        makeUnitCategory({
           ...mockCategories[1],
           units: [
-            {
+            makeUnit({
               id: 'unit-custom-1',
               category_id: 'cat-volume-1',
               code: 'tbsp',
               name: 'Tablespoon',
               symbol: 'tbsp',
               conversion_factor: '0.015',
-              decimal_places: 2,
-              rounding_method: 'half_up' as const,
               is_base_unit: false,
               is_system: false,
-              is_active: true,
-            },
+            }),
           ],
-        },
+        }),
       ]
 
       mockApiGet.mockResolvedValue(categoriesWithCustomUnit)

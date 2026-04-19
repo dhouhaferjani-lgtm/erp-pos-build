@@ -8,7 +8,8 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { OpenInvoicesList } from './OpenInvoicesList'
-import { AllocationMethod, type OpenInvoice } from '@/types/treasury'
+import { AllocationMethod } from '@/types/treasury'
+import { makeOpenInvoice } from '../__fixtures__/openInvoice'
 
 // Mock the API
 vi.mock('@/lib/api', () => ({
@@ -67,49 +68,34 @@ vi.mock('react-i18next', () => ({
 }))
 
 describe('OpenInvoicesList', () => {
-  const mockInvoices: OpenInvoice[] = [
-    {
+  const mockInvoices = [
+    makeOpenInvoice({
       id: '1',
       document_number: 'INV-00001',
       document_date: '2025-11-01',
       due_date: '2025-11-30',
       total: '1190.0000',
       balance_due: '1190.0000',
-      currency: 'TND',
       days_overdue: 10,
-      partner: {
-        id: 'partner-1',
-        name: 'Customer A',
-      },
-    },
-    {
+    }),
+    makeOpenInvoice({
       id: '2',
       document_number: 'INV-00002',
       document_date: '2025-12-01',
       due_date: '2025-12-31',
       total: '595.0000',
       balance_due: '595.0000',
-      currency: 'TND',
       days_overdue: 0,
-      partner: {
-        id: 'partner-1',
-        name: 'Customer A',
-      },
-    },
-    {
+    }),
+    makeOpenInvoice({
       id: '3',
       document_number: 'INV-00003',
       document_date: '2025-10-15',
       due_date: '2025-11-15',
       total: '2380.0000',
       balance_due: '2380.0000',
-      currency: 'TND',
       days_overdue: 25,
-      partner: {
-        id: 'partner-1',
-        name: 'Customer A',
-      },
-    },
+    }),
   ]
 
   beforeEach(() => {
@@ -261,15 +247,20 @@ describe('OpenInvoicesList', () => {
       />,
     )
 
+    // Only the input for the selected invoice is editable; the others are
+    // rendered as `<input disabled>`. Find the editable one.
     const amountInputs = screen.getAllByRole('spinbutton')
-    expect(amountInputs.length).toBeGreaterThan(0)
+    const editable = amountInputs.find((el) => !(el as HTMLInputElement).disabled)
+    expect(editable).toBeDefined()
 
-    await user.clear(amountInputs[0])
-    await user.type(amountInputs[0], '500')
+    await user.click(editable!)
+    await user.keyboard('{Control>}a{/Control}500')
 
     expect(onAllocationChange).toHaveBeenCalled()
   })
 
+  // The sort control is a native <select> (label "Sort by:"), not a
+  // button/menu. Drive it with `selectOptions` on the first combobox.
   it('sorts invoices by date (oldest first)', async () => {
     const user = userEvent.setup()
 
@@ -281,18 +272,17 @@ describe('OpenInvoicesList', () => {
       />,
     )
 
-    const sortButton = screen.getByText('Sort by')
-    await user.click(sortButton)
-    await user.click(screen.getByText('Invoice Date'))
+    const sortSelect = screen.getAllByRole('combobox')[0]
+    await user.selectOptions(sortSelect, 'date')
 
-    // After sorting by date (oldest first), INV-00003 should be first
     const invoiceNumbers = screen.getAllByText(/INV-/)
     expect(invoiceNumbers[0].textContent).toContain('INV-00003')
   })
 
-  it('sorts invoices by due date', async () => {
-    const user = userEvent.setup()
-
+  it('sorts invoices by due date', () => {
+    // `due_date` is the default sort order on mount, so we only need to
+    // render and assert oldest-first ordering (INV-00003 has the earliest
+    // due date, 2025-11-15).
     renderWithProviders(
       <OpenInvoicesList
         partnerId="partner-1"
@@ -301,11 +291,6 @@ describe('OpenInvoicesList', () => {
       />,
     )
 
-    const sortButton = screen.getByText('Sort by')
-    await user.click(sortButton)
-    await user.click(screen.getByText('Due Date'))
-
-    // After sorting by due date (oldest first), INV-00003 should be first (due 2025-11-15)
     const invoiceNumbers = screen.getAllByText(/INV-/)
     expect(invoiceNumbers[0].textContent).toContain('INV-00003')
   })
@@ -321,9 +306,8 @@ describe('OpenInvoicesList', () => {
       />,
     )
 
-    const sortButton = screen.getByText('Sort by')
-    await user.click(sortButton)
-    await user.click(screen.getByText('Amount'))
+    const sortSelect = screen.getAllByRole('combobox')[0]
+    await user.selectOptions(sortSelect, 'amount')
 
     // After sorting by amount (largest first), INV-00003 should be first (2380)
     const invoiceNumbers = screen.getAllByText(/INV-/)
@@ -399,8 +383,9 @@ describe('OpenInvoicesList', () => {
     )
 
     const amountInputs = screen.getAllByRole('spinbutton')
-    await user.clear(amountInputs[0])
-    await user.type(amountInputs[0], '5000') // Exceeds balance of 1190
+    const editable = amountInputs.find((el) => !(el as HTMLInputElement).disabled)
+    await user.click(editable!)
+    await user.keyboard('{Control>}a{/Control}5000') // Exceeds balance of 1190
 
     await waitFor(() => {
       // Should show validation error
