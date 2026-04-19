@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { Routes, Route } from 'react-router-dom'
 import { renderWithProviders } from '@/test/renderWithProviders'
-import { defaultCompanyConfig } from '@/test/fixtures/companyConfig'
+import {
+  defaultCompanyConfig,
+  mechanicCompanyConfig,
+  mechanicWithExtrasCompanyConfig,
+  type TestCompanyConfig,
+} from '@/test/fixtures/companyConfig'
 import { ModuleGuard } from '../ModuleGuard'
 import * as api from '../../../lib/api'
 
@@ -26,7 +31,17 @@ describe('ModuleGuard - Route Protection', () => {
     vi.clearAllMocks()
   })
 
-  const renderWithRouter = (moduleName: string, fallback?: string) => {
+  /**
+   * The guard reads `useCompanyConfig()` which is pre-seeded into the
+   * TanStack Query cache by `renderWithProviders` — the raw `apiGet` mock
+   * is never consumed for this flow. Each test passes the fixture it needs
+   * via `companyConfig`.
+   */
+  const renderWithRouter = (
+    moduleName: string,
+    companyConfig: TestCompanyConfig = defaultCompanyConfig,
+    fallback?: string,
+  ) => {
     return renderWithProviders(
       <Routes>
         <Route path="/" element={<FallbackPage />} />
@@ -40,34 +55,20 @@ describe('ModuleGuard - Route Protection', () => {
           }
         />
       </Routes>,
-      { route: '/test' }
+      { route: '/test', companyConfig },
     )
   }
 
   describe('Mechanic Vertical (Has Vehicle Module)', () => {
-    beforeEach(() => {
-      const mechanicConfig = {
-        vertical: 'mechanic',
-        default_modules: ['Identity', 'Vehicle', 'Workshop', 'Sales', 'Inventory'],
-        enabled_extras: [],
-        all_enabled_modules: ['Identity', 'Vehicle', 'Workshop', 'Sales', 'Inventory'],
-        currency: 'TND',
-        locale: 'fr_TN',
-        country_code: 'TN',
-      }
-      vi.mocked(api.apiGet).mockResolvedValue(mechanicConfig)
-    })
-
     it('allows access when module is enabled for vertical', async () => {
-      renderWithRouter('Vehicle')
+      renderWithRouter('Vehicle', mechanicCompanyConfig)
 
-      // Should render the protected content
       const content = await screen.findByText('Module Accessible')
       expect(content).toBeInTheDocument()
     })
 
     it('allows access to Workshop module for mechanic vertical', async () => {
-      renderWithRouter('Workshop')
+      renderWithRouter('Workshop', mechanicCompanyConfig)
 
       const content = await screen.findByText('Module Accessible')
       expect(content).toBeInTheDocument()
@@ -268,28 +269,15 @@ describe('ModuleGuard - Route Protection', () => {
   })
 
   describe('Module Name Case Handling', () => {
-    beforeEach(() => {
-      const mechanicConfig = {
-        vertical: 'mechanic',
-        default_modules: ['Identity', 'Vehicle', 'Workshop'],
-        enabled_extras: [],
-        all_enabled_modules: ['Identity', 'Vehicle', 'Workshop'],
-        currency: 'TND',
-        locale: 'fr_TN',
-        country_code: 'TN',
-      }
-      vi.mocked(api.apiGet).mockResolvedValue(mechanicConfig)
-    })
-
     it('correctly handles PascalCase module names', async () => {
-      renderWithRouter('Vehicle') // PascalCase
+      renderWithRouter('Vehicle', mechanicCompanyConfig)
 
       const content = await screen.findByText('Module Accessible')
       expect(content).toBeInTheDocument()
     })
 
     it('correctly handles module names with multiple words', async () => {
-      renderWithRouter('Workshop') // Single word PascalCase
+      renderWithRouter('Workshop', mechanicCompanyConfig)
 
       const content = await screen.findByText('Module Accessible')
       expect(content).toBeInTheDocument()
@@ -297,28 +285,15 @@ describe('ModuleGuard - Route Protection', () => {
   })
 
   describe('Integration with Enabled Extras', () => {
-    beforeEach(() => {
-      const mechanicConfigWithExtras = {
-        vertical: 'mechanic',
-        default_modules: ['Identity', 'Vehicle', 'Workshop', 'Sales'],
-        enabled_extras: ['Fleet', 'Appointments'],
-        all_enabled_modules: ['Identity', 'Vehicle', 'Workshop', 'Sales', 'Fleet', 'Appointments'],
-        currency: 'TND',
-        locale: 'fr_TN',
-        country_code: 'TN',
-      }
-      vi.mocked(api.apiGet).mockResolvedValue(mechanicConfigWithExtras)
-    })
-
     it('allows access to enabled extra modules', async () => {
-      renderWithRouter('Fleet')
+      renderWithRouter('Fleet', mechanicWithExtrasCompanyConfig)
 
       const content = await screen.findByText('Module Accessible')
       expect(content).toBeInTheDocument()
     })
 
     it('allows access to second enabled extra module', async () => {
-      renderWithRouter('Appointments')
+      renderWithRouter('Appointments', mechanicWithExtrasCompanyConfig)
 
       const content = await screen.findByText('Module Accessible')
       expect(content).toBeInTheDocument()

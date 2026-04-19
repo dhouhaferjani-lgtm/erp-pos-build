@@ -38,3 +38,35 @@ export const pharmacyCompanyConfig: TestCompanyConfig = {
   smart_prompts_enabled: false,
   smart_prompts_variant: 'off',
 }
+
+/**
+ * Mechanic vertical seed with automotive modules (Vehicle, Workshop).
+ * Used by guard + sidebar tests that cover module visibility per vertical.
+ */
+export const mechanicCompanyConfig: TestCompanyConfig = {
+  vertical: 'mechanic',
+  default_modules: ['Identity', 'Vehicle', 'Workshop', 'Sales', 'Inventory'],
+  enabled_extras: [],
+  all_enabled_modules: ['Identity', 'Vehicle', 'Workshop', 'Sales', 'Inventory'],
+  currency: 'TND',
+  locale: 'fr_TN',
+  country_code: 'TN',
+  smart_prompts_enabled: false,
+  smart_prompts_variant: 'off',
+}
+
+/**
+ * Mechanic vertical with enabled extras (Fleet, Appointments).
+ * Used to verify guards allow access to opt-in extras.
+ */
+export const mechanicWithExtrasCompanyConfig: TestCompanyConfig = {
+  vertical: 'mechanic',
+  default_modules: ['Identity', 'Vehicle', 'Workshop', 'Sales'],
+  enabled_extras: ['Fleet', 'Appointments'],
+  all_enabled_modules: ['Identity', 'Vehicle', 'Workshop', 'Sales', 'Fleet', 'Appointments'],
+  currency: 'TND',
+  locale: 'fr_TN',
+  country_code: 'TN',
+  smart_prompts_enabled: false,
+  smart_prompts_variant: 'off',
+}
