@@ -3,6 +3,10 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { GeneralLedgerPage } from './pages/GeneralLedgerPage'
+import {
+  makeLedgerLine,
+  makeLedgerReport,
+} from './__fixtures__/generalLedger'
 
 const { mockApiGet } = vi.hoisted(() => ({
   mockApiGet: vi.fn(),
@@ -14,6 +18,9 @@ vi.mock('@/lib/api', () => ({
   apiPatch: vi.fn(),
 }))
 
+// Accounts feed the account-filter dropdown only. getAccounts returns a
+// raw Account[] (no wrapper), so a plain array mock is correct here and
+// intentionally stays outside the ledger fixture factory scope.
 const mockAccounts = [
   {
     id: '1',
@@ -29,34 +36,39 @@ const mockAccounts = [
   },
 ]
 
-const mockLedgerLines = [
-  {
-    id: '1',
-    date: '2025-01-15',
-    entry_number: 'JE-001',
-    description: 'Cash sale',
-    account_code: '1000',
-    account_name: 'Cash',
-    debit: '1000.00',
-    credit: '0.00',
-    balance: '1000.00',
-    source_type: 'invoice',
-    source_id: 'inv-1',
-  },
-  {
-    id: '2',
-    date: '2025-01-15',
-    entry_number: 'JE-001',
-    description: 'Cash sale',
-    account_code: '4000',
-    account_name: 'Revenue',
-    debit: '0.00',
-    credit: '1000.00',
-    balance: '-1000.00',
-    source_type: 'invoice',
-    source_id: 'inv-1',
-  },
-]
+const mockLedgerReport = makeLedgerReport({
+  lines: [
+    makeLedgerLine({
+      id: '1',
+      date: '2025-01-15',
+      entry_number: 'JE-001',
+      description: 'Cash sale',
+      account_code: '1000',
+      account_name: 'Cash',
+      debit: '1000.00',
+      credit: '0.00',
+      balance: '1000.00',
+      source_type: 'invoice',
+      source_id: 'inv-1',
+    }),
+    makeLedgerLine({
+      id: '2',
+      date: '2025-01-15',
+      entry_number: 'JE-001',
+      description: 'Cash sale',
+      account_code: '4000',
+      account_name: 'Revenue',
+      debit: '0.00',
+      credit: '1000.00',
+      balance: '-1000.00',
+      source_type: 'invoice',
+      source_id: 'inv-1',
+    }),
+  ],
+  total_debits: '1000.00',
+  total_credits: '1000.00',
+  closing_balance: '0.00',
+})
 
 describe('GeneralLedgerPage', () => {
   beforeEach(() => {
@@ -69,7 +81,7 @@ describe('GeneralLedgerPage', () => {
         return Promise.resolve(mockAccounts)
       }
       if (url.includes('/ledger')) {
-        return Promise.resolve(mockLedgerLines)
+        return Promise.resolve(mockLedgerReport)
       }
       return Promise.resolve([])
     })
@@ -95,7 +107,7 @@ describe('GeneralLedgerPage', () => {
         return Promise.resolve(mockAccounts)
       }
       if (url.includes('/ledger')) {
-        return Promise.resolve(mockLedgerLines)
+        return Promise.resolve(mockLedgerReport)
       }
       return Promise.resolve([])
     })
@@ -117,7 +129,7 @@ describe('GeneralLedgerPage', () => {
         return Promise.resolve(mockAccounts)
       }
       if (url.includes('/ledger')) {
-        return Promise.resolve(mockLedgerLines)
+        return Promise.resolve(mockLedgerReport)
       }
       return Promise.resolve([])
     })
@@ -135,7 +147,7 @@ describe('GeneralLedgerPage', () => {
         return Promise.resolve(mockAccounts)
       }
       if (url.includes('/ledger')) {
-        return Promise.resolve(mockLedgerLines)
+        return Promise.resolve(mockLedgerReport)
       }
       return Promise.resolve([])
     })
@@ -155,7 +167,7 @@ describe('GeneralLedgerPage', () => {
         return Promise.resolve(mockAccounts)
       }
       if (url.includes('/ledger')) {
-        return Promise.resolve(mockLedgerLines)
+        return Promise.resolve(mockLedgerReport)
       }
       return Promise.resolve([])
     })
