@@ -4,9 +4,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { renderWithProviders } from '@/test/renderWithProviders'
 import { CreateCreditNoteForm } from './CreateCreditNoteForm'
 import type { InvoiceForCreditNote } from '@/types/creditNote'
 import { DocumentStatus } from '@/types/creditNote'
@@ -82,18 +82,6 @@ vi.mock('react-i18next', () => ({
   }),
 }))
 
-const createQueryClient = () =>
-  new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  })
-
-const wrapper = ({ children }: { children: React.ReactNode }) => (
-  <QueryClientProvider client={createQueryClient()}>{children}</QueryClientProvider>
-)
-
 describe('CreateCreditNoteForm', () => {
   const mockInvoice: InvoiceForCreditNote = {
     id: 'invoice-1',
@@ -114,7 +102,7 @@ describe('CreateCreditNoteForm', () => {
   })
 
   it('renders form with all required fields', () => {
-    render(<CreateCreditNoteForm invoice={mockInvoice} />, { wrapper })
+    renderWithProviders(<CreateCreditNoteForm invoice={mockInvoice} />)
 
     expect(screen.getByText('Create Credit Note')).toBeInTheDocument()
     expect(screen.getByLabelText('Amount')).toBeInTheDocument()
@@ -125,7 +113,7 @@ describe('CreateCreditNoteForm', () => {
   })
 
   it('displays invoice information and creditable amount', () => {
-    render(<CreateCreditNoteForm invoice={mockInvoice} />, { wrapper })
+    renderWithProviders(<CreateCreditNoteForm invoice={mockInvoice} />)
 
     expect(screen.getByText('INV-00001')).toBeInTheDocument()
     expect(screen.getByText('Remaining creditable: 1190.00')).toBeInTheDocument()
@@ -133,7 +121,7 @@ describe('CreateCreditNoteForm', () => {
 
   it('validates that amount is required', async () => {
     const user = userEvent.setup()
-    render(<CreateCreditNoteForm invoice={mockInvoice} />, { wrapper })
+    renderWithProviders(<CreateCreditNoteForm invoice={mockInvoice} />)
 
     const submitButton = screen.getByText('Save')
     await user.click(submitButton)
@@ -145,7 +133,7 @@ describe('CreateCreditNoteForm', () => {
 
   it('validates that amount must be positive', async () => {
     const user = userEvent.setup()
-    render(<CreateCreditNoteForm invoice={mockInvoice} />, { wrapper })
+    renderWithProviders(<CreateCreditNoteForm invoice={mockInvoice} />)
 
     const amountInput = screen.getByLabelText('Amount')
     await user.type(amountInput, '-100')
@@ -158,7 +146,7 @@ describe('CreateCreditNoteForm', () => {
 
   it('validates that amount does not exceed invoice total', async () => {
     const user = userEvent.setup()
-    render(<CreateCreditNoteForm invoice={mockInvoice} />, { wrapper })
+    renderWithProviders(<CreateCreditNoteForm invoice={mockInvoice} />)
 
     const amountInput = screen.getByLabelText('Amount')
     await user.type(amountInput, '1500')
@@ -176,7 +164,7 @@ describe('CreateCreditNoteForm', () => {
     }
 
     const user = userEvent.setup()
-    render(<CreateCreditNoteForm invoice={partiallyRefundedInvoice} />, { wrapper })
+    renderWithProviders(<CreateCreditNoteForm invoice={partiallyRefundedInvoice} />)
 
     const amountInput = screen.getByLabelText('Amount')
     await user.type(amountInput, '800')
@@ -189,7 +177,7 @@ describe('CreateCreditNoteForm', () => {
 
   it('validates that reason is required', async () => {
     const user = userEvent.setup()
-    render(<CreateCreditNoteForm invoice={mockInvoice} />, { wrapper })
+    renderWithProviders(<CreateCreditNoteForm invoice={mockInvoice} />)
 
     const amountInput = screen.getByLabelText('Amount')
     await user.type(amountInput, '100')
@@ -204,7 +192,7 @@ describe('CreateCreditNoteForm', () => {
 
   it('allows selecting credit note reason', async () => {
     const user = userEvent.setup()
-    render(<CreateCreditNoteForm invoice={mockInvoice} />, { wrapper })
+    renderWithProviders(<CreateCreditNoteForm invoice={mockInvoice} />)
 
     const reasonSelect = screen.getByLabelText('Reason')
     await user.click(reasonSelect)
@@ -222,7 +210,7 @@ describe('CreateCreditNoteForm', () => {
     const onSuccess = vi.fn()
     const user = userEvent.setup()
 
-    render(<CreateCreditNoteForm invoice={mockInvoice} onSuccess={onSuccess} />, { wrapper })
+    renderWithProviders(<CreateCreditNoteForm invoice={mockInvoice} onSuccess={onSuccess} />)
 
     const amountInput = screen.getByLabelText('Amount')
     await user.type(amountInput, '100')
@@ -247,7 +235,7 @@ describe('CreateCreditNoteForm', () => {
     const onCancel = vi.fn()
     const user = userEvent.setup()
 
-    render(<CreateCreditNoteForm invoice={mockInvoice} onCancel={onCancel} />, { wrapper })
+    renderWithProviders(<CreateCreditNoteForm invoice={mockInvoice} onCancel={onCancel} />)
 
     const cancelButton = screen.getByText('Cancel')
     await user.click(cancelButton)
@@ -265,7 +253,7 @@ describe('CreateCreditNoteForm', () => {
       }),
     }))
 
-    render(<CreateCreditNoteForm invoice={mockInvoice} />, { wrapper })
+    renderWithProviders(<CreateCreditNoteForm invoice={mockInvoice} />)
 
     // Submit button should show loading state
     expect(screen.getByText('Save')).toBeDisabled()
@@ -273,7 +261,7 @@ describe('CreateCreditNoteForm', () => {
 
   it('pre-fills amount with remaining creditable when "Full Refund" button is clicked', async () => {
     const user = userEvent.setup()
-    render(<CreateCreditNoteForm invoice={mockInvoice} />, { wrapper })
+    renderWithProviders(<CreateCreditNoteForm invoice={mockInvoice} />)
 
     // Assuming there's a "Full Refund" button
     const fullRefundButton = screen.queryByText('Full Refund')
@@ -287,7 +275,7 @@ describe('CreateCreditNoteForm', () => {
 
   it('shows confirmation dialog for large credit notes (>50%)', async () => {
     const user = userEvent.setup()
-    render(<CreateCreditNoteForm invoice={mockInvoice} />, { wrapper })
+    renderWithProviders(<CreateCreditNoteForm invoice={mockInvoice} />)
 
     const amountInput = screen.getByLabelText('Amount')
     await user.type(amountInput, '700') // >50% of 1190

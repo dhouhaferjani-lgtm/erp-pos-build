@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { renderWithProviders } from '@/test/renderWithProviders'
 import { CreateReturnNoteForm } from './CreateReturnNoteForm'
 
 // Create mock mutation function
@@ -57,26 +57,17 @@ const mockSourceDocument = {
 }
 
 describe('CreateReturnNoteForm', () => {
-  let queryClient: QueryClient
-
   beforeEach(() => {
-    queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-      },
-    })
     vi.clearAllMocks()
   })
 
   const renderForm = (props = {}) => {
-    return render(
-      <QueryClientProvider client={queryClient}>
-        <CreateReturnNoteForm
-          sourceDocument={mockSourceDocument}
-          sourceType="invoice"
-          {...props}
-        />
-      </QueryClientProvider>
+    return renderWithProviders(
+      <CreateReturnNoteForm
+        sourceDocument={mockSourceDocument}
+        sourceType="invoice"
+        {...props}
+      />
     )
   }
 
