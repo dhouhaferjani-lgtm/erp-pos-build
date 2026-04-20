@@ -53,8 +53,12 @@ final class UpcomingAppointmentsQueryTest extends TestCase
         $result = $query->forCustomer($partner->id, 5, $now);
 
         $this->assertCount(2, $result);
-        $this->assertSame($soon->id, $result->get(0)->id);
-        $this->assertSame($later->id, $result->get(1)->id);
+        $first = $result->get(0);
+        $second = $result->get(1);
+        $this->assertNotNull($first);
+        $this->assertNotNull($second);
+        $this->assertSame($soon->id, $first->id);
+        $this->assertSame($later->id, $second->id);
     }
 
     public function test_excludes_past_appointments(): void

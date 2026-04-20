@@ -15,6 +15,8 @@ use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Mockery;
+use Mockery\Expectation;
+use Mockery\MockInterface;
 use Tests\TestCase;
 
 /**
@@ -44,8 +46,11 @@ final class AppointmentConversionServiceTest extends TestCase
 
         $workOrder = WorkOrder::factory()->create();
 
+        /** @var MockInterface&WorkOrderCreationServiceInterface $mock */
         $mock = Mockery::mock(WorkOrderCreationServiceInterface::class);
-        $mock->shouldReceive('createFromAppointment')
+        /** @var Expectation $expectation */
+        $expectation = $mock->shouldReceive('createFromAppointment');
+        $expectation
             ->once()
             ->with(
                 Mockery::on(fn (string $id): bool => $id === $appt->id),
@@ -105,8 +110,11 @@ final class AppointmentConversionServiceTest extends TestCase
         ]);
 
         $workOrder = WorkOrder::factory()->create();
+        /** @var MockInterface&WorkOrderCreationServiceInterface $mock */
         $mock = Mockery::mock(WorkOrderCreationServiceInterface::class);
-        $mock->shouldReceive('createFromAppointment')->once()->andReturn($workOrder);
+        /** @var Expectation $expectation */
+        $expectation = $mock->shouldReceive('createFromAppointment');
+        $expectation->once()->andReturn($workOrder);
         $this->app->instance(WorkOrderCreationServiceInterface::class, $mock);
 
         $service = $this->app->make(AppointmentConversionService::class);
