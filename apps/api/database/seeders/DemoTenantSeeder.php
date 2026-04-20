@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Enums\Vertical;
 use App\Modules\Billing\Domain\Enums\SubscriptionStatus;
 use App\Modules\Billing\Domain\Plan;
 use App\Modules\Billing\Domain\TenantSubscription;
@@ -12,6 +13,7 @@ use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Scheduling\Application\Services\AppointmentConversionService;
@@ -37,6 +39,7 @@ use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderType;
 use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
@@ -69,6 +72,12 @@ class DemoTenantSeeder extends Seeder
         // Ensure plans exist
         $this->call(PlansSeeder::class);
 
+        // Explicit: AutoSpecs demos rely on roles/permissions (admin,
+        // technician, etc.) being present. PlansSeeder does NOT invoke
+        // this — calling it here removes the manual `db:seed --class=
+        // RolesAndPermissionsSeeder` step operators previously needed.
+        $this->call(RolesAndPermissionsSeeder::class);
+
         // Original demo tenants
         $this->createUnlimitedDemoTenant();
         $this->createTrialTenant();
@@ -95,13 +104,15 @@ class DemoTenantSeeder extends Seeder
             return;
         }
 
-        // Create tenant
+        // Create tenant — note the Mechanic vertical so AutoSpecs modules
+        // (Workshop, Scheduling, Vehicle) activate out of the box.
         $tenant = Tenant::updateOrCreate(
             ['slug' => 'demo-unlimited'],
             [
                 'name' => 'Demo Unlimited',
                 'status' => TenantStatus::Active,
                 'plan' => 'enterprise', // Legacy field
+                'vertical' => Vertical::Mechanic,
                 'tax_id' => 'TN12345678',
                 'country_code' => 'TN',
                 'currency_code' => 'TND',
@@ -156,7 +167,9 @@ class DemoTenantSeeder extends Seeder
             ]
         );
 
-        // Create admin user
+        // Create admin user — explicit enum + verified + password for
+        // deterministic smoke testing. `admin@demo.local` is intentional;
+        // `admin@otospex.com` is reserved for the live Otospex admin.
         $user = User::updateOrCreate(
             ['email' => 'admin@demo.local'],
             [
@@ -164,11 +177,19 @@ class DemoTenantSeeder extends Seeder
                 'name' => 'Demo Admin',
                 'password' => Hash::make('password'),
                 'email_verified_at' => now(),
-                'status' => 'active',
+                'status' => UserStatus::Active,
             ]
         );
 
         $this->assignAdminRoleAndMembership($user, $tenant, $company);
+
+        // Tunisia COA must exist before accounting-linked seed paths run.
+        // Guarded on company_id so a re-seed doesn't duplicate the chart.
+        if (DB::table('accounts')->where('company_id', $company->id)->doesntExist()) {
+            $coaSeeder = new TunisiaChartOfAccountsSeeder;
+            $coaSeeder->setCommand($this->command);
+            $coaSeeder->run($company->id, $tenant->id);
+        }
 
         $this->seedWorkshopBundles($tenant, $company);
         $this->seedWorkOrders($tenant, $company, $user);
@@ -178,6 +199,7 @@ class DemoTenantSeeder extends Seeder
         $this->command->line('  - Email: admin@demo.local');
         $this->command->line('  - Password: password');
         $this->command->line('  - Plan: Unlimited (no restrictions)');
+        $this->command->line('  - Vertical: mechanic (AutoSpecs ready)');
     }
 
     /**
