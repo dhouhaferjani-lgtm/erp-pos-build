@@ -10,7 +10,7 @@ use App\Modules\Vehicle\Domain\VehicleMileageReading;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Modules\Vehicle\Domain\VehicleMileageReading>
+ * @extends Factory<VehicleMileageReading>
  */
 final class VehicleMileageReadingFactory extends Factory
 {

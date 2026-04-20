@@ -11,7 +11,7 @@ use App\Modules\Vehicle\Domain\VehicleOwnership;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Modules\Vehicle\Domain\VehicleOwnership>
+ * @extends Factory<VehicleOwnership>
  */
 final class VehicleOwnershipFactory extends Factory
 {

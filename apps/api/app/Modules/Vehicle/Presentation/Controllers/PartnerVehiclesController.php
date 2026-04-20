@@ -11,6 +11,7 @@ use App\Modules\Vehicle\Domain\Contracts\VehicleRepositoryInterface;
 use App\Modules\Vehicle\Domain\Vehicle;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 
 final class PartnerVehiclesController extends Controller
 {
@@ -28,7 +29,7 @@ final class PartnerVehiclesController extends Controller
 
         $paginator = $this->vehicles->paginateForOwner($user->tenant_id, $partner, $perPage);
 
-        /** @var \Illuminate\Support\Collection<int, Vehicle> $items */
+        /** @var Collection<int, Vehicle> $items */
         $items = collect($paginator->items());
 
         return response()->json([

@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -19,13 +20,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $company_id
  * @property string $vehicle_id
  * @property string $owner_partner_id
- * @property \Illuminate\Support\Carbon $acquired_at
- * @property \Illuminate\Support\Carbon|null $released_at
+ * @property Carbon $acquired_at
+ * @property Carbon|null $released_at
  * @property OwnershipReason $reason_code
  * @property string|null $notes
  * @property string|null $recorded_by_user_id
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read Vehicle $vehicle
  * @property-read Partner|null $ownerPartner  Nullable when the partner is soft-deleted; FK is RESTRICT on hard delete only.
  */

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Vehicle\Ownership;
 
+use App\Enums\Vertical;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
@@ -32,7 +34,7 @@ final class PartnerVehiclesListTest extends TestCase
             'slug' => 'test-tenant',
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
-            'vertical' => \App\Enums\Vertical::Mechanic,
+            'vertical' => Vertical::Mechanic,
         ]);
         $company = Company::create([
             'tenant_id' => $tenant->id,
@@ -41,7 +43,7 @@ final class PartnerVehiclesListTest extends TestCase
             'currency' => 'EUR',
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
         app(PermissionRegistrar::class)->setPermissionsTeamId($tenant->id);
         $this->seed(RolesAndPermissionsSeeder::class);

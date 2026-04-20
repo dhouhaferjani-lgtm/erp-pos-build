@@ -12,6 +12,7 @@ use App\Modules\Vehicle\Domain\Enums\FuelType;
 use App\Modules\Vehicle\Domain\Enums\TransmissionType;
 use Database\Factories\VehicleFactory;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -45,8 +46,8 @@ use Illuminate\Support\Carbon;
  * @property-read Company $company
  * @property-read Partner|null $partner
  * @property-read VehicleOwnership|null $currentOwnership
- * @property-read \Illuminate\Database\Eloquent\Collection<int, VehicleOwnership> $ownershipHistory
- * @property-read \Illuminate\Database\Eloquent\Collection<int, VehicleMileageReading> $mileageReadings
+ * @property-read Collection<int, VehicleOwnership> $ownershipHistory
+ * @property-read Collection<int, VehicleMileageReading> $mileageReadings
  *
  * @method static Builder<static> forTenant(string $tenantId)
  * @method static Builder<static> forCompany(string $companyId)

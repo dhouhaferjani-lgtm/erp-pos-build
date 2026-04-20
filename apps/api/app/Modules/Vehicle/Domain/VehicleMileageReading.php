@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -17,13 +18,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $company_id
  * @property string $vehicle_id
  * @property int $mileage
- * @property \Illuminate\Support\Carbon $recorded_at
+ * @property Carbon $recorded_at
  * @property MileageSource $source
  * @property string|null $context_document_id
  * @property string|null $context_work_order_id
  * @property string|null $recorded_by_user_id
  * @property string|null $notes
- * @property \Illuminate\Support\Carbon $created_at
+ * @property Carbon $created_at
  */
 class VehicleMileageReading extends Model
 {
