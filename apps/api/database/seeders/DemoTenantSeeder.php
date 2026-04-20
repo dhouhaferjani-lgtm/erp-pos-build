@@ -16,6 +16,8 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Product\Domain\Enums\ProductType;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Scheduling\Application\Services\AppointmentConversionService;
 use App\Modules\Scheduling\Domain\Appointment;
 use App\Modules\Scheduling\Domain\AppointmentService as SchedulingAppointmentService;
@@ -27,9 +29,13 @@ use App\Modules\Scheduling\Domain\Enums\AppointmentType;
 use App\Modules\Scheduling\Domain\Enums\BayType;
 use App\Modules\Scheduling\Domain\Enums\WaitType;
 use App\Modules\Scheduling\Domain\ScheduleConfig;
+use App\Modules\Service\Domain\Enums\PricingType;
+use App\Modules\Service\Domain\Service;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Domain\Entities\Unit;
+use App\Modules\Uom\Domain\Entities\UnitCategory;
 use App\Modules\Vehicle\Domain\Vehicle;
 use App\Modules\Workshop\Bundle\Domain\Enums\BundlePricingMode;
 use App\Modules\Workshop\Bundle\Domain\ServiceBundle;
@@ -191,6 +197,7 @@ class DemoTenantSeeder extends Seeder
             $coaSeeder->run($company->id, $tenant->id);
         }
 
+        $this->seedAutomotiveCatalog($tenant, $company);
         $this->seedWorkshopBundles($tenant, $company);
         $this->seedWorkOrders($tenant, $company, $user);
         $this->seedScheduling($tenant, $company, $user);
@@ -200,6 +207,201 @@ class DemoTenantSeeder extends Seeder
         $this->command->line('  - Password: password');
         $this->command->line('  - Plan: Unlimited (no restrictions)');
         $this->command->line('  - Vertical: mechanic (AutoSpecs ready)');
+    }
+
+    /**
+     * Seed the minimum automotive inventory required to hydrate the 6 demo
+     * bundles. Idempotent via (tenant_id, sku) on products and
+     * (tenant_id, code) on services. Units are tenant-scoped so the demo
+     * remains self-contained if `UomSeeder` has not been run.
+     *
+     * @see docs/sessions/2026-04-20-autospecs-gap-closure-spec.md §2.3.3
+     */
+    private function seedAutomotiveCatalog(Tenant $tenant, Company $company): void
+    {
+        $units = $this->ensureAutomotiveUnits($tenant);
+
+        /** @var list<array{sku: string, name: string, unit_code: string, sale_price: string, tax_rate: string}> $products */
+        $products = [
+            ['sku' => 'OIL-5W30-5L', 'name' => 'Huile moteur 5W30 (bidon 5L)', 'unit_code' => 'L', 'sale_price' => '85.000', 'tax_rate' => '19.000'],
+            ['sku' => 'OIL-10W40-5L', 'name' => 'Huile moteur 10W40 (bidon 5L)', 'unit_code' => 'L', 'sale_price' => '75.000', 'tax_rate' => '19.000'],
+            ['sku' => 'FILT-OIL-STD', 'name' => 'Filtre à huile standard', 'unit_code' => 'EA', 'sale_price' => '25.000', 'tax_rate' => '19.000'],
+            ['sku' => 'FILT-OIL-DIESEL', 'name' => 'Filtre à huile diesel', 'unit_code' => 'EA', 'sale_price' => '30.000', 'tax_rate' => '19.000'],
+            ['sku' => 'FILT-AIR-STD', 'name' => 'Filtre à air standard', 'unit_code' => 'EA', 'sale_price' => '18.000', 'tax_rate' => '19.000'],
+            ['sku' => 'BRAKE-PAD-FRONT', 'name' => 'Plaquettes de frein (avant, jeu)', 'unit_code' => 'EA', 'sale_price' => '95.000', 'tax_rate' => '19.000'],
+            ['sku' => 'BRAKE-DISC', 'name' => 'Disque de frein', 'unit_code' => 'EA', 'sale_price' => '120.000', 'tax_rate' => '19.000'],
+            ['sku' => 'TIRE-195-65-R15', 'name' => 'Pneu 195/65 R15', 'unit_code' => 'EA', 'sale_price' => '210.000', 'tax_rate' => '19.000'],
+            ['sku' => 'COOLANT-1L', 'name' => 'Liquide de refroidissement 1L', 'unit_code' => 'L', 'sale_price' => '22.000', 'tax_rate' => '19.000'],
+            ['sku' => 'SPARK-PLUG', 'name' => "Bougie d'allumage", 'unit_code' => 'EA', 'sale_price' => '12.000', 'tax_rate' => '19.000'],
+        ];
+
+        foreach ($products as $spec) {
+            Product::updateOrCreate(
+                [
+                    'tenant_id' => $tenant->id,
+                    'sku' => $spec['sku'],
+                ],
+                [
+                    'company_id' => $company->id,
+                    'name' => $spec['name'],
+                    'type' => ProductType::Part,
+                    'is_physical' => true,
+                    'sale_price' => $spec['sale_price'],
+                    'tax_rate' => $spec['tax_rate'],
+                    'unit' => $spec['unit_code'],
+                    'unit_id' => $units[$spec['unit_code']]->id,
+                    'is_active' => true,
+                ]
+            );
+        }
+
+        /** @var list<array{code: string, name: string, pricing_type: PricingType, base_price: string, hourly_rate: ?string, default_duration_minutes: int, tax_rate: string}> $services */
+        $services = [
+            ['code' => 'LAB-OIL-CHANGE', 'name' => 'Vidange + remplacement filtres', 'pricing_type' => PricingType::Hourly, 'base_price' => '45.000', 'hourly_rate' => '45.000', 'default_duration_minutes' => 45, 'tax_rate' => '19.000'],
+            ['code' => 'LAB-BRAKE-FRONT', 'name' => 'Remplacement plaquettes de frein avant', 'pricing_type' => PricingType::Hourly, 'base_price' => '45.000', 'hourly_rate' => '45.000', 'default_duration_minutes' => 60, 'tax_rate' => '19.000'],
+            ['code' => 'LAB-ALIGN', 'name' => 'Parallélisme', 'pricing_type' => PricingType::FlatRate, 'base_price' => '80.000', 'hourly_rate' => null, 'default_duration_minutes' => 60, 'tax_rate' => '19.000'],
+            ['code' => 'LAB-DIAG-OBD', 'name' => 'Diagnostic OBD électronique', 'pricing_type' => PricingType::FlatRate, 'base_price' => '60.000', 'hourly_rate' => null, 'default_duration_minutes' => 45, 'tax_rate' => '19.000'],
+            ['code' => 'LAB-TIRE-MOUNT', 'name' => 'Montage + équilibrage pneu', 'pricing_type' => PricingType::Hourly, 'base_price' => '35.000', 'hourly_rate' => '35.000', 'default_duration_minutes' => 30, 'tax_rate' => '19.000'],
+            ['code' => 'LAB-TIMING-BELT', 'name' => 'Remplacement courroie de distribution', 'pricing_type' => PricingType::Hourly, 'base_price' => '50.000', 'hourly_rate' => '50.000', 'default_duration_minutes' => 240, 'tax_rate' => '19.000'],
+        ];
+
+        foreach ($services as $spec) {
+            Service::updateOrCreate(
+                [
+                    'tenant_id' => $tenant->id,
+                    'code' => $spec['code'],
+                ],
+                [
+                    'company_id' => $company->id,
+                    'name' => $spec['name'],
+                    'pricing_type' => $spec['pricing_type'],
+                    'base_price' => $spec['base_price'],
+                    'currency' => 'TND',
+                    'hourly_rate' => $spec['hourly_rate'],
+                    'default_duration_minutes' => $spec['default_duration_minutes'],
+                    'tax_rate' => $spec['tax_rate'],
+                    'is_active' => true,
+                ]
+            );
+        }
+
+        $this->command->line(sprintf(
+            '  - Automotive catalog: %d products + %d services seeded.',
+            count($products),
+            count($services),
+        ));
+    }
+
+    /**
+     * Ensure the four automotive-catalog units exist for this tenant.
+     * Units are tenant-scoped (not `UomSeeder` system units) so re-runs
+     * remain idempotent and the demo stays self-contained.
+     *
+     * @return array{L: Unit, EA: Unit, HR: Unit, KG: Unit}
+     */
+    private function ensureAutomotiveUnits(Tenant $tenant): array
+    {
+        $categories = [
+            'volume' => UnitCategory::firstOrCreate(
+                ['code' => 'autospecs_volume'],
+                [
+                    'name' => 'Automotive volume',
+                    'description' => 'Volume units used by the mechanic demo seeder.',
+                    'is_system' => false,
+                    'is_active' => true,
+                ],
+            ),
+            'pieces' => UnitCategory::firstOrCreate(
+                ['code' => 'autospecs_pieces'],
+                [
+                    'name' => 'Automotive pieces',
+                    'description' => 'Discrete-item units used by the mechanic demo seeder.',
+                    'is_system' => false,
+                    'is_active' => true,
+                ],
+            ),
+            'time' => UnitCategory::firstOrCreate(
+                ['code' => 'autospecs_time'],
+                [
+                    'name' => 'Automotive labor time',
+                    'description' => 'Time-of-labor units used by the mechanic demo seeder.',
+                    'is_system' => false,
+                    'is_active' => true,
+                ],
+            ),
+            'weight' => UnitCategory::firstOrCreate(
+                ['code' => 'autospecs_weight'],
+                [
+                    'name' => 'Automotive weight',
+                    'description' => 'Mass units used by the mechanic demo seeder.',
+                    'is_system' => false,
+                    'is_active' => true,
+                ],
+            ),
+        ];
+
+        $l = Unit::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'code' => 'L'],
+            [
+                'category_id' => $categories['volume']->id,
+                'name' => 'Litre',
+                'symbol' => 'L',
+                'conversion_factor' => '1',
+                'decimal_places' => 3,
+                'is_base_unit' => true,
+                'is_system' => false,
+                'is_active' => true,
+            ],
+        );
+
+        $ea = Unit::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'code' => 'EA'],
+            [
+                'category_id' => $categories['pieces']->id,
+                'name' => 'Each',
+                'symbol' => 'ea',
+                'conversion_factor' => '1',
+                'decimal_places' => 0,
+                'is_base_unit' => true,
+                'is_system' => false,
+                'is_active' => true,
+            ],
+        );
+
+        $hr = Unit::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'code' => 'HR'],
+            [
+                'category_id' => $categories['time']->id,
+                'name' => 'Hour',
+                'symbol' => 'h',
+                'conversion_factor' => '1',
+                'decimal_places' => 2,
+                'is_base_unit' => true,
+                'is_system' => false,
+                'is_active' => true,
+            ],
+        );
+
+        $kg = Unit::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'code' => 'KG'],
+            [
+                'category_id' => $categories['weight']->id,
+                'name' => 'Kilogram',
+                'symbol' => 'kg',
+                'conversion_factor' => '1',
+                'decimal_places' => 3,
+                'is_base_unit' => true,
+                'is_system' => false,
+                'is_active' => true,
+            ],
+        );
+
+        return [
+            'L' => $l,
+            'EA' => $ea,
+            'HR' => $hr,
+            'KG' => $kg,
+        ];
     }
 
     /**
