@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace App\Modules\Scheduling;
 
 use App\Modules\Scheduling\Domain\Contracts\AppointmentRepositoryInterface;
+use App\Modules\Scheduling\Domain\Contracts\AppointmentSequenceInterface;
 use App\Modules\Scheduling\Domain\Contracts\BayRepositoryInterface;
 use App\Modules\Scheduling\Domain\Contracts\ScheduleConfigRepositoryInterface;
 use App\Modules\Scheduling\Infrastructure\Captcha\AlwaysPassCaptchaVerifier;
 use App\Modules\Scheduling\Infrastructure\Captcha\CaptchaVerifierInterface;
 use App\Modules\Scheduling\Infrastructure\Captcha\RecaptchaVerifier;
 use App\Modules\Scheduling\Infrastructure\Persistence\EloquentAppointmentRepository;
+use App\Modules\Scheduling\Infrastructure\Persistence\EloquentAppointmentSequence;
 use App\Modules\Scheduling\Infrastructure\Persistence\EloquentBayRepository;
 use App\Modules\Scheduling\Infrastructure\Persistence\EloquentScheduleConfigRepository;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
@@ -32,6 +34,7 @@ final class SchedulingServiceProvider extends ServiceProvider
         $this->app->bind(AppointmentRepositoryInterface::class, EloquentAppointmentRepository::class);
         $this->app->bind(BayRepositoryInterface::class, EloquentBayRepository::class);
         $this->app->bind(ScheduleConfigRepositoryInterface::class, EloquentScheduleConfigRepository::class);
+        $this->app->bind(AppointmentSequenceInterface::class, EloquentAppointmentSequence::class);
 
         $this->app->singleton(CaptchaVerifierInterface::class, static function (Application $app): CaptchaVerifierInterface {
             if ($app->environment('testing')) {

@@ -13,6 +13,7 @@ use App\Modules\Scheduling\Domain\Appointment;
 use App\Modules\Scheduling\Domain\AppointmentService;
 use App\Modules\Scheduling\Domain\AppointmentStatusTransition;
 use App\Modules\Scheduling\Domain\Contracts\AppointmentRepositoryInterface;
+use App\Modules\Scheduling\Domain\Contracts\AppointmentSequenceInterface;
 use App\Modules\Scheduling\Domain\Enums\AppointmentStatus;
 use App\Modules\Scheduling\Domain\Events\AppointmentCancelled;
 use App\Modules\Scheduling\Domain\Events\AppointmentCheckedIn;
@@ -54,6 +55,7 @@ final class AppointmentAuthoringService
     public function __construct(
         private readonly AppointmentRepositoryInterface $appointments,
         private readonly AppointmentStatusMachine $statusMachine,
+        private readonly AppointmentSequenceInterface $appointmentSequence,
     ) {}
 
     public function create(BookAppointmentCommand $command): Appointment
@@ -75,7 +77,10 @@ final class AppointmentAuthoringService
             $appointment->tenant_id = $command->tenant_id;
             $appointment->company_id = $command->company_id;
             $appointment->location_id = $command->location_id;
-            $appointment->appointment_number = $this->nextAppointmentNumber();
+            $appointment->appointment_number = $this->appointmentSequence->nextNumber(
+                $command->company_id,
+                (int) Carbon::instance($command->scheduled_start)->format('Y'),
+            );
             $appointment->bay_id = $command->bay_id;
             $appointment->primary_technician_profile_id = $command->primary_technician_profile_id;
             $appointment->customer_partner_id = $command->customer_partner_id;
@@ -333,12 +338,5 @@ final class AppointmentAuthoringService
         $transition->triggered_at = Carbon::now();
         $transition->context = null;
         $transition->save();
-    }
-
-    private function nextAppointmentNumber(): string
-    {
-        // Temporary ULID-like numeric suffix — Task 10 will replace with a proper
-        // AppointmentSequenceInterface (per-company, format 'APT-YYYY-NNNNNN').
-        return 'APT-'.date('Y').'-'.strtoupper(Str::random(6));
     }
 }

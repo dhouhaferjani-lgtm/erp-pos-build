@@ -61,6 +61,24 @@ final class AppointmentAuthoringServiceTest extends TestCase
         Event::assertDispatched(AppointmentScheduled::class, fn ($e) => $e->appointment_id === $appointment->id);
     }
 
+    public function test_create_uses_sequence_for_appointment_number(): void
+    {
+        $bay = Bay::factory()->create();
+        $start = new \DateTimeImmutable('2026-07-01 09:00:00');
+        $end = new \DateTimeImmutable('2026-07-01 10:00:00');
+
+        $first = $this->service->create($this->command($bay, $start, $end));
+        $second = $this->service->create($this->command(
+            $bay,
+            new \DateTimeImmutable('2026-07-01 11:00:00'),
+            new \DateTimeImmutable('2026-07-01 12:00:00'),
+        ));
+
+        $this->assertMatchesRegularExpression('/^APT-2026-\d{6}$/', $first->appointment_number);
+        $this->assertMatchesRegularExpression('/^APT-2026-\d{6}$/', $second->appointment_number);
+        $this->assertNotSame($first->appointment_number, $second->appointment_number);
+    }
+
     public function test_create_throws_conflict_when_bay_overlaps(): void
     {
         $bay = Bay::factory()->create();
