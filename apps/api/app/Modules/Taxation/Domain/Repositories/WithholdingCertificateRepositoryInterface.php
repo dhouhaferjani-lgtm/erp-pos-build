@@ -21,7 +21,7 @@ interface WithholdingCertificateRepositoryInterface
      * Find all certificates for a company.
      *
      * @param  array<string, mixed>  $filters
-     * @return CursorPaginator<int, \App\Modules\Taxation\Domain\Entities\WithholdingCertificate>
+     * @return CursorPaginator<int, WithholdingCertificate>
      */
     public function findByCompany(string $companyId, array $filters = []): CursorPaginator;
 

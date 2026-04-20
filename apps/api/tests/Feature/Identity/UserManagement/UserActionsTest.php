@@ -15,6 +15,7 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Spatie\Permission\PermissionRegistrar;
@@ -242,7 +243,7 @@ class UserActionsTest extends TestCase
         // Verify password reset notification was sent
         Notification::assertSentTo(
             $this->targetUser,
-            \Illuminate\Auth\Notifications\ResetPassword::class
+            ResetPassword::class
         );
     }
 

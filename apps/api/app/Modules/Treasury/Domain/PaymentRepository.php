@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * Payment repository for storing cash, checks, and other instruments.
@@ -30,15 +31,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $iban
  * @property string|null $bic
  * @property numeric-string $balance
- * @property \Illuminate\Support\Carbon|null $last_reconciled_at
+ * @property Carbon|null $last_reconciled_at
  * @property numeric-string|null $last_reconciled_balance
  * @property string|null $location_id
  * @property string|null $responsible_user_id
  * @property string|null $account_id
  * @property string|null $gl_account_id
  * @property bool $is_active
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read Tenant $tenant
  * @property-read Company $company
  * @property-read Account|null $glAccount

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Loyalty\Providers;
 
+use App\Modules\Contact\Domain\Contact;
 use App\Modules\Loyalty\Domain\Repositories\EarningRuleRepositoryInterface;
 use App\Modules\Loyalty\Domain\Repositories\EnrollmentRepositoryInterface;
 use App\Modules\Loyalty\Domain\Repositories\LoyaltyMemberRepositoryInterface;
@@ -20,7 +21,6 @@ use App\Modules\Loyalty\Infrastructure\Repositories\EloquentRewardRepository;
 use App\Modules\Loyalty\Infrastructure\Repositories\EloquentStampCardRepository;
 use App\Modules\Loyalty\Infrastructure\Repositories\EloquentTierRepository;
 use App\Modules\Loyalty\Infrastructure\Repositories\EloquentTransactionRepository;
-use App\Modules\Contact\Domain\Contact;
 use App\Modules\Partner\Domain\Partner;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\ServiceProvider;

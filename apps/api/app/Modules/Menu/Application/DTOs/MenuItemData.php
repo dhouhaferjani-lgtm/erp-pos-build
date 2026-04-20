@@ -8,6 +8,7 @@ use App\Modules\Catalog\Application\DTOs\ModifierGroupData;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Domain\CurrencyScale;
+use Illuminate\Database\Eloquent\Relations\Pivot;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -35,7 +36,7 @@ class MenuItemData extends Data
 
     public static function fromCompositeItemPivot(CompositeItem $item): self
     {
-        /** @var \Illuminate\Database\Eloquent\Relations\Pivot|null $pivot */
+        /** @var Pivot|null $pivot */
         $pivot = $item->getAttribute('pivot');
         $overridePrice = $pivot?->getAttribute('override_price') ?? null;
         $basePrice = (string) $item->base_price;
@@ -66,7 +67,7 @@ class MenuItemData extends Data
 
     public static function fromProductPivot(Product $product): self
     {
-        /** @var \Illuminate\Database\Eloquent\Relations\Pivot|null $pivot */
+        /** @var Pivot|null $pivot */
         $pivot = $product->getAttribute('pivot');
         $overridePrice = $pivot?->getAttribute('override_price') ?? null;
         $basePrice = (string) ($product->sale_price ?? '0');

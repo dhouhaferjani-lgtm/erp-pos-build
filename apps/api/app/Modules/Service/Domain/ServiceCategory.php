@@ -6,6 +6,7 @@ namespace App\Modules\Service\Domain;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Factories\ServiceCategoryFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -13,6 +14,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * Service category for organizing services.
@@ -25,19 +27,19 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $parent_id
  * @property int $sort_order
  * @property bool $is_active
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read Tenant $tenant
  * @property-read Company $company
  * @property-read ServiceCategory|null $parent
  * @property-read Collection<int, ServiceCategory> $children
  * @property-read Collection<int, Service> $services
  *
- * @use HasFactory<\Database\Factories\ServiceCategoryFactory>
+ * @use HasFactory<ServiceCategoryFactory>
  */
 class ServiceCategory extends Model
 {
-    /** @use HasFactory<\Database\Factories\ServiceCategoryFactory> */
+    /** @use HasFactory<ServiceCategoryFactory> */
     use HasFactory;
 
     use HasUuids;
@@ -82,9 +84,9 @@ class ServiceCategory extends Model
     /**
      * Create a new factory instance for the model.
      */
-    protected static function newFactory(): \Database\Factories\ServiceCategoryFactory
+    protected static function newFactory(): ServiceCategoryFactory
     {
-        return \Database\Factories\ServiceCategoryFactory::new();
+        return ServiceCategoryFactory::new();
     }
 
     /**

@@ -8,6 +8,7 @@ use App\Modules\Pricing\Domain\PriceList;
 use App\Modules\Pricing\Domain\PriceListItem;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class PricingService
@@ -277,9 +278,9 @@ class PricingService
     /**
      * Get all quantity breaks for a product in a price list.
      *
-     * @return \Illuminate\Database\Eloquent\Collection<int, PriceListItem>
+     * @return Collection<int, PriceListItem>
      */
-    public function getQuantityBreaks(string $priceListId, string $productId): \Illuminate\Database\Eloquent\Collection
+    public function getQuantityBreaks(string $priceListId, string $productId): Collection
     {
         return PriceListItem::where('price_list_id', $priceListId)
             ->where('product_id', $productId)

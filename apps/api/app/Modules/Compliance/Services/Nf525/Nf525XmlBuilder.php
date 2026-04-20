@@ -4,7 +4,15 @@ declare(strict_types=1);
 
 namespace App\Modules\Compliance\Services\Nf525;
 
+use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Compliance\Domain\Enums\Nf525EventType;
+use App\Modules\POS\Domain\CashDrawerOperation;
+use App\Modules\POS\Domain\GrandtotalEvent;
+use App\Modules\POS\Domain\Receipt;
+use App\Modules\POS\Domain\ReceiptPrint;
+use App\Modules\POS\Domain\Shift;
+use App\Modules\POS\Domain\Terminal;
+use App\Modules\POS\Domain\ZReport;
 use DOMDocument;
 use DOMElement;
 use Illuminate\Support\Collection;
@@ -40,7 +48,7 @@ final class Nf525XmlBuilder
     /**
      * Add header section with company and export metadata.
      *
-     * @param  array{company_name: string, company_id: string, siret?: string, address?: string, software_name: string, software_version: string, certification_number?: string, period_start: string, period_end: string, export_date: string} $data
+     * @param  array{company_name: string, company_id: string, siret?: string, address?: string, software_name: string, software_version: string, certification_number?: string, period_start: string, period_end: string, export_date: string}  $data
      */
     public function addHeader(array $data): self
     {
@@ -81,7 +89,7 @@ final class Nf525XmlBuilder
     /**
      * Add receipts section (TICKET events).
      *
-     * @param  Collection<int, \App\Modules\POS\Domain\Receipt>  $receipts
+     * @param  Collection<int, Receipt>  $receipts
      */
     public function addReceipts(Collection $receipts): self
     {
@@ -165,7 +173,7 @@ final class Nf525XmlBuilder
     /**
      * Add voided receipts section (ANNULATION events).
      *
-     * @param  Collection<int, \App\Modules\POS\Domain\Receipt>  $voidedReceipts
+     * @param  Collection<int, Receipt>  $voidedReceipts
      */
     public function addVoids(Collection $voidedReceipts): self
     {
@@ -194,7 +202,7 @@ final class Nf525XmlBuilder
     /**
      * Add return receipts section (RETOUR events).
      *
-     * @param  Collection<int, \App\Modules\POS\Domain\Receipt>  $returnReceipts
+     * @param  Collection<int, Receipt>  $returnReceipts
      */
     public function addReturns(Collection $returnReceipts): self
     {
@@ -223,7 +231,7 @@ final class Nf525XmlBuilder
     /**
      * Add reprint log section (DUPLICATA events).
      *
-     * @param  Collection<int, \App\Modules\POS\Domain\ReceiptPrint>  $receiptPrints
+     * @param  Collection<int, ReceiptPrint>  $receiptPrints
      */
     public function addReprints(Collection $receiptPrints): self
     {
@@ -252,7 +260,7 @@ final class Nf525XmlBuilder
     /**
      * Add Z reports section (RAPPORT_Z events).
      *
-     * @param  Collection<int, \App\Modules\POS\Domain\ZReport>  $zReports
+     * @param  Collection<int, ZReport>  $zReports
      */
     public function addZReports(Collection $zReports): self
     {
@@ -290,7 +298,7 @@ final class Nf525XmlBuilder
     /**
      * Add grand totals section (perpetual counters).
      *
-     * @param  Collection<int, \App\Modules\POS\Domain\GrandtotalEvent>  $grandtotals
+     * @param  Collection<int, GrandtotalEvent>  $grandtotals
      */
     public function addGrandTotals(Collection $grandtotals): self
     {
@@ -332,7 +340,7 @@ final class Nf525XmlBuilder
     /**
      * Add cash drawer operations section.
      *
-     * @param  Collection<int, \App\Modules\POS\Domain\CashDrawerOperation>  $operations
+     * @param  Collection<int, CashDrawerOperation>  $operations
      */
     public function addCashDrawer(Collection $operations): self
     {
@@ -369,7 +377,7 @@ final class Nf525XmlBuilder
     /**
      * Add technical events section (shift open/close).
      *
-     * @param  Collection<int, \App\Modules\POS\Domain\Shift>  $shifts
+     * @param  Collection<int, Shift>  $shifts
      */
     public function addTechnicalEvents(Collection $shifts): self
     {
@@ -412,7 +420,7 @@ final class Nf525XmlBuilder
     /**
      * Add terminal lifecycle events section (ACTIVATION_TERMINAL, DESACTIVATION_TERMINAL, MAJ_LOGICIEL).
      *
-     * @param  Collection<int, \App\Modules\Compliance\Domain\AuditEvent>  $events
+     * @param  Collection<int, AuditEvent>  $events
      */
     public function addTerminalEvents(Collection $events): self
     {
@@ -463,9 +471,9 @@ final class Nf525XmlBuilder
     /**
      * Add training mode section listing training receipt counts per terminal.
      *
-     * @param  \Illuminate\Support\Collection<string, int>  $trainingCounts  Keyed by terminal_id
+     * @param  Collection<string, int>  $trainingCounts  Keyed by terminal_id
      */
-    public function addTrainingMode(\Illuminate\Support\Collection $trainingCounts): self
+    public function addTrainingMode(Collection $trainingCounts): self
     {
         $section = $this->doc->createElement('ModeFormation');
         $totalCount = $trainingCounts->sum();
@@ -486,7 +494,7 @@ final class Nf525XmlBuilder
     /**
      * Add hash chain summaries per terminal.
      *
-     * @param  Collection<int, \App\Modules\POS\Domain\Terminal>  $terminals
+     * @param  Collection<int, Terminal>  $terminals
      */
     public function addHashChains(Collection $terminals): self
     {

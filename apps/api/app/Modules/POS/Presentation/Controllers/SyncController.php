@@ -11,6 +11,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\DTOs\SyncReceiptPayload;
 use App\Modules\POS\Application\Services\ReceiptSyncService;
+use App\Modules\POS\Domain\Enums\SyncStatus;
 use App\Modules\POS\Domain\Services\ShiftManagementService;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
@@ -20,6 +21,8 @@ use App\Modules\Product\Domain\Category;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -78,9 +81,9 @@ final class SyncController extends Controller
             'data' => [
                 'results' => $resultArrays,
                 'total' => count($results),
-                'synced' => count(array_filter($results, fn ($r) => $r->status === \App\Modules\POS\Domain\Enums\SyncStatus::Synced)),
-                'duplicates' => count(array_filter($results, fn ($r) => $r->status === \App\Modules\POS\Domain\Enums\SyncStatus::Duplicate)),
-                'failed' => count(array_filter($results, fn ($r) => $r->status === \App\Modules\POS\Domain\Enums\SyncStatus::Failed || $r->status === \App\Modules\POS\Domain\Enums\SyncStatus::ChainBroken)),
+                'synced' => count(array_filter($results, fn ($r) => $r->status === SyncStatus::Synced)),
+                'duplicates' => count(array_filter($results, fn ($r) => $r->status === SyncStatus::Duplicate)),
+                'failed' => count(array_filter($results, fn ($r) => $r->status === SyncStatus::Failed || $r->status === SyncStatus::ChainBroken)),
             ],
         ]);
     }
@@ -180,7 +183,7 @@ final class SyncController extends Controller
         ];
 
         // ETag support
-        $etag = '"' . md5(json_encode($payload, JSON_THROW_ON_ERROR)) . '"';
+        $etag = '"'.md5(json_encode($payload, JSON_THROW_ON_ERROR)).'"';
         $ifNoneMatch = $request->header('If-None-Match');
 
         if ($ifNoneMatch === $etag) {
@@ -206,7 +209,7 @@ final class SyncController extends Controller
         $companyId = $this->companyContext->getCompanyId();
 
         $shift = Shift::with('terminal')
-            ->whereHas('terminal', function (\Illuminate\Database\Eloquent\Builder $q) use ($companyId): void {
+            ->whereHas('terminal', function (Builder $q) use ($companyId): void {
                 $q->whereRaw('company_id = ?', [$companyId]);
             })
             ->findOrFail($id);
@@ -258,7 +261,7 @@ final class SyncController extends Controller
 
         $companyId = $this->companyContext->getCompanyId();
 
-        /** @var \Illuminate\Database\Eloquent\Collection<int, CompositeItem> $compositeItemsCollection */
+        /** @var Collection<int, CompositeItem> $compositeItemsCollection */
         $compositeItemsCollection = CompositeItem::query()
             ->whereRaw('company_id = ?', [$companyId])
             ->where('is_active', true)
@@ -303,7 +306,7 @@ final class SyncController extends Controller
         ];
 
         // ETag support
-        $etag = '"' . md5(json_encode($payload, JSON_THROW_ON_ERROR)) . '"';
+        $etag = '"'.md5(json_encode($payload, JSON_THROW_ON_ERROR)).'"';
         $ifNoneMatch = $request->header('If-None-Match');
 
         if ($ifNoneMatch === $etag) {

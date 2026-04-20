@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Product;
 
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Product\Application\Services\ProductService;
 use App\Modules\Product\Domain\Category;
 use App\Modules\Product\Domain\Product;
-use App\Modules\Company\Domain\Company;
-use App\Modules\Tenant\Domain\Tenant;
-use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
+use App\Modules\Tenant\Domain\Enums\TenantStatus;
+use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -28,7 +29,7 @@ class ProductServiceUpsertTest extends TestCase
     {
         parent::setUp();
 
-        $this->service = new ProductService();
+        $this->service = new ProductService;
 
         $this->tenant = Tenant::create([
             'name' => 'Test Tenant',
@@ -46,7 +47,7 @@ class ProductServiceUpsertTest extends TestCase
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
     }
 

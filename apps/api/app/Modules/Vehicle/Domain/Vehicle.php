@@ -7,12 +7,14 @@ namespace App\Modules\Vehicle\Domain;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Factories\VehicleFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -30,9 +32,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $fuel_type
  * @property string|null $transmission
  * @property string|null $notes
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
  * @property-read Tenant $tenant
  * @property-read Company $company
  * @property-read Partner|null $partner
@@ -42,7 +44,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 class Vehicle extends Model
 {
-    /** @use HasFactory<\Database\Factories\VehicleFactory> */
+    /** @use HasFactory<VehicleFactory> */
     use HasFactory;
 
     use HasUuids;
@@ -87,9 +89,9 @@ class Vehicle extends Model
     /**
      * Create a new factory instance for the model.
      */
-    protected static function newFactory(): \Database\Factories\VehicleFactory
+    protected static function newFactory(): VehicleFactory
     {
-        return \Database\Factories\VehicleFactory::new();
+        return VehicleFactory::new();
     }
 
     /**

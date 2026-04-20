@@ -10,6 +10,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Collection;
 
 class VerifyFiscalChainsCommand extends Command
 {
@@ -40,7 +41,7 @@ class VerifyFiscalChainsCommand extends Command
         $companyId = $this->option('company');
         $documentType = $this->option('type');
 
-        /** @var \Illuminate\Database\Eloquent\Collection<int, Company> $companies */
+        /** @var Collection<int, Company> $companies */
         $companies = $companyId
             ? Company::where('id', $companyId)->get()
             : Company::all();

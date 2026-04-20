@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
@@ -174,7 +175,7 @@ final class TestE2EGLPosting extends Command
         $this->info('✓ Net GL Impact Analysis:');
         $allZero = true;
         foreach ($netByAccount as $accountId => $netImpact) {
-            $account = \App\Modules\Accounting\Domain\Account::find($accountId);
+            $account = Account::find($accountId);
             $this->info("  - {$account->code} {$account->name}: {$netImpact}");
             if ($netImpact !== '0.00') {
                 $allZero = false;

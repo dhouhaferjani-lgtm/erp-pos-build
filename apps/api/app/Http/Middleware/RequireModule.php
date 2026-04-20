@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Services\CompanyConfigService;
 use Closure;
@@ -31,7 +32,7 @@ class RequireModule
     /**
      * Handle an incoming request.
      *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
+     * @param  Closure(Request): (Response)  $next
      * @param  string  $module  The module name to require (e.g., 'Vehicle', 'Workshop')
      */
     public function handle(Request $request, Closure $next, string $module): Response
@@ -43,7 +44,7 @@ class RequireModule
             throw new \RuntimeException('User must be authenticated to check module access');
         }
 
-        if (! $user instanceof \App\Modules\Identity\Domain\User) {
+        if (! $user instanceof User) {
             throw new \RuntimeException('Module access requires a tenant user, not a super admin');
         }
 

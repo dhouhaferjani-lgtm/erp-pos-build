@@ -9,9 +9,11 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -23,8 +25,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property numeric-string $reserved
  * @property numeric-string|null $min_quantity
  * @property numeric-string|null $max_quantity
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read Tenant $tenant
  * @property-read Company $company
  * @property-read Product $product
@@ -171,9 +173,9 @@ class StockLevel extends Model
     /**
      * Get detailed breakdown of active reservations for this stock level.
      *
-     * @return \Illuminate\Database\Eloquent\Collection<int, StockReservation>
+     * @return Collection<int, StockReservation>
      */
-    public function getReservationBreakdown(): \Illuminate\Database\Eloquent\Collection
+    public function getReservationBreakdown(): Collection
     {
         return StockReservation::where('product_id', $this->product_id)
             ->where('location_id', $this->location_id)

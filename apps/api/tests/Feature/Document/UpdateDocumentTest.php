@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Document;
 
+use App\Enums\Vertical;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -46,7 +49,7 @@ class UpdateDocumentTest extends TestCase
             'slug' => 'test-tenant',
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
-            'vertical' => \App\Enums\Vertical::Mechanic,
+            'vertical' => Vertical::Mechanic,
         ]);
 
         $this->company = Company::create([
@@ -58,7 +61,7 @@ class UpdateDocumentTest extends TestCase
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
@@ -80,7 +83,7 @@ class UpdateDocumentTest extends TestCase
         ]);
 
         // Set company context for the test
-        app(\App\Modules\Company\Services\CompanyContext::class)->setCompanyId($this->company->id);
+        app(CompanyContext::class)->setCompanyId($this->company->id);
 
         $this->customer = Partner::create([
             'tenant_id' => $this->tenant->id,
@@ -275,7 +278,7 @@ class UpdateDocumentTest extends TestCase
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         $otherPartner = Partner::create([

@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Shared\Domain\CurrencyScale;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -360,7 +361,7 @@ class GeneralLedgerReportService
      * @param  string|null  $partnerId  Optional partner UUID filter
      * @param  int  $offset  Number of records to skip (for pagination)
      * @param  int|null  $limit  Max records to return (null = no limit)
-     * @return \Illuminate\Support\Collection<int, \stdClass>
+     * @return Collection<int, \stdClass>
      */
     private function queryJournalLines(
         string $companyId,
@@ -370,7 +371,7 @@ class GeneralLedgerReportService
         ?string $partnerId,
         int $offset = 0,
         ?int $limit = null
-    ): \Illuminate\Support\Collection {
+    ): Collection {
         $query = DB::table('journal_lines as jl')
             ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
             ->join('accounts as a', 'a.id', '=', 'jl.account_id')
@@ -450,7 +451,7 @@ class GeneralLedgerReportService
      * Transaction 3: +100.00 debit  → Balance: 1400.00
      * ```
      *
-     * @param  \Illuminate\Support\Collection<int, \stdClass>  $lines  Raw journal lines from query
+     * @param  Collection<int, \stdClass>  $lines  Raw journal lines from query
      * @param  numeric-string  $openingBalance  Starting balance before transactions
      * @return list<array{
      *     id: string,
@@ -468,7 +469,7 @@ class GeneralLedgerReportService
      * }>
      */
     private function calculateRunningBalances(
-        \Illuminate\Support\Collection $lines,
+        Collection $lines,
         string $openingBalance
     ): array {
         $runningBalance = $openingBalance;

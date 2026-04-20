@@ -9,7 +9,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Uom\Domain\Entities\Unit;
 use App\Modules\Uom\Domain\Entities\UnitCategory;
-use App\Modules\Uom\Domain\Enums\RoundingMethod;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\Sanctum;
@@ -22,7 +22,9 @@ class UomApiTest extends TestCase
     use RefreshDatabase;
 
     private User $user;
+
     private Company $company;
+
     private Tenant $tenant;
 
     protected function setUp(): void
@@ -444,7 +446,7 @@ class UomApiTest extends TestCase
         // Depending on your permission implementation, this might be 403 or redirect
         $this->assertTrue(
             $response->status() === 403 || $response->status() === 401,
-            'Expected 403 Forbidden or 401 Unauthorized, got ' . $response->status()
+            'Expected 403 Forbidden or 401 Unauthorized, got '.$response->status()
         );
     }
 
@@ -544,7 +546,7 @@ class UomApiTest extends TestCase
         ]);
 
         // Attempt to create duplicate should fail
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
         UnitCategory::factory()->create([
             'tenant_id' => null,

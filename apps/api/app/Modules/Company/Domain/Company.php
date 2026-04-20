@@ -10,10 +10,14 @@ use App\Modules\Company\Domain\Enums\VerificationStatus;
 use App\Modules\Company\Domain\Enums\VerificationTier;
 use App\Modules\Company\Domain\Events\CompanyCreated;
 use App\Modules\Company\Domain\Events\CompanyUpdated;
+use App\Modules\Company\Domain\ValueObjects\ReservationSettings;
+use App\Modules\Document\Domain\Document;
+use App\Modules\SmartPrompts\Domain\Enums\SmartPromptsVariant;
 use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Carbon\Carbon;
 use Database\Factories\CompanyFactory;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -100,7 +104,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property Carbon|null $deleted_at
  * @property-read Tenant $tenant
  * @property-read Company|null $parentCompany
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Company> $childCompanies
+ * @property-read Collection<int, Company> $childCompanies
  */
 class Company extends Model
 {
@@ -296,7 +300,7 @@ class Company extends Model
             'max_payment_tolerance_amount' => 'string',
             'reservation_settings' => 'array',
             'smart_prompts_enabled' => 'boolean',
-            'smart_prompts_variant' => \App\Modules\SmartPrompts\Domain\Enums\SmartPromptsVariant::class,
+            'smart_prompts_variant' => SmartPromptsVariant::class,
         ];
     }
 
@@ -482,7 +486,7 @@ class Company extends Model
      */
     public function hasPostedFiscalDocuments(): bool
     {
-        return \App\Modules\Document\Domain\Document::query()
+        return Document::query()
             ->where('company_id', $this->id)
             ->whereIn('type', ['invoice', 'credit_note'])
             ->where('status', 'posted')
@@ -501,16 +505,16 @@ class Company extends Model
     /**
      * Get reservation settings with defaults.
      */
-    public function getReservationSettings(): \App\Modules\Company\Domain\ValueObjects\ReservationSettings
+    public function getReservationSettings(): ReservationSettings
     {
         if ($this->reservation_settings === null) {
-            return new \App\Modules\Company\Domain\ValueObjects\ReservationSettings;
+            return new ReservationSettings;
         }
 
         /** @var array<string, mixed> $settings */
         $settings = $this->reservation_settings;
 
-        return \App\Modules\Company\Domain\ValueObjects\ReservationSettings::fromArray($settings);
+        return ReservationSettings::fromArray($settings);
     }
 
     /**

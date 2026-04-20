@@ -13,6 +13,7 @@ use App\Modules\Cart\Domain\Enums\CartItemSource;
 use App\Modules\Cart\Domain\Models\CatalogCart;
 use App\Modules\Cart\Domain\Models\CatalogCartItem;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Marketplace\Application\DTOs\MarketplaceOrderData;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -33,7 +34,7 @@ class CatalogCartController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
         $company = $this->companyContext->requireCompany();
 
@@ -60,7 +61,7 @@ class CatalogCartController extends Controller
             'vehicle_id' => ['nullable', 'string', 'uuid'],
         ]);
 
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
         $company = $this->companyContext->requireCompany();
 
@@ -81,7 +82,7 @@ class CatalogCartController extends Controller
      */
     public function show(Request $request, string $id): JsonResponse
     {
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
         $company = $this->companyContext->requireCompany();
 
@@ -101,7 +102,7 @@ class CatalogCartController extends Controller
      */
     public function update(Request $request, string $id): JsonResponse
     {
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
         $company = $this->companyContext->requireCompany();
 
@@ -130,7 +131,7 @@ class CatalogCartController extends Controller
      */
     public function destroy(Request $request, string $id): JsonResponse
     {
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
         $company = $this->companyContext->requireCompany();
 
@@ -156,7 +157,7 @@ class CatalogCartController extends Controller
      */
     public function addItem(Request $request, string $id): JsonResponse
     {
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
         $company = $this->companyContext->requireCompany();
 
@@ -211,7 +212,7 @@ class CatalogCartController extends Controller
      */
     public function updateItem(Request $request, string $id, string $itemId): JsonResponse
     {
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
         $company = $this->companyContext->requireCompany();
 
@@ -240,7 +241,7 @@ class CatalogCartController extends Controller
      */
     public function removeItem(Request $request, string $id, string $itemId): JsonResponse
     {
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
         $company = $this->companyContext->requireCompany();
 
@@ -261,7 +262,7 @@ class CatalogCartController extends Controller
      */
     public function convert(Request $request, string $id): JsonResponse
     {
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
         $company = $this->companyContext->requireCompany();
 
@@ -321,7 +322,7 @@ class CatalogCartController extends Controller
      */
     public function marketplaceCheckout(Request $request, string $id): JsonResponse
     {
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
         $company = $this->companyContext->requireCompany();
 

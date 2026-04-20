@@ -27,14 +27,14 @@ final class TaxIdValidationService
     {
         $digits = preg_replace('/\s+/', '', $registrationNumber);
 
-        if ($digits === null || strlen($digits) !== 14 || !ctype_digit($digits)) {
+        if ($digits === null || strlen($digits) !== 14 || ! ctype_digit($digits)) {
             return TaxIdValidationResult::invalid(
                 'SIRET',
                 ['French SIRET must be exactly 14 digits.'],
             );
         }
 
-        if (!$this->validateFrenchSiret($digits)) {
+        if (! $this->validateFrenchSiret($digits)) {
             return TaxIdValidationResult::invalid(
                 'SIRET',
                 ['French SIRET failed Luhn checksum validation.'],
@@ -75,7 +75,7 @@ final class TaxIdValidationService
             );
         }
 
-        if (!$this->validateTunisianMatricule($cleaned)) {
+        if (! $this->validateTunisianMatricule($cleaned)) {
             return TaxIdValidationResult::invalid(
                 'Matricule Fiscale',
                 ['Tunisian matricule fiscale must match pattern: 7 digits + 1 letter + 3 characters (e.g., 1234567A000).'],
@@ -141,7 +141,7 @@ final class TaxIdValidationService
             );
         }
 
-        if (!$this->validateUKCompanyNumber($cleaned)) {
+        if (! $this->validateUKCompanyNumber($cleaned)) {
             return TaxIdValidationResult::invalid(
                 'CRN',
                 ['UK Company Registration Number must be exactly 8 digits.'],

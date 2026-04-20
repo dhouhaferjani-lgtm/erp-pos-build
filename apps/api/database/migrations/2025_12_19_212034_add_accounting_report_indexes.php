@@ -71,7 +71,7 @@ return new class extends Migration
      */
     private function dropIndexIfExists(string $table, string $indexName): void
     {
-        \DB::statement("DROP INDEX IF EXISTS {$indexName}");
+        DB::statement("DROP INDEX IF EXISTS {$indexName}");
     }
 
     /**

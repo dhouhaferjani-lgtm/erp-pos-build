@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Presentation\Requests;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 final class AnalyticsRequest extends FormRequest
 {
@@ -39,12 +41,12 @@ final class AnalyticsRequest extends FormRequest
         ];
     }
 
-    public function withValidator(\Illuminate\Validation\Validator $validator): void
+    public function withValidator(Validator $validator): void
     {
-        $validator->after(function (\Illuminate\Validation\Validator $validator): void {
+        $validator->after(function (Validator $validator): void {
             if ($this->filled('from') && $this->filled('to')) {
-                $from = \Carbon\CarbonImmutable::parse($this->input('from'));
-                $to = \Carbon\CarbonImmutable::parse($this->input('to'));
+                $from = CarbonImmutable::parse($this->input('from'));
+                $to = CarbonImmutable::parse($this->input('to'));
 
                 if ($from->diffInDays($to) > 90) {
                     $validator->errors()->add('to', 'Date range must not exceed 90 days.');

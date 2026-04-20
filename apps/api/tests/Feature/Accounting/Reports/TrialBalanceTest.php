@@ -120,14 +120,14 @@ class TrialBalanceTest extends TestCase
     /**
      * Helper to create a posted journal entry with balanced lines.
      *
-     * @param list<array{account_id: string, debit: string, credit: string}> $lines
+     * @param  list<array{account_id: string, debit: string, credit: string}>  $lines
      */
     private function createPostedEntry(string $date, array $lines, string $description = 'Test entry'): JournalEntry
     {
         $entry = JournalEntry::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
-            'entry_number' => 'JE-' . uniqid(),
+            'entry_number' => 'JE-'.uniqid(),
             'entry_date' => $date,
             'description' => $description,
             'status' => JournalEntryStatus::Posted,
@@ -329,7 +329,7 @@ class TrialBalanceTest extends TestCase
         $this->assertNotNull(
             $noEntriesLine,
             'Account with no entries MUST appear when include_zero_balances=true — '
-            . 'if missing, the LEFT JOIN is being converted to INNER JOIN'
+            .'if missing, the LEFT JOIN is being converted to INNER JOIN'
         );
 
         // Zero-net account SHOULD appear (has entries but zero net)

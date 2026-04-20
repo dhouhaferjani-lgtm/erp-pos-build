@@ -10,6 +10,7 @@ use App\Modules\Product\Domain\Product;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -26,11 +27,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $marketplace_listing_id
  * @property string|null $preferred_supplier_partner_id
  * @property string|null $reservation_id
- * @property \Illuminate\Support\Carbon|null $reservation_expires_at
+ * @property Carbon|null $reservation_expires_at
  * @property string|null $notes
  * @property int $sort_order
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read CatalogCart $cart
  * @property-read Product|null $product
  * @property-read MarketplaceListing|null $marketplaceListing

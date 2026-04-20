@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Modules\Catalog\Domain\Entities;
 
 use App\Modules\Catalog\Domain\Enums\ComponentType;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Uom\Domain\Entities\Unit;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -23,12 +25,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $unit_cost
  * @property string|null $line_cost
  * @property int $display_order
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read Recipe $recipe
- * @property-read \App\Modules\Product\Domain\Product|null $product
+ * @property-read Product|null $product
  * @property-read CompositeItem|null $compositeItemComponent
- * @property-read \App\Modules\Product\Domain\Product|CompositeItem|null $component
+ * @property-read Product|CompositeItem|null $component
  * @property-read Unit|null $unit
  */
 class RecipeLine extends Model
@@ -84,11 +86,11 @@ class RecipeLine extends Model
     }
 
     /**
-     * @return BelongsTo<\App\Modules\Product\Domain\Product, $this>
+     * @return BelongsTo<Product, $this>
      */
     public function product(): BelongsTo
     {
-        return $this->belongsTo(\App\Modules\Product\Domain\Product::class, 'component_id');
+        return $this->belongsTo(Product::class, 'component_id');
     }
 
     /**
@@ -102,7 +104,7 @@ class RecipeLine extends Model
     /**
      * Resolves the component based on component_type.
      */
-    public function getComponentAttribute(): \App\Modules\Product\Domain\Product|CompositeItem|null
+    public function getComponentAttribute(): Product|CompositeItem|null
     {
         if ($this->component_type === ComponentType::CompositeItem) {
             return $this->compositeItemComponent;

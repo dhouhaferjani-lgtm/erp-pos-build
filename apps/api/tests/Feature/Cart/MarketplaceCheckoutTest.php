@@ -10,14 +10,19 @@ use App\Modules\Cart\Domain\Models\CatalogCartItem;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\MembershipRole;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Domain\Document;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\StockReservation;
 use App\Modules\Marketplace\Domain\Enums\SellerStatus;
 use App\Modules\Marketplace\Domain\Enums\SellerType;
 use App\Modules\Marketplace\Domain\Models\MarketplaceListing;
+use App\Modules\Marketplace\Domain\Models\MarketplaceOrder;
 use App\Modules\Marketplace\Domain\Models\MarketplaceSeller;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -174,20 +179,20 @@ class MarketplaceCheckoutTest extends TestCase
         ]);
 
         // Create a location and stock reservation (expired/released)
-        $location = \App\Modules\Company\Domain\Location::create([
+        $location = Location::create([
             'company_id' => $this->sellerCompany->id,
             'name' => 'Warehouse',
             'type' => 'warehouse',
             'code' => 'WH-EXPRSV',
         ]);
 
-        $product = \App\Modules\Product\Domain\Product::factory()->create([
+        $product = Product::factory()->create([
             'tenant_id' => $this->sellerTenant->id,
             'company_id' => $this->sellerCompany->id,
             'sale_price' => 40.000,
         ]);
 
-        $reservation = \App\Modules\Inventory\Domain\StockReservation::create([
+        $reservation = StockReservation::create([
             'company_id' => $this->sellerCompany->id,
             'product_id' => $product->id,
             'location_id' => $location->id,
@@ -258,20 +263,20 @@ class MarketplaceCheckoutTest extends TestCase
         $response->assertStatus(201);
 
         $orderId = $response->json('data.0.id');
-        /** @var \App\Modules\Marketplace\Domain\Models\MarketplaceOrder $order */
-        $order = \App\Modules\Marketplace\Domain\Models\MarketplaceOrder::query()->findOrFail($orderId);
+        /** @var MarketplaceOrder $order */
+        $order = MarketplaceOrder::query()->findOrFail($orderId);
 
         // Buyer PO should exist
         $this->assertNotNull($order->buyer_document_id);
-        /** @var \App\Modules\Document\Domain\Document $buyerDoc */
-        $buyerDoc = \App\Modules\Document\Domain\Document::query()->findOrFail($order->buyer_document_id);
+        /** @var Document $buyerDoc */
+        $buyerDoc = Document::query()->findOrFail($order->buyer_document_id);
         $this->assertEquals('purchase_order', $buyerDoc->type->value);
         $this->assertEquals($this->buyerCompany->id, $buyerDoc->company_id);
 
         // Seller SO should exist
         $this->assertNotNull($order->seller_document_id);
-        /** @var \App\Modules\Document\Domain\Document $sellerDoc */
-        $sellerDoc = \App\Modules\Document\Domain\Document::query()->findOrFail($order->seller_document_id);
+        /** @var Document $sellerDoc */
+        $sellerDoc = Document::query()->findOrFail($order->seller_document_id);
         $this->assertEquals('sales_order', $sellerDoc->type->value);
         $this->assertEquals($this->sellerCompany->id, $sellerDoc->company_id);
     }

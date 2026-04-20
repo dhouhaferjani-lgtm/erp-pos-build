@@ -6,6 +6,8 @@ namespace Tests\Feature\Product;
 
 use App\Enums\Vertical;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
@@ -56,7 +58,7 @@ class ParapharmacyProductTest extends TestCase
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
@@ -74,7 +76,7 @@ class ParapharmacyProductTest extends TestCase
         UserCompanyMembership::create([
             'user_id' => $this->user->id,
             'company_id' => $this->company->id,
-            'role' => \App\Modules\Company\Domain\Enums\MembershipRole::Admin,
+            'role' => MembershipRole::Admin,
         ]);
 
         app(CompanyContext::class)->setCompanyId($this->company->id);
@@ -280,7 +282,7 @@ class ParapharmacyProductTest extends TestCase
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($mechanicTenant->id);
@@ -298,7 +300,7 @@ class ParapharmacyProductTest extends TestCase
         UserCompanyMembership::create([
             'user_id' => $mechanicUser->id,
             'company_id' => $mechanicCompany->id,
-            'role' => \App\Modules\Company\Domain\Enums\MembershipRole::Admin,
+            'role' => MembershipRole::Admin,
         ]);
 
         app(CompanyContext::class)->setCompanyId($mechanicCompany->id);

@@ -15,6 +15,7 @@ use App\Modules\Document\Domain\DocumentLine;
 use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use DateTimeInterface;
+use Illuminate\Database\Eloquent\Collection;
 
 /**
  * Application service for accounting operations.
@@ -372,7 +373,7 @@ final class AccountingService implements AccountingServiceInterface
     /**
      * Group invoice lines by tax rate and calculate total tax for each rate.
      *
-     * @param  \Illuminate\Database\Eloquent\Collection<int, DocumentLine>  $lines
+     * @param  Collection<int, DocumentLine>  $lines
      * @return array<numeric-string, numeric-string> Tax rate => Total tax amount
      */
     private function groupTaxByRate($lines): array

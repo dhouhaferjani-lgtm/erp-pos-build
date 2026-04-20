@@ -6,6 +6,7 @@ namespace App\Modules\Taxation\Domain\Services;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\DTOs\CalculatedTax;
 use App\Modules\Taxation\Domain\DTOs\TaxCalculationResult;
 use App\Modules\Taxation\Domain\Entities\DocumentTaxDetail;
@@ -198,7 +199,7 @@ class TaxCalculationService
     /**
      * @return array<string, mixed>|null
      */
-    private function getExemptionInfo(?\App\Modules\Partner\Domain\Partner $partner): ?array
+    private function getExemptionInfo(?Partner $partner): ?array
     {
         if (! $partner || $partner->tax_status !== PartnerTaxStatus::EXEMPT) {
             return null;

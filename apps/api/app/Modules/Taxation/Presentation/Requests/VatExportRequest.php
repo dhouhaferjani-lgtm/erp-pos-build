@@ -7,6 +7,7 @@ namespace App\Modules\Taxation\Presentation\Requests;
 use App\Modules\Taxation\Domain\Enums\VatExportFormat;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\In;
 
 class VatExportRequest extends FormRequest
 {
@@ -16,7 +17,7 @@ class VatExportRequest extends FormRequest
     }
 
     /**
-     * @return array<string, array<int, \Illuminate\Validation\Rules\In|string>>
+     * @return array<string, array<int, In|string>>
      */
     public function rules(): array
     {

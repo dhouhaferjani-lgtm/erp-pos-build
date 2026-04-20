@@ -7,6 +7,7 @@ namespace App\Modules\Compliance\Providers;
 use App\Modules\Compliance\Commands\ExportNf525JetCommand;
 use App\Modules\Compliance\Commands\VerifyFiscalChainsCommand;
 use App\Modules\Compliance\Listeners\DomainEventSubscriber;
+use App\Modules\Compliance\Presentation\Controllers\AuditController;
 use App\Modules\Compliance\Services\AnomalyDetectionService;
 use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Compliance\Services\FiscalHashService;
@@ -71,8 +72,8 @@ class ComplianceServiceProvider extends ServiceProvider
         Route::middleware(['api', 'auth:sanctum'])
             ->prefix('api/v1')
             ->group(function (): void {
-                Route::get('/audit/events', [\App\Modules\Compliance\Presentation\Controllers\AuditController::class, 'index']);
-                Route::get('/audit/anomalies', [\App\Modules\Compliance\Presentation\Controllers\AuditController::class, 'anomalies']);
+                Route::get('/audit/events', [AuditController::class, 'index']);
+                Route::get('/audit/anomalies', [AuditController::class, 'anomalies']);
             });
     }
 }

@@ -18,6 +18,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Spatie\Permission\PermissionRegistrar;
@@ -155,7 +156,7 @@ class BarcodeLookupTest extends TestCase
 
         $this->assertSame('0400520912345', $result->barcode);
 
-        Http::assertSent(function (\Illuminate\Http\Client\Request $request): bool {
+        Http::assertSent(function (Request $request): bool {
             return str_contains($request->url(), '0400520912345');
         });
     }

@@ -9,6 +9,7 @@ use App\Modules\Taxation\Domain\Enums\TaxType;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -22,7 +23,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $tax_base
  * @property string $tax_amount
  * @property bool $is_stamp_duty
- * @property \Illuminate\Support\Carbon $created_at
+ * @property Carbon $created_at
  * @property-read Document $document
  */
 class DocumentTaxDetail extends Model

@@ -364,7 +364,7 @@ final class KitchenDisplayTest extends TestCase
             'company_id' => $this->company->id,
             'terminal_id' => $this->terminal->id,
             'shift_id' => $this->shift->id,
-            'order_number' => '#' . str_pad((string) rand(1, 999), 3, '0', STR_PAD_LEFT),
+            'order_number' => '#'.str_pad((string) rand(1, 999), 3, '0', STR_PAD_LEFT),
             'status' => $status,
             'cashier_id' => $this->user->id,
             'cashier_name' => $this->user->name,

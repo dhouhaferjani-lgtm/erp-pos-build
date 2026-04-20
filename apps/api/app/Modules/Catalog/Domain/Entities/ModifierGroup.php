@@ -8,12 +8,14 @@ use App\Modules\Catalog\Domain\Enums\SelectionType;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -27,13 +29,13 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property bool $is_required
  * @property bool $is_active
  * @property int $display_order
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
  * @property-read Tenant $tenant
  * @property-read Company $company
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Modifier> $modifiers
- * @property-read \Illuminate\Database\Eloquent\Collection<int, CompositeItem> $compositeItems
+ * @property-read Collection<int, Modifier> $modifiers
+ * @property-read Collection<int, CompositeItem> $compositeItems
  */
 class ModifierGroup extends Model
 {

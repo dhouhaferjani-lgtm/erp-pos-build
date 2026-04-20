@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -28,10 +29,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $min_order_quantity
  * @property ListingStatus $listing_status
  * @property string|null $source_product_id
- * @property \Illuminate\Support\Carbon|null $price_updated_at
- * @property \Illuminate\Support\Carbon|null $stock_updated_at
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $price_updated_at
+ * @property Carbon|null $stock_updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read MarketplaceSeller $seller
  *
  * @method static Builder<static> active()

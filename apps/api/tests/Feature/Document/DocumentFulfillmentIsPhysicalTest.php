@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Document;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
@@ -61,7 +63,7 @@ class DocumentFulfillmentIsPhysicalTest extends TestCase
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
@@ -79,7 +81,7 @@ class DocumentFulfillmentIsPhysicalTest extends TestCase
         UserCompanyMembership::create([
             'user_id' => $this->user->id,
             'company_id' => $this->company->id,
-            'role' => \App\Modules\Company\Domain\Enums\MembershipRole::Admin,
+            'role' => MembershipRole::Admin,
         ]);
 
         app(CompanyContext::class)->setCompanyId($this->company->id);
@@ -100,7 +102,7 @@ class DocumentFulfillmentIsPhysicalTest extends TestCase
             'type' => DocumentType::Invoice,
             'status' => DocumentStatus::Confirmed,
             'partner_id' => $this->customer->id,
-            'document_number' => 'INV-' . uniqid(),
+            'document_number' => 'INV-'.uniqid(),
             'document_date' => now(),
             'total' => '100.00',
         ]);

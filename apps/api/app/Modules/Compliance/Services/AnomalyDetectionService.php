@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace App\Modules\Compliance\Services;
 
+use App\Modules\Company\Domain\Company;
 use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Compliance\Domain\CompanyFraudSettings;
 use App\Modules\Compliance\Domain\FraudAlert;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\FraudTriggeredCountingService;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 final class AnomalyDetectionService
 {
@@ -148,7 +151,7 @@ final class AnomalyDetectionService
         $anomalies = [];
 
         // Check for repeated identical actions (potential automation/abuse)
-        /** @var \Illuminate\Support\Collection<int, object{event_type: string, user_id: string|null, count: int}> $repeatedActions */
+        /** @var Collection<int, object{event_type: string, user_id: string|null, count: int}> $repeatedActions */
         $repeatedActions = AuditEvent::where('company_id', $companyId)
             ->whereBetween('occurred_at', [$from, $to])
             ->selectRaw('event_type, user_id, COUNT(*) as count')
@@ -191,7 +194,7 @@ final class AnomalyDetectionService
         $since = now()->subDays($days);
 
         // Find users who created drafts (from audit events)
-        /** @var \Illuminate\Support\Collection<int, object{user_id: string, draft_count: int}> $draftsByUser */
+        /** @var Collection<int, object{user_id: string, draft_count: int}> $draftsByUser */
         $draftsByUser = AuditEvent::where('company_id', $companyId)
             ->where('event_type', 'draft.document.created')
             ->where('occurred_at', '>=', $since)
@@ -245,8 +248,8 @@ final class AnomalyDetectionService
             // Get products from abandoned drafts for this user
             $products = $this->getProductsFromAbandonedDrafts($companyId, $userId, $since);
 
-            /** @var \App\Modules\Identity\Domain\User|null $user */
-            $user = \App\Modules\Identity\Domain\User::find($userId);
+            /** @var User|null $user */
+            $user = User::find($userId);
 
             $flaggedUsers[] = [
                 'user_id' => $userId,
@@ -272,7 +275,7 @@ final class AnomalyDetectionService
         Carbon $since
     ): array {
         // Query audit events for draft lines added by this user
-        /** @var \Illuminate\Support\Collection<int, AuditEvent> $lineEvents */
+        /** @var Collection<int, AuditEvent> $lineEvents */
         $lineEvents = AuditEvent::where('company_id', $companyId)
             ->where('user_id', $userId)
             ->where('event_type', 'draft.line.added')
@@ -333,7 +336,7 @@ final class AnomalyDetectionService
 
         foreach ($flaggedUsers as $userData) {
             // Create fraud alert
-            $company = \App\Modules\Company\Domain\Company::find($companyId);
+            $company = Company::find($companyId);
             $tenantId = $company !== null ? $company->tenant_id : '';
 
             $alert = FraudAlert::create([

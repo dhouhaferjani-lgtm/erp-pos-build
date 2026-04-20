@@ -7,6 +7,7 @@ namespace App\Modules\Billing\Domain;
 use App\Models\SuperAdmin;
 use App\Modules\Billing\Domain\Enums\PaymentStatus;
 use App\Modules\Billing\Domain\ValueObjects\Money;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -25,10 +26,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $initiated_by
  * @property string|null $error_code
  * @property string|null $error_message
- * @property \Carbon\Carbon|null $refunded_at
+ * @property Carbon|null $refunded_at
  * @property array<string, mixed> $metadata
- * @property \Carbon\Carbon $created_at
- * @property \Carbon\Carbon $updated_at
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
  */
 final class Refund extends Model
 {

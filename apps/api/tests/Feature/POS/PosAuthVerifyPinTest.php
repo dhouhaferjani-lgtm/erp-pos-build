@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
@@ -47,7 +48,7 @@ final class PosAuthVerifyPinTest extends TestCase
             'locale' => 'fr_TN',
             'timezone' => 'Africa/Tunis',
             'currency' => 'TND',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);

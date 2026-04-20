@@ -76,16 +76,16 @@ class EloquentVatDataRepository implements VatDataRepositoryInterface
                 COALESCE(tc2.is_recoverable, true) as is_recoverable,
                 tc2.id as tax_configuration_id
             ")
-            ->groupByRaw("
+            ->groupByRaw('
                 prvd.tax_rate,
                 tc2.is_recoverable,
                 tc2.id
-            ");
+            ');
 
         // Union both queries, then re-aggregate by rate + direction
         $combined = DB::query()
             ->fromSub($documentQuery->unionAll($posQuery), 'combined')
-            ->selectRaw("
+            ->selectRaw('
                 direction,
                 tax_rate,
                 SUM(base_amount) as base_amount,
@@ -93,7 +93,7 @@ class EloquentVatDataRepository implements VatDataRepositoryInterface
                 SUM(document_count) as document_count,
                 is_recoverable,
                 tax_configuration_id
-            ")
+            ')
             ->groupByRaw('direction, tax_rate, is_recoverable, tax_configuration_id')
             ->orderBy('direction')
             ->orderBy('tax_rate')

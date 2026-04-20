@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Billing\Domain;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -22,14 +23,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $tax_amount
  * @property string $discount_percent
  * @property string $discount_amount
- * @property \Carbon\Carbon|null $period_start
- * @property \Carbon\Carbon|null $period_end
+ * @property Carbon|null $period_start
+ * @property Carbon|null $period_end
  * @property string|null $reference_type
  * @property string|null $reference_id
  * @property int $sort_order
  * @property array<string, mixed> $metadata
- * @property \Carbon\Carbon $created_at
- * @property \Carbon\Carbon $updated_at
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
  */
 final class InvoiceItem extends Model
 {

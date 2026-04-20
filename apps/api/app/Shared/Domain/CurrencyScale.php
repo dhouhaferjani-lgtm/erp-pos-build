@@ -80,7 +80,7 @@ final class CurrencyScale extends ValueObject
      *
      * @param  string|int|float|null  $value  The numeric value (string preferred to avoid float)
      * @param  int  $scale  Number of decimal places
-     * @return numeric-string  Formatted decimal string
+     * @return numeric-string Formatted decimal string
      */
     public static function bcformat(string|int|float|null $value, int $scale): string
     {

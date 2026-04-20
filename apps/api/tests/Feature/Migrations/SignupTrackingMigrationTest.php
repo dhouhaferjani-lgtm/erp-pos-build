@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Migrations;
 
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -109,7 +110,7 @@ class SignupTrackingMigrationTest extends TestCase
     public function test_signup_tracking_has_foreign_key_constraint(): void
     {
         // Test by attempting to create record without tenant_id
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
         \DB::table('signup_tracking')->insert([
             'vertical' => 'retail',

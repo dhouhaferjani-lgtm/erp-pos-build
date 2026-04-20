@@ -8,18 +8,22 @@ use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Domain\Entities\Modifier;
+use App\Modules\Catalog\Domain\Entities\ModifierGroup;
 use App\Modules\Catalog\Domain\Entities\Recipe;
 use App\Modules\Catalog\Domain\Entities\RecipeLine;
 use App\Modules\Catalog\Domain\Enums\ComponentType;
 use App\Modules\Catalog\Domain\Enums\PricingMode;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Contact\Domain\Contact;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
+use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Events\ReceiptCreated;
 use App\Modules\POS\Domain\Exceptions\DiscountExceedsLimitException;
@@ -489,7 +493,7 @@ final class ReceiptCreationService
             $resolvedContactId = null;
 
             if ($contactId !== null) {
-                $contact = \App\Modules\Contact\Domain\Contact::find($contactId);
+                $contact = Contact::find($contactId);
                 if ($contact !== null) {
                     $customerName = $contact->full_name;
                     $customerIdentifier = $contact->phone ?? $contact->email ?? null;
@@ -504,7 +508,7 @@ final class ReceiptCreationService
             }
 
             if ($customerName === null && $customerId !== null) {
-                $partner = \App\Modules\Partner\Domain\Partner::find($customerId);
+                $partner = Partner::find($customerId);
                 if ($partner !== null) {
                     $customerName = $partner->name;
                     $customerIdentifier = $partner->phone ?? $partner->email ?? null;
@@ -521,7 +525,7 @@ final class ReceiptCreationService
                 'location_id' => $terminal->location_id,
                 'terminal_id' => $terminal->id,
                 'receipt_number' => $receiptNumber,
-                'receipt_type' => \App\Modules\POS\Domain\Enums\ReceiptType::Sale,
+                'receipt_type' => ReceiptType::Sale,
                 'chain_sequence' => $isTraining ? 0 : $sequence,
                 'receipt_year' => $currentYear,
                 'previous_hash' => $previousHash,
@@ -691,7 +695,7 @@ final class ReceiptCreationService
 
         // Validate selection constraints per group
         foreach ($groupsById as $groupId => $group) {
-            /** @var \App\Modules\Catalog\Domain\Entities\ModifierGroup $group */
+            /** @var ModifierGroup $group */
             $selectedInGroup = $byGroup[$groupId] ?? [];
             $count = count($selectedInGroup);
 
@@ -721,9 +725,9 @@ final class ReceiptCreationService
         // Build snapshot array with denormalized names
         $snapshot = [];
         foreach ($requestedModifiers as $mod) {
-            /** @var \App\Modules\Catalog\Domain\Entities\ModifierGroup $group */
+            /** @var ModifierGroup $group */
             $group = $groupsById->get($mod['modifier_group_id']);
-            /** @var \App\Modules\Catalog\Domain\Entities\Modifier|null $modifier */
+            /** @var Modifier|null $modifier */
             $modifier = $group->modifiers->firstWhere('id', $mod['modifier_id']);
 
             $snapshot[] = [
