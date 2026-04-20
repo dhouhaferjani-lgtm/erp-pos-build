@@ -71,36 +71,41 @@ final class EloquentBundleRepository implements BundleRepositoryInterface
         ?string $searchText,
     ): Collection {
         $query = ServiceBundle::query()
-            ->with(['components', 'vehicleApplicabilities'])
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->where('is_active', true);
 
-        $query->where(function (Builder $q) use ($platformVehicleId, $vehicleType): void {
-            // Universal applicabilities always match.
-            $q->whereHas('vehicleApplicabilities', function (Builder $inner): void {
-                $inner->whereNull('platform_vehicle_id')->whereNull('vehicle_type');
+        // Two-step applicability match: get IDs of bundles whose
+        // applicability set includes universal OR the specific vehicle,
+        // then filter the main query by that set. This avoids nested
+        // whereHas + `like` combinations that SQLite's query planner
+        // pathologizes into runaway work loads during tests.
+        $applicabilityQuery = DB::table('workshop_service_bundle_vehicle_applicabilities')
+            ->select('bundle_id')
+            ->where(function ($q) use ($platformVehicleId, $vehicleType): void {
+                $q->where(function ($inner): void {
+                    $inner->whereNull('platform_vehicle_id')->whereNull('vehicle_type');
+                });
+                if ($platformVehicleId !== null && $vehicleType !== null) {
+                    $q->orWhere(function ($inner) use ($platformVehicleId, $vehicleType): void {
+                        $inner->where('platform_vehicle_id', $platformVehicleId)
+                            ->where('vehicle_type', $vehicleType);
+                    });
+                }
             });
 
-            if ($platformVehicleId !== null && $vehicleType !== null) {
-                $q->orWhereHas('vehicleApplicabilities', function (Builder $inner) use ($platformVehicleId, $vehicleType): void {
-                    $inner->getQuery()
-                        ->where('platform_vehicle_id', $platformVehicleId)
-                        ->where('vehicle_type', $vehicleType);
-                });
-            }
-        });
+        $query->whereIn('id', $applicabilityQuery);
 
         if ($searchText !== null && $searchText !== '') {
+            $op = $this->caseInsensitiveLike();
             $search = '%'.$searchText.'%';
-            $query->where(function (Builder $q) use ($search): void {
-                $q->where('name', $this->caseInsensitiveLike(), $search)
-                    ->orWhere('code', $this->caseInsensitiveLike(), $search)
-                    ->orWhere('description', $this->caseInsensitiveLike(), $search);
+            $query->where(function (Builder $q) use ($search, $op): void {
+                $q->where('name', $op, $search)
+                    ->orWhere('code', $op, $search);
             });
         }
 
-        return $query->orderBy('name')->get();
+        return $query->orderBy('name')->with(['components', 'vehicleApplicabilities'])->get();
     }
 
     public function save(ServiceBundle $bundle): ServiceBundle

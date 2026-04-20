@@ -116,4 +116,5 @@ final class BundleRepositoryTest extends TestCase
 
         $this->assertSame(1, $activeOnly->total());
     }
+
 }
