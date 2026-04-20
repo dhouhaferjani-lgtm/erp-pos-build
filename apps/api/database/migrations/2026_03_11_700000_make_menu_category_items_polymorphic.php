@@ -26,13 +26,13 @@ return new class extends Migration
                 $table->foreign('product_id')->references('id')->on('products')->cascadeOnDelete();
             });
 
-            DB::statement("
+            DB::statement('
                 ALTER TABLE menu_category_items ADD CONSTRAINT menu_cat_item_one_sellable
                 CHECK (
                     (composite_item_id IS NOT NULL AND product_id IS NULL)
                     OR (composite_item_id IS NULL AND product_id IS NOT NULL)
                 )
-            ");
+            ');
 
             DB::statement('CREATE UNIQUE INDEX menu_cat_composite_unique ON menu_category_items (menu_category_id, composite_item_id) WHERE composite_item_id IS NOT NULL');
             DB::statement('CREATE UNIQUE INDEX menu_cat_product_unique ON menu_category_items (menu_category_id, product_id) WHERE product_id IS NOT NULL');

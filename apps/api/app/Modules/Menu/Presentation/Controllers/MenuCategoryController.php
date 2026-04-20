@@ -13,6 +13,7 @@ use App\Modules\Menu\Presentation\Requests\AddMenuCategoryItemRequest;
 use App\Modules\Menu\Presentation\Requests\StoreMenuCategoryRequest;
 use App\Modules\Menu\Presentation\Requests\SyncMenuCategoryItemsRequest;
 use App\Modules\Menu\Presentation\Requests\UpdateMenuCategoryRequest;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Str;
@@ -48,7 +49,7 @@ class MenuCategoryController extends Controller
         }
 
         $category = MenuCategory::query()
-            ->whereHas('menu', fn (\Illuminate\Database\Eloquent\Builder $q) => $q->whereRaw('company_id = ?', [$companyId]))
+            ->whereHas('menu', fn (Builder $q) => $q->whereRaw('company_id = ?', [$companyId]))
             ->findOrFail($id);
 
         $category->update($request->validated());
@@ -66,7 +67,7 @@ class MenuCategoryController extends Controller
         }
 
         $category = MenuCategory::query()
-            ->whereHas('menu', fn (\Illuminate\Database\Eloquent\Builder $q) => $q->whereRaw('company_id = ?', [$companyId]))
+            ->whereHas('menu', fn (Builder $q) => $q->whereRaw('company_id = ?', [$companyId]))
             ->findOrFail($id);
 
         $category->delete();
@@ -83,7 +84,7 @@ class MenuCategoryController extends Controller
         }
 
         $category = MenuCategory::query()
-            ->whereHas('menu', fn (\Illuminate\Database\Eloquent\Builder $q) => $q->whereRaw('company_id = ?', [$companyId]))
+            ->whereHas('menu', fn (Builder $q) => $q->whereRaw('company_id = ?', [$companyId]))
             ->findOrFail($id);
 
         /** @var array{items: array<int, array{sellable_type: string, sellable_id: string, override_price?: string|null, display_order?: int, is_available?: bool}>} $validated */
@@ -116,7 +117,7 @@ class MenuCategoryController extends Controller
         }
 
         $category = MenuCategory::query()
-            ->whereHas('menu', fn (\Illuminate\Database\Eloquent\Builder $q) => $q->whereRaw('company_id = ?', [$companyId]))
+            ->whereHas('menu', fn (Builder $q) => $q->whereRaw('company_id = ?', [$companyId]))
             ->findOrFail($id);
 
         /** @var array{sellable_type: string, sellable_id: string, override_price?: string|null, display_order?: int, is_available?: bool} $validated */
@@ -146,7 +147,7 @@ class MenuCategoryController extends Controller
 
         // Verify category belongs to company
         MenuCategory::query()
-            ->whereHas('menu', fn (\Illuminate\Database\Eloquent\Builder $q) => $q->whereRaw('company_id = ?', [$companyId]))
+            ->whereHas('menu', fn (Builder $q) => $q->whereRaw('company_id = ?', [$companyId]))
             ->findOrFail($categoryId);
 
         MenuCategoryItem::where('menu_category_id', $categoryId)

@@ -11,10 +11,10 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 class VehicleIdentificationData extends Data
 {
     /**
-     * @param array<string, mixed>|null $vehicle
-     * @param array<string, mixed>|null $platformMatch
-     * @param array<int, array<string, mixed>>|null $candidates
-     * @param array<string, string>|null $wmiHint
+     * @param  array<string, mixed>|null  $vehicle
+     * @param  array<string, mixed>|null  $platformMatch
+     * @param  array<int, array<string, mixed>>|null  $candidates
+     * @param  array<string, string>|null  $wmiHint
      */
     public function __construct(
         public string $status,

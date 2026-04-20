@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Modules\Treasury\Domain\Payment>
+ * @extends Factory<Payment>
  */
 class PaymentFactory extends Factory
 {

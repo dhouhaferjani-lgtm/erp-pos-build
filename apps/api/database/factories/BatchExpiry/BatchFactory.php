@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Database\Factories\BatchExpiry;
 
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\Product\Domain\Product;
+use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -18,9 +20,9 @@ class BatchFactory extends Factory
     {
         return [
             'uuid' => $this->faker->uuid(),
-            'tenant_id' => \App\Modules\Tenant\Domain\Tenant::factory(),
+            'tenant_id' => Tenant::factory(),
             'company_id' => fn (array $attributes) => $attributes['tenant_id'],
-            'product_id' => \App\Modules\Product\Domain\Product::factory(),
+            'product_id' => Product::factory(),
             'batch_number' => 'BATCH-'.strtoupper($this->faker->bothify('####-??##')),
             'manufacturing_date' => $this->faker->dateTimeBetween('-6 months', '-1 month'),
             'expiry_date' => $this->faker->dateTimeBetween('+1 month', '+2 years'),

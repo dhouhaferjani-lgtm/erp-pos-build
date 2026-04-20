@@ -118,12 +118,12 @@ class CoffeeShopSeeder extends Seeder
         // 5. Ingredient products
         $this->command->info('Creating ingredient products...');
         $this->seedIngredients();
-        $this->command->info('Created ' . count($this->ingredients) . ' ingredient products');
+        $this->command->info('Created '.count($this->ingredients).' ingredient products');
 
         // 6. Composite items + recipes + variants
         $this->command->info('Creating composite items with recipes...');
         $this->seedCompositeItems();
-        $this->command->info('Created ' . count($this->compositeItems) . ' composite items');
+        $this->command->info('Created '.count($this->compositeItems).' composite items');
 
         // 6b. Combo items (fixed_bundle pricing)
         $this->command->info('Creating combo items (fixed bundles)...');
@@ -132,12 +132,12 @@ class CoffeeShopSeeder extends Seeder
         // 6c. Retail products (sold as-is, no recipe)
         $this->command->info('Creating retail products...');
         $this->seedRetailProducts();
-        $this->command->info('Created ' . count($this->retailProducts) . ' retail products');
+        $this->command->info('Created '.count($this->retailProducts).' retail products');
 
         // 7. Modifier groups
         $this->command->info('Creating modifier groups...');
         $this->seedModifierGroups();
-        $this->command->info('Created ' . count($this->modifierGroups) . ' modifier groups');
+        $this->command->info('Created '.count($this->modifierGroups).' modifier groups');
 
         // 8. Menus
         $this->command->info('Creating menus...');
@@ -444,7 +444,7 @@ class CoffeeShopSeeder extends Seeder
             if ($data['type'] !== 'pastry') {
                 CompositeItemVariant::create([
                     'composite_item_id' => $item->id,
-                    'code' => $data['code'] . '-S',
+                    'code' => $data['code'].'-S',
                     'name' => 'Small',
                     'price_adjustment_type' => PriceAdjustmentType::Absolute,
                     'price_adjustment' => -1.000,
@@ -455,7 +455,7 @@ class CoffeeShopSeeder extends Seeder
                 ]);
                 CompositeItemVariant::create([
                     'composite_item_id' => $item->id,
-                    'code' => $data['code'] . '-M',
+                    'code' => $data['code'].'-M',
                     'name' => 'Medium',
                     'price_adjustment_type' => PriceAdjustmentType::Absolute,
                     'price_adjustment' => 0,
@@ -466,7 +466,7 @@ class CoffeeShopSeeder extends Seeder
                 ]);
                 CompositeItemVariant::create([
                     'composite_item_id' => $item->id,
-                    'code' => $data['code'] . '-L',
+                    'code' => $data['code'].'-L',
                     'name' => 'Large',
                     'price_adjustment_type' => PriceAdjustmentType::Absolute,
                     'price_adjustment' => 1.000,
@@ -565,7 +565,7 @@ class CoffeeShopSeeder extends Seeder
             $this->compositeItems[$data['code']] = $combo;
         }
 
-        $this->command->info('Created ' . count($combos) . ' combo items (fixed_bundle)');
+        $this->command->info('Created '.count($combos).' combo items (fixed_bundle)');
     }
 
     private function seedRetailProducts(): void
@@ -871,8 +871,8 @@ class CoffeeShopSeeder extends Seeder
             'description' => 'Refreshing cold drinks for summer',
             'is_default' => false,
             'is_active' => true,
-            'start_date' => date('Y') . '-06-01',
-            'end_date' => date('Y') . '-09-30',
+            'start_date' => date('Y').'-06-01',
+            'end_date' => date('Y').'-09-30',
             'display_order' => 2,
         ]);
 
@@ -1042,7 +1042,7 @@ class CoffeeShopSeeder extends Seeder
             $entry = JournalEntry::create([
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
-                'entry_number' => 'SEED-' . $entrySeq++,
+                'entry_number' => 'SEED-'.$entrySeq++,
                 'entry_date' => now()->subDays(rand(1, 30))->toDateString(),
                 'description' => $description,
                 'status' => JournalEntryStatus::Posted,

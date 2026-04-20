@@ -80,10 +80,12 @@ export function makeSourceDocument(
   // `exactOptionalPropertyTypes: true` we must delete the key rather
   // than assign `undefined`.
   if ('lines' in overrides && overrides.lines === undefined) {
+    // `_`-prefixed destructured vars are already silenced by the
+    // no-unused-vars `varsIgnorePattern: '^_'` rule, so we don't need
+    // the `void` suppressions that previously lived here (which were
+    // themselves flagged by `no-meaningless-void-operator`).
     const { lines: _droppedLines, ...rest } = overrides
-    void _droppedLines
     const { lines: _baseLines, ...baseWithoutLines } = base
-    void _baseLines
     return { ...baseWithoutLines, ...rest } as SourceDocument
   }
   return { ...base, ...overrides } as SourceDocument

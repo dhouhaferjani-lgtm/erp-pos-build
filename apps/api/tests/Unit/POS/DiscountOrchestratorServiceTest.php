@@ -12,18 +12,20 @@ use App\Modules\Promotion\Domain\Enums\DiscountAppliesTo;
 use App\Modules\Promotion\Domain\ValueObjects\CartContext;
 use App\Modules\Promotion\Domain\ValueObjects\CartItemContext;
 use App\Modules\Promotion\Domain\ValueObjects\PromotionDiscount;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Tests\Traits\WithCurrencyScale;
 
 final class DiscountOrchestratorServiceTest extends TestCase
 {
     use WithCurrencyScale;
+
     private DiscountOrchestratorService $orchestrator;
 
-    /** @var PromotionEvaluatorContract&\PHPUnit\Framework\MockObject\MockObject */
+    /** @var PromotionEvaluatorContract&MockObject */
     private PromotionEvaluatorContract $promotionEvaluator;
 
-    /** @var CouponValidatorContract&\PHPUnit\Framework\MockObject\MockObject */
+    /** @var CouponValidatorContract&MockObject */
     private CouponValidatorContract $couponValidator;
 
     protected function setUp(): void

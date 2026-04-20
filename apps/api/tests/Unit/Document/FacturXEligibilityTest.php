@@ -31,7 +31,7 @@ final class FacturXEligibilityTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new FacturXService();
+        $this->service = new FacturXService;
 
         $this->tenant = Tenant::create([
             'name' => 'Test Tenant',
@@ -211,7 +211,7 @@ final class FacturXEligibilityTest extends TestCase
             'status' => DocumentStatus::Draft,
             'fiscal_category' => FiscalCategory::TaxInvoice,
             'fiscal_status' => FiscalStatus::Draft,
-            'document_number' => 'INV-' . random_int(10000, 99999),
+            'document_number' => 'INV-'.random_int(10000, 99999),
             'document_date' => now(),
             'currency' => 'EUR',
             'subtotal' => '100.000',

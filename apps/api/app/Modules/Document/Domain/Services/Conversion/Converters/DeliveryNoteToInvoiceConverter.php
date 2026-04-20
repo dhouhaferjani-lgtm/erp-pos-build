@@ -11,6 +11,7 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\Conversion\Concerns\CopiesDocumentData;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterInterface;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -51,7 +52,7 @@ final class DeliveryNoteToInvoiceConverter implements DocumentConverterInterface
 
     public function __construct(
         protected readonly DocumentNumberingService $numberingService,
-        protected readonly \App\Shared\Contracts\CurrencyScaleResolverInterface $scaleResolver,
+        protected readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     public function sourceType(): DocumentType

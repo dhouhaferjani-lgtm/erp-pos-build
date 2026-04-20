@@ -24,7 +24,7 @@ final class PurchaseHubService
     public function getOffers(): ?array
     {
         /** @var array<int, array<string, mixed>>|null $cached */
-        $cached = Cache::get(self::CACHE_PREFIX . 'offers');
+        $cached = Cache::get(self::CACHE_PREFIX.'offers');
         if ($cached !== null) {
             return $cached;
         }
@@ -32,7 +32,7 @@ final class PurchaseHubService
         try {
             $data = $this->platformClient->get('/api/v1/purchase-hub/tenant/offers');
             if ($data !== null) {
-                Cache::put(self::CACHE_PREFIX . 'offers', $data, self::OFFERS_CACHE_TTL);
+                Cache::put(self::CACHE_PREFIX.'offers', $data, self::OFFERS_CACHE_TTL);
             }
 
             return $data;
@@ -61,13 +61,13 @@ final class PurchaseHubService
     }
 
     /**
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      * @return array<string, mixed>|null
      */
     public function placeOrder(array $data): ?array
     {
         try {
-            Cache::forget(self::CACHE_PREFIX . 'offers');
+            Cache::forget(self::CACHE_PREFIX.'offers');
 
             return $this->platformClient->post('/api/v1/purchase-hub/tenant/orders', $data);
         } catch (\Throwable $e) {

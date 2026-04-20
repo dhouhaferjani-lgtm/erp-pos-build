@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Application\Services;
 
 use App\Modules\BatchExpiry\Application\Services\BatchStockService;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -261,7 +262,7 @@ final class GoodsReceiptService
      *
      * @throws \RuntimeException If no default location is configured
      */
-    private function getDefaultLocation(Document $document): \App\Modules\Company\Domain\Location
+    private function getDefaultLocation(Document $document): Location
     {
         $location = $document->company->locations()
             ->where('is_default', true)

@@ -12,6 +12,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\MovementType;
+use App\Modules\Inventory\Domain\Exceptions\InsufficientStockException;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
@@ -168,7 +169,7 @@ class StockManagementTest extends TestCase
         );
 
         // Try to issue 15 units
-        $this->expectException(\App\Modules\Inventory\Domain\Exceptions\InsufficientStockException::class);
+        $this->expectException(InsufficientStockException::class);
 
         $service->issue(
             productId: $this->product->id,
@@ -224,7 +225,7 @@ class StockManagementTest extends TestCase
         );
 
         // Try to reserve 15 units
-        $this->expectException(\App\Modules\Inventory\Domain\Exceptions\InsufficientStockException::class);
+        $this->expectException(InsufficientStockException::class);
 
         $service->reserve(
             productId: $this->product->id,

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -34,7 +35,7 @@ final class PermissionEnforcementTest extends TestCase
         $this->userWithoutPermissions = User::factory()->create(['tenant_id' => $tenant->id]);
 
         // Create company membership
-        \App\Modules\Company\Domain\UserCompanyMembership::create([
+        UserCompanyMembership::create([
             'user_id' => $this->userWithoutPermissions->id,
             'company_id' => $this->company->id,
             'role' => 'viewer',

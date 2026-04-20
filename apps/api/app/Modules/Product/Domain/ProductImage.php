@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -28,9 +29,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property bool $is_primary
  * @property string|null $thumbnail_path
  * @property string|null $uploaded_by
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
  * @property-read Product $product
  * @property-read Tenant $tenant
  * @property-read User|null $uploader

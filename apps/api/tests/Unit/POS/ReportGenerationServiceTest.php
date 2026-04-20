@@ -228,7 +228,7 @@ class ReportGenerationServiceTest extends TestCase
             'chain_sequence' => $this->receiptSequence,
             'receipt_year' => 2026,
             'fiscal_hash' => hash('sha256', "receipt-{$this->receiptSequence}"),
-            'previous_hash' => $this->receiptSequence > 1 ? hash('sha256', 'receipt-' . ($this->receiptSequence - 1)) : null,
+            'previous_hash' => $this->receiptSequence > 1 ? hash('sha256', 'receipt-'.($this->receiptSequence - 1)) : null,
             'vat_breakdown_hash' => hash('sha256', 'vat'),
             'payment_methods_hash' => hash('sha256', 'payment'),
             'posted_at' => now(),

@@ -7,6 +7,7 @@ namespace App\Modules\Treasury\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\Services\MultiPaymentService;
 use Illuminate\Http\JsonResponse;
@@ -76,7 +77,7 @@ class MultiPaymentController extends Controller
         ]);
 
         try {
-            /** @var \App\Modules\Identity\Domain\User $user */
+            /** @var User $user */
             $user = $request->user();
             $deposit = $this->multiPaymentService->recordDeposit(
                 $user->tenant_id,
@@ -179,7 +180,7 @@ class MultiPaymentController extends Controller
         ]);
 
         try {
-            /** @var \App\Modules\Identity\Domain\User $user */
+            /** @var User $user */
             $user = $request->user();
             $result = $this->multiPaymentService->recordPaymentOnAccount(
                 $user->tenant_id,

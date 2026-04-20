@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Presentation\Requests;
 
+use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\CountingExecutionMode;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use Illuminate\Foundation\Http\FormRequest;
@@ -20,7 +21,7 @@ class CreateDraftCountingRequest extends FormRequest
     public function authorize(): bool
     {
         // Only managers and admins can create counting operations
-        /** @var \App\Modules\Identity\Domain\User|null $user */
+        /** @var User|null $user */
         $user = $this->user();
 
         return $user?->hasRole(['manager', 'admin']) ?? false;

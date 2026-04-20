@@ -11,8 +11,8 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 class CatalogSearchResultData extends Data
 {
     /**
-     * @param array<int, array<string, mixed>> $articles
-     * @param array<string, mixed>|null $pagination
+     * @param  array<int, array<string, mixed>>  $articles
+     * @param  array<string, mixed>|null  $pagination
      */
     public function __construct(
         public array $articles,

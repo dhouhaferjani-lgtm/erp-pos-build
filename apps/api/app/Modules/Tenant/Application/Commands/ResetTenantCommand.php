@@ -9,6 +9,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Application\Services\TenantInitializationService;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 
@@ -90,7 +91,7 @@ class ResetTenantCommand extends Command
                 $this->line("  Assigned admin role to: {$user->email}");
             }
 
-            /** @var \Illuminate\Database\Eloquent\Collection<int, Company> $companies */
+            /** @var Collection<int, Company> $companies */
             $companies = $tenant->companies;
 
             if ($companies->isEmpty()) {
@@ -103,7 +104,7 @@ class ResetTenantCommand extends Command
                 foreach ($companies as $company) {
                     $this->line("  Seeding company: {$company->name} ({$company->country_code})");
                     $initService->initializeForNewRegistration($tenant, $company, $firstUser);
-                    $this->line("    Seeded: chart of accounts, tax config, payment methods, payment repos");
+                    $this->line('    Seeded: chart of accounts, tax config, payment methods, payment repos');
                 }
             }
         } catch (\Throwable $e) {

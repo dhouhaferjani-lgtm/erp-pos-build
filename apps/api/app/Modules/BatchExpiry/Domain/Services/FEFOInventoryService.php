@@ -8,6 +8,9 @@ use App\Modules\BatchExpiry\Application\DTOs\BatchSuggestionDTO;
 use App\Modules\BatchExpiry\Application\DTOs\BatchSuggestionResultDTO;
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
+use App\Modules\Product\Domain\Product;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 
 class FEFOInventoryService
 {
@@ -70,13 +73,13 @@ class FEFOInventoryService
     /**
      * Get products expiring within threshold.
      *
-     * @return \Illuminate\Database\Eloquent\Collection<int, Batch>
+     * @return Collection<int, Batch>
      */
     public function getExpiringProducts(
         string $companyId,
         int $daysThreshold = 30,
         ?string $locationId = null
-    ): \Illuminate\Database\Eloquent\Collection {
+    ): Collection {
         $query = Batch::query()
             ->where('company_id', $companyId)
             ->where('is_active', true)
@@ -85,7 +88,7 @@ class FEFOInventoryService
                 now()->startOfDay(),
                 now()->addDays($daysThreshold)->endOfDay(),
             ])
-            ->whereHas('batchStock', function (\Illuminate\Database\Eloquent\Builder $q) use ($locationId): void {
+            ->whereHas('batchStock', function (Builder $q) use ($locationId): void {
                 $q->whereRaw('available_quantity > 0');
                 if ($locationId) {
                     $q->whereRaw('location_id = ?', [$locationId]);
@@ -100,14 +103,14 @@ class FEFOInventoryService
     /**
      * Get all expired batches with remaining stock.
      *
-     * @return \Illuminate\Database\Eloquent\Collection<int, Batch>
+     * @return Collection<int, Batch>
      */
-    public function getExpiredBatchesWithStock(string $companyId, ?string $locationId = null): \Illuminate\Database\Eloquent\Collection
+    public function getExpiredBatchesWithStock(string $companyId, ?string $locationId = null): Collection
     {
         $query = Batch::query()
             ->where('company_id', $companyId)
             ->where('expiry_date', '<', now()->startOfDay())
-            ->whereHas('batchStock', function (\Illuminate\Database\Eloquent\Builder $q) use ($locationId): void {
+            ->whereHas('batchStock', function (Builder $q) use ($locationId): void {
                 $q->whereRaw('quantity > 0');
                 if ($locationId) {
                     $q->whereRaw('location_id = ?', [$locationId]);
@@ -122,9 +125,9 @@ class FEFOInventoryService
     /**
      * Get batch stock allocation for a specific batch.
      *
-     * @return \Illuminate\Database\Eloquent\Collection<int, BatchStock>
+     * @return Collection<int, BatchStock>
      */
-    public function getBatchStockByLocation(string $batchId): \Illuminate\Database\Eloquent\Collection
+    public function getBatchStockByLocation(string $batchId): Collection
     {
         return BatchStock::query()
             ->where('batch_id', $batchId)
@@ -137,7 +140,7 @@ class FEFOInventoryService
      */
     public function productRequiresBatchTracking(string $productId): bool
     {
-        return (bool) (\App\Modules\Product\Domain\Product::query()
+        return (bool) (Product::query()
             ->where('id', $productId)
             ->value('requires_batch_tracking') ?? false);
     }

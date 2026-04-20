@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Enums\Vertical;
 use App\Http\Controllers\Controller;
 use App\Models\SuperAdmin;
 use App\Modules\Billing\Application\Services\PlanEnforcementService;
@@ -77,7 +78,7 @@ class SuperAdminController extends Controller
         // Get plan limits and usage from PlanEnforcementService
         $planSummary = $this->planEnforcementService->getPlanSummary($tenant);
 
-        /** @var \App\Enums\Vertical|null $vertical */
+        /** @var Vertical|null $vertical */
         $vertical = $tenant->vertical;
         $compatibleExtras = $vertical !== null
             ? $this->verticalConfigService->getCompatibleExtras($vertical)
@@ -255,7 +256,7 @@ class SuperAdminController extends Controller
 
         /** @var array<int, string> $requestedExtras */
         $requestedExtras = $request->input('enabled_extras');
-        /** @var \App\Enums\Vertical|null $vertical */
+        /** @var Vertical|null $vertical */
         $vertical = $tenant->vertical;
 
         if ($vertical === null) {

@@ -7,10 +7,12 @@ namespace App\Modules\Menu\Domain\Entities;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Product\Domain\Product;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -20,11 +22,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  * @property string|null $icon
  * @property int $display_order
  * @property bool $is_active
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read Menu $menu
- * @property-read \Illuminate\Database\Eloquent\Collection<int, CompositeItem> $compositeItems
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Product> $products
+ * @property-read Collection<int, CompositeItem> $compositeItems
+ * @property-read Collection<int, Product> $products
  */
 class MenuCategory extends Model
 {

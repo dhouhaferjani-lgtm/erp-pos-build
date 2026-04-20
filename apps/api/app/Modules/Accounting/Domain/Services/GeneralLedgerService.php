@@ -11,8 +11,14 @@ use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
+use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\Enums\MovementReason;
+use App\Modules\POS\Domain\Receipt;
+use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\Payment;
+use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 
@@ -335,7 +341,7 @@ final class GeneralLedgerService
         ): JournalEntry {
             $entryNumber = $this->generateEntryNumber($companyId);
 
-            $company = \App\Modules\Company\Domain\Company::findOrFail($companyId);
+            $company = Company::findOrFail($companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $company->tenant_id,
@@ -556,7 +562,7 @@ final class GeneralLedgerService
             $entryNumber = $this->generateEntryNumber($companyId);
 
             // Get tenant_id from company
-            $company = \App\Modules\Company\Domain\Company::findOrFail($companyId);
+            $company = Company::findOrFail($companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $company->tenant_id,
@@ -634,7 +640,7 @@ final class GeneralLedgerService
             $entryNumber = $this->generateEntryNumber($companyId);
 
             // Get tenant_id from company
-            $company = \App\Modules\Company\Domain\Company::findOrFail($companyId);
+            $company = Company::findOrFail($companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $company->tenant_id,
@@ -729,7 +735,7 @@ final class GeneralLedgerService
             $entryNumber = $this->generateEntryNumber($companyId);
 
             // Get tenant_id from company
-            $company = \App\Modules\Company\Domain\Company::findOrFail($companyId);
+            $company = Company::findOrFail($companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $company->tenant_id,
@@ -817,7 +823,7 @@ final class GeneralLedgerService
             $entryNumber = $this->generateEntryNumber($companyId);
 
             // Get tenant_id from company
-            $company = \App\Modules\Company\Domain\Company::findOrFail($companyId);
+            $company = Company::findOrFail($companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $company->tenant_id,
@@ -907,9 +913,9 @@ final class GeneralLedgerService
      * Credit: Revenue Account (ProductRevenue system purpose)
      */
     public function createPOSPaymentEntry(
-        \App\Modules\Treasury\Domain\Payment $payment,
-        \App\Modules\POS\Domain\Receipt $receipt,
-        \App\Modules\Treasury\Domain\PaymentRepository $repository
+        Payment $payment,
+        Receipt $receipt,
+        PaymentRepository $repository
     ): JournalEntry {
         if ($repository->gl_account_id === null) {
             throw new \InvalidArgumentException(
@@ -989,9 +995,9 @@ final class GeneralLedgerService
             }
 
             // Determine payment account (Cash or Bank based on repository type)
-            $repositoryType = $metadata !== null && $metadata->paymentRepository !== null ? $metadata->paymentRepository->type : \App\Modules\Treasury\Domain\Enums\RepositoryType::CashRegister;
+            $repositoryType = $metadata !== null && $metadata->paymentRepository !== null ? $metadata->paymentRepository->type : RepositoryType::CashRegister;
             $paymentAccount = match ($repositoryType) {
-                \App\Modules\Treasury\Domain\Enums\RepositoryType::BankAccount => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Bank),
+                RepositoryType::BankAccount => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Bank),
                 default => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Cash),
             };
 
@@ -1050,7 +1056,7 @@ final class GeneralLedgerService
         string $batchNumber,
         string $productId,
         string $amount,
-        \App\Modules\Inventory\Domain\Enums\MovementReason $reason,
+        MovementReason $reason,
         string $movementId,
     ): ?JournalEntry {
         /** @var numeric-string $amount */
@@ -1066,7 +1072,7 @@ final class GeneralLedgerService
             $cogsAccount, $inventoryAccount
         ): JournalEntry {
             $entryNumber = $this->generateEntryNumber($companyId);
-            $company = \App\Modules\Company\Domain\Company::findOrFail($companyId);
+            $company = Company::findOrFail($companyId);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $company->tenant_id,

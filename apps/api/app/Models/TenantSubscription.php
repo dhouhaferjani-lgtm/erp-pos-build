@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 class TenantSubscription extends Model
 {
@@ -44,11 +46,11 @@ class TenantSubscription extends Model
     /**
      * Get the tenant that owns the subscription.
      *
-     * @return BelongsTo<\App\Modules\Tenant\Domain\Tenant, $this>
+     * @return BelongsTo<Tenant, $this>
      */
     public function tenant(): BelongsTo
     {
-        return $this->belongsTo(\App\Modules\Tenant\Domain\Tenant::class);
+        return $this->belongsTo(Tenant::class);
     }
 
     /**
@@ -70,7 +72,7 @@ class TenantSubscription extends Model
             return false;
         }
 
-        /** @var \Illuminate\Support\Carbon $trialEndsAt */
+        /** @var Carbon $trialEndsAt */
         $trialEndsAt = $this->trial_ends_at;
 
         return $trialEndsAt->isFuture();

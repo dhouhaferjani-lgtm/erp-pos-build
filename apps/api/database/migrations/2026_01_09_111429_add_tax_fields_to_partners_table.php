@@ -14,8 +14,8 @@ return new class extends Migration
         Schema::table('partners', function (Blueprint $table) {
             $table->string('tax_id', 50)->nullable()->after('withholding_exemption_certificate_id');
             $table->enum('tax_regime', ['corporate', 'individual', 'forfait', 'exempt', 'non_resident'])
-                  ->default('individual')
-                  ->after('tax_id');
+                ->default('individual')
+                ->after('tax_id');
         });
     }
 

@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Compliance;
 
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Domain\Document;
@@ -14,6 +18,7 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Events\DeliveryNoteConfirmed;
 use App\Modules\Document\Domain\Services\DeliveryNoteService;
+use App\Modules\Document\Domain\Services\DocumentPostingService;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -69,7 +74,7 @@ class DeliveryNoteHashChainTest extends TestCase
         $this->location = Location::create([
             'company_id' => $this->company->id,
             'name' => 'Main Warehouse',
-            'type' => \App\Modules\Company\Domain\Enums\LocationType::Warehouse,
+            'type' => LocationType::Warehouse,
             'is_default' => true,
             'is_active' => true,
         ]);
@@ -83,13 +88,13 @@ class DeliveryNoteHashChainTest extends TestCase
             ['code' => '709000', 'name' => 'Sales Returns', 'type' => 'revenue', 'purpose' => 'sales_return'],
         ];
         foreach ($accounts as $accountData) {
-            \App\Modules\Accounting\Domain\Account::create([
+            Account::create([
                 'tenant_id' => $this->tenant->id,
                 'company_id' => $this->company->id,
                 'code' => $accountData['code'],
                 'name' => $accountData['name'],
-                'type' => \App\Modules\Accounting\Domain\Enums\AccountType::from($accountData['type']),
-                'system_purpose' => \App\Modules\Accounting\Domain\Enums\SystemAccountPurpose::from($accountData['purpose']),
+                'type' => AccountType::from($accountData['type']),
+                'system_purpose' => SystemAccountPurpose::from($accountData['purpose']),
                 'is_active' => true,
             ]);
         }
@@ -164,7 +169,7 @@ class DeliveryNoteHashChainTest extends TestCase
             'total' => '100.00',
         ]);
 
-        $postingService = app(\App\Modules\Document\Domain\Services\DocumentPostingService::class);
+        $postingService = app(DocumentPostingService::class);
         $postedInvoice = $postingService->post($invoice);
 
         // Confirm second DN
@@ -278,7 +283,7 @@ class DeliveryNoteHashChainTest extends TestCase
         $location2 = Location::create([
             'company_id' => $company2->id,
             'name' => 'Warehouse 2',
-            'type' => \App\Modules\Company\Domain\Enums\LocationType::Warehouse,
+            'type' => LocationType::Warehouse,
             'is_default' => true,
             'is_active' => true,
         ]);

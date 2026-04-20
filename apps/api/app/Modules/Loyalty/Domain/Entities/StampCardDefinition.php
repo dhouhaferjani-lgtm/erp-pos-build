@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\Loyalty\Domain\Entities;
 
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -20,15 +23,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $reward_id
  * @property int|null $max_active_cards
  * @property int|null $expiry_days
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read LoyaltyProgram $program
  * @property-read Reward $reward
- * @property-read \Illuminate\Database\Eloquent\Collection<int, MemberStampCard> $memberCards
+ * @property-read Collection<int, MemberStampCard> $memberCards
  */
 class StampCardDefinition extends Model
 {
-    /** @use HasFactory<\Illuminate\Database\Eloquent\Factories\Factory<static>> */
+    /** @use HasFactory<Factory<static>> */
     use HasFactory;
 
     use HasUuids;

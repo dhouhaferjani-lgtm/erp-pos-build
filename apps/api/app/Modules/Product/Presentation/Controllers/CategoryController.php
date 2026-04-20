@@ -9,6 +9,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Product\Application\DTOs\CategoryData;
 use App\Modules\Product\Domain\Category;
 use App\Support\Traits\PaginatesResults;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -71,7 +72,7 @@ class CategoryController extends Controller
     }
 
     /**
-     * @param  \Illuminate\Database\Eloquent\Collection<int, Category>  $categories
+     * @param  Collection<int, Category>  $categories
      * @return array<int, array<string, mixed>>
      */
     private function buildTree($categories, ?int $parentId = null): array

@@ -8,6 +8,7 @@ use App\Modules\Partner\Domain\Partner;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -18,10 +19,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property bool $is_primary
  * @property bool $is_invoice_contact
  * @property bool $is_delivery_contact
- * @property \Illuminate\Support\Carbon|null $start_date
- * @property \Illuminate\Support\Carbon|null $end_date
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $start_date
+ * @property Carbon|null $end_date
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read Partner $party
  * @property-read Contact $contact
  */

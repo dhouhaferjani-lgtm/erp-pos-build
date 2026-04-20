@@ -16,7 +16,7 @@ class PlatformHttpClientRawMethodsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->client = new PlatformHttpClient();
+        $this->client = new PlatformHttpClient;
         config(['services.platform.url' => 'https://platform.test']);
         config(['services.platform.api_key' => 'test-key']);
         Cache::forget('platform:circuit_breaker');

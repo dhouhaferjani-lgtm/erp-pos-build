@@ -173,7 +173,7 @@ final class CurrencyScaleTest extends TestCase
             $result = CurrencyScale::bcformat($value, 3);
             // bcadd will throw ValueError if not numeric
             $sum = bcadd($result, '0', 3);
-            $this->assertSame($result, $sum, "bcformat result for " . var_export($value, true) . " must be a valid numeric-string");
+            $this->assertSame($result, $sum, 'bcformat result for '.var_export($value, true).' must be a valid numeric-string');
         }
     }
 
@@ -191,7 +191,7 @@ final class CurrencyScaleTest extends TestCase
         $a = CurrencyScale::bcformat('0.1', 3);
         $b = CurrencyScale::bcformat('0.2', 3);
         $sum = bcadd($a, $b, 3);
-        $this->assertSame('0.300', $sum, "0.1 + 0.2 must equal 0.300 (not 0.30000000000000004)");
+        $this->assertSame('0.300', $sum, '0.1 + 0.2 must equal 0.300 (not 0.30000000000000004)');
     }
 
     #[Test]

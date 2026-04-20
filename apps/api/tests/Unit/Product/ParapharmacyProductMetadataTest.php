@@ -11,6 +11,7 @@ use App\Modules\Product\Domain\Enums\ParapharmacyCategory;
 use App\Modules\Product\Domain\ParapharmacyProductMetadata;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -111,10 +112,10 @@ class ParapharmacyProductMetadataTest extends TestCase
         ]);
 
         // These are now relational (BelongsToMany), not JSON columns
-        $this->assertInstanceOf(\Illuminate\Database\Eloquent\Collection::class, $metadata->ingredients);
-        $this->assertInstanceOf(\Illuminate\Database\Eloquent\Collection::class, $metadata->keyComponents);
-        $this->assertInstanceOf(\Illuminate\Database\Eloquent\Collection::class, $metadata->healthClaims);
-        $this->assertInstanceOf(\Illuminate\Database\Eloquent\Collection::class, $metadata->certifications);
+        $this->assertInstanceOf(Collection::class, $metadata->ingredients);
+        $this->assertInstanceOf(Collection::class, $metadata->keyComponents);
+        $this->assertInstanceOf(Collection::class, $metadata->healthClaims);
+        $this->assertInstanceOf(Collection::class, $metadata->certifications);
         $this->assertCount(0, $metadata->ingredients);
         $this->assertCount(0, $metadata->keyComponents);
     }

@@ -16,6 +16,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Domain\StockReservation;
 use App\Modules\Marketplace\Domain\Enums\SellerStatus;
 use App\Modules\Marketplace\Domain\Enums\SellerType;
 use App\Modules\Marketplace\Domain\Models\MarketplaceListing;
@@ -230,8 +231,8 @@ class StockReservationTest extends TestCase
             'id' => $reservationId,
         ]);
 
-        /** @var \App\Modules\Inventory\Domain\StockReservation $reservation */
-        $reservation = \App\Modules\Inventory\Domain\StockReservation::query()->findOrFail($reservationId);
+        /** @var StockReservation $reservation */
+        $reservation = StockReservation::query()->findOrFail($reservationId);
         $this->assertNotNull($reservation->released_at);
     }
 

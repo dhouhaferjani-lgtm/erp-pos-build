@@ -15,12 +15,14 @@ use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\Services\CompanyTaxStatusValidationService;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Domain\ValueObjects\ReservationSettings;
 use App\Modules\Company\Presentation\Requests\CreateCompanyRequest;
 use App\Modules\Company\Presentation\Requests\UpdateCompanyRequest;
 use App\Modules\Company\Presentation\Requests\UpdateReceiptSettingsRequest;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -227,7 +229,7 @@ class CompanyController extends Controller
     /**
      * Update reservation settings for a company.
      */
-    public function updateReservationSettings(string $companyId, \Illuminate\Http\Request $request): JsonResponse
+    public function updateReservationSettings(string $companyId, Request $request): JsonResponse
     {
         /** @var User $user */
         $user = auth()->user();
@@ -249,7 +251,7 @@ class CompanyController extends Controller
         // Get current settings and merge with updates
         $currentSettings = $company->getReservationSettings();
 
-        $newSettings = new \App\Modules\Company\Domain\ValueObjects\ReservationSettings(
+        $newSettings = new ReservationSettings(
             salesOrderExpiryDays: $validated['sales_order_expiry_days'] ?? $currentSettings->salesOrderExpiryDays,
             ecommerceCartExpiryMinutes: $validated['ecommerce_cart_expiry_minutes'] ?? $currentSettings->ecommerceCartExpiryMinutes,
             marketplaceOrderExpiryHours: $validated['marketplace_order_expiry_hours'] ?? $currentSettings->marketplaceOrderExpiryHours,

@@ -1,6 +1,11 @@
 <?php
 
 declare(strict_types=1);
+use Carbon\CarbonImmutable;
+use Spatie\TypeScriptTransformer\Collectors\DefaultCollector;
+use Spatie\TypeScriptTransformer\Collectors\EnumCollector;
+use Spatie\TypeScriptTransformer\Transformers\DtoTransformer;
+use Spatie\TypeScriptTransformer\Transformers\EnumTransformer;
 
 return [
     /*
@@ -16,16 +21,16 @@ return [
      * Transformers will transform PHP classes to TypeScript types.
      */
     'transformers' => [
-        Spatie\TypeScriptTransformer\Transformers\EnumTransformer::class,
-        Spatie\TypeScriptTransformer\Transformers\DtoTransformer::class,
+        EnumTransformer::class,
+        DtoTransformer::class,
     ],
 
     /*
      * The collector will search for classes in the auto_discover_transformers paths.
      */
     'collectors' => [
-        Spatie\TypeScriptTransformer\Collectors\DefaultCollector::class,
-        Spatie\TypeScriptTransformer\Collectors\EnumCollector::class,
+        DefaultCollector::class,
+        EnumCollector::class,
     ],
 
     /*
@@ -41,7 +46,7 @@ return [
         DateTime::class => 'string',
         DateTimeImmutable::class => 'string',
         Carbon\Carbon::class => 'string',
-        Carbon\CarbonImmutable::class => 'string',
+        CarbonImmutable::class => 'string',
         Illuminate\Support\Carbon::class => 'string',
     ],
 ];

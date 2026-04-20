@@ -14,6 +14,7 @@ use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Seeders\CountriesSeeder;
 use Database\Seeders\TunisiaStampDutySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -36,7 +37,7 @@ class TaxCalculationTest extends TestCase
         parent::setUp();
 
         // Seed countries first (required for foreign key constraint)
-        $this->seed(\Database\Seeders\CountriesSeeder::class);
+        $this->seed(CountriesSeeder::class);
 
         // Create tenant
         $this->tenant = Tenant::create([

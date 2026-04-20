@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Document;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
@@ -48,7 +49,7 @@ class DocumentEntityTest extends TestCase
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         app(CompanyContext::class)->setCompanyId($this->company->id);
@@ -240,7 +241,7 @@ class DocumentEntityTest extends TestCase
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         $otherPartner = Partner::create([

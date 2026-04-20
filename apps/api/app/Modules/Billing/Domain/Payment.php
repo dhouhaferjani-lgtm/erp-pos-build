@@ -9,6 +9,7 @@ use App\Modules\Billing\Domain\Enums\PaymentProviderCode;
 use App\Modules\Billing\Domain\Enums\PaymentStatus;
 use App\Modules\Billing\Domain\ValueObjects\Money;
 use App\Modules\Tenant\Domain\Tenant;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -32,18 +33,18 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $payment_method_type
  * @property array<string, mixed> $payment_method_details
  * @property string|null $reference_number
- * @property \Carbon\Carbon|null $payment_date
+ * @property Carbon|null $payment_date
  * @property string|null $recorded_by
  * @property string|null $client_secret
  * @property string|null $action_url
  * @property string|null $error_code
  * @property string|null $error_message
- * @property \Carbon\Carbon|null $paid_at
- * @property \Carbon\Carbon|null $refunded_at
+ * @property Carbon|null $paid_at
+ * @property Carbon|null $refunded_at
  * @property array<string, mixed> $metadata
- * @property \Carbon\Carbon $created_at
- * @property \Carbon\Carbon $updated_at
- * @property \Carbon\Carbon|null $deleted_at
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
+ * @property Carbon|null $deleted_at
  */
 final class Payment extends Model
 {

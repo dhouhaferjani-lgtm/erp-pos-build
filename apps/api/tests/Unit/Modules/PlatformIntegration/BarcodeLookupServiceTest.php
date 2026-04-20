@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Tests\Unit\Modules\PlatformIntegration;
 
 use App\Enums\Vertical;
+use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\PlatformIntegration\Application\DTOs\BarcodeLookupResultData;
 use App\Modules\PlatformIntegration\Application\Services\BarcodeLookupService;
 use App\Modules\PlatformIntegration\Domain\ValueObjects\PlatformProductData;
 use App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient;
+use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Mockery;
@@ -151,7 +153,7 @@ class BarcodeLookupServiceTest extends TestCase
 
         // Pre-populate cache
         $cachedResult = BarcodeLookupResultData::notFound($barcode, 'trk-cached');
-        Cache::put('platform:lookup:automotive:' . $barcode, $cachedResult, 3600);
+        Cache::put('platform:lookup:automotive:'.$barcode, $cachedResult, 3600);
 
         Http::fake(); // nothing should be sent
 
@@ -182,11 +184,11 @@ class BarcodeLookupServiceTest extends TestCase
      */
     private function buildServiceWithVertical(Vertical $vertical): void
     {
-        $tenant = Mockery::mock(\App\Modules\Tenant\Domain\Tenant::class);
+        $tenant = Mockery::mock(Tenant::class);
         $tenant->shouldReceive('getAttribute')->with('vertical')->andReturn($vertical);
         $tenant->allows('__get')->with('vertical')->andReturn($vertical);
 
-        $company = Mockery::mock(\App\Modules\Company\Domain\Company::class);
+        $company = Mockery::mock(Company::class);
         $company->shouldReceive('getAttribute')->with('tenant')->andReturn($tenant);
         $company->allows('__get')->with('tenant')->andReturn($tenant);
 
@@ -194,7 +196,7 @@ class BarcodeLookupServiceTest extends TestCase
         $companyContext->allows('requireCompany')->andReturn($company);
 
         $this->service = new BarcodeLookupService(
-            new PlatformHttpClient(),
+            new PlatformHttpClient,
             $companyContext,
         );
     }

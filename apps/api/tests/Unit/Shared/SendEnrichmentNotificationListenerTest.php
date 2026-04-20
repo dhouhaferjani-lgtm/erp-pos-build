@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Application\Listeners\SendEnrichmentNotificationListener;
+use App\Modules\Identity\Application\Notifications\EnrichmentCompletedNotification;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -87,10 +88,10 @@ class SendEnrichmentNotificationListenerTest extends TestCase
             assignedBarcode: '3017620422003',
         );
 
-        $listener = new SendEnrichmentNotificationListener();
+        $listener = new SendEnrichmentNotificationListener;
         $listener->handle($event);
 
-        Notification::assertSentTo($user, \App\Modules\Identity\Application\Notifications\EnrichmentCompletedNotification::class);
+        Notification::assertSentTo($user, EnrichmentCompletedNotification::class);
     }
 
     public function test_does_not_notify_users_without_permission(): void
@@ -122,7 +123,7 @@ class SendEnrichmentNotificationListenerTest extends TestCase
             assignedBarcode: null,
         );
 
-        $listener = new SendEnrichmentNotificationListener();
+        $listener = new SendEnrichmentNotificationListener;
         $listener->handle($event);
 
         Notification::assertNothingSent();
@@ -171,7 +172,7 @@ class SendEnrichmentNotificationListenerTest extends TestCase
             assignedBarcode: null,
         );
 
-        $listener = new SendEnrichmentNotificationListener();
+        $listener = new SendEnrichmentNotificationListener;
         $listener->handle($event);
 
         Notification::assertNothingSent();

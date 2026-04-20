@@ -9,9 +9,9 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Application\Services\TEJExportService;
 use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
+use App\Modules\Taxation\Domain\Entities\WithholdingTaxRule;
 use App\Modules\Taxation\Domain\Enums\CertificateStatus;
 use App\Modules\Taxation\Domain\Enums\WithholdingDirection;
-use App\Modules\Taxation\Domain\Entities\WithholdingTaxRule;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Payment;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -90,7 +90,7 @@ class TEJExportServiceTest extends TestCase
         $this->assertStringContainsString('<Annee>', $xml);
 
         // Validate it's well-formed XML
-        $dom = new \DOMDocument();
+        $dom = new \DOMDocument;
         $this->assertTrue($dom->loadXML($xml));
     }
 
@@ -102,9 +102,9 @@ class TEJExportServiceTest extends TestCase
         for ($i = 1; $i <= 3; $i++) {
             $certificates->push($this->createCertificate(
                 certificateNumber: sprintf('WHT-2026-%04d', $i),
-                grossAmount: (string) ($i * 1000) . '.000',
-                withholdingAmount: (string) ($i * 100) . '.000',
-                netAmount: (string) ($i * 900) . '.000',
+                grossAmount: (string) ($i * 1000).'.000',
+                withholdingAmount: (string) ($i * 100).'.000',
+                netAmount: (string) ($i * 900).'.000',
             ));
         }
 
@@ -125,7 +125,7 @@ class TEJExportServiceTest extends TestCase
         $this->assertStringContainsString('WHT-2026-0003', $xml);
 
         // Validate it's well-formed XML
-        $dom = new \DOMDocument();
+        $dom = new \DOMDocument;
         $this->assertTrue($dom->loadXML($xml));
     }
 
@@ -147,7 +147,7 @@ class TEJExportServiceTest extends TestCase
         $xml = $this->service->generateXML($certificate);
 
         // Verify XML is well-formed (would fail if special chars not escaped)
-        $dom = new \DOMDocument();
+        $dom = new \DOMDocument;
         $this->assertTrue($dom->loadXML($xml));
 
         // Verify special chars are escaped
@@ -285,7 +285,7 @@ class TEJExportServiceTest extends TestCase
             'withholding_amount' => $withholdingAmount,
             'net_amount' => $netAmount,
             'withholding_rule_id' => $ruleId,
-            'hash' => hash('sha256', 'test-' . $certificateNumber),
+            'hash' => hash('sha256', 'test-'.$certificateNumber),
             'chain_sequence' => 1,
             'issued_at' => now(),
         ]);

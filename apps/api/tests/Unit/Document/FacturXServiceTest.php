@@ -8,8 +8,11 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Application\Services\FacturXService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FacturXProfile;
+use App\Modules\Document\Domain\Enums\FiscalCategory;
+use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -29,7 +32,7 @@ final class FacturXServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new FacturXService();
+        $this->service = new FacturXService;
 
         $this->tenant = Tenant::create([
             'name' => 'Test Tenant',
@@ -291,10 +294,10 @@ final class FacturXServiceTest extends TestCase
             'company_id' => $company->id,
             'partner_id' => $partner->id,
             'type' => DocumentType::Invoice,
-            'status' => \App\Modules\Document\Domain\Enums\DocumentStatus::Draft,
-            'fiscal_category' => \App\Modules\Document\Domain\Enums\FiscalCategory::TaxInvoice,
-            'fiscal_status' => \App\Modules\Document\Domain\Enums\FiscalStatus::Draft,
-            'document_number' => 'INV-' . random_int(10000, 99999),
+            'status' => DocumentStatus::Draft,
+            'fiscal_category' => FiscalCategory::TaxInvoice,
+            'fiscal_status' => FiscalStatus::Draft,
+            'document_number' => 'INV-'.random_int(10000, 99999),
             'document_date' => now(),
             'currency' => 'EUR',
             'subtotal' => '100.000',

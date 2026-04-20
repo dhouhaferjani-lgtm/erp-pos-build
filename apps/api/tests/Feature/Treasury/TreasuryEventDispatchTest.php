@@ -13,6 +13,7 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\Services\BankReconciliationService;
 use App\Modules\Treasury\Domain\BankReconciliation;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
@@ -43,9 +44,13 @@ class TreasuryEventDispatchTest extends TestCase
     use RefreshDatabase;
 
     private Tenant $tenant;
+
     private Company $company;
+
     private User $user;
+
     private Partner $partner;
+
     private PaymentMethod $paymentMethod;
 
     protected function setUp(): void
@@ -105,7 +110,7 @@ class TreasuryEventDispatchTest extends TestCase
             'currency' => 'TND',
             'payment_date' => now(),
             'status' => PaymentStatus::Completed,
-            'reference' => 'PAY-' . Str::random(6),
+            'reference' => 'PAY-'.Str::random(6),
         ]);
     }
 
@@ -117,7 +122,7 @@ class TreasuryEventDispatchTest extends TestCase
             'company_id' => $this->company->id,
             'partner_id' => $this->partner->id,
             'payment_method_id' => $this->paymentMethod->id,
-            'reference' => 'CHK-' . Str::random(6),
+            'reference' => 'CHK-'.Str::random(6),
             'amount' => '500.000',
             'currency' => 'TND',
             'status' => $status,
@@ -132,7 +137,7 @@ class TreasuryEventDispatchTest extends TestCase
             'id' => Str::uuid()->toString(),
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
-            'code' => 'BNK-' . Str::random(4),
+            'code' => 'BNK-'.Str::random(4),
             'name' => 'Bank Account',
             'type' => RepositoryType::BankAccount,
             'balance' => '0.000',
@@ -302,7 +307,7 @@ class TreasuryEventDispatchTest extends TestCase
             'created_by' => $this->user->id,
         ]);
 
-        $service = app(\App\Modules\Treasury\Application\Services\BankReconciliationService::class);
+        $service = app(BankReconciliationService::class);
         $service->completeReconciliation($reconciliation->id, $this->user->id);
 
         Event::assertDispatched(ReconciliationCompleted::class, function (ReconciliationCompleted $event) use ($reconciliation, $repository) {

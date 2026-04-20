@@ -15,7 +15,7 @@ class TaxIdValidationServiceTest extends TestCase
     {
         parent::setUp();
 
-        $this->service = new TaxIdValidationService();
+        $this->service = new TaxIdValidationService;
     }
 
     // ─── French SIRET ─────────────────────────────────────────────────

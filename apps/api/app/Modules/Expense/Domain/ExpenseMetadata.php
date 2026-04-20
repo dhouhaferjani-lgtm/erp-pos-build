@@ -10,6 +10,7 @@ use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * Expense metadata for storing expense-specific information.
@@ -19,12 +20,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $expense_category_id
  * @property string|null $payment_method_id
  * @property string|null $payment_repository_id
- * @property \Illuminate\Support\Carbon|null $payment_date
+ * @property Carbon|null $payment_date
  * @property bool $is_paid
  * @property string|null $receipt_number
  * @property string|null $vendor_name
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read Document $document
  * @property-read ExpenseCategory|null $category
  * @property-read PaymentMethod|null $paymentMethod

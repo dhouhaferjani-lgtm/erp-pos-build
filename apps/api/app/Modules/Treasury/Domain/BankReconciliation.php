@@ -8,10 +8,12 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\ReconciliationStatus;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * Bank reconciliation session.
@@ -20,7 +22,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $tenant_id
  * @property string $company_id
  * @property string $repository_id
- * @property \Illuminate\Support\Carbon $statement_date
+ * @property Carbon $statement_date
  * @property numeric-string $opening_balance
  * @property numeric-string $closing_balance
  * @property numeric-string $statement_balance
@@ -28,16 +30,16 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property ReconciliationStatus $status
  * @property string $created_by
  * @property string|null $completed_by
- * @property \Illuminate\Support\Carbon|null $completed_at
+ * @property Carbon|null $completed_at
  * @property string|null $notes
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read Tenant $tenant
  * @property-read Company $company
  * @property-read PaymentRepository $repository
  * @property-read User $creator
  * @property-read User|null $completer
- * @property-read \Illuminate\Database\Eloquent\Collection<int, BankReconciliationItem> $items
+ * @property-read Collection<int, BankReconciliationItem> $items
  */
 class BankReconciliation extends Model
 {

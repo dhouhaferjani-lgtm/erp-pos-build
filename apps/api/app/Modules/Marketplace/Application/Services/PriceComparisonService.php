@@ -6,6 +6,7 @@ namespace App\Modules\Marketplace\Application\Services;
 
 use App\Modules\Marketplace\Application\DTOs\PriceComparisonData;
 use App\Modules\Marketplace\Domain\Models\MarketplaceListing;
+use Illuminate\Database\Eloquent\Builder;
 
 class PriceComparisonService
 {
@@ -27,7 +28,7 @@ class PriceComparisonService
         $query = MarketplaceListing::query()
             ->available()
             ->forCountry($countryCode)
-            ->whereHas('seller', function (\Illuminate\Database\Eloquent\Builder $q): void {
+            ->whereHas('seller', function (Builder $q): void {
                 $q->whereRaw('seller_status = ?', ['active']);
             })
             ->where('price', '<', $currentPrice);

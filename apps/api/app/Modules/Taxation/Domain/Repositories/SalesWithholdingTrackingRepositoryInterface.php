@@ -15,7 +15,7 @@ interface SalesWithholdingTrackingRepositoryInterface
     /**
      * Create a new sales withholding tracking record.
      *
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     public function create(array $data): SalesWithholdingTracking;
 
@@ -46,7 +46,7 @@ interface SalesWithholdingTrackingRepositoryInterface
     /**
      * Update tracking record.
      *
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     public function update(string $id, array $data): SalesWithholdingTracking;
 }

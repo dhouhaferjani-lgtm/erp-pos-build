@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\MembershipRole;
@@ -11,13 +12,15 @@ use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
-use App\Modules\Partner\Domain\Partner;
 use App\Modules\Partner\Domain\Enums\PartnerType;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Entities\WithholdingTaxRule;
-use App\Modules\Taxation\Domain\Enums\TransactionType;
 use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
+use App\Modules\Taxation\Domain\Enums\TransactionType;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 
@@ -48,8 +51,9 @@ class TunisianParapharmacySeeder extends Seeder
         // Find the first active tenant (or create one if none exists)
         $tenant = Tenant::where('status', 'active')->first();
 
-        if (!$tenant) {
+        if (! $tenant) {
             $this->command->error('No active tenant found. Please run DatabaseSeeder first.');
+
             return;
         }
 
@@ -60,11 +64,11 @@ class TunisianParapharmacySeeder extends Seeder
         $company = $this->createParapharmacyCompany($tenant);
 
         // Create chart of accounts (if not already exists)
-        $accountsExist = \App\Modules\Accounting\Domain\Account::where('company_id', $company->id)->exists();
+        $accountsExist = Account::where('company_id', $company->id)->exists();
 
-        if (!$accountsExist) {
+        if (! $accountsExist) {
             $this->command->info('Creating Tunisian chart of accounts...');
-            $tunisiaSeeder = new TunisiaChartOfAccountsSeeder();
+            $tunisiaSeeder = new TunisiaChartOfAccountsSeeder;
             $tunisiaSeeder->setCommand($this->command);
             $tunisiaSeeder->run($company->id, $tenant->id);
         } else {
@@ -72,9 +76,9 @@ class TunisianParapharmacySeeder extends Seeder
         }
 
         // Create payment methods (if not already exists)
-        $paymentMethodsExist = \App\Modules\Treasury\Domain\PaymentMethod::where('company_id', $company->id)->exists();
+        $paymentMethodsExist = PaymentMethod::where('company_id', $company->id)->exists();
 
-        if (!$paymentMethodsExist) {
+        if (! $paymentMethodsExist) {
             $this->command->info('Creating payment methods...');
             $this->call(PaymentMethodSeeder::class, false, ['company' => $company]);
         } else {
@@ -82,9 +86,9 @@ class TunisianParapharmacySeeder extends Seeder
         }
 
         // Create payment repositories (if not already exists)
-        $repositoriesExist = \App\Modules\Treasury\Domain\PaymentRepository::where('company_id', $company->id)->exists();
+        $repositoriesExist = PaymentRepository::where('company_id', $company->id)->exists();
 
-        if (!$repositoriesExist) {
+        if (! $repositoriesExist) {
             $this->command->info('Creating payment repositories...');
             $this->call(PaymentRepositorySeeder::class, false, ['company' => $company]);
         } else {
@@ -102,7 +106,7 @@ class TunisianParapharmacySeeder extends Seeder
         // Create parapharmacy-specific partners (if not already exists)
         $partnersExist = Partner::where('company_id', $company->id)->exists();
 
-        if (!$partnersExist) {
+        if (! $partnersExist) {
             $this->command->info('Creating Tunisian partners...');
             $this->createParapharmacyPartners($tenant, $company);
         } else {
@@ -112,7 +116,7 @@ class TunisianParapharmacySeeder extends Seeder
         // Create parapharmacy products (if not already exists)
         $productsExist = Product::where('company_id', $company->id)->exists();
 
-        if (!$productsExist) {
+        if (! $productsExist) {
             $this->command->info('Creating parapharmacy products...');
             $this->createParapharmacyProducts($company);
         } else {
@@ -131,7 +135,7 @@ class TunisianParapharmacySeeder extends Seeder
         $this->command->info('✓ Tunisian parapharmacy seeded successfully!');
         $this->command->info("  Company: {$company->name}");
         $this->command->info("  Tax ID: {$company->tax_id}");
-        $this->command->info("  Currency: TND");
+        $this->command->info('  Currency: TND');
         $this->command->info('  Switch to this company in the UI to test withholding!');
         $this->command->info('==============================================');
     }
@@ -145,6 +149,7 @@ class TunisianParapharmacySeeder extends Seeder
 
         if ($company) {
             $this->command->info("Company already exists: {$company->name} - skipping creation");
+
             return $company;
         }
 
@@ -176,7 +181,7 @@ class TunisianParapharmacySeeder extends Seeder
             ->where('code', 'MAIN')
             ->exists();
 
-        if (!$locationExists) {
+        if (! $locationExists) {
             Location::create([
                 'id' => Str::uuid()->toString(),
                 'company_id' => $company->id,
@@ -193,7 +198,7 @@ class TunisianParapharmacySeeder extends Seeder
                 'phone' => $company->phone,
                 'email' => $company->email,
             ]);
-            $this->command->info("Created location: Magasin Principal");
+            $this->command->info('Created location: Magasin Principal');
         }
 
         $this->command->info("Using company: {$company->name}");
@@ -273,7 +278,7 @@ class TunisianParapharmacySeeder extends Seeder
                 ->where('code', $ruleData['code'])
                 ->exists();
 
-            if (!$exists) {
+            if (! $exists) {
                 WithholdingTaxRule::create([
                     'id' => Str::uuid()->toString(),
                     'company_id' => $company->id,
@@ -307,14 +312,14 @@ class TunisianParapharmacySeeder extends Seeder
                 'id' => Str::uuid()->toString(),
                 'tenant_id' => $tenant->id,
                 'company_id' => $company->id,
-                'code' => 'CUST-' . strtoupper(substr($customerData['name'], 0, 3)) . rand(100, 999),
+                'code' => 'CUST-'.strtoupper(substr($customerData['name'], 0, 3)).rand(100, 999),
                 'name' => $customerData['name'],
                 'type' => PartnerType::Customer,
                 'country_code' => 'TN',
-                'vat_number' => 'TN' . rand(10000000, 99999999) . 'ABC',
+                'vat_number' => 'TN'.rand(10000000, 99999999).'ABC',
                 'tax_status' => $customerData['tax_status'],
-                'email' => strtolower(str_replace(' ', '', $customerData['name'])) . '@example.tn',
-                'phone' => '+216 71 ' . rand(100, 999) . ' ' . rand(100, 999),
+                'email' => strtolower(str_replace(' ', '', $customerData['name'])).'@example.tn',
+                'phone' => '+216 71 '.rand(100, 999).' '.rand(100, 999),
                 'is_active' => true,
                 'withholding_exempt' => false,
             ]);
@@ -333,14 +338,14 @@ class TunisianParapharmacySeeder extends Seeder
                 'id' => Str::uuid()->toString(),
                 'tenant_id' => $tenant->id,
                 'company_id' => $company->id,
-                'code' => 'SUPP-' . strtoupper(substr($supplierData['name'], 0, 3)) . rand(100, 999),
+                'code' => 'SUPP-'.strtoupper(substr($supplierData['name'], 0, 3)).rand(100, 999),
                 'name' => $supplierData['name'],
                 'type' => PartnerType::Supplier,
                 'country_code' => 'TN',
-                'vat_number' => 'TN' . rand(10000000, 99999999) . 'XYZ',
+                'vat_number' => 'TN'.rand(10000000, 99999999).'XYZ',
                 'tax_status' => $supplierData['tax_status'],
-                'email' => strtolower(str_replace(' ', '', $supplierData['name'])) . '@example.tn',
-                'phone' => '+216 71 ' . rand(100, 999) . ' ' . rand(100, 999),
+                'email' => strtolower(str_replace(' ', '', $supplierData['name'])).'@example.tn',
+                'phone' => '+216 71 '.rand(100, 999).' '.rand(100, 999),
                 'is_active' => true,
                 'withholding_exempt' => false,
             ]);
@@ -443,9 +448,9 @@ class TunisianParapharmacySeeder extends Seeder
                 'id' => Str::uuid()->toString(),
                 'tenant_id' => $company->tenant_id,
                 'company_id' => $company->id,
-                'sku' => 'PARA-' . strtoupper(Str::ascii(mb_substr(str_replace(' ', '', $productData['name']), 0, 8))) . rand(10, 99),
+                'sku' => 'PARA-'.strtoupper(Str::ascii(mb_substr(str_replace(' ', '', $productData['name']), 0, 8))).rand(10, 99),
                 'name' => $productData['name'],
-                'description' => 'Produit parapharmaceutique de qualité - ' . $productData['name'],
+                'description' => 'Produit parapharmaceutique de qualité - '.$productData['name'],
                 'is_physical' => true,
                 'unit' => 'pièce',
                 'sale_price' => $productData['price'],
@@ -479,7 +484,7 @@ class TunisianParapharmacySeeder extends Seeder
                 ->where('company_id', $company->id)
                 ->exists();
 
-            if (!$existingMembership) {
+            if (! $existingMembership) {
                 UserCompanyMembership::create([
                     'user_id' => $user->id,
                     'company_id' => $company->id,

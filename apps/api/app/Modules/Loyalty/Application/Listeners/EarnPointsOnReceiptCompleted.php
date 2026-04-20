@@ -49,7 +49,7 @@ final class EarnPointsOnReceiptCompleted implements ShouldQueue
                 ->where(function ($q) use ($event) {
                     $q->where(function ($q2) use ($event) {
                         $q2->where('loyaltyable_type', 'partner')
-                           ->where('loyaltyable_id', $event->customerId);
+                            ->where('loyaltyable_id', $event->customerId);
                     })->orWhere('customer_id', $event->customerId);
                 })
                 ->where('tenant_id', $event->tenantId)

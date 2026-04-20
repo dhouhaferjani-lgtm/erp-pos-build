@@ -7,17 +7,20 @@ namespace App\Modules\Accounting\Domain;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
  * @property string $tenant_id
  * @property string $company_id
  * @property string $entry_number
- * @property \Illuminate\Support\Carbon $entry_date
+ * @property Carbon $entry_date
  * @property string|null $description
  * @property JournalEntryStatus $status
  * @property string|null $source_type
@@ -31,11 +34,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $reversed_at
  * @property string|null $reversed_by
  * @property string|null $reversal_entry_id
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read Tenant $tenant
  * @property-read Company $company
- * @property-read \Illuminate\Database\Eloquent\Collection<int, JournalLine> $lines
+ * @property-read Collection<int, JournalLine> $lines
  */
 class JournalEntry extends Model
 {
@@ -105,10 +108,10 @@ class JournalEntry extends Model
     /**
      * Scope to filter journal entries by company
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<static>
+     * @param  Builder<static>  $query
+     * @return Builder<static>
      */
-    public function scopeForCompany(\Illuminate\Database\Eloquent\Builder $query, string $companyId): \Illuminate\Database\Eloquent\Builder
+    public function scopeForCompany(Builder $query, string $companyId): Builder
     {
         return $query->where('company_id', $companyId);
     }

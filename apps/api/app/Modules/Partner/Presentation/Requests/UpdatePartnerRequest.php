@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Partner\Presentation\Requests;
 
+use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\ConsolidationFrequency;
 use App\Modules\Partner\Domain\Enums\CustomerCategory;
 use App\Modules\Partner\Domain\Enums\PartnerType;
@@ -24,7 +25,7 @@ class UpdatePartnerRequest extends FormRequest
      */
     public function rules(): array
     {
-        /** @var \App\Modules\Identity\Domain\User|null $user */
+        /** @var User|null $user */
         $user = $this->user();
         $tenantId = $user?->tenant_id;
         $partnerId = $this->route('partner');

@@ -46,7 +46,7 @@ final class HeldOrderServiceTest extends TestCase
 
         $this->setupTestData();
 
-        $companyContext = new CompanyContext();
+        $companyContext = new CompanyContext;
         $companyContext->setCompanyId($this->company->id);
 
         $this->service = new HeldOrderService($companyContext);
