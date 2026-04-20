@@ -1,4 +1,4 @@
-import { textColors } from '@/lib/designTokens'
+import { textColors, tokens } from '@/lib/designTokens'
 
 interface UtilizationBarProps {
   /** Value between 0 and 100 inclusive; clamped if outside range. */
@@ -10,22 +10,22 @@ interface UtilizationBarProps {
 /**
  * Thin horizontal progress bar that reflects a utilization ratio.
  *
- * Colors reflect intent:
- * - 0–60%:  emerald (under-utilized, plenty of headroom)
- * - 60–90%: amber (healthy load)
- * - >90%:   rose  (overbooked / crunched)
+ * Colors reflect intent (see `tokens.utilizationBar`):
+ * - 0–60%:  low    (under-utilized, plenty of headroom)
+ * - 60–90%: medium (healthy load)
+ * - >90%:   high   (overbooked / crunched)
  *
  * Atom: presentational only, no hooks or side effects.
  */
 export function UtilizationBar({ percent, ariaLabel }: UtilizationBarProps) {
   const clamped = Math.max(0, Math.min(100, percent))
-  let color = 'bg-emerald-500'
-  if (clamped > 90) color = 'bg-rose-500'
-  else if (clamped >= 60) color = 'bg-amber-500'
+  let color = tokens.utilizationBar.low
+  if (clamped > 90) color = tokens.utilizationBar.high
+  else if (clamped >= 60) color = tokens.utilizationBar.medium
 
   return (
     <div
-      className="h-2 w-full overflow-hidden rounded-full bg-slate-100"
+      className={`h-2 w-full overflow-hidden rounded-full ${tokens.utilizationBar.track}`}
       role="progressbar"
       aria-valuemin={0}
       aria-valuemax={100}

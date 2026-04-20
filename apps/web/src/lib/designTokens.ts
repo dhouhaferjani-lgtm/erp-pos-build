@@ -312,6 +312,52 @@ export const tokens = {
     yellow: 'bg-yellow-100 text-yellow-800',
     purple: 'bg-purple-100 text-purple-800',
   },
+
+  /**
+   * Status badge tokens for appointment lifecycle states.
+   *
+   * Each state maps to a distinct Tailwind palette chosen for semantic clarity
+   * rather than brand consistency — status badges need more nuance than the
+   * semantic palette (primary/success/error/warning) can express.
+   */
+  statusBadge: {
+    base: 'inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium',
+    scheduled: 'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-500/20',
+    confirmed: 'bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-600/20',
+    checkedIn: 'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20',
+    inProgress: 'bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-600/20',
+    completed: 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20',
+    closed: 'bg-stone-100 text-stone-700 ring-1 ring-inset ring-stone-500/20',
+    noShow: 'bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-600/20',
+    cancelled: 'bg-zinc-100 text-zinc-600 ring-1 ring-inset ring-zinc-500/20',
+  },
+
+  /**
+   * Utilization bar tokens — horizontal progress indicator for capacity load.
+   *
+   * - low    : 0-60%  — emerald (plenty of headroom)
+   * - medium : 60-90% — amber   (healthy load)
+   * - high   : >90%   — rose    (overbooked / crunched)
+   * - track  : slate 100 — background rail
+   */
+  utilizationBar: {
+    low: 'bg-emerald-500',
+    medium: 'bg-amber-500',
+    high: 'bg-rose-500',
+    track: 'bg-slate-100',
+  },
+
+  /**
+   * Segmented toggle button (e.g. day/week view switcher).
+   * - `group`  : outer wrapper, contains the border + rounded shape.
+   * - `active` : pressed/selected segment.
+   * - `idle`   : unpressed segment.
+   */
+  toggleButton: {
+    group: 'inline-flex overflow-hidden rounded-md border border-gray-300',
+    active: 'bg-sky-600 text-white',
+    idle: 'bg-white text-gray-700',
+  },
 }
 
 /**

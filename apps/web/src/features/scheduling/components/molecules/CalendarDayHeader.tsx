@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { tokens, textColors } from '@/lib/designTokens'
+import { borderColors, textColors, tokens } from '@/lib/designTokens'
 
 interface CalendarDayHeaderProps {
   date: string
@@ -28,7 +28,7 @@ export function CalendarDayHeader({
   const { t } = useTranslation('scheduling')
 
   return (
-    <div className="flex flex-col gap-3 border-b border-slate-200 pb-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className={`flex flex-col gap-3 border-b ${borderColors.light} pb-3 sm:flex-row sm:items-center sm:justify-between`}>
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -57,12 +57,12 @@ export function CalendarDayHeader({
       </div>
 
       <div className="flex items-center gap-2">
-        <div className="inline-flex overflow-hidden rounded-md border border-slate-300">
+        <div className={tokens.toggleButton.group}>
           <button
             type="button"
             onClick={() => { onViewChange('day') }}
             className={`px-3 py-1.5 text-sm font-medium ${
-              view === 'day' ? 'bg-sky-600 text-white' : `bg-white ${textColors.secondary}`
+              view === 'day' ? tokens.toggleButton.active : tokens.toggleButton.idle
             }`}
           >
             {t('scheduler.viewDay')}
@@ -71,7 +71,7 @@ export function CalendarDayHeader({
             type="button"
             onClick={() => { onViewChange('week') }}
             className={`px-3 py-1.5 text-sm font-medium ${
-              view === 'week' ? 'bg-sky-600 text-white' : `bg-white ${textColors.secondary}`
+              view === 'week' ? tokens.toggleButton.active : tokens.toggleButton.idle
             }`}
           >
             {t('scheduler.viewWeek')}
