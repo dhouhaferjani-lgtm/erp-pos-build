@@ -33,6 +33,12 @@ final readonly class CreateTimeEntryOnWorkOrderStarted
         /** @var \DateTimeImmutable $startedAt */
         $startedAt = $event->started_at; // @phpstan-ignore property.notFound
 
+        // A WO can be started without an assigned primary technician — the time-entry
+        // only opens once a technician is assigned. Skip silently on empty id.
+        if ($profileId === '') {
+            return;
+        }
+
         $this->timeEntryService->start($profileId, $workOrderId, $startedAt);
     }
 }

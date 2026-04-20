@@ -77,21 +77,29 @@ export function TransitionBar({
           {t('actions.complete')}
         </button>
       )}
-      {nextStates.map((next) =>
-        (next === 'approved' && canApprove) || (next !== 'approved' && canTransition) ? (
-          <button
-            key={next}
-            type="button"
-            className={SECONDARY_BUTTON}
-            onClick={() => {
-              onTransition(next)
-            }}
-            disabled={isPending}
-          >
-            {t(`actions.transitionTo.${next}`)}
-          </button>
-        ) : null
-      )}
+      {nextStates
+        .filter(
+          (next) =>
+            // Primary "approve" button at top handles quoted→approved; skip secondary
+            !(current === 'quoted' && next === 'approved') &&
+            // Primary "complete" button (with mileage dialog) handles in_progress→completed; skip secondary
+            !(current === 'in_progress' && next === 'completed')
+        )
+        .map((next) =>
+          (next === 'approved' && canApprove) || (next !== 'approved' && canTransition) ? (
+            <button
+              key={next}
+              type="button"
+              className={SECONDARY_BUTTON}
+              onClick={() => {
+                onTransition(next)
+              }}
+              disabled={isPending}
+            >
+              {t(`actions.transitionTo.${next}`)}
+            </button>
+          ) : null
+        )}
       {canCancel && current !== 'closed' && current !== 'cancelled' && (
         <button
           type="button"
