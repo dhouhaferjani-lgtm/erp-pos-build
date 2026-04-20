@@ -14,7 +14,7 @@ final class TechnicianProfileModelTest extends TestCase
 {
     public function test_table_and_fillable(): void
     {
-        $profile = new TechnicianProfile();
+        $profile = new TechnicianProfile;
         $this->assertSame('workshop_technician_profiles', $profile->getTable());
         $this->assertContains('skill_level', $profile->getFillable());
         $this->assertContains('specialties', $profile->getFillable());
@@ -25,7 +25,7 @@ final class TechnicianProfileModelTest extends TestCase
 
     public function test_casts_include_enum_casts(): void
     {
-        $profile = new TechnicianProfile();
+        $profile = new TechnicianProfile;
         $casts = $profile->getCasts();
         $this->assertSame(SkillLevel::class, $casts['skill_level']);
         $this->assertSame(EmploymentStatus::class, $casts['employment_status']);

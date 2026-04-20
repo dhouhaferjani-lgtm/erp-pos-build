@@ -18,6 +18,7 @@ use App\Modules\Workshop\Technician\Domain\TechnicianTimeEntry;
 use App\Modules\Workshop\Technician\Infrastructure\Listeners\CloseTimeEntryOnWorkOrderCompleted;
 use App\Modules\Workshop\Technician\Infrastructure\Listeners\CloseTimeEntryOnWorkOrderPaused;
 use App\Modules\Workshop\Technician\Infrastructure\Listeners\CreateTimeEntryOnWorkOrderStarted;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
@@ -81,7 +82,7 @@ final class TimeEntryEventDrivenTest extends TestCase
 
         $service->start($profile->id, (string) Str::uuid(), new \DateTimeImmutable('2026-04-20T09:00:00', new \DateTimeZone('UTC')));
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
         $service->start($profile->id, (string) Str::uuid(), new \DateTimeImmutable('2026-04-20T11:00:00', new \DateTimeZone('UTC')));
     }
 

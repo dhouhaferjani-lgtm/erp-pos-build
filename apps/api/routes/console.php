@@ -2,6 +2,7 @@
 
 use App\Modules\BatchExpiry\Jobs\DailyExpiryCheck;
 use App\Modules\Inventory\Application\Jobs\ExpireReservationsJob;
+use App\Modules\Workshop\Technician\Infrastructure\Commands\CheckExpiringCertifications;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -38,6 +39,6 @@ Schedule::command('enrichment:check-pending')
     ->withoutOverlapping();
 
 // Schedule: Dispatch TechnicianCertificationExpiring events daily at 3:00 AM
-Schedule::command(\App\Modules\Workshop\Technician\Infrastructure\Commands\CheckExpiringCertifications::class)
+Schedule::command(CheckExpiringCertifications::class)
     ->dailyAt('03:00')
     ->withoutOverlapping();
