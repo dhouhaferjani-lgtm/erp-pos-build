@@ -85,5 +85,11 @@
     "manual": "Manual",
     "odometer_photo": "Odometer photo",
     "external_api": "External API"
+  },
+  "page": {
+    "ownershipSection": "Ownership",
+    "mileageSection": "Mileage readings",
+    "transferOwnership": "Transfer ownership",
+    "logMileage": "Log mileage reading"
   }
 }

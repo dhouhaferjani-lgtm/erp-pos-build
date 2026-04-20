@@ -85,5 +85,11 @@
     "manual": "Manuel",
     "odometer_photo": "Photo odomètre",
     "external_api": "API externe"
+  },
+  "page": {
+    "ownershipSection": "Propriété",
+    "mileageSection": "Relevés kilométriques",
+    "transferOwnership": "Transférer la propriété",
+    "logMileage": "Enregistrer un relevé"
   }
 }
