@@ -46,25 +46,23 @@ class EventServiceProvider extends ServiceProvider
         ],
 
         // ----------------------------------------------------------------------
-        // Workshop/Technician + Vehicle mileage listeners for Plan B (WorkOrder)
-        // lifecycle events. The event classes are owned by Plan B and have not
-        // yet landed — entries are COMMENTED OUT until Plan B merges. Uncomment
-        // when Plan B ships `Workshop\WorkOrder\Domain\Events\*` with the
-        // signatures documented in the coordination memo.
+        // Workshop/Technician + Vehicle mileage listeners subscribing to the
+        // Plan B (WorkOrder) lifecycle events. Canonical event signatures live
+        // under \App\Modules\Workshop\WorkOrder\Domain\Events\*.
         // ----------------------------------------------------------------------
-        // \App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderStarted::class => [
-        //     \App\Modules\Workshop\Technician\Infrastructure\Listeners\CreateTimeEntryOnWorkOrderStarted::class,
-        // ],
-        // \App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderPaused::class => [
-        //     \App\Modules\Workshop\Technician\Infrastructure\Listeners\CloseTimeEntryOnWorkOrderPaused::class,
-        // ],
-        // \App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderResumed::class => [
-        //     \App\Modules\Workshop\Technician\Application\Listeners\ReopenTimeEntryOnWorkOrderResumed::class,
-        // ],
-        // \App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCompleted::class => [
-        //     \App\Modules\Workshop\Technician\Infrastructure\Listeners\CloseTimeEntryOnWorkOrderCompleted::class,
-        //     \App\Modules\Vehicle\Infrastructure\Listeners\WriteMileageReadingFromWorkOrderCompleted::class,
-        // ],
+        \App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderStarted::class => [
+            \App\Modules\Workshop\Technician\Infrastructure\Listeners\CreateTimeEntryOnWorkOrderStarted::class,
+        ],
+        \App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderPaused::class => [
+            \App\Modules\Workshop\Technician\Infrastructure\Listeners\CloseTimeEntryOnWorkOrderPaused::class,
+        ],
+        \App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderResumed::class => [
+            \App\Modules\Workshop\Technician\Application\Listeners\ReopenTimeEntryOnWorkOrderResumed::class,
+        ],
+        \App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCompleted::class => [
+            \App\Modules\Workshop\Technician\Infrastructure\Listeners\CloseTimeEntryOnWorkOrderCompleted::class,
+            \App\Modules\Vehicle\Infrastructure\Listeners\WriteMileageReadingFromWorkOrderCompleted::class,
+        ],
     ];
 
     /**

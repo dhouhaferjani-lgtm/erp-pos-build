@@ -25,3 +25,6 @@ parameters:
     parallel:
         maximumNumberOfProcesses: 4
         processTimeout: 300.0
+
+rules:
+    - App\PHPStan\Rules\WorkOrderStatusWriteOnlyViaTransitionService
