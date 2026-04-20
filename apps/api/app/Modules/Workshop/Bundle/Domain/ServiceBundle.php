@@ -9,12 +9,14 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Workshop\Bundle\Domain\Enums\BundlePricingMode;
 use Database\Factories\ServiceBundleFactory;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -31,13 +33,13 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property int|null $service_interval_km
  * @property int|null $service_interval_months
  * @property bool $is_active
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
  * @property-read Tenant $tenant
  * @property-read Company $company
- * @property-read \Illuminate\Database\Eloquent\Collection<int, ServiceBundleComponent> $components
- * @property-read \Illuminate\Database\Eloquent\Collection<int, ServiceBundleVehicleApplicability> $vehicleApplicabilities
+ * @property-read Collection<int, ServiceBundleComponent> $components
+ * @property-read Collection<int, ServiceBundleVehicleApplicability> $vehicleApplicabilities
  */
 class ServiceBundle extends Model
 {

@@ -10,6 +10,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Workshop\Bundle\Domain\Enums\BundlePricingMode;
 use App\Modules\Workshop\Bundle\Domain\ServiceBundle;
+use App\Modules\Workshop\Bundle\Domain\ServiceBundleVehicleApplicability;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
@@ -117,7 +118,7 @@ final class PermissionsTest extends TestCase
         $this->actingAs($user);
 
         $bundle = ServiceBundle::factory()->forCompany($this->tenant->id, $this->company->id)->create();
-        \App\Modules\Workshop\Bundle\Domain\ServiceBundleVehicleApplicability::factory()
+        ServiceBundleVehicleApplicability::factory()
             ->forBundle($bundle)->universal()->create();
 
         $response = $this->getJson('/api/v1/workshop/bundles/applicable');

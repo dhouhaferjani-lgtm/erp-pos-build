@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\Workshop\Bundle\Application\Services;
 
+use App\Modules\Product\Domain\Enums\VehicleTypeRef;
 use App\Modules\Workshop\Bundle\Application\Commands\AddComponentCommand;
 use App\Modules\Workshop\Bundle\Application\Commands\CreateBundleCommand;
 use App\Modules\Workshop\Bundle\Application\Commands\DeactivateBundleCommand;
 use App\Modules\Workshop\Bundle\Application\Commands\RemoveComponentCommand;
 use App\Modules\Workshop\Bundle\Application\Commands\SetVehicleApplicabilitiesCommand;
-use App\Modules\Product\Domain\Enums\VehicleTypeRef;
 use App\Modules\Workshop\Bundle\Application\Commands\UpdateBundleCommand;
 use App\Modules\Workshop\Bundle\Domain\Contracts\BundleRepositoryInterface;
 use App\Modules\Workshop\Bundle\Domain\Enums\BundleComponentType;

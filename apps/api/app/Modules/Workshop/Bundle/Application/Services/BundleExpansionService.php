@@ -15,6 +15,7 @@ use App\Modules\Workshop\Bundle\Domain\Exceptions\MixedVatInFixedBundleException
 use App\Modules\Workshop\Bundle\Domain\ServiceBundle;
 use App\Modules\Workshop\Bundle\Domain\ServiceBundleComponent;
 use App\Modules\Workshop\Bundle\Domain\ValueObjects\BundleExpansionLine;
+use App\Modules\Workshop\Bundle\Domain\ValueObjects\ComponentServiceRef;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Collection;
 
@@ -299,7 +300,7 @@ final readonly class BundleExpansionService
         throw BundleExpansionException::missingComponent($component->id);
     }
 
-    private function laborPrice(\App\Modules\Workshop\Bundle\Domain\ValueObjects\ComponentServiceRef $ref): string
+    private function laborPrice(ComponentServiceRef $ref): string
     {
         return $ref->pricing_type === PricingType::Hourly && $ref->hourly_rate !== null
             ? $ref->hourly_rate
