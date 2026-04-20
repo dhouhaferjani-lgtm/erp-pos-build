@@ -24,6 +24,11 @@ const SPECIALTY_FILTERS: SpecialtyCode[] = [
   'general_service',
 ]
 
+/** Type guard matching a SpecialtyCode without a type assertion. */
+function isSpecialtyCode(value: string): value is SpecialtyCode {
+  return (SPECIALTY_FILTERS as string[]).includes(value)
+}
+
 export function TeamListPage() {
   const { t } = useTranslation('workshop-technicians')
   const [activeOnly, setActiveOnly] = useState(true)
@@ -67,7 +72,8 @@ export function TeamListPage() {
           <select
             value={specialty}
             onChange={(e) => {
-              setSpecialty(e.target.value as SpecialtyCode | '')
+              const value = e.target.value
+              setSpecialty(value === '' || isSpecialtyCode(value) ? value : '')
             }}
             className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
           >

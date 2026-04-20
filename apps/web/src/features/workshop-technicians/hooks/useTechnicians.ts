@@ -34,7 +34,14 @@ export function useTechnicians(filters: TechnicianListFilters = {}) {
 export function useTechnician(id: string | undefined) {
   return useQuery<TechnicianProfile>({
     queryKey: technicianKeys.detail(id ?? ''),
-    queryFn: () => technicianApi.get(id as string),
+    queryFn: () => {
+      if (typeof id !== 'string' || id.length === 0) {
+        // Should be unreachable thanks to `enabled` below, but narrows
+        // the type for `technicianApi.get(id)` without a cast.
+        return Promise.reject(new Error('Technician id is required'))
+      }
+      return technicianApi.get(id)
+    },
     enabled: typeof id === 'string' && id.length > 0,
     staleTime: 60 * 1000,
   })
@@ -45,7 +52,14 @@ export function useTechnicianAvailability(query: AvailabilityQuery | null) {
     queryKey: query
       ? technicianKeys.availability(query)
       : [...technicianKeys.all, 'availability', 'idle'],
-    queryFn: () => technicianApi.available(query as AvailabilityQuery),
+    queryFn: () => {
+      if (query === null) {
+        // Unreachable when `enabled: query !== null` gates the query, but
+        // satisfies strict type checking without a type assertion.
+        return Promise.reject(new Error('Availability query is required'))
+      }
+      return technicianApi.available(query)
+    },
     enabled: query !== null,
     staleTime: 30 * 1000,
   })
