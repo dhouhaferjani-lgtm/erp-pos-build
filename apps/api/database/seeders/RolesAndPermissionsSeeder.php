@@ -57,6 +57,10 @@ class RolesAndPermissionsSeeder extends Seeder
             'modifier-groups.view',
             'modifier-groups.manage',
 
+            // Workshop Service Bundles (automotive menu pricing)
+            'workshop-bundles.view',
+            'workshop-bundles.manage',
+
             // Menu Management
             'menus.view',
             'menus.manage',
@@ -305,6 +309,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'settings.view', 'settings.manage',
             'composite-items.view', 'composite-items.create', 'composite-items.update', 'composite-items.delete', 'composite-items.manage-recipes',
             'modifier-groups.view', 'modifier-groups.manage',
+            'workshop-bundles.view', 'workshop-bundles.manage',
             'menus.view', 'menus.manage',
             'promotions.view', 'promotions.manage',
             'coupons.view', 'coupons.manage',
@@ -390,6 +395,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'vehicles.view',
             'inventory.view',
             'work-orders.view', 'work-orders.update', 'work-orders.complete',
+            'workshop-bundles.view',
         ]);
         $this->command->info('Created role: technician');
 
@@ -410,6 +416,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'deliveries.view', 'deliveries.create',
             'payments.view', 'payments.create',
             'work-orders.view', 'work-orders.create', 'work-orders.update',
+            'workshop-bundles.view', 'workshop-bundles.manage',
             'marketplace.browse',
             'catalog_cart.view', 'catalog_cart.create',
         ]);
