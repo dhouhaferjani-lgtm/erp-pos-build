@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Workshop\WorkOrder\Infrastructure;
 
+use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderAuthoringService;
+use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderBundleService;
+use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderLineService;
 use App\Modules\Workshop\WorkOrder\Domain\Contracts\WorkOrderLineRepositoryInterface;
 use App\Modules\Workshop\WorkOrder\Domain\Contracts\WorkOrderRepositoryInterface;
 use App\Modules\Workshop\WorkOrder\Domain\Contracts\WorkOrderSequenceInterface;
@@ -15,9 +18,8 @@ use Illuminate\Support\ServiceProvider;
 /**
  * Service provider for the Workshop/WorkOrder submodule.
  *
- * Binds Domain-layer repository contracts to Eloquent implementations.
- * Transition-service + application-service bindings land in later tasks
- * (10-14). Routes (Task 17) are loaded in `boot()`.
+ * Binds Domain-layer repository contracts to Eloquent implementations and
+ * wires application services. Routes (Task 15) are loaded in `boot()`.
  */
 final class WorkshopWorkOrderServiceProvider extends ServiceProvider
 {
@@ -35,5 +37,10 @@ final class WorkshopWorkOrderServiceProvider extends ServiceProvider
             WorkOrderSequenceInterface::class,
             EloquentWorkOrderSequence::class,
         );
+
+        $this->app->singleton(WorkOrderAuthoringService::class);
+        $this->app->singleton(WorkOrderLineService::class);
+        $this->app->singleton(WorkOrderBundleService::class);
+        // TransitionService and CreationService bindings land in Tasks 12 + 14.
     }
 }
