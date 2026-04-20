@@ -19,6 +19,7 @@ export const StorageKeys = {
   COMPANIES: 'companies',
   TERMINAL: 'terminal',
   PENDING_TERMINAL_ID: 'pending_terminal_id',
+  SHIFT: 'current_shift',
 } as const;
 
 const ENCRYPTED_KEYS = new Set<string>([StorageKeys.TOKEN]);

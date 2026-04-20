@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Menu\Presentation\Controllers;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Menu\Application\DTOs\ActiveMenuData;
 use App\Modules\Menu\Application\Services\MenuResolutionService;
-use App\Modules\Company\Services\CompanyContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 

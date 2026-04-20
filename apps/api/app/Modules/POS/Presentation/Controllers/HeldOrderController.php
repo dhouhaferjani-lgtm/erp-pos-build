@@ -6,12 +6,15 @@ namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\HeldOrderService;
+use App\Modules\POS\Domain\HeldOrder;
 use App\Modules\POS\Presentation\Requests\HoldOrderRequest;
 use App\Modules\POS\Presentation\Resources\HeldOrderResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 
 /**
  * POS Held Order Controller
@@ -35,7 +38,7 @@ final class HeldOrderController extends Controller
         try {
             $validated = $request->validated();
 
-            /** @var \App\Modules\Identity\Domain\User $user */
+            /** @var User $user */
             $user = Auth::user();
 
             $heldOrder = $this->heldOrderService->holdOrder(
@@ -51,7 +54,7 @@ final class HeldOrderController extends Controller
                 'data' => new HeldOrderResource($heldOrder),
                 'meta' => [
                     'timestamp' => now()->toIso8601String(),
-                    'request_id' => $request->header('X-Request-Id', (string) \Illuminate\Support\Str::uuid()),
+                    'request_id' => $request->header('X-Request-Id', (string) Str::uuid()),
                 ],
             ], 201);
         } catch (\InvalidArgumentException $e) {
@@ -85,7 +88,7 @@ final class HeldOrderController extends Controller
             'data' => HeldOrderResource::collection($heldOrders),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
-                'request_id' => $request->header('X-Request-Id', (string) \Illuminate\Support\Str::uuid()),
+                'request_id' => $request->header('X-Request-Id', (string) Str::uuid()),
             ],
         ]);
     }
@@ -99,14 +102,14 @@ final class HeldOrderController extends Controller
     {
         $companyId = $this->companyContext->requireCompanyId();
 
-        $heldOrder = \App\Modules\POS\Domain\HeldOrder::where('company_id', $companyId)
+        $heldOrder = HeldOrder::where('company_id', $companyId)
             ->findOrFail($id);
 
         return response()->json([
             'data' => new HeldOrderResource($heldOrder),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
-                'request_id' => $request->header('X-Request-Id', (string) \Illuminate\Support\Str::uuid()),
+                'request_id' => $request->header('X-Request-Id', (string) Str::uuid()),
             ],
         ]);
     }
@@ -125,7 +128,7 @@ final class HeldOrderController extends Controller
                 'data' => new HeldOrderResource($heldOrder),
                 'meta' => [
                     'timestamp' => now()->toIso8601String(),
-                    'request_id' => $request->header('X-Request-Id', (string) \Illuminate\Support\Str::uuid()),
+                    'request_id' => $request->header('X-Request-Id', (string) Str::uuid()),
                 ],
             ]);
         } catch (\RuntimeException $e) {
@@ -153,7 +156,7 @@ final class HeldOrderController extends Controller
             ],
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
-                'request_id' => $request->header('X-Request-Id', (string) \Illuminate\Support\Str::uuid()),
+                'request_id' => $request->header('X-Request-Id', (string) Str::uuid()),
             ],
         ]);
     }

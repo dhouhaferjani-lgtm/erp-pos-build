@@ -15,12 +15,14 @@ use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Inventory\Application\Services\StockReservationService;
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
+use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockReservation;
 use App\Modules\Marketplace\Domain\Enums\MarketplaceOrderStatus;
 use App\Modules\Marketplace\Domain\Models\BuyerSellerMapping;
 use App\Modules\Marketplace\Domain\Models\MarketplaceListing;
 use App\Modules\Marketplace\Domain\Models\MarketplaceOrder;
 use App\Modules\Marketplace\Domain\Models\MarketplaceOrderLine;
+use App\Modules\Marketplace\Domain\Models\MarketplaceSeller;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use Illuminate\Support\Facades\DB;
@@ -52,7 +54,7 @@ class MarketplaceOrderService
         $sellerCompany = Company::findOrFail($seller->company_id);
 
         // Find the first stock level location for this product
-        $stockLevel = \App\Modules\Inventory\Domain\StockLevel::where('product_id', $listing->source_product_id)
+        $stockLevel = StockLevel::where('product_id', $listing->source_product_id)
             ->where('company_id', $sellerCompany->id)
             ->where('quantity', '>', 0)
             ->first();
@@ -93,7 +95,7 @@ class MarketplaceOrderService
                 throw new \DomainException('All items in a marketplace order must be from the same seller');
             }
 
-            /** @var \App\Modules\Marketplace\Domain\Models\MarketplaceSeller $seller */
+            /** @var MarketplaceSeller $seller */
             $seller = $sellers->first();
 
             // Calculate totals
@@ -201,7 +203,7 @@ class MarketplaceOrderService
      * Ensure BuyerSellerMapping exists, auto-creating partner records on first order.
      */
     private function ensureBuyerSellerMapping(
-        \App\Modules\Marketplace\Domain\Models\MarketplaceSeller $seller,
+        MarketplaceSeller $seller,
         Company $buyerCompany,
     ): BuyerSellerMapping {
         $mapping = BuyerSellerMapping::where('seller_id', $seller->id)
@@ -349,7 +351,7 @@ class MarketplaceOrderService
      * Update seller volume tracking counters.
      */
     private function updateSellerVolume(
-        \App\Modules\Marketplace\Domain\Models\MarketplaceSeller $seller,
+        MarketplaceSeller $seller,
         string $subtotal,
         int $itemCount,
     ): void {

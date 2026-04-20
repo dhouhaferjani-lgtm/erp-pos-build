@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Application\Services\BankReconciliationService;
 use App\Modules\Treasury\Domain\BankReconciliation;
 use App\Modules\Treasury\Domain\BankReconciliationItem;
@@ -75,7 +76,7 @@ class BankReconciliationController extends Controller
         $companyId = $this->companyContext->requireCompanyId();
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
         $userId = (string) $user->id;
 
@@ -105,7 +106,7 @@ class BankReconciliationController extends Controller
     {
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
         $userId = (string) $user->id;
 
@@ -159,7 +160,7 @@ class BankReconciliationController extends Controller
     {
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
         $userId = (string) $user->id;
 

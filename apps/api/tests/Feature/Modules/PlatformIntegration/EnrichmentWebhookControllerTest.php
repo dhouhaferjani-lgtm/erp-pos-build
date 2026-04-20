@@ -35,7 +35,7 @@ class EnrichmentWebhookControllerTest extends TestCase
         ], JSON_THROW_ON_ERROR);
 
         $timestamp = (string) time();
-        $signature = 'sha256=' . hash_hmac('sha256', $timestamp . '.' . $body, $this->secret);
+        $signature = 'sha256='.hash_hmac('sha256', $timestamp.'.'.$body, $this->secret);
 
         $response = $this->call(
             'POST',
@@ -116,7 +116,7 @@ class EnrichmentWebhookControllerTest extends TestCase
         ], JSON_THROW_ON_ERROR);
 
         $timestamp = (string) time();
-        $signature = 'sha256=' . hash_hmac('sha256', $timestamp . '.' . $body, $this->secret);
+        $signature = 'sha256='.hash_hmac('sha256', $timestamp.'.'.$body, $this->secret);
 
         $response = $this->call(
             'POST',

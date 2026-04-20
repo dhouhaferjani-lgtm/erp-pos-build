@@ -8,8 +8,10 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\CashDrawerOperation;
 use App\Modules\POS\Domain\Events\CashDrawerOperationRecorded;
 use App\Modules\POS\Domain\Shift;
+use App\Modules\POS\Domain\Terminal;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
+use Illuminate\Database\Eloquent\Collection;
 
 /**
  * Service for managing cash drawer operations.
@@ -250,7 +252,7 @@ final class CashDrawerService
      * Get all operations for a shift
      *
      * @param  Shift  $shift  The shift to get operations for
-     * @return \Illuminate\Database\Eloquent\Collection<int, CashDrawerOperation>
+     * @return Collection<int, CashDrawerOperation>
      */
     public function getShiftOperations(Shift $shift)
     {
@@ -264,7 +266,7 @@ final class CashDrawerService
      *
      * @param  Shift  $shift  The shift to get operations for
      * @param  string  $operationType  Operation type filter
-     * @return \Illuminate\Database\Eloquent\Collection<int, CashDrawerOperation>
+     * @return Collection<int, CashDrawerOperation>
      */
     public function getOperationsByType(Shift $shift, string $operationType)
     {
@@ -300,7 +302,7 @@ final class CashDrawerService
     {
         $shift->loadMissing('terminal');
 
-        /** @var \App\Modules\POS\Domain\Terminal $terminal */
+        /** @var Terminal $terminal */
         $terminal = $shift->terminal;
 
         event(new CashDrawerOperationRecorded(

@@ -12,6 +12,7 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Expense\Application\Services\ExpenseService;
 use App\Modules\Expense\Presentation\Requests\ExpenseRequest;
 use App\Modules\Expense\Presentation\Resources\ExpenseResource;
+use App\Modules\Identity\Domain\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -99,7 +100,7 @@ class ExpenseController extends Controller
             ]
         );
 
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
 
         $expense = $this->expenseService->create($data, $user);
@@ -218,7 +219,7 @@ class ExpenseController extends Controller
             ], 422);
         }
 
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
 
         $expense = $this->expenseService->post($expense, $user);

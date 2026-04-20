@@ -6,14 +6,15 @@ namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\ReceiptCreationService;
 use App\Modules\POS\Application\Services\ReceiptPaymentService;
 use App\Modules\POS\Application\Services\ReceiptPdfService;
 use App\Modules\POS\Application\Services\ReceiptPrintAuditService;
 use App\Modules\POS\Application\Services\ReceiptReturnService;
 use App\Modules\POS\Application\Services\ReceiptVoidService;
-use App\Modules\POS\Domain\Enums\PrintMethod;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
+use App\Modules\POS\Domain\Enums\PrintMethod;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Exceptions\DiscountExceedsLimitException;
 use App\Modules\POS\Domain\Exceptions\DiscountNotAllowedException;
@@ -166,7 +167,7 @@ final class ReceiptController extends Controller
             ], 422);
         }
 
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = Auth::user();
 
         $voidedReceipt = $this->receiptVoidService->voidReceipt(
@@ -201,7 +202,7 @@ final class ReceiptController extends Controller
         try {
             $validated = $request->validated();
 
-            /** @var \App\Modules\Identity\Domain\User $user */
+            /** @var User $user */
             $user = Auth::user();
 
             $returnReceipt = $this->receiptReturnService->processReturn(
@@ -415,7 +416,7 @@ final class ReceiptController extends Controller
 
         $receipt = Receipt::where('company_id', $companyId)->findOrFail($id);
 
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = Auth::user();
 
         $printRecord = $this->receiptPrintAuditService->recordPrint(
@@ -436,7 +437,7 @@ final class ReceiptController extends Controller
      *
      * Opens in browser print dialog instead of downloading.
      */
-    public function streamPdf(string $id): \Illuminate\Http\Response
+    public function streamPdf(string $id): Response
     {
         Gate::authorize('pos.view_receipts');
 
@@ -444,7 +445,7 @@ final class ReceiptController extends Controller
 
         $receipt = Receipt::where('company_id', $companyId)->findOrFail($id);
 
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = Auth::user();
 
         $printRecord = $this->receiptPrintAuditService->recordPrint(

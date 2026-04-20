@@ -310,8 +310,8 @@ final class PosAnalyticsService
             ->whereNotNull('closed_at');
 
         $avgTimeExpr = $isSqlite
-            ? "COALESCE(AVG((julianday(closed_at) - julianday(opened_at)) * 1440), 0)"
-            : "COALESCE(AVG(EXTRACT(EPOCH FROM (closed_at - opened_at)) / 60), 0)";
+            ? 'COALESCE(AVG((julianday(closed_at) - julianday(opened_at)) * 1440), 0)'
+            : 'COALESCE(AVG(EXTRACT(EPOCH FROM (closed_at - opened_at)) / 60), 0)';
 
         $avgTableTime = (clone $closedOrders)
             ->selectRaw("{$avgTimeExpr} as avg_minutes")
@@ -332,7 +332,7 @@ final class PosAnalyticsService
 
         $hourExpr = $isSqlite
             ? "CAST(strftime('%H', opened_at) AS INTEGER)"
-            : "EXTRACT(HOUR FROM opened_at)::integer";
+            : 'EXTRACT(HOUR FROM opened_at)::integer';
 
         $peakHours = DB::table('pos_orders')
             ->where('company_id', $companyId)
@@ -385,7 +385,7 @@ final class PosAnalyticsService
             'hour' => "strftime('%Y-%m-%d %H:00:00', posted_at)",
             'week' => "date(posted_at, 'weekday 0', '-6 days')",
             'month' => "strftime('%Y-%m-01', posted_at)",
-            default => "date(posted_at)",
+            default => 'date(posted_at)',
         };
     }
 }

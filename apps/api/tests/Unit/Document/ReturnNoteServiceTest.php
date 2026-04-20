@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Document;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Domain\Document;
@@ -24,6 +25,7 @@ use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class ReturnNoteServiceTest extends TestCase
@@ -58,10 +60,10 @@ class ReturnNoteServiceTest extends TestCase
 
         // Create location manually (no factory exists)
         $this->location = Location::create([
-            'id' => \Illuminate\Support\Str::uuid()->toString(),
+            'id' => Str::uuid()->toString(),
             'company_id' => $this->company->id,
             'name' => 'Test Location',
-            'type' => \App\Modules\Company\Domain\Enums\LocationType::Shop,
+            'type' => LocationType::Shop,
             'is_default' => true,
             'is_active' => true,
             'pos_enabled' => false,

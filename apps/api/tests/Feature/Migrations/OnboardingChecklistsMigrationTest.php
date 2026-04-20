@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Migrations;
 
+use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -90,7 +92,7 @@ class OnboardingChecklistsMigrationTest extends TestCase
     public function test_completed_at_is_nullable(): void
     {
         // Test by creating a record without completed_at
-        $tenant = \App\Modules\Tenant\Domain\Tenant::factory()->create();
+        $tenant = Tenant::factory()->create();
 
         \DB::table('onboarding_checklists')->insert([
             'tenant_id' => $tenant->id,
@@ -110,7 +112,7 @@ class OnboardingChecklistsMigrationTest extends TestCase
 
     public function test_tenant_id_step_key_unique_constraint(): void
     {
-        $tenant = \App\Modules\Tenant\Domain\Tenant::factory()->create();
+        $tenant = Tenant::factory()->create();
 
         // Insert first record
         \DB::table('onboarding_checklists')->insert([
@@ -125,7 +127,7 @@ class OnboardingChecklistsMigrationTest extends TestCase
         ]);
 
         // Expect duplicate key exception
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
         // Attempt to insert duplicate
         \DB::table('onboarding_checklists')->insert([
@@ -142,7 +144,7 @@ class OnboardingChecklistsMigrationTest extends TestCase
 
     public function test_order_column_default_value(): void
     {
-        $tenant = \App\Modules\Tenant\Domain\Tenant::factory()->create();
+        $tenant = Tenant::factory()->create();
 
         \DB::table('onboarding_checklists')->insert([
             'tenant_id' => $tenant->id,

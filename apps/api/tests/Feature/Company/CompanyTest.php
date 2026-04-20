@@ -11,6 +11,7 @@ use App\Modules\Company\Domain\Enums\VerificationTier;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -203,7 +204,7 @@ class CompanyTest extends TestCase
             'tax_id' => 'SAME-TAX-ID',
         ]);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
         Company::create([
             'tenant_id' => $this->tenant->id,

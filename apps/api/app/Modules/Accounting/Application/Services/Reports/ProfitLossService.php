@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Services\AccountHierarchyService;
+use App\Modules\Accounting\Domain\Services\AccountNode;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -407,7 +408,7 @@ class ProfitLossService
      *
      * @return array{account_code: string, account_name: string, account_type: string, amount: numeric-string, level: int, is_parent: bool}
      */
-    private function formatProfitLossLine(\App\Modules\Accounting\Domain\Services\AccountNode $node): array
+    private function formatProfitLossLine(AccountNode $node): array
     {
         return [
             'account_code' => $node->account->code,

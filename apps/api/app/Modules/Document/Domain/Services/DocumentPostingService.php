@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Domain\Services;
 
+use App\Modules\Company\Domain\Company;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -259,7 +260,7 @@ final class DocumentPostingService
      */
     private function getCompanyGenesisSeed(Document $document): string
     {
-        /** @var \App\Modules\Company\Domain\Company $company */
+        /** @var Company $company */
         $company = $document->company;
 
         if ($company->fiscal_chain_seed === null) {

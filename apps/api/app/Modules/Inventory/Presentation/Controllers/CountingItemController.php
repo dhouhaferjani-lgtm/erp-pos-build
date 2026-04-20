@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\InventoryCountingService;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
 use App\Modules\Inventory\Domain\InventoryCounting;
@@ -28,7 +29,7 @@ class CountingItemController extends Controller
     public function toCount(Request $request, string $countingId): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
 
         $counting = InventoryCounting::forCompany($companyId)->findOrFail($countingId);
@@ -79,7 +80,7 @@ class CountingItemController extends Controller
         string $itemId
     ): JsonResponse {
         $companyId = $this->companyContext->requireCompanyId();
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
 
         $counting = InventoryCounting::forCompany($companyId)->findOrFail($countingId);
@@ -117,7 +118,7 @@ class CountingItemController extends Controller
     public function lookupByBarcode(Request $request, string $countingId): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
 
         $counting = InventoryCounting::forCompany($companyId)->findOrFail($countingId);
@@ -233,7 +234,7 @@ class CountingItemController extends Controller
     public function triggerThirdCount(Request $request, string $countingId): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
 
         $request->validate([
@@ -260,7 +261,7 @@ class CountingItemController extends Controller
     public function override(ManualOverrideRequest $request, string $itemId): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
 
         /** @var InventoryCountingItem $item */

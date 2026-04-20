@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Domain\Services;
 
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -281,7 +283,7 @@ class MultiPaymentService
     /**
      * Get partner account balance (unallocated payments).
      *
-     * @return array{partner_id: string, currency: string, unallocated_balance: string, deposit_count: int, deposits: \Illuminate\Database\Eloquent\Collection<int, Payment>}
+     * @return array{partner_id: string, currency: string, unallocated_balance: string, deposit_count: int, deposits: Collection<int, Payment>}
      */
     public function getPartnerAccountBalance(string $partnerId, string $currency): array
     {
@@ -329,10 +331,10 @@ class MultiPaymentService
     /**
      * Get document status after full payment
      */
-    private function getDocumentStatusAfterPayment(Document $document): \App\Modules\Document\Domain\Enums\DocumentStatus
+    private function getDocumentStatusAfterPayment(Document $document): DocumentStatus
     {
         return $document->type->canTransitionToPaid()
-            ? \App\Modules\Document\Domain\Enums\DocumentStatus::Paid
+            ? DocumentStatus::Paid
             : $document->status;
     }
 

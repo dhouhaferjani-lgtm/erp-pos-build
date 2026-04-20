@@ -9,11 +9,13 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Identity\Domain\User;
 use Database\Factories\CatalogCartFactory;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -26,12 +28,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property bool $is_shared
  * @property array<int, string>|null $shared_with_user_ids
  * @property string|null $notes
- * @property \Illuminate\Support\Carbon|null $expires_at
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $expires_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read User $user
  * @property-read Company $company
- * @property-read \Illuminate\Database\Eloquent\Collection<int, CatalogCartItem> $items
+ * @property-read Collection<int, CatalogCartItem> $items
  *
  * @method static Builder<static> active()
  * @method static Builder<static> forUser(string $userId)

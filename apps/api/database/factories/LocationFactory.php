@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
+use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -17,7 +18,7 @@ class LocationFactory extends Factory
     public function definition(): array
     {
         return [
-            'company_id' => \App\Modules\Company\Domain\Company::factory(),
+            'company_id' => Company::factory(),
             'name' => $this->faker->company().' - '.$this->faker->city(),
             'code' => strtoupper($this->faker->lexify('LOC-???')),
             'type' => 'shop',

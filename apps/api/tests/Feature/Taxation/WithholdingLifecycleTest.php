@@ -13,6 +13,7 @@ use App\Modules\Taxation\Application\Services\WithholdingHashChainService;
 use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
 use App\Modules\Taxation\Domain\Entities\WithholdingTaxRule;
 use App\Modules\Taxation\Domain\Enums\CertificateStatus;
+use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Taxation\Domain\Enums\WithholdingDirection;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Payment;
@@ -60,7 +61,7 @@ class WithholdingLifecycleTest extends TestCase
             ->create([
                 'name' => 'Lifecycle Partner',
                 'country_code' => 'TN',
-                'tax_status' => \App\Modules\Taxation\Domain\Enums\PartnerTaxStatus::NON_REGISTERED,
+                'tax_status' => PartnerTaxStatus::NON_REGISTERED,
                 'withholding_exempt' => false,
             ]);
 
@@ -169,8 +170,8 @@ class WithholdingLifecycleTest extends TestCase
 
         // Create and issue 3 certificates
         for ($i = 0; $i < 3; $i++) {
-            $document = $this->createInvoice(($i + 1) * 1000 . '.000');
-            $payment = $this->createPayment($document, ($i + 1) * 900 . '.000');
+            $document = $this->createInvoice(($i + 1) * 1000 .'.000');
+            $payment = $this->createPayment($document, ($i + 1) * 900 .'.000');
 
             $certData = $this->certificateService->createFromPayment($payment, $document);
             $issuedData = $this->certificateService->issue($certData->id, $this->user->id);
@@ -348,7 +349,7 @@ class WithholdingLifecycleTest extends TestCase
         return WithholdingTaxRule::create([
             'country_code' => 'TN',
             'code' => $code,
-            'name' => 'Test Rule ' . $code,
+            'name' => 'Test Rule '.$code,
             'transaction_type' => null,
             'partner_tax_status' => 'NON_REGISTERED',
             'rate' => $ratePercentage / 100,

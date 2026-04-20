@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\ValueObjects\ReservationSettings;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -15,9 +17,9 @@ return new class extends Migration
         });
 
         // Set defaults for existing companies using DTO
-        $defaultSettings = (new \App\Modules\Company\Domain\ValueObjects\ReservationSettings)->toArray();
+        $defaultSettings = (new ReservationSettings)->toArray();
 
-        \App\Modules\Company\Domain\Company::query()->each(function ($company) use ($defaultSettings) {
+        Company::query()->each(function ($company) use ($defaultSettings) {
             $company->reservation_settings = $defaultSettings;
             $company->save();
         });

@@ -10,7 +10,6 @@ use App\Modules\Catalog\Domain\Entities\Recipe;
 use App\Modules\Catalog\Domain\Entities\RecipeLine;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
-use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;

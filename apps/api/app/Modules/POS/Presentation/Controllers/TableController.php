@@ -13,13 +13,13 @@ use App\Modules\POS\Presentation\Requests\CreateFloorRequest;
 use App\Modules\POS\Presentation\Requests\CreateTableRequest;
 use App\Modules\POS\Presentation\Requests\SetTableStatusRequest;
 use App\Modules\POS\Presentation\Requests\UpdateFloorRequest;
-use Illuminate\Support\Facades\Gate;
 use App\Modules\POS\Presentation\Requests\UpdateTableRequest;
 use App\Modules\POS\Presentation\Resources\FloorResource;
 use App\Modules\POS\Presentation\Resources\TableResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Gate;
 
 final class TableController
 {

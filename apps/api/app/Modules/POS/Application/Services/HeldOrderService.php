@@ -7,6 +7,7 @@ namespace App\Modules\POS\Application\Services;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Domain\Enums\HeldOrderStatus;
 use App\Modules\POS\Domain\HeldOrder;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Collection;
 
 /**
@@ -69,7 +70,7 @@ final class HeldOrderService
      * Sets the order status to recalled and records the recall timestamp.
      *
      * @throws \RuntimeException If the order cannot be recalled
-     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException If order not found
+     * @throws ModelNotFoundException If order not found
      */
     public function recallOrder(string $heldOrderId): HeldOrder
     {
@@ -100,7 +101,7 @@ final class HeldOrderService
     /**
      * Discard (delete) a held order permanently.
      *
-     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException If order not found
+     * @throws ModelNotFoundException If order not found
      */
     public function discardOrder(string $heldOrderId): void
     {

@@ -13,6 +13,12 @@ vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({
   cleanupStuckReceipts: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('@/lib/db/repositories/cashDrawerRepository', () => ({
+  getPendingCashDrawerOps: vi.fn().mockResolvedValue([]),
+  updateCashDrawerOpStatus: vi.fn().mockResolvedValue(undefined),
+  cleanupSyncedCashDrawerOps: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('@/lib/db/repositories/syncLogRepository', () => ({
   logSyncOperation: vi.fn().mockResolvedValue(undefined),
   getSyncMetadata: vi.fn().mockResolvedValue(null),

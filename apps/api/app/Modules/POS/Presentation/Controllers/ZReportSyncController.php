@@ -11,9 +11,9 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Domain\ZReport;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Carbon;
 
 /**
  * Handles Z-report synchronization from offline POS terminals.

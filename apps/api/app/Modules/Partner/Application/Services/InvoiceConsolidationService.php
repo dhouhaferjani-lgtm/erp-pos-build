@@ -26,7 +26,7 @@ final class InvoiceConsolidationService
      */
     public function getNextConsolidationDate(Partner $partner): ?Carbon
     {
-        if (!$this->shouldConsolidate($partner)) {
+        if (! $this->shouldConsolidate($partner)) {
             return null;
         }
 

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Product;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
@@ -49,7 +51,7 @@ class CreateProductTest extends TestCase
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
@@ -67,7 +69,7 @@ class CreateProductTest extends TestCase
         UserCompanyMembership::create([
             'user_id' => $this->user->id,
             'company_id' => $this->company->id,
-            'role' => \App\Modules\Company\Domain\Enums\MembershipRole::Admin,
+            'role' => MembershipRole::Admin,
         ]);
 
         app(CompanyContext::class)->setCompanyId($this->company->id);
@@ -304,7 +306,7 @@ class CreateProductTest extends TestCase
         UserCompanyMembership::create([
             'user_id' => $viewerUser->id,
             'company_id' => $this->company->id,
-            'role' => \App\Modules\Company\Domain\Enums\MembershipRole::Viewer,
+            'role' => MembershipRole::Viewer,
         ]);
 
         $response = $this->actingAs($viewerUser, 'sanctum')

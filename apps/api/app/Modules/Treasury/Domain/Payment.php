@@ -11,11 +11,16 @@ use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
+use Database\Factories\PaymentFactory;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * Payment record for receivables and payables.
@@ -29,17 +34,17 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $repository_id
  * @property numeric-string $amount
  * @property string $currency
- * @property \Illuminate\Support\Carbon $payment_date
+ * @property Carbon $payment_date
  * @property PaymentStatus $status
  * @property PaymentType $payment_type
  * @property string|null $reference
  * @property string|null $notes
  * @property string|null $journal_entry_id
  * @property bool $is_reconciled
- * @property \Illuminate\Support\Carbon|null $reconciled_at
+ * @property Carbon|null $reconciled_at
  * @property string|null $created_by
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read Tenant $tenant
  * @property-read Company $company
  * @property-read Partner|null $partner
@@ -47,14 +52,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property-read PaymentInstrument|null $instrument
  * @property-read PaymentRepository|null $repository
  * @property-read User|null $createdBy
- * @property-read \Illuminate\Database\Eloquent\Collection<int, PaymentAllocation> $allocations
+ * @property-read Collection<int, PaymentAllocation> $allocations
  */
 class Payment extends Model
 {
-    use HasUuids;
+    /** @use HasFactory<PaymentFactory> */
+    use HasFactory;
 
-    /** @use \Illuminate\Database\Eloquent\Factories\HasFactory<\Database\Factories\PaymentFactory> */
-    use \Illuminate\Database\Eloquent\Factories\HasFactory;
+    use HasUuids;
 
     protected $table = 'payments';
 
@@ -298,9 +303,9 @@ class Payment extends Model
     /**
      * Create a new factory instance for the model.
      */
-    /** @return \Database\Factories\PaymentFactory */
-    protected static function newFactory(): \Illuminate\Database\Eloquent\Factories\Factory
+    /** @return PaymentFactory */
+    protected static function newFactory(): Factory
     {
-        return \Database\Factories\PaymentFactory::new();
+        return PaymentFactory::new();
     }
 }

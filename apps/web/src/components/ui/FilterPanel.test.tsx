@@ -3,12 +3,17 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FilterPanel } from './FilterPanel'
 
-// Mock react-i18next
+// Mock react-i18next.
+//
+// NOTE: The component now uses `t('filtersLabel')` (renamed from
+// `filters`) — keeping the old key would leave assertions looking for
+// the literal "Filters" string against rendered "filtersLabel".
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => {
       const translations: Record<string, string> = {
         filters: 'Filters',
+        filtersLabel: 'Filters',
         clearAll: 'Clear all',
       }
       return translations[key] || key

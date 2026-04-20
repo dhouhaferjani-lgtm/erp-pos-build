@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptPayment;
@@ -32,13 +33,21 @@ final class ReceiptPaymentFlowTest extends TestCase
     use RefreshDatabase;
 
     private Tenant $tenant;
+
     private Company $company;
+
     private User $user;
+
     private Account $cashAccount;
+
     private Account $revenueAccount;
+
     private PaymentMethod $paymentMethod;
+
     private PaymentRepository $repository;
+
     private Location $location;
+
     private Terminal $terminal;
 
     protected function setUp(): void
@@ -346,7 +355,7 @@ final class ReceiptPaymentFlowTest extends TestCase
         ]);
 
         // Create user-company membership
-        \App\Modules\Company\Domain\UserCompanyMembership::create([
+        UserCompanyMembership::create([
             'user_id' => $this->user->id,
             'company_id' => $this->company->id,
             'role' => 'admin',
@@ -399,7 +408,7 @@ final class ReceiptPaymentFlowTest extends TestCase
     /**
      * Create a receipt with all required FK fields.
      *
-     * @param array<string, mixed> $overrides
+     * @param  array<string, mixed>  $overrides
      */
     private function createReceipt(array $overrides = []): Receipt
     {

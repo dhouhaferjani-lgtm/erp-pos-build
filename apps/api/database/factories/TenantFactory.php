@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Modules\Tenant\Domain\Tenant>
+ * @extends Factory<Tenant>
  */
 class TenantFactory extends Factory
 {

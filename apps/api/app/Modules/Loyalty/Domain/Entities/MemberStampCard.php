@@ -5,27 +5,29 @@ declare(strict_types=1);
 namespace App\Modules\Loyalty\Domain\Entities;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
  * @property string $card_definition_id
  * @property string $enrollment_id
  * @property int $current_stamps
- * @property \Illuminate\Support\Carbon $started_at
- * @property \Illuminate\Support\Carbon|null $expires_at
- * @property \Illuminate\Support\Carbon|null $completed_at
- * @property \Illuminate\Support\Carbon|null $reward_claimed_at
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon $started_at
+ * @property Carbon|null $expires_at
+ * @property Carbon|null $completed_at
+ * @property Carbon|null $reward_claimed_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read StampCardDefinition $cardDefinition
  * @property-read Enrollment $enrollment
  */
 class MemberStampCard extends Model
 {
-    /** @use HasFactory<\Illuminate\Database\Eloquent\Factories\Factory<static>> */
+    /** @use HasFactory<Factory<static>> */
     use HasFactory;
 
     use HasUuids;

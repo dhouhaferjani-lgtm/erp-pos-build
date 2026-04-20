@@ -268,7 +268,7 @@ final class ReceiptPrintAuditTest extends TestCase
     }
 
     /**
-     * @param array<string, mixed> $overrides
+     * @param  array<string, mixed>  $overrides
      */
     private function createReceipt(array $overrides = []): Receipt
     {

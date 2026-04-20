@@ -6,6 +6,7 @@ namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Services\CashDrawerService;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Presentation\Requests\RecordDepositRequest;
@@ -62,7 +63,7 @@ final class CashDrawerController extends Controller
             ], 409);
         }
 
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
 
         $operation = $this->cashDrawerService->recordDeposit(
@@ -109,7 +110,7 @@ final class CashDrawerController extends Controller
             ], 409);
         }
 
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
 
         $operation = $this->cashDrawerService->recordPayout(

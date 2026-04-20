@@ -10,6 +10,7 @@ use App\Modules\Product\Domain\Enums\EnrichmentReviewStatus;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -21,12 +22,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property EnrichedProductData $enriched_data
  * @property string $enrichment_quality
  * @property string|null $assigned_barcode
- * @property \Illuminate\Support\Carbon|null $reviewed_at
+ * @property Carbon|null $reviewed_at
  * @property string|null $reviewed_by
  * @property array<string, bool>|null $accepted_fields
  * @property string|null $rejection_reason
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read Product $product
  * @property-read User|null $reviewer
  */

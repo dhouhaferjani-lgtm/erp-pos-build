@@ -7,10 +7,13 @@ namespace App\Modules\Taxation\Domain\Entities;
 use App\Modules\Taxation\Domain\Enums\VatPeriodStatus;
 use App\Modules\Taxation\Domain\Enums\VatPeriodType;
 use Database\Factories\VatPeriodFactory;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -18,8 +21,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $country_code
  * @property VatPeriodType $period_type
  * @property string $label
- * @property \Illuminate\Support\Carbon $period_start
- * @property \Illuminate\Support\Carbon $period_end
+ * @property Carbon $period_start
+ * @property Carbon $period_end
  * @property VatPeriodStatus $status
  * @property string|null $total_output_vat
  * @property string|null $total_input_vat
@@ -29,15 +32,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property numeric-string $amount_payable
  * @property array<string, mixed>|null $special_items
  * @property array<string, mixed>|null $declaration_data
- * @property \Illuminate\Support\Carbon|null $closed_at
+ * @property Carbon|null $closed_at
  * @property string|null $closed_by
- * @property \Illuminate\Support\Carbon|null $filed_at
+ * @property Carbon|null $filed_at
  * @property string|null $filed_by
  * @property string|null $filing_reference
  * @property string|null $notes
- * @property \Illuminate\Support\Carbon $created_at
- * @property \Illuminate\Support\Carbon $updated_at
- * @property-read \Illuminate\Database\Eloquent\Collection<int, VatPeriodBreakdown> $breakdowns
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
+ * @property-read Collection<int, VatPeriodBreakdown> $breakdowns
  */
 class VatPeriod extends Model
 {
@@ -107,10 +110,10 @@ class VatPeriod extends Model
     /**
      * Scope: filter by company
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<static>
+     * @param  Builder<static>  $query
+     * @return Builder<static>
      */
-    public function scopeForCompany(\Illuminate\Database\Eloquent\Builder $query, string $companyId): \Illuminate\Database\Eloquent\Builder
+    public function scopeForCompany(Builder $query, string $companyId): Builder
     {
         return $query->where('company_id', $companyId);
     }
@@ -118,10 +121,10 @@ class VatPeriod extends Model
     /**
      * Scope: filter by year (period_start falls within the year)
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<static>
+     * @param  Builder<static>  $query
+     * @return Builder<static>
      */
-    public function scopeForYear(\Illuminate\Database\Eloquent\Builder $query, int $year): \Illuminate\Database\Eloquent\Builder
+    public function scopeForYear(Builder $query, int $year): Builder
     {
         return $query->whereYear('period_start', $year);
     }

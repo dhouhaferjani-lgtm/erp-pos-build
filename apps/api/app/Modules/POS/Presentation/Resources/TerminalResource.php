@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Presentation\Resources;
 
+use App\Modules\POS\Domain\Terminal;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * @mixin \App\Modules\POS\Domain\Terminal
+ * @mixin Terminal
  */
 final class TerminalResource extends JsonResource
 {

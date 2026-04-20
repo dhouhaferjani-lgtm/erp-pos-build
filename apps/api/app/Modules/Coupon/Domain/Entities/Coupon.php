@@ -9,6 +9,7 @@ use App\Modules\Coupon\Domain\Enums\CouponStatus;
 use App\Modules\Coupon\Domain\Enums\CouponType;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -43,7 +44,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $deleted_at
  * @property-read Tenant $tenant
  * @property-read Company $company
- * @property-read \Illuminate\Database\Eloquent\Collection<int, CouponUsage> $usages
+ * @property-read Collection<int, CouponUsage> $usages
  */
 class Coupon extends Model
 {

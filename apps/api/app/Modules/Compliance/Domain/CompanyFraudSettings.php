@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * Company-specific fraud detection configuration.
@@ -25,8 +26,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property bool $alert_enabled
  * @property bool $auto_trigger_counting
  * @property bool $auto_restrict_access
- * @property \Illuminate\Support\Carbon $created_at
- * @property \Illuminate\Support\Carbon $updated_at
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
  * @property-read Company $company
  */
 class CompanyFraudSettings extends Model

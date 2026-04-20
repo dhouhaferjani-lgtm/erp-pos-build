@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\Menu\Presentation\Controllers;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Menu\Application\DTOs\MenuData;
 use App\Modules\Menu\Domain\Entities\Menu;
 use App\Modules\Menu\Presentation\Requests\StoreMenuRequest;
 use App\Modules\Menu\Presentation\Requests\UpdateMenuRequest;
-use App\Modules\Company\Services\CompanyContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;

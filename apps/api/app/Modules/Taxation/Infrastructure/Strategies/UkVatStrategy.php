@@ -25,7 +25,7 @@ class UkVatStrategy implements VatReportStrategyInterface
         $crossesYearBoundary = $fiscalYearStartMonth > 1;
         $nextYear = $year + 1;
         $labelSuffix = $crossesYearBoundary
-            ? $year . '/' . substr((string) $nextYear, 2)
+            ? $year.'/'.substr((string) $nextYear, 2)
             : (string) $year;
 
         for ($q = 0; $q < 4; $q++) {

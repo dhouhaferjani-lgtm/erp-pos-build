@@ -8,6 +8,7 @@ use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * POS receipt line batch allocation.
@@ -22,9 +23,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $batch_id
  * @property numeric-string $quantity
  * @property string $batch_number Snapshot at time of sale
- * @property \Illuminate\Support\Carbon $expiry_date Snapshot at time of sale
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon $expiry_date Snapshot at time of sale
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  */
 class ReceiptLineBatchAllocation extends Model
 {

@@ -277,7 +277,7 @@ final class TerminalLifecycleEventsTest extends TestCase
         $xml = $response->getContent();
         $this->assertNotEmpty($xml);
 
-        $doc = new \DOMDocument();
+        $doc = new \DOMDocument;
         $this->assertTrue($doc->loadXML($xml), 'JET export should produce valid XML');
 
         // Verify the EvenementsTerminal section exists
@@ -319,7 +319,7 @@ final class TerminalLifecycleEventsTest extends TestCase
         $response->assertStatus(200);
 
         $xml = $response->getContent();
-        $doc = new \DOMDocument();
+        $doc = new \DOMDocument;
         $doc->loadXML($xml);
 
         // Verify header contains VersionLogiciel

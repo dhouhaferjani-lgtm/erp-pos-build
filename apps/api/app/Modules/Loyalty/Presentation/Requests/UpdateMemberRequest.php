@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Loyalty\Presentation\Requests;
 
+use App\Modules\Identity\Domain\User;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -19,7 +20,7 @@ class UpdateMemberRequest extends FormRequest
      */
     public function rules(): array
     {
-        /** @var \App\Modules\Identity\Domain\User|null $user */
+        /** @var User|null $user */
         $user = $this->user();
         $tenantId = $user?->tenant_id;
         $memberId = $this->route('id');

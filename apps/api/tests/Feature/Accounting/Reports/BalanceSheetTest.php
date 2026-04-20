@@ -142,14 +142,14 @@ class BalanceSheetTest extends TestCase
     }
 
     /**
-     * @param list<array{account_id: string, debit: string, credit: string}> $lines
+     * @param  list<array{account_id: string, debit: string, credit: string}>  $lines
      */
     private function createPostedEntry(string $date, array $lines, string $description = 'Test entry'): JournalEntry
     {
         $entry = JournalEntry::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
-            'entry_number' => 'JE-' . uniqid(),
+            'entry_number' => 'JE-'.uniqid(),
             'entry_date' => $date,
             'description' => $description,
             'status' => JournalEntryStatus::Posted,

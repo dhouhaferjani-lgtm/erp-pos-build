@@ -1,63 +1,33 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter } from 'react-router-dom'
+import { screen, waitFor } from '@testing-library/react'
+import { renderWithProviders } from '@/test/renderWithProviders'
 import { Dashboard } from './Dashboard'
+import {
+  makeDashboardStats,
+  makeRecentDocument,
+  makeRecentPayment,
+} from './__fixtures__/dashboard'
 
-// Mock the API
-const { mockApiGet } = vi.hoisted(() => ({
-  mockApiGet: vi.fn(),
-}))
-
-vi.mock('../../lib/api', () => ({
-  apiGet: mockApiGet,
-  api: {
+// Mock the API. The dashboard uses `api.get` directly (not `apiGet`), so
+// mocking the axios-like instance is what matters. We also mock `apiGet`
+// because the onboarding query under the hood calls it.
+const { mockApi, mockApiGet } = vi.hoisted(() => ({
+  mockApi: {
     get: vi.fn(),
     post: vi.fn(),
     patch: vi.fn(),
     delete: vi.fn(),
   },
+  mockApiGet: vi.fn(),
 }))
 
-const createTestQueryClient = () =>
-  new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  })
-
-function TestWrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <QueryClientProvider client={createTestQueryClient()}>
-      <BrowserRouter>{children}</BrowserRouter>
-    </QueryClientProvider>
-  )
-}
-
-const mockDashboardStats = {
-  revenue: {
-    current: 15000,
-    previous: 12000,
-    change: 25,
-  },
-  invoices: {
-    total: 45,
-    pending: 12,
-    overdue: 3,
-  },
-  partners: {
-    total: 28,
-    newThisMonth: 5,
-  },
-  payments: {
-    received: 35000,
-    pending: 8000,
-  },
-}
+vi.mock('../../lib/api', () => ({
+  apiGet: mockApiGet,
+  api: mockApi,
+}))
 
 const mockRecentDocuments = [
-  {
+  makeRecentDocument({
     id: '1',
     document_number: 'INV-2025-0001',
     type: 'invoice',
@@ -65,8 +35,8 @@ const mockRecentDocuments = [
     total_amount: 1500,
     status: 'posted',
     created_at: '2025-01-15T10:00:00Z',
-  },
-  {
+  }),
+  makeRecentDocument({
     id: '2',
     document_number: 'QUO-2025-0001',
     type: 'quote',
@@ -74,48 +44,63 @@ const mockRecentDocuments = [
     total_amount: 2500,
     status: 'draft',
     created_at: '2025-01-14T10:00:00Z',
-  },
+  }),
 ]
 
 const mockRecentPayments = [
-  {
+  makeRecentPayment({
     id: '1',
     payment_number: 'PAY-2025-0001',
     partner_name: 'Acme Corp',
     amount: 1500,
     payment_method_name: 'Cash',
     created_at: '2025-01-15T10:00:00Z',
-  },
-  {
+  }),
+  makeRecentPayment({
     id: '2',
     payment_number: 'PAY-2025-0002',
     partner_name: 'Client Inc',
     amount: 2500,
     payment_method_name: 'Bank Transfer',
     created_at: '2025-01-14T10:00:00Z',
-  },
+  }),
 ]
+
+/**
+ * Route `api.get` calls by URL so each query resolves to the correct wire
+ * shape. `/dashboard/stats` uses the axios `{data:{data: ...}}` envelope;
+ * `/documents` and `/payments` use the flat `{data: {data: [...]}}` shape
+ * whose outer `.data` is consumed by the hook.
+ */
+function configureApiMocks() {
+  mockApi.get.mockImplementation((url: string) => {
+    if (url.includes('/dashboard/stats')) {
+      return Promise.resolve({ data: { data: makeDashboardStats() } })
+    }
+    if (url.includes('/documents')) {
+      return Promise.resolve({ data: { data: mockRecentDocuments } })
+    }
+    if (url.includes('/payments')) {
+      return Promise.resolve({ data: { data: mockRecentPayments } })
+    }
+    return Promise.resolve({ data: { data: [] } })
+  })
+  mockApiGet.mockImplementation((url: string) => {
+    if (url.includes('/onboarding/status')) {
+      return Promise.resolve([])
+    }
+    return Promise.resolve([])
+  })
+}
 
 describe('Dashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    configureApiMocks()
   })
 
   it('renders the dashboard with title', async () => {
-    mockApiGet.mockImplementation((url: string) => {
-      if (url.includes('/dashboard/stats')) {
-        return Promise.resolve(mockDashboardStats)
-      }
-      if (url.includes('/documents')) {
-        return Promise.resolve({ data: mockRecentDocuments })
-      }
-      if (url.includes('/payments')) {
-        return Promise.resolve({ data: mockRecentPayments })
-      }
-      return Promise.resolve({ data: [] })
-    })
-
-    render(<Dashboard />, { wrapper: TestWrapper })
+    renderWithProviders(<Dashboard />)
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /dashboard/i })).toBeInTheDocument()
@@ -123,20 +108,7 @@ describe('Dashboard', () => {
   })
 
   it('displays KPI cards', async () => {
-    mockApiGet.mockImplementation((url: string) => {
-      if (url.includes('/dashboard/stats')) {
-        return Promise.resolve(mockDashboardStats)
-      }
-      if (url.includes('/documents')) {
-        return Promise.resolve({ data: mockRecentDocuments })
-      }
-      if (url.includes('/payments')) {
-        return Promise.resolve({ data: mockRecentPayments })
-      }
-      return Promise.resolve({ data: [] })
-    })
-
-    render(<Dashboard />, { wrapper: TestWrapper })
+    renderWithProviders(<Dashboard />)
 
     await waitFor(() => {
       expect(screen.getByText(/revenue/i)).toBeInTheDocument()
@@ -145,30 +117,17 @@ describe('Dashboard', () => {
   })
 
   it('displays loading state initially', () => {
-    mockApiGet.mockImplementation(
+    mockApi.get.mockImplementation(
       () => new Promise((resolve) => setTimeout(resolve, 1000))
     )
 
-    render(<Dashboard />, { wrapper: TestWrapper })
+    renderWithProviders(<Dashboard />)
 
     expect(screen.getByText(/loading/i)).toBeInTheDocument()
   })
 
   it('displays recent documents section', async () => {
-    mockApiGet.mockImplementation((url: string) => {
-      if (url.includes('/dashboard/stats')) {
-        return Promise.resolve(mockDashboardStats)
-      }
-      if (url.includes('/documents')) {
-        return Promise.resolve({ data: mockRecentDocuments })
-      }
-      if (url.includes('/payments')) {
-        return Promise.resolve({ data: mockRecentPayments })
-      }
-      return Promise.resolve({ data: [] })
-    })
-
-    render(<Dashboard />, { wrapper: TestWrapper })
+    renderWithProviders(<Dashboard />)
 
     await waitFor(() => {
       expect(screen.getByText(/recent documents/i)).toBeInTheDocument()
@@ -177,20 +136,7 @@ describe('Dashboard', () => {
   })
 
   it('displays recent payments section', async () => {
-    mockApiGet.mockImplementation((url: string) => {
-      if (url.includes('/dashboard/stats')) {
-        return Promise.resolve(mockDashboardStats)
-      }
-      if (url.includes('/documents')) {
-        return Promise.resolve({ data: mockRecentDocuments })
-      }
-      if (url.includes('/payments')) {
-        return Promise.resolve({ data: mockRecentPayments })
-      }
-      return Promise.resolve({ data: [] })
-    })
-
-    render(<Dashboard />, { wrapper: TestWrapper })
+    renderWithProviders(<Dashboard />)
 
     await waitFor(() => {
       expect(screen.getByText(/recent payments/i)).toBeInTheDocument()
@@ -199,20 +145,7 @@ describe('Dashboard', () => {
   })
 
   it('has quick action buttons', async () => {
-    mockApiGet.mockImplementation((url: string) => {
-      if (url.includes('/dashboard/stats')) {
-        return Promise.resolve(mockDashboardStats)
-      }
-      if (url.includes('/documents')) {
-        return Promise.resolve({ data: mockRecentDocuments })
-      }
-      if (url.includes('/payments')) {
-        return Promise.resolve({ data: mockRecentPayments })
-      }
-      return Promise.resolve({ data: [] })
-    })
-
-    render(<Dashboard />, { wrapper: TestWrapper })
+    renderWithProviders(<Dashboard />)
 
     await waitFor(() => {
       expect(screen.getByRole('link', { name: /new invoice/i })).toBeInTheDocument()

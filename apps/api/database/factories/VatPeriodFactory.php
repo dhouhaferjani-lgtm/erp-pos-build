@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\DB;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Modules\Taxation\Domain\Entities\VatPeriod>
+ * @extends Factory<VatPeriod>
  */
 class VatPeriodFactory extends Factory
 {

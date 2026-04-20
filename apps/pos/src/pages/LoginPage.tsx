@@ -1,11 +1,14 @@
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore, type Company } from '@/stores/authStore';
+import { useConnectivityStore } from '@/stores/connectivityStore';
 import { getErrorMessage } from '@/lib/api';
+import { WifiOff } from 'lucide-react';
 
 export function LoginPage() {
   const { t } = useTranslation('pos');
   const { login, isLoading, companies, setCompany, companyId } = useAuthStore();
+  const isOnline = useConnectivityStore((s) => s.isOnline);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -55,6 +58,20 @@ export function LoginPage() {
               </button>
             ))}
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isOnline) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-md text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
+            <WifiOff className="h-8 w-8 text-red-500" />
+          </div>
+          <h2 className="text-xl font-bold text-gray-900">{t('auth.noConnection')}</h2>
+          <p className="mt-2 text-sm text-gray-500">{t('auth.noConnectionMessage')}</p>
         </div>
       </div>
     );

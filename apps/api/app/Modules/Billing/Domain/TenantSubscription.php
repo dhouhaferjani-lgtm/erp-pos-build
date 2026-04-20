@@ -7,6 +7,7 @@ namespace App\Modules\Billing\Domain;
 use App\Modules\Billing\Domain\Enums\SubscriptionStatus;
 use App\Modules\Billing\Domain\ValueObjects\Money;
 use App\Modules\Tenant\Domain\Tenant;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -23,20 +24,20 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string $billing_cycle
  * @property string|null $price
  * @property string $currency
- * @property \Carbon\Carbon|null $trial_ends_at
- * @property \Carbon\Carbon|null $current_period_start
- * @property \Carbon\Carbon|null $current_period_end
- * @property \Carbon\Carbon|null $cancelled_at
- * @property \Carbon\Carbon|null $ends_at
+ * @property Carbon|null $trial_ends_at
+ * @property Carbon|null $current_period_start
+ * @property Carbon|null $current_period_end
+ * @property Carbon|null $cancelled_at
+ * @property Carbon|null $ends_at
  * @property string|null $stripe_subscription_id
  * @property string|null $stripe_customer_id
- * @property \Carbon\Carbon|null $last_payment_at
- * @property \Carbon\Carbon|null $next_payment_due
+ * @property Carbon|null $last_payment_at
+ * @property Carbon|null $next_payment_due
  * @property string|null $notes
  * @property array<string, mixed> $metadata
- * @property \Carbon\Carbon $created_at
- * @property \Carbon\Carbon $updated_at
- * @property \Carbon\Carbon|null $deleted_at
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
+ * @property Carbon|null $deleted_at
  */
 final class TenantSubscription extends Model
 {

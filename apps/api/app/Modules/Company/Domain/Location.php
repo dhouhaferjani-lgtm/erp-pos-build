@@ -6,6 +6,8 @@ namespace App\Modules\Company\Domain;
 
 use App\Modules\Company\Domain\Enums\LocationType;
 use Carbon\Carbon;
+use Database\Factories\LocationFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -42,7 +44,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class Location extends Model
 {
-    /** @use HasFactory<\Database\Factories\LocationFactory> */
+    /** @use HasFactory<LocationFactory> */
     use HasFactory;
 
     use HasUuids;
@@ -50,9 +52,9 @@ class Location extends Model
     /**
      * Create a new factory instance for the model.
      */
-    protected static function newFactory(): \Database\Factories\LocationFactory
+    protected static function newFactory(): LocationFactory
     {
-        return \Database\Factories\LocationFactory::new();
+        return LocationFactory::new();
     }
 
     /**
@@ -146,10 +148,10 @@ class Location extends Model
     /**
      * Scope to filter by company.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<static>
+     * @param  Builder<static>  $query
+     * @return Builder<static>
      */
-    public function scopeForCompany(\Illuminate\Database\Eloquent\Builder $query, string $companyId): \Illuminate\Database\Eloquent\Builder
+    public function scopeForCompany(Builder $query, string $companyId): Builder
     {
         return $query->where('company_id', $companyId);
     }

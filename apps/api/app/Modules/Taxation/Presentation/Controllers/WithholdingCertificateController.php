@@ -6,11 +6,13 @@ namespace App\Modules\Taxation\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Application\DTOs\CreateWithholdingCertificateData;
 use App\Modules\Taxation\Application\Services\CertificatePDFService;
 use App\Modules\Taxation\Application\Services\TEJExportService;
 use App\Modules\Taxation\Application\Services\WithholdingCertificateService;
+use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
 use App\Modules\Taxation\Domain\Repositories\WithholdingCertificateRepositoryInterface;
 use App\Modules\Taxation\Presentation\Requests\CreateWithholdingCertificateRequest;
 use App\Modules\Taxation\Presentation\Requests\SubmitToTEJRequest;
@@ -18,6 +20,8 @@ use App\Modules\Taxation\Presentation\Requests\VoidCertificateRequest;
 use App\Modules\Taxation\Presentation\Resources\WithholdingCertificateResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Withholding Certificate Controller
@@ -130,7 +134,7 @@ class WithholdingCertificateController extends Controller
     public function issue(string $id, Request $request): JsonResponse
     {
         try {
-            /** @var \App\Modules\Identity\Domain\User $user */
+            /** @var User $user */
             $user = $request->user();
             $userId = (string) $user->id;
             $certificate = $this->certificateService->issue($id, $userId);
@@ -155,7 +159,7 @@ class WithholdingCertificateController extends Controller
     public function void(string $id, VoidCertificateRequest $request): JsonResponse
     {
         try {
-            /** @var \App\Modules\Identity\Domain\User $user */
+            /** @var User $user */
             $user = $request->user();
             $userId = (string) $user->id;
             $certificate = $this->certificateService->void(
@@ -184,7 +188,7 @@ class WithholdingCertificateController extends Controller
     public function submitTEJ(string $id, SubmitToTEJRequest $request): JsonResponse
     {
         try {
-            /** @var \App\Modules\Identity\Domain\User $user */
+            /** @var User $user */
             $user = $request->user();
             $userId = (string) $user->id;
             $certificate = $this->certificateService->submitToTEJ(
@@ -210,7 +214,7 @@ class WithholdingCertificateController extends Controller
     /**
      * Download certificate as PDF.
      */
-    public function downloadPDF(string $id): \Illuminate\Http\Response
+    public function downloadPDF(string $id): Response
     {
         $certificate = $this->certificateRepository->findById($id);
 
@@ -224,7 +228,7 @@ class WithholdingCertificateController extends Controller
     /**
      * Download TEJ XML for single certificate.
      */
-    public function downloadTEJXML(string $id): \Symfony\Component\HttpFoundation\StreamedResponse
+    public function downloadTEJXML(string $id): StreamedResponse
     {
         $certificate = $this->certificateRepository->findById($id);
 
@@ -245,7 +249,7 @@ class WithholdingCertificateController extends Controller
     /**
      * Download batch TEJ XML for multiple certificates.
      */
-    public function downloadBatchTEJXML(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
+    public function downloadBatchTEJXML(Request $request): StreamedResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
 
@@ -267,7 +271,7 @@ class WithholdingCertificateController extends Controller
 
         $certificatesCollection = collect(array_values($certificates));
         $xml = $this->tejExportService->generateBatchXML($certificatesCollection);
-        /** @var \App\Modules\Taxation\Domain\Entities\WithholdingCertificate $firstCertificate */
+        /** @var WithholdingCertificate $firstCertificate */
         $firstCertificate = $certificatesCollection->first();
         $filename = $this->tejExportService->generateFilename($firstCertificate, true);
 

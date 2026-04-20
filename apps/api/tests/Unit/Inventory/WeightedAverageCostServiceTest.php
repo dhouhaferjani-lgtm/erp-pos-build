@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Inventory;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\StockMovement;
@@ -12,6 +13,7 @@ use App\Modules\Product\Application\Services\MarginService;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 use Tests\Traits\WithCurrencyScale;
 
@@ -43,10 +45,10 @@ class WeightedAverageCostServiceTest extends TestCase
 
         // Create location manually (no factory exists yet)
         $this->location = Location::create([
-            'id' => \Illuminate\Support\Str::uuid()->toString(),
+            'id' => Str::uuid()->toString(),
             'company_id' => $this->company->id,
             'name' => 'Test Location',
-            'type' => \App\Modules\Company\Domain\Enums\LocationType::Shop,
+            'type' => LocationType::Shop,
             'is_default' => true,
             'is_active' => true,
             'pos_enabled' => false,

@@ -12,6 +12,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\POS\Domain\ReceiptLineBatchAllocation;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -113,7 +114,7 @@ class BatchTraceabilityController extends Controller
         $companyId = $this->companyContext->requireCompanyId();
 
         $query = DocumentLine::whereNotNull('batch_id')
-            ->whereHas('document', function (\Illuminate\Database\Eloquent\Builder $q) use ($partnerId, $companyId): void {
+            ->whereHas('document', function (Builder $q) use ($partnerId, $companyId): void {
                 $q->whereRaw('partner_id = ?', [$partnerId])
                     ->whereRaw('company_id = ?', [$companyId])
                     ->whereIn('type', [DocumentType::Invoice, DocumentType::DeliveryNote]);
@@ -128,11 +129,11 @@ class BatchTraceabilityController extends Controller
         }
 
         if ($request->has('date_from')) {
-            $query->whereHas('document', fn (\Illuminate\Database\Eloquent\Builder $q) => $q->whereRaw('document_date >= ?', [$request->input('date_from')]));
+            $query->whereHas('document', fn (Builder $q) => $q->whereRaw('document_date >= ?', [$request->input('date_from')]));
         }
 
         if ($request->has('date_to')) {
-            $query->whereHas('document', fn (\Illuminate\Database\Eloquent\Builder $q) => $q->whereRaw('document_date <= ?', [$request->input('date_to')]));
+            $query->whereHas('document', fn (Builder $q) => $q->whereRaw('document_date <= ?', [$request->input('date_to')]));
         }
 
         $lines = $query->get();

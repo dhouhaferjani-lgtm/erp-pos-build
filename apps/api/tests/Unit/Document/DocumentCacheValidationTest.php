@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Document;
 
+use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\DocumentCacheValidationService;
+use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -232,11 +234,11 @@ class DocumentCacheValidationTest extends TestCase
 
     private function getTestCompany()
     {
-        $tenant = \App\Modules\Tenant\Domain\Tenant::first();
+        $tenant = Tenant::first();
         if (! $tenant) {
-            $tenant = \App\Modules\Tenant\Domain\Tenant::factory()->create();
+            $tenant = Tenant::factory()->create();
         }
 
-        return \App\Modules\Company\Domain\Company::factory()->create(['tenant_id' => $tenant->id]);
+        return Company::factory()->create(['tenant_id' => $tenant->id]);
     }
 }

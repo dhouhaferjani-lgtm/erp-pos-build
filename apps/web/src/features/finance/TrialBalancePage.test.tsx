@@ -1,7 +1,11 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { renderWithProviders } from '@/test/renderWithProviders'
 import { TrialBalancePage } from './pages/TrialBalancePage'
+import {
+  makeTrialBalanceLine,
+  makeTrialBalanceReport,
+} from './__fixtures__/trialBalance'
 
 const { mockApiGet } = vi.hoisted(() => ({
   mockApiGet: vi.fn(),
@@ -18,25 +22,14 @@ vi.mock('@/hooks/usePermissions', () => ({
 }))
 
 describe('TrialBalancePage', () => {
-  let queryClient: QueryClient
-
   beforeEach(() => {
-    queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-      },
-    })
     vi.clearAllMocks()
   })
 
   it('renders page title', () => {
-    mockApiGet.mockResolvedValue([])
+    mockApiGet.mockResolvedValue(makeTrialBalanceReport({ lines: [] }))
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <TrialBalancePage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<TrialBalancePage />)
 
     expect(screen.getByText('Trial Balance')).toBeInTheDocument()
   })
@@ -46,40 +39,36 @@ describe('TrialBalancePage', () => {
       () => new Promise(() => {}) // Never resolves
     )
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <TrialBalancePage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<TrialBalancePage />)
 
     expect(screen.getByText(/loading/i)).toBeInTheDocument()
   })
 
   it('displays trial balance data', async () => {
-    const mockData = [
-      {
-        account_code: '1000',
-        account_name: 'Cash',
-        account_type: 'asset',
-        debit: '5000.00',
-        credit: '0.00',
-      },
-      {
-        account_code: '3000',
-        account_name: 'Capital',
-        account_type: 'equity',
-        debit: '0.00',
-        credit: '5000.00',
-      },
-    ]
-
-    mockApiGet.mockResolvedValue(mockData)
-
-    render(
-      <QueryClientProvider client={queryClient}>
-        <TrialBalancePage />
-      </QueryClientProvider>
+    mockApiGet.mockResolvedValue(
+      makeTrialBalanceReport({
+        lines: [
+          makeTrialBalanceLine({
+            account_code: '1000',
+            account_name: 'Cash',
+            account_type: 'asset',
+            debit: '5000.00',
+            credit: '0.00',
+          }),
+          makeTrialBalanceLine({
+            account_code: '3000',
+            account_name: 'Capital',
+            account_type: 'equity',
+            debit: '0.00',
+            credit: '5000.00',
+          }),
+        ],
+        total_debit: '5000.00',
+        total_credit: '5000.00',
+      }),
     )
+
+    renderWithProviders(<TrialBalancePage />)
 
     await waitFor(() => {
       expect(screen.getByText('1000')).toBeInTheDocument()
@@ -90,30 +79,30 @@ describe('TrialBalancePage', () => {
   })
 
   it('displays totals row', async () => {
-    const mockData = [
-      {
-        account_code: '1000',
-        account_name: 'Cash',
-        account_type: 'asset',
-        debit: '5000.00',
-        credit: '0.00',
-      },
-      {
-        account_code: '3000',
-        account_name: 'Capital',
-        account_type: 'equity',
-        debit: '0.00',
-        credit: '5000.00',
-      },
-    ]
-
-    mockApiGet.mockResolvedValue(mockData)
-
-    render(
-      <QueryClientProvider client={queryClient}>
-        <TrialBalancePage />
-      </QueryClientProvider>
+    mockApiGet.mockResolvedValue(
+      makeTrialBalanceReport({
+        lines: [
+          makeTrialBalanceLine({
+            account_code: '1000',
+            account_name: 'Cash',
+            account_type: 'asset',
+            debit: '5000.00',
+            credit: '0.00',
+          }),
+          makeTrialBalanceLine({
+            account_code: '3000',
+            account_name: 'Capital',
+            account_type: 'equity',
+            debit: '0.00',
+            credit: '5000.00',
+          }),
+        ],
+        total_debit: '5000.00',
+        total_credit: '5000.00',
+      }),
     )
+
+    renderWithProviders(<TrialBalancePage />)
 
     await waitFor(() => {
       expect(screen.getByText('Total')).toBeInTheDocument()
@@ -124,25 +113,17 @@ describe('TrialBalancePage', () => {
   })
 
   it('has export button', () => {
-    mockApiGet.mockResolvedValue([])
+    mockApiGet.mockResolvedValue(makeTrialBalanceReport({ lines: [] }))
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <TrialBalancePage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<TrialBalancePage />)
 
     expect(screen.getByText(/export/i)).toBeInTheDocument()
   })
 
   it('has date filter', () => {
-    mockApiGet.mockResolvedValue([])
+    mockApiGet.mockResolvedValue(makeTrialBalanceReport({ lines: [] }))
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <TrialBalancePage />
-      </QueryClientProvider>
-    )
+    renderWithProviders(<TrialBalancePage />)
 
     expect(screen.getByLabelText(/as of date/i)).toBeInTheDocument()
   })

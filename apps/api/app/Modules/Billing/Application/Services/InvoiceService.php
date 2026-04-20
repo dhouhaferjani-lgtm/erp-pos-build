@@ -11,6 +11,7 @@ use App\Modules\Billing\Domain\InvoiceItem;
 use App\Modules\Billing\Domain\TenantSubscription;
 use App\Modules\Tenant\Domain\Tenant;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
@@ -232,9 +233,9 @@ final class InvoiceService
     /**
      * Get invoices for a tenant.
      *
-     * @return \Illuminate\Database\Eloquent\Collection<int, Invoice>
+     * @return Collection<int, Invoice>
      */
-    public function getTenantInvoices(string $tenantId): \Illuminate\Database\Eloquent\Collection
+    public function getTenantInvoices(string $tenantId): Collection
     {
         return Invoice::where('tenant_id', $tenantId)
             ->orderBy('invoice_date', 'desc')
@@ -244,9 +245,9 @@ final class InvoiceService
     /**
      * Get unpaid invoices for a tenant.
      *
-     * @return \Illuminate\Database\Eloquent\Collection<int, Invoice>
+     * @return Collection<int, Invoice>
      */
-    public function getUnpaidInvoices(string $tenantId): \Illuminate\Database\Eloquent\Collection
+    public function getUnpaidInvoices(string $tenantId): Collection
     {
         return Invoice::where('tenant_id', $tenantId)
             ->whereIn('status', [
@@ -262,9 +263,9 @@ final class InvoiceService
     /**
      * Get overdue invoices.
      *
-     * @return \Illuminate\Database\Eloquent\Collection<int, Invoice>
+     * @return Collection<int, Invoice>
      */
-    public function getOverdueInvoices(): \Illuminate\Database\Eloquent\Collection
+    public function getOverdueInvoices(): Collection
     {
         return Invoice::whereIn('status', [
             InvoiceStatus::Pending,

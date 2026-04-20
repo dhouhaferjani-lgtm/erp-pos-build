@@ -7,6 +7,7 @@ namespace App\Modules\Accounting\Application\DTOs\Reports;
 use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\DataCollection;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 /**
  * AgedPayablesData
@@ -15,6 +16,7 @@ use Spatie\LaravelData\DataCollection;
  *
  * Shows outstanding vendor balances grouped by aging buckets with totals.
  */
+#[TypeScript]
 final class AgedPayablesData extends Data
 {
     /**

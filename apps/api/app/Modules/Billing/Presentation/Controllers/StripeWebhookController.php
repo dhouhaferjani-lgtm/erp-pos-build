@@ -19,6 +19,7 @@ use App\Modules\Billing\Notifications\PaymentFailedNotification;
 use App\Modules\Billing\Notifications\PaymentSucceededNotification;
 use App\Modules\Billing\Notifications\SubscriptionCancelledNotification;
 use App\Modules\Tenant\Domain\Tenant;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -114,10 +115,10 @@ final class StripeWebhookController extends Controller
             'stripe_subscription_id' => $stripeSubId,
             'status' => $this->mapStripeStatus((string) ($stripeSubscription['status'] ?? 'active')),
             'current_period_start' => isset($stripeSubscription['current_period_start'])
-                ? \Carbon\Carbon::createFromTimestamp((int) $stripeSubscription['current_period_start'])
+                ? Carbon::createFromTimestamp((int) $stripeSubscription['current_period_start'])
                 : null,
             'current_period_end' => isset($stripeSubscription['current_period_end'])
-                ? \Carbon\Carbon::createFromTimestamp((int) $stripeSubscription['current_period_end'])
+                ? Carbon::createFromTimestamp((int) $stripeSubscription['current_period_end'])
                 : null,
         ]);
 
@@ -146,10 +147,10 @@ final class StripeWebhookController extends Controller
         $updateData = [
             'status' => $this->mapStripeStatus((string) ($stripeSubscription['status'] ?? 'active')),
             'current_period_start' => isset($stripeSubscription['current_period_start'])
-                ? \Carbon\Carbon::createFromTimestamp((int) $stripeSubscription['current_period_start'])
+                ? Carbon::createFromTimestamp((int) $stripeSubscription['current_period_start'])
                 : null,
             'current_period_end' => isset($stripeSubscription['current_period_end'])
-                ? \Carbon\Carbon::createFromTimestamp((int) $stripeSubscription['current_period_end'])
+                ? Carbon::createFromTimestamp((int) $stripeSubscription['current_period_end'])
                 : null,
         ];
 
@@ -157,7 +158,7 @@ final class StripeWebhookController extends Controller
         if (! empty($stripeSubscription['cancel_at_period_end'])) {
             $updateData['status'] = SubscriptionStatus::Cancelling;
             if (isset($stripeSubscription['current_period_end'])) {
-                $updateData['ends_at'] = \Carbon\Carbon::createFromTimestamp(
+                $updateData['ends_at'] = Carbon::createFromTimestamp(
                     (int) $stripeSubscription['current_period_end']
                 );
             }
@@ -165,7 +166,7 @@ final class StripeWebhookController extends Controller
 
         // Handle actual cancellation
         if (! empty($stripeSubscription['canceled_at'])) {
-            $updateData['cancelled_at'] = \Carbon\Carbon::createFromTimestamp(
+            $updateData['cancelled_at'] = Carbon::createFromTimestamp(
                 (int) $stripeSubscription['canceled_at']
             );
         }
@@ -382,16 +383,16 @@ final class StripeWebhookController extends Controller
                 'amount_due' => ((int) ($stripeInvoice['amount_due'] ?? 0)) / 100,
                 'currency' => strtoupper((string) ($stripeInvoice['currency'] ?? 'EUR')),
                 'invoice_date' => isset($stripeInvoice['created'])
-                    ? \Carbon\Carbon::createFromTimestamp((int) $stripeInvoice['created'])
+                    ? Carbon::createFromTimestamp((int) $stripeInvoice['created'])
                     : now(),
                 'due_date' => isset($stripeInvoice['due_date'])
-                    ? \Carbon\Carbon::createFromTimestamp((int) $stripeInvoice['due_date'])
+                    ? Carbon::createFromTimestamp((int) $stripeInvoice['due_date'])
                     : now()->addDays(30),
                 'period_start' => isset($stripeInvoice['period_start'])
-                    ? \Carbon\Carbon::createFromTimestamp((int) $stripeInvoice['period_start'])
+                    ? Carbon::createFromTimestamp((int) $stripeInvoice['period_start'])
                     : null,
                 'period_end' => isset($stripeInvoice['period_end'])
-                    ? \Carbon\Carbon::createFromTimestamp((int) $stripeInvoice['period_end'])
+                    ? Carbon::createFromTimestamp((int) $stripeInvoice['period_end'])
                     : null,
             ]
         );

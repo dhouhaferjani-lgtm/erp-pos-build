@@ -12,6 +12,8 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Vehicle\Domain\Vehicle;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /**
@@ -85,14 +87,14 @@ class ModuleAccessControlTest extends TestCase
         ]);
 
         // Create permissions (shared across tenants, but assignments are per-tenant)
-        \Spatie\Permission\Models\Permission::create(['name' => 'vehicles.view', 'guard_name' => 'sanctum']);
-        \Spatie\Permission\Models\Permission::create(['name' => 'products.view', 'guard_name' => 'sanctum']);
+        Permission::create(['name' => 'vehicles.view', 'guard_name' => 'sanctum']);
+        Permission::create(['name' => 'products.view', 'guard_name' => 'sanctum']);
     }
 
     public function test_mechanic_user_can_access_vehicle_routes(): void
     {
         // Set permissions team and give user permission to view vehicles
-        app(\Spatie\Permission\PermissionRegistrar::class)->setPermissionsTeamId($this->mechanicTenant->id);
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->mechanicTenant->id);
         $this->mechanicUser->givePermissionTo('vehicles.view');
 
         Sanctum::actingAs($this->mechanicUser);
@@ -243,7 +245,7 @@ class ModuleAccessControlTest extends TestCase
         ]);
 
         // Set permissions team and give user permission to view vehicles
-        app(\Spatie\Permission\PermissionRegistrar::class)->setPermissionsTeamId($this->mechanicTenant->id);
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->mechanicTenant->id);
         $this->mechanicUser->givePermissionTo('vehicles.view');
 
         Sanctum::actingAs($this->mechanicUser);
@@ -297,7 +299,7 @@ class ModuleAccessControlTest extends TestCase
         // like products (Catalog module)
 
         // Set permissions team and give retail user permission to view products
-        app(\Spatie\Permission\PermissionRegistrar::class)->setPermissionsTeamId($this->retailTenant->id);
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->retailTenant->id);
         $this->retailUser->givePermissionTo('products.view');
 
         Sanctum::actingAs($this->retailUser);
@@ -310,7 +312,7 @@ class ModuleAccessControlTest extends TestCase
         $response->assertStatus(200);
 
         // Set permissions team and give mechanic user permission to view products
-        app(\Spatie\Permission\PermissionRegistrar::class)->setPermissionsTeamId($this->mechanicTenant->id);
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->mechanicTenant->id);
         $this->mechanicUser->givePermissionTo('products.view');
 
         Sanctum::actingAs($this->mechanicUser);

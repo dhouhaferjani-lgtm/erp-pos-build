@@ -7,7 +7,9 @@ namespace App\Modules\Accounting\Application\DTOs;
 use App\Modules\Accounting\Domain\Account;
 use App\Shared\Domain\CurrencyScale;
 use Spatie\LaravelData\Data;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
+#[TypeScript]
 final class AccountData extends Data
 {
     public function __construct(

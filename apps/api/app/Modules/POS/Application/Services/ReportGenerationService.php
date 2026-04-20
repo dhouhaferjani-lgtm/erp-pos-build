@@ -190,7 +190,7 @@ final class ReportGenerationService
     {
         $zReport->load(['terminal', 'generatedBy']);
 
-        /** @var \App\Modules\POS\Domain\Terminal $terminal */
+        /** @var Terminal $terminal */
         $terminal = $zReport->terminal;
 
         /** @var Company $company */

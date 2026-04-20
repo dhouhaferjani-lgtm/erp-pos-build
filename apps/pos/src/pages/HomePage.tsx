@@ -5,13 +5,14 @@ import { useOperatorStore } from '@/stores/operatorStore';
 import { useProductStore } from '@/stores/productStore';
 import { useCartStore, computeTaxAmount } from '@/stores/cartStore';
 import { usePaymentStore } from '@/stores/paymentStore';
+import { useAuthStore } from '@/stores/authStore';
 import { useHoldStore } from '@/stores/holdStore';
 import { useScannerStore } from '@/stores/scannerStore';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { getErrorMessage } from '@/lib/api';
 import { useCurrency } from '@/lib/currency';
 import { fetchReceipt } from '@/api/receiptApi';
-import { buildEscPosReceiptData } from '@/lib/buildReceiptData';
+import { buildEscPosReceiptData, buildEscPosFromOfflineReceipt } from '@/lib/buildReceiptData';
 import type { ReceiptVisibilitySettings } from '@/lib/buildReceiptData';
 import type { ReceiptData } from '@/lib/printing';
 import { hasModule } from '@/stores/productStore';
@@ -87,6 +88,7 @@ export function HomePage() {
   const isProcessing = usePaymentStore((s) => s.isProcessing);
   const lastReceipt = usePaymentStore((s) => s.lastReceipt);
   const changeDue = usePaymentStore((s) => s.changeDue);
+  const isOfflineReceipt = usePaymentStore((s) => s.isOfflineReceipt);
   const clearLastReceipt = usePaymentStore((s) => s.clearLastReceipt);
   const paymentError = usePaymentStore((s) => s.error);
 
@@ -182,13 +184,44 @@ export function HomePage() {
   }, [companyConfig?.receipt_visibility]);
 
   // Fetch full receipt for ESC/POS thermal printing when success modal opens
+  // Skip API fetch for offline receipts — the receipt doesn't exist on the server yet
   useEffect(() => {
     if (!showSuccessModal) {
       setEscPosData(null);
       return;
     }
-    if (!lastReceipt || escPosData) return;
+    if (!lastReceipt || escPosData || isOfflineReceipt) return;
 
+    // Offline receipts: build ESC/POS data from local cart data
+    if (isOfflineReceipt) {
+      const authState = useAuthStore.getState();
+      const company = authState.companies.find((c) => c.id === authState.companyId);
+      const cashMethod = paymentMethods.find((m) => m.is_physical && !m.has_maturity && m.is_active);
+      setEscPosData(buildEscPosFromOfflineReceipt(
+        {
+          isOffline: true,
+          receiptId: lastReceipt.id,
+          receiptNumber: lastReceipt.receipt_number,
+          total: lastReceipt.total,
+          subtotal: lastReceipt.subtotal,
+          taxAmount: lastReceipt.tax_amount,
+          discountAmount: lastReceipt.discount_amount,
+          changeDue,
+          currency: lastReceipt.currency ?? company?.currency ?? 'EUR',
+          onlineReceipt: null,
+          onlinePayment: null,
+        },
+        cartItems,
+        company?.name ?? '',
+        terminal?.name ?? '',
+        operator?.name ?? '',
+        cashMethod?.name ?? 'Cash',
+        receiptVisibility,
+      ));
+      return;
+    }
+
+    // Online receipts: fetch full receipt from API
     let cancelled = false;
     fetchReceipt(lastReceipt.id)
       .then((fullReceipt) => {
@@ -203,7 +236,24 @@ export function HomePage() {
       });
 
     return () => { cancelled = true; };
-  }, [showSuccessModal, lastReceipt, escPosData, receiptVisibility]);
+  }, [showSuccessModal, lastReceipt, escPosData, receiptVisibility, isOfflineReceipt, cartItems, terminal, operator, paymentMethods, changeDue]);
+
+  // Smart Prompts: fetch recommendations when cart changes
+  useEffect(() => {
+    const productIds = cartItems.map((item) => item.product.id);
+    if (productIds.length > 0) {
+      spFetchForCart(productIds);
+    } else {
+      spClear();
+    }
+  }, [cartItems, spFetchForCart, spClear]);
+
+  useEffect(() => {
+    const productIds = cartItems.map((item) => item.product.id);
+    if (productIds.length > 0 && spSkinType !== null) {
+      spFetchForCart(productIds);
+    }
+  }, [spSkinType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Smart Prompts: fetch recommendations when cart changes
   useEffect(() => {
@@ -641,6 +691,7 @@ export function HomePage() {
           changeDue={changeDue}
           receiptId={lastReceipt.id}
           receiptData={escPosData ?? undefined}
+          isOfflineReceipt={isOfflineReceipt}
         />
       )}
 
