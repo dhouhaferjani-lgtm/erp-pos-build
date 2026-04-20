@@ -133,6 +133,15 @@ export const PERMISSIONS = {
   'work-orders.cancel': ['admin', 'manager'],
   'work-orders.complete': ['admin', 'manager', 'operator', 'technician'],
   'work-orders.view_financials': ['admin', 'manager', 'accountant'],
+
+  // Scheduling (Spec D)
+  'scheduling.bays.view': ['admin', 'manager', 'operator'],
+  'scheduling.bays.manage': ['admin', 'manager'],
+  'scheduling.appointments.view': ['admin', 'manager', 'operator', 'technician'],
+  'scheduling.appointments.create': ['admin', 'manager', 'operator'],
+  'scheduling.appointments.update': ['admin', 'manager', 'operator'],
+  'scheduling.appointments.cancel': ['admin', 'manager'],
+  'scheduling.appointments.convert': ['admin', 'manager', 'operator'],
 } as const
 
 export type Permission = keyof typeof PERMISSIONS
@@ -164,6 +173,7 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   enrichment: ['enrichment.view'],
   'workshop-technicians': ['workshop.technicians.view'],
   'workshop-work-orders': ['work-orders.view'],
+  scheduling: ['scheduling.appointments.view'],
 }
 
 /**
