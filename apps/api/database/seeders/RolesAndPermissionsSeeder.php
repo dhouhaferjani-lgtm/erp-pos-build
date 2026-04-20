@@ -57,6 +57,10 @@ class RolesAndPermissionsSeeder extends Seeder
             'modifier-groups.view',
             'modifier-groups.manage',
 
+            // Workshop Service Bundles (automotive menu pricing)
+            'workshop-bundles.view',
+            'workshop-bundles.manage',
+
             // Menu Management
             'menus.view',
             'menus.manage',
@@ -74,6 +78,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'vehicles.create',
             'vehicles.update',
             'vehicles.delete',
+            'vehicles.manage_ownership',
+            'vehicles.log_mileage',
 
             // Sales Documents (Quotes, Orders, Invoices)
             'documents.view',  // Unified document view
@@ -284,6 +290,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'products.view', 'products.create', 'products.update', 'products.import',
             'enrichment.view', 'enrichment.review', 'enrichment.submit',
             'vehicles.view', 'vehicles.create', 'vehicles.update',
+            'vehicles.manage_ownership', 'vehicles.log_mileage',
             'documents.view',
             'quotes.view', 'quotes.create', 'quotes.update', 'quotes.convert',
             'orders.view', 'orders.create', 'orders.update', 'orders.confirm',
@@ -316,6 +323,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'settings.view', 'settings.manage',
             'composite-items.view', 'composite-items.create', 'composite-items.update', 'composite-items.delete', 'composite-items.manage-recipes',
             'modifier-groups.view', 'modifier-groups.manage',
+            'workshop-bundles.view', 'workshop-bundles.manage',
             'menus.view', 'menus.manage',
             'promotions.view', 'promotions.manage',
             'coupons.view', 'coupons.manage',
@@ -399,11 +407,13 @@ class RolesAndPermissionsSeeder extends Seeder
             'partners.view',
             'products.view',
             'vehicles.view',
+            'vehicles.log_mileage',
             'inventory.view',
             'work-orders.view', 'work-orders.update', 'work-orders.complete',
             // Technicians see their own profile (list + show), but NOT pay nor PII —
             // those are admin/manager scope; PII masking is enforced at DTO layer.
             'workshop.technicians.view',
+            'workshop-bundles.view',
         ]);
         $this->command->info('Created role: technician');
 
@@ -413,6 +423,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'partners.view', 'partners.create', 'partners.update',
             'products.view',
             'vehicles.view', 'vehicles.create', 'vehicles.update',
+            'vehicles.manage_ownership', 'vehicles.log_mileage',
             'documents.view',
             'quotes.view', 'quotes.create', 'quotes.update',
             'orders.view', 'orders.create', 'orders.update',
@@ -425,6 +436,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'payments.view', 'payments.create',
             'work-orders.view', 'work-orders.create', 'work-orders.update',
             'workshop.technicians.view',
+            'workshop-bundles.view', 'workshop-bundles.manage',
             'marketplace.browse',
             'catalog_cart.view', 'catalog_cart.create',
         ]);

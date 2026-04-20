@@ -155,6 +155,9 @@ const ServiceListPage = lazy(() => import('../features/services/ServiceListPage'
 const ServiceDetailPage = lazy(() => import('../features/services/ServiceDetailPage').then((m) => ({ default: m.ServiceDetailPage })))
 const ServiceForm = lazy(() => import('../features/services/ServiceForm').then((m) => ({ default: m.ServiceForm })))
 const ServiceCategoryListPage = lazy(() => import('../features/services/ServiceCategoryListPage').then((m) => ({ default: m.ServiceCategoryListPage })))
+const WorkshopBundleListPage = lazy(() => import('../features/workshop-bundles/pages/BundleListPage').then((m) => ({ default: m.BundleListPage })))
+const WorkshopBundleCreatePage = lazy(() => import('../features/workshop-bundles/pages/BundleCreatePage').then((m) => ({ default: m.BundleCreatePage })))
+const WorkshopBundleDetailPage = lazy(() => import('../features/workshop-bundles/pages/BundleDetailPage').then((m) => ({ default: m.BundleDetailPage })))
 
 // Opening Balances module
 const OpeningBalancesPage = lazy(() => import('../features/opening-balances/pages/OpeningBalancesPage').then((m) => ({ default: m.OpeningBalancesPage })))
@@ -1193,6 +1196,40 @@ export function AppRoutes() {
                   </SuspenseWrapper>
                 </RequirePermission>
               </ModuleGuard>
+            }
+          />
+        </Route>
+
+        {/* Workshop Service Bundles Module */}
+        <Route path="workshop/bundles">
+          <Route
+            index
+            element={
+              <RequirePermission permission="workshop-bundles.view">
+                <SuspenseWrapper>
+                  <WorkshopBundleListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="new"
+            element={
+              <RequirePermission permission="workshop-bundles.manage">
+                <SuspenseWrapper>
+                  <WorkshopBundleCreatePage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path=":id"
+            element={
+              <RequirePermission permission="workshop-bundles.view">
+                <SuspenseWrapper>
+                  <WorkshopBundleDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
             }
           />
         </Route>

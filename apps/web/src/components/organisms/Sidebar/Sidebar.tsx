@@ -51,6 +51,7 @@ import {
   Building2,
   Search,
   Sparkles,
+  Package2,
 } from 'lucide-react'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useCompanyConfig } from '../../../contexts'
@@ -59,6 +60,22 @@ import { companyVerticalToCatalog } from '../../../features/catalog/hooks/useVer
 
 const STORAGE_KEY = 'autoerp-sidebar-expanded'
 const COLLAPSED_STORAGE_KEY = 'autoerp-sidebar-collapsed'
+
+/**
+ * Tenant vertical keys considered "automotive" — these verticals enable the
+ * Workshop, Vehicle, and parts-catalog modules and therefore surface the
+ * Automotive sidebar group.
+ *
+ * Mirrors `App\Enums\Vertical::isAutomotive()` on the backend.
+ */
+const AUTOMOTIVE_VERTICALS = new Set<string>([
+  'mechanic',
+  'body_shop',
+  'parts_retailer',
+  'car_glass',
+  'tire_shop',
+  'service_station',
+])
 
 /**
  * Maps sidebar navigation keys to backend module names.
@@ -72,6 +89,7 @@ const COLLAPSED_STORAGE_KEY = 'autoerp-sidebar-collapsed'
 const MODULE_NAME_MAP: Record<string, string | string[]> = {
   vehicles: 'Vehicle',
   services: 'Workshop',
+  'workshop-bundles': 'Workshop',
   'composite-items': 'CompositeItems',
   parapharmacy: 'Parapharmacy',
   'parts-catalog': 'PlatformIntegration',
@@ -119,10 +137,12 @@ const VERTICAL_NAV_KEYS: Record<string, string> = {
 /**
  * Build the navigation array dynamically based on vertical config.
  *
- * For Otospex: Services appear under the Automotive group.
- * For other verticals: Services appear under Inventory & Catalog; Automotive is hidden.
+ * For automotive verticals (mechanic, body_shop, etc.): Services appear under the Automotive group.
+ * For other verticals: Services appear under Inventory & Catalog; Automotive is hidden
+ *   downstream by the `isModuleEnabledForVertical('automotive')` filter (none of
+ *   Vehicle/Workshop/PlatformIntegration will be enabled).
  */
-function buildNavigation(isOtospex: boolean): NavModule[] {
+function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
   const servicesChildren: NavChild[] = [
     { key: 'allServices', href: '/services', icon: Wrench, module: 'services' },
     { key: 'serviceCategories', href: '/services/categories', icon: FolderTree, module: 'services' },
@@ -131,8 +151,9 @@ function buildNavigation(isOtospex: boolean): NavModule[] {
   const inventoryChildren: NavChild[] = [
     { key: 'products', href: '/inventory/products', icon: Package },
     { key: 'categories', href: '/inventory/categories', icon: FolderTree },
-    // Services placed here for non-Otospex verticals
-    ...(!isOtospex ? servicesChildren : []),
+    // Services placed here for non-automotive verticals (for automotive verticals
+    // they live under the Automotive group below).
+    ...(!isAutomotiveVertical ? servicesChildren : []),
     { key: 'batches', href: '/inventory/batches', icon: Pill, module: 'parapharmacy' },
     { key: 'stockLevels', href: '/inventory/stock', icon: Layers },
     { key: 'stockMovements', href: '/inventory/movements', icon: ArrowLeftRight },
@@ -238,20 +259,25 @@ function buildNavigation(isOtospex: boolean): NavModule[] {
     },
   ]
 
-  // Automotive group — Otospex only
-  if (isOtospex) {
-    nav.push({
-      key: 'automotive',
-      icon: Car,
-      module: 'automotive',
-      children: [
-        { key: 'vehicles', href: '/vehicles', icon: Car, module: 'vehicles' },
-        ...servicesChildren,
-        { key: 'workshopTechnicians', href: '/workshop/technicians', icon: Users, module: 'workshop-technicians' },
-        { key: 'partsCatalog', href: '/parts-catalog', icon: Search, module: 'parts-catalog' },
-      ],
-    })
-  }
+  // Automotive group — shown whenever the tenant's vertical enables at least one
+  // automotive module (Vehicle, Workshop, or PlatformIntegration). The
+  // `isModuleEnabledForVertical('automotive')` filter downstream handles the
+  // actual gate via `MODULE_NAME_MAP.automotive`, so we push it unconditionally
+  // here and let the vertical-aware filter hide it for non-automotive tenants.
+  nav.push({
+    key: 'automotive',
+    icon: Car,
+    module: 'automotive',
+    children: [
+      { key: 'vehicles', href: '/vehicles', icon: Car, module: 'vehicles' },
+      // Only duplicate services into the Automotive group when the tenant's
+      // vertical is automotive — otherwise services live under Inventory.
+      ...(isAutomotiveVertical ? servicesChildren : []),
+      { key: 'workshopBundles', href: '/workshop/bundles', icon: Package2, module: 'workshop-bundles' },
+      { key: 'workshopTechnicians', href: '/workshop/technicians', icon: Users, module: 'workshop-technicians' },
+      { key: 'partsCatalog', href: '/parts-catalog', icon: Search, module: 'parts-catalog' },
+    ],
+  })
 
   // Parapharmacy — vertical-specific
   nav.push({
@@ -284,6 +310,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const { hasModule, config } = useCompanyConfig()
   const { isOtospex, productName } = useProductConfig()
   const catalogVertical = companyVerticalToCatalog(config?.vertical)
+  const isAutomotiveVertical = AUTOMOTIVE_VERTICALS.has(config?.vertical ?? '')
 
   const getNavLabel = useCallback(
     (key: string): string => {
@@ -342,7 +369,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
     [hasModule]
   )
 
-  const navigation = useMemo(() => buildNavigation(isOtospex), [isOtospex])
+  const navigation = useMemo(() => buildNavigation(isAutomotiveVertical), [isAutomotiveVertical])
 
   // Filter navigation based on BOTH vertical configuration AND user permissions
   const filteredNavigation = useMemo(() => {

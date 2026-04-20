@@ -53,6 +53,8 @@ export const PERMISSIONS = {
   'vehicles.view': ['admin', 'sales', 'manager'],
   'vehicles.create': ['admin', 'sales', 'manager'],
   'vehicles.edit': ['admin', 'sales', 'manager'],
+  'vehicles.manage_ownership': ['admin', 'manager', 'operator'],
+  'vehicles.log_mileage': ['admin', 'manager', 'operator', 'technician'],
 
   // Pricing
   'pricing.view': ['admin', 'sales', 'manager'],
@@ -86,6 +88,10 @@ export const PERMISSIONS = {
   'composite-items.manage-recipes': ['admin', 'manager'],
   'modifier-groups.view': ['admin', 'manager'],
   'modifier-groups.manage': ['admin', 'manager'],
+
+  // Workshop Service Bundles
+  'workshop-bundles.view': ['admin', 'manager', 'technician'],
+  'workshop-bundles.manage': ['admin', 'manager'],
 
   // Promotions
   'promotions.view': ['admin', 'manager'],
@@ -139,6 +145,7 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   withholding: ['withholding.view'],
   'composite-items': ['composite-items.view'],
   'modifier-groups': ['modifier-groups.view'],
+  'workshop-bundles': ['workshop-bundles.view'],
   promotions: ['promotions.view'],
   coupons: ['coupons.view'],
   loyalty: ['loyalty.view'],

@@ -12,7 +12,6 @@ import {
   FileText,
   Receipt,
   CreditCard,
-  Car,
   DollarSign,
   Wallet,
   PiggyBank,
@@ -24,6 +23,8 @@ import { formatCurrency } from '../../lib/format'
 import { usePartnerBalanceRealtime } from './hooks/usePartnerBalanceRealtime'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/Tabs'
 import { AddVehicleModal } from '../../components/organisms'
+import { VehiclesTab } from '../vehicles/components/organisms/VehiclesTab'
+import { usePartnerVehicles } from '../vehicles/hooks/usePartnerVehicles'
 
 interface PartnerAccountBalance {
   partner_id: string
@@ -73,15 +74,6 @@ interface Payment {
   status: string
   payment_type: string | null
   unallocated_amount: string
-}
-
-interface Vehicle {
-  id: string
-  license_plate: string
-  make: string
-  model: string
-  year: number
-  vin: string | null
 }
 
 const typeColors = {
@@ -174,15 +166,10 @@ export function PartnerDetailPage() {
     enabled: id.length > 0,
   })
 
-  // Fetch related vehicles (for customers)
-  const { data: vehiclesData } = useQuery({
-    queryKey: ['partner-vehicles', id],
-    queryFn: async () => {
-      const response = await api.get<{ data: Vehicle[] }>(`/vehicles?customer_id=${id}`)
-      return response.data.data
-    },
-    enabled: id.length > 0 && isCustomerContext,
-  })
+  // Fetch related vehicles (for customers) — uses the ownership-aware endpoint via the
+  // shared VehiclesTab organism. We still read the count here to surface it in the tab trigger.
+  const showVehiclesTab = isCustomerContext && (partner?.type === 'customer' || partner?.type === 'both')
+  const { data: partnerVehiclesData } = usePartnerVehicles(showVehiclesTab ? id : undefined)
 
   // Fetch partner account balance (unallocated deposits/credits)
   const { data: accountBalance } = useQuery({
@@ -197,7 +184,7 @@ export function PartnerDetailPage() {
 
   const documents = documentsData ?? []
   const payments = paymentsData ?? []
-  const vehicles = vehiclesData ?? []
+  const vehicleCount = partnerVehiclesData?.meta.total ?? partnerVehiclesData?.data.length ?? 0
 
   // Format currency using company settings
   const formatAmount = (amount: number) => {
@@ -316,9 +303,9 @@ export function PartnerDetailPage() {
           <TabsTrigger value="payments">
             {t('tabs.payments')} ({payments.length})
           </TabsTrigger>
-          {isCustomerContext && (
+          {showVehiclesTab && (
             <TabsTrigger value="vehicles">
-              {t('tabs.vehicles')} ({vehicles.length})
+              {t('tabs.vehicles')} ({vehicleCount})
             </TabsTrigger>
           )}
         </TabsList>
@@ -668,81 +655,19 @@ export function PartnerDetailPage() {
         </TabsContent>
 
         {/* Vehicles Tab */}
-        {isCustomerContext && (
+        {showVehiclesTab && (
           <TabsContent value="vehicles" className="mt-6">
-            {vehicles.length === 0 ? (
-              <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
-                <Car className="mx-auto h-12 w-12 text-gray-400" />
-                <h3 className="mt-2 text-sm font-semibold text-gray-900">
-                  {t('status.noVehicles')}
-                </h3>
-                <p className="mt-1 text-sm text-gray-500">{t('status.noVehiclesDescription')}</p>
-                <div className="mt-6">
-                  <button
-                    type="button"
-                    onClick={() => { setShowVehicleModal(true) }}
-                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                  >
-                    <Car className="h-4 w-4" />
-                    {t('actions.addVehicle')}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                        {t('fields.licensePlate')}
-                      </th>
-                      <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                        {t('fields.vehicle')}
-                      </th>
-                      <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                        {t('fields.year')}
-                      </th>
-                      <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
-                        {t('fields.vin')}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200 bg-white">
-                    {vehicles.map((vehicle) => (
-                      <tr key={vehicle.id} className="hover:bg-gray-50">
-                        <td className="whitespace-nowrap px-6 py-4">
-                          <Link
-                            to={`/vehicles/${vehicle.id}`}
-                            className="font-medium text-blue-600 hover:text-blue-900"
-                          >
-                            {vehicle.license_plate}
-                          </Link>
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
-                          {vehicle.make} {vehicle.model}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                          {vehicle.year}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                          {vehicle.vin ?? '-'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
-                  <button
-                    type="button"
-                    onClick={() => { setShowVehicleModal(true) }}
-                    className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    <Plus className="h-4 w-4" />
-                    {t('actions.addVehicle')}
-                  </button>
-                </div>
-              </div>
-            )}
+            <div className="flex items-center justify-end mb-4">
+              <button
+                type="button"
+                onClick={() => { setShowVehicleModal(true) }}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+                {t('actions.addVehicle')}
+              </button>
+            </div>
+            <VehiclesTab partnerId={id} />
           </TabsContent>
         )}
       </Tabs>

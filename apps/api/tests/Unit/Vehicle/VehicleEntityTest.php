@@ -147,8 +147,8 @@ class VehicleEntityTest extends TestCase
         $this->assertEquals(50000, $vehicle->mileage);
         $this->assertEquals('JT2BF22K1W0123456', $vehicle->vin);
         $this->assertEquals('1ZZ-FE', $vehicle->engine_code);
-        $this->assertEquals('gasoline', $vehicle->fuel_type);
-        $this->assertEquals('automatic', $vehicle->transmission);
+        $this->assertEquals('gasoline', $vehicle->fuel_type?->value);
+        $this->assertEquals('automatic', $vehicle->transmission?->value);
         $this->assertEquals('Customer vehicle notes', $vehicle->notes);
     }
 

@@ -38,6 +38,7 @@ use App\Modules\Tenant\Infrastructure\Providers\TenantServiceProvider;
 use App\Modules\Treasury\Providers\TreasuryServiceProvider;
 use App\Modules\Uom\Infrastructure\Providers\UomServiceProvider;
 use App\Modules\Vehicle\Providers\VehicleServiceProvider;
+use App\Modules\Workshop\Bundle\Infrastructure\BundleServiceProvider;
 use App\Modules\Workshop\Technician\TechnicianServiceProvider;
 use App\Providers\AppServiceProvider;
 use App\Providers\BroadcastServiceProvider;
@@ -86,4 +87,5 @@ return [
     ProgressionServiceProvider::class,
     SmartPromptsServiceProvider::class,
     TechnicianServiceProvider::class,
+    BundleServiceProvider::class,
 ];
