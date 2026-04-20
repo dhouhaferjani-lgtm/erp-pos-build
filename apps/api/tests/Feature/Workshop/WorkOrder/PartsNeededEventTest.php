@@ -40,7 +40,7 @@ final class PartsNeededEventTest extends TestCase
                 ?\DateTimeImmutable $expiresAt,
             ): StockReservation {
                 $r = new StockReservation;
-                $r->id = random_int(1, 99999);
+                $r->id = (string) Str::uuid();
 
                 return $r;
             }
@@ -78,11 +78,9 @@ final class PartsNeededEventTest extends TestCase
                     return false;
                 }
 
-                /** @var PartNeed $need */
                 $need = $event->needs[0];
 
-                return $need instanceof PartNeed
-                    && $need->vehicle_id === $wo->vehicle_id
+                return $need->vehicle_id === $wo->vehicle_id
                     && $need->urgency === 'normal';
             }
         );
@@ -125,6 +123,7 @@ final class PartsNeededEventTest extends TestCase
         ));
 
         Event::assertNotDispatched(WorkOrderPartsNeeded::class);
-        $this->assertSame(WorkOrderLineType::Labor, $wo->fresh()->lines->first()?->line_type);
+        $refreshed = WorkOrder::query()->with('lines')->findOrFail($wo->id);
+        $this->assertSame(WorkOrderLineType::Labor, $refreshed->lines->first()?->line_type);
     }
 }

@@ -39,7 +39,7 @@ final class AssignmentTest extends TestCase
 
         $this->assertTrue($assignment->is_lead);
         $this->assertNull($assignment->unassigned_at);
-        $this->assertSame($tech->id, $wo->fresh()->primary_technician_profile_id);
+        $this->assertSame($tech->id, WorkOrder::query()->findOrFail($wo->id)->primary_technician_profile_id);
     }
 
     public function test_second_lead_assignment_supersedes_first(): void
@@ -75,7 +75,7 @@ final class AssignmentTest extends TestCase
                 ->whereNull('unassigned_at')
                 ->count(),
         );
-        $this->assertSame($tech2->id, $wo->fresh()->primary_technician_profile_id);
+        $this->assertSame($tech2->id, WorkOrder::query()->findOrFail($wo->id)->primary_technician_profile_id);
     }
 
     public function test_unassign_clears_primary_when_removing_lead(): void
@@ -101,7 +101,7 @@ final class AssignmentTest extends TestCase
             assignment_id: $assignment->id,
         ));
 
-        $this->assertNull($wo->fresh()->primary_technician_profile_id);
+        $this->assertNull(WorkOrder::query()->findOrFail($wo->id)->primary_technician_profile_id);
     }
 
     public function test_set_primary_elects_existing_assignment_as_lead(): void
@@ -134,6 +134,6 @@ final class AssignmentTest extends TestCase
             technician_profile_id: $tech2->id,
         ));
 
-        $this->assertSame($tech2->id, $wo->fresh()->primary_technician_profile_id);
+        $this->assertSame($tech2->id, WorkOrder::query()->findOrFail($wo->id)->primary_technician_profile_id);
     }
 }

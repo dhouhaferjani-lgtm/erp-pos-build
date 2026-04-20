@@ -52,4 +52,9 @@ final class WorkshopWorkOrderServiceProvider extends ServiceProvider
             WorkOrderCreationService::class,
         );
     }
+
+    public function boot(): void
+    {
+        $this->loadRoutesFrom(__DIR__.'/../Presentation/routes.php');
+    }
 }
