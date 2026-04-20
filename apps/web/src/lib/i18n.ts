@@ -33,6 +33,7 @@ import enCountries from '../locales/en/countries.json'
 import enProgression from '../locales/en/progression.json'
 import enSmartPrompts from '../locales/en/smart-prompts.json'
 import enEnrichment from '../locales/en/enrichment.json'
+import enWorkshopBundles from '../locales/en/workshop-bundles.json'
 import enVehicleOwnership from '../locales/en/vehicle-ownership.json'
 
 import frCommon from '../locales/fr/common.json'
@@ -65,6 +66,7 @@ import frCountries from '../locales/fr/countries.json'
 import frProgression from '../locales/fr/progression.json'
 import frSmartPrompts from '../locales/fr/smart-prompts.json'
 import frEnrichment from '../locales/fr/enrichment.json'
+import frWorkshopBundles from '../locales/fr/workshop-bundles.json'
 import frVehicleOwnership from '../locales/fr/vehicle-ownership.json'
 
 export const languages = [
@@ -107,6 +109,7 @@ const resources = {
     progression: enProgression,
     'smart-prompts': enSmartPrompts,
     enrichment: enEnrichment,
+    'workshop-bundles': enWorkshopBundles,
     'vehicle-ownership': enVehicleOwnership,
   },
   fr: {
@@ -140,6 +143,7 @@ const resources = {
     progression: frProgression,
     'smart-prompts': frSmartPrompts,
     enrichment: frEnrichment,
+    'workshop-bundles': frWorkshopBundles,
     'vehicle-ownership': frVehicleOwnership,
   },
   ar: {
@@ -174,6 +178,7 @@ const resources = {
     progression: enProgression,
     'smart-prompts': enSmartPrompts,
     enrichment: enEnrichment,
+    'workshop-bundles': enWorkshopBundles,
     'vehicle-ownership': enVehicleOwnership,
   },
 }
@@ -185,7 +190,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'vehicle-ownership'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'vehicle-ownership'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

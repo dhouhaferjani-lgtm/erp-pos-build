@@ -38,6 +38,7 @@ use App\Modules\Tenant\Infrastructure\Providers\TenantServiceProvider;
 use App\Modules\Treasury\Providers\TreasuryServiceProvider;
 use App\Modules\Uom\Infrastructure\Providers\UomServiceProvider;
 use App\Modules\Vehicle\Providers\VehicleServiceProvider;
+use App\Modules\Workshop\Bundle\Infrastructure\BundleServiceProvider;
 use App\Providers\AppServiceProvider;
 use App\Providers\BroadcastServiceProvider;
 use App\Providers\EventServiceProvider;
@@ -84,4 +85,5 @@ return [
     CartServiceProvider::class,
     ProgressionServiceProvider::class,
     SmartPromptsServiceProvider::class,
+    BundleServiceProvider::class,
 ];

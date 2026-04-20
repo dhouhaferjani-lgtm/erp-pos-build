@@ -15,6 +15,9 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Workshop\Bundle\Domain\Enums\BundlePricingMode;
+use App\Modules\Workshop\Bundle\Domain\ServiceBundle;
+use App\Modules\Workshop\Bundle\Domain\ServiceBundleVehicleApplicability;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Spatie\Permission\Models\Role;
@@ -148,10 +151,132 @@ class DemoTenantSeeder extends Seeder
 
         $this->assignAdminRoleAndMembership($user, $tenant, $company);
 
+        $this->seedWorkshopBundles($tenant, $company);
+
         $this->command->info("Created unlimited demo tenant: {$tenant->name}");
         $this->command->line('  - Email: admin@demo.local');
         $this->command->line('  - Password: password');
         $this->command->line('  - Plan: Unlimited (no restrictions)');
+    }
+
+    /**
+     * Seed example Workshop service bundles for the given demo tenant+company.
+     *
+     * These are "menu pricing" offerings an automotive shop would expose
+     * in the POS / work-order picker. Components and vehicle-specific
+     * applicabilities are intentionally not seeded here — they require
+     * Product/Service records that the seeder does not otherwise create,
+     * and can be authored through the Workshop/Bundle UI.
+     */
+    private function seedWorkshopBundles(Tenant $tenant, Company $company): void
+    {
+        $currency = $company->currency !== '' ? $company->currency : 'TND';
+
+        $bundles = [
+            [
+                'code' => 'VIDANGE-10K-ESSENCE',
+                'name' => 'Vidange 10 000 km essence',
+                'description' => 'Oil change package — petrol, 10 000 km service interval.',
+                'pricing_mode' => BundlePricingMode::FixedBundle,
+                'base_price' => '120.000',
+                'tax_rate' => '19.000',
+                'estimated_labor_hours' => '0.75',
+                'service_interval_km' => 10000,
+                'service_interval_months' => 12,
+            ],
+            [
+                'code' => 'VIDANGE-10K-DIESEL',
+                'name' => 'Vidange 10 000 km diesel',
+                'description' => 'Oil change package — diesel, 10 000 km service interval.',
+                'pricing_mode' => BundlePricingMode::FixedBundle,
+                'base_price' => '135.000',
+                'tax_rate' => '19.000',
+                'estimated_labor_hours' => '0.75',
+                'service_interval_km' => 10000,
+                'service_interval_months' => 12,
+            ],
+            [
+                'code' => 'FREINAGE-AV',
+                'name' => 'Remplacement freinage avant',
+                'description' => 'Front brake pads + discs replacement.',
+                'pricing_mode' => BundlePricingMode::Standard,
+                'base_price' => null,
+                'tax_rate' => '19.000',
+                'estimated_labor_hours' => '1.25',
+                'service_interval_km' => null,
+                'service_interval_months' => null,
+            ],
+            [
+                'code' => 'REVISION-40K',
+                'name' => 'Grande révision 40 000 km',
+                'description' => 'Major 40k km service — vidange + filters + fluids check.',
+                'pricing_mode' => BundlePricingMode::Standard,
+                'base_price' => null,
+                'tax_rate' => '19.000',
+                'estimated_labor_hours' => '2.00',
+                'service_interval_km' => 40000,
+                'service_interval_months' => 24,
+            ],
+            [
+                'code' => 'PNEUS-REMPLACEMENT-4',
+                'name' => 'Remplacement 4 pneus',
+                'description' => 'Replace all 4 tyres — includes mounting + balancing.',
+                'pricing_mode' => BundlePricingMode::Standard,
+                'base_price' => null,
+                'tax_rate' => '19.000',
+                'estimated_labor_hours' => '1.50',
+                'service_interval_km' => null,
+                'service_interval_months' => null,
+            ],
+            [
+                'code' => 'DIAGNOSTIC-OBD',
+                'name' => 'Diagnostic électronique OBD',
+                'description' => 'OBD-II diagnostic with scanner + fault-code report.',
+                'pricing_mode' => BundlePricingMode::FixedBundle,
+                'base_price' => '45.000',
+                'tax_rate' => '19.000',
+                'estimated_labor_hours' => '0.50',
+                'service_interval_km' => null,
+                'service_interval_months' => null,
+            ],
+        ];
+
+        foreach ($bundles as $data) {
+            $bundle = ServiceBundle::firstOrCreate(
+                [
+                    'tenant_id' => $tenant->id,
+                    'company_id' => $company->id,
+                    'code' => $data['code'],
+                ],
+                [
+                    'name' => $data['name'],
+                    'description' => $data['description'],
+                    'pricing_mode' => $data['pricing_mode'],
+                    'base_price' => $data['base_price'],
+                    'currency' => $currency,
+                    'tax_rate' => $data['tax_rate'],
+                    'estimated_labor_hours' => $data['estimated_labor_hours'],
+                    'service_interval_km' => $data['service_interval_km'],
+                    'service_interval_months' => $data['service_interval_months'],
+                    'is_active' => true,
+                ],
+            );
+
+            // Universal applicability by default — operator refines in the UI.
+            ServiceBundleVehicleApplicability::firstOrCreate(
+                [
+                    'tenant_id' => $tenant->id,
+                    'bundle_id' => $bundle->id,
+                    'platform_vehicle_id' => null,
+                    'vehicle_type' => null,
+                ],
+                [
+                    'vehicle_display' => null,
+                    'year_from' => null,
+                    'year_to' => null,
+                ],
+            );
+        }
     }
 
     /**
