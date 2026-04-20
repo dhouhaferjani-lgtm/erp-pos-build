@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::prefix('api/v1/workshop')
-    ->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])
+    ->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, 'module:Workshop'])
     ->group(function (): void {
         Route::get('work-orders', [WorkOrderController::class, 'index']);
         Route::post('work-orders', [WorkOrderController::class, 'store']);

@@ -259,6 +259,111 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
     })
   })
 
+  describe('AutoSpecs Vertical-Scoping Regression', () => {
+    // Regression test for AutoSpecs vertical scoping (Part 2 of the design-audit task).
+    //
+    // All five AutoSpecs child entries under the Automotive group —
+    //   * vehicles          → MODULE_NAME_MAP.vehicles = Vehicle
+    //   * scheduling        → MODULE_NAME_MAP.scheduling = Workshop
+    //   * workshopWorkOrders→ MODULE_NAME_MAP['workshop-work-orders'] = Workshop
+    //   * workshopBundles   → MODULE_NAME_MAP['workshop-bundles'] = Workshop
+    //   * workshopTechnicians→ MODULE_NAME_MAP['workshop-technicians'] = Workshop
+    //
+    // must be hidden for any non-automotive vertical. Missing a MODULE_NAME_MAP
+    // entry makes the filter fall through to "always visible", which would leak
+    // workshop links into retail / pharmacy / restaurant sidebars. Guard here.
+    const retailConfig: TestCompanyConfig = {
+      vertical: 'retail',
+      default_modules: ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
+      enabled_extras: [],
+      all_enabled_modules: ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
+      currency: 'EUR',
+      locale: 'fr_FR',
+      country_code: 'FR',
+      smart_prompts_enabled: false,
+      smart_prompts_variant: 'off',
+    }
+
+    it('hides Vehicles entry for retail vertical', async () => {
+      renderSidebar(retailConfig)
+
+      await screen.findByRole('button', { name: /navigation\.sales/i })
+
+      const link = screen.queryByRole('link', { name: /navigation\.vehicles/i })
+      expect(link).not.toBeInTheDocument()
+    })
+
+    it('hides Scheduling entry for retail vertical', async () => {
+      renderSidebar(retailConfig)
+
+      await screen.findByRole('button', { name: /navigation\.sales/i })
+
+      const link = screen.queryByRole('link', { name: /navigation\.scheduling/i })
+      expect(link).not.toBeInTheDocument()
+    })
+
+    it('hides Workshop Work Orders entry for retail vertical', async () => {
+      renderSidebar(retailConfig)
+
+      await screen.findByRole('button', { name: /navigation\.sales/i })
+
+      const link = screen.queryByRole('link', { name: /navigation\.workshopWorkOrders/i })
+      expect(link).not.toBeInTheDocument()
+    })
+
+    it('hides Workshop Bundles entry for retail vertical', async () => {
+      renderSidebar(retailConfig)
+
+      await screen.findByRole('button', { name: /navigation\.sales/i })
+
+      const link = screen.queryByRole('link', { name: /navigation\.workshopBundles/i })
+      expect(link).not.toBeInTheDocument()
+    })
+
+    it('hides Workshop Technicians entry for retail vertical', async () => {
+      renderSidebar(retailConfig)
+
+      await screen.findByRole('button', { name: /navigation\.sales/i })
+
+      // Regression: workshop-technicians was missing from MODULE_NAME_MAP before
+      // the design-audit fix, which caused the filter to fall through to
+      // "always visible" and leaked the entry into retail sidebars.
+      const link = screen.queryByRole('link', { name: /navigation\.workshopTechnicians/i })
+      expect(link).not.toBeInTheDocument()
+    })
+
+    it('hides the Automotive group entirely for retail vertical', async () => {
+      renderSidebar(retailConfig)
+
+      await screen.findByRole('button', { name: /navigation\.sales/i })
+
+      const automotiveButton = screen.queryByRole('button', { name: /navigation\.automotive/i })
+      expect(automotiveButton).not.toBeInTheDocument()
+    })
+
+    it('shows all five AutoSpecs entries for mechanic vertical', async () => {
+      renderSidebar(mechanicFullConfig)
+
+      // All five AutoSpecs links should be visible for a fully-provisioned
+      // mechanic tenant (Vehicle + Workshop modules both enabled).
+      expect(
+        await screen.findByRole('link', { name: /navigation\.vehicles/i })
+      ).toBeInTheDocument()
+      expect(
+        await screen.findByRole('link', { name: /navigation\.scheduling/i })
+      ).toBeInTheDocument()
+      expect(
+        await screen.findByRole('link', { name: /navigation\.workshopWorkOrders/i })
+      ).toBeInTheDocument()
+      expect(
+        await screen.findByRole('link', { name: /navigation\.workshopBundles/i })
+      ).toBeInTheDocument()
+      expect(
+        await screen.findByRole('link', { name: /navigation\.workshopTechnicians/i })
+      ).toBeInTheDocument()
+    })
+  })
+
   describe('Always Visible Modules', () => {
     // Minimal config with only core modules
     const minimalConfig: TestCompanyConfig = {

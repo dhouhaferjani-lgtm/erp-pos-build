@@ -10,7 +10,7 @@ use App\Modules\Workshop\Bundle\Presentation\Controllers\BundleController;
 use App\Modules\Workshop\Bundle\Presentation\Controllers\BundleExpansionController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('api/v1/workshop')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function (): void {
+Route::prefix('api/v1/workshop')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, 'module:Workshop'])->group(function (): void {
     // Picker endpoint must come before the {id} route so `applicable` is
     // not mistaken for a bundle UUID.
     Route::get('bundles/applicable', [BundleApplicableController::class, 'index']);

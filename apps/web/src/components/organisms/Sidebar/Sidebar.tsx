@@ -92,6 +92,7 @@ const MODULE_NAME_MAP: Record<string, string | string[]> = {
   services: 'Workshop',
   'workshop-bundles': 'Workshop',
   'workshop-work-orders': 'Workshop',
+  'workshop-technicians': 'Workshop',
   scheduling: 'Workshop',
   'composite-items': 'CompositeItems',
   parapharmacy: 'Parapharmacy',
