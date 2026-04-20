@@ -11,6 +11,7 @@ use App\Modules\Scheduling\Domain\Contracts\ScheduleConfigRepositoryInterface;
 use App\Modules\Scheduling\Infrastructure\Captcha\AlwaysPassCaptchaVerifier;
 use App\Modules\Scheduling\Infrastructure\Captcha\CaptchaVerifierInterface;
 use App\Modules\Scheduling\Infrastructure\Captcha\RecaptchaVerifier;
+use App\Modules\Scheduling\Infrastructure\Commands\ScheduleAppointmentReminders;
 use App\Modules\Scheduling\Infrastructure\Persistence\EloquentAppointmentRepository;
 use App\Modules\Scheduling\Infrastructure\Persistence\EloquentAppointmentSequence;
 use App\Modules\Scheduling\Infrastructure\Persistence\EloquentBayRepository;
@@ -61,6 +62,10 @@ final class SchedulingServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // Future tasks: loadRoutesFrom, event listener registration, etc.
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                ScheduleAppointmentReminders::class,
+            ]);
+        }
     }
 }
