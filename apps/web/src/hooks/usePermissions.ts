@@ -135,6 +135,7 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   withholding: ['withholding.view'],
   'composite-items': ['composite-items.view'],
   'modifier-groups': ['modifier-groups.view'],
+  'workshop-bundles': ['workshop-bundles.view'],
   promotions: ['promotions.view'],
   coupons: ['coupons.view'],
   loyalty: ['loyalty.view'],

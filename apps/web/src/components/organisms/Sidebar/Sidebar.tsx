@@ -51,6 +51,7 @@ import {
   Building2,
   Search,
   Sparkles,
+  Package2,
 } from 'lucide-react'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useCompanyConfig } from '../../../contexts'
@@ -72,6 +73,7 @@ const COLLAPSED_STORAGE_KEY = 'autoerp-sidebar-collapsed'
 const MODULE_NAME_MAP: Record<string, string | string[]> = {
   vehicles: 'Vehicle',
   services: 'Workshop',
+  'workshop-bundles': 'Workshop',
   'composite-items': 'CompositeItems',
   parapharmacy: 'Parapharmacy',
   'parts-catalog': 'PlatformIntegration',
@@ -247,6 +249,7 @@ function buildNavigation(isOtospex: boolean): NavModule[] {
       children: [
         { key: 'vehicles', href: '/vehicles', icon: Car, module: 'vehicles' },
         ...servicesChildren,
+        { key: 'workshopBundles', href: '/workshop/bundles', icon: Package2, module: 'workshop-bundles' },
         { key: 'partsCatalog', href: '/parts-catalog', icon: Search, module: 'parts-catalog' },
       ],
     })
