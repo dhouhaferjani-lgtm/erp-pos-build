@@ -122,6 +122,17 @@ export const PERMISSIONS = {
   'workshop.technicians.view_pii': ['admin', 'manager'],
   'workshop.technicians.approve_time_off': ['admin', 'manager'],
   'workshop.technicians.adjust_time_entries': ['admin', 'manager'],
+
+  // Workshop — Work Orders (Spec B)
+  'work-orders.view': ['admin', 'manager', 'operator', 'technician'],
+  'work-orders.create': ['admin', 'manager', 'operator'],
+  'work-orders.update': ['admin', 'manager', 'operator', 'technician'],
+  'work-orders.approve': ['admin', 'manager'],
+  'work-orders.assign': ['admin', 'manager'],
+  'work-orders.transition': ['admin', 'manager', 'operator'],
+  'work-orders.cancel': ['admin', 'manager'],
+  'work-orders.complete': ['admin', 'manager', 'operator', 'technician'],
+  'work-orders.view_financials': ['admin', 'manager', 'accountant'],
 } as const
 
 export type Permission = keyof typeof PERMISSIONS
@@ -152,6 +163,7 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   contacts: ['contacts.view'],
   enrichment: ['enrichment.view'],
   'workshop-technicians': ['workshop.technicians.view'],
+  'workshop-work-orders': ['work-orders.view'],
 }
 
 /**

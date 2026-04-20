@@ -157,6 +157,7 @@ export default tseslint.config(
       'src/features/autospecs/**/*.{ts,tsx}',
       'src/features/workshop-bundles/**/*.{ts,tsx}',
       'src/features/workshop-technicians/**/*.{ts,tsx}',
+      'src/features/workshop-work-orders/**/*.{ts,tsx}',
     ],
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',

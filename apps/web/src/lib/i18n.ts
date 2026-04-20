@@ -35,6 +35,7 @@ import enSmartPrompts from '../locales/en/smart-prompts.json'
 import enEnrichment from '../locales/en/enrichment.json'
 import enWorkshopTechnicians from '../locales/en/workshop-technicians.json'
 import enWorkshopBundles from '../locales/en/workshop-bundles.json'
+import enWorkshopWorkOrders from '../locales/en/workshop-work-orders.json'
 import enVehicleOwnership from '../locales/en/vehicle-ownership.json'
 
 import frCommon from '../locales/fr/common.json'
@@ -69,6 +70,7 @@ import frSmartPrompts from '../locales/fr/smart-prompts.json'
 import frEnrichment from '../locales/fr/enrichment.json'
 import frWorkshopTechnicians from '../locales/fr/workshop-technicians.json'
 import frWorkshopBundles from '../locales/fr/workshop-bundles.json'
+import frWorkshopWorkOrders from '../locales/fr/workshop-work-orders.json'
 import frVehicleOwnership from '../locales/fr/vehicle-ownership.json'
 
 export const languages = [
@@ -113,6 +115,7 @@ const resources = {
     enrichment: enEnrichment,
     'workshop-technicians': enWorkshopTechnicians,
     'workshop-bundles': enWorkshopBundles,
+    'workshop-work-orders': enWorkshopWorkOrders,
     'vehicle-ownership': enVehicleOwnership,
   },
   fr: {
@@ -148,6 +151,7 @@ const resources = {
     enrichment: frEnrichment,
     'workshop-technicians': frWorkshopTechnicians,
     'workshop-bundles': frWorkshopBundles,
+    'workshop-work-orders': frWorkshopWorkOrders,
     'vehicle-ownership': frVehicleOwnership,
   },
   ar: {
@@ -184,6 +188,7 @@ const resources = {
     enrichment: enEnrichment,
     'workshop-technicians': enWorkshopTechnicians,
     'workshop-bundles': enWorkshopBundles,
+    'workshop-work-orders': enWorkshopWorkOrders,
     'vehicle-ownership': enVehicleOwnership,
   },
 }
@@ -195,7 +200,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'vehicle-ownership'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'vehicle-ownership'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],
