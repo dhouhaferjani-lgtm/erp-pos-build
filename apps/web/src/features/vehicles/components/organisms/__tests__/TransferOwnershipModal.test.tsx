@@ -87,7 +87,14 @@ describe('TransferOwnershipModal', () => {
 
     expect(mutate).toHaveBeenCalledTimes(1)
     const firstCall = mutate.mock.calls[0] as unknown[]
-    const payload = firstCall[0] as { new_owner_partner_id: string }
-    expect(payload.new_owner_partner_id).toBe('22222222-2222-2222-2222-222222222222')
+    const [rawPayload] = firstCall
+    if (
+      typeof rawPayload !== 'object' ||
+      rawPayload === null ||
+      !('new_owner_partner_id' in rawPayload)
+    ) {
+      throw new Error('Expected mutate payload to include new_owner_partner_id')
+    }
+    expect(rawPayload.new_owner_partner_id).toBe('22222222-2222-2222-2222-222222222222')
   })
 })

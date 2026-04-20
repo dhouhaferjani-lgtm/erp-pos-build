@@ -148,14 +148,15 @@ export default tseslint.config(
   // AutoSpecs plan. These dirs will be created clean and must stay clean —
   // the full strict-type-checked preset applies with no baselining.
   //
-  // NOTE: `marketing/` and `vehicles/` are NOT listed here. `marketing/` has
-  // pre-existing design-token violations; `vehicles/` is the pre-Plan-A
-  // implementation that will be replaced. Add them back once the new
-  // implementations land and pass a clean lint sweep.
+  // NOTE: `marketing/` is NOT listed here — it has pre-existing design-token
+  // violations. `vehicles/` was migrated to design tokens + type guards by
+  // the autospecs-design-audit pass (Apr 2026), so it now carries the
+  // strict override alongside the four Plan A.5–D feature dirs.
   {
     files: [
       'src/features/autospecs/**/*.{ts,tsx}',
       'src/features/scheduling/**/*.{ts,tsx}',
+      'src/features/vehicles/**/*.{ts,tsx}',
       'src/features/workshop-bundles/**/*.{ts,tsx}',
       'src/features/workshop-technicians/**/*.{ts,tsx}',
       'src/features/workshop-work-orders/**/*.{ts,tsx}',

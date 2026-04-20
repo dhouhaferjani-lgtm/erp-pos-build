@@ -259,6 +259,7 @@ export const tokens = {
     primary: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500',
     secondary: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-gray-500',
     danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
+    dangerOutline: 'bg-white text-red-700 border border-red-300 hover:bg-red-50 focus:ring-red-500',
     ghost: 'bg-transparent text-gray-600 hover:bg-gray-100 focus:ring-gray-500',
     sizes: {
       sm: 'px-3 py-1.5 text-sm',
@@ -357,6 +358,16 @@ export const tokens = {
     group: 'inline-flex overflow-hidden rounded-md border border-gray-300',
     active: 'bg-sky-600 text-white',
     idle: 'bg-white text-gray-700',
+  },
+
+  /**
+   * Data-table row/header tokens. Matches the header/stripe/hover
+   * treatment used by list pages across features.
+   */
+  table: {
+    header: 'bg-gray-50',
+    rowHover: 'hover:bg-gray-50',
+    cellMonoBadge: 'inline-flex rounded-md bg-gray-100 px-2 py-1 text-sm font-mono font-medium',
   },
 }
 
