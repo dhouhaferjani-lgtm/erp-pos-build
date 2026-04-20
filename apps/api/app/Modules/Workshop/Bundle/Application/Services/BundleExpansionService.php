@@ -49,13 +49,25 @@ final readonly class BundleExpansionService
      *
      * @param  string  $quantity  scaled decimal string; typically '1' at the
      *                            WO line level. Scales every child line.
-     * @param  string|null  $vehicleId  currently unused in pricing logic;
-     *                                 preserved for future vehicle-context
-     *                                 pricing adjustments per spec §7.1.
+     * @param  string|null  $vehicleId  Reserved for vehicle-specific expansion
+     *                                  paths. Currently unused because Plan A.5
+     *                                  only ships universal / vehicle-scoped
+     *                                  applicability at the bundle header, not
+     *                                  per-component. Must remain in the public
+     *                                  signature so downstream callers
+     *                                  (Work-Order module, POS flows) can begin
+     *                                  passing the selected vehicle before the
+     *                                  implementation lands.
+     *
+     * @todo Plan A.7 / Spec B: honor $vehicleId to filter applicability sets
+     *                          and apply vehicle-specific override prices
+     *                          (labor rate tiers, EV surcharges, …).
+     *
      * @return Collection<int, BundleExpansionLine>
      */
     public function expandForWorkOrder(string $bundleId, string $quantity, ?string $vehicleId): Collection
     {
+        // Discard: see @todo on docblock. Referenced for static-analysis parity.
         unset($vehicleId);
 
         $bundle = $this->bundles->findWithComponentsAndApplicabilities($bundleId);
