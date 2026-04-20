@@ -21,6 +21,7 @@ use App\Modules\Scheduling\Domain\Events\AppointmentConfirmed;
 use App\Modules\Scheduling\Domain\Events\AppointmentRescheduled;
 use App\Modules\Scheduling\Domain\Events\AppointmentScheduled;
 use App\Modules\Scheduling\Domain\Exceptions\AppointmentConflictException;
+use App\Modules\Scheduling\Domain\Exceptions\InvalidAppointmentTransitionException;
 use App\Modules\Scheduling\Domain\Services\AppointmentStatusMachine;
 use App\Modules\Scheduling\Domain\ValueObjects\ConflictDetail;
 use Illuminate\Database\QueryException;
@@ -155,6 +156,8 @@ final class AppointmentAuthoringService
 
         return DB::transaction(function () use ($command): Appointment {
             $appointment = $this->appointments->findForUpdate($command->appointment_id);
+
+            $this->assertReschedulable($appointment);
 
             $this->assertNoOverlap(
                 bayId: $command->new_bay_id,
@@ -293,6 +296,27 @@ final class AppointmentAuthoringService
 
             return $appointment;
         });
+    }
+
+    /**
+     * Reschedule is only permitted while the appointment has not yet been
+     * checked in and is not in a terminal or system-mirrored state. Public
+     * callers cannot move a CheckedIn / InProgress / Completed / Closed /
+     * Cancelled / NoShow appointment.
+     *
+     * @throws InvalidAppointmentTransitionException
+     */
+    private function assertReschedulable(Appointment $appointment): void
+    {
+        $allowed = [AppointmentStatus::Scheduled, AppointmentStatus::Confirmed];
+        if (! in_array($appointment->status, $allowed, true)) {
+            throw new InvalidAppointmentTransitionException(
+                from: $appointment->status,
+                to: $appointment->status,
+                message: "Appointment cannot be rescheduled while in status '{$appointment->status->value}'."
+                    .' Reschedule is only permitted before check-in (Scheduled or Confirmed).',
+            );
+        }
     }
 
     private function assertNoOverlap(

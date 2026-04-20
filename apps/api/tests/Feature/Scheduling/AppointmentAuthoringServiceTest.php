@@ -159,6 +159,50 @@ final class AppointmentAuthoringServiceTest extends TestCase
         $this->assertSame($appt->id, $updated->id);
     }
 
+    public function test_reschedule_rejects_when_appointment_is_checked_in(): void
+    {
+        $appt = Appointment::factory()->checkedIn()->create();
+
+        $this->expectException(InvalidAppointmentTransitionException::class);
+        $this->service->reschedule(new RescheduleAppointmentCommand(
+            appointment_id: $appt->id,
+            new_bay_id: $appt->bay_id,
+            new_scheduled_start: new \DateTimeImmutable('2026-06-01 14:00:00'),
+            new_scheduled_end: new \DateTimeImmutable('2026-06-01 15:00:00'),
+            rescheduled_by_user_id: null,
+        ));
+    }
+
+    public function test_reschedule_rejects_when_appointment_is_cancelled(): void
+    {
+        $appt = Appointment::factory()->cancelled()->create();
+
+        $this->expectException(InvalidAppointmentTransitionException::class);
+        $this->service->reschedule(new RescheduleAppointmentCommand(
+            appointment_id: $appt->id,
+            new_bay_id: $appt->bay_id,
+            new_scheduled_start: new \DateTimeImmutable('2026-06-01 14:00:00'),
+            new_scheduled_end: new \DateTimeImmutable('2026-06-01 15:00:00'),
+            rescheduled_by_user_id: null,
+        ));
+    }
+
+    public function test_reschedule_allowed_from_confirmed(): void
+    {
+        $appt = Appointment::factory()->confirmed()->create();
+
+        $updated = $this->service->reschedule(new RescheduleAppointmentCommand(
+            appointment_id: $appt->id,
+            new_bay_id: $appt->bay_id,
+            new_scheduled_start: new \DateTimeImmutable('2026-06-01 14:00:00'),
+            new_scheduled_end: new \DateTimeImmutable('2026-06-01 15:00:00'),
+            rescheduled_by_user_id: null,
+        ));
+
+        $this->assertSame(AppointmentStatus::Confirmed, $updated->status);
+        $this->assertSame('2026-06-01 14:00:00', $updated->scheduled_start->format('Y-m-d H:i:s'));
+    }
+
     public function test_reschedule_rejects_when_other_appointment_overlaps(): void
     {
         $bay = Bay::factory()->create();
