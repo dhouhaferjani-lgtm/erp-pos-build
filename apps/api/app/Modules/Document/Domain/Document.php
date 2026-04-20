@@ -99,7 +99,6 @@ class Document extends Model
     use HasFactory;
 
     use HasUuids;
-
     use SoftDeletes;
 
     /**
