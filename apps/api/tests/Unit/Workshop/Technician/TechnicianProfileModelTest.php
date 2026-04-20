@@ -8,7 +8,7 @@ use App\Modules\Workshop\Technician\Domain\Enums\EmploymentStatus;
 use App\Modules\Workshop\Technician\Domain\Enums\SkillLevel;
 use App\Modules\Workshop\Technician\Domain\Enums\SpecialtyCode;
 use App\Modules\Workshop\Technician\Domain\TechnicianProfile;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 final class TechnicianProfileModelTest extends TestCase
 {
