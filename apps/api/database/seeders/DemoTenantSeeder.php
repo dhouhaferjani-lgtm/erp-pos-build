@@ -40,6 +40,11 @@ use App\Modules\Vehicle\Domain\Vehicle;
 use App\Modules\Workshop\Bundle\Domain\Enums\BundlePricingMode;
 use App\Modules\Workshop\Bundle\Domain\ServiceBundle;
 use App\Modules\Workshop\Bundle\Domain\ServiceBundleVehicleApplicability;
+use App\Modules\Workshop\Technician\Domain\Enums\EmploymentStatus;
+use App\Modules\Workshop\Technician\Domain\Enums\SkillLevel;
+use App\Modules\Workshop\Technician\Domain\Enums\SpecialtyCode;
+use App\Modules\Workshop\Technician\Domain\TechnicianCertification;
+use App\Modules\Workshop\Technician\Domain\TechnicianProfile;
 use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderStatus;
 use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderType;
 use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
@@ -198,6 +203,7 @@ class DemoTenantSeeder extends Seeder
         }
 
         $this->seedAutomotiveCatalog($tenant, $company);
+        $this->seedWorkshopTechnicians($tenant, $company, $user);
         $this->seedWorkshopBundles($tenant, $company);
         $this->seedWorkOrders($tenant, $company, $user);
         $this->seedScheduling($tenant, $company, $user);
@@ -402,6 +408,219 @@ class DemoTenantSeeder extends Seeder
             'HR' => $hr,
             'KG' => $kg,
         ];
+    }
+
+    /**
+     * Seed 3 technician profiles (including the admin) + 2 certifications
+     * so `CreateTimeEntryOnWorkOrderStarted` and the Plan-C UI have real
+     * data on a clean seed.
+     *
+     * @see docs/sessions/2026-04-20-autospecs-gap-closure-spec.md §2.3.4
+     */
+    private function seedWorkshopTechnicians(Tenant $tenant, Company $company, User $adminUser): void
+    {
+        $fullSchedule = [
+            'monday' => [['start' => '08:00', 'end' => '17:00']],
+            'tuesday' => [['start' => '08:00', 'end' => '17:00']],
+            'wednesday' => [['start' => '08:00', 'end' => '17:00']],
+            'thursday' => [['start' => '08:00', 'end' => '17:00']],
+            'friday' => [['start' => '08:00', 'end' => '17:00']],
+            'saturday' => [],
+            'sunday' => [],
+        ];
+
+        $halfDaySaturday = [
+            'monday' => [['start' => '09:00', 'end' => '18:00']],
+            'tuesday' => [['start' => '09:00', 'end' => '18:00']],
+            'wednesday' => [['start' => '09:00', 'end' => '18:00']],
+            'thursday' => [['start' => '09:00', 'end' => '18:00']],
+            'friday' => [['start' => '09:00', 'end' => '18:00']],
+            'saturday' => [['start' => '09:00', 'end' => '13:00']],
+            'sunday' => [],
+        ];
+
+        // 1. Admin also wears the tech hat so the time-entry listener has
+        //    a TechnicianProfile for the admin-started WO path.
+        $this->ensureTechnicianProfile(
+            $tenant,
+            $company,
+            $adminUser,
+            SkillLevel::Master,
+            [SpecialtyCode::GeneralService, SpecialtyCode::PreControl],
+            '25.000',
+            '60.000',
+            'ADMIN-01',
+            $fullSchedule,
+        );
+
+        // 2. Yassine Trabelsi — senior mechanic, diesel-capable.
+        $yassine = $this->ensureTechnicianUser(
+            $tenant,
+            $company,
+            'yassine.trabelsi@demo.local',
+            'Yassine Trabelsi',
+        );
+        $yassineProfile = $this->ensureTechnicianProfile(
+            $tenant,
+            $company,
+            $yassine,
+            SkillLevel::Senior,
+            [SpecialtyCode::EngineMechanical, SpecialtyCode::Brakes, SpecialtyCode::Diesel],
+            '18.000',
+            '45.000',
+            'TECH-01',
+            $fullSchedule,
+        );
+        $this->ensureCertification(
+            $tenant,
+            $yassineProfile,
+            'ASE Master Technician',
+            'ASE',
+            'ASE-MASTER-2024-001',
+        );
+
+        // 3. Sarra Ben Ali — tires & alignment, half-day Saturday.
+        $sarra = $this->ensureTechnicianUser(
+            $tenant,
+            $company,
+            'sarra.ben-ali@demo.local',
+            'Sarra Ben Ali',
+        );
+        $sarraProfile = $this->ensureTechnicianProfile(
+            $tenant,
+            $company,
+            $sarra,
+            SkillLevel::General,
+            [SpecialtyCode::Tires, SpecialtyCode::Alignment, SpecialtyCode::AcClimate],
+            '14.000',
+            '35.000',
+            'TECH-02',
+            $halfDaySaturday,
+        );
+        $this->ensureCertification(
+            $tenant,
+            $sarraProfile,
+            'Michelin Tire Certified',
+            'Michelin',
+            'MICH-TC-2024-045',
+        );
+
+        $this->command->line('  - Workshop technicians: 3 profiles (1 admin + 2 named) + 2 certifications.');
+    }
+
+    /**
+     * Create or refresh a user that doubles as a technician. Users bootstrap
+     * with Active status + verified email + a primary `Technician` membership
+     * + the spatie `technician` role, mirroring Plan C #1/#2/#3.
+     */
+    private function ensureTechnicianUser(
+        Tenant $tenant,
+        Company $company,
+        string $email,
+        string $name,
+    ): User {
+        /** @var User $user */
+        $user = User::updateOrCreate(
+            ['email' => $email],
+            [
+                'tenant_id' => $tenant->id,
+                'name' => $name,
+                'password' => Hash::make('password'),
+                'email_verified_at' => now(),
+                'status' => UserStatus::Active,
+            ]
+        );
+
+        UserCompanyMembership::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'company_id' => $company->id,
+            ],
+            [
+                'role' => MembershipRole::Technician,
+                'is_primary' => true,
+                'status' => MembershipStatus::Active,
+                'accepted_at' => now(),
+            ]
+        );
+
+        // Spatie role assignment is team-scoped on tenant_id.
+        setPermissionsTeamId($tenant->id);
+        $technicianRole = Role::where('name', 'technician')
+            ->where('guard_name', 'sanctum')
+            ->first();
+        if ($technicianRole !== null && ! $user->hasRole($technicianRole)) {
+            $user->assignRole($technicianRole);
+        }
+
+        return $user;
+    }
+
+    /**
+     * Create or refresh a technician profile. Keyed on (tenant, company,
+     * user) per the migration's unique partial index.
+     *
+     * @param  list<SpecialtyCode>  $specialties
+     * @param  array<string, list<array{start: string, end: string}>>  $weeklySchedule
+     */
+    private function ensureTechnicianProfile(
+        Tenant $tenant,
+        Company $company,
+        User $user,
+        SkillLevel $skillLevel,
+        array $specialties,
+        string $hourlyCostRate,
+        string $hourlyBillingRate,
+        string $employeeCode,
+        array $weeklySchedule,
+    ): TechnicianProfile {
+        /** @var TechnicianProfile $profile */
+        $profile = TechnicianProfile::updateOrCreate(
+            [
+                'tenant_id' => $tenant->id,
+                'company_id' => $company->id,
+                'user_id' => $user->id,
+            ],
+            [
+                'skill_level' => $skillLevel,
+                'specialties' => array_map(static fn (SpecialtyCode $c): string => $c->value, $specialties),
+                'hourly_cost_rate' => $hourlyCostRate,
+                'hourly_billing_rate' => $hourlyBillingRate,
+                'currency' => 'TND',
+                'weekly_schedule' => $weeklySchedule,
+                'employment_status' => EmploymentStatus::Active,
+                'employee_code' => $employeeCode,
+                'is_active' => true,
+            ]
+        );
+
+        return $profile;
+    }
+
+    /**
+     * Attach a single certification to a technician profile. Idempotent via
+     * (tenant, technician_profile, certification_name, certificate_number).
+     */
+    private function ensureCertification(
+        Tenant $tenant,
+        TechnicianProfile $profile,
+        string $name,
+        string $issuingBody,
+        string $certificateNumber,
+    ): void {
+        TechnicianCertification::updateOrCreate(
+            [
+                'tenant_id' => $tenant->id,
+                'technician_profile_id' => $profile->id,
+                'certification_name' => $name,
+                'certificate_number' => $certificateNumber,
+            ],
+            [
+                'issuing_body' => $issuingBody,
+                'issued_at' => now()->subYear()->format('Y-m-d'),
+                'expires_at' => now()->addYears(2)->format('Y-m-d'),
+            ]
+        );
     }
 
     /**
