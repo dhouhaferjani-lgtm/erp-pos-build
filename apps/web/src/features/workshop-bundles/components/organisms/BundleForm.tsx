@@ -23,6 +23,10 @@ export function BundleForm({
   const [pricingMode, setPricingMode] = useState<BundlePricingMode>(
     initial?.pricing_mode ?? 'standard',
   )
+
+  const parsePricingMode = (value: string): BundlePricingMode => {
+    return value === 'fixed_bundle' ? 'fixed_bundle' : 'standard'
+  }
   const [basePrice, setBasePrice] = useState(initial?.base_price ?? '')
   const [currency, setCurrency] = useState(initial?.currency ?? defaultCurrency)
   const [taxRate, setTaxRate] = useState(initial?.tax_rate ?? '19')
@@ -123,7 +127,7 @@ export function BundleForm({
           </label>
           <select
             value={pricingMode}
-            onChange={(e) => { setPricingMode(e.target.value as BundlePricingMode) }}
+            onChange={(e) => { setPricingMode(parsePricingMode(e.target.value)) }}
             className={tokens.input.base}
           >
             <option value="standard">{t('form.pricingMode.standard')}</option>
