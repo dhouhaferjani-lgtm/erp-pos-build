@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { textColors, tokens } from '@/lib/designTokens'
 import { ConflictAlert } from '../molecules/ConflictAlert'
 import { useBays, useBookAppointment } from '../../hooks/useScheduling'
+import { isAppointmentType, isWaitType } from '../../types'
 import type {
   AppointmentConflictPayload,
   AppointmentType,
@@ -313,7 +314,8 @@ function AppointmentFormDrawerContent({
                 className={tokens.select.base}
                 value={form.appointment_type}
                 onChange={(e) => {
-                  update('appointment_type', e.target.value as AppointmentType)
+                  const raw = e.target.value
+                  if (isAppointmentType(raw)) update('appointment_type', raw)
                 }}
               >
                 <option value="quick_service">{t('appointmentType.quick_service')}</option>
@@ -332,7 +334,10 @@ function AppointmentFormDrawerContent({
               <select
                 className={tokens.select.base}
                 value={form.wait_type}
-                onChange={(e) => { update('wait_type', e.target.value as WaitType) }}
+                onChange={(e) => {
+                  const raw = e.target.value
+                  if (isWaitType(raw)) update('wait_type', raw)
+                }}
               >
                 <option value="drop_off">{t('waitType.drop_off')}</option>
                 <option value="waiter">{t('waitType.waiter')}</option>

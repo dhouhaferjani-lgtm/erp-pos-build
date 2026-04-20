@@ -12,39 +12,69 @@
  * `App\Modules\Scheduling\Domain\Enums\*`.
  */
 
-export type AppointmentStatus =
-  | 'scheduled'
-  | 'confirmed'
-  | 'checked_in'
-  | 'in_progress'
-  | 'completed'
-  | 'closed'
-  | 'no_show'
-  | 'cancelled'
+/**
+ * Enum-like const arrays paired with type aliases — lets us narrow runtime
+ * strings (from `<select>` change events, URL params, etc.) without `as`
+ * assertions. Each array mirrors a backed PHP enum in
+ * `App\Modules\Scheduling\Domain\Enums\*`; keep them in lockstep.
+ */
 
-export type AppointmentType =
-  | 'quick_service'
-  | 'inspection'
-  | 'diagnostic'
-  | 'standard_repair'
-  | 'major_repair'
-  | 'maintenance'
-  | 'tire_service'
-  | 'bodywork'
-  | 'other'
+export const APPOINTMENT_STATUSES = [
+  'scheduled',
+  'confirmed',
+  'checked_in',
+  'in_progress',
+  'completed',
+  'closed',
+  'no_show',
+  'cancelled',
+] as const
+export type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number]
+export function isAppointmentStatus(v: string): v is AppointmentStatus {
+  return (APPOINTMENT_STATUSES as readonly string[]).includes(v)
+}
 
-export type AppointmentSource = 'manual' | 'phone' | 'online' | 'walkin'
+export const APPOINTMENT_TYPES = [
+  'quick_service',
+  'inspection',
+  'diagnostic',
+  'standard_repair',
+  'major_repair',
+  'maintenance',
+  'tire_service',
+  'bodywork',
+  'other',
+] as const
+export type AppointmentType = (typeof APPOINTMENT_TYPES)[number]
+export function isAppointmentType(v: string): v is AppointmentType {
+  return (APPOINTMENT_TYPES as readonly string[]).includes(v)
+}
 
-export type WaitType = 'waiter' | 'drop_off' | 'pickup_scheduled'
+export const APPOINTMENT_SOURCES = ['manual', 'phone', 'online', 'walkin'] as const
+export type AppointmentSource = (typeof APPOINTMENT_SOURCES)[number]
+export function isAppointmentSource(v: string): v is AppointmentSource {
+  return (APPOINTMENT_SOURCES as readonly string[]).includes(v)
+}
 
-export type BayType =
-  | 'general'
-  | 'quick_service'
-  | 'alignment'
-  | 'heavy'
-  | 'specialist'
-  | 'flat'
-  | 'other'
+export const WAIT_TYPES = ['waiter', 'drop_off', 'pickup_scheduled'] as const
+export type WaitType = (typeof WAIT_TYPES)[number]
+export function isWaitType(v: string): v is WaitType {
+  return (WAIT_TYPES as readonly string[]).includes(v)
+}
+
+export const BAY_TYPES = [
+  'general',
+  'quick_service',
+  'alignment',
+  'heavy',
+  'specialist',
+  'flat',
+  'other',
+] as const
+export type BayType = (typeof BAY_TYPES)[number]
+export function isBayType(v: string): v is BayType {
+  return (BAY_TYPES as readonly string[]).includes(v)
+}
 
 /**
  * Bay resource — one physical lift / ramp.

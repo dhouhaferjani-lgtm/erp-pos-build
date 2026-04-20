@@ -52,7 +52,10 @@ export function useAppointments(filters: AppointmentListFilters = {}) {
 export function useAppointment(id: string | undefined) {
   return useQuery<Appointment>({
     queryKey: schedulingKeys.appointmentDetail(id ?? ''),
-    queryFn: () => schedulingApi.getAppointment(id as string),
+    queryFn: () => {
+      if (id === undefined || id === '') throw new Error('id is required')
+      return schedulingApi.getAppointment(id)
+    },
     enabled: typeof id === 'string' && id.length > 0,
     staleTime: 30 * 1000,
   })
@@ -160,7 +163,12 @@ export function useBays() {
 export function useScheduleConfig(locationId: string | undefined) {
   return useQuery<ScheduleConfig>({
     queryKey: schedulingKeys.config(locationId ?? ''),
-    queryFn: () => schedulingApi.getScheduleConfig(locationId as string),
+    queryFn: () => {
+      if (locationId === undefined || locationId === '') {
+        throw new Error('locationId is required')
+      }
+      return schedulingApi.getScheduleConfig(locationId)
+    },
     enabled: typeof locationId === 'string' && locationId.length > 0,
     staleTime: 5 * 60 * 1000,
   })
@@ -171,7 +179,10 @@ export function useScheduleConfig(locationId: string | undefined) {
 export function useDayView(date: string | undefined) {
   return useQuery<DayViewData>({
     queryKey: schedulingKeys.day(date ?? ''),
-    queryFn: () => schedulingApi.dayView(date as string),
+    queryFn: () => {
+      if (date === undefined || date === '') throw new Error('date is required')
+      return schedulingApi.dayView(date)
+    },
     enabled: typeof date === 'string' && date.length > 0,
     staleTime: 30 * 1000,
   })
@@ -180,7 +191,12 @@ export function useDayView(date: string | undefined) {
 export function useWeekView(weekStart: string | undefined) {
   return useQuery<WeekViewData>({
     queryKey: schedulingKeys.week(weekStart ?? ''),
-    queryFn: () => schedulingApi.weekView(weekStart as string),
+    queryFn: () => {
+      if (weekStart === undefined || weekStart === '') {
+        throw new Error('weekStart is required')
+      }
+      return schedulingApi.weekView(weekStart)
+    },
     enabled: typeof weekStart === 'string' && weekStart.length > 0,
     staleTime: 30 * 1000,
   })
@@ -191,7 +207,10 @@ export function useFreeSlots(params: { duration: number; from: string; to: strin
     queryKey: params
       ? schedulingKeys.freeSlots(params)
       : [...schedulingKeys.all, 'free-slots', 'idle'],
-    queryFn: () => schedulingApi.freeSlots(params as { duration: number; from: string; to: string }),
+    queryFn: () => {
+      if (params === null) throw new Error('params is required')
+      return schedulingApi.freeSlots(params)
+    },
     enabled: params !== null,
     staleTime: 30 * 1000,
   })

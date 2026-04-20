@@ -65,8 +65,16 @@ describe('AppointmentFormDrawer', () => {
     const setValue = (labelKey: string, value: string): void => {
       const input = screen.getByText(labelKey).parentElement?.querySelector(
         'input, select, textarea',
-      ) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null
-      if (input === null) throw new Error(`label ${labelKey} missing`)
+      )
+      if (
+        !(
+          input instanceof HTMLInputElement ||
+          input instanceof HTMLSelectElement ||
+          input instanceof HTMLTextAreaElement
+        )
+      ) {
+        throw new Error(`label ${labelKey} missing`)
+      }
       fireEvent.change(input, { target: { value } })
     }
 
@@ -79,10 +87,18 @@ describe('AppointmentFormDrawer', () => {
 
     expect(bookMock).toHaveBeenCalledTimes(1)
     const [payload] = bookMock.mock.calls[0] ?? []
-    const typed = payload as { location_id: string; customer_name: string; estimated_duration_minutes: number; planned_services: unknown[] }
-    expect(typed.location_id).toBe('loc-1')
-    expect(typed.customer_name).toBe('Mohamed Ben Ali')
-    expect(typed.estimated_duration_minutes).toBe(60)
-    expect(typed.planned_services.length).toBe(1)
+    // Narrow via runtime checks instead of `as` assertion.
+    if (payload === null || typeof payload !== 'object') {
+      throw new Error('booking payload must be an object')
+    }
+    const record: Record<string, unknown> = { ...payload }
+    expect(record['location_id']).toBe('loc-1')
+    expect(record['customer_name']).toBe('Mohamed Ben Ali')
+    expect(record['estimated_duration_minutes']).toBe(60)
+    const plannedServices = record['planned_services']
+    if (!Array.isArray(plannedServices)) {
+      throw new Error('planned_services must be an array')
+    }
+    expect(plannedServices.length).toBe(1)
   })
 })
