@@ -78,6 +78,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'vehicles.create',
             'vehicles.update',
             'vehicles.delete',
+            'vehicles.manage_ownership',
+            'vehicles.log_mileage',
 
             // Sales Documents (Quotes, Orders, Invoices)
             'documents.view',  // Unified document view
@@ -280,6 +282,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'products.view', 'products.create', 'products.update', 'products.import',
             'enrichment.view', 'enrichment.review', 'enrichment.submit',
             'vehicles.view', 'vehicles.create', 'vehicles.update',
+            'vehicles.manage_ownership', 'vehicles.log_mileage',
             'documents.view',
             'quotes.view', 'quotes.create', 'quotes.update', 'quotes.convert',
             'orders.view', 'orders.create', 'orders.update', 'orders.confirm',
@@ -393,6 +396,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'partners.view',
             'products.view',
             'vehicles.view',
+            'vehicles.log_mileage',
             'inventory.view',
             'work-orders.view', 'work-orders.update', 'work-orders.complete',
             'workshop-bundles.view',
@@ -405,6 +409,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'partners.view', 'partners.create', 'partners.update',
             'products.view',
             'vehicles.view', 'vehicles.create', 'vehicles.update',
+            'vehicles.manage_ownership', 'vehicles.log_mileage',
             'documents.view',
             'quotes.view', 'quotes.create', 'quotes.update',
             'orders.view', 'orders.create', 'orders.update',

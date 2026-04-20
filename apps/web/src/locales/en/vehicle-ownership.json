@@ -1,0 +1,95 @@
+{
+  "ownership": {
+    "title": "Ownership",
+    "currentOwner": "Current owner",
+    "noOwner": "No current owner",
+    "history": "Ownership history",
+    "transfer": "Transfer ownership",
+    "transferButton": "Transfer",
+    "confirmTransfer": "Confirm transfer",
+    "cancel": "Cancel",
+    "newOwner": "New owner",
+    "occurredAt": "Occurred at",
+    "reason": "Reason",
+    "notes": "Notes (optional)",
+    "notesPlaceholder": "Optional context for the transfer",
+    "acquiredAt": "Acquired",
+    "releasedAt": "Released",
+    "current": "Current",
+    "closed": "Closed",
+    "transferSuccess": "Ownership transferred successfully.",
+    "transferError": "Could not transfer ownership. Please try again."
+  },
+  "mileage": {
+    "title": "Mileage",
+    "latest": "Latest reading",
+    "empty": "No mileage readings yet.",
+    "logReading": "Log reading",
+    "logButton": "Log",
+    "mileage": "Mileage",
+    "recordedAt": "Recorded at",
+    "source": "Source",
+    "notes": "Notes (optional)",
+    "logSuccess": "Mileage reading logged.",
+    "logError": "Could not log mileage. Please try again."
+  },
+  "partnerVehicles": {
+    "title": "Vehicles",
+    "empty": "This customer has no vehicles yet.",
+    "addVehicle": "Add a vehicle"
+  },
+  "fuelType": {
+    "gasoline": "Gasoline",
+    "diesel": "Diesel",
+    "electric": "Electric",
+    "hybrid": "Hybrid",
+    "plugin_hybrid": "Plug-in hybrid",
+    "lpg": "LPG",
+    "cng": "CNG",
+    "hydrogen": "Hydrogen",
+    "other": "Other"
+  },
+  "transmissionType": {
+    "manual": "Manual",
+    "automatic": "Automatic",
+    "semi_automatic": "Semi-automatic",
+    "cvt": "CVT",
+    "dual_clutch": "Dual-clutch",
+    "other": "Other"
+  },
+  "bodyType": {
+    "sedan": "Sedan",
+    "hatchback": "Hatchback",
+    "suv": "SUV",
+    "pickup": "Pickup",
+    "van": "Van",
+    "coupe": "Coupe",
+    "convertible": "Convertible",
+    "wagon": "Wagon",
+    "truck": "Truck",
+    "motorcycle": "Motorcycle",
+    "other": "Other"
+  },
+  "ownershipReason": {
+    "initial_registration": "Initial registration",
+    "purchase": "Purchase",
+    "sale": "Sale",
+    "transfer": "Transfer",
+    "trade_in": "Trade-in",
+    "fleet_assignment": "Fleet assignment",
+    "fleet_return": "Fleet return",
+    "other": "Other"
+  },
+  "mileageSource": {
+    "service": "Service",
+    "manual": "Manual",
+    "odometer_photo": "Odometer photo",
+    "external_api": "External API"
+  },
+  "page": {
+    "ownershipSection": "Ownership",
+    "mileageSection": "Mileage readings",
+    "transferOwnership": "Transfer ownership",
+    "logMileage": "Log mileage reading"
+  }
+}
