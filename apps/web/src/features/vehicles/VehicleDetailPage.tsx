@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Edit, Trash2, Car, Calendar, Gauge, Fuel, Settings } from 'lucide-react'
-import { api, apiDelete } from '../../lib/api'
+import { apiDelete } from '../../lib/api'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -11,30 +11,8 @@ import { OwnershipHistoryTimeline } from './components/organisms/OwnershipHistor
 import { MileageLogList } from './components/organisms/MileageLogList'
 import { TransferOwnershipModal } from './components/organisms/TransferOwnershipModal'
 import { useLogVehicleMileage } from './hooks/useLogVehicleMileage'
+import { useVehicleWithCurrentOwner } from './hooks/useVehicleWithCurrentOwner'
 import type { MileageSource } from './types'
-
-interface Vehicle {
-  id: string
-  tenant_id: string
-  partner_id: string | null
-  license_plate: string
-  brand: string
-  model: string
-  year: number | null
-  color: string | null
-  mileage: number | null
-  vin: string | null
-  engine_code: string | null
-  fuel_type: string | null
-  transmission: string | null
-  notes: string | null
-  created_at: string
-  updated_at: string
-}
-
-interface VehicleResponse {
-  data: Vehicle
-}
 
 export function VehicleDetailPage() {
   const { t } = useTranslation(['vehicles', 'vehicle-ownership', 'common'])
@@ -51,15 +29,7 @@ export function VehicleDetailPage() {
   const [mileageSource, setMileageSource] = useState<MileageSource>('manual')
   const [mileageError, setMileageError] = useState<string | null>(null)
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['vehicle', id],
-    queryFn: async () => {
-      if (id === undefined || id === '') throw new Error('No vehicle ID')
-      const response = await api.get<VehicleResponse>(`/vehicles/${id}`)
-      return response.data
-    },
-    enabled: id !== undefined && id !== '',
-  })
+  const { data, isLoading, error } = useVehicleWithCurrentOwner(id)
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -119,7 +89,7 @@ export function VehicleDetailPage() {
     )
   }
 
-  if (error || !data?.data) {
+  if (error || !data?.vehicle) {
     return (
       <div className="space-y-6">
         <Link
@@ -136,7 +106,7 @@ export function VehicleDetailPage() {
     )
   }
 
-  const vehicle = data.data
+  const vehicle = data.vehicle
 
   return (
     <div className="space-y-6">
@@ -361,7 +331,9 @@ export function VehicleDetailPage() {
       {/* Metadata */}
       <div className={`text-sm ${textColors.tertiary}`}>
         <p>{t('created')}: {new Date(vehicle.created_at).toLocaleString()}</p>
-        <p>{t('updated')}: {new Date(vehicle.updated_at).toLocaleString()}</p>
+        {vehicle.updated_at !== null ? (
+          <p>{t('updated')}: {new Date(vehicle.updated_at).toLocaleString()}</p>
+        ) : null}
       </div>
 
       {/* Delete Confirmation Dialog */}
