@@ -20,10 +20,10 @@ use Illuminate\Support\ServiceProvider;
 /**
  * Service provider for the Workshop/Technician submodule.
  *
- * Binds Application-layer contracts to Infrastructure implementations. Repository bindings
- * are added in Task 10. Event listeners for WorkOrder lifecycle events (Plan B) are wired
- * via `App\Providers\EventServiceProvider::$listen` and are intentionally kept commented
- * out in this plan until Plan B lands the event classes.
+ * Binds Application-layer contracts to Infrastructure implementations, loads the
+ * Presentation layer routes, and registers the scheduled command. Event listeners
+ * for WorkOrder lifecycle events (Plan B) are wired via `App\Providers\EventServiceProvider::$listen`
+ * and are intentionally kept commented out in this plan until Plan B lands the event classes.
  */
 final class TechnicianServiceProvider extends ServiceProvider
 {
@@ -53,8 +53,8 @@ final class TechnicianServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // Routes + migrations are registered by Laravel's auto-discovery for `database/migrations`.
-        // Module routes will be loaded once the Presentation layer lands (Task 12).
+        $this->loadRoutesFrom(__DIR__.'/Presentation/routes.php');
+
         if ($this->app->runningInConsole()) {
             $this->commands([
                 CheckExpiringCertifications::class,
