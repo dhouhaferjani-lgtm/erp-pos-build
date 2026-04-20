@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { tokens } from '../../../../lib/designTokens'
 import type { BundlePricingMode } from '../../types'
 
 interface BundlePriceChipProps {
@@ -22,14 +23,14 @@ export function BundlePriceChip({
 
   if (pricingMode === 'fixed_bundle' && price !== null) {
     return (
-      <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
+      <span className={`${tokens.badge.base} ${tokens.badge.blue}`}>
         {price} {currency}
       </span>
     )
   }
 
   return (
-    <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+    <span className={`${tokens.badge.base} ${tokens.badge.gray}`}>
       {t('priceChip.sumOfLines')}
     </span>
   )

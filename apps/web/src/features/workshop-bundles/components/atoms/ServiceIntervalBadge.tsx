@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { tokens } from '../../../../lib/designTokens'
 
 interface ServiceIntervalBadgeProps {
   km: number | null
@@ -24,7 +25,7 @@ export function ServiceIntervalBadge({
   }
 
   return (
-    <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+    <span className={`${tokens.badge.base} ${tokens.badge.green}`}>
       {parts.join(' · ')}
     </span>
   )

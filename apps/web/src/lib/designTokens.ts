@@ -296,6 +296,8 @@ export const tokens = {
   card: {
     base: 'rounded-lg border border-gray-200 bg-white p-6 shadow-sm',
     hover: 'hover:shadow-md transition-shadow',
+    // Hover variants for interactive cards (selection UI, list rows).
+    hoverPrimary: 'hover:border-blue-400 hover:bg-blue-50',
   },
 
   /**

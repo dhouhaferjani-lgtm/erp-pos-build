@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { tokens } from '../../../../lib/designTokens'
 import type { ServiceBundleVehicleApplicabilityData } from '../../types'
 
 interface VehicleApplicabilityChipProps {
@@ -12,7 +13,7 @@ export function VehicleApplicabilityChip({
 
   if (applicability.platform_vehicle_id === null) {
     return (
-      <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+      <span className={`${tokens.badge.base} ${tokens.badge.gray}`}>
         {t('applicability.universal')}
       </span>
     )
@@ -26,7 +27,7 @@ export function VehicleApplicabilityChip({
     })
 
   return (
-    <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+    <span className={`${tokens.badge.base} ${tokens.badge.blue}`}>
       {label}
     </span>
   )

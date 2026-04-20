@@ -1,3 +1,4 @@
+import { borderColors, textColors, tokens } from '../../../../lib/designTokens'
 import type { ApplicableBundleData } from '../../types'
 import { BundlePriceChip } from '../atoms/BundlePriceChip'
 import { ServiceIntervalBadge } from '../atoms/ServiceIntervalBadge'
@@ -18,15 +19,15 @@ export function BundleSummaryCard({
       type="button"
       disabled={!clickable}
       onClick={() => onSelect?.(bundle)}
-      className="flex w-full items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white p-4 text-left transition-colors hover:border-blue-400 hover:bg-blue-50 disabled:cursor-default disabled:hover:border-gray-200 disabled:hover:bg-white"
+      className={`flex w-full items-start justify-between gap-3 rounded-lg border ${borderColors.light} bg-white p-4 text-left transition-colors ${tokens.card.hoverPrimary} disabled:cursor-default`}
     >
       <div className="flex-1">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-xs text-gray-500">{bundle.code}</span>
+          <span className={`font-mono text-xs ${textColors.tertiary}`}>{bundle.code}</span>
         </div>
-        <h3 className="mt-1 text-sm font-medium text-gray-900">{bundle.name}</h3>
+        <h3 className={`mt-1 text-sm font-medium ${textColors.primary}`}>{bundle.name}</h3>
         {bundle.description !== null && (
-          <p className="mt-1 line-clamp-2 text-xs text-gray-600">
+          <p className={`mt-1 line-clamp-2 text-xs ${textColors.tertiary}`}>
             {bundle.description}
           </p>
         )}

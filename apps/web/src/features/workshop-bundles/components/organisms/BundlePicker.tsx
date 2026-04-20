@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
+import { borderColors, textColors, tokens } from '../../../../lib/designTokens'
 import { useApplicableBundles } from '../../hooks/useBundles'
 import type { ApplicableBundleData } from '../../types'
 import { BundleSummaryCard } from '../molecules/BundleSummaryCard'
@@ -44,36 +45,36 @@ export function BundlePicker({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="flex h-[80vh] w-full max-w-3xl flex-col rounded-lg bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-gray-200 p-4">
-          <h2 className="text-lg font-semibold text-gray-900">
+        <div className={`flex items-center justify-between border-b ${borderColors.light} p-4`}>
+          <h2 className={`text-lg font-semibold ${textColors.primary}`}>
             {t('picker.title')}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+            className={tokens.modal.closeButton}
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="border-b border-gray-200 p-4">
+        <div className={`border-b ${borderColors.light} p-4`}>
           <input
             type="search"
             placeholder={t('picker.searchPlaceholder')}
             value={search}
             onChange={(e) => { setSearch(e.target.value) }}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className={`${tokens.input.base} mt-0`}
           />
         </div>
 
         <div className="flex flex-1 overflow-hidden">
-          <div className="w-1/2 overflow-y-auto border-r border-gray-200 p-4 space-y-2">
+          <div className={`w-1/2 overflow-y-auto border-r ${borderColors.light} p-4 space-y-2`}>
             {isLoading && (
-              <div className="text-sm text-gray-500">{t('picker.loading')}</div>
+              <div className={`text-sm ${textColors.tertiary}`}>{t('picker.loading')}</div>
             )}
             {bundles?.length === 0 && !isLoading && (
-              <div className="text-sm text-gray-500">{t('picker.empty')}</div>
+              <div className={`text-sm ${textColors.tertiary}`}>{t('picker.empty')}</div>
             )}
             {bundles?.map((bundle) => (
               <BundleSummaryCard
@@ -85,12 +86,12 @@ export function BundlePicker({
           </div>
           <div className="w-1/2 overflow-y-auto p-4">
             {preview === null ? (
-              <div className="text-sm text-gray-500">{t('picker.selectPreview')}</div>
+              <div className={`text-sm ${textColors.tertiary}`}>{t('picker.selectPreview')}</div>
             ) : (
               <div className="space-y-3">
                 <div>
-                  <h3 className="text-base font-medium text-gray-900">{preview.name}</h3>
-                  <p className="text-xs text-gray-500">{preview.code}</p>
+                  <h3 className={`text-base font-medium ${textColors.primary}`}>{preview.name}</h3>
+                  <p className={`text-xs ${textColors.tertiary}`}>{preview.code}</p>
                 </div>
                 <BundleExpandedPreview
                   bundleId={preview.id}
@@ -102,11 +103,11 @@ export function BundlePicker({
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-gray-200 p-4">
+        <div className={`flex items-center justify-end gap-2 border-t ${borderColors.light} p-4`}>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
           >
             {t('picker.cancel')}
           </button>
@@ -118,7 +119,7 @@ export function BundlePicker({
               }
             }}
             disabled={preview === null}
-            className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-blue-300"
+            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm}`}
           >
             {t('picker.confirm')}
           </button>

@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useParams } from 'react-router-dom'
+import { borderColors, textColors } from '../../../lib/designTokens'
 import { useBundle } from '../hooks/useBundles'
 import { BundleForm } from '../components/organisms/BundleForm'
 import { BundleComponentRow } from '../components/molecules/BundleComponentRow'
@@ -12,32 +13,32 @@ export function BundleDetailPage() {
   const { data: bundle, isLoading, error } = useBundle(id)
 
   if (isLoading) {
-    return <div className="p-6 text-sm text-gray-500">{t('detail.loading')}</div>
+    return <div className={`p-6 text-sm ${textColors.tertiary}`}>{t('detail.loading')}</div>
   }
 
   if (error !== null || bundle === undefined) {
-    return <div className="p-6 text-sm text-red-600">{t('detail.error')}</div>
+    return <div className={`p-6 text-sm ${textColors.error}`}>{t('detail.error')}</div>
   }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
-      <h1 className="text-2xl font-semibold text-gray-900">
+      <h1 className={`text-2xl font-semibold ${textColors.primary}`}>
         {t('detail.title', { name: bundle.name })}
       </h1>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-gray-600">
+      <section className={`rounded-lg border ${borderColors.light} bg-white p-4`}>
+        <h2 className={`mb-3 text-sm font-medium uppercase tracking-wide ${textColors.tertiary}`}>
           {t('detail.fields')}
         </h2>
         <BundleForm initial={bundle} defaultCurrency={bundle.currency} />
       </section>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-gray-600">
+      <section className={`rounded-lg border ${borderColors.light} bg-white p-4`}>
+        <h2 className={`mb-3 text-sm font-medium uppercase tracking-wide ${textColors.tertiary}`}>
           {t('detail.components', { count: bundle.components.length })}
         </h2>
         {bundle.components.length === 0 ? (
-          <p className="text-sm text-gray-500">{t('detail.emptyComponents')}</p>
+          <p className={`text-sm ${textColors.tertiary}`}>{t('detail.emptyComponents')}</p>
         ) : (
           <div>
             {bundle.components.map((component) => (
@@ -51,12 +52,12 @@ export function BundleDetailPage() {
         )}
       </section>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-gray-600">
+      <section className={`rounded-lg border ${borderColors.light} bg-white p-4`}>
+        <h2 className={`mb-3 text-sm font-medium uppercase tracking-wide ${textColors.tertiary}`}>
           {t('detail.applicabilities')}
         </h2>
         {bundle.vehicle_applicabilities.length === 0 ? (
-          <p className="text-sm text-gray-500">{t('detail.emptyApplicabilities')}</p>
+          <p className={`text-sm ${textColors.tertiary}`}>{t('detail.emptyApplicabilities')}</p>
         ) : (
           <div className="flex flex-wrap gap-1.5">
             {bundle.vehicle_applicabilities.map((a) => (
@@ -67,7 +68,7 @@ export function BundleDetailPage() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-gray-600">
+        <h2 className={`mb-3 text-sm font-medium uppercase tracking-wide ${textColors.tertiary}`}>
           {t('detail.expansionPreview')}
         </h2>
         <BundleExpandedPreview bundleId={bundle.id} currency={bundle.currency} />

@@ -78,7 +78,7 @@ export function BundleForm({
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid gap-4 md:grid-cols-2">
         <div>
-          <label className="block text-sm font-medium text-gray-700">
+          <label className={tokens.label.base}>
             {t('form.code')}
           </label>
           <input
@@ -91,7 +91,7 @@ export function BundleForm({
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700">
+          <label className={tokens.label.base}>
             {t('form.name')}
           </label>
           <input
@@ -105,7 +105,7 @@ export function BundleForm({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700">
+        <label className={tokens.label.base}>
           {t('form.description')}
         </label>
         <textarea
@@ -118,7 +118,7 @@ export function BundleForm({
 
       <div className="grid gap-4 md:grid-cols-3">
         <div>
-          <label className="block text-sm font-medium text-gray-700">
+          <label className={tokens.label.base}>
             {t('form.pricingMode')}
           </label>
           <select
@@ -131,7 +131,7 @@ export function BundleForm({
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700">
+          <label className={tokens.label.base}>
             {t('form.basePrice')}
           </label>
           <input
@@ -143,7 +143,7 @@ export function BundleForm({
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700">
+          <label className={tokens.label.base}>
             {t('form.currency')}
           </label>
           <input
@@ -159,7 +159,7 @@ export function BundleForm({
 
       <div className="grid gap-4 md:grid-cols-3">
         <div>
-          <label className="block text-sm font-medium text-gray-700">
+          <label className={tokens.label.base}>
             {t('form.taxRate')}
           </label>
           <input
@@ -170,7 +170,7 @@ export function BundleForm({
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700">
+          <label className={tokens.label.base}>
             {t('form.estimatedLaborHours')}
           </label>
           <input
@@ -185,7 +185,7 @@ export function BundleForm({
 
       <div className="grid gap-4 md:grid-cols-2">
         <div>
-          <label className="block text-sm font-medium text-gray-700">
+          <label className={tokens.label.base}>
             {t('form.serviceIntervalKm')}
           </label>
           <input
@@ -196,7 +196,7 @@ export function BundleForm({
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700">
+          <label className={tokens.label.base}>
             {t('form.serviceIntervalMonths')}
           </label>
           <input
@@ -212,14 +212,14 @@ export function BundleForm({
         <button
           type="button"
           onClick={() => { void navigate(-1) }}
-          className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
         >
           {t('form.cancel')}
         </button>
         <button
           type="submit"
           disabled={mutation.isPending}
-          className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-blue-300"
+          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm}`}
         >
           {mutation.isPending
             ? t('form.saving')
