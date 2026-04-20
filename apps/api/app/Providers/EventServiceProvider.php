@@ -63,6 +63,9 @@ class EventServiceProvider extends ServiceProvider
             \App\Modules\Workshop\Technician\Infrastructure\Listeners\CloseTimeEntryOnWorkOrderCompleted::class,
             \App\Modules\Vehicle\Infrastructure\Listeners\WriteMileageReadingFromWorkOrderCompleted::class,
         ],
+        \App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderPartsNeeded::class => [
+            \App\Modules\Workshop\WorkOrder\Infrastructure\Listeners\LogPartsNeededForProcurement::class,
+        ],
     ];
 
     /**
