@@ -44,7 +44,7 @@ return new class extends Migration
 
         if (DB::connection()->getDriverName() === 'pgsql') {
             DB::statement(
-                'ALTER TABLE scheduling_appointment_services ADD CONSTRAINT chk_sas_ref_type CHECK '.
+                'ALTER TABLE scheduling_appointment_services ADD CONSTRAINT chk_sas_service_ref_type CHECK '.
                 "(service_ref_type IN ('service','bundle'))"
             );
         }
