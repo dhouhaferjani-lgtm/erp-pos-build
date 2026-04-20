@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Company;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -12,8 +14,6 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
-use App\Modules\Company\Domain\UserCompanyMembership;
-use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;

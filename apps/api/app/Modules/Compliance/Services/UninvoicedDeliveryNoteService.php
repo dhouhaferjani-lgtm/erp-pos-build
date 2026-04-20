@@ -9,10 +9,12 @@ use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
+use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -185,7 +187,7 @@ class UninvoicedDeliveryNoteService
      *
      * @return JournalEntry|null Returns null if no uninvoiced DNs exist
      *
-     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException If required accounts are not configured
+     * @throws ModelNotFoundException If required accounts are not configured
      */
     public function generateYearEndAdjustment(
         string $companyId,
@@ -214,7 +216,7 @@ class UninvoicedDeliveryNoteService
             SystemAccountPurpose::ProductRevenue
         );
 
-        $company = \App\Modules\Company\Domain\Company::findOrFail($companyId);
+        $company = Company::findOrFail($companyId);
 
         return DB::transaction(function () use ($company, $uninvoicedAccount, $revenueAccount, $totals, $adjustmentDate): JournalEntry {
             // Generate entry number
@@ -275,7 +277,7 @@ class UninvoicedDeliveryNoteService
         JournalEntry $originalEntry,
         Carbon $reversalDate,
     ): JournalEntry {
-        $company = \App\Modules\Company\Domain\Company::findOrFail($originalEntry->company_id);
+        $company = Company::findOrFail($originalEntry->company_id);
 
         return DB::transaction(function () use ($company, $originalEntry, $reversalDate): JournalEntry {
             // Generate entry number

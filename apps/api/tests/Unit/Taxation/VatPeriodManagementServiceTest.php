@@ -39,7 +39,7 @@ class VatPeriodManagementServiceTest extends TestCase
 
         $this->periodRepository = $this->createMock(VatPeriodRepositoryInterface::class);
         $this->reportService = $this->createMock(VatReportGenerationService::class);
-        $this->creditService = new VatCreditService();
+        $this->creditService = new VatCreditService;
 
         $this->service = new VatPeriodManagementService(
             $this->periodRepository,
@@ -234,7 +234,7 @@ class VatPeriodManagementServiceTest extends TestCase
      */
     private function makeOpenPeriod(): VatPeriod
     {
-        $period = new VatPeriod();
+        $period = new VatPeriod;
         $period->id = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
         $period->company_id = '11111111-2222-3333-4444-555555555555';
         $period->country_code = 'TN';

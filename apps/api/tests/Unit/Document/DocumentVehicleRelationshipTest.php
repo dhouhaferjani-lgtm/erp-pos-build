@@ -12,6 +12,7 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
@@ -44,7 +45,7 @@ class DocumentVehicleRelationshipTest extends TestCase
         ]);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function document_can_have_vehicle(): void
     {
         $document = Document::create([
@@ -74,7 +75,7 @@ class DocumentVehicleRelationshipTest extends TestCase
         $this->assertInstanceOf(DocumentVehicleContext::class, $document->vehicleContext);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function document_vehicle_relationship_returns_snapshot(): void
     {
         $document = Document::create([
@@ -117,7 +118,7 @@ class DocumentVehicleRelationshipTest extends TestCase
         $this->assertIsString($document->getVehicleDisplayString());
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function document_without_vehicle_returns_null(): void
     {
         $document = Document::create([
@@ -142,7 +143,7 @@ class DocumentVehicleRelationshipTest extends TestCase
         $this->assertNull($document->vehicleContext);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function vehicle_can_be_assigned_to_document(): void
     {
         $document = Document::create([
@@ -174,7 +175,7 @@ class DocumentVehicleRelationshipTest extends TestCase
         $this->assertIsArray($document->vehicle);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function vehicle_can_be_removed_from_document(): void
     {
         $document = Document::create([
@@ -207,7 +208,7 @@ class DocumentVehicleRelationshipTest extends TestCase
         $this->assertNull($document->vehicle);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function different_document_types_can_have_vehicles(): void
     {
         $documentTypes = [

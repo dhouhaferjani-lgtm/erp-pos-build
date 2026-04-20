@@ -16,6 +16,7 @@ use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Accounting\Domain\OpeningBalanceImportRow;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
@@ -67,7 +68,7 @@ class OpeningBalanceBatchTest extends TestCase
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
@@ -724,7 +725,7 @@ class OpeningBalanceBatchTest extends TestCase
     }
 
     /**
-     * @param array<int, array<string, string>> $rows
+     * @param  array<int, array<string, string>>  $rows
      */
     private function createBatchWithRows(array $rows): OpeningBalanceBatch
     {
@@ -746,7 +747,7 @@ class OpeningBalanceBatchTest extends TestCase
     /**
      * Create a batch with rows that have been validated (status=VALID with mapped_data).
      *
-     * @param array<int, array<string, string>> $rows
+     * @param  array<int, array<string, string>>  $rows
      */
     private function createBatchWithValidatedRows(array $rows): OpeningBalanceBatch
     {

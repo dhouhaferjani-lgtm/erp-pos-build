@@ -6,6 +6,8 @@ namespace App\Modules\Document\Application\Services;
 
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Partner\Domain\Partner;
+use App\Modules\Treasury\Domain\Payment;
 use App\Shared\Domain\CurrencyScale;
 
 /**
@@ -174,7 +176,7 @@ class AgedReceivablesService
         string $toDate
     ): array {
         // Get partner
-        $partner = \App\Modules\Partner\Domain\Partner::findOrFail($partnerId);
+        $partner = Partner::findOrFail($partnerId);
 
         // Calculate opening balance (all invoices before fromDate)
         /** @var numeric-string $openingBalance */
@@ -216,7 +218,7 @@ class AgedReceivablesService
         }
 
         // Get payments
-        $payments = \App\Modules\Treasury\Domain\Payment::where('company_id', $companyId)
+        $payments = Payment::where('company_id', $companyId)
             ->where('partner_id', $partnerId)
             ->whereBetween('payment_date', [$fromDate, $toDate])
             ->with('allocations')

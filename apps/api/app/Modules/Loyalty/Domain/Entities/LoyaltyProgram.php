@@ -7,10 +7,13 @@ namespace App\Modules\Loyalty\Domain\Entities;
 use App\Modules\Loyalty\Domain\Enums\LoyaltyTargetType;
 use App\Modules\Loyalty\Domain\Enums\ProgramStatus;
 use App\Modules\Loyalty\Domain\Enums\ProgramType;
+use Database\Factories\Loyalty\LoyaltyProgramFactory;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -23,21 +26,21 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $currency
  * @property int|null $points_expiry_months
  * @property string|null $welcome_bonus_points
- * @property \Illuminate\Support\Carbon|null $start_date
- * @property \Illuminate\Support\Carbon|null $end_date
+ * @property Carbon|null $start_date
+ * @property Carbon|null $end_date
  * @property string|null $terms_and_conditions
  * @property LoyaltyTargetType $target_type
  * @property array<string, mixed>|null $metadata
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Enrollment> $enrollments
- * @property-read \Illuminate\Database\Eloquent\Collection<int, EarningRule> $earningRules
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Reward> $rewards
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Tier> $tiers
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property-read Collection<int, Enrollment> $enrollments
+ * @property-read Collection<int, EarningRule> $earningRules
+ * @property-read Collection<int, Reward> $rewards
+ * @property-read Collection<int, Tier> $tiers
  */
 class LoyaltyProgram extends Model
 {
-    /** @use HasFactory<\Database\Factories\Loyalty\LoyaltyProgramFactory> */
+    /** @use HasFactory<LoyaltyProgramFactory> */
     use HasFactory;
 
     use HasUuids;
@@ -45,9 +48,9 @@ class LoyaltyProgram extends Model
     /**
      * Create a new factory instance for the model.
      */
-    protected static function newFactory(): \Database\Factories\Loyalty\LoyaltyProgramFactory
+    protected static function newFactory(): LoyaltyProgramFactory
     {
-        return \Database\Factories\Loyalty\LoyaltyProgramFactory::new();
+        return LoyaltyProgramFactory::new();
     }
 
     protected $fillable = [

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -45,9 +46,9 @@ class AdminAuditLog extends Model
         return $this->belongsTo(SuperAdmin::class);
     }
 
-    /** @return BelongsTo<\App\Modules\Tenant\Domain\Tenant, $this> */
+    /** @return BelongsTo<Tenant, $this> */
     public function tenant(): BelongsTo
     {
-        return $this->belongsTo(\App\Modules\Tenant\Domain\Tenant::class);
+        return $this->belongsTo(Tenant::class);
     }
 }

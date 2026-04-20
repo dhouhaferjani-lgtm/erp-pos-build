@@ -12,7 +12,6 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
-use App\Modules\Product\Application\Services\ProductImageService;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Product\Domain\ProductImage;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;

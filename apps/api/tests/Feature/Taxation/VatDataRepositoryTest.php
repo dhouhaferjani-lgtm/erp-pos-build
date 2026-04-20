@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Taxation;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -65,7 +66,7 @@ class VatDataRepositoryTest extends TestCase
             'locale' => 'fr_TN',
             'timezone' => 'Africa/Tunis',
             'currency' => 'TND',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         $this->partner = Partner::create([

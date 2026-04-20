@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Pricing\Domain;
 
+use App\Modules\Product\Domain\Product;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -32,10 +33,10 @@ class PriceListItem extends Model
         return $this->belongsTo(PriceList::class);
     }
 
-    /** @return BelongsTo<\App\Modules\Product\Domain\Product, $this> */
+    /** @return BelongsTo<Product, $this> */
     public function product(): BelongsTo
     {
-        return $this->belongsTo(\App\Modules\Product\Domain\Product::class);
+        return $this->belongsTo(Product::class);
     }
 
     public function matchesQuantity(string $quantity): bool

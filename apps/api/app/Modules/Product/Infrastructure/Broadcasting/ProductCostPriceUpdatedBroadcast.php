@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Product\Infrastructure\Broadcasting;
 
 use App\Modules\Product\Domain\Events\ProductCostPriceUpdated;
+use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
@@ -31,7 +32,7 @@ class ProductCostPriceUpdatedBroadcast implements ShouldBroadcastNow
      * Channel naming convention: tenant.{tenantId}.company.{companyId}.product.{productId}
      * This ensures multi-tenant isolation and fine-grained subscription control.
      *
-     * @return array<int, \Illuminate\Broadcasting\Channel>
+     * @return array<int, Channel>
      */
     public function broadcastOn(): array
     {

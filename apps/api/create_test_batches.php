@@ -1,17 +1,25 @@
 <?php
 
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
+use App\Modules\Product\Domain\Product;
+use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
 require __DIR__.'/vendor/autoload.php';
 
 $app = require_once __DIR__.'/bootstrap/app.php';
-$app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$app->make(Kernel::class)->bootstrap();
 
 // Get tenant and company
-$tenant = \App\Modules\Tenant\Domain\Tenant::where('slug', 'pharmabio-france')->first();
-$company = \App\Modules\Company\Domain\Company::where('tenant_id', $tenant->id)->first();
-$location = \App\Modules\Company\Domain\Location::where('company_id', $company->id)->where('is_default', true)->first();
+$tenant = Tenant::where('slug', 'pharmabio-france')->first();
+$company = Company::where('tenant_id', $tenant->id)->first();
+$location = Location::where('company_id', $company->id)->where('is_default', true)->first();
 
 // Get 10 products with batch tracking
-$products = \App\Modules\Product\Domain\Product::where('company_id', $company->id)
+$products = Product::where('company_id', $company->id)
     ->where('requires_batch_tracking', true)
     ->inRandomOrder()
     ->limit(10)
@@ -33,8 +41,8 @@ foreach ($products as $product) {
 
         // Use DB insert to avoid potential model issues
         // Insert batch and get the auto-generated ID
-        $batchId = \Illuminate\Support\Facades\DB::table('product_batches')->insertGetId([
-            'uuid' => \Illuminate\Support\Str::uuid()->toString(),
+        $batchId = DB::table('product_batches')->insertGetId([
+            'uuid' => Str::uuid()->toString(),
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,
             'product_id' => $product->id,
@@ -50,7 +58,7 @@ foreach ($products as $product) {
 
         // Create stock for this batch
         $quantity = rand(50, 200);
-        \Illuminate\Support\Facades\DB::table('inventory_batch_stock')->insert([
+        DB::table('inventory_batch_stock')->insert([
             'tenant_id' => $tenant->id,
             'batch_id' => $batchId,
             'location_id' => $location->id,
@@ -66,7 +74,7 @@ foreach ($products as $product) {
     echo "✓ Created {$batchCount} batches for: {$product->name}\n";
 }
 
-$totalBatches = \Illuminate\Support\Facades\DB::table('product_batches')
+$totalBatches = DB::table('product_batches')
     ->where('company_id', $company->id)
     ->count();
 

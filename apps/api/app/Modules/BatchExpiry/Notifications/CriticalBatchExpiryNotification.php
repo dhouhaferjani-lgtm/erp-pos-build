@@ -45,7 +45,7 @@ class CriticalBatchExpiryNotification extends Notification
                 'days_until_expiry' => $batch->daysUntilExpiry(),
             ])->toArray(),
             'message' => $this->batches->count() === 1
-                ? "1 batch is expiring within 7 days"
+                ? '1 batch is expiring within 7 days'
                 : "{$this->batches->count()} batches are expiring within 7 days",
         ];
     }

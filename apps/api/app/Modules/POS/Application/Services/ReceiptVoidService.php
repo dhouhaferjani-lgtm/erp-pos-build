@@ -15,6 +15,7 @@ use App\Modules\POS\Domain\ReceiptLineBatchAllocation;
 use App\Modules\POS\Domain\Services\CashDrawerService;
 use App\Modules\POS\Domain\Shift;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -89,7 +90,7 @@ final class ReceiptVoidService
 
             $receipt->refresh();
 
-            /** @var \Illuminate\Support\Carbon $voidedAtTimestamp */
+            /** @var Carbon $voidedAtTimestamp */
             $voidedAtTimestamp = $receipt->voided_at;
 
             DB::afterCommit(function () use ($receipt, $reason, $voidedBy, $voidedAtTimestamp) {

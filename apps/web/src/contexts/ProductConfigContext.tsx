@@ -42,6 +42,12 @@ const PRODUCT_INFO: Record<Product, ProductInfo> = {
 
 interface ProductConfigProviderProps {
   children: ReactNode
+  /**
+   * Test-only seed that bypasses `VITE_APP_PRODUCT` detection. Production
+   * callers never pass this; `renderWithProviders` forwards it so tests can
+   * render components against a deterministic product variant.
+   */
+  initialProduct?: Product
 }
 
 /**
@@ -78,9 +84,12 @@ function getCurrentProduct(): Product {
  * This allows the same codebase to serve different products with
  * different branding, features, and vertical focus.
  */
-export function ProductConfigProvider({ children }: ProductConfigProviderProps) {
+export function ProductConfigProvider({
+  children,
+  initialProduct,
+}: ProductConfigProviderProps) {
   const value = useMemo<ProductConfigContextValue>(() => {
-    const product = getCurrentProduct()
+    const product = initialProduct ?? getCurrentProduct()
     const info = PRODUCT_INFO[product]
 
     return {
@@ -90,7 +99,7 @@ export function ProductConfigProvider({ children }: ProductConfigProviderProps) 
       productName: info.name,
       productDescription: info.description,
     }
-  }, [])
+  }, [initialProduct])
 
   useEffect(() => {
     document.title = value.productName

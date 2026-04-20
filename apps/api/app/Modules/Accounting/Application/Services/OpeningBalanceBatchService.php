@@ -11,8 +11,10 @@ use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Accounting\Domain\OpeningBalanceImportRow;
 use App\Modules\Company\Domain\Company;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
@@ -145,7 +147,7 @@ class OpeningBalanceBatchService
         $importRows = [];
         foreach ($rows as $index => $row) {
             $importRows[] = [
-                'id' => (string) \Illuminate\Support\Str::uuid(),
+                'id' => (string) Str::uuid(),
                 'batch_id' => $batch->id,
                 'row_type' => $rowType,
                 'row_number' => $currentMaxRow + $index + 1,
@@ -172,9 +174,9 @@ class OpeningBalanceBatchService
     /**
      * Get paginated import rows.
      *
-     * @return \Illuminate\Pagination\LengthAwarePaginator<int, OpeningBalanceImportRow>
+     * @return LengthAwarePaginator<int, OpeningBalanceImportRow>
      */
-    public function getImportRowsPaginated(OpeningBalanceBatch $batch, int $perPage = 50): \Illuminate\Pagination\LengthAwarePaginator
+    public function getImportRowsPaginated(OpeningBalanceBatch $batch, int $perPage = 50): LengthAwarePaginator
     {
         return $batch->rows()
             ->orderBy('row_number')

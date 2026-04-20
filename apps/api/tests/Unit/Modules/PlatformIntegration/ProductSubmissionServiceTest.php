@@ -8,6 +8,8 @@ use App\Modules\PlatformIntegration\Application\DTOs\ProductSubmissionData;
 use App\Modules\PlatformIntegration\Application\DTOs\SubmissionResultData;
 use App\Modules\PlatformIntegration\Application\Services\ProductSubmissionService;
 use App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient;
+use App\Shared\DTOs\SubmissionStatusDTO;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -25,7 +27,7 @@ class ProductSubmissionServiceTest extends TestCase
         Cache::flush();
 
         $this->service = new ProductSubmissionService(
-            new PlatformHttpClient(),
+            new PlatformHttpClient,
         );
     }
 
@@ -57,7 +59,7 @@ class ProductSubmissionServiceTest extends TestCase
         $this->assertSame('trk-sub-001', $result->trackingId);
         $this->assertSame('pending', $result->status);
 
-        Http::assertSent(function (\Illuminate\Http\Client\Request $request) {
+        Http::assertSent(function (Request $request) {
             return $request->hasHeader('Idempotency-Key')
                 && $request->header('Idempotency-Key')[0] !== ''
                 && str_contains($request->url(), '/api/v1/products/submit')
@@ -83,14 +85,14 @@ class ProductSubmissionServiceTest extends TestCase
         $result = $this->service->checkStatus('trk-sub-001');
 
         $this->assertNotNull($result);
-        $this->assertInstanceOf(\App\Shared\DTOs\SubmissionStatusDTO::class, $result);
+        $this->assertInstanceOf(SubmissionStatusDTO::class, $result);
         $this->assertSame('trk-sub-001', $result->trackingId);
         $this->assertSame('enriched', $result->status);
         $this->assertSame('full', $result->enrichmentQuality);
         $this->assertSame('3017620422003', $result->assignedBarcode);
         $this->assertSame('Brake Pad Set', $result->enrichedData['name']);
 
-        Http::assertSent(function (\Illuminate\Http\Client\Request $request) {
+        Http::assertSent(function (Request $request) {
             return str_contains($request->url(), '/api/v1/products/lookup-status/trk-sub-001')
                 && $request->method() === 'GET';
         });
@@ -130,7 +132,7 @@ class ProductSubmissionServiceTest extends TestCase
         $this->assertSame('https://storage.example.com/upload/presigned', $result['upload_url']);
         $this->assertSame('photo-abc-123', $result['photo_id']);
 
-        Http::assertSent(function (\Illuminate\Http\Client\Request $request) {
+        Http::assertSent(function (Request $request) {
             return str_contains($request->url(), '/api/v1/products/upload-url')
                 && $request->data()['filename'] === 'product.jpg'
                 && $request->data()['content_type'] === 'image/jpeg'
@@ -152,7 +154,7 @@ class ProductSubmissionServiceTest extends TestCase
             'image/jpeg',
         );
 
-        Http::assertSent(function (\Illuminate\Http\Client\Request $request) use ($fileContents) {
+        Http::assertSent(function (Request $request) use ($fileContents) {
             return $request->method() === 'PUT'
                 && str_contains($request->url(), 'storage.example.com/upload/presigned')
                 && $request->body() === $fileContents;
@@ -179,7 +181,7 @@ class ProductSubmissionServiceTest extends TestCase
         $this->assertSame('brake-pads', $result['category']);
         $this->assertCount(2, $result['attributes']);
 
-        Http::assertSent(function (\Illuminate\Http\Client\Request $request) {
+        Http::assertSent(function (Request $request) {
             return str_contains($request->url(), '/api/v1/verticals/automotive/categories/brake-pads/attributes')
                 && $request->method() === 'GET';
         });

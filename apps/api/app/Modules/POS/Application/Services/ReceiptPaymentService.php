@@ -6,14 +6,15 @@ namespace App\Modules\POS\Application\Services;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Services\CompanyContext;
-use App\Shared\Domain\CurrencyScale;
 use App\Modules\POS\Domain\Events\ReceiptCompleted;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptPayment;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Payment;
+use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -102,7 +103,7 @@ final class ReceiptPaymentService
                 }
 
                 // Get payment method name for receipt payment record
-                $paymentMethod = \App\Modules\Treasury\Domain\PaymentMethod::findOrFail($paymentData['payment_method_id']);
+                $paymentMethod = PaymentMethod::findOrFail($paymentData['payment_method_id']);
 
                 // Create Treasury Payment record
                 $treasuryPayment = Payment::create([

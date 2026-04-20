@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Domain\Services;
 
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
@@ -163,7 +166,7 @@ final class ReturnNoteService
                 );
             }
 
-            $location = \App\Modules\Company\Domain\Location::findOrFail($locationId);
+            $location = Location::findOrFail($locationId);
 
             // Get original cost (from source document if available, otherwise use current cost)
             $originalCost = $this->getOriginalCost($line);
@@ -187,11 +190,11 @@ final class ReturnNoteService
      * If return note references a source document (invoice/delivery note),
      * use the cost from that document. Otherwise, use current product cost.
      */
-    private function getOriginalCost(\App\Modules\Document\Domain\DocumentLine $line): float
+    private function getOriginalCost(DocumentLine $line): float
     {
         // If return note references source document, get cost from there
         if ($line->document->source_document_id !== null) {
-            $sourceLine = \App\Modules\Document\Domain\DocumentLine::where('document_id', $line->document->source_document_id)
+            $sourceLine = DocumentLine::where('document_id', $line->document->source_document_id)
                 ->where('product_id', $line->product_id)
                 ->first();
 
@@ -230,7 +233,7 @@ final class ReturnNoteService
      */
     private function getCompanyGenesisSeed(Document $returnNote): string
     {
-        /** @var \App\Modules\Company\Domain\Company $company */
+        /** @var Company $company */
         $company = $returnNote->company;
 
         if ($company->fiscal_chain_seed === null) {

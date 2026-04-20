@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { CompanyConfigProvider } from '../../../contexts/CompanyConfigContext'
+import { screen, waitFor } from '@testing-library/react'
+import { Routes, Route } from 'react-router-dom'
+import { renderWithProviders } from '@/test/renderWithProviders'
+import {
+  defaultCompanyConfig,
+  mechanicCompanyConfig,
+  mechanicWithExtrasCompanyConfig,
+  type TestCompanyConfig,
+} from '@/test/fixtures/companyConfig'
 import { ModuleGuard } from '../ModuleGuard'
 import * as api from '../../../lib/api'
 
@@ -22,69 +27,48 @@ function FallbackPage() {
 }
 
 describe('ModuleGuard - Route Protection', () => {
-  let queryClient: QueryClient
-
   beforeEach(() => {
-    queryClient = new QueryClient({
-      defaultOptions: {
-        queries: {
-          retry: false,
-        },
-      },
-    })
     vi.clearAllMocks()
   })
 
-  const renderWithRouter = (moduleName: string, fallback?: string) => {
-    return render(
-      <BrowserRouter>
-        <QueryClientProvider client={queryClient}>
-          <CompanyConfigProvider>
-            <Routes>
-              <Route path="/" element={<FallbackPage />} />
-              <Route path="/dashboard" element={<FallbackPage />} />
-              <Route
-                path="/test"
-                element={
-                  <ModuleGuard module={moduleName} fallback={fallback}>
-                    <AccessiblePage />
-                  </ModuleGuard>
-                }
-              />
-            </Routes>
-          </CompanyConfigProvider>
-        </QueryClientProvider>
-      </BrowserRouter>
+  /**
+   * The guard reads `useCompanyConfig()` which is pre-seeded into the
+   * TanStack Query cache by `renderWithProviders` — the raw `apiGet` mock
+   * is never consumed for this flow. Each test passes the fixture it needs
+   * via `companyConfig`.
+   */
+  const renderWithRouter = (
+    moduleName: string,
+    companyConfig: TestCompanyConfig = defaultCompanyConfig,
+    fallback?: string,
+  ) => {
+    return renderWithProviders(
+      <Routes>
+        <Route path="/" element={<FallbackPage />} />
+        <Route path="/dashboard" element={<FallbackPage />} />
+        <Route
+          path="/test"
+          element={
+            <ModuleGuard module={moduleName} fallback={fallback}>
+              <AccessiblePage />
+            </ModuleGuard>
+          }
+        />
+      </Routes>,
+      { route: '/test', companyConfig },
     )
   }
 
   describe('Mechanic Vertical (Has Vehicle Module)', () => {
-    beforeEach(() => {
-      const mechanicConfig = {
-        vertical: 'mechanic',
-        default_modules: ['Identity', 'Vehicle', 'Workshop', 'Sales', 'Inventory'],
-        enabled_extras: [],
-        all_enabled_modules: ['Identity', 'Vehicle', 'Workshop', 'Sales', 'Inventory'],
-        currency: 'TND',
-        locale: 'fr_TN',
-        country_code: 'TN',
-      }
-      vi.mocked(api.apiGet).mockResolvedValue(mechanicConfig)
-
-      // Navigate to test route
-      window.history.pushState({}, '', '/test')
-    })
-
     it('allows access when module is enabled for vertical', async () => {
-      renderWithRouter('Vehicle')
+      renderWithRouter('Vehicle', mechanicCompanyConfig)
 
-      // Should render the protected content
       const content = await screen.findByText('Module Accessible')
       expect(content).toBeInTheDocument()
     })
 
     it('allows access to Workshop module for mechanic vertical', async () => {
-      renderWithRouter('Workshop')
+      renderWithRouter('Workshop', mechanicCompanyConfig)
 
       const content = await screen.findByText('Module Accessible')
       expect(content).toBeInTheDocument()
@@ -103,15 +87,34 @@ describe('ModuleGuard - Route Protection', () => {
         country_code: 'TN',
       }
       vi.mocked(api.apiGet).mockResolvedValue(pharmacyConfig)
-
-      // Navigate to test route
-      window.history.pushState({}, '', '/test')
     })
 
     it('redirects to dashboard when module not enabled for vertical', async () => {
-      renderWithRouter('Vehicle')
+      // Override seed so guard sees a config without Vehicle
+      renderWithProviders(
+        <Routes>
+          <Route path="/" element={<FallbackPage />} />
+          <Route path="/dashboard" element={<FallbackPage />} />
+          <Route
+            path="/test"
+            element={
+              <ModuleGuard module="Vehicle">
+                <AccessiblePage />
+              </ModuleGuard>
+            }
+          />
+        </Routes>,
+        {
+          route: '/test',
+          companyConfig: {
+            ...defaultCompanyConfig,
+            vertical: 'pharmacy',
+            default_modules: ['Identity', 'Sales', 'Inventory', 'BatchExpiry'],
+            all_enabled_modules: ['Identity', 'Sales', 'Inventory', 'BatchExpiry'],
+          },
+        }
+      )
 
-      // Wait for redirect to happen
       await waitFor(() => {
         const fallback = screen.getByText('Dashboard Fallback')
         expect(fallback).toBeInTheDocument()
@@ -147,31 +150,23 @@ describe('ModuleGuard - Route Protection', () => {
         country_code: 'TN',
       }
       vi.mocked(api.apiGet).mockResolvedValue(pharmacyConfig)
-
-      // Navigate to test route
-      window.history.pushState({}, '', '/test')
     })
 
     it('redirects to custom fallback path when specified', async () => {
-      render(
-        <BrowserRouter>
-          <QueryClientProvider client={queryClient}>
-            <CompanyConfigProvider>
-              <Routes>
-                <Route path="/" element={<div>Root Fallback</div>} />
-                <Route path="/dashboard" element={<div>Dashboard Fallback</div>} />
-                <Route
-                  path="/test"
-                  element={
-                    <ModuleGuard module="Vehicle" fallback="/">
-                      <AccessiblePage />
-                    </ModuleGuard>
-                  }
-                />
-              </Routes>
-            </CompanyConfigProvider>
-          </QueryClientProvider>
-        </BrowserRouter>
+      renderWithProviders(
+        <Routes>
+          <Route path="/" element={<div>Root Fallback</div>} />
+          <Route path="/dashboard" element={<div>Dashboard Fallback</div>} />
+          <Route
+            path="/test"
+            element={
+              <ModuleGuard module="Vehicle" fallback="/">
+                <AccessiblePage />
+              </ModuleGuard>
+            }
+          />
+        </Routes>,
+        { route: '/test' }
       )
 
       // Should redirect to "/" instead of "/dashboard"
@@ -197,13 +192,30 @@ describe('ModuleGuard - Route Protection', () => {
         country_code: 'US',
       }
       vi.mocked(api.apiGet).mockResolvedValue(minimalConfig)
-
-      // Navigate to test route
-      window.history.pushState({}, '', '/test')
     })
 
     it('allows access to Sales module for any vertical', async () => {
-      renderWithRouter('Sales')
+      renderWithProviders(
+        <Routes>
+          <Route path="/" element={<FallbackPage />} />
+          <Route path="/dashboard" element={<FallbackPage />} />
+          <Route
+            path="/test"
+            element={
+              <ModuleGuard module="Sales">
+                <AccessiblePage />
+              </ModuleGuard>
+            }
+          />
+        </Routes>,
+        {
+          route: '/test',
+          companyConfig: {
+            ...defaultCompanyConfig,
+            all_enabled_modules: ['Identity', 'Sales', 'Inventory'],
+          },
+        }
+      )
 
       const content = await screen.findByText('Module Accessible')
       expect(content).toBeInTheDocument()
@@ -224,7 +236,6 @@ describe('ModuleGuard - Route Protection', () => {
         () => new Promise(() => {}) // Never resolves
       )
 
-      window.history.pushState({}, '', '/test')
       renderWithRouter('Vehicle')
 
       // Should show loading indicator (component should handle loading state)
@@ -238,8 +249,6 @@ describe('ModuleGuard - Route Protection', () => {
     beforeEach(() => {
       // API returns error
       vi.mocked(api.apiGet).mockRejectedValue(new Error('Failed to fetch config'))
-
-      window.history.pushState({}, '', '/test')
     })
 
     it('redirects to dashboard on config fetch error', async () => {
@@ -260,30 +269,15 @@ describe('ModuleGuard - Route Protection', () => {
   })
 
   describe('Module Name Case Handling', () => {
-    beforeEach(() => {
-      const mechanicConfig = {
-        vertical: 'mechanic',
-        default_modules: ['Identity', 'Vehicle', 'Workshop'],
-        enabled_extras: [],
-        all_enabled_modules: ['Identity', 'Vehicle', 'Workshop'],
-        currency: 'TND',
-        locale: 'fr_TN',
-        country_code: 'TN',
-      }
-      vi.mocked(api.apiGet).mockResolvedValue(mechanicConfig)
-
-      window.history.pushState({}, '', '/test')
-    })
-
     it('correctly handles PascalCase module names', async () => {
-      renderWithRouter('Vehicle') // PascalCase
+      renderWithRouter('Vehicle', mechanicCompanyConfig)
 
       const content = await screen.findByText('Module Accessible')
       expect(content).toBeInTheDocument()
     })
 
     it('correctly handles module names with multiple words', async () => {
-      renderWithRouter('Workshop') // Single word PascalCase
+      renderWithRouter('Workshop', mechanicCompanyConfig)
 
       const content = await screen.findByText('Module Accessible')
       expect(content).toBeInTheDocument()
@@ -291,30 +285,15 @@ describe('ModuleGuard - Route Protection', () => {
   })
 
   describe('Integration with Enabled Extras', () => {
-    beforeEach(() => {
-      const mechanicConfigWithExtras = {
-        vertical: 'mechanic',
-        default_modules: ['Identity', 'Vehicle', 'Workshop', 'Sales'],
-        enabled_extras: ['Fleet', 'Appointments'],
-        all_enabled_modules: ['Identity', 'Vehicle', 'Workshop', 'Sales', 'Fleet', 'Appointments'],
-        currency: 'TND',
-        locale: 'fr_TN',
-        country_code: 'TN',
-      }
-      vi.mocked(api.apiGet).mockResolvedValue(mechanicConfigWithExtras)
-
-      window.history.pushState({}, '', '/test')
-    })
-
     it('allows access to enabled extra modules', async () => {
-      renderWithRouter('Fleet')
+      renderWithRouter('Fleet', mechanicWithExtrasCompanyConfig)
 
       const content = await screen.findByText('Module Accessible')
       expect(content).toBeInTheDocument()
     })
 
     it('allows access to second enabled extra module', async () => {
-      renderWithRouter('Appointments')
+      renderWithRouter('Appointments', mechanicWithExtrasCompanyConfig)
 
       const content = await screen.findByText('Module Accessible')
       expect(content).toBeInTheDocument()
@@ -333,8 +312,6 @@ describe('ModuleGuard - Route Protection', () => {
         country_code: 'TN',
       }
       vi.mocked(api.apiGet).mockResolvedValue(pharmacyConfig)
-
-      window.history.pushState({}, '', '/test')
     })
 
     it('redirects when module not in all_enabled_modules', async () => {

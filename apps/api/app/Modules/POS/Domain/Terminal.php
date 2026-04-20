@@ -8,15 +8,16 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Factories\TerminalFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
-use Database\Factories\TerminalFactory;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 /**
  * POS Terminal Entity
@@ -38,17 +39,17 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $last_hash Hash of most recent receipt (for chain continuity)
  * @property bool $is_active
  * @property bool $is_training_mode
- * @property \Illuminate\Support\Carbon|null $activated_at
- * @property \Illuminate\Support\Carbon|null $deactivated_at
+ * @property Carbon|null $activated_at
+ * @property Carbon|null $deactivated_at
  * @property string|null $deactivation_reason
  * @property string|null $hardware_identifier MAC address, serial number, etc.
  * @property string|null $pos_software_version Tauri app version
  * @property float $max_discount_percent Maximum allowed discount percentage (0-100)
  * @property bool $allow_line_discounts Whether line-level discounts are allowed
  * @property bool $allow_transaction_discounts Whether transaction-level discounts are allowed
- * @property \Illuminate\Support\Carbon $created_at
- * @property \Illuminate\Support\Carbon $updated_at
- * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
+ * @property Carbon|null $deleted_at
  * @property-read Tenant $tenant
  * @property-read Company $company
  * @property-read Location $location
@@ -68,6 +69,7 @@ class Terminal extends Model
 {
     /** @use HasFactory<TerminalFactory> */
     use HasFactory;
+
     use HasUuids;
     use SoftDeletes;
 

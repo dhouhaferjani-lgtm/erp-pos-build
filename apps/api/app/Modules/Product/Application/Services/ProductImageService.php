@@ -7,6 +7,7 @@ namespace App\Modules\Product\Application\Services;
 use App\Modules\Product\Application\Jobs\GenerateImageVariants;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Product\Domain\ProductImage;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -193,7 +194,7 @@ class ProductImageService
      * Sets Content-Disposition: inline and Cache-Control headers so browsers
      * render the image rather than triggering a file download.
      */
-    public function serve(ProductImage $image, ?string $variant = null): StreamedResponse|\Illuminate\Http\RedirectResponse
+    public function serve(ProductImage $image, ?string $variant = null): StreamedResponse|RedirectResponse
     {
         // External URL images (seeded placeholders) — redirect to the URL directly
         if ($image->storage_disk === 'url') {

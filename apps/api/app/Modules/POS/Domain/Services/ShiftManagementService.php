@@ -13,6 +13,8 @@ use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -112,7 +114,7 @@ final class ShiftManagementService
      * @param  Shift  $shift  The shift to close
      * @param  string  $actualCash  Counted cash amount (decimal string)
      * @param  User  $closedBy  User closing the shift
-     * @param  \Illuminate\Support\Carbon|null  $closedAt  Optional offline close timestamp (defaults to now)
+     * @param  Carbon|null  $closedAt  Optional offline close timestamp (defaults to now)
      *
      * @throws ShiftNotOpenException If shift is not in OPEN status
      */
@@ -120,7 +122,7 @@ final class ShiftManagementService
         Shift $shift,
         string $actualCash,
         User $closedBy,
-        ?\Illuminate\Support\Carbon $closedAt = null,
+        ?Carbon $closedAt = null,
     ): Shift {
         if (! $shift->isOpen()) {
             throw ShiftNotOpenException::forShift($shift->id);
@@ -151,10 +153,10 @@ final class ShiftManagementService
             /** @var Shift $freshShift */
             $freshShift = $shift->fresh();
 
-            /** @var \App\Modules\POS\Domain\Terminal $shiftTerminal */
+            /** @var Terminal $shiftTerminal */
             $shiftTerminal = $freshShift->terminal;
 
-            /** @var \Illuminate\Support\Carbon $closedAtTimestamp */
+            /** @var Carbon $closedAtTimestamp */
             $closedAtTimestamp = $freshShift->closed_at;
 
             DB::afterCommit(function () use ($freshShift, $shiftTerminal, $closedAtTimestamp): void {
@@ -203,7 +205,7 @@ final class ShiftManagementService
      *
      * @param  string  $shiftId  The shift ID
      *
-     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException
+     * @throws ModelNotFoundException
      */
     public function getShiftById(string $shiftId): Shift
     {

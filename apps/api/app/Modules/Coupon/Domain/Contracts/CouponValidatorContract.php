@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Coupon\Domain\Contracts;
 
+use App\Modules\Coupon\Domain\Exceptions\CouponInvalidException;
 use App\Modules\Promotion\Domain\ValueObjects\CartContext;
 use App\Modules\Promotion\Domain\ValueObjects\PromotionDiscount;
 
@@ -14,7 +15,7 @@ interface CouponValidatorContract
      *
      * @return PromotionDiscount|null Null if coupon is invalid
      *
-     * @throws \App\Modules\Coupon\Domain\Exceptions\CouponInvalidException
+     * @throws CouponInvalidException
      */
     public function validateAndCalculate(
         string $code,

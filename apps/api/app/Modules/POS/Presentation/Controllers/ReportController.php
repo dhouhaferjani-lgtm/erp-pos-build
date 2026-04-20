@@ -6,6 +6,7 @@ namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\ReportGenerationService;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Receipt;
@@ -15,6 +16,7 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Domain\ZReport;
 use App\Modules\POS\Presentation\Resources\XReportResource;
 use App\Modules\POS\Presentation\Resources\ZReportResource;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -64,7 +66,7 @@ final class ReportController extends Controller
         }
 
         try {
-            /** @var \App\Modules\Identity\Domain\User $user */
+            /** @var User $user */
             $user = $request->user();
             $xReport = $this->reportGenerationService->generateXReport(
                 $terminal,
@@ -111,7 +113,7 @@ final class ReportController extends Controller
         }
 
         try {
-            /** @var \App\Modules\Identity\Domain\User $user */
+            /** @var User $user */
             $user = $request->user();
             $zReport = $this->reportGenerationService->generateZReport(
                 $terminal,
@@ -180,7 +182,7 @@ final class ReportController extends Controller
 
         $query = ZReport::query()
             ->where('terminal_id', $request->input('terminal_id'))
-            ->whereHas('terminal', function (\Illuminate\Database\Eloquent\Builder $q): void {
+            ->whereHas('terminal', function (Builder $q): void {
                 $q->whereRaw('company_id = ?', [$this->companyContext->getCompanyId()]);
             })
             ->with(['terminal', 'shift', 'generatedBy']);

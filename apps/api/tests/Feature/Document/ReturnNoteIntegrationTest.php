@@ -16,6 +16,8 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FiscalCategory;
+use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\ReturnCondition;
 use App\Modules\Document\Domain\Enums\ReturnReason;
 use App\Modules\Identity\Domain\Enums\UserStatus;
@@ -28,6 +30,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -86,15 +89,15 @@ class ReturnNoteIntegrationTest extends TestCase
         $this->seed(RolesAndPermissionsSeeder::class);
 
         // Create missing permissions for return notes (if they don't exist)
-        if (! \Spatie\Permission\Models\Permission::where('name', 'deliveries.edit')->exists()) {
-            \Spatie\Permission\Models\Permission::create([
+        if (! Permission::where('name', 'deliveries.edit')->exists()) {
+            Permission::create([
                 'name' => 'deliveries.edit',
                 'guard_name' => 'sanctum',
                 'team_id' => $this->tenant->id,
             ]);
         }
-        if (! \Spatie\Permission\Models\Permission::where('name', 'deliveries.delete')->exists()) {
-            \Spatie\Permission\Models\Permission::create([
+        if (! Permission::where('name', 'deliveries.delete')->exists()) {
+            Permission::create([
                 'name' => 'deliveries.delete',
                 'guard_name' => 'sanctum',
                 'team_id' => $this->tenant->id,
@@ -166,8 +169,8 @@ class ReturnNoteIntegrationTest extends TestCase
             'company_id' => $this->company->id,
             'partner_id' => $this->customer->id,
             'type' => DocumentType::ReturnNote,
-            'fiscal_category' => \App\Modules\Document\Domain\Enums\FiscalCategory::ReturnNote,
-            'fiscal_status' => \App\Modules\Document\Domain\Enums\FiscalStatus::Draft,
+            'fiscal_category' => FiscalCategory::ReturnNote,
+            'fiscal_status' => FiscalStatus::Draft,
             'status' => DocumentStatus::Draft,
             'document_number' => 'RN-001',
             'document_date' => now(),
@@ -182,8 +185,8 @@ class ReturnNoteIntegrationTest extends TestCase
             'company_id' => $this->company->id,
             'partner_id' => $this->customer->id,
             'type' => DocumentType::ReturnNote,
-            'fiscal_category' => \App\Modules\Document\Domain\Enums\FiscalCategory::ReturnNote,
-            'fiscal_status' => \App\Modules\Document\Domain\Enums\FiscalStatus::Sealed,
+            'fiscal_category' => FiscalCategory::ReturnNote,
+            'fiscal_status' => FiscalStatus::Sealed,
             'status' => DocumentStatus::Confirmed,
             'document_number' => 'RN-002',
             'document_date' => now(),
@@ -225,8 +228,8 @@ class ReturnNoteIntegrationTest extends TestCase
             'company_id' => $this->company->id,
             'partner_id' => $this->customer->id,
             'type' => DocumentType::ReturnNote,
-            'fiscal_category' => \App\Modules\Document\Domain\Enums\FiscalCategory::ReturnNote,
-            'fiscal_status' => \App\Modules\Document\Domain\Enums\FiscalStatus::Draft,
+            'fiscal_category' => FiscalCategory::ReturnNote,
+            'fiscal_status' => FiscalStatus::Draft,
             'status' => DocumentStatus::Draft,
             'document_number' => 'RN-001',
             'document_date' => now(),
@@ -307,8 +310,8 @@ class ReturnNoteIntegrationTest extends TestCase
             'company_id' => $this->company->id,
             'partner_id' => $this->customer->id,
             'type' => DocumentType::ReturnNote,
-            'fiscal_category' => \App\Modules\Document\Domain\Enums\FiscalCategory::ReturnNote,
-            'fiscal_status' => \App\Modules\Document\Domain\Enums\FiscalStatus::Draft,
+            'fiscal_category' => FiscalCategory::ReturnNote,
+            'fiscal_status' => FiscalStatus::Draft,
             'status' => DocumentStatus::Draft,
             'document_number' => 'RN-001',
             'document_date' => now(),
@@ -367,8 +370,8 @@ class ReturnNoteIntegrationTest extends TestCase
             'company_id' => $this->company->id,
             'partner_id' => $this->customer->id,
             'type' => DocumentType::ReturnNote,
-            'fiscal_category' => \App\Modules\Document\Domain\Enums\FiscalCategory::ReturnNote,
-            'fiscal_status' => \App\Modules\Document\Domain\Enums\FiscalStatus::Sealed,
+            'fiscal_category' => FiscalCategory::ReturnNote,
+            'fiscal_status' => FiscalStatus::Sealed,
             'status' => DocumentStatus::Confirmed,
             'document_number' => 'RN-001',
             'document_date' => now(),
@@ -401,8 +404,8 @@ class ReturnNoteIntegrationTest extends TestCase
             'company_id' => $this->company->id,
             'partner_id' => $this->customer->id,
             'type' => DocumentType::ReturnNote,
-            'fiscal_category' => \App\Modules\Document\Domain\Enums\FiscalCategory::ReturnNote,
-            'fiscal_status' => \App\Modules\Document\Domain\Enums\FiscalStatus::Draft,
+            'fiscal_category' => FiscalCategory::ReturnNote,
+            'fiscal_status' => FiscalStatus::Draft,
             'status' => DocumentStatus::Draft,
             'document_number' => 'RN-001',
             'document_date' => now(),
@@ -450,8 +453,8 @@ class ReturnNoteIntegrationTest extends TestCase
             'company_id' => $this->company->id,
             'partner_id' => $this->customer->id,
             'type' => DocumentType::ReturnNote,
-            'fiscal_category' => \App\Modules\Document\Domain\Enums\FiscalCategory::ReturnNote,
-            'fiscal_status' => \App\Modules\Document\Domain\Enums\FiscalStatus::Sealed,
+            'fiscal_category' => FiscalCategory::ReturnNote,
+            'fiscal_status' => FiscalStatus::Sealed,
             'status' => DocumentStatus::Confirmed,
             'document_number' => 'RN-001',
             'document_date' => now(),
@@ -488,8 +491,8 @@ class ReturnNoteIntegrationTest extends TestCase
             'company_id' => $this->company->id,
             'partner_id' => $this->customer->id,
             'type' => DocumentType::ReturnNote,
-            'fiscal_category' => \App\Modules\Document\Domain\Enums\FiscalCategory::ReturnNote,
-            'fiscal_status' => \App\Modules\Document\Domain\Enums\FiscalStatus::Draft,
+            'fiscal_category' => FiscalCategory::ReturnNote,
+            'fiscal_status' => FiscalStatus::Draft,
             'status' => DocumentStatus::Draft,
             'document_number' => 'RN-001',
             'document_date' => now(),

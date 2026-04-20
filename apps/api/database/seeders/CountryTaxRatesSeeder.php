@@ -6,7 +6,6 @@ namespace Database\Seeders;
 
 use App\Models\CountryTaxRate;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Str;
 
 class CountryTaxRatesSeeder extends Seeder
 {

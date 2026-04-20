@@ -8,6 +8,7 @@ use App\Modules\Taxation\Domain\Enums\VatDirection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -19,7 +20,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property numeric-string $vat_amount
  * @property int $document_count
  * @property bool $is_recoverable
- * @property \Illuminate\Support\Carbon|null $created_at
+ * @property Carbon|null $created_at
  * @property-read VatPeriod $period
  */
 class VatPeriodBreakdown extends Model

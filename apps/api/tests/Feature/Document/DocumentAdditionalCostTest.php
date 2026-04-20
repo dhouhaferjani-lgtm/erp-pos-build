@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Tests\Feature\Document;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentAdditionalCost;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -19,6 +21,8 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 use Tests\Traits\AssertsApiValidation;
@@ -56,27 +60,27 @@ class DocumentAdditionalCostTest extends TestCase
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
         $this->seed(PermissionSeeder::class);
 
         // Create sanctum permissions from web permissions
-        $webPermissions = \Spatie\Permission\Models\Permission::where('guard_name', 'web')->get();
+        $webPermissions = Permission::where('guard_name', 'web')->get();
         foreach ($webPermissions as $permission) {
-            \Spatie\Permission\Models\Permission::firstOrCreate([
+            Permission::firstOrCreate([
                 'name' => $permission->name,
                 'guard_name' => 'sanctum',
             ]);
         }
 
         // Create Administrator role for sanctum guard with all permissions
-        $adminRole = \Spatie\Permission\Models\Role::firstOrCreate([
+        $adminRole = Role::firstOrCreate([
             'name' => 'Administrator',
             'guard_name' => 'sanctum',
         ]);
-        $adminRole->syncPermissions(\Spatie\Permission\Models\Permission::where('guard_name', 'sanctum')->pluck('name'));
+        $adminRole->syncPermissions(Permission::where('guard_name', 'sanctum')->pluck('name'));
 
         $this->user = User::create([
             'tenant_id' => $this->tenant->id,
@@ -93,7 +97,7 @@ class DocumentAdditionalCostTest extends TestCase
             'role' => 'admin',
         ]);
 
-        app(\App\Modules\Company\Services\CompanyContext::class)->setCompanyId($this->company->id);
+        app(CompanyContext::class)->setCompanyId($this->company->id);
 
         $supplier = Partner::create([
             'tenant_id' => $this->tenant->id,

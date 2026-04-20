@@ -37,7 +37,7 @@ class ZReportHashServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new ZReportHashService();
+        $this->service = new ZReportHashService;
 
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
@@ -270,7 +270,7 @@ class ZReportHashServiceTest extends TestCase
     private int $zReportSequence = 0;
 
     /**
-     * @param array<string, mixed> $overrides
+     * @param  array<string, mixed>  $overrides
      */
     private function createZReport(array $overrides = []): ZReport
     {

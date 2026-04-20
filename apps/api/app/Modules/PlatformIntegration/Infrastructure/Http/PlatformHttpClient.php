@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\PlatformIntegration\Infrastructure\Http;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Cache;
@@ -210,8 +211,8 @@ final class PlatformHttpClient
             ->withHeader('X-API-Key', (string) $apiKey)
             ->timeout(10)
             ->connectTimeout(5)
-            ->retry(3, 200, fn (\Exception $e, PendingRequest $request) => $e instanceof \Illuminate\Http\Client\ConnectionException
-                || ($e instanceof \Illuminate\Http\Client\RequestException && in_array($e->response->status(), [429, 500, 502, 503, 504], true))
+            ->retry(3, 200, fn (\Exception $e, PendingRequest $request) => $e instanceof ConnectionException
+                || ($e instanceof RequestException && in_array($e->response->status(), [429, 500, 502, 503, 504], true))
             );
     }
 

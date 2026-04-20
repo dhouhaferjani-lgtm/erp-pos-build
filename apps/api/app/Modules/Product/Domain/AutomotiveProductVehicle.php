@@ -8,6 +8,7 @@ use App\Modules\Product\Domain\Enums\VehicleTypeRef;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -18,9 +19,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int|null $year_from
  * @property int|null $year_to
  * @property string|null $notes
- * @property \Illuminate\Support\Carbon|null $platform_synced_at
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $platform_synced_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read AutomotiveProductMetadata $metadata
  */
 class AutomotiveProductVehicle extends Model

@@ -7,8 +7,10 @@ namespace App\Modules\Taxation\Domain\Entities;
 use App\Modules\Taxation\Domain\Enums\StackingBehavior;
 use App\Modules\Taxation\Domain\Enums\TaxApplicationLevel;
 use App\Modules\Taxation\Domain\Enums\TaxType;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -22,8 +24,8 @@ use Illuminate\Database\Eloquent\Model;
  * @property bool $is_default
  * @property bool $is_active
  * @property array<string, mixed>|null $metadata
- * @property \Illuminate\Support\Carbon $created_at
- * @property \Illuminate\Support\Carbon $updated_at
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
  */
 class TaxConfiguration extends Model
 {
@@ -110,12 +112,12 @@ class TaxConfiguration extends Model
     /**
      * Scope for filtering by document type
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<static>
+     * @param  Builder<static>  $query
+     * @return Builder<static>
      */
-    public function scopeForDocumentType(\Illuminate\Database\Eloquent\Builder $query, string $documentType): \Illuminate\Database\Eloquent\Builder
+    public function scopeForDocumentType(Builder $query, string $documentType): Builder
     {
-        return $query->where(function (\Illuminate\Database\Eloquent\Builder $q) use ($documentType): void {
+        return $query->where(function (Builder $q) use ($documentType): void {
             $q->whereJsonContains('applicable_document_types', $documentType)
                 ->orWhereJsonLength('applicable_document_types', 0);
         });
@@ -124,10 +126,10 @@ class TaxConfiguration extends Model
     /**
      * Scope for ordering by sequence
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<static>
+     * @param  Builder<static>  $query
+     * @return Builder<static>
      */
-    public function scopeOrdered(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeOrdered(Builder $query): Builder
     {
         return $query->orderBy('sequence_order', 'asc');
     }
@@ -135,10 +137,10 @@ class TaxConfiguration extends Model
     /**
      * Scope for active configurations only
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<static>
+     * @param  Builder<static>  $query
+     * @return Builder<static>
      */
-    public function scopeActive(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);
     }

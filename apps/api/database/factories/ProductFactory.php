@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Modules\Product\Domain\Product>
+ * @extends Factory<Product>
  */
 class ProductFactory extends Factory
 {

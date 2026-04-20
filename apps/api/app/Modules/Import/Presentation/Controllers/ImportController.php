@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Import\Application\Jobs\ProcessImportJob;
+use App\Modules\Import\Application\Jobs\ProcessProductImageImport;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
@@ -17,6 +18,7 @@ use App\Modules\Import\Services\SpreadsheetParserService;
 use App\Modules\Import\Services\ValidationEngine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\Enum;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -90,7 +92,7 @@ class ImportController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
-        /** @var \Illuminate\Http\UploadedFile $file */
+        /** @var UploadedFile $file */
         $file = $request->file('file');
         $type = ImportType::from($request->input('type'));
 
@@ -526,7 +528,7 @@ class ImportController extends Controller
     /**
      * Handle ProductImages ZIP upload (special case).
      *
-     * @param  \Illuminate\Http\UploadedFile  $file
+     * @param  UploadedFile  $file
      */
     private function handleProductImagesUpload($file, User $user, string $tenantId): JsonResponse
     {
@@ -550,7 +552,7 @@ class ImportController extends Controller
         );
 
         // Dispatch queue job for async ZIP processing
-        \App\Modules\Import\Application\Jobs\ProcessProductImageImport::dispatch($job->id, $fullPath);
+        ProcessProductImageImport::dispatch($job->id, $fullPath);
 
         // Mark as pending
         $job->update(['status' => ImportStatus::Pending]);

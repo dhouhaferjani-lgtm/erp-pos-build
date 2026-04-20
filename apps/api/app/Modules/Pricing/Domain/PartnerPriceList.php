@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Pricing\Domain;
 
+use App\Modules\Partner\Domain\Partner;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -28,10 +29,10 @@ class PartnerPriceList extends Model
         'priority' => 'integer',
     ];
 
-    /** @return BelongsTo<\App\Modules\Partner\Domain\Partner, $this> */
+    /** @return BelongsTo<Partner, $this> */
     public function partner(): BelongsTo
     {
-        return $this->belongsTo(\App\Modules\Partner\Domain\Partner::class);
+        return $this->belongsTo(Partner::class);
     }
 
     /** @return BelongsTo<PriceList, $this> */

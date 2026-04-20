@@ -7,7 +7,9 @@ namespace App\Modules\Taxation\Domain\Entities;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Treasury\Domain\Payment;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -30,17 +32,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $expected_receivable
  * @property string|null $certificate_number
  * @property bool $certificate_received
- * @property \Carbon\Carbon|null $certificate_received_at
+ * @property Carbon|null $certificate_received_at
  * @property string|null $notes
- * @property \Carbon\Carbon $created_at
- * @property \Carbon\Carbon $updated_at
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
  * @property-read Document $document
  * @property-read Payment|null $payment
  * @property-read Partner $customer
  */
 class SalesWithholdingTracking extends Model
 {
-    /** @use HasFactory<\Illuminate\Database\Eloquent\Factories\Factory<static>> */
+    /** @use HasFactory<Factory<static>> */
     use HasFactory, HasUuids;
 
     protected $table = 'sales_withholding_tracking';

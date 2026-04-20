@@ -25,7 +25,7 @@ readonly class CreateSalesWithholdingTrackingData
     /**
      * Create from array (typically from request).
      *
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     public static function fromArray(array $data): self
     {

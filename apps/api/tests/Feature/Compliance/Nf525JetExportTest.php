@@ -9,6 +9,8 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\PrintMethod;
+use App\Modules\POS\Domain\Enums\ReceiptPrintType;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Receipt;
@@ -16,8 +18,6 @@ use App\Modules\POS\Domain\ReceiptLine;
 use App\Modules\POS\Domain\ReceiptPrint;
 use App\Modules\POS\Domain\ReceiptVatDetail;
 use App\Modules\POS\Domain\Terminal;
-use App\Modules\POS\Domain\Enums\PrintMethod;
-use App\Modules\POS\Domain\Enums\ReceiptPrintType;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -141,7 +141,7 @@ class Nf525JetExportTest extends TestCase
         $this->assertNotEmpty($xml);
 
         // Parse XML to verify structure
-        $doc = new \DOMDocument();
+        $doc = new \DOMDocument;
         $this->assertTrue($doc->loadXML($xml), 'Export should produce valid XML');
 
         $root = $doc->documentElement;
@@ -170,7 +170,7 @@ class Nf525JetExportTest extends TestCase
         $response->assertStatus(200);
 
         $xml = $response->getContent();
-        $doc = new \DOMDocument();
+        $doc = new \DOMDocument;
         $this->assertTrue($doc->loadXML($xml), 'Empty export should produce valid XML');
 
         // Tickets section should exist but have count="0"

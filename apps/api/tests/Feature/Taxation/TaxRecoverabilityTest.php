@@ -6,13 +6,13 @@ namespace Tests\Feature\Taxation;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
-use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
-use App\Modules\Identity\Domain\User;
+use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\CountriesSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;

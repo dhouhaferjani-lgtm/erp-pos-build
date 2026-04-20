@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace App\Modules\Loyalty\Domain\Entities;
 
 use App\Modules\Loyalty\Domain\Enums\EnrollmentStatus;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -19,21 +22,21 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property numeric-string $lifetime_earned
  * @property numeric-string $lifetime_redeemed
  * @property string|null $current_tier_id
- * @property \Illuminate\Support\Carbon|null $tier_qualified_at
- * @property \Illuminate\Support\Carbon|null $tier_changed_at
+ * @property Carbon|null $tier_qualified_at
+ * @property Carbon|null $tier_changed_at
  * @property EnrollmentStatus $status
- * @property \Illuminate\Support\Carbon $enrolled_at
- * @property \Illuminate\Support\Carbon|null $last_transaction_at
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon $enrolled_at
+ * @property Carbon|null $last_transaction_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read LoyaltyProgram $program
  * @property-read LoyaltyMember $member
  * @property-read Tier|null $currentTier
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Transaction> $transactions
+ * @property-read Collection<int, Transaction> $transactions
  */
 class Enrollment extends Model
 {
-    /** @use HasFactory<\Illuminate\Database\Eloquent\Factories\Factory<static>> */
+    /** @use HasFactory<Factory<static>> */
     use HasFactory;
 
     use HasUuids;

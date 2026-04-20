@@ -11,6 +11,7 @@ use App\Modules\SmartPrompts\Application\DTOs\RecommendationRequestData;
 use App\Modules\SmartPrompts\Application\Services\SmartPromptsService;
 use App\Modules\SmartPrompts\Domain\Enums\RecommendationContext;
 use App\Modules\SmartPrompts\Domain\Enums\SkinType;
+use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -34,7 +35,7 @@ final class SmartPromptsController extends Controller
 
         $company = $this->companyContext->requireCompany();
 
-        /** @var \App\Modules\Tenant\Domain\Tenant $tenant */
+        /** @var Tenant $tenant */
         $tenant = $company->tenant;
 
         /** @var Vertical $vertical */

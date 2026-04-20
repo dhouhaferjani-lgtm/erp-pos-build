@@ -248,8 +248,6 @@ function RequestTab({ onError }: { onError: (msg: string | null) => void }) {
       setPendingTerminal(terminal);
     } catch (err) {
       console.error('[TerminalSetup] Request failed:', err);
-      // If 401 triggered logout, component will unmount — don't try to set state
-      if (err instanceof ApiRequestError && err.status === 401) return;
       if (!useAuthStore.getState().isAuthenticated) return;
       onError(getErrorMessage(err));
     }

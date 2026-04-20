@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Identity\Application\Notifications\UserInvitation;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -282,7 +283,7 @@ class CreateUserTest extends TestCase
         // Verify invitation notification was sent
         Notification::assertSentTo(
             $user,
-            \App\Modules\Identity\Application\Notifications\UserInvitation::class
+            UserInvitation::class
         );
     }
 

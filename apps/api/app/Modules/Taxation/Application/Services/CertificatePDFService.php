@@ -8,6 +8,7 @@ use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Endroid\QrCode\QrCode;
 use Endroid\QrCode\Writer\PngWriter;
+use Illuminate\Http\Response;
 
 /**
  * Certificate PDF Service
@@ -166,7 +167,7 @@ class CertificatePDFService
     /**
      * Stream PDF to browser for download.
      */
-    public function streamPDF(WithholdingCertificate $certificate): \Illuminate\Http\Response
+    public function streamPDF(WithholdingCertificate $certificate): Response
     {
         $filename = $this->generateFilename($certificate);
         $pdf = $this->generatePDF($certificate);

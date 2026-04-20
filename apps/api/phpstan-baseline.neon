@@ -1,0 +1,151 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Using nullsafe property access "\?\-\>receipt_show_customer" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Http/Controllers/Api/CompanyConfigController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>receipt_show_fiscal_info" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Http/Controllers/Api/CompanyConfigController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>receipt_show_payment_details" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Http/Controllers/Api/CompanyConfigController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>receipt_show_vat_breakdown" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Http/Controllers/Api/CompanyConfigController.php
+
+		-
+			message: '#^Offset ''credit'' on array\{\}\|array\{account_id\: string, account_code\: string, account_name\: string, debit\?\: numeric\-string, credit\?\: numeric\-string\}\|array\{debit\?\: numeric\-string, credit\?\: numeric\-string\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 2
+			path: app/Modules/Accounting/Application/Services/AccountingOpeningService.php
+
+		-
+			message: '#^Cannot call method toIso8601String\(\) on Illuminate\\Support\\Carbon\|null\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Modules/Accounting/Presentation/Controllers/AccountController.php
+
+		-
+			message: '#^Access to an undefined property object\{alipay_handle_redirect\?\: object\{native_data\: string\|null, native_url\: string\|null, return_url\: string\|null, url\: string\|null\}&Stripe\\StripeObject, boleto_display_details\?\: object\{expires_at\: int\|null, hosted_voucher_url\: string\|null, number\: string\|null, pdf\: string\|null\}&Stripe\\StripeObject, card_await_notification\?\: object\{charge_attempt_at\: int\|null, customer_approval_required\: bool\|null\}&Stripe\\StripeObject, cashapp_handle_redirect_or_display_qr_code\?\: object\{hosted_instructions_url\: string, mobile_auth_url\: string, qr_code\: object\{expires_at\: int, image_url_png\: string, image_url_svg\: string\}&Stripe\\StripeObject\}&Stripe\\StripeObject, display_bank_transfer_instructions\?\: object\{amount_remaining\: int\|null, currency\: string\|null, financial_addresses\?\: array\<object\{aba\?\: object\{account_holder_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, account_holder_name\: string, account_number\: string, account_type\: string, bank_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, bank_name\: string, routing_number\: string\}&Stripe\\StripeObject, iban\?\: object\{account_holder_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, account_holder_name\: string, bank_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, bic\: string, country\: string, iban\: string\}&Stripe\\StripeObject, sort_code\?\: object\{account_holder_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, account_holder_name\: string, account_number\: string, bank_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, sort_code\: string\}&Stripe\\StripeObject, spei\?\: object\{account_holder_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, account_holder_name\: string, bank_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, bank_code\: string, bank_name\: string, clabe\: string\}&Stripe\\StripeObject, supported_networks\?\: array\<string\>, swift\?\: object\{account_holder_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, account_holder_name\: string, account_number\: string, account_type\: string, bank_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, bank_name\: string, swift_code\: string\}&Stripe\\StripeObject, type\: string, zengin\?\: object\{account_holder_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, account_holder_name\: string\|null, account_number\: string\|null, account_type\: string\|null, bank_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, bank_code\: string\|null, bank_name\: string\|null, branch_code\: string\|null, branch_name\: string\|null\}&Stripe\\StripeObject\}&Stripe\\StripeObject\>, hosted_instructions_url\: string\|null, reference\: string\|null, type\: string\}&Stripe\\StripeObject, konbini_display_details\?\: object\{expires_at\: int, hosted_voucher_url\: string\|null, stores\: object\{familymart\: \(object\{confirmation_number\?\: string, payment_code\: string\}&Stripe\\StripeObject\)\|null, lawson\: \(object\{confirmation_number\?\: string, payment_code\: string\}&Stripe\\StripeObject\)\|null, ministop\: \(object\{confirmation_number\?\: string, payment_code\: string\}&Stripe\\StripeObject\)\|null, seicomart\: \(object\{confirmation_number\?\: string, payment_code\: string\}&Stripe\\StripeObject\)\|null\}&Stripe\\StripeObject\}&Stripe\\StripeObject, multibanco_display_details\?\: object\{entity\: string\|null, expires_at\: int\|null, hosted_voucher_url\: string\|null, reference\: string\|null\}&Stripe\\StripeObject, oxxo_display_details\?\: object\{expires_after\: int\|null, hosted_voucher_url\: string\|null, number\: string\|null\}&Stripe\\StripeObject, paynow_display_qr_code\?\: object\{data\: string, hosted_instructions_url\: string\|null, image_url_png\: string, image_url_svg\: string\}&Stripe\\StripeObject, pix_display_qr_code\?\: Stripe\\StripeObject, promptpay_display_qr_code\?\: object\{data\: string, hosted_instructions_url\: string, image_url_png\: string, image_url_svg\: string\}&Stripe\\StripeObject, redirect_to_url\?\: object\{return_url\: string\|null, url\: string\|null\}&Stripe\\StripeObject, swish_handle_redirect_or_display_qr_code\?\: object\{hosted_instructions_url\: string, mobile_auth_url\: string, qr_code\: object\{data\: string, image_url_png\: string, image_url_svg\: string\}&Stripe\\StripeObject\}&Stripe\\StripeObject, type\: string, use_stripe_sdk\?\: Stripe\\StripeObject, verify_with_microdeposits\?\: object\{arrival_date\: int, hosted_verification_url\: string, microdeposit_type\: string\|null\}&Stripe\\StripeObject, wechat_pay_display_qr_code\?\: object\{data\: string, hosted_instructions_url\: string, image_data_url\: string, image_url_png\: string, image_url_svg\: string\}&Stripe\\StripeObject, wechat_pay_redirect_to_android_app\?\: object\{app_id\: string, nonce_str\: string, package\: string, partner_id\: string, prepay_id\: string, sign\: string, timestamp\: string\}&Stripe\\StripeObject, wechat_pay_redirect_to_ios_app\?\: object\{native_url\: string\}&Stripe\\StripeObject\}&Stripe\\StripeObject\:\:\$redirect_to_url\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Billing/Infrastructure/Providers/StripePaymentProvider.php
+
+		-
+			message: '#^Match arm comparison between 3 and 3 is always true\.$#'
+			identifier: match.alwaysTrue
+			count: 1
+			path: app/Modules/Inventory/Application/Services/InventoryCountingService.php
+
+		-
+			message: '#^Parameter \#2 \$num2 of function bcadd expects numeric\-string, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Modules/POS/Application/Services/ReceiptCreationService.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between App\\Modules\\Catalog\\Domain\\Entities\\CompositeItem and null will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Modules/POS/Application/Services/ReceiptCreationService.php
+
+		-
+			message: '#^Return type of call to method Illuminate\\Support\\Collection\<int,array\<string, mixed\>\>\:\:values\(\) contains unresolvable type\.$#'
+			identifier: method.unresolvableReturnType
+			count: 1
+			path: app/Modules/POS/Presentation/Controllers/SyncController.php
+
+		-
+			message: '#^Cannot call method toIso8601String\(\) on Illuminate\\Support\\Carbon\|null\.$#'
+			identifier: method.nonObject
+			count: 3
+			path: app/Modules/Partner/Presentation/Controllers/PartnerController.php
+
+		-
+			message: '#^Parameter \#3 \$when of method Illuminate\\Http\\Client\\PendingRequest\<false\>\:\:retry\(\) expects \(callable\(Throwable, Illuminate\\Http\\Client\\PendingRequest, string\|null\)\: bool\)\|null, Closure\(Exception, Illuminate\\Http\\Client\\PendingRequest\)\: bool given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Modules/PlatformIntegration/Infrastructure/Http/PlatformHttpClient.php
+
+		-
+			message: '#^Generic type Illuminate\\Contracts\\Pagination\\LengthAwarePaginator\<App\\Modules\\Product\\Domain\\EnrichmentResult\> in PHPDoc tag @return does not specify all template types of interface Illuminate\\Contracts\\Pagination\\LengthAwarePaginator\: TKey, TValue$#'
+			identifier: generics.lessTypes
+			count: 1
+			path: app/Modules/Product/Application/Services/EnrichmentReviewService.php
+
+		-
+			message: '#^Method App\\Modules\\Product\\Application\\Services\\EnrichmentReviewService\:\:listForReview\(\) should return Illuminate\\Contracts\\Pagination\\LengthAwarePaginator\<App\\Modules\\Product\\Domain\\EnrichmentResult\> but returns Illuminate\\Pagination\\LengthAwarePaginator\<int, App\\Modules\\Product\\Domain\\EnrichmentResult\>\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Modules/Product/Application/Services/EnrichmentReviewService.php
+
+		-
+			message: '#^Type App\\Modules\\Product\\Domain\\EnrichmentResult in generic type Illuminate\\Contracts\\Pagination\\LengthAwarePaginator\<App\\Modules\\Product\\Domain\\EnrichmentResult\> in PHPDoc tag @return is not subtype of template type TKey of \(int\|string\) of interface Illuminate\\Contracts\\Pagination\\LengthAwarePaginator\.$#'
+			identifier: generics.notSubtype
+			count: 1
+			path: app/Modules/Product/Application/Services/EnrichmentReviewService.php
+
+		-
+			message: '#^Cannot call method toIso8601String\(\) on Illuminate\\Support\\Carbon\|null\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Modules/Product/Presentation/Controllers/EnrichmentReviewController.php
+
+		-
+			message: '#^Parameter \#1 \$value of function collect expects Illuminate\\Contracts\\Support\\Arrayable\<\(int\|string\), mixed\>\|iterable\<\(int\|string\), mixed\>\|null, array\<App\\Modules\\Product\\Domain\\EnrichmentResult, mixed\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Modules/Product/Presentation/Controllers/EnrichmentReviewController.php
+
+		-
+			message: '#^Unable to resolve the template type TKey in call to function collect$#'
+			identifier: argument.templateType
+			count: 1
+			path: app/Modules/Product/Presentation/Controllers/EnrichmentReviewController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>value" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Modules/Product/Presentation/Controllers/ProductController.php
+
+		-
+			message: '#^Parameter \#3 \$when of method Illuminate\\Http\\Client\\PendingRequest\<false\>\:\:retry\(\) expects \(callable\(Throwable, Illuminate\\Http\\Client\\PendingRequest, string\|null\)\: bool\)\|null, Closure\(Exception\)\: bool given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Modules/Progression/Infrastructure/Http/GrowthAdvisorHttpClient.php
+
+		-
+			message: '#^Access to an undefined property App\\Modules\\Company\\Domain\\Company\:\:\$vertical\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Progression/Infrastructure/Listeners/RegisterCompanyWithGrowthAdvisor.php
+
+		-
+			message: '#^Method App\\Modules\\PurchaseHub\\Application\\Services\\PurchaseHubService\:\:getOffers\(\) should return array\<int, array\<string, mixed\>\>\|null but returns array\<string, mixed\>\|null\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Modules/PurchaseHub/Application/Services/PurchaseHubService.php
+
+		-
+			message: '#^Parameter \#3 \$when of method Illuminate\\Http\\Client\\PendingRequest\<false\>\:\:retry\(\) expects \(callable\(Throwable, Illuminate\\Http\\Client\\PendingRequest, string\|null\)\: bool\)\|null, Closure\(Exception\)\: bool given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Modules/SmartPrompts/Infrastructure/Http/RecommendationEngineHttpClient.php
+
+		-
+			message: '#^Expression on left side of \?\? is not nullable\.$#'
+			identifier: nullCoalesce.expr
+			count: 1
+			path: app/Modules/Taxation/Domain/Services/TaxCalculationService.php

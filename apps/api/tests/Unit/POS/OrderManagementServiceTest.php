@@ -52,7 +52,7 @@ final class OrderManagementServiceTest extends TestCase
 
         $this->setupTestData();
 
-        $companyContext = new CompanyContext();
+        $companyContext = new CompanyContext;
         $companyContext->setCompanyId($this->company->id);
 
         $scaleResolver = $this->createMock(CurrencyScaleResolverInterface::class);

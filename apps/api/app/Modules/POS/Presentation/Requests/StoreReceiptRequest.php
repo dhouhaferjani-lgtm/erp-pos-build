@@ -42,7 +42,7 @@ final class StoreReceiptRequest extends FormRequest
             'lines.*.modifiers.*.modifier_group_id' => ['required', 'uuid', 'exists:modifier_groups,id'],
             'lines.*.modifiers.*.price_adjustment' => ['required', 'numeric'],
             'lines.*.discount_amount' => ['nullable', 'numeric', 'gte:0'],
-            'lines.*.discount_type'    => ['nullable', 'string', 'in:percentage,fixed'],
+            'lines.*.discount_type' => ['nullable', 'string', 'in:percentage,fixed'],
             'lines.*.discount_percent' => ['nullable', 'numeric', 'gte:0', 'lte:100'],
             'lines.*.discount_reason' => ['nullable', 'string', 'max:255'],
             'customer_id' => ['nullable', 'uuid', 'exists:partners,id'],

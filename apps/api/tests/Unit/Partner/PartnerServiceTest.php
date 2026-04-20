@@ -48,7 +48,7 @@ class PartnerServiceTest extends TestCase
             'status' => CompanyStatus::Active,
         ]);
 
-        $this->service = new PartnerService();
+        $this->service = new PartnerService;
     }
 
     public function test_upsert_with_type_merge_creates_new_partner(): void

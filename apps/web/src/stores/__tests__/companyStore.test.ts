@@ -367,8 +367,13 @@ describe('companyStore', () => {
       // Cleanup first hook
       unmountFirst()
 
-      // Simulate page refresh - new store instance
-      useCompanyStore.getState().reset() // Reset state
+      // Simulate page refresh: clear only the in-memory Zustand state
+      // (companies + currentCompanyId) — do NOT call `reset()`, which
+      // also wipes the persisted localStorage key. A real refresh keeps
+      // localStorage and starts with an empty in-memory store.
+      act(() => {
+        useCompanyStore.setState({ currentCompanyId: null, companies: [], isLoading: true })
+      })
       const { result: secondSession } = renderHook(() => useCompanyStore())
 
       // Simulate CompanyProvider refetching companies
@@ -447,8 +452,13 @@ describe('companyStore', () => {
       // Cleanup
       unmount()
 
-      // Simulate page refresh - localStorage should have our manual key
-      useCompanyStore.getState().reset()
+      // Simulate page refresh: clear in-memory state only (same reason
+      // as the previous test — `reset()` would wipe
+      // `autoerp-company-selection`, and we want to prove the manual
+      // key is consulted on rehydrate).
+      act(() => {
+        useCompanyStore.setState({ currentCompanyId: null, companies: [], isLoading: true })
+      })
       const { result: newSession } = renderHook(() => useCompanyStore())
 
       act(() => {

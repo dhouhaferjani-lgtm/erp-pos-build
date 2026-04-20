@@ -51,7 +51,7 @@ class ProductEnrichmentQueryServiceTest extends TestCase
             'status' => CompanyStatus::Active,
         ]);
 
-        $this->service = new ProductEnrichmentQueryService();
+        $this->service = new ProductEnrichmentQueryService;
     }
 
     public function test_returns_pending_enrichments_as_dtos(): void

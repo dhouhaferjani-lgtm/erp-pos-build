@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Taxation\Application\Services;
 
 use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
+use App\Modules\Taxation\Domain\Enums\WithholdingDirection;
 use App\Modules\Taxation\Domain\Repositories\WithholdingCertificateRepositoryInterface;
 
 /**
@@ -104,7 +105,7 @@ class WithholdingHashChainService
      */
     public function getChainDetails(string $companyId, string $direction): array
     {
-        $directionEnum = \App\Modules\Taxation\Domain\Enums\WithholdingDirection::from($direction);
+        $directionEnum = WithholdingDirection::from($direction);
         $lastCertificate = $this->certificateRepository->getLastInChain($companyId, $directionEnum);
 
         $totalCertificates = WithholdingCertificate::where('company_id', $companyId)

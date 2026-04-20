@@ -131,7 +131,7 @@ final class CatalogBrowseService
         $vehicles = [];
 
         foreach ($links as $link) {
-            if (!is_array($link)) {
+            if (! is_array($link)) {
                 continue;
             }
             foreach ($link['vehicles'] ?? [] as $v) {

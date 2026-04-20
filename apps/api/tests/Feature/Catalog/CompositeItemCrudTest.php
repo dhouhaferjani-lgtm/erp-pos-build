@@ -7,7 +7,6 @@ namespace Tests\Feature\Catalog;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
-use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;

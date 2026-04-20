@@ -8,6 +8,7 @@ use App\DTOs\CompanyConfig;
 use App\Enums\Vertical;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Services\CompanyConfigService;
+use App\Services\VerticalConfigService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -22,7 +23,7 @@ class CompanyConfigServiceTest extends TestCase
         parent::setUp();
 
         $this->service = new CompanyConfigService(
-            app(\App\Services\VerticalConfigService::class)
+            app(VerticalConfigService::class)
         );
     }
 

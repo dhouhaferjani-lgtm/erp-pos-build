@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
@@ -93,7 +94,7 @@ class DocumentPaginationTest extends TestCase
             'company_id' => $this->company->id,
             'partner_id' => $this->partner->id,
             'type' => $type,
-            'status' => \App\Modules\Document\Domain\Enums\DocumentStatus::Draft,
+            'status' => DocumentStatus::Draft,
             'document_number' => sprintf('%s-2025-%04d', $type->value, $number),
             'document_date' => now()->toDateString(),
             'currency' => 'TND',
@@ -252,7 +253,7 @@ class DocumentPaginationTest extends TestCase
                 'company_id' => $otherCompany->id,
                 'partner_id' => $otherPartner->id,
                 'type' => DocumentType::Invoice,
-                'status' => \App\Modules\Document\Domain\Enums\DocumentStatus::Draft,
+                'status' => DocumentStatus::Draft,
                 'document_number' => sprintf('INV-OTHER-%04d', $i),
                 'document_date' => now()->toDateString(),
                 'currency' => 'TND',

@@ -6,6 +6,7 @@ namespace App\Modules\Import\Services;
 
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Domain\ImportRow;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -93,7 +94,7 @@ final class FailedRowsExportService
     /**
      * Build CSV content from failed rows.
      *
-     * @param  \Illuminate\Database\Eloquent\Collection<int, ImportRow>  $failedRows
+     * @param  Collection<int, ImportRow>  $failedRows
      */
     private function buildCsvContent($failedRows): string
     {

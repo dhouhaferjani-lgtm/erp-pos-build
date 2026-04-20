@@ -8,6 +8,7 @@ use App\Modules\Product\Application\Services\ProductImageService;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Product\Domain\ProductImage;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -82,7 +83,7 @@ class ProductImageController extends Controller
     /**
      * Serve an image file inline for browser rendering.
      */
-    public function download(Request $request, Product $product, ProductImage $image): StreamedResponse|\Illuminate\Http\RedirectResponse
+    public function download(Request $request, Product $product, ProductImage $image): StreamedResponse|RedirectResponse
     {
         $variant = $request->query('variant');
         $validVariants = ['sm', 'md'];

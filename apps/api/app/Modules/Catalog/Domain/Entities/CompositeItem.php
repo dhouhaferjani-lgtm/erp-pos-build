@@ -9,11 +9,14 @@ use App\Modules\Catalog\Domain\Enums\ProductionType;
 use App\Modules\Catalog\Domain\Enums\VerticalType;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Product\Domain\Category;
+use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Uom\Domain\Entities\Unit;
 use App\Shared\Contracts\SellableContract;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -21,6 +24,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -42,22 +46,22 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property bool $is_available
  * @property string|null $image_url
  * @property int $display_order
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
  * @property-read Tenant $tenant
  * @property-read Company $company
  * @property-read Category|null $category
  * @property-read Unit|null $unitOfMeasure
  * @property-read Recipe|null $activeRecipe
  * @property-read Recipe|null $defaultRecipe
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Recipe> $recipes
- * @property-read \Illuminate\Database\Eloquent\Collection<int, CompositeItemVariant> $variants
- * @property-read \Illuminate\Database\Eloquent\Collection<int, ModifierGroup> $modifierGroups
+ * @property-read Collection<int, Recipe> $recipes
+ * @property-read Collection<int, CompositeItemVariant> $variants
+ * @property-read Collection<int, ModifierGroup> $modifierGroups
  */
 class CompositeItem extends Model implements SellableContract
 {
-    /** @use HasFactory<\Illuminate\Database\Eloquent\Factories\Factory<CompositeItem>> */
+    /** @use HasFactory<Factory<CompositeItem>> */
     use HasFactory;
 
     use HasUuids;
@@ -203,12 +207,12 @@ class CompositeItem extends Model implements SellableContract
     /**
      * Get the default tax configuration for this composite item.
      *
-     * @return BelongsTo<\App\Modules\Taxation\Domain\Entities\TaxConfiguration, $this>
+     * @return BelongsTo<TaxConfiguration, $this>
      */
     public function defaultTaxConfiguration(): BelongsTo
     {
         return $this->belongsTo(
-            \App\Modules\Taxation\Domain\Entities\TaxConfiguration::class,
+            TaxConfiguration::class,
             'default_tax_configuration_id'
         );
     }

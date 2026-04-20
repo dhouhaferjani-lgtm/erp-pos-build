@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Document;
 
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Application\Services\CreditNoteService;
 use App\Modules\Document\Domain\CreditNoteAllocation;
@@ -84,13 +87,13 @@ class CreditNoteAllocationTest extends TestCase
         ];
 
         foreach ($accounts as $accountData) {
-            \App\Modules\Accounting\Domain\Account::create([
+            Account::create([
                 'tenant_id' => $this->tenant->id,
                 'company_id' => $this->company->id,
                 'code' => $accountData['code'],
                 'name' => $accountData['name'],
-                'type' => \App\Modules\Accounting\Domain\Enums\AccountType::from($accountData['type']),
-                'system_purpose' => \App\Modules\Accounting\Domain\Enums\SystemAccountPurpose::from($accountData['purpose']),
+                'type' => AccountType::from($accountData['type']),
+                'system_purpose' => SystemAccountPurpose::from($accountData['purpose']),
                 'is_active' => true,
             ]);
         }

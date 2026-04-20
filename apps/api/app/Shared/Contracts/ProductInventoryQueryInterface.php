@@ -18,7 +18,7 @@ interface ProductInventoryQueryInterface
      * Find products linked to the given platform article IDs, with stock data.
      *
      * @param  array<int, string>  $platformArticleIds
-     * @return Collection<string, ProductInventoryDTO>  Keyed by platform article ID
+     * @return Collection<string, ProductInventoryDTO> Keyed by platform article ID
      */
     public function findByPlatformArticleIds(string $companyId, array $platformArticleIds): Collection;
 }
