@@ -27,7 +27,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property-read Vehicle $vehicle
- * @property-read Partner $ownerPartner
+ * @property-read Partner|null $ownerPartner  Nullable when the partner is soft-deleted; FK is RESTRICT on hard delete only.
  */
 class VehicleOwnership extends Model
 {

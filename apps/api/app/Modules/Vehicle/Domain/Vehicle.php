@@ -7,6 +7,9 @@ namespace App\Modules\Vehicle\Domain;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Vehicle\Domain\Enums\BodyType;
+use App\Modules\Vehicle\Domain\Enums\FuelType;
+use App\Modules\Vehicle\Domain\Enums\TransmissionType;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -29,9 +32,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property int|null $mileage
  * @property string|null $vin
  * @property string|null $engine_code
- * @property string|null $fuel_type
- * @property string|null $transmission
- * @property string|null $body_type
+ * @property FuelType|null $fuel_type
+ * @property TransmissionType|null $transmission
+ * @property BodyType|null $body_type
  * @property string|null $notes
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
@@ -89,6 +92,9 @@ class Vehicle extends Model
         return [
             'year' => 'integer',
             'mileage' => 'integer',
+            'fuel_type' => FuelType::class,
+            'transmission' => TransmissionType::class,
+            'body_type' => BodyType::class,
         ];
     }
 
