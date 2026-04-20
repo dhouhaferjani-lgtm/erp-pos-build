@@ -87,6 +87,10 @@ export const PERMISSIONS = {
   'modifier-groups.view': ['admin', 'manager'],
   'modifier-groups.manage': ['admin', 'manager'],
 
+  // Workshop Service Bundles
+  'workshop-bundles.view': ['admin', 'manager', 'technician'],
+  'workshop-bundles.manage': ['admin', 'manager'],
+
   // Promotions
   'promotions.view': ['admin', 'manager'],
   'promotions.manage': ['admin', 'manager'],
