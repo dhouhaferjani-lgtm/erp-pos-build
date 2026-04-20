@@ -247,6 +247,7 @@ function buildNavigation(isOtospex: boolean): NavModule[] {
       children: [
         { key: 'vehicles', href: '/vehicles', icon: Car, module: 'vehicles' },
         ...servicesChildren,
+        { key: 'workshopTechnicians', href: '/workshop/technicians', icon: Users, module: 'workshop-technicians' },
         { key: 'partsCatalog', href: '/parts-catalog', icon: Search, module: 'parts-catalog' },
       ],
     })

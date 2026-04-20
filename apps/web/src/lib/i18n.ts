@@ -33,6 +33,7 @@ import enCountries from '../locales/en/countries.json'
 import enProgression from '../locales/en/progression.json'
 import enSmartPrompts from '../locales/en/smart-prompts.json'
 import enEnrichment from '../locales/en/enrichment.json'
+import enWorkshopTechnicians from '../locales/en/workshop-technicians.json'
 
 import frCommon from '../locales/fr/common.json'
 import frAuth from '../locales/fr/auth.json'
@@ -64,6 +65,7 @@ import frCountries from '../locales/fr/countries.json'
 import frProgression from '../locales/fr/progression.json'
 import frSmartPrompts from '../locales/fr/smart-prompts.json'
 import frEnrichment from '../locales/fr/enrichment.json'
+import frWorkshopTechnicians from '../locales/fr/workshop-technicians.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -105,6 +107,7 @@ const resources = {
     progression: enProgression,
     'smart-prompts': enSmartPrompts,
     enrichment: enEnrichment,
+    'workshop-technicians': enWorkshopTechnicians,
   },
   fr: {
     common: frCommon,
@@ -137,6 +140,7 @@ const resources = {
     progression: frProgression,
     'smart-prompts': frSmartPrompts,
     enrichment: frEnrichment,
+    'workshop-technicians': frWorkshopTechnicians,
   },
   ar: {
     // Arabic falls back to English - translations to be added later
@@ -170,6 +174,7 @@ const resources = {
     progression: enProgression,
     'smart-prompts': enSmartPrompts,
     enrichment: enEnrichment,
+    'workshop-technicians': enWorkshopTechnicians,
   },
 }
 
@@ -180,7 +185,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-technicians'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],
