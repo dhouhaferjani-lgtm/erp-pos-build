@@ -1,0 +1,198 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { schedulingApi } from '../api/schedulingApi'
+import type {
+  Appointment,
+  AppointmentListFilters,
+  Bay,
+  BookAppointmentInput,
+  CancelAppointmentInput,
+  CheckInAppointmentInput,
+  DayViewData,
+  FreeSlotDTO,
+  PaginatedAppointments,
+  RescheduleAppointmentInput,
+  ScheduleConfig,
+  UpdateAppointmentInput,
+  WeekViewData,
+} from '../types'
+
+/**
+ * React Query key factory for the Scheduling feature.
+ *
+ * Every hook in this file pulls its key from this factory so invalidation
+ * across mutations stays consistent.
+ */
+export const schedulingKeys = {
+  all: ['scheduling'] as const,
+
+  appointments: () => [...schedulingKeys.all, 'appointments'] as const,
+  appointmentList: (filters: AppointmentListFilters) =>
+    [...schedulingKeys.appointments(), 'list', filters] as const,
+  appointmentDetail: (id: string) => [...schedulingKeys.appointments(), 'detail', id] as const,
+
+  bays: () => [...schedulingKeys.all, 'bays'] as const,
+  config: (locationId: string) => [...schedulingKeys.all, 'config', locationId] as const,
+
+  day: (date: string) => [...schedulingKeys.all, 'day', date] as const,
+  week: (weekStart: string) => [...schedulingKeys.all, 'week', weekStart] as const,
+  freeSlots: (params: { duration: number; from: string; to: string }) =>
+    [...schedulingKeys.all, 'free-slots', params] as const,
+}
+
+// ----- Appointments queries -----
+
+export function useAppointments(filters: AppointmentListFilters = {}) {
+  return useQuery<PaginatedAppointments>({
+    queryKey: schedulingKeys.appointmentList(filters),
+    queryFn: () => schedulingApi.listAppointments(filters),
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useAppointment(id: string | undefined) {
+  return useQuery<Appointment>({
+    queryKey: schedulingKeys.appointmentDetail(id ?? ''),
+    queryFn: () => schedulingApi.getAppointment(id as string),
+    enabled: typeof id === 'string' && id.length > 0,
+    staleTime: 30 * 1000,
+  })
+}
+
+// ----- Appointments mutations -----
+
+export function useBookAppointment() {
+  const qc = useQueryClient()
+  return useMutation<Appointment, Error, BookAppointmentInput>({
+    mutationFn: (input) => schedulingApi.bookAppointment(input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: schedulingKeys.appointments() })
+      void qc.invalidateQueries({ queryKey: schedulingKeys.all })
+    },
+  })
+}
+
+export function useUpdateAppointment(id: string) {
+  const qc = useQueryClient()
+  return useMutation<Appointment, Error, UpdateAppointmentInput>({
+    mutationFn: (input) => schedulingApi.updateAppointment(id, input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: schedulingKeys.appointmentDetail(id) })
+      void qc.invalidateQueries({ queryKey: schedulingKeys.appointments() })
+    },
+  })
+}
+
+export function useConfirmAppointment(id: string) {
+  const qc = useQueryClient()
+  return useMutation<{ id: string; status: string }>({
+    mutationFn: () => schedulingApi.confirmAppointment(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: schedulingKeys.appointmentDetail(id) })
+      void qc.invalidateQueries({ queryKey: schedulingKeys.all })
+    },
+  })
+}
+
+export function useRescheduleAppointment(id: string) {
+  const qc = useQueryClient()
+  return useMutation<
+    { id: string; status: string; scheduled_start: string; scheduled_end: string; bay_id: string | null },
+    Error,
+    RescheduleAppointmentInput
+  >({
+    mutationFn: (input) => schedulingApi.rescheduleAppointment(id, input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: schedulingKeys.appointmentDetail(id) })
+      void qc.invalidateQueries({ queryKey: schedulingKeys.all })
+    },
+  })
+}
+
+export function useCheckInAppointment(id: string) {
+  const qc = useQueryClient()
+  return useMutation<
+    { id: string; status: string; actual_arrival_at: string | null },
+    Error,
+    CheckInAppointmentInput
+  >({
+    mutationFn: (input) => schedulingApi.checkInAppointment(id, input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: schedulingKeys.appointmentDetail(id) })
+      void qc.invalidateQueries({ queryKey: schedulingKeys.all })
+    },
+  })
+}
+
+export function useCancelAppointment(id: string) {
+  const qc = useQueryClient()
+  return useMutation<{ id: string; status: string }, Error, CancelAppointmentInput>({
+    mutationFn: (input) => schedulingApi.cancelAppointment(id, input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: schedulingKeys.appointmentDetail(id) })
+      void qc.invalidateQueries({ queryKey: schedulingKeys.all })
+    },
+  })
+}
+
+export function useConvertAppointment(id: string) {
+  const qc = useQueryClient()
+  return useMutation<{ appointment_id: string; work_order_id: string }>({
+    mutationFn: () => schedulingApi.convertAppointment(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: schedulingKeys.appointmentDetail(id) })
+      void qc.invalidateQueries({ queryKey: schedulingKeys.all })
+    },
+  })
+}
+
+// ----- Bays -----
+
+export function useBays() {
+  return useQuery<Bay[]>({
+    queryKey: schedulingKeys.bays(),
+    queryFn: () => schedulingApi.listBays(),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+// ----- Schedule config -----
+
+export function useScheduleConfig(locationId: string | undefined) {
+  return useQuery<ScheduleConfig>({
+    queryKey: schedulingKeys.config(locationId ?? ''),
+    queryFn: () => schedulingApi.getScheduleConfig(locationId as string),
+    enabled: typeof locationId === 'string' && locationId.length > 0,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+// ----- Calendar reads -----
+
+export function useDayView(date: string | undefined) {
+  return useQuery<DayViewData>({
+    queryKey: schedulingKeys.day(date ?? ''),
+    queryFn: () => schedulingApi.dayView(date as string),
+    enabled: typeof date === 'string' && date.length > 0,
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useWeekView(weekStart: string | undefined) {
+  return useQuery<WeekViewData>({
+    queryKey: schedulingKeys.week(weekStart ?? ''),
+    queryFn: () => schedulingApi.weekView(weekStart as string),
+    enabled: typeof weekStart === 'string' && weekStart.length > 0,
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useFreeSlots(params: { duration: number; from: string; to: string } | null) {
+  return useQuery<FreeSlotDTO[]>({
+    queryKey: params
+      ? schedulingKeys.freeSlots(params)
+      : [...schedulingKeys.all, 'free-slots', 'idle'],
+    queryFn: () => schedulingApi.freeSlots(params as { duration: number; from: string; to: string }),
+    enabled: params !== null,
+    staleTime: 30 * 1000,
+  })
+}

@@ -1,0 +1,175 @@
+{
+  "pageTitle": "Planning",
+  "scheduler": {
+    "title": "Planificateur",
+    "subtitle": "Planifiez la charge des baies au jour le jour.",
+    "viewDay": "Jour",
+    "viewWeek": "Semaine",
+    "today": "Aujourd'hui",
+    "previous": "Précédent",
+    "next": "Suivant",
+    "newAppointment": "Prendre rendez-vous",
+    "emptyDay": "Aucun rendez-vous prévu pour cette journée.",
+    "emptyBay": "Rien de prévu sur cette baie.",
+    "noBays": "Aucune baie configurée. Ajoutez-en au moins une pour commencer.",
+    "loading": "Chargement du calendrier…",
+    "loadError": "Impossible de charger le calendrier.",
+    "unassignedBay": "Non assignée"
+  },
+  "status": {
+    "scheduled": "Planifié",
+    "confirmed": "Confirmé",
+    "checked_in": "Arrivé",
+    "in_progress": "En cours",
+    "completed": "Terminé",
+    "closed": "Clôturé",
+    "no_show": "Non présenté",
+    "cancelled": "Annulé"
+  },
+  "source": {
+    "manual": "Manuel",
+    "phone": "Téléphone",
+    "online": "En ligne",
+    "walkin": "Sans rendez-vous"
+  },
+  "waitType": {
+    "waiter": "Le client attend",
+    "drop_off": "Dépôt",
+    "pickup_scheduled": "Retrait planifié"
+  },
+  "appointmentType": {
+    "quick_service": "Service rapide",
+    "inspection": "Inspection",
+    "diagnostic": "Diagnostic",
+    "standard_repair": "Réparation standard",
+    "major_repair": "Grosse réparation",
+    "maintenance": "Entretien",
+    "tire_service": "Service pneus",
+    "bodywork": "Carrosserie",
+    "other": "Autre"
+  },
+  "bayType": {
+    "general": "Général",
+    "quick_service": "Service rapide",
+    "alignment": "Géométrie",
+    "heavy": "Poids lourd",
+    "specialist": "Spécialiste",
+    "flat": "Au sol",
+    "other": "Autre"
+  },
+  "actions": {
+    "book": "Prendre rendez-vous",
+    "confirm": "Confirmer",
+    "reschedule": "Replanifier",
+    "checkIn": "Enregistrer l'arrivée",
+    "cancel": "Annuler",
+    "convert": "Convertir en ordre de réparation",
+    "save": "Enregistrer",
+    "close": "Fermer",
+    "back": "Retour"
+  },
+  "fields": {
+    "appointmentNumber": "N° de rendez-vous",
+    "status": "Statut",
+    "source": "Source",
+    "type": "Type",
+    "bay": "Baie",
+    "technician": "Technicien",
+    "customer": "Client",
+    "customerName": "Nom du client",
+    "customerPhone": "Téléphone",
+    "customerEmail": "E-mail",
+    "vehicle": "Véhicule",
+    "vehiclePlate": "Immatriculation",
+    "vehicleDescription": "Description du véhicule",
+    "waitType": "Type d'attente",
+    "scheduledStart": "Début",
+    "scheduledEnd": "Fin",
+    "estimatedDuration": "Durée estimée (minutes)",
+    "actualArrival": "Arrivée réelle",
+    "servicesSummary": "Résumé des services",
+    "customerNotes": "Notes client",
+    "internalNotes": "Notes internes",
+    "colorLabel": "Libellé couleur",
+    "plannedServices": "Services prévus",
+    "location": "Emplacement",
+    "appointmentType": "Type de rendez-vous"
+  },
+  "drawer": {
+    "bookTitle": "Prendre rendez-vous",
+    "rescheduleTitle": "Replanifier le rendez-vous",
+    "editTitle": "Modifier le rendez-vous",
+    "sectionCustomer": "Client",
+    "sectionVehicle": "Véhicule",
+    "sectionSchedule": "Créneau",
+    "sectionServices": "Services",
+    "sectionNotes": "Notes",
+    "savingLabel": "Enregistrement…",
+    "successBooked": "Rendez-vous enregistré.",
+    "successUpdated": "Rendez-vous mis à jour.",
+    "successConfirmed": "Rendez-vous confirmé.",
+    "successRescheduled": "Rendez-vous replanifié.",
+    "successCheckedIn": "Client enregistré.",
+    "successCancelled": "Rendez-vous annulé.",
+    "successConverted": "Rendez-vous converti en ordre de réparation."
+  },
+  "errors": {
+    "required": "Ce champ est obligatoire.",
+    "invalidDate": "Veuillez saisir une date valide.",
+    "invalidRange": "La fin doit être postérieure au début.",
+    "conflict": "Le créneau est en conflit avec une réservation existante sur cette baie.",
+    "notConvertible": "Ce rendez-vous n'est pas dans un état convertible.",
+    "invalidTransition": "Cette transition n'est pas autorisée pour le statut actuel.",
+    "generic": "Une erreur est survenue. Veuillez réessayer."
+  },
+  "conflict": {
+    "title": "Conflit de planning",
+    "bayBusy": "La baie est déjà réservée pour le créneau choisi.",
+    "outsideHours": "Le créneau est en dehors des heures d'ouverture de la baie.",
+    "seeExisting": "Voir le rendez-vous en conflit"
+  },
+  "reminder": {
+    "smsSent": "Rappel SMS envoyé",
+    "emailSent": "Rappel e-mail envoyé",
+    "smsFailed": "Échec du rappel SMS",
+    "emailFailed": "Échec du rappel e-mail",
+    "skipped": "Rappel ignoré"
+  },
+  "capacity": {
+    "title": "Rapport de capacité",
+    "subtitle": "Taux de réservation de chaque baie pour la journée.",
+    "bay": "Baie",
+    "utilization": "Taux d'occupation",
+    "bookedMinutes": "Minutes réservées",
+    "availableMinutes": "Minutes disponibles",
+    "overbooked": "Sur-réservée",
+    "underutilized": "Sous-utilisée",
+    "healthy": "Saine",
+    "empty": "Aucune donnée de capacité pour la période sélectionnée."
+  },
+  "detail": {
+    "title": "Détails du rendez-vous",
+    "notFound": "Rendez-vous introuvable.",
+    "timeline": "Historique",
+    "plannedServicesTitle": "Services prévus",
+    "noServices": "Aucun service prévu.",
+    "convertedTo": "Converti en ordre de réparation",
+    "confirmCancelTitle": "Annuler ce rendez-vous ?",
+    "confirmCancelBody": "Êtes-vous sûr de vouloir annuler ce rendez-vous ? Cette action est irréversible.",
+    "reasonLabel": "Motif d'annulation",
+    "reasonPlaceholder": "ex. demande du client"
+  },
+  "availability": {
+    "title": "Trouver un créneau libre",
+    "duration": "Durée (minutes)",
+    "from": "Du",
+    "to": "Au",
+    "search": "Rechercher",
+    "emptySlots": "Aucun créneau libre dans la période sélectionnée.",
+    "pick": "Choisir"
+  },
+  "upcoming": {
+    "title": "Rendez-vous à venir",
+    "empty": "Aucun rendez-vous à venir."
+  }
+}
