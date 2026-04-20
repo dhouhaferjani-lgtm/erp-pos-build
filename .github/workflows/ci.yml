@@ -112,14 +112,20 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DB_CONNECTION: pgsql
-      DB_HOST: 127.0.0.1
-      DB_PORT: 5432
-      DB_DATABASE: autoerp_test
-      DB_USERNAME: autoerp
-      DB_PASSWORD: secret
-      REDIS_HOST: 127.0.0.1
-      REDIS_PORT: 6379
+      # Static test APP_KEY — avoids needing `php artisan key:generate`, which
+      # would also boot the full framework (including BroadcastManager) before
+      # the test env overrides in phpunit.xml take effect.
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_ENV: testing
+      # Override the broadcasting driver because .env.example ships with
+      # BROADCAST_CONNECTION=redis but config/broadcasting.php has no "redis"
+      # connection defined, which makes any Laravel bootstrap blow up.
+      BROADCAST_CONNECTION: 'null'
+      # NOTE: Do NOT set DB_* env vars at the job level. phpunit.xml pins
+      # DB_CONNECTION=sqlite (:memory:) for Unit tests, and PHPUnit 11's
+      # <env/> directive does not override pre-existing environment variables
+      # unless force="true" is set. The Postgres service remains available
+      # for future Feature-suite coverage that opts into it explicitly.
     steps:
       - uses: actions/checkout@v4
 
@@ -149,6 +155,7 @@ jobs:
 
       - name: Configure test environment
         run: |
+          sed -i "s|^APP_KEY=.*|APP_KEY=${APP_KEY}|" .env.testing
           sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env.testing
           sed -i 's/DB_PORT=.*/DB_PORT=5432/' .env.testing
           sed -i 's/DB_DATABASE=.*/DB_DATABASE=autoerp_test/' .env.testing
@@ -156,17 +163,17 @@ jobs:
           sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=secret/' .env.testing
           sed -i 's/REDIS_HOST=.*/REDIS_HOST=127.0.0.1/' .env.testing
           sed -i 's/REDIS_PORT=.*/REDIS_PORT=6379/' .env.testing
-
-      - name: Generate application key
-        run: php artisan key:generate --env=testing
+          # .env.example ships BROADCAST_CONNECTION=redis, which breaks bootstrap
+          # because config/broadcasting.php has no "redis" connection defined.
+          sed -i 's/BROADCAST_CONNECTION=.*/BROADCAST_CONNECTION=null/' .env.testing
 
       # Note: phpunit.xml pins DB_CONNECTION=sqlite for the in-memory unit test
       # suite, so no Postgres migrations are required. The postgres service is
       # kept available for future feature-test coverage that requires pgsql.
+      # APP_KEY is injected via job-level env so we don't need `key:generate`
+      # (which would fail on the BroadcastManager the moment it boots the framework).
       - name: Run unit tests
         run: php artisan test --testsuite=Unit --coverage-clover=coverage.xml
-        env:
-          APP_ENV: testing
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
