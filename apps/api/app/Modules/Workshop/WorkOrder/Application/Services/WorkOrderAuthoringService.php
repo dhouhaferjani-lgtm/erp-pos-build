@@ -14,6 +14,7 @@ use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCreated;
 use App\Modules\Workshop\WorkOrder\Domain\Exceptions\WorkOrderImmutableException;
 use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Support\Carbon;
 use RuntimeException;
 
 /**
@@ -96,13 +97,13 @@ final readonly class WorkOrderAuthoringService
                 $wo->internal_notes = $command->internal_notes;
             }
             if ($command->scheduled_start_at !== null) {
-                $wo->scheduled_start_at = \Illuminate\Support\Carbon::instance($command->scheduled_start_at);
+                $wo->scheduled_start_at = Carbon::instance($command->scheduled_start_at);
             }
             if ($command->scheduled_end_at !== null) {
-                $wo->scheduled_end_at = \Illuminate\Support\Carbon::instance($command->scheduled_end_at);
+                $wo->scheduled_end_at = Carbon::instance($command->scheduled_end_at);
             }
             if ($command->promised_at !== null) {
-                $wo->promised_at = \Illuminate\Support\Carbon::instance($command->promised_at);
+                $wo->promised_at = Carbon::instance($command->promised_at);
             }
 
             return $this->workOrders->save($wo);

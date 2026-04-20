@@ -18,6 +18,17 @@ use App\Modules\Progression\Infrastructure\Listeners\RegisterCompanyWithGrowthAd
 use App\Modules\Vehicle\Domain\Events\VehicleOwnerChanged;
 use App\Modules\Vehicle\Infrastructure\Listeners\CloseOwnershipsOnPartnerDeleted;
 use App\Modules\Vehicle\Infrastructure\Listeners\RecordVehicleOwnerChangedAuditEvent;
+use App\Modules\Vehicle\Infrastructure\Listeners\WriteMileageReadingFromWorkOrderCompleted;
+use App\Modules\Workshop\Technician\Application\Listeners\ReopenTimeEntryOnWorkOrderResumed;
+use App\Modules\Workshop\Technician\Infrastructure\Listeners\CloseTimeEntryOnWorkOrderCompleted;
+use App\Modules\Workshop\Technician\Infrastructure\Listeners\CloseTimeEntryOnWorkOrderPaused;
+use App\Modules\Workshop\Technician\Infrastructure\Listeners\CreateTimeEntryOnWorkOrderStarted;
+use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCompleted;
+use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderPartsNeeded;
+use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderPaused;
+use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderResumed;
+use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderStarted;
+use App\Modules\Workshop\WorkOrder\Infrastructure\Listeners\LogPartsNeededForProcurement;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 
 class EventServiceProvider extends ServiceProvider
@@ -50,21 +61,21 @@ class EventServiceProvider extends ServiceProvider
         // Plan B (WorkOrder) lifecycle events. Canonical event signatures live
         // under \App\Modules\Workshop\WorkOrder\Domain\Events\*.
         // ----------------------------------------------------------------------
-        \App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderStarted::class => [
-            \App\Modules\Workshop\Technician\Infrastructure\Listeners\CreateTimeEntryOnWorkOrderStarted::class,
+        WorkOrderStarted::class => [
+            CreateTimeEntryOnWorkOrderStarted::class,
         ],
-        \App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderPaused::class => [
-            \App\Modules\Workshop\Technician\Infrastructure\Listeners\CloseTimeEntryOnWorkOrderPaused::class,
+        WorkOrderPaused::class => [
+            CloseTimeEntryOnWorkOrderPaused::class,
         ],
-        \App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderResumed::class => [
-            \App\Modules\Workshop\Technician\Application\Listeners\ReopenTimeEntryOnWorkOrderResumed::class,
+        WorkOrderResumed::class => [
+            ReopenTimeEntryOnWorkOrderResumed::class,
         ],
-        \App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCompleted::class => [
-            \App\Modules\Workshop\Technician\Infrastructure\Listeners\CloseTimeEntryOnWorkOrderCompleted::class,
-            \App\Modules\Vehicle\Infrastructure\Listeners\WriteMileageReadingFromWorkOrderCompleted::class,
+        WorkOrderCompleted::class => [
+            CloseTimeEntryOnWorkOrderCompleted::class,
+            WriteMileageReadingFromWorkOrderCompleted::class,
         ],
-        \App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderPartsNeeded::class => [
-            \App\Modules\Workshop\WorkOrder\Infrastructure\Listeners\LogPartsNeededForProcurement::class,
+        WorkOrderPartsNeeded::class => [
+            LogPartsNeededForProcurement::class,
         ],
     ];
 
