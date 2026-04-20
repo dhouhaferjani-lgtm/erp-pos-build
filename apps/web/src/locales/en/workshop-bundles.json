@@ -1,0 +1,70 @@
+{
+  "list": {
+    "title": "Service bundles",
+    "createCta": "New bundle",
+    "loading": "Loading bundles…",
+    "error": "Could not load bundles.",
+    "empty": "No bundles yet. Create one to get started.",
+    "inactive": "Inactive"
+  },
+  "create": {
+    "title": "New service bundle"
+  },
+  "detail": {
+    "title": "Bundle · {{name}}",
+    "loading": "Loading bundle…",
+    "error": "Could not load bundle.",
+    "fields": "Bundle details",
+    "components": "Components ({{count}})",
+    "emptyComponents": "No components attached yet.",
+    "applicabilities": "Vehicle applicabilities",
+    "emptyApplicabilities": "Universal — applies to any vehicle.",
+    "expansionPreview": "Expansion preview"
+  },
+  "form": {
+    "code": "Code",
+    "name": "Name",
+    "description": "Description",
+    "pricingMode": "Pricing mode",
+    "pricingMode.standard": "Standard (sum of components)",
+    "pricingMode.fixedBundle": "Fixed bundle (flat price)",
+    "basePrice": "Base price",
+    "currency": "Currency",
+    "taxRate": "Tax rate (%)",
+    "estimatedLaborHours": "Estimated labor hours",
+    "serviceIntervalKm": "Service interval (km)",
+    "serviceIntervalMonths": "Service interval (months)",
+    "cancel": "Cancel",
+    "save": "Save",
+    "create": "Create",
+    "saving": "Saving…"
+  },
+  "priceChip": {
+    "sumOfLines": "Sum of lines"
+  },
+  "interval": {
+    "km": "Every {{count}} km",
+    "months_one": "Every {{count}} month",
+    "months_other": "Every {{count}} months"
+  },
+  "applicability": {
+    "universal": "Universal",
+    "vehicleFallback": "{{type}} #{{id}}"
+  },
+  "picker": {
+    "title": "Pick a service bundle",
+    "searchPlaceholder": "Search by name or code…",
+    "loading": "Loading applicable bundles…",
+    "empty": "No applicable bundles for this vehicle.",
+    "selectPreview": "Select a bundle to see its expansion preview.",
+    "cancel": "Cancel",
+    "confirm": "Add to work order"
+  },
+  "expansion": {
+    "loading": "Loading preview…",
+    "error": "Could not load expansion.",
+    "empty": "No lines in this bundle yet.",
+    "pricedLines": "Priced lines",
+    "informationalLines": "Informational (consumed but not billed)"
+  }
+}
