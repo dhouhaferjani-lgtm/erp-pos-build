@@ -53,6 +53,8 @@ export const PERMISSIONS = {
   'vehicles.view': ['admin', 'sales', 'manager'],
   'vehicles.create': ['admin', 'sales', 'manager'],
   'vehicles.edit': ['admin', 'sales', 'manager'],
+  'vehicles.manage_ownership': ['admin', 'manager', 'operator'],
+  'vehicles.log_mileage': ['admin', 'manager', 'operator', 'technician'],
 
   // Pricing
   'pricing.view': ['admin', 'sales', 'manager'],
