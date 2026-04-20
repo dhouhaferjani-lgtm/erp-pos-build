@@ -10,6 +10,7 @@ enum MileageSource: string
     case Manual = 'manual';
     case OdometerPhoto = 'odometer_photo';
     case ExternalApi = 'external_api';
+    case WorkOrderCompletion = 'work_order_completion';
 
     /** @return list<string> */
     public static function values(): array
