@@ -98,7 +98,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U autoerp -d autoerp_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -111,6 +111,15 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+    env:
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: autoerp_test
+      DB_USERNAME: autoerp
+      DB_PASSWORD: secret
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
     steps:
       - uses: actions/checkout@v4
 
@@ -151,11 +160,11 @@ jobs:
       - name: Generate application key
         run: php artisan key:generate --env=testing
 
-      - name: Run migrations
-        run: php artisan migrate --env=testing --force
-
-      - name: Run tests
-        run: php artisan test --coverage-clover=coverage.xml
+      # Note: phpunit.xml pins DB_CONNECTION=sqlite for the in-memory unit test
+      # suite, so no Postgres migrations are required. The postgres service is
+      # kept available for future feature-test coverage that requires pgsql.
+      - name: Run unit tests
+        run: php artisan test --testsuite=Unit --coverage-clover=coverage.xml
         env:
           APP_ENV: testing
 
