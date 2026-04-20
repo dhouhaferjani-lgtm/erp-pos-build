@@ -33,7 +33,14 @@ export function useWorkOrders(filters: WorkOrderListFilters = {}) {
 export function useWorkOrder(id: string | undefined) {
   return useQuery<WorkOrder>({
     queryKey: workOrderKeys.detail(id ?? ''),
-    queryFn: () => workOrderApi.get(id as string),
+    queryFn: () => {
+      if (typeof id !== 'string' || id.length === 0) {
+        // Unreachable when `enabled` gates the query; satisfies strict
+        // type checking without a type assertion.
+        return Promise.reject(new Error('Work order id is required'))
+      }
+      return workOrderApi.get(id)
+    },
     enabled: typeof id === 'string' && id.length > 0,
     staleTime: 30 * 1000,
   })

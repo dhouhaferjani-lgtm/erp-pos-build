@@ -14,6 +14,13 @@ import { useLogVehicleMileage } from './hooks/useLogVehicleMileage'
 import { useVehicleWithCurrentOwner } from './hooks/useVehicleWithCurrentOwner'
 import type { MileageSource } from './types'
 
+const MILEAGE_SOURCES: MileageSource[] = ['service', 'manual', 'odometer_photo', 'external_api']
+
+/** Type guard matching a MileageSource without a type assertion. */
+function isMileageSource(value: string): value is MileageSource {
+  return (MILEAGE_SOURCES as string[]).includes(value)
+}
+
 export function VehicleDetailPage() {
   const { t } = useTranslation(['vehicles', 'vehicle-ownership', 'common'])
   const { id } = useParams<{ id: string }>()
@@ -99,7 +106,7 @@ export function VehicleDetailPage() {
           <ArrowLeft className="h-4 w-4" />
           {t('common:actions.back')}
         </Link>
-        <div className="rounded-lg bg-red-50 p-4 text-red-700">
+        <div className={`${tokens.alert.base} ${tokens.alert.error}`}>
           {t('messages.notFound')}
         </div>
       </div>
@@ -138,7 +145,7 @@ export function VehicleDetailPage() {
           <button
             onClick={handleDelete}
             disabled={deleteMutation.isPending}
-            className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+            className={`${tokens.button.base} ${tokens.button.dangerOutline} ${tokens.button.sizes.md} gap-2`}
           >
             <Trash2 className="h-4 w-4" />
             {t('common:actions.delete')}
@@ -280,7 +287,12 @@ export function VehicleDetailPage() {
               </span>
               <select
                 value={mileageSource}
-                onChange={(e) => { setMileageSource(e.target.value as MileageSource) }}
+                onChange={(e) => {
+                  const value = e.target.value
+                  if (isMileageSource(value)) {
+                    setMileageSource(value)
+                  }
+                }}
                 className={`rounded border px-2 py-1 text-sm ${borderColors.default}`}
               >
                 <option value="manual">{t('vehicle-ownership:mileageSource.manual')}</option>

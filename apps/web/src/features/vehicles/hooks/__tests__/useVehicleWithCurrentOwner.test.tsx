@@ -35,7 +35,7 @@ const apiPayload = {
 
 vi.mock('../../../../lib/api', () => ({
   api: {
-    get: vi.fn(async () => ({ data: apiPayload })),
+    get: vi.fn(() => Promise.resolve({ data: apiPayload })),
   },
 }))
 

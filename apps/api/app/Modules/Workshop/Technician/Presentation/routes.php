@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::prefix('api/v1')
-    ->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])
+    ->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, 'module:Workshop'])
     ->group(function (): void {
         Route::get('/workshop/technicians', [TechnicianProfileController::class, 'index'])
             ->middleware('can:workshop.technicians.view')

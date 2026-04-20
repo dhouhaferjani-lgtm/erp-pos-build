@@ -58,7 +58,7 @@ export function WorkOrderDetailPage() {
           className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700"
         >
           {t('detail.notFound')}
-          {error !== null && error !== undefined && (
+          {error !== null && (
             <span className="ml-2 text-xs">
               ({error instanceof Error ? error.message : String(error)})
             </span>

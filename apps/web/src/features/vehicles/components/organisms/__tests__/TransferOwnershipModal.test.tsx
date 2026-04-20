@@ -30,7 +30,7 @@ const partners: Partner[] = [
 
 vi.mock('@/lib/api', () => ({
   api: {
-    get: vi.fn(async () => ({ data: { data: partners } })),
+    get: vi.fn(() => Promise.resolve({ data: { data: partners } })),
   },
 }))
 
@@ -86,7 +86,15 @@ describe('TransferOwnershipModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ownership.confirmTransfer' }))
 
     expect(mutate).toHaveBeenCalledTimes(1)
-    const [payload] = mutate.mock.calls[0]
-    expect(payload.new_owner_partner_id).toBe('22222222-2222-2222-2222-222222222222')
+    const firstCall = mutate.mock.calls[0] as unknown[]
+    const [rawPayload] = firstCall
+    if (
+      typeof rawPayload !== 'object' ||
+      rawPayload === null ||
+      !('new_owner_partner_id' in rawPayload)
+    ) {
+      throw new Error('Expected mutate payload to include new_owner_partner_id')
+    }
+    expect(rawPayload.new_owner_partner_id).toBe('22222222-2222-2222-2222-222222222222')
   })
 })

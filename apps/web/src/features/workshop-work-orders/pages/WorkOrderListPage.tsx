@@ -21,6 +21,11 @@ const STATUS_FILTERS: WorkOrderStatus[] = [
   'cancelled',
 ]
 
+/** Type guard matching a WorkOrderStatus without a type assertion. */
+function isWorkOrderStatus(value: string): value is WorkOrderStatus {
+  return (STATUS_FILTERS as string[]).includes(value)
+}
+
 export function WorkOrderListPage() {
   const { t } = useTranslation('workshop-work-orders')
   const [status, setStatus] = useState<WorkOrderStatus | ''>('')
@@ -58,7 +63,8 @@ export function WorkOrderListPage() {
           <select
             value={status}
             onChange={(e) => {
-              setStatus(e.target.value as WorkOrderStatus | '')
+              const value = e.target.value
+              setStatus(value === '' || isWorkOrderStatus(value) ? value : '')
             }}
             className={`rounded-md border px-2 py-1 text-sm focus:outline-none focus:ring-1 ${borderColors.default}`}
           >

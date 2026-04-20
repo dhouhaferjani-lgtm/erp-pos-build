@@ -41,6 +41,11 @@ const REASONS: OwnershipReason[] = [
   'other',
 ]
 
+/** Type guard matching an OwnershipReason without a type assertion. */
+function isOwnershipReason(value: string): value is OwnershipReason {
+  return (REASONS as string[]).includes(value)
+}
+
 export function TransferOwnershipModal({
   vehicleId,
   isOpen,
@@ -144,7 +149,12 @@ export function TransferOwnershipModal({
             <span className={`text-sm ${textColors.secondary}`}>{t('ownership.reason')}</span>
             <select
               value={reason}
-              onChange={(e) => { setReason(e.target.value as OwnershipReason) }}
+              onChange={(e) => {
+                const value = e.target.value
+                if (isOwnershipReason(value)) {
+                  setReason(value)
+                }
+              }}
               className={`rounded border px-2 py-1 text-sm ${borderColors.default}`}
             >
               {REASONS.map((r) => (

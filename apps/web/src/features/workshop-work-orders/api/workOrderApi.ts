@@ -97,12 +97,12 @@ export const workOrderApi = {
     return apiPatch<WorkOrderLine>(`${BASE}/${id}/lines/${lineId}`, input)
   },
 
-  removeLine(id: string, lineId: string): Promise<void> {
-    return apiDelete<void>(`${BASE}/${id}/lines/${lineId}`)
+  async removeLine(id: string, lineId: string): Promise<void> {
+    await apiDelete<undefined>(`${BASE}/${id}/lines/${lineId}`)
   },
 
-  reorderLines(id: string, orderedLineIds: string[]): Promise<void> {
-    return apiPut<void>(`${BASE}/${id}/lines/reorder`, { ordered_line_ids: orderedLineIds })
+  async reorderLines(id: string, orderedLineIds: string[]): Promise<void> {
+    await apiPut<undefined>(`${BASE}/${id}/lines/reorder`, { ordered_line_ids: orderedLineIds })
   },
 
   assignTechnician(
@@ -112,8 +112,8 @@ export const workOrderApi = {
     return apiPost<WorkOrderAssignment>(`${BASE}/${id}/assignments`, input)
   },
 
-  unassignTechnician(id: string, assignmentId: string): Promise<void> {
-    return apiDelete<void>(`${BASE}/${id}/assignments/${assignmentId}`)
+  async unassignTechnician(id: string, assignmentId: string): Promise<void> {
+    await apiDelete<undefined>(`${BASE}/${id}/assignments/${assignmentId}`)
   },
 
   setPrimaryTechnician(id: string, technicianProfileId: string): Promise<WorkOrderAssignment> {

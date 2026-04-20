@@ -48,7 +48,7 @@ Route::prefix('api/v1/storefront/{company_id}')
     });
 
 Route::prefix('api/v1/scheduling')
-    ->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])
+    ->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, 'module:Workshop'])
     ->group(function (): void {
         // Bays — CRUD.
         Route::get('bays', [BayController::class, 'index']);

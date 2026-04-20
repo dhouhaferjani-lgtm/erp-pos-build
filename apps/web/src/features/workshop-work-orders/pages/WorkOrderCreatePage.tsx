@@ -18,6 +18,11 @@ const WORK_ORDER_TYPES: WorkOrderType[] = [
   'other',
 ]
 
+/** Type guard matching a WorkOrderType without a type assertion. */
+function isWorkOrderType(value: string): value is WorkOrderType {
+  return (WORK_ORDER_TYPES as string[]).includes(value)
+}
+
 export function WorkOrderCreatePage() {
   const { t } = useTranslation('workshop-work-orders')
   const navigate = useNavigate()
@@ -72,7 +77,10 @@ export function WorkOrderCreatePage() {
             <select
               value={form.type}
               onChange={(e) => {
-                setForm({ ...form, type: e.target.value as WorkOrderType })
+                const value = e.target.value
+                if (isWorkOrderType(value)) {
+                  setForm({ ...form, type: value })
+                }
               }}
               className={tokens.select.base}
             >
