@@ -204,6 +204,11 @@ const KeyComponentFormPage = lazy(() => import('../features/parapharmacy/pages')
 const WorkshopTechniciansTeamListPage = lazy(() => import('../features/workshop-technicians/pages/TeamListPage').then((m) => ({ default: m.TeamListPage })))
 const WorkshopTechnicianDetailPage = lazy(() => import('../features/workshop-technicians/pages/TechnicianDetailPage').then((m) => ({ default: m.TechnicianDetailPage })))
 
+// Workshop/WorkOrder module (Spec B)
+const WorkshopWorkOrderListPage = lazy(() => import('../features/workshop-work-orders/pages/WorkOrderListPage').then((m) => ({ default: m.WorkOrderListPage })))
+const WorkshopWorkOrderDetailPage = lazy(() => import('../features/workshop-work-orders/pages/WorkOrderDetailPage').then((m) => ({ default: m.WorkOrderDetailPage })))
+const WorkshopWorkOrderCreatePage = lazy(() => import('../features/workshop-work-orders/pages/WorkOrderCreatePage').then((m) => ({ default: m.WorkOrderCreatePage })))
+
 // CRM module
 const CrmCompanyListPage = lazy(() => import('../features/crm/pages/CompanyListPage').then((m) => ({ default: m.CompanyListPage })))
 const CrmContactListPage = lazy(() => import('../features/crm/pages/ContactListPage').then((m) => ({ default: m.ContactListPage })))
@@ -1196,6 +1201,40 @@ export function AppRoutes() {
                   </SuspenseWrapper>
                 </RequirePermission>
               </ModuleGuard>
+            }
+          />
+        </Route>
+
+        {/* Workshop Work Orders Module (Spec B) */}
+        <Route path="workshop/work-orders">
+          <Route
+            index
+            element={
+              <RequirePermission permission="work-orders.view">
+                <SuspenseWrapper>
+                  <WorkshopWorkOrderListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="new"
+            element={
+              <RequirePermission permission="work-orders.create">
+                <SuspenseWrapper>
+                  <WorkshopWorkOrderCreatePage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path=":id"
+            element={
+              <RequirePermission permission="work-orders.view">
+                <SuspenseWrapper>
+                  <WorkshopWorkOrderDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
             }
           />
         </Route>

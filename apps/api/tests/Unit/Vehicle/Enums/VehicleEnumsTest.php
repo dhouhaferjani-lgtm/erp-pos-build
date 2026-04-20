@@ -78,6 +78,7 @@ final class VehicleEnumsTest extends TestCase
         $this->assertSame('manual', MileageSource::Manual->value);
         $this->assertSame('odometer_photo', MileageSource::OdometerPhoto->value);
         $this->assertSame('external_api', MileageSource::ExternalApi->value);
-        $this->assertCount(4, MileageSource::cases());
+        $this->assertSame('work_order_completion', MileageSource::WorkOrderCompletion->value);
+        $this->assertCount(5, MileageSource::cases());
     }
 }

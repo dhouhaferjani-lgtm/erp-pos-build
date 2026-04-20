@@ -7,6 +7,7 @@ namespace App\Modules\Inventory\Application\Services;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Inventory\Application\Contracts\InventoryReservationServiceInterface;
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
 use App\Modules\Inventory\Domain\Events\ReservationCreated;
@@ -36,7 +37,7 @@ use Illuminate\Support\Str;
  * - High-value reservations trigger alerts
  * - Suspicious release patterns (expired, manual) are flagged
  */
-class StockReservationService
+class StockReservationService implements InventoryReservationServiceInterface
 {
     public function __construct(
         private FEFOInventoryService $fefoService
@@ -415,5 +416,74 @@ class StockReservationService
         }
 
         return $reservations;
+    }
+
+    /**
+     * Reserve stock for a specific WorkOrder line.
+     *
+     * Resolves company/location from the best StockLevel row for the product
+     * (highest available quantity) and delegates to the standard reserve() path
+     * with ReservationSource::WorkOrder.
+     *
+     * @param  numeric-string  $quantity
+     *
+     * @throws \RuntimeException If no StockLevel exists for the product.
+     */
+    public function reserveForWorkOrder(
+        string $productId,
+        string $quantity,
+        string $workOrderLineId,
+        string $workOrderId,
+        ?\DateTimeImmutable $expiresAt,
+    ): StockReservation {
+        /** @var StockLevel|null $stockLevel */
+        $stockLevel = StockLevel::where('product_id', $productId)
+            ->orderByRaw('(quantity - reserved) DESC')
+            ->first();
+
+        if ($stockLevel === null) {
+            throw new \RuntimeException(
+                "Cannot reserve stock for product {$productId}: no StockLevel row found."
+            );
+        }
+
+        /** @var Company $company */
+        $company = Company::query()->findOrFail($stockLevel->company_id);
+
+        $reservation = $this->reserve(
+            company: $company,
+            productId: $productId,
+            locationId: $stockLevel->location_id,
+            quantity: $quantity,
+            sourceType: ReservationSource::WorkOrder,
+            sourceId: $workOrderId,
+            sourceLineId: $workOrderLineId,
+            priority: 0,
+            notes: null,
+        );
+
+        if ($expiresAt !== null) {
+            $reservation->forceFill(['expires_at' => $expiresAt])->save();
+        }
+
+        return $reservation;
+    }
+
+    /**
+     * Release all active reservations tied to a WorkOrder.
+     *
+     * @return int Number of reservations released.
+     */
+    public function releaseForWorkOrder(
+        string $workOrderId,
+        string $reasonCode,
+    ): int {
+        $reason = ReleaseReason::tryFrom($reasonCode) ?? ReleaseReason::ManualRelease;
+
+        return $this->releaseBySource(
+            sourceType: ReservationSource::WorkOrder,
+            sourceId: $workOrderId,
+            reason: $reason,
+        );
     }
 }

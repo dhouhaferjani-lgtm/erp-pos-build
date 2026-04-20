@@ -90,6 +90,7 @@ const MODULE_NAME_MAP: Record<string, string | string[]> = {
   vehicles: 'Vehicle',
   services: 'Workshop',
   'workshop-bundles': 'Workshop',
+  'workshop-work-orders': 'Workshop',
   'composite-items': 'CompositeItems',
   parapharmacy: 'Parapharmacy',
   'parts-catalog': 'PlatformIntegration',
@@ -273,6 +274,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
       // Only duplicate services into the Automotive group when the tenant's
       // vertical is automotive — otherwise services live under Inventory.
       ...(isAutomotiveVertical ? servicesChildren : []),
+      { key: 'workshopWorkOrders', href: '/workshop/work-orders', icon: ClipboardList, module: 'workshop-work-orders' },
       { key: 'workshopBundles', href: '/workshop/bundles', icon: Package2, module: 'workshop-bundles' },
       { key: 'workshopTechnicians', href: '/workshop/technicians', icon: Users, module: 'workshop-technicians' },
       { key: 'partsCatalog', href: '/parts-catalog', icon: Search, module: 'parts-catalog' },

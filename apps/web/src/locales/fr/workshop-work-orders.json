@@ -1,0 +1,114 @@
+{
+  "list": {
+    "title": "Ordres de réparation",
+    "subtitle": "Travaux en atelier, de la réception à la facturation.",
+    "loading": "Chargement des ordres…",
+    "errorLoading": "Impossible de charger les ordres",
+    "paginationSummary": "{{shown}} sur {{total}}",
+    "empty": {
+      "title": "Aucun ordre pour l'instant",
+      "body": "Créez un nouvel ordre lors de la réception du véhicule."
+    }
+  },
+  "detail": {
+    "loading": "Chargement de l'ordre…",
+    "notFound": "Ordre introuvable",
+    "backToList": "Retour aux ordres",
+    "lines": "Lignes",
+    "noLines": "Aucune ligne.",
+    "assignments": "Affectations",
+    "noAssignments": "Aucun technicien affecté.",
+    "lead": "Responsable",
+    "history": "Historique"
+  },
+  "complete_dialog": {
+    "title": "Clôturer l'ordre de réparation",
+    "mileage_label": "Kilométrage à la clôture",
+    "mileage_hint": "Laisser vide pour ignorer",
+    "confirm": "Clôturer",
+    "cancel": "Annuler"
+  },
+  "create": {
+    "title": "Nouvel ordre",
+    "subtitle": "Démarrer un travail depuis la réception."
+  },
+  "filters": {
+    "status": "Statut",
+    "anyStatus": "Tous les statuts"
+  },
+  "status": {
+    "received": "Reçu",
+    "diagnosed": "Diagnostiqué",
+    "quoted": "Devisé",
+    "approved": "Approuvé",
+    "in_progress": "En cours",
+    "paused": "En pause",
+    "waiting_parts": "En attente pièces",
+    "completed": "Terminé",
+    "invoiced": "Facturé",
+    "closed": "Clôturé",
+    "cancelled": "Annulé"
+  },
+  "workOrderType": {
+    "repair": "Réparation",
+    "maintenance": "Entretien",
+    "inspection": "Contrôle",
+    "bodywork": "Carrosserie",
+    "tire_service": "Pneumatiques",
+    "electrical": "Électricité",
+    "diagnostic": "Diagnostic",
+    "other": "Autre"
+  },
+  "approvalMethod": {
+    "in_person": "En personne",
+    "phone": "Téléphone",
+    "email": "Email",
+    "sms": "SMS",
+    "signed_document": "Document signé"
+  },
+  "actions": {
+    "newWorkOrder": "Nouvel ordre",
+    "approve": "Saisir l'approbation",
+    "complete": "Terminer le travail",
+    "cancel": "Annuler",
+    "create": "Créer",
+    "creating": "Création…",
+    "transitionTo": {
+      "received": "Marquer reçu",
+      "diagnosed": "Enregistrer diagnostic",
+      "quoted": "Générer devis",
+      "approved": "Marquer approuvé",
+      "in_progress": "Démarrer les travaux",
+      "paused": "Mettre en pause",
+      "waiting_parts": "En attente pièces",
+      "completed": "Terminer",
+      "invoiced": "Générer facture",
+      "closed": "Clôturer",
+      "cancelled": "Annuler"
+    }
+  },
+  "fields": {
+    "type": "Type",
+    "customerPartnerId": "Client (UUID partenaire)",
+    "vehicleId": "UUID véhicule",
+    "currency": "Devise",
+    "customerComplaint": "Plainte client"
+  },
+  "totals": {
+    "title": "Totaux",
+    "estimated": "Estimé",
+    "actual": "Réel",
+    "parts": "Pièces",
+    "labor": "Main d'œuvre",
+    "other": "Autres",
+    "tax": "Taxes",
+    "grand": "Total",
+    "redacted": "Les totaux sont restreints. Contactez un responsable pour y accéder."
+  },
+  "labels": {
+    "notSet": "—",
+    "unassigned": "Non affecté",
+    "done": "Terminé",
+    "mileageKm": "{{value}} km"
+  }
+}

@@ -12,14 +12,20 @@ use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Vehicle\Domain\Vehicle;
 use App\Modules\Workshop\Bundle\Domain\Enums\BundlePricingMode;
 use App\Modules\Workshop\Bundle\Domain\ServiceBundle;
 use App\Modules\Workshop\Bundle\Domain\ServiceBundleVehicleApplicability;
+use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderStatus;
+use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderType;
+use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
 /**
@@ -152,6 +158,7 @@ class DemoTenantSeeder extends Seeder
         $this->assignAdminRoleAndMembership($user, $tenant, $company);
 
         $this->seedWorkshopBundles($tenant, $company);
+        $this->seedWorkOrders($tenant, $company, $user);
 
         $this->command->info("Created unlimited demo tenant: {$tenant->name}");
         $this->command->line('  - Email: admin@demo.local');
@@ -277,6 +284,142 @@ class DemoTenantSeeder extends Seeder
                 ],
             );
         }
+    }
+
+    /**
+     * Seed a handful of demo WorkOrders spanning the statuses the workshop UI
+     * needs to render sensibly out of the box. Creates Partner + Vehicle rows
+     * on the fly so the seeder is self-contained.
+     */
+    private function seedWorkOrders(Tenant $tenant, Company $company, User $openedBy): void
+    {
+        if (WorkOrder::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('company_id', $company->id)
+            ->exists()
+        ) {
+            return;
+        }
+
+        $currency = $company->currency !== '' ? $company->currency : 'TND';
+
+        $customers = [
+            ['name' => 'Acme Motors', 'code' => 'CUST-WO-001'],
+            ['name' => 'Mohamed Ben Ali', 'code' => 'CUST-WO-002'],
+            ['name' => 'Société Transport Sud', 'code' => 'CUST-WO-003'],
+            ['name' => 'Fatima Trabelsi', 'code' => 'CUST-WO-004'],
+            ['name' => 'Garage Central Fleet', 'code' => 'CUST-WO-005'],
+        ];
+
+        $vehicleSpecs = [
+            ['plate' => 'TN-1234-AB', 'brand' => 'Peugeot', 'model' => '208', 'year' => 2021],
+            ['plate' => 'TN-5678-CD', 'brand' => 'Renault', 'model' => 'Clio', 'year' => 2019],
+            ['plate' => 'TN-9012-EF', 'brand' => 'Volkswagen', 'model' => 'Golf', 'year' => 2022],
+            ['plate' => 'TN-3456-GH', 'brand' => 'Toyota', 'model' => 'Corolla', 'year' => 2020],
+            ['plate' => 'TN-7890-IJ', 'brand' => 'Citroën', 'model' => 'C3', 'year' => 2018],
+        ];
+
+        /** @var list<array{0: WorkOrderStatus, 1: WorkOrderType, 2: string, 3: string}> $profiles */
+        $profiles = [
+            [WorkOrderStatus::Received, WorkOrderType::Diagnostic, '150.000', 'Engine check light intermittent.'],
+            [WorkOrderStatus::Quoted, WorkOrderType::Repair, '420.000', 'Front brake squeal at low speed.'],
+            [WorkOrderStatus::Approved, WorkOrderType::Maintenance, '310.000', 'Scheduled 40k km major service.'],
+            [WorkOrderStatus::InProgress, WorkOrderType::TireService, '560.000', 'Replace all four tyres.'],
+            [WorkOrderStatus::Completed, WorkOrderType::Inspection, '85.000', 'Annual pre-control inspection.'],
+        ];
+
+        foreach ($profiles as $i => [$status, $type, $estTotal, $complaint]) {
+            $customer = $customers[$i];
+            $vehicleSpec = $vehicleSpecs[$i];
+
+            $partner = Partner::firstOrCreate(
+                [
+                    'tenant_id' => $tenant->id,
+                    'company_id' => $company->id,
+                    'code' => $customer['code'],
+                ],
+                [
+                    'name' => $customer['name'],
+                    'type' => 'customer',
+                    'email' => Str::slug($customer['name']).'@demo.local',
+                    'phone' => '+216'.str_pad((string) (20000000 + $i), 8, '0', STR_PAD_LEFT),
+                    'country_code' => 'TN',
+                    'is_active' => true,
+                ],
+            );
+
+            $vehicle = Vehicle::firstOrCreate(
+                [
+                    'tenant_id' => $tenant->id,
+                    'company_id' => $company->id,
+                    'license_plate' => $vehicleSpec['plate'],
+                ],
+                [
+                    'partner_id' => $partner->id,
+                    'brand' => $vehicleSpec['brand'],
+                    'model' => $vehicleSpec['model'],
+                    'year' => $vehicleSpec['year'],
+                    'mileage' => 20000 + ($i * 15000),
+                    'fuel_type' => 'gasoline',
+                    'transmission' => 'manual',
+                ],
+            );
+
+            $year = date('Y');
+            $number = 'WO-'.$year.'-'.str_pad((string) ($i + 1), 6, '0', STR_PAD_LEFT);
+
+            $wo = new WorkOrder;
+            $wo->fill([
+                'tenant_id' => $tenant->id,
+                'company_id' => $company->id,
+                'location_id' => null,
+                'work_order_number' => $number,
+                'status' => $status->value,
+                'type' => $type->value,
+                'customer_partner_id' => $partner->id,
+                'vehicle_id' => $vehicle->id,
+                'opened_by_user_id' => $openedBy->id,
+                'primary_technician_profile_id' => null,
+                'mileage_at_intake' => 20000 + ($i * 15000),
+                'customer_complaint' => $complaint,
+                'diagnosis' => $status === WorkOrderStatus::Received ? null : 'Diagnostic completed by lead technician.',
+                'internal_notes' => null,
+                'scheduled_start_at' => now()->addDays($i - 2),
+                'scheduled_end_at' => now()->addDays($i - 2)->addHours(2),
+                'promised_at' => now()->addDays($i + 1),
+                'started_at' => in_array($status, [WorkOrderStatus::InProgress, WorkOrderStatus::Completed], true) ? now()->subHours(6) : null,
+                'completed_at' => $status === WorkOrderStatus::Completed ? now()->subHours(1) : null,
+                'approval_captured_at' => in_array($status, [
+                    WorkOrderStatus::Approved,
+                    WorkOrderStatus::InProgress,
+                    WorkOrderStatus::Completed,
+                ], true) ? now()->subHours(8) : null,
+                'approval_method' => in_array($status, [
+                    WorkOrderStatus::Approved,
+                    WorkOrderStatus::InProgress,
+                    WorkOrderStatus::Completed,
+                ], true) ? 'in_person' : null,
+                'approval_captured_by_user_id' => in_array($status, [
+                    WorkOrderStatus::Approved,
+                    WorkOrderStatus::InProgress,
+                    WorkOrderStatus::Completed,
+                ], true) ? $openedBy->id : null,
+                'currency' => $currency,
+                'estimated_parts_total' => '0.000',
+                'estimated_labor_total' => '0.000',
+                'estimated_other_total' => '0.000',
+                'estimated_tax_total' => '0.000',
+                'estimated_grand_total' => $estTotal,
+                'actual_parts_total' => '0.000',
+                'actual_labor_total' => '0.000',
+                'actual_other_total' => '0.000',
+                'actual_tax_total' => '0.000',
+                'actual_grand_total' => $status === WorkOrderStatus::Completed ? $estTotal : '0.000',
+            ]);
+            $wo->save();
+        }
+
+        $this->command->line('  - Seeded 5 demo work orders across statuses.');
     }
 
     /**
