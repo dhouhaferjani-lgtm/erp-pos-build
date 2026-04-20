@@ -7,6 +7,7 @@ namespace App\Modules\Vehicle\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Vehicle\Application\DTOs\VehicleData;
+use App\Modules\Vehicle\Application\DTOs\VehicleWithCurrentOwnerData;
 use App\Modules\Vehicle\Domain\Vehicle;
 use App\Modules\Vehicle\Presentation\Requests\CreateVehicleRequest;
 use App\Modules\Vehicle\Presentation\Requests\UpdateVehicleRequest;
@@ -61,7 +62,7 @@ class VehicleController extends Controller
     }
 
     /**
-     * Get a single vehicle
+     * Get a single vehicle with current owner + recent mileage readings eager-loaded.
      */
     public function show(Request $request, string $vehicle): JsonResponse
     {
@@ -69,7 +70,9 @@ class VehicleController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
-        $vehicleModel = Vehicle::forTenant($tenantId)->find($vehicle);
+        $vehicleModel = Vehicle::forTenant($tenantId)
+            ->with('currentOwnership.ownerPartner')
+            ->find($vehicle);
 
         if ($vehicleModel === null) {
             return response()->json([
@@ -81,7 +84,7 @@ class VehicleController extends Controller
         }
 
         return response()->json([
-            'data' => VehicleData::fromModel($vehicleModel),
+            'data' => VehicleWithCurrentOwnerData::fromModel($vehicleModel),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
             ],
