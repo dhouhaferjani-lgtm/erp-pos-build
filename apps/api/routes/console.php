@@ -34,3 +34,8 @@ Schedule::job(\App\Modules\BatchExpiry\Jobs\DailyExpiryCheck::class)
 Schedule::command('enrichment:check-pending')
     ->everyFifteenMinutes()
     ->withoutOverlapping();
+
+// Schedule: Dispatch TechnicianCertificationExpiring events daily at 3:00 AM
+Schedule::command(\App\Modules\Workshop\Technician\Infrastructure\Commands\CheckExpiringCertifications::class)
+    ->dailyAt('03:00')
+    ->withoutOverlapping();

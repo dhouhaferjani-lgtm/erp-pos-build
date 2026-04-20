@@ -10,6 +10,7 @@ use App\Modules\Workshop\Technician\Domain\Contracts\TechnicianCertificationRepo
 use App\Modules\Workshop\Technician\Domain\Contracts\TechnicianProfileRepositoryInterface;
 use App\Modules\Workshop\Technician\Domain\Contracts\TechnicianTimeEntryRepositoryInterface;
 use App\Modules\Workshop\Technician\Domain\Contracts\TechnicianTimeOffRepositoryInterface;
+use App\Modules\Workshop\Technician\Infrastructure\Commands\CheckExpiringCertifications;
 use App\Modules\Workshop\Technician\Infrastructure\Persistence\EloquentTechnicianCertificationRepository;
 use App\Modules\Workshop\Technician\Infrastructure\Persistence\EloquentTechnicianProfileRepository;
 use App\Modules\Workshop\Technician\Infrastructure\Persistence\EloquentTechnicianTimeEntryRepository;
@@ -54,5 +55,10 @@ final class TechnicianServiceProvider extends ServiceProvider
     {
         // Routes + migrations are registered by Laravel's auto-discovery for `database/migrations`.
         // Module routes will be loaded once the Presentation layer lands (Task 12).
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                CheckExpiringCertifications::class,
+            ]);
+        }
     }
 }
