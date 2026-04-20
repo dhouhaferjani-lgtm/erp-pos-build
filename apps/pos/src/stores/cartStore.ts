@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { CartItem, SelectedModifier } from '@/types/cart';
 import type { POSProduct } from '@/types/product';
 import { getCurrencyDecimals } from '@/lib/currency';
@@ -108,7 +109,7 @@ const initialState: CartState = {
   transactionDiscount: undefined,
 };
 
-export const useCartStore = create<CartStore>()((set, get) => ({
+export const useCartStore = create<CartStore>()(persist((set, get) => ({
   ...initialState,
 
   addItem: (product: POSProduct, selectedModifiers?: SelectedModifier[]) => {
@@ -259,4 +260,10 @@ export const useCartStore = create<CartStore>()((set, get) => ({
   itemCount: () => {
     return get().items.reduce((sum, item) => sum + item.quantity, 0);
   },
+}), {
+  name: 'pos-cart',
+  partialize: (state) => ({
+    items: state.items,
+    transactionDiscount: state.transactionDiscount,
+  }),
 }));

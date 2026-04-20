@@ -4,11 +4,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { renderWithProviders } from '@/test/renderWithProviders'
 import { OpenInvoicesList } from './OpenInvoicesList'
-import { AllocationMethod, type OpenInvoice } from '@/types/treasury'
+import { AllocationMethod } from '@/types/treasury'
+import { makeOpenInvoice } from '../__fixtures__/openInvoice'
 
 // Mock the API
 vi.mock('@/lib/api', () => ({
@@ -66,62 +67,35 @@ vi.mock('react-i18next', () => ({
   }),
 }))
 
-const createQueryClient = () =>
-  new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  })
-
-const wrapper = ({ children }: { children: React.ReactNode }) => (
-  <QueryClientProvider client={createQueryClient()}>{children}</QueryClientProvider>
-)
-
 describe('OpenInvoicesList', () => {
-  const mockInvoices: OpenInvoice[] = [
-    {
+  const mockInvoices = [
+    makeOpenInvoice({
       id: '1',
       document_number: 'INV-00001',
       document_date: '2025-11-01',
       due_date: '2025-11-30',
       total: '1190.0000',
       balance_due: '1190.0000',
-      currency: 'TND',
       days_overdue: 10,
-      partner: {
-        id: 'partner-1',
-        name: 'Customer A',
-      },
-    },
-    {
+    }),
+    makeOpenInvoice({
       id: '2',
       document_number: 'INV-00002',
       document_date: '2025-12-01',
       due_date: '2025-12-31',
       total: '595.0000',
       balance_due: '595.0000',
-      currency: 'TND',
       days_overdue: 0,
-      partner: {
-        id: 'partner-1',
-        name: 'Customer A',
-      },
-    },
-    {
+    }),
+    makeOpenInvoice({
       id: '3',
       document_number: 'INV-00003',
       document_date: '2025-10-15',
       due_date: '2025-11-15',
       total: '2380.0000',
       balance_due: '2380.0000',
-      currency: 'TND',
       days_overdue: 25,
-      partner: {
-        id: 'partner-1',
-        name: 'Customer A',
-      },
-    },
+    }),
   ]
 
   beforeEach(() => {
@@ -129,13 +103,12 @@ describe('OpenInvoicesList', () => {
   })
 
   it('renders invoice list with all invoices', () => {
-    render(
+    renderWithProviders(
       <OpenInvoicesList
         partnerId="partner-1"
         invoices={mockInvoices}
         allocationMethod={AllocationMethod.FIFO}
       />,
-      { wrapper }
     )
 
     expect(screen.getByText('Open Invoices')).toBeInTheDocument()
@@ -145,13 +118,12 @@ describe('OpenInvoicesList', () => {
   })
 
   it('displays total balance correctly', () => {
-    render(
+    renderWithProviders(
       <OpenInvoicesList
         partnerId="partner-1"
         invoices={mockInvoices}
         allocationMethod={AllocationMethod.FIFO}
       />,
-      { wrapper }
     )
 
     // Total: 1190 + 595 + 2380 = 4165
@@ -159,13 +131,12 @@ describe('OpenInvoicesList', () => {
   })
 
   it('shows overdue status for overdue invoices', () => {
-    render(
+    renderWithProviders(
       <OpenInvoicesList
         partnerId="partner-1"
         invoices={mockInvoices}
         allocationMethod={AllocationMethod.FIFO}
       />,
-      { wrapper }
     )
 
     expect(screen.getByText('10 days overdue')).toBeInTheDocument()
@@ -174,35 +145,32 @@ describe('OpenInvoicesList', () => {
   })
 
   it('shows current status for non-overdue invoices', () => {
-    render(
+    renderWithProviders(
       <OpenInvoicesList
         partnerId="partner-1"
         invoices={mockInvoices}
         allocationMethod={AllocationMethod.FIFO}
       />,
-      { wrapper }
     )
 
     expect(screen.getByText('Current')).toBeInTheDocument()
   })
 
   it('renders empty state when no invoices', () => {
-    render(
+    renderWithProviders(
       <OpenInvoicesList partnerId="partner-1" invoices={[]} allocationMethod={AllocationMethod.FIFO} />,
-      { wrapper }
     )
 
     expect(screen.getByText('No open invoices')).toBeInTheDocument()
   })
 
   it('disables selection for FIFO allocation method', () => {
-    render(
+    renderWithProviders(
       <OpenInvoicesList
         partnerId="partner-1"
         invoices={mockInvoices}
         allocationMethod={AllocationMethod.FIFO}
       />,
-      { wrapper }
     )
 
     // FIFO should be read-only (no checkboxes)
@@ -211,13 +179,12 @@ describe('OpenInvoicesList', () => {
   })
 
   it('disables selection for due_date allocation method', () => {
-    render(
+    renderWithProviders(
       <OpenInvoicesList
         partnerId="partner-1"
         invoices={mockInvoices}
         allocationMethod={AllocationMethod.DUE_DATE}
       />,
-      { wrapper }
     )
 
     // Due Date should be read-only (no checkboxes)
@@ -226,7 +193,7 @@ describe('OpenInvoicesList', () => {
   })
 
   it('enables selection for manual allocation method', () => {
-    render(
+    renderWithProviders(
       <OpenInvoicesList
         partnerId="partner-1"
         invoices={mockInvoices}
@@ -234,7 +201,6 @@ describe('OpenInvoicesList', () => {
         selectedAllocations={[]}
         onAllocationChange={vi.fn()}
       />,
-      { wrapper }
     )
 
     // Manual should show checkboxes
@@ -246,7 +212,7 @@ describe('OpenInvoicesList', () => {
     const onAllocationChange = vi.fn()
     const user = userEvent.setup()
 
-    render(
+    renderWithProviders(
       <OpenInvoicesList
         partnerId="partner-1"
         invoices={mockInvoices}
@@ -254,7 +220,6 @@ describe('OpenInvoicesList', () => {
         selectedAllocations={[]}
         onAllocationChange={onAllocationChange}
       />,
-      { wrapper }
     )
 
     const checkboxes = screen.getAllByRole('checkbox')
@@ -267,7 +232,7 @@ describe('OpenInvoicesList', () => {
     const onAllocationChange = vi.fn()
     const user = userEvent.setup()
 
-    render(
+    renderWithProviders(
       <OpenInvoicesList
         partnerId="partner-1"
         invoices={mockInvoices}
@@ -280,56 +245,52 @@ describe('OpenInvoicesList', () => {
         ]}
         onAllocationChange={onAllocationChange}
       />,
-      { wrapper }
     )
 
+    // Only the input for the selected invoice is editable; the others are
+    // rendered as `<input disabled>`. Find the editable one.
     const amountInputs = screen.getAllByRole('spinbutton')
-    expect(amountInputs.length).toBeGreaterThan(0)
+    const editable = amountInputs.find((el) => !(el as HTMLInputElement).disabled)
+    expect(editable).toBeDefined()
 
-    await user.clear(amountInputs[0])
-    await user.type(amountInputs[0], '500')
+    await user.click(editable!)
+    await user.keyboard('{Control>}a{/Control}500')
 
     expect(onAllocationChange).toHaveBeenCalled()
   })
 
+  // The sort control is a native <select> (label "Sort by:"), not a
+  // button/menu. Drive it with `selectOptions` on the first combobox.
   it('sorts invoices by date (oldest first)', async () => {
     const user = userEvent.setup()
 
-    render(
+    renderWithProviders(
       <OpenInvoicesList
         partnerId="partner-1"
         invoices={mockInvoices}
         allocationMethod={AllocationMethod.FIFO}
       />,
-      { wrapper }
     )
 
-    const sortButton = screen.getByText('Sort by')
-    await user.click(sortButton)
-    await user.click(screen.getByText('Invoice Date'))
+    const sortSelect = screen.getAllByRole('combobox')[0]
+    await user.selectOptions(sortSelect, 'date')
 
-    // After sorting by date (oldest first), INV-00003 should be first
     const invoiceNumbers = screen.getAllByText(/INV-/)
     expect(invoiceNumbers[0].textContent).toContain('INV-00003')
   })
 
-  it('sorts invoices by due date', async () => {
-    const user = userEvent.setup()
-
-    render(
+  it('sorts invoices by due date', () => {
+    // `due_date` is the default sort order on mount, so we only need to
+    // render and assert oldest-first ordering (INV-00003 has the earliest
+    // due date, 2025-11-15).
+    renderWithProviders(
       <OpenInvoicesList
         partnerId="partner-1"
         invoices={mockInvoices}
         allocationMethod={AllocationMethod.FIFO}
       />,
-      { wrapper }
     )
 
-    const sortButton = screen.getByText('Sort by')
-    await user.click(sortButton)
-    await user.click(screen.getByText('Due Date'))
-
-    // After sorting by due date (oldest first), INV-00003 should be first (due 2025-11-15)
     const invoiceNumbers = screen.getAllByText(/INV-/)
     expect(invoiceNumbers[0].textContent).toContain('INV-00003')
   })
@@ -337,18 +298,16 @@ describe('OpenInvoicesList', () => {
   it('sorts invoices by amount', async () => {
     const user = userEvent.setup()
 
-    render(
+    renderWithProviders(
       <OpenInvoicesList
         partnerId="partner-1"
         invoices={mockInvoices}
         allocationMethod={AllocationMethod.FIFO}
       />,
-      { wrapper }
     )
 
-    const sortButton = screen.getByText('Sort by')
-    await user.click(sortButton)
-    await user.click(screen.getByText('Amount'))
+    const sortSelect = screen.getAllByRole('combobox')[0]
+    await user.selectOptions(sortSelect, 'amount')
 
     // After sorting by amount (largest first), INV-00003 should be first (2380)
     const invoiceNumbers = screen.getAllByText(/INV-/)
@@ -359,7 +318,7 @@ describe('OpenInvoicesList', () => {
     const onAllocationChange = vi.fn()
     const user = userEvent.setup()
 
-    render(
+    renderWithProviders(
       <OpenInvoicesList
         partnerId="partner-1"
         invoices={mockInvoices}
@@ -367,7 +326,6 @@ describe('OpenInvoicesList', () => {
         selectedAllocations={[]}
         onAllocationChange={onAllocationChange}
       />,
-      { wrapper }
     )
 
     const selectAllButton = screen.getByText('Select All')
@@ -386,7 +344,7 @@ describe('OpenInvoicesList', () => {
     const onAllocationChange = vi.fn()
     const user = userEvent.setup()
 
-    render(
+    renderWithProviders(
       <OpenInvoicesList
         partnerId="partner-1"
         invoices={mockInvoices}
@@ -397,7 +355,6 @@ describe('OpenInvoicesList', () => {
         ]}
         onAllocationChange={onAllocationChange}
       />,
-      { wrapper }
     )
 
     const deselectAllButton = screen.getByText('Deselect All')
@@ -410,7 +367,7 @@ describe('OpenInvoicesList', () => {
     const onAllocationChange = vi.fn()
     const user = userEvent.setup()
 
-    render(
+    renderWithProviders(
       <OpenInvoicesList
         partnerId="partner-1"
         invoices={mockInvoices}
@@ -423,12 +380,12 @@ describe('OpenInvoicesList', () => {
         ]}
         onAllocationChange={onAllocationChange}
       />,
-      { wrapper }
     )
 
     const amountInputs = screen.getAllByRole('spinbutton')
-    await user.clear(amountInputs[0])
-    await user.type(amountInputs[0], '5000') // Exceeds balance of 1190
+    const editable = amountInputs.find((el) => !(el as HTMLInputElement).disabled)
+    await user.click(editable!)
+    await user.keyboard('{Control>}a{/Control}5000') // Exceeds balance of 1190
 
     await waitFor(() => {
       // Should show validation error
@@ -440,27 +397,25 @@ describe('OpenInvoicesList', () => {
   })
 
   it('displays loading state', () => {
-    render(
+    renderWithProviders(
       <OpenInvoicesList
         partnerId="partner-1"
         invoices={[]}
         allocationMethod={AllocationMethod.FIFO}
         isLoading={true}
       />,
-      { wrapper }
     )
 
     expect(screen.getByText('Loading...')).toBeInTheDocument()
   })
 
   it('formats amounts correctly with 2 decimals', () => {
-    render(
+    renderWithProviders(
       <OpenInvoicesList
         partnerId="partner-1"
         invoices={mockInvoices}
         allocationMethod={AllocationMethod.FIFO}
       />,
-      { wrapper }
     )
 
     expect(screen.getByText('1190.00')).toBeInTheDocument()

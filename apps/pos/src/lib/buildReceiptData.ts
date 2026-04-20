@@ -1,6 +1,8 @@
 import i18next from 'i18next';
 import type { FullReceiptResponse } from '@/types/receipt';
 import type { ReceiptData, ReceiptLabels } from '@/lib/printing';
+import type { CartItem } from '@/types/cart';
+import type { CheckoutResult } from '@/lib/offline/offlineCheckoutService';
 import { bcadd, bcsub, bccomp } from '@/lib/decimal';
 
 function getCurrencySymbol(currencyCode: string): string {
@@ -99,6 +101,94 @@ export function buildEscPosReceiptData(
     fiscal_signature: null,
     customer_name: receipt.customer_name,
     notes: receipt.notes,
+    labels: buildReceiptLabels(),
+    show_vat_breakdown: visibilitySettings?.show_vat_breakdown,
+    show_fiscal_info: visibilitySettings?.show_fiscal_info,
+    show_payment_details: visibilitySettings?.show_payment_details,
+    show_customer: visibilitySettings?.show_customer,
+  };
+}
+
+/**
+ * Builds ESC/POS receipt data from local cart data when the receipt was
+ * created offline and the server cannot be reached for the full receipt.
+ */
+export function buildEscPosFromOfflineReceipt(
+  result: CheckoutResult,
+  cartItems: CartItem[],
+  companyName: string,
+  terminalName: string,
+  operatorName: string,
+  paymentMethodName: string,
+  visibilitySettings?: ReceiptVisibilitySettings,
+): ReceiptData {
+  const currencySymbol = getCurrencySymbol(result.currency);
+  const decimals = getCurrencyDecimals(result.currency);
+
+  // Build VAT breakdown from cart items
+  const vatByRate = new Map<string, { taxable: number; tax: number }>();
+  for (const item of cartItems) {
+    const rate = item.tax_rate;
+    const tax = parseFloat(item.tax_amount);
+    if (tax === 0) continue;
+    const lineTotal = parseFloat(item.line_total);
+    const taxable = lineTotal - tax;
+    const existing = vatByRate.get(rate) ?? { taxable: 0, tax: 0 };
+    vatByRate.set(rate, {
+      taxable: existing.taxable + taxable,
+      tax: existing.tax + tax,
+    });
+  }
+
+  return {
+    company: {
+      name: companyName,
+      address_line1: '',
+      address_line2: null,
+      city: '',
+      postal_code: '',
+      country: '',
+      tax_id: '',
+      phone: null,
+    },
+    receipt_number: result.receiptNumber,
+    date_time: new Date().toISOString(),
+    terminal_name: terminalName,
+    operator_name: operatorName,
+    lines: cartItems.map((item) => ({
+      name: item.product.name,
+      quantity: String(item.quantity),
+      unit_price: item.unit_price,
+      line_total: item.line_total,
+      modifiers: item.product.selectedModifiers?.map((m) => ({
+        name: m.name,
+        price: m.price_adjustment,
+      })) ?? null,
+      discount: item.discount_amount && parseFloat(item.discount_amount) > 0
+        ? item.discount_amount
+        : null,
+    })),
+    subtotal: result.subtotal,
+    discount_amount: result.discountAmount,
+    tax_amount: result.taxAmount,
+    total: result.total,
+    currency_symbol: currencySymbol,
+    vat_breakdown: Array.from(vatByRate.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([rate, { taxable, tax }]) => ({
+        rate,
+        taxable: taxable.toFixed(decimals),
+        tax: tax.toFixed(decimals),
+      })),
+    payments: [{
+      method: paymentMethodName,
+      amount: result.total,
+    }],
+    change_due: result.changeDue.toFixed(decimals),
+    fiscal_hash: result.fiscalHash ?? null,
+    fiscal_signature: null,
+    customer_name: null,
+    notes: null,
     labels: buildReceiptLabels(),
     show_vat_breakdown: visibilitySettings?.show_vat_breakdown,
     show_fiscal_info: visibilitySettings?.show_fiscal_info,

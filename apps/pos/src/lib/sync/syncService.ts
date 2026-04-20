@@ -20,6 +20,11 @@ import {
   getUnsyncedZReports,
   markZReportSynced,
 } from '@/lib/db/repositories/zReportRepository';
+import {
+  getPendingCashDrawerOps,
+  updateCashDrawerOpStatus,
+  cleanupSyncedCashDrawerOps,
+} from '@/lib/db/repositories/cashDrawerRepository';
 import { logSyncOperation, getSyncMetadata, setSyncMetadata, cleanupOldSyncLogs } from '@/lib/db/repositories/syncLogRepository';
 import type { LocalZReport } from '@/lib/offline/types';
 import type { POSProduct } from '@/types/product';
@@ -73,6 +78,7 @@ export interface SyncResult {
   receiptsFailed: number;
   zReportsPushed: number;
   zReportsFailed: number;
+  cashDrawerOpsPushed: number;
   productsPulled: number;
   paymentConfigPulled: boolean;
   operatorsPulled: number;
@@ -176,6 +182,45 @@ export async function pushZReports(db: Database): Promise<{
   }
 
   return { pushed, failed, errors };
+}
+
+/**
+ * Push offline cash drawer operations to server.
+ * No chain ordering required — these are independent operations.
+ */
+export async function pushCashDrawerOps(db: Database): Promise<{
+  pushed: number;
+  errors: string[];
+}> {
+  const pending = await getPendingCashDrawerOps(db);
+  let pushed = 0;
+  const errors: string[] = [];
+
+  for (const op of pending) {
+    try {
+      await updateCashDrawerOpStatus(db, op.id, 'syncing');
+      await apiPost('/pos/cash-drawer/sync', {
+        idempotency_key: op.idempotency_key,
+        type: op.type,
+        amount: op.amount,
+        reason: op.reason,
+        terminal_id: op.terminal_id,
+        shift_id: op.shift_id,
+        operator_id: op.operator_id,
+        created_at: op.created_at,
+      });
+      await updateCashDrawerOpStatus(db, op.id, 'synced');
+      await logSyncOperation(db, 'push', 'cash_drawer_op', op.id, 'success');
+      pushed++;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      await updateCashDrawerOpStatus(db, op.id, 'failed', message);
+      await logSyncOperation(db, 'push', 'cash_drawer_op', op.id, 'error', message);
+      errors.push(`Cash drawer ${op.type} ${op.id}: ${message}`);
+    }
+  }
+
+  return { pushed, errors };
 }
 
 function zReportToSyncPayload(report: LocalZReport): Record<string, unknown> {
@@ -357,6 +402,7 @@ export async function runFullSync(
   try { await cleanupOldSyncLogs(db, 7); } catch { /* non-critical */ }
   try { await cleanupSyncedReceipts(db); } catch { /* non-critical */ }
   try { await cleanupStuckReceipts(db); } catch { /* non-critical */ }
+  try { await cleanupSyncedCashDrawerOps(db); } catch { /* non-critical */ }
 
   // Push receipts first (order matters for chain)
   const { pushed, failed, errors: pushErrors, chainBreak } = await pushOfflineReceipts(db);
@@ -365,6 +411,10 @@ export async function runFullSync(
   // Push Z-reports after receipts (Z-reports reference receipt data)
   const { pushed: zPushed, failed: zFailed, errors: zErrors } = await pushZReports(db);
   errors.push(...zErrors);
+
+  // Push cash drawer operations (no ordering constraints)
+  const { pushed: cashDrawerPushed, errors: cashDrawerErrors } = await pushCashDrawerOps(db);
+  errors.push(...cashDrawerErrors);
 
   // Then pull (always pull even if push had failures, to keep local data fresh)
   const productsPulled = await pullProducts(db);
@@ -384,6 +434,7 @@ export async function runFullSync(
     receiptsFailed: failed,
     zReportsPushed: zPushed,
     zReportsFailed: zFailed,
+    cashDrawerOpsPushed: cashDrawerPushed,
     productsPulled,
     paymentConfigPulled,
     operatorsPulled,
