@@ -7,8 +7,10 @@ namespace App\Modules\Workshop\WorkOrder\Infrastructure;
 use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderAssignmentService;
 use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderAuthoringService;
 use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderBundleService;
+use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderCreationService;
 use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderLineService;
 use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderTransitionService;
+use App\Modules\Workshop\WorkOrder\Domain\Contracts\WorkOrderCreationServiceInterface;
 use App\Modules\Workshop\WorkOrder\Domain\Contracts\WorkOrderLineRepositoryInterface;
 use App\Modules\Workshop\WorkOrder\Domain\Contracts\WorkOrderRepositoryInterface;
 use App\Modules\Workshop\WorkOrder\Domain\Contracts\WorkOrderSequenceInterface;
@@ -45,6 +47,9 @@ final class WorkshopWorkOrderServiceProvider extends ServiceProvider
         $this->app->singleton(WorkOrderBundleService::class);
         $this->app->singleton(WorkOrderAssignmentService::class);
         $this->app->singleton(WorkOrderTransitionService::class);
-        // CreationService binding lands in Task 14.
+        $this->app->bind(
+            WorkOrderCreationServiceInterface::class,
+            WorkOrderCreationService::class,
+        );
     }
 }
