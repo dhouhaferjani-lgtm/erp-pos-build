@@ -6,6 +6,14 @@ namespace App\Modules\Workshop\Technician;
 
 use App\Modules\Workshop\Technician\Application\Contracts\TechnicianAvailabilityServiceInterface;
 use App\Modules\Workshop\Technician\Application\Services\TechnicianAvailabilityService;
+use App\Modules\Workshop\Technician\Domain\Contracts\TechnicianCertificationRepositoryInterface;
+use App\Modules\Workshop\Technician\Domain\Contracts\TechnicianProfileRepositoryInterface;
+use App\Modules\Workshop\Technician\Domain\Contracts\TechnicianTimeEntryRepositoryInterface;
+use App\Modules\Workshop\Technician\Domain\Contracts\TechnicianTimeOffRepositoryInterface;
+use App\Modules\Workshop\Technician\Infrastructure\Persistence\EloquentTechnicianCertificationRepository;
+use App\Modules\Workshop\Technician\Infrastructure\Persistence\EloquentTechnicianProfileRepository;
+use App\Modules\Workshop\Technician\Infrastructure\Persistence\EloquentTechnicianTimeEntryRepository;
+use App\Modules\Workshop\Technician\Infrastructure\Persistence\EloquentTechnicianTimeOffRepository;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -23,6 +31,22 @@ final class TechnicianServiceProvider extends ServiceProvider
         $this->app->bind(
             TechnicianAvailabilityServiceInterface::class,
             TechnicianAvailabilityService::class,
+        );
+        $this->app->bind(
+            TechnicianProfileRepositoryInterface::class,
+            EloquentTechnicianProfileRepository::class,
+        );
+        $this->app->bind(
+            TechnicianCertificationRepositoryInterface::class,
+            EloquentTechnicianCertificationRepository::class,
+        );
+        $this->app->bind(
+            TechnicianTimeOffRepositoryInterface::class,
+            EloquentTechnicianTimeOffRepository::class,
+        );
+        $this->app->bind(
+            TechnicianTimeEntryRepositoryInterface::class,
+            EloquentTechnicianTimeEntryRepository::class,
         );
     }
 
