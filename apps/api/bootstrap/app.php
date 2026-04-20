@@ -8,6 +8,7 @@ use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\ValidateLocationAccess;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Scheduling\Infrastructure\Http\Middleware\VerifyCaptcha;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
@@ -32,6 +33,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'super_admin' => EnsureSuperAdmin::class,
             'validate.location.access' => ValidateLocationAccess::class,
             'module' => RequireModule::class,
+            'scheduling.captcha' => VerifyCaptcha::class,
         ]);
 
         // Exclude auth endpoints from CSRF verification for token-based clients
