@@ -200,6 +200,10 @@ const HealthClaimFormPage = lazy(() => import('../features/parapharmacy/pages').
 const KeyComponentListPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.KeyComponentListPage })))
 const KeyComponentFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.KeyComponentFormPage })))
 
+// Workshop/Technician module (HRM-lite)
+const WorkshopTechniciansTeamListPage = lazy(() => import('../features/workshop-technicians/pages/TeamListPage').then((m) => ({ default: m.TeamListPage })))
+const WorkshopTechnicianDetailPage = lazy(() => import('../features/workshop-technicians/pages/TechnicianDetailPage').then((m) => ({ default: m.TechnicianDetailPage })))
+
 // CRM module
 const CrmCompanyListPage = lazy(() => import('../features/crm/pages/CompanyListPage').then((m) => ({ default: m.CompanyListPage })))
 const CrmContactListPage = lazy(() => import('../features/crm/pages/ContactListPage').then((m) => ({ default: m.ContactListPage })))
@@ -2077,6 +2081,31 @@ export function AppRoutes() {
               <RequirePermission permission="contacts.update">
                 <SuspenseWrapper>
                   <CrmContactFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+        </Route>
+
+        {/* Workshop module — Technician profiles (HRM-lite) */}
+        <Route path="workshop">
+          <Route index element={<Navigate to="/workshop/technicians" replace />} />
+          <Route
+            path="technicians"
+            element={
+              <RequirePermission permission="workshop.technicians.view">
+                <SuspenseWrapper>
+                  <WorkshopTechniciansTeamListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="technicians/:id"
+            element={
+              <RequirePermission permission="workshop.technicians.view">
+                <SuspenseWrapper>
+                  <WorkshopTechnicianDetailPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

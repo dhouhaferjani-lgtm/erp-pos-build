@@ -114,6 +114,14 @@ export const PERMISSIONS = {
   // Enrichment
   'enrichment.view': ['admin', 'manager'],
   'enrichment.review': ['admin', 'manager'],
+
+  // Workshop — Technicians (HRM-lite; Spec C)
+  'workshop.technicians.view': ['admin', 'manager', 'technician', 'sales'],
+  'workshop.technicians.manage': ['admin', 'manager'],
+  'workshop.technicians.view_pay': ['admin', 'manager'],
+  'workshop.technicians.view_pii': ['admin', 'manager'],
+  'workshop.technicians.approve_time_off': ['admin', 'manager'],
+  'workshop.technicians.adjust_time_entries': ['admin', 'manager'],
 } as const
 
 export type Permission = keyof typeof PERMISSIONS
@@ -143,6 +151,7 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   loyalty: ['loyalty.view'],
   contacts: ['contacts.view'],
   enrichment: ['enrichment.view'],
+  'workshop-technicians': ['workshop.technicians.view'],
 }
 
 /**

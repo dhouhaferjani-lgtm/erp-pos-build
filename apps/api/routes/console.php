@@ -2,6 +2,7 @@
 
 use App\Modules\BatchExpiry\Jobs\DailyExpiryCheck;
 use App\Modules\Inventory\Application\Jobs\ExpireReservationsJob;
+use App\Modules\Workshop\Technician\Infrastructure\Commands\CheckExpiringCertifications;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -35,4 +36,9 @@ Schedule::job(DailyExpiryCheck::class)
 // Schedule: Poll platform for pending enrichment status updates
 Schedule::command('enrichment:check-pending')
     ->everyFifteenMinutes()
+    ->withoutOverlapping();
+
+// Schedule: Dispatch TechnicianCertificationExpiring events daily at 3:00 AM
+Schedule::command(CheckExpiringCertifications::class)
+    ->dailyAt('03:00')
     ->withoutOverlapping();

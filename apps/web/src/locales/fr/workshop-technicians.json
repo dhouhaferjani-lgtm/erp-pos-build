@@ -1,0 +1,93 @@
+{
+  "team": {
+    "title": "Équipe atelier",
+    "subtitle": "Techniciens, compétences et plannings hebdomadaires.",
+    "loading": "Chargement des techniciens…",
+    "errorLoading": "Impossible de charger les techniciens",
+    "empty": {
+      "title": "Aucun technicien pour le moment",
+      "body": "Dès que les responsables créeront des profils, ils s'afficheront ici."
+    }
+  },
+  "detail": {
+    "backToTeam": "Retour à l'équipe",
+    "notFound": "Profil technicien introuvable",
+    "weeklySchedule": "Planning hebdomadaire",
+    "employment": "Emploi",
+    "pay": "Rémunération (restreint)",
+    "personal": "Informations personnelles (restreint)"
+  },
+  "filters": {
+    "activeOnly": "Actifs uniquement",
+    "specialty": "Spécialité",
+    "anySpecialty": "Toutes les spécialités"
+  },
+  "labels": {
+    "inactive": "Inactif",
+    "hourlyBillingRate": "Taux horaire facturé",
+    "notSet": "—"
+  },
+  "fields": {
+    "hireDate": "Date d'embauche",
+    "employeeCode": "Code employé",
+    "hourlyCostRate": "Coût horaire",
+    "hourlyBillingRate": "Taux horaire facturé",
+    "nationalId": "Pièce d'identité",
+    "personalAddress": "Adresse",
+    "personalPhone": "Téléphone",
+    "notes": "Notes"
+  },
+  "schedule": {
+    "off": "Repos"
+  },
+  "days": {
+    "mon": "Lun",
+    "tue": "Mar",
+    "wed": "Mer",
+    "thu": "Jeu",
+    "fri": "Ven",
+    "sat": "Sam",
+    "sun": "Dim"
+  },
+  "skillLevels": {
+    "apprentice": "Apprenti",
+    "junior": "Junior",
+    "general": "Généraliste",
+    "senior": "Sénior",
+    "master": "Expert",
+    "specialist": "Spécialiste"
+  },
+  "employmentStatus": {
+    "active": "Actif",
+    "on_leave": "En congé",
+    "terminated": "Terminé"
+  },
+  "specialties": {
+    "engine_mechanical": "Moteur (méca.)",
+    "engine_diagnostic": "Moteur (diag.)",
+    "transmission": "Transmission",
+    "electrical": "Électricité",
+    "electronic": "Électronique",
+    "suspension": "Suspension",
+    "brakes": "Freins",
+    "ac_climate": "Clim & climat",
+    "tires": "Pneumatiques",
+    "alignment": "Géométrie",
+    "bodywork": "Carrosserie",
+    "paint": "Peinture",
+    "hybrid_ev": "Hybride / VE",
+    "diesel": "Diesel",
+    "pre_control": "Pré-contrôle",
+    "general_service": "Entretien général"
+  },
+  "availability": {
+    "status": {
+      "yes": "Disponible",
+      "no": "Indisponible",
+      "partial": "Partielle"
+    }
+  },
+  "navigation": {
+    "team": "Équipe"
+  }
+}

@@ -274,6 +274,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
       // vertical is automotive — otherwise services live under Inventory.
       ...(isAutomotiveVertical ? servicesChildren : []),
       { key: 'workshopBundles', href: '/workshop/bundles', icon: Package2, module: 'workshop-bundles' },
+      { key: 'workshopTechnicians', href: '/workshop/technicians', icon: Users, module: 'workshop-technicians' },
       { key: 'partsCatalog', href: '/parts-catalog', icon: Search, module: 'parts-catalog' },
     ],
   })

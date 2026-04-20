@@ -154,9 +154,9 @@ export default tseslint.config(
   // implementations land and pass a clean lint sweep.
   {
     files: [
+      'src/features/autospecs/**/*.{ts,tsx}',
       'src/features/workshop-bundles/**/*.{ts,tsx}',
       'src/features/workshop-technicians/**/*.{ts,tsx}',
-      'src/features/autospecs/**/*.{ts,tsx}',
     ],
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
