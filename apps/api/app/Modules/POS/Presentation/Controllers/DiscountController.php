@@ -6,6 +6,7 @@ namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\DiscountOrchestratorService;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Promotion\Domain\ValueObjects\CartContext;
@@ -38,7 +39,7 @@ final class DiscountController extends Controller
      */
     public function getPermissions(Request $request): JsonResponse
     {
-        /** @var \App\Modules\Identity\Domain\User|null $user */
+        /** @var User|null $user */
         $user = $request->user();
         if ($user === null) {
             return response()->json([
@@ -184,8 +185,7 @@ final class DiscountController extends Controller
     /**
      * Calculate the effective discount limit (most restrictive)
      *
-     * @param  Terminal  $terminal
-     * @param  \App\Modules\Identity\Domain\User  $user
+     * @param  User  $user
      */
     private function calculateEffectiveLimit(Terminal $terminal, $user): float
     {

@@ -222,7 +222,7 @@ final class CouponControllerTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'name' => 'Test Coupon',
-            'code' => 'TEST' . random_int(1000, 9999),
+            'code' => 'TEST'.random_int(1000, 9999),
             'type' => CouponType::Standard,
             'status' => CouponStatus::Active,
             'is_single_use' => false,

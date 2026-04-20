@@ -9,7 +9,6 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
-use App\Modules\Product\Domain\Product;
 use App\Modules\POS\Application\Services\ReceiptVoidService;
 use App\Modules\POS\Domain\CashDrawerOperation;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
@@ -19,7 +18,9 @@ use App\Modules\POS\Domain\ReceiptPayment;
 use App\Modules\POS\Domain\Services\CashDrawerService;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\PaymentMethod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Tests\Traits\WithCurrencyScale;
@@ -149,7 +150,7 @@ class ReceiptVoidServiceTest extends TestCase
         $shift = $this->createOpenShift();
 
         // Create payment method first
-        $paymentMethod = \App\Modules\Treasury\Domain\PaymentMethod::create([
+        $paymentMethod = PaymentMethod::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => 'CASH',

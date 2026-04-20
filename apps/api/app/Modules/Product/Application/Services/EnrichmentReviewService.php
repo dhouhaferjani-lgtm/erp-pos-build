@@ -9,7 +9,6 @@ use App\Modules\Product\Domain\EnrichmentResult;
 use App\Modules\Product\Domain\Enums\EnrichmentReviewStatus;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\PlatformSubmissionInterface;
-use App\Shared\DTOs\SubmissionStatusDTO;
 use App\Shared\Enums\EnrichmentStatus;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 

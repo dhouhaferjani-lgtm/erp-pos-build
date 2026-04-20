@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Events\PartnerBalanceUpdated;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Partner\Domain\Partner;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -351,7 +352,7 @@ class PartnerBalanceService
      * Get cached balance from partner (fast, for display).
      * Falls back to GL calculation if cache is stale.
      *
-     * @return array{receivable_balance: string, credit_balance: string, payable_balance: string, net_balance: string, balance_updated_at: \Illuminate\Support\Carbon|null, is_from_cache: bool}
+     * @return array{receivable_balance: string, credit_balance: string, payable_balance: string, net_balance: string, balance_updated_at: Carbon|null, is_from_cache: bool}
      */
     public function getCachedOrCalculateBalance(
         string $companyId,

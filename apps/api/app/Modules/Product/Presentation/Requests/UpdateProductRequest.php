@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Product\Presentation\Requests;
 
+use App\Modules\Identity\Domain\User;
 use App\Modules\Product\Domain\Enums\AgeRestriction;
 use App\Modules\Product\Domain\Enums\AutomotiveArticleStatus;
 use App\Modules\Product\Domain\Enums\BrandQualityTier;
@@ -29,7 +30,7 @@ class UpdateProductRequest extends FormRequest
      */
     public function rules(): array
     {
-        /** @var \App\Modules\Identity\Domain\User|null $user */
+        /** @var User|null $user */
         $user = $this->user();
         $tenantId = $user?->tenant_id;
         $productId = $this->route('product');

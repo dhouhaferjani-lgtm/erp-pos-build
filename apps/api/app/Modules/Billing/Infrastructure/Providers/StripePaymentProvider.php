@@ -10,10 +10,13 @@ use App\Modules\Billing\Domain\Enums\PaymentStatus;
 use App\Modules\Billing\Domain\ValueObjects\Money;
 use App\Modules\Billing\Domain\ValueObjects\PaymentResult;
 use Illuminate\Support\Facades\Log;
+use Stripe\Customer;
 use Stripe\Exception\ApiErrorException;
+use Stripe\Invoice;
 use Stripe\PaymentIntent;
 use Stripe\Refund as StripeRefund;
 use Stripe\Stripe;
+use Stripe\Subscription;
 use Stripe\Webhook;
 
 /**
@@ -339,7 +342,7 @@ final class StripePaymentProvider implements PaymentProviderInterface
         }
 
         try {
-            $customer = \Stripe\Customer::create([
+            $customer = Customer::create([
                 'email' => $email,
                 'name' => $name,
                 'metadata' => $metadata,
@@ -382,14 +385,14 @@ final class StripePaymentProvider implements PaymentProviderInterface
                 $params['trial_period_days'] = $trialDays;
             }
 
-            $subscription = \Stripe\Subscription::create($params);
+            $subscription = Subscription::create($params);
 
             $latestInvoice = $subscription->latest_invoice;
             $clientSecret = null;
-            if ($latestInvoice instanceof \Stripe\Invoice) {
+            if ($latestInvoice instanceof Invoice) {
                 /** @phpstan-ignore property.notFound */
                 $paymentIntent = $latestInvoice->payment_intent;
-                if ($paymentIntent instanceof \Stripe\PaymentIntent) {
+                if ($paymentIntent instanceof PaymentIntent) {
                     $clientSecret = $paymentIntent->client_secret;
                 }
             }
@@ -422,7 +425,7 @@ final class StripePaymentProvider implements PaymentProviderInterface
         }
 
         try {
-            $subscription = \Stripe\Subscription::retrieve($subscriptionId);
+            $subscription = Subscription::retrieve($subscriptionId);
 
             if ($immediately) {
                 $subscription->cancel();

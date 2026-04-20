@@ -6,6 +6,7 @@ namespace App\Modules\Menu\Domain\Entities;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Relations\Pivot;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -15,8 +16,8 @@ use Illuminate\Database\Eloquent\Relations\Pivot;
  * @property string|null $override_price
  * @property int $display_order
  * @property bool $is_available
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  */
 class MenuCategoryItem extends Pivot
 {

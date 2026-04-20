@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace Tests\Feature\Document\Types;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FiscalCategory;
+use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
@@ -55,7 +59,7 @@ class InvoiceDocumentTest extends TestCase
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
@@ -77,7 +81,7 @@ class InvoiceDocumentTest extends TestCase
         ]);
 
         // Set company context for the test
-        app(\App\Modules\Company\Services\CompanyContext::class)->setCompanyId($this->company->id);
+        app(CompanyContext::class)->setCompanyId($this->company->id);
 
         // Seed chart of accounts based on company country
         $this->seedChartOfAccounts();
@@ -253,8 +257,8 @@ class InvoiceDocumentTest extends TestCase
             'company_id' => $this->company->id,
             'partner_id' => $this->partner->id,
             'type' => DocumentType::Invoice,
-            'fiscal_category' => \App\Modules\Document\Domain\Enums\FiscalCategory::fromDocumentType(DocumentType::Invoice),
-            'fiscal_status' => \App\Modules\Document\Domain\Enums\FiscalStatus::Sealed,
+            'fiscal_category' => FiscalCategory::fromDocumentType(DocumentType::Invoice),
+            'fiscal_status' => FiscalStatus::Sealed,
             'status' => DocumentStatus::Posted,
             'document_number' => 'INV-2025-0001',
             'document_date' => '2025-01-15',
@@ -320,8 +324,8 @@ class InvoiceDocumentTest extends TestCase
             'company_id' => $this->company->id,
             'partner_id' => $this->partner->id,
             'type' => DocumentType::Invoice,
-            'fiscal_category' => \App\Modules\Document\Domain\Enums\FiscalCategory::fromDocumentType(DocumentType::Invoice),
-            'fiscal_status' => \App\Modules\Document\Domain\Enums\FiscalStatus::Draft,
+            'fiscal_category' => FiscalCategory::fromDocumentType(DocumentType::Invoice),
+            'fiscal_status' => FiscalStatus::Draft,
             'status' => DocumentStatus::Confirmed,
             'document_number' => 'INV-2025-0001',
             'document_date' => '2025-01-15',

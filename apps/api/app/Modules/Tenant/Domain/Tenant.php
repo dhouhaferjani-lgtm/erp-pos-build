@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Tenant\Domain;
 
+use App\Enums\Vertical;
 use App\Models\TenantSubscription;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -53,7 +54,7 @@ use Stancl\Tenancy\Database\Models\Tenant as BaseTenant;
  * @property Carbon $updated_at
  * @property Carbon|null $trial_ends_at
  * @property Carbon|null $subscription_ends_at
- * @property \App\Enums\Vertical $vertical Business vertical (mechanic, pharmacy, etc.)
+ * @property Vertical $vertical Business vertical (mechanic, pharmacy, etc.)
  * @property array<int, string>|null $enabled_extras Enabled optional modules
  * @property string|null $signup_source Signup attribution source
  * @property array<string, mixed>|null $signup_tracking Signup tracking metadata
@@ -122,7 +123,7 @@ class Tenant extends BaseTenant implements TenantWithDatabase
         return [
             'status' => TenantStatus::class,
             'plan' => SubscriptionPlan::class,
-            'vertical' => \App\Enums\Vertical::class,
+            'vertical' => Vertical::class,
             'address' => 'array',
             'settings' => 'array',
             'trial_ends_at' => 'datetime',

@@ -9,6 +9,7 @@ use App\Modules\Admin\Application\Services\MonitoringService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 final class MonitoringController extends Controller
@@ -155,7 +156,7 @@ final class MonitoringController extends Controller
     public function retryAllFailedJobs(): JsonResponse
     {
         try {
-            /** @var \Illuminate\Support\Collection<int, object{id: int|string, queue: string, payload: string, exception: string, failed_at: string}> $failedJobs */
+            /** @var Collection<int, object{id: int|string, queue: string, payload: string, exception: string, failed_at: string}> $failedJobs */
             $failedJobs = DB::table('failed_jobs')->get();
             $count = 0;
 

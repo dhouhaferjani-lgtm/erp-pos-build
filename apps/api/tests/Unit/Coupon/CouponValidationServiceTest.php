@@ -53,7 +53,7 @@ class CouponValidationServiceTest extends TestCase
 
     private function makeCoupon(array $overrides = []): Coupon
     {
-        $coupon = new Coupon();
+        $coupon = new Coupon;
         $coupon->setRawAttributes(array_merge([
             'id' => 'coupon-1',
             'tenant_id' => 'tenant-1',

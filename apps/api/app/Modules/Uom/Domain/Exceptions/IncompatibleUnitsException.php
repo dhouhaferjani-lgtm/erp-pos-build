@@ -6,6 +6,4 @@ namespace App\Modules\Uom\Domain\Exceptions;
 
 use Exception;
 
-class IncompatibleUnitsException extends Exception
-{
-}
+class IncompatibleUnitsException extends Exception {}

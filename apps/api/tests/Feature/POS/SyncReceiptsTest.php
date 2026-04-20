@@ -6,6 +6,7 @@ namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Receipt;
@@ -16,6 +17,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
@@ -32,12 +34,19 @@ final class SyncReceiptsTest extends TestCase
     use RefreshDatabase;
 
     private Tenant $tenant;
+
     private Company $company;
+
     private User $user;
+
     private Location $location;
+
     private Terminal $terminal;
+
     private Product $product;
+
     private PaymentMethod $paymentMethod;
+
     private PaymentRepository $paymentRepo;
 
     protected function setUp(): void
@@ -128,7 +137,7 @@ final class SyncReceiptsTest extends TestCase
     public function test_sync_requires_authentication(): void
     {
         // Create a new TestCase-level request without auth
-        $response = $this->withoutMiddleware(\Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class)
+        $response = $this->withoutMiddleware(EnsureFrontendRequestsAreStateful::class)
             ->withHeaders(['Accept' => 'application/json'])
             ->postJson('/api/v1/pos/receipts/sync', $this->buildReceiptPayload());
 
@@ -166,7 +175,7 @@ final class SyncReceiptsTest extends TestCase
     private function buildReceiptPayload(array $overrides = []): array
     {
         $defaults = [
-            'idempotency_key' => 'test-' . uniqid(),
+            'idempotency_key' => 'test-'.uniqid(),
             'receipt_number' => 'POS01-2026-00000001',
             'terminal_id' => $this->terminal->id,
             'operator_id' => $this->user->id,
@@ -208,7 +217,7 @@ final class SyncReceiptsTest extends TestCase
             'tenant_id' => $this->tenant->id,
         ]);
 
-        \App\Modules\Company\Domain\UserCompanyMembership::create([
+        UserCompanyMembership::create([
             'user_id' => $this->user->id,
             'company_id' => $this->company->id,
             'role' => 'admin',

@@ -6,6 +6,7 @@ namespace App\Modules\Media\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Media\Application\Services\AttachmentService;
 use App\Modules\Media\Domain\DocumentAttachment;
 use App\Modules\Media\Presentation\Requests\UploadAttachmentRequest;
@@ -25,7 +26,7 @@ class AttachmentController extends Controller
     public function index(Request $request, Document $document): JsonResponse
     {
         // Authorization: check user has access to the document
-        /** @var \App\Modules\Identity\Domain\User|null $user */
+        /** @var User|null $user */
         $user = $request->user();
         if ($user === null || $user->tenant_id !== $document->tenant_id) {
             return response()->json(['error' => 'Unauthorized'], 403);
@@ -58,7 +59,7 @@ class AttachmentController extends Controller
      */
     public function store(UploadAttachmentRequest $request, Document $document): JsonResponse
     {
-        /** @var \App\Modules\Identity\Domain\User|null $user */
+        /** @var User|null $user */
         $user = $request->user();
         if ($user === null || $user->tenant_id !== $document->tenant_id) {
             return response()->json(['error' => 'Unauthorized'], 403);
@@ -106,7 +107,7 @@ class AttachmentController extends Controller
      */
     public function download(Request $request, Document $document, DocumentAttachment $attachment): StreamedResponse|JsonResponse
     {
-        /** @var \App\Modules\Identity\Domain\User|null $user */
+        /** @var User|null $user */
         $user = $request->user();
         if ($user === null || $user->tenant_id !== $document->tenant_id) {
             return response()->json(['error' => 'Unauthorized'], 403);
@@ -129,7 +130,7 @@ class AttachmentController extends Controller
      */
     public function destroy(Request $request, Document $document, DocumentAttachment $attachment): JsonResponse
     {
-        /** @var \App\Modules\Identity\Domain\User|null $user */
+        /** @var User|null $user */
         $user = $request->user();
         if ($user === null || $user->tenant_id !== $document->tenant_id) {
             return response()->json(['error' => 'Unauthorized'], 403);

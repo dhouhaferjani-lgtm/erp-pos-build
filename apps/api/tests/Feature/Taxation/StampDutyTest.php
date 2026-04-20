@@ -7,6 +7,7 @@ namespace Tests\Feature\Taxation;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Taxation\Domain\Services\StampDutyService;
+use Database\Seeders\CountriesSeeder;
 use Database\Seeders\TunisiaStampDutySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -20,7 +21,7 @@ class StampDutyTest extends TestCase
         parent::setUp();
 
         // Seed countries first (required for foreign key constraint)
-        $this->seed(\Database\Seeders\CountriesSeeder::class);
+        $this->seed(CountriesSeeder::class);
 
         // Seed Tunisia stamp duty rules
         $this->seed(TunisiaStampDutySeeder::class);

@@ -11,6 +11,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\Product\Domain\Product;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -106,7 +107,7 @@ final class BatchWriteOffService
      */
     private function calculateWriteOffAmount(string $productId, string $quantity): string
     {
-        $product = \App\Modules\Product\Domain\Product::find($productId);
+        $product = Product::find($productId);
         if ($product === null) {
             return '0.00';
         }

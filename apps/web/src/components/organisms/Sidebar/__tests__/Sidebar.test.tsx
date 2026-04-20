@@ -1,8 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
-import { BrowserRouter } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { CompanyConfigProvider } from '../../../../contexts/CompanyConfigContext'
+import { screen } from '@testing-library/react'
+import { renderWithProviders } from '@/test/renderWithProviders'
+import {
+  defaultCompanyConfig,
+  mechanicCompanyConfig,
+  type TestCompanyConfig,
+} from '@/test/fixtures/companyConfig'
 import { Sidebar } from '../Sidebar'
 import * as api from '../../../../lib/api'
 
@@ -26,170 +29,169 @@ vi.mock('react-i18next', () => ({
   }),
 }))
 
-// Mock useProductConfig
+// Mock useProductConfig — return Otospex so the "Automotive" group
+// (which renders the Vehicle + Workshop links the tests assert on) is
+// included in the navigation. Note: vi.mock specifier must match the
+// exact specifier used by the component-under-test's import for the
+// hoisting to apply. Sidebar imports from `../../../contexts/...`, so
+// mock against the equivalent relative path from this file.
 vi.mock('../../../../contexts/ProductConfigContext', () => ({
   useProductConfig: () => ({
-    product: 'izipos',
-    isIziPOS: true,
-    isOtospex: false,
-    productName: 'IziPOS',
-    productDescription: 'Point of Sale',
+    product: 'otospex',
+    isIziPOS: false,
+    isOtospex: true,
+    productName: 'Otospex',
+    productDescription: 'Automotive',
   }),
+  ProductConfigProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }))
 
 describe('Sidebar - Vertical-Based Navigation Filtering', () => {
-  let queryClient: QueryClient
-
   beforeEach(() => {
-    queryClient = new QueryClient({
-      defaultOptions: {
-        queries: {
-          retry: false,
-        },
-      },
-    })
     vi.clearAllMocks()
+    // Pre-seed localStorage so every collapsible group starts expanded —
+    // child links (like "vehicles", "services") only render when their
+    // parent group is in `expandedModules`, and the default route '/'
+    // wouldn't auto-expand anything.
+    localStorage.setItem(
+      'autoerp-sidebar-expanded',
+      JSON.stringify([
+        'sales',
+        'purchases',
+        'inventoryAndCatalog',
+        'pointOfSale',
+        'marketing',
+        'bankingAndPayments',
+        'accountingAndReports',
+        'automotive',
+        'parapharmacy',
+        'reports',
+      ]),
+    )
 
     // Default: All permissions granted (we're testing vertical filtering, not permissions)
     mockCanAccessModule.mockReturnValue(true)
   })
 
-  const renderSidebar = () => {
-    return render(
-      <BrowserRouter>
-        <QueryClientProvider client={queryClient}>
-          <CompanyConfigProvider>
-            <Sidebar isOpen={true} />
-          </CompanyConfigProvider>
-        </QueryClientProvider>
-      </BrowserRouter>
-    )
+  const renderSidebar = (
+    companyConfig: TestCompanyConfig = defaultCompanyConfig,
+  ) => {
+    return renderWithProviders(<Sidebar isOpen={true} />, {
+      productConfig: { product: 'otospex' },
+      companyConfig,
+    })
+  }
+
+  // Rich configs mirroring the on-prod payloads. The default mechanic
+  // fixture is module-minimal; these carry the Treasury / Accounting /
+  // Tenant modules the sidebar tests check for.
+  const mechanicFullConfig: TestCompanyConfig = {
+    ...mechanicCompanyConfig,
+    default_modules: ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Workshop', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
+    all_enabled_modules: ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Workshop', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
   }
 
   describe('Mechanic Vertical (Automotive)', () => {
-    beforeEach(() => {
-      const mechanicConfig = {
-        vertical: 'mechanic',
-        default_modules: ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Workshop', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
-        enabled_extras: [],
-        all_enabled_modules: ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Workshop', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
-        currency: 'TND',
-        locale: 'fr_TN',
-        country_code: 'TN',
-      }
-      vi.mocked(api.apiGet).mockResolvedValue(mechanicConfig)
-    })
-
     it('shows Vehicle module for mechanic vertical', async () => {
-      renderSidebar()
+      renderSidebar(mechanicFullConfig)
 
-      // Wait for config to load
       const vehiclesLink = await screen.findByRole('link', { name: /navigation\.vehicles/i })
       expect(vehiclesLink).toBeInTheDocument()
       expect(vehiclesLink).toHaveAttribute('href', '/vehicles')
     })
 
     it('shows Workshop (Services) module for mechanic vertical', async () => {
-      renderSidebar()
+      renderSidebar(mechanicFullConfig)
 
-      // Wait for config to load
-      const servicesButton = await screen.findByRole('button', { name: /navigation\.services/i })
-      expect(servicesButton).toBeInTheDocument()
+      // Services now renders as a pair of flat links inside the Automotive
+      // group (allServices + serviceCategories), not a sub-group button.
+      const allServicesLink = await screen.findByRole('link', { name: /navigation\.allServices/i })
+      expect(allServicesLink).toBeInTheDocument()
+      expect(allServicesLink).toHaveAttribute('href', '/services')
     })
 
     it('shows core modules (Sales, Inventory, Treasury)', async () => {
-      renderSidebar()
+      renderSidebar(mechanicFullConfig)
 
-      // Wait for config to load and check core modules
       const salesButton = await screen.findByRole('button', { name: /navigation\.sales/i })
       const inventoryButton = await screen.findByRole('button', { name: /navigation\.inventory/i })
-      const treasuryButton = await screen.findByRole('button', { name: /navigation\.treasury/i })
+      const bankingButton = await screen.findByRole('button', { name: /navigation\.bankingAndPayments/i })
 
       expect(salesButton).toBeInTheDocument()
       expect(inventoryButton).toBeInTheDocument()
-      expect(treasuryButton).toBeInTheDocument()
+      expect(bankingButton).toBeInTheDocument()
     })
   })
 
   describe('Pharmacy Vertical', () => {
-    beforeEach(() => {
-      const pharmacyConfig = {
-        vertical: 'pharmacy',
-        default_modules: ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'BatchExpiry'],
-        enabled_extras: [],
-        all_enabled_modules: ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'BatchExpiry'],
-        currency: 'TND',
-        locale: 'fr_TN',
-        country_code: 'TN',
-      }
-      vi.mocked(api.apiGet).mockResolvedValue(pharmacyConfig)
-    })
+    const pharmacyFullConfig: TestCompanyConfig = {
+      vertical: 'pharmacy',
+      default_modules: ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'BatchExpiry'],
+      enabled_extras: [],
+      all_enabled_modules: ['Identity', 'Tenant', 'Catalog', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'BatchExpiry'],
+      currency: 'TND',
+      locale: 'fr_TN',
+      country_code: 'TN',
+      smart_prompts_enabled: false,
+      smart_prompts_variant: 'off',
+    }
 
     it('hides Vehicle module for pharmacy vertical', async () => {
-      renderSidebar()
+      renderSidebar(pharmacyFullConfig)
 
-      // Wait for config to load
       await screen.findByRole('button', { name: /navigation\.sales/i })
 
-      // Vehicle module should NOT be present
       const vehiclesLink = screen.queryByRole('link', { name: /navigation\.vehicles/i })
       expect(vehiclesLink).not.toBeInTheDocument()
     })
 
     it('hides Workshop (Services) module for pharmacy vertical', async () => {
-      renderSidebar()
+      renderSidebar(pharmacyFullConfig)
 
-      // Wait for config to load
       await screen.findByRole('button', { name: /navigation\.sales/i })
 
-      // Services module should NOT be present
       const servicesButton = screen.queryByRole('button', { name: /navigation\.services/i })
       expect(servicesButton).not.toBeInTheDocument()
     })
 
     it('shows core modules (Sales, Inventory, Treasury) for pharmacy vertical', async () => {
-      renderSidebar()
+      renderSidebar(pharmacyFullConfig)
 
-      // Wait for config to load and check core modules
       const salesButton = await screen.findByRole('button', { name: /navigation\.sales/i })
       const inventoryButton = await screen.findByRole('button', { name: /navigation\.inventory/i })
-      const treasuryButton = await screen.findByRole('button', { name: /navigation\.treasury/i })
+      const bankingButton = await screen.findByRole('button', { name: /navigation\.bankingAndPayments/i })
 
       expect(salesButton).toBeInTheDocument()
       expect(inventoryButton).toBeInTheDocument()
-      expect(treasuryButton).toBeInTheDocument()
+      expect(bankingButton).toBeInTheDocument()
     })
   })
 
   describe('Restaurant Vertical', () => {
-    beforeEach(() => {
-      const restaurantConfig = {
-        vertical: 'restaurant',
-        default_modules: ['Identity', 'Tenant', 'Catalog', 'Menu', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
-        enabled_extras: ['Tables', 'Appointments'],
-        all_enabled_modules: ['Identity', 'Tenant', 'Catalog', 'Menu', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'Tables', 'Appointments'],
-        currency: 'EUR',
-        locale: 'fr_FR',
-        country_code: 'FR',
-      }
-      vi.mocked(api.apiGet).mockResolvedValue(restaurantConfig)
-    })
+    const restaurantConfig: TestCompanyConfig = {
+      vertical: 'restaurant',
+      default_modules: ['Identity', 'Tenant', 'Catalog', 'Menu', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
+      enabled_extras: ['Tables', 'Appointments'],
+      all_enabled_modules: ['Identity', 'Tenant', 'Catalog', 'Menu', 'Partner', 'Sales', 'Inventory', 'Treasury', 'Accounting', 'Tables', 'Appointments'],
+      currency: 'EUR',
+      locale: 'fr_FR',
+      country_code: 'FR',
+      smart_prompts_enabled: false,
+      smart_prompts_variant: 'off',
+    }
 
     it('hides Vehicle module for restaurant vertical', async () => {
-      renderSidebar()
+      renderSidebar(restaurantConfig)
 
-      // Wait for config to load
       await screen.findByRole('button', { name: /navigation\.sales/i })
 
-      // Vehicle module should NOT be present
       const vehiclesLink = screen.queryByRole('link', { name: /navigation\.vehicles/i })
       expect(vehiclesLink).not.toBeInTheDocument()
     })
 
     it('shows core modules for restaurant vertical', async () => {
-      renderSidebar()
+      renderSidebar(restaurantConfig)
 
-      // Wait for config to load and check core modules
       const salesButton = await screen.findByRole('button', { name: /navigation\.sales/i })
       const inventoryButton = await screen.findByRole('button', { name: /navigation\.inventory/i })
 
@@ -199,42 +201,25 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
   })
 
   describe('Permission and Vertical Filtering Combined', () => {
-    beforeEach(() => {
-      const mechanicConfig = {
-        vertical: 'mechanic',
-        default_modules: ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Workshop', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
-        enabled_extras: [],
-        all_enabled_modules: ['Identity', 'Tenant', 'Catalog', 'Vehicle', 'Partner', 'Workshop', 'Sales', 'Inventory', 'Treasury', 'Accounting'],
-        currency: 'TND',
-        locale: 'fr_TN',
-        country_code: 'TN',
-      }
-      vi.mocked(api.apiGet).mockResolvedValue(mechanicConfig)
-    })
-
     it('hides module when permission denied even if vertical allows it', async () => {
       // Vehicle module exists in mechanic vertical, but user lacks permission
       mockCanAccessModule.mockImplementation((module: string) => {
         return module !== 'vehicles' // Deny access to vehicles
       })
 
-      renderSidebar()
+      renderSidebar(mechanicFullConfig)
 
-      // Wait for config to load
       await screen.findByRole('button', { name: /navigation\.sales/i })
 
-      // Vehicle module should NOT be present (denied by permissions)
       const vehiclesLink = screen.queryByRole('link', { name: /navigation\.vehicles/i })
       expect(vehiclesLink).not.toBeInTheDocument()
     })
 
     it('shows module only when both vertical AND permissions allow it', async () => {
-      // All permissions granted
       mockCanAccessModule.mockReturnValue(true)
 
-      renderSidebar()
+      renderSidebar(mechanicFullConfig)
 
-      // Wait for config to load
       const vehiclesLink = await screen.findByRole('link', { name: /navigation\.vehicles/i })
       expect(vehiclesLink).toBeInTheDocument()
     })
@@ -256,53 +241,40 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
   })
 
   describe('Module Key Mapping', () => {
-    beforeEach(() => {
-      const mechanicConfig = {
-        vertical: 'mechanic',
-        default_modules: ['Identity', 'Vehicle', 'Workshop', 'Sales', 'Inventory'],
-        enabled_extras: [],
-        all_enabled_modules: ['Identity', 'Vehicle', 'Workshop', 'Sales', 'Inventory'],
-        currency: 'TND',
-        locale: 'fr_TN',
-        country_code: 'TN',
-      }
-      vi.mocked(api.apiGet).mockResolvedValue(mechanicConfig)
-    })
-
     it('maps "vehicles" sidebar key to "Vehicle" module name', async () => {
-      renderSidebar()
+      renderSidebar(mechanicCompanyConfig)
 
-      // Vehicle module (capitalized in backend) should map to "vehicles" (lowercase in sidebar)
       const vehiclesLink = await screen.findByRole('link', { name: /navigation\.vehicles/i })
       expect(vehiclesLink).toBeInTheDocument()
     })
 
     it('maps "services" sidebar key to "Workshop" module name', async () => {
-      renderSidebar()
+      renderSidebar(mechanicCompanyConfig)
 
-      // Workshop module should map to "services" sidebar key
-      const servicesButton = await screen.findByRole('button', { name: /navigation\.services/i })
-      expect(servicesButton).toBeInTheDocument()
+      // allServices is rendered under the Automotive group because its
+      // `module: 'services'` resolves through MODULE_NAME_MAP to Workshop,
+      // which is enabled for the mechanic vertical.
+      const allServicesLink = await screen.findByRole('link', { name: /navigation\.allServices/i })
+      expect(allServicesLink).toBeInTheDocument()
     })
   })
 
   describe('Always Visible Modules', () => {
-    beforeEach(() => {
-      // Minimal config with only core modules
-      const minimalConfig = {
-        vertical: 'retail',
-        default_modules: ['Identity', 'Sales', 'Inventory'],
-        enabled_extras: [],
-        all_enabled_modules: ['Identity', 'Sales', 'Inventory'],
-        currency: 'USD',
-        locale: 'en_US',
-        country_code: 'US',
-      }
-      vi.mocked(api.apiGet).mockResolvedValue(minimalConfig)
-    })
+    // Minimal config with only core modules
+    const minimalConfig: TestCompanyConfig = {
+      vertical: 'retail',
+      default_modules: ['Identity', 'Sales', 'Inventory'],
+      enabled_extras: [],
+      all_enabled_modules: ['Identity', 'Sales', 'Inventory'],
+      currency: 'USD',
+      locale: 'en_US',
+      country_code: 'US',
+      smart_prompts_enabled: false,
+      smart_prompts_variant: 'off',
+    }
 
     it('always shows Dashboard regardless of vertical', async () => {
-      renderSidebar()
+      renderSidebar(minimalConfig)
 
       const dashboardLink = await screen.findByRole('link', { name: /navigation\.dashboard/i })
       expect(dashboardLink).toBeInTheDocument()
@@ -310,19 +282,23 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
     })
 
     it('always shows Settings regardless of vertical', async () => {
-      renderSidebar()
+      renderSidebar(minimalConfig)
 
       const settingsLink = await screen.findByRole('link', { name: /navigation\.settings/i })
       expect(settingsLink).toBeInTheDocument()
       expect(settingsLink).toHaveAttribute('href', '/settings')
     })
 
-    it('always shows Reports regardless of vertical', async () => {
-      renderSidebar()
+    // Reports was folded into accountingAndReports + POS-local z-reports;
+    // the top-level `/reports` link no longer exists. Assert instead that
+    // the Accounting group (which surfaces financial reports) is visible.
+    it('always shows Accounting & Reports regardless of vertical', async () => {
+      renderSidebar(minimalConfig)
 
-      const reportsLink = await screen.findByRole('link', { name: /navigation\.reports/i })
-      expect(reportsLink).toBeInTheDocument()
-      expect(reportsLink).toHaveAttribute('href', '/reports')
+      const accountingButton = await screen.findByRole('button', {
+        name: /navigation\.accountingAndReports/i,
+      })
+      expect(accountingButton).toBeInTheDocument()
     })
   })
 })

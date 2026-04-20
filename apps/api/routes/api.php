@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\SubscriptionController;
 use App\Modules\Admin\Presentation\Controllers\MonitoringController;
 use App\Modules\Billing\Presentation\Controllers\AdminBillingController;
 use App\Modules\Billing\Presentation\Controllers\StripeWebhookController;
+use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -44,7 +45,7 @@ Route::prefix('v1')->group(function (): void {
     });
 
     // Protected routes (require authentication and company context)
-    Route::middleware(['api', 'auth:sanctum', \App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam::class])->group(function (): void {
+    Route::middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function (): void {
         Route::get('/subscription', [SubscriptionController::class, 'show']);
         Route::get('/company/config', [CompanyConfigController::class, 'show']);
     });

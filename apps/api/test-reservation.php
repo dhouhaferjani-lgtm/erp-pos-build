@@ -8,14 +8,19 @@
 require __DIR__.'/vendor/autoload.php';
 
 $app = require_once __DIR__.'/bootstrap/app.php';
-$app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$app->make(Kernel::class)->bootstrap();
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\LocationType;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Inventory\Application\Services\StockReservationService;
+use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Domain\Product;
+use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 echo "🧪 Testing Stock Reservation System\n";
 echo "=====================================\n\n";
@@ -40,15 +45,15 @@ try {
     echo "✅ Found product: {$product->name} (ID: {$product->id})\n";
 
     // 3. Find or create a location
-    $location = \App\Modules\Company\Domain\Location::where('company_id', $company->id)->first();
+    $location = Location::where('company_id', $company->id)->first();
     if (! $location) {
-        $location = \App\Modules\Company\Domain\Location::create([
-            'id' => \Illuminate\Support\Str::uuid()->toString(),
+        $location = Location::create([
+            'id' => Str::uuid()->toString(),
             'tenant_id' => $company->tenant_id,
             'company_id' => $company->id,
             'name' => 'Main Warehouse',
             'code' => 'MAIN',
-            'type' => \App\Modules\Company\Domain\Enums\LocationType::Warehouse,
+            'type' => LocationType::Warehouse,
             'is_default' => true,
         ]);
         echo "✅ Created location: {$location->name} (ID: {$location->id})\n";
@@ -63,7 +68,7 @@ try {
 
     if (! $stockLevel) {
         $stockLevel = StockLevel::create([
-            'id' => \Illuminate\Support\Str::uuid()->toString(),
+            'id' => Str::uuid()->toString(),
             'tenant_id' => $company->tenant_id,
             'company_id' => $company->id,
             'product_id' => $product->id,
@@ -87,7 +92,7 @@ try {
         locationId: $location->id,
         quantity: '10.0000',
         sourceType: ReservationSource::SalesOrder,
-        sourceId: \Illuminate\Support\Str::uuid()->toString(),
+        sourceId: Str::uuid()->toString(),
         sourceLineId: null,
         priority: 0,
         notes: 'Test reservation from verification script'
@@ -108,7 +113,7 @@ try {
 
     $reservationService->release(
         reservation: $reservation,
-        reason: \App\Modules\Inventory\Domain\Enums\ReleaseReason::ManualRelease,
+        reason: ReleaseReason::ManualRelease,
         releasedBy: null
     );
 
@@ -133,7 +138,7 @@ try {
 
     echo "\n✨ All tests passed! Stock Reservation System is ACTIVE! ✨\n";
 
-} catch (\Exception $e) {
+} catch (Exception $e) {
     echo "\n❌ Error: {$e->getMessage()}\n";
     echo "   File: {$e->getFile()}:{$e->getLine()}\n";
     echo "\nStack trace:\n";

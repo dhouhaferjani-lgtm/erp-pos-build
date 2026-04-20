@@ -23,11 +23,12 @@ vi.mock('@/lib/storage', () => ({
     COMPANIES: 'companies',
     TERMINAL: 'terminal',
     PENDING_TERMINAL_ID: 'pending_terminal_id',
+    SHIFT: 'current_shift',
   },
 }));
 
 import { apiGet, apiPost } from '@/lib/api';
-import { removeStoredValue } from '@/lib/storage';
+import { getStoredValue, setStoredValue, removeStoredValue } from '@/lib/storage';
 
 const mockTerminal: Terminal = {
   id: 'term-1',
@@ -166,5 +167,74 @@ describe('terminalStore', () => {
     expect(state.pendingTerminalId).toBeNull();
     expect(removeStoredValue).toHaveBeenCalledWith('terminal');
     expect(removeStoredValue).toHaveBeenCalledWith('pending_terminal_id');
+    expect(removeStoredValue).toHaveBeenCalledWith('current_shift');
+  });
+
+  it('openShift persists shift to storage', async () => {
+    useTerminalStore.setState({ terminal: mockTerminal });
+    vi.mocked(apiPost).mockResolvedValue(mockShift);
+
+    await useTerminalStore.getState().openShift('100.00');
+
+    expect(setStoredValue).toHaveBeenCalledWith('current_shift', mockShift);
+  });
+
+  it('openShift creates local shift when API fails (offline)', async () => {
+    useTerminalStore.setState({ terminal: mockTerminal });
+    vi.mocked(apiPost).mockRejectedValue(new Error('Network error'));
+
+    await useTerminalStore.getState().openShift('100.00');
+
+    const state = useTerminalStore.getState();
+    expect(state.shift).not.toBeNull();
+    expect(state.shift!.terminal_id).toBe('term-1');
+    expect(state.shift!.opening_cash).toBe('100.00');
+    expect(state.shift!.status).toBe('OPEN');
+    expect(state.shift!.id).toMatch(/^offline-/);
+    expect(state.isLoading).toBe(false);
+    expect(setStoredValue).toHaveBeenCalledWith('current_shift', expect.objectContaining({
+      terminal_id: 'term-1',
+      status: 'OPEN',
+    }));
+  });
+
+  it('fetchCurrentShift restores shift from storage when API fails (offline)', async () => {
+    useTerminalStore.setState({ terminal: mockTerminal });
+    vi.mocked(apiGet).mockRejectedValue(new Error('Network error'));
+    vi.mocked(getStoredValue).mockResolvedValue(mockShift);
+
+    await useTerminalStore.getState().fetchCurrentShift();
+
+    expect(useTerminalStore.getState().shift).toEqual(mockShift);
+  });
+
+  it('fetchCurrentShift sets shift to null when API fails and no cached shift', async () => {
+    useTerminalStore.setState({ terminal: mockTerminal });
+    vi.mocked(apiGet).mockRejectedValue(new Error('Network error'));
+    vi.mocked(getStoredValue).mockResolvedValue(null);
+
+    await useTerminalStore.getState().fetchCurrentShift();
+
+    expect(useTerminalStore.getState().shift).toBeNull();
+  });
+
+  it('closeShift clears shift even when API fails (offline)', async () => {
+    useTerminalStore.setState({ terminal: mockTerminal, shift: mockShift });
+    vi.mocked(apiPost).mockRejectedValue(new Error('Network error'));
+
+    await useTerminalStore.getState().closeShift('150.00');
+
+    expect(useTerminalStore.getState().shift).toBeNull();
+    expect(removeStoredValue).toHaveBeenCalledWith('current_shift');
+  });
+
+  it('fetchCurrentShift persists shift to storage when API succeeds', async () => {
+    useTerminalStore.setState({ terminal: mockTerminal });
+    vi.mocked(apiGet).mockResolvedValue(mockShift);
+
+    await useTerminalStore.getState().fetchCurrentShift();
+
+    expect(setStoredValue).toHaveBeenCalledWith('current_shift', mockShift);
+    expect(useTerminalStore.getState().shift).toEqual(mockShift);
   });
 });

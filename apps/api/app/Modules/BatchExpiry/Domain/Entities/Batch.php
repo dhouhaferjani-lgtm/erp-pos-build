@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\BatchExpiry\Domain\Entities;
 
 use App\Modules\BatchExpiry\Domain\Enums\ExpiryStatus;
+use App\Modules\Company\Domain\Company;
+use App\Modules\Product\Domain\Product;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -52,16 +54,16 @@ class Batch extends Model
         'recalled_at' => 'datetime',
     ];
 
-    /** @return BelongsTo<\App\Modules\Product\Domain\Product, $this> */
+    /** @return BelongsTo<Product, $this> */
     public function product(): BelongsTo
     {
-        return $this->belongsTo(\App\Modules\Product\Domain\Product::class);
+        return $this->belongsTo(Product::class);
     }
 
-    /** @return BelongsTo<\App\Modules\Company\Domain\Company, $this> */
+    /** @return BelongsTo<Company, $this> */
     public function company(): BelongsTo
     {
-        return $this->belongsTo(\App\Modules\Company\Domain\Company::class);
+        return $this->belongsTo(Company::class);
     }
 
     /** @return HasMany<BatchStock, $this> */

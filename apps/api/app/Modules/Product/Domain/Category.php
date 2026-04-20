@@ -5,11 +5,15 @@ declare(strict_types=1);
 namespace App\Modules\Product\Domain;
 
 use App\Modules\Company\Domain\Company;
+use Database\Factories\CategoryFactory;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 /**
@@ -24,18 +28,18 @@ use Illuminate\Support\Str;
  * @property int $depth
  * @property int $sort_order
  * @property bool $is_active
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
  * @property-read Company $company
  * @property-read Category|null $parent
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Category> $children
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Product> $products
+ * @property-read Collection<int, Category> $children
+ * @property-read Collection<int, Product> $products
  * @property-read int|null $products_count
  */
 class Category extends Model
 {
-    /** @use HasFactory<\Database\Factories\CategoryFactory> */
+    /** @use HasFactory<CategoryFactory> */
     use HasFactory;
 
     use SoftDeletes;
@@ -78,9 +82,9 @@ class Category extends Model
     /**
      * Create a new factory instance for the model.
      */
-    protected static function newFactory(): \Database\Factories\CategoryFactory
+    protected static function newFactory(): CategoryFactory
     {
-        return \Database\Factories\CategoryFactory::new();
+        return CategoryFactory::new();
     }
 
     protected static function booted(): void
@@ -166,19 +170,19 @@ class Category extends Model
     }
 
     /**
-     * @return \Illuminate\Database\Eloquent\Collection<int, Category>
+     * @return Collection<int, Category>
      */
-    public function getAncestors(): \Illuminate\Database\Eloquent\Collection
+    public function getAncestors(): Collection
     {
         if (empty($this->path)) {
-            return new \Illuminate\Database\Eloquent\Collection;
+            return new Collection;
         }
 
         $ancestorIds = explode('/', $this->path);
         array_pop($ancestorIds); // Remove self
 
         if (empty($ancestorIds)) {
-            return new \Illuminate\Database\Eloquent\Collection;
+            return new Collection;
         }
 
         // Get categories and sort in memory to maintain order
@@ -191,9 +195,9 @@ class Category extends Model
     }
 
     /**
-     * @return \Illuminate\Database\Eloquent\Collection<int, Category>
+     * @return Collection<int, Category>
      */
-    public function getDescendants(): \Illuminate\Database\Eloquent\Collection
+    public function getDescendants(): Collection
     {
         return static::where('path', 'like', $this->path.'/%')
             ->orderBy('path')
@@ -242,8 +246,8 @@ class Category extends Model
     // Query Scopes
 
     /**
-     * @param  \Illuminate\Database\Eloquent\Builder<Category>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<Category>
+     * @param  Builder<Category>  $query
+     * @return Builder<Category>
      */
     public function scopeRoots($query)
     {
@@ -251,8 +255,8 @@ class Category extends Model
     }
 
     /**
-     * @param  \Illuminate\Database\Eloquent\Builder<Category>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<Category>
+     * @param  Builder<Category>  $query
+     * @return Builder<Category>
      */
     public function scopeActive($query)
     {
@@ -260,8 +264,8 @@ class Category extends Model
     }
 
     /**
-     * @param  \Illuminate\Database\Eloquent\Builder<Category>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<Category>
+     * @param  Builder<Category>  $query
+     * @return Builder<Category>
      */
     public function scopeWithProductCount($query)
     {

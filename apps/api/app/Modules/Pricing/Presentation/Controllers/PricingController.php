@@ -6,6 +6,7 @@ namespace App\Modules\Pricing\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Pricing\Domain\PartnerPriceList;
 use App\Modules\Pricing\Domain\PriceList;
 use App\Modules\Pricing\Domain\PriceListItem;
@@ -71,7 +72,7 @@ class PricingController extends Controller
             'valid_until' => 'nullable|date|after:valid_from',
         ]);
 
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
 
         $priceList = PriceList::create([
@@ -370,7 +371,7 @@ class PricingController extends Controller
         $product = Product::findOrFail($validated['product_id']);
         $sellPrice = (float) $validated['sell_price'];
 
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
 
         $marginLevel = $this->marginService->getMarginLevel($product, $sellPrice);

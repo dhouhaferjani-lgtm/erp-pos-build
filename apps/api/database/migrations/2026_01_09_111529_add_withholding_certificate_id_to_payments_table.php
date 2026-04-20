@@ -13,9 +13,9 @@ return new class extends Migration
     {
         Schema::table('payments', function (Blueprint $table) {
             $table->foreignUuid('withholding_certificate_id')
-                  ->nullable()
-                  ->after('payment_method_id')
-                  ->constrained('withholding_certificates');
+                ->nullable()
+                ->after('payment_method_id')
+                ->constrained('withholding_certificates');
         });
     }
 

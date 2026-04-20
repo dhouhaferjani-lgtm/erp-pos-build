@@ -1,5 +1,7 @@
 <?php
 
+use App\Modules\BatchExpiry\Jobs\DailyExpiryCheck;
+use App\Modules\Inventory\Application\Jobs\ExpireReservationsJob;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -21,12 +23,12 @@ Schedule::command('fraud:detect')
     ->runInBackground();
 
 // Schedule: Expire old stock reservations every 15 minutes
-Schedule::job(\App\Modules\Inventory\Application\Jobs\ExpireReservationsJob::class)
+Schedule::job(ExpireReservationsJob::class)
     ->everyFifteenMinutes()
     ->withoutOverlapping();
 
 // Schedule: Check for expired batches daily at 1:30 AM
-Schedule::job(\App\Modules\BatchExpiry\Jobs\DailyExpiryCheck::class)
+Schedule::job(DailyExpiryCheck::class)
     ->dailyAt('01:30')
     ->withoutOverlapping();
 

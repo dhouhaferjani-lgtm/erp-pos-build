@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -18,8 +19,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $allergen_code
  * @property string|null $regulatory_status
  * @property string|null $notes
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property string $name (from translations - auto-translated via HasTranslations trait)
  * @property string|null $description (from translations - auto-translated via HasTranslations trait)
  */

@@ -17,7 +17,9 @@ use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
-use Database\Seeders\TunisiaStampDutySeeder;
+use Database\Seeders\CountriesSeeder;
+use Database\Seeders\PermissionSeeder;
+use Database\Seeders\TunisiaTaxConfigurationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
@@ -41,10 +43,10 @@ class TaxBreakdownEndpointTest extends TestCase
         parent::setUp();
 
         // Seed countries first (required for foreign key constraint)
-        $this->seed(\Database\Seeders\CountriesSeeder::class);
+        $this->seed(CountriesSeeder::class);
 
         // Seed permissions (required for authorization)
-        $this->seed(\Database\Seeders\PermissionSeeder::class);
+        $this->seed(PermissionSeeder::class);
 
         // Create tenant
         $this->tenant = Tenant::create([
@@ -94,7 +96,7 @@ class TaxBreakdownEndpointTest extends TestCase
         $this->user->givePermissionTo('documents.view');
 
         // Seed Tunisia tax configurations (VAT + stamp duties)
-        $this->seed(\Database\Seeders\TunisiaTaxConfigurationSeeder::class);
+        $this->seed(TunisiaTaxConfigurationSeeder::class);
 
         // Create a dummy partner for documents
         $this->partner = Partner::create([

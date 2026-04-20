@@ -148,7 +148,7 @@ return new class extends Migration
         echo "\n=== Product Unit Migration Results ===\n";
         echo "Total products with units: {$totalProducts}\n";
         echo "Successfully mapped: {$mappedProducts}\n";
-        echo "Unmapped: ".(count($unmappedUnits) > 0 ? count($unmappedUnits) : 0)." unique units\n";
+        echo 'Unmapped: '.(count($unmappedUnits) > 0 ? count($unmappedUnits) : 0)." unique units\n";
 
         if (count($unmappedUnits) > 0) {
             echo "\nUnmapped units (will need manual mapping):\n";

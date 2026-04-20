@@ -10,11 +10,13 @@ use App\Modules\Marketplace\Domain\Enums\SellerType;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Factories\MarketplaceSellerFactory;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -32,15 +34,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $gmv_current_month
  * @property int $orders_current_month
  * @property string|null $average_rating
- * @property \Illuminate\Support\Carbon|null $last_sync_at
+ * @property Carbon|null $last_sync_at
  * @property array<string, mixed>|null $settings
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read Tenant|null $tenant
  * @property-read Company|null $company
- * @property-read \Illuminate\Database\Eloquent\Collection<int, MarketplaceListing> $listings
- * @property-read \Illuminate\Database\Eloquent\Collection<int, MarketplaceOrder> $orders
- * @property-read \Illuminate\Database\Eloquent\Collection<int, BuyerSellerMapping> $buyerSellerMappings
+ * @property-read Collection<int, MarketplaceListing> $listings
+ * @property-read Collection<int, MarketplaceOrder> $orders
+ * @property-read Collection<int, BuyerSellerMapping> $buyerSellerMappings
  *
  * @method static Builder<static> active()
  * @method static Builder<static> forCountry(string $countryCode)

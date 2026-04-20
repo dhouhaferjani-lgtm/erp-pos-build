@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Document;
 
+use App\Enums\Vertical;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\DocumentVehicleContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
@@ -47,7 +50,7 @@ class CreateDocumentTest extends TestCase
             'slug' => 'test-tenant',
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
-            'vertical' => \App\Enums\Vertical::Mechanic,
+            'vertical' => Vertical::Mechanic,
         ]);
 
         $this->company = Company::create([
@@ -59,7 +62,7 @@ class CreateDocumentTest extends TestCase
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
@@ -81,7 +84,7 @@ class CreateDocumentTest extends TestCase
         ]);
 
         // Set company context for the test
-        app(\App\Modules\Company\Services\CompanyContext::class)->setCompanyId($this->company->id);
+        app(CompanyContext::class)->setCompanyId($this->company->id);
 
         $this->customer = Partner::create([
             'tenant_id' => $this->tenant->id,
@@ -306,7 +309,7 @@ class CreateDocumentTest extends TestCase
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         $otherPartner = Partner::create([
@@ -494,7 +497,7 @@ class CreateDocumentTest extends TestCase
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         $otherVehicle = Vehicle::factory()->create([

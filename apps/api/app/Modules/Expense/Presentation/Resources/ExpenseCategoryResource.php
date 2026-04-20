@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\Expense\Presentation\Resources;
 
+use App\Modules\Expense\Domain\ExpenseCategory;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * API resource for expense categories.
  *
- * @property-read \App\Modules\Expense\Domain\ExpenseCategory $resource
+ * @property-read ExpenseCategory $resource
  */
 class ExpenseCategoryResource extends JsonResource
 {

@@ -5,15 +5,16 @@ declare(strict_types=1);
 namespace App\Modules\Loyalty\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Loyalty\Application\DTOs\EnrollmentData;
 use App\Modules\Loyalty\Application\DTOs\LoyaltyMemberData;
 use App\Modules\Loyalty\Application\DTOs\TransactionData;
 use App\Modules\Loyalty\Application\Services\MemberEnrollmentService;
 use App\Modules\Loyalty\Application\Services\PointAdjustmentService;
 use App\Modules\Loyalty\Domain\Entities\Enrollment;
+use App\Modules\Loyalty\Domain\Entities\LoyaltyMember;
 use App\Modules\Loyalty\Domain\Enums\EnrollmentStatus;
 use App\Modules\Loyalty\Domain\Enums\MemberStatus;
-use App\Modules\Loyalty\Domain\Entities\LoyaltyMember;
 use App\Modules\Loyalty\Presentation\Requests\AdjustPointsRequest;
 use App\Modules\Loyalty\Presentation\Requests\CreateMemberRequest;
 use App\Modules\Loyalty\Presentation\Requests\EnrollMemberRequest;
@@ -214,7 +215,7 @@ class LoyaltyMemberController extends Controller
             ], 422);
         }
 
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
 
         /** @var numeric-string $points */

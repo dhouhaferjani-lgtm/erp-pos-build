@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Domain\Services;
 
+use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -83,7 +84,7 @@ final class SalesOrderService
         $confirmedBy = auth()->id();
 
         // Get company for reservation settings
-        /** @var \App\Modules\Company\Domain\Company $company */
+        /** @var Company $company */
         $company = $salesOrder->company;
 
         // Check if auto-reservation is enabled

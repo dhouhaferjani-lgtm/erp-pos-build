@@ -255,4 +255,49 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 14,
+    name: 'create_offline_cash_drawer_ops',
+    sql: `
+      CREATE TABLE IF NOT EXISTS offline_cash_drawer_ops (
+        id TEXT PRIMARY KEY,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        type TEXT NOT NULL CHECK(type IN ('deposit', 'payout')),
+        amount TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        operator_id TEXT NOT NULL,
+        operator_name TEXT NOT NULL,
+        terminal_id TEXT NOT NULL,
+        shift_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'syncing', 'synced', 'failed')),
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        synced_at TEXT,
+        sync_error TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_cash_drawer_ops_status ON offline_cash_drawer_ops(status);
+      CREATE INDEX IF NOT EXISTS idx_cash_drawer_ops_shift ON offline_cash_drawer_ops(shift_id);
+    `,
+  },
+  {
+    version: 15,
+    name: 'add_voided_to_offline_receipts',
+    sql: '',
+    async run(db) {
+      const columns = [
+        'ALTER TABLE offline_receipts ADD COLUMN voided INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE offline_receipts ADD COLUMN void_reason TEXT',
+      ];
+      for (const stmt of columns) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
 ];

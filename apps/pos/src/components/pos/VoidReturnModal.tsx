@@ -1,10 +1,15 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from './Modal';
-import { Search, AlertTriangle } from 'lucide-react';
+import { Search, AlertTriangle, WifiOff } from 'lucide-react';
 import { apiGet, apiPost, getErrorMessage } from '@/lib/api';
+import { useConnectivityStore } from '@/stores/connectivityStore';
+import { useAuthStore } from '@/stores/authStore';
+import { getDatabase } from '@/lib/db';
+import { queryAll } from '@/lib/db';
 import { useCurrency } from '@/lib/currency';
 import { cn } from '@/lib/utils';
+import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 
 interface ReceiptLine {
   id: string;
@@ -32,8 +37,10 @@ type ActionTab = 'void' | 'return';
 export function VoidReturnModal({ isOpen, onClose }: VoidReturnModalProps) {
   const { t } = useTranslation('pos');
   const { format } = useCurrency();
+  const isOnline = useConnectivityStore((s) => s.isOnline);
   const [searchQuery, setSearchQuery] = useState('');
   const [receipt, setReceipt] = useState<ReceiptDetail | null>(null);
+  const [isLocalReceipt, setIsLocalReceipt] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,19 +55,60 @@ export function VoidReturnModal({ isOpen, onClose }: VoidReturnModalProps) {
     setError(null);
     setReceipt(null);
     setSuccessMsg(null);
+    setIsLocalReceipt(false);
 
+    // Try API first (if online)
+    if (isOnline) {
+      try {
+        const result = await apiGet<ReceiptDetail>('/pos/receipts/lookup', {
+          receipt_number: searchQuery.trim(),
+        });
+        setReceipt(result);
+        setIsSearching(false);
+        return;
+      } catch {
+        // API failed — fall through to local search
+      }
+    }
+
+    // Search local unsynced receipts
     try {
-      const result = await apiGet<ReceiptDetail>('/pos/receipts/lookup', {
-        receipt_number: searchQuery.trim(),
-      });
-      setReceipt(result);
+      const { companyId } = useAuthStore.getState();
+      const db = await getDatabase(companyId ?? '');
+      const localReceipts = await queryAll<OfflineReceipt>(
+        db,
+        "SELECT * FROM offline_receipts WHERE receipt_number LIKE $1 AND status IN ('pending', 'failed') AND voided = 0 LIMIT 1",
+        [`%${searchQuery.trim()}%`],
+      );
+
+      if (localReceipts.length > 0) {
+        const r = localReceipts[0]!;
+        interface LineJson { name: string; quantity: number; unit_price: string; line_total: string }
+        const lines = JSON.parse(r.lines) as LineJson[];
+        setReceipt({
+          id: r.id,
+          receipt_number: r.receipt_number,
+          total: r.total,
+          status: 'pending',
+          lines: lines.map((l, i) => ({
+            id: `local-${String(i)}`,
+            product_name: l.name,
+            quantity: l.quantity,
+            unit_price: l.unit_price,
+            line_total: l.line_total,
+          })),
+        });
+        setIsLocalReceipt(true);
+      } else {
+        setError(isOnline ? t('voidReturn.receiptNotFound') : t('voidReturn.offlineNoReceipt'));
+      }
     } catch (err) {
       setError(t('voidReturn.receiptNotFound'));
       console.error('Receipt lookup failed:', getErrorMessage(err));
     } finally {
       setIsSearching(false);
     }
-  }, [searchQuery, t]);
+  }, [searchQuery, t, isOnline]);
 
   const toggleLine = useCallback((lineId: string) => {
     setSelectedLines((prev) => {
@@ -79,10 +127,24 @@ export function VoidReturnModal({ isOpen, onClose }: VoidReturnModalProps) {
     setIsProcessing(true);
     setError(null);
     try {
-      await apiPost<unknown>(`/pos/receipts/${receipt.id}/void`, {
-        reason: reason.trim(),
-      });
-      setSuccessMsg(t('voidReturn.confirmVoid'));
+      if (isLocalReceipt) {
+        // Void a local unsynced receipt — mark as voided in SQLite
+        const { companyId } = useAuthStore.getState();
+        const db = await getDatabase(companyId ?? '');
+        const { execute } = await import('@/lib/db');
+        await execute(
+          db,
+          'UPDATE offline_receipts SET voided = 1, void_reason = $1 WHERE id = $2',
+          [reason.trim(), receipt.id],
+        );
+        setSuccessMsg(t('voidReturn.confirmVoid'));
+      } else {
+        // Void a server receipt — requires API
+        await apiPost<unknown>(`/pos/receipts/${receipt.id}/void`, {
+          reason: reason.trim(),
+        });
+        setSuccessMsg(t('voidReturn.confirmVoid'));
+      }
       setReceipt(null);
       setReason('');
     } catch (err) {
@@ -90,7 +152,7 @@ export function VoidReturnModal({ isOpen, onClose }: VoidReturnModalProps) {
     } finally {
       setIsProcessing(false);
     }
-  }, [receipt, reason, t]);
+  }, [receipt, reason, t, isLocalReceipt]);
 
   const handleReturn = useCallback(async () => {
     if (!receipt || selectedLines.size === 0) return;
@@ -169,7 +231,14 @@ export function VoidReturnModal({ isOpen, onClose }: VoidReturnModalProps) {
         {/* Receipt detail */}
         {receipt && (
           <>
-            {/* Tabs */}
+            {/* Local receipt indicator */}
+            {isLocalReceipt && (
+              <div className="rounded-md bg-amber-50 p-3 text-sm text-amber-700">
+                {t('voidReturn.localReceipt')}
+              </div>
+            )}
+
+            {/* Tabs — hide return tab for local receipts (returns require server) */}
             <div className="flex rounded-lg bg-gray-100 p-1">
               <button
                 onClick={() => setActionTab('void')}
@@ -182,17 +251,19 @@ export function VoidReturnModal({ isOpen, onClose }: VoidReturnModalProps) {
               >
                 {t('voidReturn.void')}
               </button>
-              <button
-                onClick={() => setActionTab('return')}
-                className={cn(
-                  'flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                  actionTab === 'return'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700',
-                )}
-              >
-                {t('voidReturn.return')}
-              </button>
+              {!isLocalReceipt && (
+                <button
+                  onClick={() => setActionTab('return')}
+                  className={cn(
+                    'flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                    actionTab === 'return'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700',
+                  )}
+                >
+                  {t('voidReturn.return')}
+                </button>
+              )}
             </div>
 
             {/* Receipt info */}

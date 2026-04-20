@@ -47,7 +47,10 @@
     "cardLastFour": "Last 4 digits",
     "transactionRef": "Reference",
     "morePaymentMethods": "More...",
-    "processingQuickCheckout": "Processing cash payment..."
+    "processingQuickCheckout": "Processing cash payment...",
+    "offlineSaved": "Sale saved locally",
+    "offlineWillSync": "Will sync automatically when connection resumes",
+    "pendingSyncCount": "{{count}} sale(s) pending sync"
   },
   "cashPayment": {
     "back": "Back",
@@ -98,7 +101,9 @@
     "password": "Password",
     "signIn": "Sign in",
     "signingIn": "Signing in...",
-    "selectCompany": "Select Company"
+    "selectCompany": "Select Company",
+    "noConnection": "No Internet Connection",
+    "noConnectionMessage": "An internet connection is required to sign in. Please check your connection and try again."
   },
   "terminal": {
     "setup": "Terminal Setup",
@@ -421,7 +426,9 @@
     "selectLines": "Select items to return",
     "confirmVoid": "Confirm Void",
     "confirmReturn": "Confirm Return",
-    "receiptNotFound": "Receipt not found"
+    "receiptNotFound": "Receipt not found",
+    "offlineNoReceipt": "No unsynced receipts found. Synced receipts require an internet connection to void.",
+    "localReceipt": "This is a locally saved receipt that has not been synced yet."
   },
   "cashDrawer": {
     "title": "Cash Drawer",

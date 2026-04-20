@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\BatchExpiry\Domain\Entities;
 
+use App\Modules\Company\Domain\Location;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -34,10 +35,10 @@ class BatchStock extends Model
         return $this->belongsTo(Batch::class);
     }
 
-    /** @return BelongsTo<\App\Modules\Company\Domain\Location, $this> */
+    /** @return BelongsTo<Location, $this> */
     public function location(): BelongsTo
     {
-        return $this->belongsTo(\App\Modules\Company\Domain\Location::class);
+        return $this->belongsTo(Location::class);
     }
 
     public function getAvailableQuantityAttribute(): float

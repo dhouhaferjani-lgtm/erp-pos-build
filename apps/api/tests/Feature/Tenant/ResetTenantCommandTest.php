@@ -10,7 +10,6 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use Tests\TestCase;
 
 final class ResetTenantCommandTest extends TestCase

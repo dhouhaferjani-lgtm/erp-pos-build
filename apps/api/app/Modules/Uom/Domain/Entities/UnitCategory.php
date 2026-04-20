@@ -6,6 +6,7 @@ namespace App\Modules\Uom\Domain\Entities;
 
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Factories\UnitCategoryFactory;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -22,7 +23,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property bool $is_system
  * @property bool $is_active
  * @property-read Unit|null $baseUnit
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Unit> $units
+ * @property-read Collection<int, Unit> $units
  */
 class UnitCategory extends Model
 {

@@ -7,11 +7,13 @@ namespace App\Modules\Menu\Domain\Entities;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -27,12 +29,12 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $end_date
  * @property array<int>|null $available_days
  * @property int $display_order
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
  * @property-read Tenant $tenant
  * @property-read Company $company
- * @property-read \Illuminate\Database\Eloquent\Collection<int, MenuCategory> $categories
+ * @property-read Collection<int, MenuCategory> $categories
  */
 class Menu extends Model
 {

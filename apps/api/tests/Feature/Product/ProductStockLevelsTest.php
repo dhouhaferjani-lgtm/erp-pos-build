@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Product;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -62,7 +64,7 @@ class ProductStockLevelsTest extends TestCase
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         // Seed roles and permissions
@@ -93,14 +95,14 @@ class ProductStockLevelsTest extends TestCase
         $this->location1 = Location::create([
             'company_id' => $this->company->id,
             'name' => 'Warehouse A',
-            'type' => \App\Modules\Company\Domain\Enums\LocationType::Warehouse,
+            'type' => LocationType::Warehouse,
             'is_active' => true,
         ]);
 
         $this->location2 = Location::create([
             'company_id' => $this->company->id,
             'name' => 'Warehouse B',
-            'type' => \App\Modules\Company\Domain\Enums\LocationType::Warehouse,
+            'type' => LocationType::Warehouse,
             'is_active' => true,
         ]);
     }

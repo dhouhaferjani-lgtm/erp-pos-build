@@ -257,7 +257,7 @@ final class OrderManagementTest extends TestCase
         $this->createTestOrder();
         $this->createTestOrder();
 
-        $response = $this->getJson('/api/v1/pos/orders?terminal_id=' . $this->terminal->id);
+        $response = $this->getJson('/api/v1/pos/orders?terminal_id='.$this->terminal->id);
 
         $response->assertStatus(200);
         $response->assertJsonCount(2, 'data');
@@ -320,7 +320,7 @@ final class OrderManagementTest extends TestCase
             'location_id' => $this->location->id,
             'terminal_id' => $this->terminal->id,
             'shift_id' => $this->shift->id,
-            'order_number' => '#' . str_pad((string) (Order::where('terminal_id', $this->terminal->id)->count() + 1), 3, '0', STR_PAD_LEFT),
+            'order_number' => '#'.str_pad((string) (Order::where('terminal_id', $this->terminal->id)->count() + 1), 3, '0', STR_PAD_LEFT),
             'status' => OrderStatus::Open,
             'cashier_id' => $this->user->id,
             'cashier_name' => $this->user->name ?? 'Test Cashier',

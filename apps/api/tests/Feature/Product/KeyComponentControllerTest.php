@@ -22,6 +22,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -232,7 +233,7 @@ class KeyComponentControllerTest extends TestCase
         ]);
 
         DB::table('key_component_product')->insert([
-            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'id' => (string) Str::uuid(),
             'product_id' => $product->id,
             'component_id' => $component->id,
             'created_at' => now(),

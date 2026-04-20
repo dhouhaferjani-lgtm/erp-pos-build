@@ -47,7 +47,10 @@
     "cardLastFour": "4 derniers chiffres",
     "transactionRef": "Référence",
     "morePaymentMethods": "Plus...",
-    "processingQuickCheckout": "Traitement du paiement..."
+    "processingQuickCheckout": "Traitement du paiement...",
+    "offlineSaved": "Vente enregistrée localement",
+    "offlineWillSync": "Synchronisation automatique au retour de la connexion",
+    "pendingSyncCount": "{{count}} vente(s) en attente de synchronisation"
   },
   "cashPayment": {
     "back": "Retour",
@@ -98,7 +101,9 @@
     "password": "Mot de passe",
     "signIn": "Se connecter",
     "signingIn": "Connexion...",
-    "selectCompany": "Sélectionner l'entreprise"
+    "selectCompany": "Sélectionner l'entreprise",
+    "noConnection": "Pas de connexion Internet",
+    "noConnectionMessage": "Une connexion Internet est nécessaire pour se connecter. Veuillez vérifier votre connexion et réessayer."
   },
   "terminal": {
     "setup": "Configuration du terminal",
@@ -421,7 +426,9 @@
     "selectLines": "Sélectionner les articles à retourner",
     "confirmVoid": "Confirmer l'annulation",
     "confirmReturn": "Confirmer le retour",
-    "receiptNotFound": "Ticket non trouvé"
+    "receiptNotFound": "Ticket non trouvé",
+    "offlineNoReceipt": "Aucun ticket non synchronisé trouvé. L'annulation des tickets synchronisés nécessite une connexion Internet.",
+    "localReceipt": "Ce ticket est enregistré localement et n'a pas encore été synchronisé."
   },
   "cashDrawer": {
     "title": "Tiroir-caisse",

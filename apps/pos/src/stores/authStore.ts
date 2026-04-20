@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { platform } from '@tauri-apps/plugin-os';
-import { apiGet, apiPost } from '@/lib/api';
+import { apiGet, apiPost, ApiRequestError } from '@/lib/api';
 import { disconnectEcho } from '@/lib/echo';
 import {
   getStoredValue,
@@ -106,12 +106,17 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
           isAuthenticated: true,
         });
 
-        // Validate the token is still valid
+        // Validate the token is still valid (only logout on 401, not network errors)
         try {
           await get().checkSession();
-        } catch {
-          // Token expired, clear auth
-          get().logout();
+        } catch (error) {
+          if (error instanceof ApiRequestError && error.status === 401) {
+            // Token is genuinely expired/invalid — must re-login
+            get().logout();
+          } else {
+            // Network error or timeout — keep existing auth state for offline use
+            console.warn('[auth] Session check failed (likely offline), keeping cached auth:', error);
+          }
         }
       }
     } catch (error) {

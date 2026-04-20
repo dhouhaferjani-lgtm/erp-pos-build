@@ -6,6 +6,7 @@ namespace Tests\Unit\Taxation;
 
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\Entities\WithholdingTaxRule;
+use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Taxation\Domain\Enums\TransactionType;
 use App\Modules\Taxation\Domain\Services\WithholdingCalculationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -219,7 +220,7 @@ class WithholdingCalculationServiceTest extends TestCase
         $partner->id = 'partner-123';
         $partner->name = 'Test Partner';
         $partner->country_code = 'TN';
-        $partner->tax_status = \App\Modules\Taxation\Domain\Enums\PartnerTaxStatus::from($taxStatusValue);
+        $partner->tax_status = PartnerTaxStatus::from($taxStatusValue);
         $partner->withholding_exempt = false;
 
         return $partner;

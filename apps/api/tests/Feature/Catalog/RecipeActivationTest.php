@@ -6,10 +6,11 @@ namespace Tests\Feature\Catalog;
 
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Domain\Entities\Recipe;
+use App\Modules\Catalog\Domain\Entities\RecipeLine;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
-use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -137,7 +138,7 @@ class RecipeActivationTest extends TestCase
             'is_active' => true,
         ]);
 
-        $product = \App\Modules\Product\Domain\Product::factory()
+        $product = Product::factory()
             ->for($this->tenant)
             ->for($this->company)
             ->create();
@@ -163,12 +164,12 @@ class RecipeActivationTest extends TestCase
             'is_active' => true,
         ]);
 
-        $product = \App\Modules\Product\Domain\Product::factory()
+        $product = Product::factory()
             ->for($this->tenant)
             ->for($this->company)
             ->create();
 
-        $line = \App\Modules\Catalog\Domain\Entities\RecipeLine::create([
+        $line = RecipeLine::create([
             'recipe_id' => $recipe->id,
             'component_type' => 'product',
             'component_id' => $product->id,

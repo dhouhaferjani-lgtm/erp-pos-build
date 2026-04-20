@@ -13,6 +13,7 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
@@ -48,7 +49,7 @@ class DocumentVehicleContextTest extends TestCase
         ]);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function document_can_have_vehicle_context_with_snapshot(): void
     {
         $document = Document::create([
@@ -88,7 +89,7 @@ class DocumentVehicleContextTest extends TestCase
         $this->assertEquals('oil_change', $context->context_data['service_type']);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function document_vehicle_context_provides_snapshot_accessor(): void
     {
         $document = Document::create([
@@ -121,7 +122,7 @@ class DocumentVehicleContextTest extends TestCase
         $this->assertEquals(2021, $snapshot['year']);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function get_vehicle_display_string_formats_correctly(): void
     {
         $document = Document::create([
@@ -149,7 +150,7 @@ class DocumentVehicleContextTest extends TestCase
         $this->assertEquals('Honda - Civic - XYZ-789', $displayString);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function get_vehicle_display_string_handles_missing_snapshot(): void
     {
         $document = Document::create([
@@ -174,7 +175,7 @@ class DocumentVehicleContextTest extends TestCase
         $this->assertEquals('Unknown Vehicle', $displayString);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function document_without_context_returns_null(): void
     {
         $document = Document::create([
@@ -194,7 +195,7 @@ class DocumentVehicleContextTest extends TestCase
         $this->assertNull($context);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function context_data_can_be_nullable(): void
     {
         $document = Document::create([
@@ -218,7 +219,7 @@ class DocumentVehicleContextTest extends TestCase
         $this->assertNull($context->context_data);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function context_belongs_to_document(): void
     {
         $document = Document::create([
@@ -243,7 +244,7 @@ class DocumentVehicleContextTest extends TestCase
         $this->assertEquals($document->id, $retrievedDocument->id);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function get_context_value_returns_correct_value(): void
     {
         $document = Document::create([
@@ -271,7 +272,7 @@ class DocumentVehicleContextTest extends TestCase
         $this->assertEquals('2026-01-01', $context->getContextValue('warranty_expiry'));
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function get_context_value_returns_default_for_missing_key(): void
     {
         $document = Document::create([
@@ -298,7 +299,7 @@ class DocumentVehicleContextTest extends TestCase
         $this->assertEquals('default_value', $context->getContextValue('non_existent_key', 'default_value'));
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function get_mileage_at_service_returns_correct_value(): void
     {
         $document = Document::create([
@@ -321,7 +322,7 @@ class DocumentVehicleContextTest extends TestCase
         $this->assertEquals(75000, $context->getMileageAtService());
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function get_mileage_at_service_returns_null_when_not_set(): void
     {
         $document = Document::create([
@@ -345,7 +346,7 @@ class DocumentVehicleContextTest extends TestCase
         $this->assertNull($context->getMileageAtService());
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function get_vehicle_id_returns_correct_value(): void
     {
         $document = Document::create([
@@ -371,7 +372,7 @@ class DocumentVehicleContextTest extends TestCase
         $this->assertEquals($vehicleId, $context->getVehicleId());
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function complete_service_context_factory_state_works(): void
     {
         $document = Document::create([

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Identity\Application\Notifications;
 
+use App\Modules\Identity\Domain\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -38,7 +39,7 @@ class VerifyEmailNotification extends Notification implements ShouldQueue
         $frontendUrl = config('app.frontend_url', 'http://localhost:5173');
         $verificationUrl = "{$frontendUrl}/verify-email?token={$this->token}";
 
-        /** @var \App\Modules\Identity\Domain\User $notifiable */
+        /** @var User $notifiable */
         $locale = $notifiable->preferences['locale'] ?? 'en';
 
         return $this->buildMailMessage($verificationUrl, $notifiable->name, $locale);

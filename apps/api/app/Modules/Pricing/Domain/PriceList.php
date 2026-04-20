@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Pricing\Domain;
 
+use App\Modules\Company\Domain\Company;
+use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -33,16 +35,16 @@ class PriceList extends Model
         'valid_until' => 'date',
     ];
 
-    /** @return BelongsTo<\App\Modules\Tenant\Domain\Tenant, $this> */
+    /** @return BelongsTo<Tenant, $this> */
     public function tenant(): BelongsTo
     {
-        return $this->belongsTo(\App\Modules\Tenant\Domain\Tenant::class);
+        return $this->belongsTo(Tenant::class);
     }
 
-    /** @return BelongsTo<\App\Modules\Company\Domain\Company, $this> */
+    /** @return BelongsTo<Company, $this> */
     public function company(): BelongsTo
     {
-        return $this->belongsTo(\App\Modules\Company\Domain\Company::class);
+        return $this->belongsTo(Company::class);
     }
 
     /** @return HasMany<PriceListItem, $this> */

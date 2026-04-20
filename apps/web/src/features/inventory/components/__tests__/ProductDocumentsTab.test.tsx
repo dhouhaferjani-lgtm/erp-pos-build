@@ -1,9 +1,12 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter } from 'react-router-dom'
+import { screen, waitFor } from '@testing-library/react'
+import { renderWithProviders } from '@/test/renderWithProviders'
 import { ProductDocumentsTab } from '../ProductDocumentsTab'
+import {
+  makeProductDocument,
+  makeProductDocumentLine,
+} from '../../__fixtures__/productDocuments'
 
 // Mock the api module
 vi.mock('../../../../lib/api', () => ({
@@ -34,7 +37,7 @@ vi.mock('../../../../lib/format', () => ({
 import { api } from '../../../../lib/api'
 
 const mockDocuments = [
-  {
+  makeProductDocument({
     id: 'doc-1',
     type: 'invoice',
     status: 'posted',
@@ -45,25 +48,25 @@ const mockDocuments = [
     total: '1500.00',
     currency: 'EUR',
     lines: [
-      {
+      makeProductDocumentLine({
         id: 'line-1',
         product_id: 'prod-1',
         description: 'Test Product',
         quantity: '5',
         unit_price: '100.00',
         line_total: '500.00',
-      },
-      {
+      }),
+      makeProductDocumentLine({
         id: 'line-2',
         product_id: 'prod-2',
         description: 'Other Product',
         quantity: '10',
         unit_price: '100.00',
         line_total: '1000.00',
-      },
+      }),
     ],
-  },
-  {
+  }),
+  makeProductDocument({
     id: 'doc-2',
     type: 'quote',
     status: 'draft',
@@ -74,17 +77,17 @@ const mockDocuments = [
     total: '2000.00',
     currency: 'EUR',
     lines: [
-      {
+      makeProductDocumentLine({
         id: 'line-3',
         product_id: 'prod-1',
         description: 'Test Product',
         quantity: '10',
         unit_price: '150.00',
         line_total: '1500.00',
-      },
+      }),
     ],
-  },
-  {
+  }),
+  makeProductDocument({
     id: 'doc-3',
     type: 'purchase_order',
     status: 'confirmed',
@@ -95,37 +98,17 @@ const mockDocuments = [
     total: '800.00',
     currency: 'EUR',
     lines: [
-      {
+      makeProductDocumentLine({
         id: 'line-4',
         product_id: 'prod-1',
         description: 'Test Product',
         quantity: '8',
         unit_price: '100.00',
         line_total: '800.00',
-      },
+      }),
     ],
-  },
+  }),
 ]
-
-function createTestQueryClient() {
-  return new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false,
-        gcTime: 0,
-      },
-    },
-  })
-}
-
-function renderWithProviders(ui: React.ReactElement) {
-  const queryClient = createTestQueryClient()
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>{ui}</BrowserRouter>
-    </QueryClientProvider>
-  )
-}
 
 describe('ProductDocumentsTab', () => {
   beforeEach(() => {
@@ -284,18 +267,20 @@ describe('ProductDocumentsTab', () => {
 
   it('shows dash for partner when not available', async () => {
     const docsWithoutPartner = [
-      {
+      makeProductDocument({
         ...mockDocuments[0],
         partner_id: null,
         partner_name: undefined,
-      },
+      }),
     ]
     vi.mocked(api.get).mockResolvedValue({ data: { data: docsWithoutPartner } })
 
     renderWithProviders(<ProductDocumentsTab productId="prod-1" />)
 
     await waitFor(() => {
-      expect(screen.getByText('-')).toBeInTheDocument()
+      // Multiple `-` placeholders appear in the row (partner, landed cost,
+      // etc. depending on which fields are missing). Assert at least one.
+      expect(screen.getAllByText('-').length).toBeGreaterThanOrEqual(1)
     })
   })
 })

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\PlatformIntegration\Presentation\Controllers;
 
+use App\Enums\Vertical;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\PlatformIntegration\Application\Services\CatalogBrowseService;
 use Illuminate\Http\JsonResponse;
@@ -166,7 +167,7 @@ class CatalogBrowseController extends Controller
             return null;
         }
 
-        /** @var \App\Enums\Vertical $vertical */
+        /** @var Vertical $vertical */
         $vertical = $company->tenant->vertical;
 
         return $vertical->catalogScope();

@@ -12,6 +12,7 @@ use App\Modules\Taxation\Application\Services\WithholdingCertificateService;
 use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
 use App\Modules\Taxation\Domain\Entities\WithholdingTaxRule;
 use App\Modules\Taxation\Domain\Enums\CertificateStatus;
+use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Taxation\Domain\Enums\WithholdingDirection;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Payment;
@@ -54,7 +55,7 @@ class WithholdingCertificateTest extends TestCase
             ->for($this->company)
             ->create([
                 'country_code' => 'TN',
-                'tax_status' => \App\Modules\Taxation\Domain\Enums\PartnerTaxStatus::NON_REGISTERED,
+                'tax_status' => PartnerTaxStatus::NON_REGISTERED,
                 'withholding_exempt' => false,
             ]);
         $this->user = User::factory()->for($this->tenant)->create();

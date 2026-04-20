@@ -7,6 +7,7 @@ namespace App\Modules\Document\Presentation\Controllers;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
@@ -227,7 +228,7 @@ class ReturnNoteController extends Controller
                         $this->scale()
                     );
 
-                    \App\Modules\Document\Domain\DocumentLine::create([
+                    DocumentLine::create([
                         'document_id' => $returnNote->id,
                         'product_id' => $lineData['product_id'] ?? null,
                         'location_id' => $lineData['location_id'] ?? null, // Optional per-line location
@@ -348,7 +349,7 @@ class ReturnNoteController extends Controller
                         $this->scale()
                     );
 
-                    \App\Modules\Document\Domain\DocumentLine::create([
+                    DocumentLine::create([
                         'document_id' => $returnNote->id,
                         'product_id' => $lineData['product_id'] ?? null,
                         'location_id' => $lineData['location_id'] ?? null, // Optional per-line location

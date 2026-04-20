@@ -2,6 +2,163 @@ declare namespace App.Enums {
 export type Product = 'izipos' | 'otospex';
 export type Vertical = 'mechanic' | 'pharmacy' | 'restaurant' | 'coffee_shop' | 'retail' | 'fashion' | 'body_shop' | 'parts_retailer' | 'car_glass' | 'tire_shop' | 'service_station' | 'parapharmacy';
 }
+declare namespace App.Modules.Accounting.Application.DTOs {
+export type AccountData = {
+id: string;
+tenant_id: string;
+parent_id: string | null;
+code: string;
+name: string;
+type: string;
+description: string | null;
+is_active: boolean;
+is_system: boolean;
+balance: string;
+created_at: string;
+updated_at: string;
+};
+export type JournalEntryData = {
+id: string;
+tenantId: string;
+entryNumber: string;
+entryDate: string;
+description: string | null;
+status: App.Modules.Accounting.Domain.Enums.JournalEntryStatus;
+sourceType: string | null;
+sourceId: string | null;
+lines: Array<any>;
+createdAt: string | null;
+updatedAt: string | null;
+};
+export type JournalLineData = {
+id: string;
+journalEntryId: string;
+accountId: string;
+debit: string;
+credit: string;
+description: string | null;
+lineOrder: number;
+};
+}
+declare namespace App.Modules.Accounting.Application.DTOs.Reports {
+export type AgedPayablesData = {
+as_of_date: string;
+lines: any | Array<any>;
+total_current: string;
+total_days_30: string;
+total_days_60: string;
+total_days_90: string;
+total_over_90: string;
+grand_total: string;
+};
+export type AgedPayablesLineData = {
+vendor_id: string;
+vendor_name: string;
+current: string;
+days_30: string;
+days_60: string;
+days_90: string;
+over_90: string;
+total: string;
+};
+export type AgedReceivablesData = {
+as_of_date: string;
+lines: any | Array<any>;
+total_current: string;
+total_days_30: string;
+total_days_60: string;
+total_days_90: string;
+total_over_90: string;
+grand_total: string;
+};
+export type AgedReceivablesLineData = {
+customer_id: string;
+customer_name: string;
+current: string;
+days_30: string;
+days_60: string;
+days_90: string;
+over_90: string;
+total: string;
+};
+export type BalanceSheetData = {
+assets: any;
+liabilities: any;
+equity: any;
+total_assets: string;
+total_liabilities: string;
+total_equity: string;
+retained_earnings: string;
+is_balanced: boolean;
+as_of_date: string;
+};
+export type BalanceSheetLineData = {
+account_code: string;
+account_name: string;
+account_type: string;
+amount: string;
+level: number;
+is_parent: boolean;
+};
+export type LedgerData = {
+opening_balance: string;
+closing_balance: string;
+total_debits: string;
+total_credits: string;
+lines: any;
+date_from: string | null;
+date_to: string | null;
+account_filter: string | null;
+partner_filter: string | null;
+};
+export type LedgerLineData = {
+id: string;
+date: string;
+entry_number: string;
+description: string;
+account_code: string;
+account_name: string;
+partner_name: string | null;
+debit: string;
+credit: string;
+balance: string;
+source_type: string | null;
+source_id: string | null;
+};
+export type ProfitLossData = {
+revenue: any;
+expenses: any;
+total_revenue: string;
+total_expenses: string;
+net_income: string;
+date_from: string;
+date_to: string;
+};
+export type ProfitLossLineData = {
+account_code: string;
+account_name: string;
+account_type: string;
+amount: string;
+level: number;
+is_parent: boolean;
+};
+export type TrialBalanceData = {
+lines: any;
+total_debit: string;
+total_credit: string;
+is_balanced: boolean;
+as_of_date: string;
+};
+export type TrialBalanceLineData = {
+account_code: string;
+account_name: string;
+account_type: string;
+debit: string;
+credit: string;
+level: number;
+is_parent: boolean;
+};
+}
 declare namespace App.Modules.Accounting.Domain.Enums {
 export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
 export type JournalEntryStatus = 'draft' | 'posted' | 'reversed';
@@ -19,6 +176,154 @@ export type PaymentProviderCode = 'stripe' | 'paypal' | 'klarna' | 'sepa_transfe
 export type PaymentStatus = 'pending' | 'processing' | 'requires_action' | 'succeeded' | 'failed' | 'cancelled' | 'refunded' | 'partially_refunded';
 export type SubscriptionStatus = 'trial' | 'active' | 'past_due' | 'unpaid' | 'paused' | 'cancelling' | 'cancelled' | 'expired';
 }
+declare namespace App.Modules.Cart.Application.DTOs {
+export type CatalogCartData = {
+id: string;
+name: string | null;
+vehicle_id: string | null;
+status: App.Modules.Cart.Domain.Enums.CartStatus;
+is_shared: boolean;
+items: Array<any>;
+notes: string | null;
+created_at: string;
+updated_at: string | null;
+};
+export type CatalogCartItemData = {
+id: string;
+article_name: string;
+article_number: string | null;
+supplier_brand: string | null;
+quantity: string;
+unit_price: string | null;
+currency: string | null;
+source: App.Modules.Cart.Domain.Enums.CartItemSource;
+product_id: string | null;
+marketplace_listing_id: string | null;
+reservation_id: string | null;
+reservation_expires_at: string | null;
+notes: string | null;
+sort_order: number;
+};
+}
+declare namespace App.Modules.Cart.Domain.Enums {
+export type CartItemSource = 'catalog' | 'marketplace' | 'manual';
+export type CartStatus = 'active' | 'converted' | 'partial' | 'archived';
+}
+declare namespace App.Modules.Catalog.Application.DTOs {
+export type CompositeItemData = {
+id: string;
+code: string;
+name: string;
+vertical_type: App.Modules.Catalog.Domain.Enums.VerticalType;
+base_price: string;
+production_type: App.Modules.Catalog.Domain.Enums.ProductionType;
+pricing_mode: App.Modules.Catalog.Domain.Enums.PricingMode;
+tax_rate: string | null;
+default_tax_configuration_id: string | null;
+manual_cost: string | null;
+effective_cost: string | null;
+recipe_cost: string | null;
+margin_percentage: number | null;
+is_active: boolean;
+is_available: boolean;
+category_id: string | number | null;
+category_name: string | null;
+image_url: string | null;
+display_order: number;
+active_recipe: App.Modules.Catalog.Application.DTOs.RecipeData | null;
+variants: Array<any> | null;
+modifier_groups: Array<any> | null;
+created_at: string;
+updated_at: string | null;
+};
+export type CompositeItemVariantData = {
+id: string;
+composite_item_id: string;
+code: string;
+name: string;
+price_adjustment_type: App.Modules.Catalog.Domain.Enums.PriceAdjustmentType;
+price_adjustment: string;
+recipe_multiplier: string;
+is_default: boolean;
+is_active: boolean;
+display_order: number;
+};
+export type ModifierData = {
+id: string;
+modifier_group_id: string;
+code: string;
+name: string;
+price_adjustment: string;
+has_inventory_impact: boolean;
+component_type: string | null;
+component_id: string | null;
+component_quantity: string | null;
+component_unit_id: string | null;
+is_default: boolean;
+is_active: boolean;
+display_order: number;
+};
+export type ModifierGroupData = {
+id: string;
+code: string;
+name: string;
+selection_type: App.Modules.Catalog.Domain.Enums.SelectionType;
+min_selections: number;
+max_selections: number;
+is_required: boolean;
+is_active: boolean;
+display_order: number;
+modifiers: Array<any> | null;
+created_at: string;
+updated_at: string | null;
+};
+export type RecipeCostData = {
+total_cost: string;
+lines: Array<any>;
+};
+export type RecipeData = {
+id: string;
+composite_item_id: string;
+version: number;
+version_name: string | null;
+is_active: boolean;
+yield_quantity: string;
+yield_unit_id: string | null;
+calculated_cost: string | null;
+prep_time_minutes: number | null;
+cook_time_minutes: number | null;
+total_time_minutes: number | null;
+instructions: string | null;
+lines: Array<any> | null;
+created_at: string;
+updated_at: string | null;
+};
+export type RecipeLineData = {
+id: string;
+recipe_id: string;
+component_type: App.Modules.Catalog.Domain.Enums.ComponentType;
+component_id: string;
+component_name: string | null;
+component_sku: string | null;
+quantity: string;
+unit_id: string | null;
+unit_name: string | null;
+is_optional: boolean;
+is_scalable: boolean;
+wastage_percent: string;
+unit_cost: string | null;
+line_cost: string | null;
+display_order: number;
+};
+}
+declare namespace App.Modules.Catalog.Domain.Enums {
+export type ComponentType = 'product' | 'composite_item';
+export type PriceAdjustmentType = 'absolute' | 'percentage' | 'override';
+export type PricingMode = 'standard' | 'fixed_bundle';
+export type ProductionType = 'made_to_order' | 'batch' | 'stock';
+export type SelectionType = 'single' | 'multiple';
+export type VerticalType = 'fnb' | 'manufacturing' | 'sewing' | 'bakery' | 'generic';
+}
 declare namespace App.Modules.Company.Domain.Enums {
 export type CompanyStatus = 'active' | 'suspended' | 'closed';
 export type DocumentReviewStatus = 'pending' | 'in_review' | 'approved' | 'rejected' | 'expired';
@@ -30,6 +335,69 @@ export type PeriodStatus = 'open' | 'closed' | 'locked';
 export type SequenceType = 'invoice' | 'credit_note' | 'quote' | 'sales_order' | 'purchase_order' | 'delivery_note' | 'receipt' | 'journal_entry';
 export type VerificationStatus = 'pending' | 'submitted' | 'in_review' | 'verified' | 'rejected';
 export type VerificationTier = 'basic' | 'standard' | 'enhanced' | 'certified';
+}
+declare namespace App.Modules.Compliance.Domain.Enums {
+export type Nf525EventType = 'TICKET' | 'ANNULATION' | 'RETOUR' | 'DUPLICATA' | 'OUVERTURE_CAISSE' | 'FERMETURE_CAISSE' | 'RAPPORT_Z' | 'DEPOT_ESPECES' | 'RETRAIT_ESPECES' | 'REMBOURSEMENT' | 'ACTIVATION_TERMINAL' | 'DESACTIVATION_TERMINAL' | 'MODE_FORMATION' | 'MAJ_LOGICIEL';
+}
+declare namespace App.Modules.Contact.Application.DTOs {
+export type ContactData = {
+id: string;
+first_name: string;
+last_name: string | null;
+full_name: string;
+email: string | null;
+phone: string | null;
+mobile: string | null;
+date_of_birth: string | null;
+gender: App.Modules.Contact.Domain.Enums.Gender | null;
+national_id: string | null;
+avatar_media_id: string | null;
+notes: string | null;
+is_active: boolean;
+created_at: string;
+updated_at: string | null;
+parties: Array<any>;
+};
+export type ContactPartyData = {
+id: string;
+name: string;
+type: string;
+job_title: string | null;
+department: string | null;
+is_primary: boolean;
+};
+}
+declare namespace App.Modules.Contact.Domain.Enums {
+export type Gender = 'male' | 'female' | 'other';
+}
+declare namespace App.Modules.Coupon.Application.DTOs {
+export type CouponData = {
+id: string;
+name: string;
+code: string;
+type: string;
+status: string;
+is_single_use: boolean;
+max_uses: number | null;
+use_count: number;
+max_uses_per_customer: number | null;
+discount_type: string;
+discount_value: string;
+max_discount_amount: string | null;
+minimum_order_amount: string | null;
+qualifying_product_ids: Array<any> | null;
+qualifying_category_ids: Array<any> | null;
+is_exclusive: boolean;
+stacking_group: string;
+starts_at: string | null;
+expires_at: string | null;
+created_at: string;
+updated_at: string | null;
+};
+}
+declare namespace App.Modules.Coupon.Domain.Enums {
+export type CouponStatus = 'active' | 'exhausted' | 'expired' | 'revoked';
+export type CouponType = 'standard' | 'single_use' | 'customer_specific';
 }
 declare namespace App.Modules.Document.Application.DTOs {
 export type DocumentData = {
@@ -93,6 +461,7 @@ export type CreditNoteReason = 'return' | 'price_adjustment' | 'billing_error' |
 export type DeliveryStatus = 'not_delivered' | 'partially_delivered' | 'fully_delivered';
 export type DocumentStatus = 'draft' | 'confirmed' | 'posted' | 'paid' | 'received' | 'cancelled';
 export type DocumentType = 'quote' | 'sales_order' | 'purchase_order' | 'invoice' | 'credit_note' | 'delivery_note' | 'return_note' | 'expense';
+export type FacturXProfile = 'minimum' | 'basicwl' | 'basic' | 'en16931' | 'extended';
 export type FiscalCategory = 'NON_FISCAL' | 'FISCAL_RECEIPT' | 'TAX_INVOICE' | 'CREDIT_NOTE' | 'DELIVERY_NOTE' | 'RETURN_NOTE';
 export type FiscalStatus = 'DRAFT' | 'SEALED' | 'VOIDED';
 export type FulfillmentStatus = 'not_fulfilled' | 'partially_fulfilled' | 'fulfilled' | 'not_applicable';
@@ -106,7 +475,7 @@ export type AuthUserData = {
 id: string;
 tenantId: string;
 name: string;
-email: string;
+email: string | null;
 phone: string | null;
 status: string;
 locale: string | null;
@@ -133,7 +502,7 @@ deviceId: string | null;
 export type UserData = {
 id: string;
 name: string;
-email: string;
+email: string | null;
 phone: string | null;
 status: string;
 locale: string | null;
@@ -144,6 +513,8 @@ lastLoginAt: string | null;
 lastLoginIp: string | null;
 createdAt: string;
 updatedAt: string;
+canDiscount: boolean | null;
+maxDiscountPercent: number | null;
 };
 }
 declare namespace App.Modules.Identity.Domain.Enums {
@@ -151,7 +522,7 @@ export type UserStatus = 'active' | 'inactive' | 'suspended' | 'pending_verifica
 }
 declare namespace App.Modules.Import.Domain.Enums {
 export type ImportStatus = 'pending' | 'validating' | 'validated' | 'importing' | 'completed' | 'failed';
-export type ImportType = 'partners' | 'products' | 'stock_levels' | 'opening_balances' | 'product_images';
+export type ImportType = 'partners' | 'products' | 'stock_levels' | 'opening_balances' | 'product_images' | 'composite_items';
 }
 declare namespace App.Modules.Inventory.Application.DTOs {
 export type StockLevelData = {
@@ -174,7 +545,7 @@ export type CountingExecutionMode = 'parallel' | 'sequential';
 export type CountingScopeType = 'product_location' | 'product' | 'location' | 'category' | 'full_inventory';
 export type CountingStatus = 'draft' | 'scheduled' | 'count_1_in_progress' | 'count_1_completed' | 'count_2_in_progress' | 'count_2_completed' | 'count_3_in_progress' | 'count_3_completed' | 'pending_review' | 'finalized' | 'cancelled';
 export type ItemResolutionMethod = 'pending' | 'auto_all_match' | 'auto_counters_agree' | 'third_count_decisive' | 'manual_override';
-export type MovementReason = 'goods_receipt' | 'customer_return' | 'adjustment_positive' | 'transfer_in' | 'production_output' | 'opening_balance' | 'delivery' | 'supplier_return' | 'adjustment_negative' | 'transfer_out' | 'damage' | 'expiry' | 'write_off' | 'consumption';
+export type MovementReason = 'goods_receipt' | 'customer_return' | 'adjustment_positive' | 'transfer_in' | 'production_output' | 'opening_balance' | 'delivery' | 'supplier_return' | 'adjustment_negative' | 'transfer_out' | 'damage' | 'expiry' | 'write_off' | 'consumption' | 'pos_sale' | 'pos_return';
 export type MovementType = 'receipt' | 'issue' | 'transfer_in' | 'transfer_out' | 'adjustment' | 'opening';
 export type ReleaseReason = 'delivered' | 'cancelled' | 'expired' | 'manual_release' | 'converted' | 'order_modified' | 'insufficient_stock';
 export type ReservationSource = 'sales_order' | 'ecommerce_cart' | 'marketplace_order' | 'manual_hold' | 'customer_return_pending' | 'quality_check' | 'transfer_pending';
@@ -232,6 +603,8 @@ export type LoyaltyMemberData = {
 id: string;
 tenant_id: string;
 customer_id: string | null;
+loyaltyable_type: string | null;
+loyaltyable_id: string | null;
 phone: string;
 email: string | null;
 first_name: string | null;
@@ -346,31 +719,360 @@ expires_at: string | null;
 }
 declare namespace App.Modules.Loyalty.Domain.Enums {
 export type EarningRuleType = 'spend' | 'item' | 'category' | 'quantity' | 'visit' | 'threshold' | 'time';
+export type EnrollmentStatus = 'active' | 'suspended' | 'opted_out';
+export type LoyaltyTargetType = 'contact' | 'partner';
+export type MemberStatus = 'active' | 'inactive' | 'suspended';
 export type ProgramStatus = 'draft' | 'active' | 'paused' | 'archived';
 export type ProgramType = 'points' | 'stamps' | 'visits' | 'cashback' | 'hybrid';
 export type QualificationType = 'spend' | 'points_earned' | 'visits' | 'manual';
 export type RewardType = 'free_item' | 'discount_amount' | 'discount_percent' | 'choice' | 'credit' | 'external';
 export type TransactionType = 'earn' | 'redeem' | 'adjust' | 'expire' | 'transfer_in' | 'transfer_out' | 'bonus' | 'refund';
 }
+declare namespace App.Modules.Marketplace.Application.DTOs {
+export type MarketplaceListingData = {
+listing_id: string;
+price: string;
+currency: string;
+product_name: string;
+supplier_brand: string | null;
+article_number: string | null;
+quality_tier: string | null;
+min_order_quantity: string;
+quantity_available: string;
+country_code: string;
+};
+export type MarketplaceOrderData = {
+id: string;
+order_number: string;
+order_status: App.Modules.Marketplace.Domain.Enums.MarketplaceOrderStatus;
+seller_name: string;
+currency: string;
+subtotal: string;
+commission_amount: string;
+total: string;
+buyer_document_id: string | null;
+seller_document_id: string | null;
+lines: Array<any>;
+created_at: string;
+confirmed_at: string | null;
+shipped_at: string | null;
+delivered_at: string | null;
+};
+export type PriceComparisonData = {
+current_price: string;
+best_marketplace_price: string;
+savings_amount: string;
+savings_percent: string;
+available_listings_count: number;
+cheapest_listing_id: string;
+};
+}
+declare namespace App.Modules.Marketplace.Domain.Enums {
+export type ListingStatus = 'active' | 'out_of_stock' | 'suspended' | 'delisted';
+export type MarketplaceOrderStatus = 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'disputed';
+export type SellerStatus = 'active' | 'suspended' | 'pending_review';
+export type SellerType = 'erp_tenant' | 'external' | 'syneriva';
+}
+declare namespace App.Modules.Menu.Application.DTOs {
+export type ActiveMenuData = {
+id: string;
+name: string;
+description: string | null;
+is_default: boolean;
+categories: Array<any>;
+};
+export type MenuCategoryData = {
+id: string;
+menu_id: string;
+name: string;
+description: string | null;
+icon: string | null;
+display_order: number;
+is_active: boolean;
+items: Array<any> | null;
+created_at: string;
+updated_at: string | null;
+};
+export type MenuData = {
+id: string;
+name: string;
+description: string | null;
+is_default: boolean;
+is_active: boolean;
+active_from: string | null;
+active_until: string | null;
+start_date: string | null;
+end_date: string | null;
+available_days: Array<number> | null;
+display_order: number;
+categories: Array<any> | null;
+categories_count: number;
+items_count: number;
+created_at: string;
+updated_at: string | null;
+};
+export type MenuItemData = {
+id: string;
+sellable_id: string;
+sellable_type: string;
+name: string;
+code: string;
+base_price: string;
+override_price: string | null;
+effective_price: string;
+tax_rate: string | null;
+display_order: number;
+is_available: boolean;
+image_url: string | null;
+modifier_groups: Array<any> | null;
+};
+}
+declare namespace App.Modules.POS.Application.DTOs {
+export type CustomerAnalyticsData = {
+unique_customers: number;
+returning_count: number;
+returning_rate: string;
+top_customers: Array<any>;
+};
+export type DiscountAnalysisData = {
+total_discount_amount: string;
+discount_count: number;
+by_reason: Array<any>;
+top_discounted_products: Array<any>;
+};
+export type FnbMetricsData = {
+avg_table_time_minutes: string;
+avg_items_per_order: string;
+peak_hours: Array<any>;
+orders_by_mode: Array<any>;
+};
+export type HeldOrderData = {
+id: string;
+terminal_id: string;
+shift_id: string;
+cashier_id: string;
+label: string | null;
+cart_snapshot: { [key: string]: any };
+status: string;
+held_at: string;
+expires_at: string | null;
+recalled_at: string | null;
+line_count: number;
+total: string | null;
+created_at: string;
+};
+export type OrderData = {
+id: string;
+terminal_id: string;
+shift_id: string;
+table_id: string | null;
+order_number: string;
+status: App.Modules.POS.Domain.Enums.OrderStatus;
+cashier_id: string;
+cashier_name: string;
+customer_name: string | null;
+customer_identifier: string | null;
+partner_id: string | null;
+subtotal: string;
+tax_amount: string;
+discount_amount: string;
+total: string;
+currency: string;
+consumption_mode: App.Modules.POS.Domain.Enums.ConsumptionMode | null;
+notes: string | null;
+opened_at: string;
+sent_at: string | null;
+closed_at: string | null;
+cancelled_at: string | null;
+receipt_id: string | null;
+lines: Array<any>;
+};
+export type OrderLineData = {
+id: string;
+order_id: string;
+line_number: number;
+product_id: string;
+product_name: string;
+variant_name: string | null;
+barcode: string | null;
+quantity: string;
+unit_price: string;
+discount_amount: string;
+tax_rate: string;
+tax_amount: string;
+line_total: string;
+modifiers: Array<any> | null;
+special_instructions: string | null;
+status: App.Modules.POS.Domain.Enums.OrderLineStatus;
+sent_at: string | null;
+prepared_at: string | null;
+created_at: string;
+};
+export type SalesSummaryData = {
+receipt_count: number;
+gross_sales: string;
+net_sales: string;
+tax_total: string;
+average_ticket: string;
+refund_count: number;
+refund_total: string;
+voided_count: number;
+payment_breakdown: Array<any>;
+};
+}
+declare namespace App.Modules.POS.Domain.Enums {
+export type ConsumptionMode = 'SUR_PLACE' | 'A_EMPORTER';
+export type DiscountSource = 'manual' | 'promotion' | 'coupon' | 'loyalty';
+export type HeldOrderStatus = 'held' | 'recalled' | 'expired';
+export type OrderLineStatus = 'pending' | 'sent' | 'preparing' | 'ready' | 'served' | 'cancelled';
+export type OrderStatus = 'open' | 'sent_to_kitchen' | 'ready' | 'closed' | 'cancelled';
+export type PrintMethod = 'pdf' | 'thermal' | 'escpos';
+export type ReceiptPrintType = 'original' | 'duplicate' | 'reprint';
+export type ReceiptType = 'sale' | 'return';
+export type ReturnReason = 'defective' | 'wrong_item' | 'customer_changed_mind' | 'other';
+export type ShiftStatus = 'OPEN' | 'CLOSED';
+export type SyncStatus = 'synced' | 'duplicate' | 'failed' | 'chain_broken';
+export type TableShape = 'rectangle' | 'circle' | 'square';
+export type TableStatus = 'available' | 'occupied' | 'reserved' | 'cleaning';
+export type TerminalType = 'web' | 'physical';
+}
 declare namespace App.Modules.Partner.Application.DTOs {
 export type PartnerData = {
 id: string;
 name: string;
 type: App.Modules.Partner.Domain.Enums.PartnerType;
+customer_category: App.Modules.Partner.Domain.Enums.CustomerCategory | null;
+company_legal_name: string | null;
+business_registration_number: string | null;
+payment_terms: App.Modules.Partner.Domain.Enums.PaymentTerms | null;
+payment_terms_days: number | null;
+credit_limit: string | null;
+discount_percentage: string | null;
+invoice_consolidation: boolean;
+consolidation_frequency: App.Modules.Partner.Domain.Enums.ConsolidationFrequency | null;
 code: string | null;
 email: string | null;
 phone: string | null;
 country_code: string | null;
 vat_number: string | null;
 notes: string | null;
+receivable_balance: string | null;
+credit_balance: string | null;
+payable_balance: string | null;
+street_address: string | null;
+street_address_2: string | null;
+city: string | null;
+state: string | null;
+postal_code: string | null;
+country: string | null;
+is_active: boolean;
+contacts_count: number;
+primary_contact_name: string | null;
 created_at: string;
 updated_at: string | null;
 };
 }
 declare namespace App.Modules.Partner.Domain.Enums {
+export type ConsolidationFrequency = 'weekly' | 'monthly';
+export type CustomerCategory = 'individual' | 'business';
 export type PartnerType = 'customer' | 'supplier' | 'both';
+export type PaymentTerms = 'immediate' | 'net_15' | 'net_30' | 'net_60' | 'net_90' | 'custom';
+}
+declare namespace App.Modules.PlatformIntegration.Application.DTOs {
+export type BarcodeLookupResultData = {
+status: string;
+barcode: string | null;
+product: any | null;
+trackingId: string | null;
+suggestedProduct: Array<any> | null;
+errorReason: string | null;
+};
+export type CatalogSearchResultData = {
+articles: Array<any>;
+pagination: Array<any> | null;
+};
+export type SubmissionResultData = {
+trackingId: string;
+status: string;
+statusUrl: string;
+};
+export type VehicleIdentificationData = {
+status: string;
+vehicle: Array<any> | null;
+platformMatch: Array<any> | null;
+candidates: Array<any> | null;
+wmiHint: Array<any> | null;
+message: string | null;
+};
+}
+declare namespace App.Modules.PlatformIntegration.Domain.Enums {
+export type PlatformLookupStatus = 'found' | 'not_found' | 'error' | 'cached';
 }
 declare namespace App.Modules.Product.Application.DTOs {
+export type AutomotiveCriterionData = {
+id: string;
+criteria_key: string;
+criteria_label: string;
+value: string;
+unit: string | null;
+sort_order: number;
+platform_criteria_id: string | null;
+created_at: string;
+updated_at: string | null;
+};
+export type AutomotiveCrossReferenceData = {
+id: string;
+reference_type: App.Modules.Product.Domain.Enums.CrossReferenceType;
+reference_number: string;
+manufacturer_name: string | null;
+platform_cross_ref_id: string | null;
+created_at: string;
+updated_at: string | null;
+};
+export type AutomotiveProductMetadataData = {
+id: string;
+product_id: string;
+platform_article_id: string | null;
+platform_link_status: App.Modules.Product.Domain.Enums.PlatformLinkStatus;
+article_number: string | null;
+supplier_brand: string | null;
+product_group_name: string | null;
+brand_quality_tier: App.Modules.Product.Domain.Enums.BrandQualityTier | null;
+article_status: App.Modules.Product.Domain.Enums.AutomotiveArticleStatus;
+confidence_score: number;
+data_source: string;
+weight_kg: string | null;
+dimensions: Array<any> | null;
+superseded_by_product_id: string | null;
+is_universal_fit: boolean;
+notes: string | null;
+platform_synced_at: string | null;
+tire_width: number | null;
+tire_aspect_ratio: number | null;
+tire_rim_diameter: number | null;
+tire_speed_rating: string | null;
+tire_load_index: number | null;
+tire_season: string | null;
+glass_type: string | null;
+glass_tinting: string | null;
+cross_references: Array<any> | null;
+vehicles: Array<any> | null;
+criteria: Array<any> | null;
+created_at: string;
+updated_at: string | null;
+};
+export type AutomotiveVehicleData = {
+id: string;
+platform_vehicle_id: string | null;
+vehicle_type: App.Modules.Product.Domain.Enums.VehicleTypeRef;
+vehicle_display: string;
+year_from: number | null;
+year_to: number | null;
+notes: string | null;
+platform_synced_at: string | null;
+created_at: string;
+updated_at: string | null;
+};
 export type CategoryData = {
 id: number;
 company_id: string;
@@ -400,6 +1102,37 @@ name: string;
 description: string | null;
 created_at: string;
 updated_at: string | null;
+};
+export type EnrichedProductData = {
+name: string;
+brand: string | null;
+description: string | null;
+classification: Array<any>;
+ingredients: Array<any>;
+images: Array<any>;
+confidence_score: number;
+enrichment_tier: string | null;
+field_confidence: Array<any> | null;
+enrichment_sources: Array<any> | null;
+assigned_barcode: string | null;
+assigned_barcode_type: string | null;
+};
+export type EnrichmentResultData = {
+id: string;
+product_id: string;
+product_name: string;
+product_barcode: string | null;
+product_sku: string | null;
+tracking_id: string;
+status: string;
+enriched_data: App.Modules.Product.Application.DTOs.EnrichedProductData;
+enrichment_quality: string;
+assigned_barcode: string | null;
+reviewed_at: string | null;
+reviewed_by: string | null;
+accepted_fields: Array<any> | null;
+rejection_reason: string | null;
+created_at: string;
 };
 export type HealthClaimData = {
 id: string;
@@ -442,8 +1175,8 @@ id: string;
 product_id: string;
 category: App.Modules.Product.Domain.Enums.ParapharmacyCategory;
 dosage_form: App.Modules.Product.Domain.Enums.DosageForm | null;
-ingredients: any | null;
-key_components: any | null;
+ingredients: Array<any> | null;
+key_components: Array<any> | null;
 usage_instructions: string | null;
 warnings: string | null;
 contraindications: string | null;
@@ -451,8 +1184,8 @@ minimum_age: number | null;
 age_restriction: App.Modules.Product.Domain.Enums.AgeRestriction | null;
 requires_consultation: boolean;
 regulatory_code: string | null;
-health_claims: any | null;
-certifications: any | null;
+health_claims: Array<any> | null;
+certifications: Array<any> | null;
 storage_requirements: string | null;
 created_at: string;
 updated_at: string | null;
@@ -469,22 +1202,26 @@ export type ProductData = {
 id: string;
 name: string;
 sku: string;
-type: App.Modules.Product.Domain.Enums.ProductType;
+type: App.Modules.Product.Domain.Enums.ProductType | null;
 description: string | null;
 sale_price: string | null;
 purchase_price: string | null;
 cost_price: string | null;
 tax_rate: string | null;
+default_tax_configuration_id: string | null;
 unit: string | null;
 barcode: string | null;
 is_active: boolean;
+is_physical: boolean;
 oem_numbers: Array<any> | null;
 cross_references: Array<any> | null;
 target_margin_override: string | null;
 minimum_margin_override: string | null;
 created_at: string;
 updated_at: string | null;
+primary_image_url: string | null;
 parapharmacy_metadata: App.Modules.Product.Application.DTOs.ParapharmacyProductMetadataData | null;
+automotive_metadata: App.Modules.Product.Application.DTOs.AutomotiveProductMetadataData | null;
 };
 export type ProductHealthClaimData = {
 health_claim: App.Modules.Product.Application.DTOs.HealthClaimData;
@@ -505,9 +1242,55 @@ order: number;
 }
 declare namespace App.Modules.Product.Domain.Enums {
 export type AgeRestriction = 'adult_only' | 'children_only' | 'all_ages';
+export type AutomotiveArticleStatus = 'active' | 'discontinued' | 'superseded' | 'pending_review';
+export type BrandQualityTier = 'oe' | 'oes' | 'premium_aftermarket' | 'aftermarket' | 'economy';
+export type CrossReferenceType = 'oe' | 'oem' | 'trade' | 'iam' | 'ean' | 'internal';
 export type DosageForm = 'capsule' | 'tablet' | 'softgel' | 'liquid' | 'powder' | 'cream' | 'gel' | 'lotion' | 'spray' | 'patch' | 'other';
+export type EnrichmentReviewStatus = 'pending_review' | 'accepted' | 'rejected';
 export type ParapharmacyCategory = 'supplement' | 'cosmetic' | 'medical_device' | 'herbal' | 'baby_care' | 'sports_nutrition' | 'other';
+export type PlatformLinkStatus = 'linked' | 'unlinked' | 'pending_match' | 'rejected';
 export type ProductType = 'part' | 'service' | 'consumable';
+export type VehicleTypeRef = 'pc' | 'cv' | 'mtb' | 'eng' | 'axl' | 'universal';
+}
+declare namespace App.Modules.Progression.Domain.Enums {
+export type GrowthStage = 'launch' | 'stabilize' | 'optimize' | 'expand';
+export type MilestoneStatus = 'pending' | 'in_progress' | 'completed' | 'skipped';
+export type ModuleReadinessStatus = 'locked' | 'available' | 'ready' | 'active';
+export type RecommendationPriority = 'high' | 'medium' | 'low';
+export type RecommendationStatus = 'pending' | 'accepted' | 'dismissed';
+}
+declare namespace App.Modules.Promotion.Application.DTOs {
+export type PromotionData = {
+id: string;
+name: string;
+description: string | null;
+type: string;
+status: string;
+priority: number;
+is_exclusive: boolean;
+stacking_group: string;
+starts_at: string | null;
+ends_at: string | null;
+days_of_week: Array<any> | null;
+time_from: string | null;
+time_until: string | null;
+conditions: Array<any>;
+discount_type: string;
+discount_value: string;
+max_discount_amount: string | null;
+applies_to: string;
+usage_limit: number | null;
+usage_count: number;
+metadata: Array<any> | null;
+created_at: string;
+updated_at: string | null;
+};
+}
+declare namespace App.Modules.Promotion.Domain.Enums {
+export type DiscountAppliesTo = 'transaction' | 'qualifying_items' | 'specific_item' | 'cheapest_item';
+export type DiscountType = 'percentage' | 'fixed' | 'free_item';
+export type PromotionStatus = 'draft' | 'active' | 'paused' | 'expired' | 'archived';
+export type PromotionType = 'happy_hour' | 'buy_x_get_y' | 'volume_discount' | 'category_discount' | 'combo_discount';
 }
 declare namespace App.Modules.Service.Application.DTOs {
 export type ServiceCategoryData = {
@@ -542,6 +1325,11 @@ updated_at: string | null;
 declare namespace App.Modules.Service.Domain.Enums {
 export type PricingType = 'flat_rate' | 'hourly' | 'percentage';
 }
+declare namespace App.Modules.SmartPrompts.Domain.Enums {
+export type RecommendationContext = 'cart' | 'checkout' | 'reorder';
+export type SkinType = 'normal' | 'oily' | 'dry' | 'combination' | 'sensitive';
+export type SmartPromptsVariant = 'inline' | 'toast' | 'both' | 'off';
+}
 declare namespace App.Modules.Taxation.Domain.Enums {
 export type CertificateStatus = 'draft' | 'issued' | 'submitted' | 'voided';
 export type CompanyTaxStatus = 'REGISTERED' | 'NON_REGISTERED';
@@ -550,12 +1338,17 @@ export type StackingBehavior = 'SUBTOTAL' | 'TOTAL_INCLUDING_PREVIOUS';
 export type TaxApplicationLevel = 'LINE_ITEMS' | 'DOCUMENT_TOTAL';
 export type TaxType = 'PERCENTAGE' | 'FIXED_AMOUNT';
 export type TransactionType = 'services' | 'goods' | 'rental' | 'rental_hotel' | 'commission' | 'export_services';
+export type VatDirection = 'OUTPUT' | 'INPUT';
+export type VatExportFormat = 'PDF' | 'CSV' | 'FEC' | 'MTD_JSON' | 'TEIF_XML';
+export type VatPeriodStatus = 'OPEN' | 'CLOSED' | 'FILED';
+export type VatPeriodType = 'MONTHLY' | 'QUARTERLY' | 'ANNUAL';
 export type WithholdingDirection = 'purchase' | 'sales';
 }
 declare namespace App.Modules.Taxation.Domain.Services {
 export type TaxSource = 'line' | 'product' | 'category' | 'company';
 }
 declare namespace App.Modules.Tenant.Domain.Enums {
+export type OnboardingStep = 'company_info' | 'tax_config' | 'payment_methods' | 'payment_repositories' | 'pos_terminal' | 'first_product';
 export type SubscriptionPlan = 'trial' | 'starter' | 'professional' | 'enterprise';
 export type TenantStatus = 'active' | 'suspended' | 'pending' | 'archived';
 }
@@ -565,7 +1358,7 @@ export type AllocationType = 'invoice_payment' | 'credit_application' | 'credit_
 export type FeeType = 'none' | 'fixed' | 'percentage' | 'mixed';
 export type InstrumentStatus = 'received' | 'in_transit' | 'deposited' | 'clearing' | 'cleared' | 'bounced' | 'expired' | 'cancelled' | 'collected';
 export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'reversed';
-export type PaymentType = 'document_payment' | 'advance' | 'refund' | 'credit_application' | 'supplier_payment';
+export type PaymentType = 'document_payment' | 'advance' | 'refund' | 'credit_application' | 'supplier_payment' | 'pos';
 export type ReconciliationStatus = 'draft' | 'completed' | 'cancelled';
 export type RepositoryType = 'cash_register' | 'safe' | 'bank_account' | 'virtual';
 }
@@ -614,4 +1407,7 @@ totalPages: number;
 hasNextPage: boolean;
 hasPreviousPage: boolean;
 };
+}
+declare namespace App.Shared.Enums {
+export type EnrichmentStatus = 'pending' | 'enriching' | 'completed' | 'failed' | 'rejected' | 'not_enrichable';
 }

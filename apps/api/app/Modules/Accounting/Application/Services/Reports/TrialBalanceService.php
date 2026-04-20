@@ -6,7 +6,9 @@ namespace App\Modules\Accounting\Application\Services\Reports;
 
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Services\AccountHierarchyService;
+use App\Modules\Accounting\Domain\Services\AccountNode;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -166,9 +168,9 @@ class TrialBalanceService
      *
      * @param  string  $companyId  UUID of the company
      * @param  Carbon  $asOfDate  Point-in-time cutoff date
-     * @return \Illuminate\Support\Collection<int, \stdClass>
+     * @return Collection<int, \stdClass>
      */
-    private function queryAccountBalances(string $companyId, Carbon $asOfDate): \Illuminate\Support\Collection
+    private function queryAccountBalances(string $companyId, Carbon $asOfDate): Collection
     {
         // NOTE: The nested $join->join() inside leftJoin() is intentional and correct.
         // Laravel compiles this as a parenthesized join group:
@@ -206,10 +208,10 @@ class TrialBalanceService
     /**
      * Filter out accounts with zero balances.
      *
-     * @param  \Illuminate\Support\Collection<int, \stdClass>  $accountBalances
-     * @return \Illuminate\Support\Collection<int, \stdClass>
+     * @param  Collection<int, \stdClass>  $accountBalances
+     * @return Collection<int, \stdClass>
      */
-    private function filterZeroBalances(\Illuminate\Support\Collection $accountBalances): \Illuminate\Support\Collection
+    private function filterZeroBalances(Collection $accountBalances): Collection
     {
         return $accountBalances->filter(function (\stdClass $account): bool {
             /** @var numeric-string $balance */
@@ -227,10 +229,10 @@ class TrialBalanceService
      * Load full Account models for hierarchy building.
      *
      * @param  string  $companyId  UUID of the company
-     * @param  \Illuminate\Support\Collection<int, \stdClass>  $balances
+     * @param  Collection<int, \stdClass>  $balances
      * @return \Illuminate\Database\Eloquent\Collection<int, Account>
      */
-    private function loadAccounts(string $companyId, \Illuminate\Support\Collection $balances): \Illuminate\Database\Eloquent\Collection
+    private function loadAccounts(string $companyId, Collection $balances): \Illuminate\Database\Eloquent\Collection
     {
         if ($balances->isEmpty()) {
             return new \Illuminate\Database\Eloquent\Collection;
@@ -294,7 +296,7 @@ class TrialBalanceService
     /**
      * Recursively set balances on tree nodes from Account attributes.
      */
-    private function setNodeBalances(\App\Modules\Accounting\Domain\Services\AccountNode $node): void
+    private function setNodeBalances(AccountNode $node): void
     {
         $node->balance = $node->account->getAttribute('calculated_balance') ?? '0.00';
 
@@ -356,7 +358,7 @@ class TrialBalanceService
      *
      * @return array{account_code: string, account_name: string, account_type: string, debit: numeric-string, credit: numeric-string, level: int, is_parent: bool}
      */
-    private function formatTrialBalanceLine(\App\Modules\Accounting\Domain\Services\AccountNode $node): array
+    private function formatTrialBalanceLine(AccountNode $node): array
     {
         $balance = $node->balance;
 
@@ -388,10 +390,10 @@ class TrialBalanceService
     /**
      * Calculate total debits and credits across all accounts.
      *
-     * @param  \Illuminate\Support\Collection<int, \stdClass>  $accountBalances
+     * @param  Collection<int, \stdClass>  $accountBalances
      * @return array{total_debit: numeric-string, total_credit: numeric-string}
      */
-    private function calculateTotals(\Illuminate\Support\Collection $accountBalances): array
+    private function calculateTotals(Collection $accountBalances): array
     {
         $totalDebit = '0.00';
         $totalCredit = '0.00';

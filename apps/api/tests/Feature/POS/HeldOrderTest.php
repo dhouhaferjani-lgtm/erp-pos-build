@@ -150,7 +150,7 @@ final class HeldOrderTest extends TestCase
             'status' => HeldOrderStatus::Recalled,
         ]);
 
-        $response = $this->getJson('/api/v1/pos/held-orders?terminal_id=' . $this->terminal->id);
+        $response = $this->getJson('/api/v1/pos/held-orders?terminal_id='.$this->terminal->id);
 
         $response->assertStatus(200);
         $response->assertJsonCount(2, 'data');
@@ -175,7 +175,7 @@ final class HeldOrderTest extends TestCase
         ]);
 
         $response = $this->getJson(
-            '/api/v1/pos/held-orders?terminal_id=' . $this->terminal->id . '&shift_id=' . $this->shift->id
+            '/api/v1/pos/held-orders?terminal_id='.$this->terminal->id.'&shift_id='.$this->shift->id
         );
 
         $response->assertStatus(200);
@@ -191,7 +191,7 @@ final class HeldOrderTest extends TestCase
             'expires_at' => now()->subMinutes(10),
         ]);
 
-        $response = $this->getJson('/api/v1/pos/held-orders?terminal_id=' . $this->terminal->id);
+        $response = $this->getJson('/api/v1/pos/held-orders?terminal_id='.$this->terminal->id);
 
         $response->assertStatus(200);
         $response->assertJsonCount(1, 'data');
@@ -202,7 +202,7 @@ final class HeldOrderTest extends TestCase
     {
         $heldOrder = $this->createHeldOrder(['label' => 'Show Me']);
 
-        $response = $this->getJson('/api/v1/pos/held-orders/' . $heldOrder->id);
+        $response = $this->getJson('/api/v1/pos/held-orders/'.$heldOrder->id);
 
         $response->assertStatus(200);
         $this->assertEquals('Show Me', $response->json('data.label'));
@@ -212,7 +212,7 @@ final class HeldOrderTest extends TestCase
     {
         $heldOrder = $this->createHeldOrder(['label' => 'Recall Me']);
 
-        $response = $this->postJson('/api/v1/pos/held-orders/' . $heldOrder->id . '/recall');
+        $response = $this->postJson('/api/v1/pos/held-orders/'.$heldOrder->id.'/recall');
 
         $response->assertStatus(200);
         $this->assertEquals('recalled', $response->json('data.status'));
@@ -231,7 +231,7 @@ final class HeldOrderTest extends TestCase
             'recalled_at' => now(),
         ]);
 
-        $response = $this->postJson('/api/v1/pos/held-orders/' . $heldOrder->id . '/recall');
+        $response = $this->postJson('/api/v1/pos/held-orders/'.$heldOrder->id.'/recall');
 
         $response->assertStatus(422);
         $response->assertJsonPath('error.code', 'RECALL_FAILED');
@@ -243,7 +243,7 @@ final class HeldOrderTest extends TestCase
             'expires_at' => now()->subMinutes(10),
         ]);
 
-        $response = $this->postJson('/api/v1/pos/held-orders/' . $heldOrder->id . '/recall');
+        $response = $this->postJson('/api/v1/pos/held-orders/'.$heldOrder->id.'/recall');
 
         $response->assertStatus(422);
         $response->assertJsonPath('error.code', 'RECALL_FAILED');
@@ -253,7 +253,7 @@ final class HeldOrderTest extends TestCase
     {
         $heldOrder = $this->createHeldOrder(['label' => 'Discard Me']);
 
-        $response = $this->deleteJson('/api/v1/pos/held-orders/' . $heldOrder->id);
+        $response = $this->deleteJson('/api/v1/pos/held-orders/'.$heldOrder->id);
 
         $response->assertStatus(200);
         $response->assertJsonPath('data.success', true);
