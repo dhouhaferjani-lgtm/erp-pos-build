@@ -74,11 +74,9 @@ return new class extends Migration
                 ->constrained('partners')
                 ->nullOnDelete();
             $table->string('core_deposit_status', 16)->nullable();
-            $table->foreignUuid('core_return_of_line_id')
-                ->nullable()
-                ->references('id')
-                ->on('workshop_work_order_lines')
-                ->nullOnDelete();
+            // Self-referential FK added after table creation so PG can resolve
+            // the unique-on-id constraint (set by ->primary()) first.
+            $table->uuid('core_return_of_line_id')->nullable();
 
             // Bundle tracking — RESTRICT keeps historical lines valid
             $table->foreignUuid('from_bundle_id')
@@ -96,6 +94,15 @@ return new class extends Migration
             $table->softDeletesTz();
 
             $table->index(['work_order_id', 'display_order'], 'idx_wwol_work_order');
+        });
+
+        // Add the self-referential FK on core_return_of_line_id now that the
+        // table (and its primary key on `id`) exists and is committed.
+        Schema::table('workshop_work_order_lines', function (Blueprint $table): void {
+            $table->foreign('core_return_of_line_id')
+                ->references('id')
+                ->on('workshop_work_order_lines')
+                ->nullOnDelete();
         });
 
         if (DB::connection()->getDriverName() === 'pgsql') {

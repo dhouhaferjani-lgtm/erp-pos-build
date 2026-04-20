@@ -12,7 +12,6 @@ use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderLineType;
 use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderStatus;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderApproved;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderPartsNeeded;
-use App\Modules\Workshop\WorkOrder\Domain\ValueObjects\PartNeed;
 use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
 use App\Modules\Workshop\WorkOrder\Domain\WorkOrderLine;
 use Illuminate\Foundation\Testing\RefreshDatabase;
