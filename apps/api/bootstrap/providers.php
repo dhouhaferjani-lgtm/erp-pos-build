@@ -40,6 +40,7 @@ use App\Modules\Uom\Infrastructure\Providers\UomServiceProvider;
 use App\Modules\Vehicle\Providers\VehicleServiceProvider;
 use App\Modules\Workshop\Bundle\Infrastructure\BundleServiceProvider;
 use App\Modules\Workshop\Technician\TechnicianServiceProvider;
+use App\Modules\Workshop\WorkOrder\Infrastructure\WorkshopWorkOrderServiceProvider;
 use App\Providers\AppServiceProvider;
 use App\Providers\BroadcastServiceProvider;
 use App\Providers\EventServiceProvider;
@@ -88,4 +89,5 @@ return [
     SmartPromptsServiceProvider::class,
     TechnicianServiceProvider::class,
     BundleServiceProvider::class,
+    WorkshopWorkOrderServiceProvider::class,
 ];
