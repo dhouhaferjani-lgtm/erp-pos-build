@@ -1,0 +1,89 @@
+{
+  "ownership": {
+    "title": "Propriété",
+    "currentOwner": "Propriétaire actuel",
+    "noOwner": "Aucun propriétaire",
+    "history": "Historique de propriété",
+    "transfer": "Transférer la propriété",
+    "transferButton": "Transférer",
+    "confirmTransfer": "Confirmer le transfert",
+    "cancel": "Annuler",
+    "newOwner": "Nouveau propriétaire",
+    "occurredAt": "Effectué le",
+    "reason": "Motif",
+    "notes": "Notes (optionnel)",
+    "notesPlaceholder": "Contexte optionnel du transfert",
+    "acquiredAt": "Acquis le",
+    "releasedAt": "Libéré le",
+    "current": "Actuel",
+    "closed": "Clos",
+    "transferSuccess": "Propriété transférée avec succès.",
+    "transferError": "Impossible de transférer la propriété. Veuillez réessayer."
+  },
+  "mileage": {
+    "title": "Kilométrage",
+    "latest": "Dernier relevé",
+    "empty": "Aucun relevé de kilométrage.",
+    "logReading": "Enregistrer un relevé",
+    "logButton": "Enregistrer",
+    "mileage": "Kilométrage",
+    "recordedAt": "Enregistré le",
+    "source": "Source",
+    "notes": "Notes (optionnel)",
+    "logSuccess": "Relevé kilométrique enregistré.",
+    "logError": "Impossible d'enregistrer le kilométrage. Veuillez réessayer."
+  },
+  "partnerVehicles": {
+    "title": "Véhicules",
+    "empty": "Ce client n'a pas encore de véhicule.",
+    "addVehicle": "Ajouter un véhicule"
+  },
+  "fuelType": {
+    "gasoline": "Essence",
+    "diesel": "Diesel",
+    "electric": "Électrique",
+    "hybrid": "Hybride",
+    "plugin_hybrid": "Hybride rechargeable",
+    "lpg": "GPL",
+    "cng": "GNV",
+    "hydrogen": "Hydrogène",
+    "other": "Autre"
+  },
+  "transmissionType": {
+    "manual": "Manuelle",
+    "automatic": "Automatique",
+    "semi_automatic": "Semi-automatique",
+    "cvt": "CVT",
+    "dual_clutch": "Double embrayage",
+    "other": "Autre"
+  },
+  "bodyType": {
+    "sedan": "Berline",
+    "hatchback": "Citadine",
+    "suv": "SUV",
+    "pickup": "Pickup",
+    "van": "Fourgon",
+    "coupe": "Coupé",
+    "convertible": "Cabriolet",
+    "wagon": "Break",
+    "truck": "Camion",
+    "motorcycle": "Moto",
+    "other": "Autre"
+  },
+  "ownershipReason": {
+    "initial_registration": "Immatriculation initiale",
+    "purchase": "Achat",
+    "sale": "Vente",
+    "transfer": "Transfert",
+    "trade_in": "Reprise",
+    "fleet_assignment": "Attribution flotte",
+    "fleet_return": "Retour flotte",
+    "other": "Autre"
+  },
+  "mileageSource": {
+    "service": "Service",
+    "manual": "Manuel",
+    "odometer_photo": "Photo odomètre",
+    "external_api": "API externe"
+  }
+}
