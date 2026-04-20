@@ -37,8 +37,10 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Uom\Domain\Entities\Unit;
 use App\Modules\Uom\Domain\Entities\UnitCategory;
 use App\Modules\Vehicle\Domain\Vehicle;
+use App\Modules\Workshop\Bundle\Domain\Enums\BundleComponentType;
 use App\Modules\Workshop\Bundle\Domain\Enums\BundlePricingMode;
 use App\Modules\Workshop\Bundle\Domain\ServiceBundle;
+use App\Modules\Workshop\Bundle\Domain\ServiceBundleComponent;
 use App\Modules\Workshop\Bundle\Domain\ServiceBundleVehicleApplicability;
 use App\Modules\Workshop\Technician\Domain\Enums\EmploymentStatus;
 use App\Modules\Workshop\Technician\Domain\Enums\SkillLevel;
@@ -205,6 +207,7 @@ class DemoTenantSeeder extends Seeder
         $this->seedAutomotiveCatalog($tenant, $company);
         $this->seedWorkshopTechnicians($tenant, $company, $user);
         $this->seedWorkshopBundles($tenant, $company);
+        $this->hydrateBundleComponents($tenant, $company);
         $this->seedWorkOrders($tenant, $company, $user);
         $this->seedScheduling($tenant, $company, $user);
 
@@ -741,6 +744,145 @@ class DemoTenantSeeder extends Seeder
                 ],
             );
         }
+    }
+
+    /**
+     * Wire components for each of the 6 seeded bundle headers. Runs after
+     * `seedAutomotiveCatalog` + `seedWorkshopBundles`; safe to re-run.
+     *
+     * @see docs/sessions/2026-04-20-autospecs-gap-closure-spec.md §2.3.5
+     */
+    private function hydrateBundleComponents(Tenant $tenant, Company $company): void
+    {
+        /** @var array<string, Product> $products */
+        $products = Product::where('tenant_id', $tenant->id)
+            ->whereIn('sku', [
+                'OIL-5W30-5L', 'OIL-10W40-5L', 'FILT-OIL-STD', 'FILT-OIL-DIESEL',
+                'FILT-AIR-STD', 'BRAKE-PAD-FRONT', 'BRAKE-DISC', 'TIRE-195-65-R15',
+                'COOLANT-1L', 'SPARK-PLUG',
+            ])
+            ->get()
+            ->keyBy('sku')
+            ->all();
+
+        /** @var array<string, Service> $services */
+        $services = Service::where('tenant_id', $tenant->id)
+            ->whereIn('code', [
+                'LAB-OIL-CHANGE', 'LAB-BRAKE-FRONT', 'LAB-ALIGN',
+                'LAB-DIAG-OBD', 'LAB-TIRE-MOUNT', 'LAB-TIMING-BELT',
+            ])
+            ->get()
+            ->keyBy('code')
+            ->all();
+
+        /** @var array<string, ServiceBundle> $bundles */
+        $bundles = ServiceBundle::where('tenant_id', $tenant->id)
+            ->where('company_id', $company->id)
+            ->whereIn('code', [
+                'VIDANGE-10K-ESSENCE', 'VIDANGE-10K-DIESEL', 'FREINAGE-AV',
+                'REVISION-40K', 'PNEUS-REMPLACEMENT-4', 'DIAGNOSTIC-OBD',
+            ])
+            ->get()
+            ->keyBy('code')
+            ->all();
+
+        $units = $this->ensureAutomotiveUnits($tenant);
+
+        /** @var array<string, list<array{type: BundleComponentType, ref_key: string, qty: string, unit_code: string}>> $recipes */
+        $recipes = [
+            'VIDANGE-10K-ESSENCE' => [
+                ['type' => BundleComponentType::Part, 'ref_key' => 'OIL-5W30-5L', 'qty' => '1.000', 'unit_code' => 'L'],
+                ['type' => BundleComponentType::Part, 'ref_key' => 'FILT-OIL-STD', 'qty' => '1.000', 'unit_code' => 'EA'],
+                ['type' => BundleComponentType::Labor, 'ref_key' => 'LAB-OIL-CHANGE', 'qty' => '0.750', 'unit_code' => 'HR'],
+            ],
+            'VIDANGE-10K-DIESEL' => [
+                ['type' => BundleComponentType::Part, 'ref_key' => 'OIL-10W40-5L', 'qty' => '1.000', 'unit_code' => 'L'],
+                ['type' => BundleComponentType::Part, 'ref_key' => 'FILT-OIL-DIESEL', 'qty' => '1.000', 'unit_code' => 'EA'],
+                ['type' => BundleComponentType::Part, 'ref_key' => 'FILT-AIR-STD', 'qty' => '1.000', 'unit_code' => 'EA'],
+                ['type' => BundleComponentType::Labor, 'ref_key' => 'LAB-OIL-CHANGE', 'qty' => '1.000', 'unit_code' => 'HR'],
+            ],
+            'FREINAGE-AV' => [
+                ['type' => BundleComponentType::Part, 'ref_key' => 'BRAKE-PAD-FRONT', 'qty' => '1.000', 'unit_code' => 'EA'],
+                ['type' => BundleComponentType::Part, 'ref_key' => 'BRAKE-DISC', 'qty' => '2.000', 'unit_code' => 'EA'],
+                ['type' => BundleComponentType::Labor, 'ref_key' => 'LAB-BRAKE-FRONT', 'qty' => '1.000', 'unit_code' => 'HR'],
+            ],
+            'REVISION-40K' => [
+                ['type' => BundleComponentType::NestedBundle, 'ref_key' => 'VIDANGE-10K-ESSENCE', 'qty' => '1.000', 'unit_code' => 'EA'],
+                ['type' => BundleComponentType::Part, 'ref_key' => 'COOLANT-1L', 'qty' => '2.000', 'unit_code' => 'L'],
+                ['type' => BundleComponentType::Part, 'ref_key' => 'SPARK-PLUG', 'qty' => '4.000', 'unit_code' => 'EA'],
+                ['type' => BundleComponentType::Labor, 'ref_key' => 'LAB-TIMING-BELT', 'qty' => '4.000', 'unit_code' => 'HR'],
+            ],
+            'PNEUS-REMPLACEMENT-4' => [
+                ['type' => BundleComponentType::Part, 'ref_key' => 'TIRE-195-65-R15', 'qty' => '4.000', 'unit_code' => 'EA'],
+                ['type' => BundleComponentType::Labor, 'ref_key' => 'LAB-TIRE-MOUNT', 'qty' => '2.000', 'unit_code' => 'HR'],
+                ['type' => BundleComponentType::Labor, 'ref_key' => 'LAB-ALIGN', 'qty' => '1.000', 'unit_code' => 'EA'],
+            ],
+            'DIAGNOSTIC-OBD' => [
+                ['type' => BundleComponentType::Labor, 'ref_key' => 'LAB-DIAG-OBD', 'qty' => '1.000', 'unit_code' => 'EA'],
+            ],
+        ];
+
+        $componentCount = 0;
+        foreach ($recipes as $bundleCode => $components) {
+            if (! isset($bundles[$bundleCode])) {
+                $this->command->warn("  - hydrateBundleComponents: missing bundle {$bundleCode}, skipping.");
+
+                continue;
+            }
+            $bundle = $bundles[$bundleCode];
+
+            foreach ($components as $index => $spec) {
+                $displayOrder = $index + 1;
+                $attributes = [
+                    'component_type' => $spec['type'],
+                    'quantity' => $spec['qty'],
+                    'unit_id' => $units[$spec['unit_code']]->id,
+                    'is_optional' => false,
+                    'product_id' => null,
+                    'service_id' => null,
+                    'nested_bundle_id' => null,
+                ];
+
+                switch ($spec['type']) {
+                    case BundleComponentType::Part:
+                        if (! isset($products[$spec['ref_key']])) {
+                            $this->command->warn("  - hydrateBundleComponents: missing product {$spec['ref_key']} for {$bundleCode}, skipping.");
+
+                            continue 2;
+                        }
+                        $attributes['product_id'] = $products[$spec['ref_key']]->id;
+                        break;
+                    case BundleComponentType::Labor:
+                        if (! isset($services[$spec['ref_key']])) {
+                            $this->command->warn("  - hydrateBundleComponents: missing service {$spec['ref_key']} for {$bundleCode}, skipping.");
+
+                            continue 2;
+                        }
+                        $attributes['service_id'] = $services[$spec['ref_key']]->id;
+                        break;
+                    case BundleComponentType::NestedBundle:
+                        if (! isset($bundles[$spec['ref_key']])) {
+                            $this->command->warn("  - hydrateBundleComponents: missing nested bundle {$spec['ref_key']} for {$bundleCode}, skipping.");
+
+                            continue 2;
+                        }
+                        $attributes['nested_bundle_id'] = $bundles[$spec['ref_key']]->id;
+                        break;
+                }
+
+                ServiceBundleComponent::updateOrCreate(
+                    [
+                        'tenant_id' => $tenant->id,
+                        'bundle_id' => $bundle->id,
+                        'display_order' => $displayOrder,
+                    ],
+                    $attributes,
+                );
+                $componentCount++;
+            }
+        }
+
+        $this->command->line("  - Bundle components: hydrated {$componentCount} component rows across ".count($recipes).' bundles.');
     }
 
     /**

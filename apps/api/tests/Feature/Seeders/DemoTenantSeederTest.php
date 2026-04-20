@@ -21,7 +21,6 @@ use App\Modules\Workshop\Technician\Domain\TechnicianProfile;
 use Database\Seeders\DemoTenantSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 /**
