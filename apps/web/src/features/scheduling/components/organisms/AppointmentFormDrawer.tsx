@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { textColors, tokens } from '@/lib/designTokens'
 import { ConflictAlert } from '../molecules/ConflictAlert'
@@ -70,9 +70,18 @@ function isConflictError(err: unknown): err is { response: { status: number; dat
  * so the backend's `planned_services` rule passes. Richer service pickers
  * live behind the AppointmentDetailPage (cross-module BundlePicker in the
  * follow-up patch).
+ *
+ * State reset on reopen is handled by keying the inner content on `isOpen`
+ * (and the initial* props) — React remounts the form, letting
+ * `useState(initialValue)` apply naturally without a reset effect.
  */
-export function AppointmentFormDrawer({
-  isOpen,
+export function AppointmentFormDrawer(props: AppointmentFormDrawerProps) {
+  if (!props.isOpen) return null
+  const resetKey = `${props.initialStart ?? ''}|${props.initialEnd ?? ''}|${props.initialBayId ?? ''}`
+  return <AppointmentFormDrawerContent key={resetKey} {...props} />
+}
+
+function AppointmentFormDrawerContent({
   locationId,
   onClose,
   onBooked,
@@ -101,30 +110,6 @@ export function AppointmentFormDrawer({
   })
   const [conflict, setConflict] = useState<ConflictDetail | null>(null)
   const [genericError, setGenericError] = useState<string | null>(null)
-
-  // Reset state whenever the drawer reopens.
-  useEffect(() => {
-    if (!isOpen) return
-    setForm({
-      customer_name: '',
-      customer_phone: '',
-      vehicle_plate: '',
-      vehicle_description: '',
-      appointment_type: 'standard_repair',
-      wait_type: 'drop_off',
-      scheduled_start: toDateTimeLocal(initialStart),
-      scheduled_end: toDateTimeLocal(initialEnd),
-      estimated_duration_minutes: 60,
-      bay_id: initialBayId ?? '',
-      customer_notes: '',
-      internal_notes: '',
-      services_summary: '',
-    })
-    setConflict(null)
-    setGenericError(null)
-  }, [isOpen, initialStart, initialEnd, initialBayId])
-
-  if (!isOpen) return null
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]): void => {
     setForm((prev) => ({ ...prev, [key]: value }))
