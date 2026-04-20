@@ -169,11 +169,16 @@ class RolesAndPermissionsSeeder extends Seeder
             'reports.operational',
             'reports.manage',  // VAT period management
 
-            // Workshop
+            // Workshop — Work Orders (Spec B)
             'work-orders.view',
             'work-orders.create',
             'work-orders.update',
+            'work-orders.approve',
+            'work-orders.assign',
+            'work-orders.transition',
+            'work-orders.cancel',
             'work-orders.complete',
+            'work-orders.view_financials',
 
             // Workshop — Technicians (Spec C)
             'workshop.technicians.view',
@@ -308,7 +313,9 @@ class RolesAndPermissionsSeeder extends Seeder
             'journal.view',
             'accounts.view', 'accounts.manage',
             'reports.financial', 'reports.operational', 'reports.manage',
-            'work-orders.view', 'work-orders.create', 'work-orders.update', 'work-orders.complete',
+            'work-orders.view', 'work-orders.create', 'work-orders.update',
+            'work-orders.approve', 'work-orders.assign', 'work-orders.transition',
+            'work-orders.cancel', 'work-orders.complete', 'work-orders.view_financials',
             'workshop.technicians.view', 'workshop.technicians.manage',
             'workshop.technicians.view_pay', 'workshop.technicians.view_pii',
             'workshop.technicians.approve_time_off', 'workshop.technicians.adjust_time_entries',
@@ -414,6 +421,8 @@ class RolesAndPermissionsSeeder extends Seeder
             // those are admin/manager scope; PII masking is enforced at DTO layer.
             'workshop.technicians.view',
             'workshop-bundles.view',
+            // Technicians cannot approve/cancel WOs nor see financials (those are
+            // manager/accountant scope); DTO-level redaction enforces the latter.
         ]);
         $this->command->info('Created role: technician');
 
@@ -435,6 +444,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'deliveries.view', 'deliveries.create',
             'payments.view', 'payments.create',
             'work-orders.view', 'work-orders.create', 'work-orders.update',
+            'work-orders.transition', 'work-orders.complete',
             'workshop.technicians.view',
             'workshop-bundles.view', 'workshop-bundles.manage',
             'marketplace.browse',
@@ -461,6 +471,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'withholding.view', 'withholding.create', 'withholding.update',
             'audit.view',
             'compliance.export_jet', 'compliance.verify_chains', 'compliance.view_reprint_log',
+            'work-orders.view', 'work-orders.view_financials',
         ]);
         $this->command->info('Created role: accountant');
     }
