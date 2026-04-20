@@ -37,6 +37,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Google reCAPTCHA v3 — used by the public Scheduling storefront endpoints
+    | (apps/api/app/Modules/Scheduling). The secret key is server-side only.
+    | RECAPTCHA_MIN_SCORE is the threshold below which verify() returns false;
+    | default 0.5 balances friction vs bot traffic per Google's guidance.
+    |--------------------------------------------------------------------------
+    */
+
+    'recaptcha' => [
+        'secret_key' => env('RECAPTCHA_SECRET_KEY', ''),
+        'min_score' => (float) env('RECAPTCHA_MIN_SCORE', 0.5),
+        'hostname' => env('RECAPTCHA_HOSTNAME'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Payment Providers
     |--------------------------------------------------------------------------
     */

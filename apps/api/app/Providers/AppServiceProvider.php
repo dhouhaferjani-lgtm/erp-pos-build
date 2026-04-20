@@ -169,5 +169,28 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('public-product-images', function (Request $request): Limit {
             return Limit::perMinute(100)->by($request->ip() ?? 'unknown');
         });
+
+        // Storefront appointment booking - 10 requests per minute per IP + company pair.
+        // The {company_id} route parameter is the companies.uuid primary key.
+        RateLimiter::for('storefront-booking-ip', function (Request $request): Limit {
+            $ip = $request->ip() ?? 'unknown';
+            $companyId = (string) ($request->route('company_id') ?? 'none');
+
+            return Limit::perMinute(10)->by($ip.'|'.$companyId);
+        });
+
+        // Storefront appointment booking - daily cap keyed on company_id + sha256(phone).
+        // 5 bookings per calendar day per (company, phone). Phones are hashed so the
+        // cache key space does not leak PII. When no phone is supplied we fall back
+        // to the IP address so the rule still throttles anonymous traffic.
+        RateLimiter::for('storefront-booking-company-phone', function (Request $request): Limit {
+            $companyId = (string) ($request->route('company_id') ?? 'none');
+            $phone = trim((string) $request->input('phone', ''));
+            $digest = $phone !== ''
+                ? hash('sha256', $phone)
+                : ('ip:'.($request->ip() ?? 'unknown'));
+
+            return Limit::perDay(5)->by($companyId.'|'.$digest);
+        });
     }
 }

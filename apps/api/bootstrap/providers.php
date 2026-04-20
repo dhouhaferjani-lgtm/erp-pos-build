@@ -31,6 +31,7 @@ use App\Modules\Product\ProductServiceProvider;
 use App\Modules\Progression\Providers\ProgressionServiceProvider;
 use App\Modules\Promotion\Providers\PromotionServiceProvider;
 use App\Modules\PurchaseHub\Providers\PurchaseHubServiceProvider;
+use App\Modules\Scheduling\SchedulingServiceProvider;
 use App\Modules\Service\Providers\ServiceModuleServiceProvider;
 use App\Modules\SmartPrompts\Providers\SmartPromptsServiceProvider;
 use App\Modules\Taxation\Providers\TaxationServiceProvider;
@@ -90,4 +91,5 @@ return [
     TechnicianServiceProvider::class,
     BundleServiceProvider::class,
     WorkshopWorkOrderServiceProvider::class,
+    SchedulingServiceProvider::class,
 ];

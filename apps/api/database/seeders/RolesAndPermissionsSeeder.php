@@ -188,6 +188,15 @@ class RolesAndPermissionsSeeder extends Seeder
             'workshop.technicians.approve_time_off',
             'workshop.technicians.adjust_time_entries',
 
+            // Scheduling — Bays + Appointments (Spec D / Plan D)
+            'scheduling.bays.view',
+            'scheduling.bays.manage',
+            'scheduling.appointments.view',
+            'scheduling.appointments.create',
+            'scheduling.appointments.update',
+            'scheduling.appointments.cancel',
+            'scheduling.appointments.convert',
+
             // User & Tenant Management
             'users.view',
             'users.create',
@@ -319,6 +328,10 @@ class RolesAndPermissionsSeeder extends Seeder
             'workshop.technicians.view', 'workshop.technicians.manage',
             'workshop.technicians.view_pay', 'workshop.technicians.view_pii',
             'workshop.technicians.approve_time_off', 'workshop.technicians.adjust_time_entries',
+            'scheduling.bays.view', 'scheduling.bays.manage',
+            'scheduling.appointments.view', 'scheduling.appointments.create',
+            'scheduling.appointments.update', 'scheduling.appointments.cancel',
+            'scheduling.appointments.convert',
             'users.view',
             'pos.manage_terminals', 'pos.operate_terminal', 'pos.manage_shifts', 'pos.manage_tables',
             'pos.view_reports', 'pos.void_receipts', 'pos.view_receipts', 'pos.process_returns',
@@ -421,6 +434,10 @@ class RolesAndPermissionsSeeder extends Seeder
             // those are admin/manager scope; PII masking is enforced at DTO layer.
             'workshop.technicians.view',
             'workshop-bundles.view',
+            // Technicians can view bays + their own upcoming appointments
+            // (list / show only — no create / update / cancel).
+            'scheduling.bays.view',
+            'scheduling.appointments.view',
             // Technicians cannot approve/cancel WOs nor see financials (those are
             // manager/accountant scope); DTO-level redaction enforces the latter.
         ]);
@@ -447,6 +464,11 @@ class RolesAndPermissionsSeeder extends Seeder
             'work-orders.transition', 'work-orders.complete',
             'workshop.technicians.view',
             'workshop-bundles.view', 'workshop-bundles.manage',
+            // Scheduling: operators run the bay/calendar + appointment flow
+            // except manage-bay + convert (reserved for manager/admin).
+            'scheduling.bays.view',
+            'scheduling.appointments.view', 'scheduling.appointments.create',
+            'scheduling.appointments.update', 'scheduling.appointments.cancel',
             'marketplace.browse',
             'catalog_cart.view', 'catalog_cart.create',
         ]);
@@ -472,6 +494,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'audit.view',
             'compliance.export_jet', 'compliance.verify_chains', 'compliance.view_reprint_log',
             'work-orders.view', 'work-orders.view_financials',
+            // Accountant can view scheduling for audit / cancellation reporting.
+            'scheduling.bays.view', 'scheduling.appointments.view',
         ]);
         $this->command->info('Created role: accountant');
     }

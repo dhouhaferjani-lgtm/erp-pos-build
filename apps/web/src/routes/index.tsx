@@ -209,6 +209,11 @@ const WorkshopWorkOrderListPage = lazy(() => import('../features/workshop-work-o
 const WorkshopWorkOrderDetailPage = lazy(() => import('../features/workshop-work-orders/pages/WorkOrderDetailPage').then((m) => ({ default: m.WorkOrderDetailPage })))
 const WorkshopWorkOrderCreatePage = lazy(() => import('../features/workshop-work-orders/pages/WorkOrderCreatePage').then((m) => ({ default: m.WorkOrderCreatePage })))
 
+// Scheduling module (Spec D)
+const SchedulerPage = lazy(() => import('../features/scheduling/pages/SchedulerPage').then((m) => ({ default: m.SchedulerPage })))
+const SchedulingAppointmentDetailPage = lazy(() => import('../features/scheduling/pages/AppointmentDetailPage').then((m) => ({ default: m.AppointmentDetailPage })))
+const SchedulingCapacityReportPage = lazy(() => import('../features/scheduling/pages/CapacityReportPage').then((m) => ({ default: m.CapacityReportPage })))
+
 // CRM module
 const CrmCompanyListPage = lazy(() => import('../features/crm/pages/CompanyListPage').then((m) => ({ default: m.CompanyListPage })))
 const CrmContactListPage = lazy(() => import('../features/crm/pages/ContactListPage').then((m) => ({ default: m.ContactListPage })))
@@ -1233,6 +1238,40 @@ export function AppRoutes() {
               <RequirePermission permission="work-orders.view">
                 <SuspenseWrapper>
                   <WorkshopWorkOrderDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+        </Route>
+
+        {/* Scheduling Module (Spec D) */}
+        <Route path="scheduling">
+          <Route
+            index
+            element={
+              <RequirePermission permission="scheduling.appointments.view">
+                <SuspenseWrapper>
+                  <SchedulerPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="appointments/:id"
+            element={
+              <RequirePermission permission="scheduling.appointments.view">
+                <SuspenseWrapper>
+                  <SchedulingAppointmentDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="capacity"
+            element={
+              <RequirePermission permission="scheduling.appointments.view">
+                <SuspenseWrapper>
+                  <SchedulingCapacityReportPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

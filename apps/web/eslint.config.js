@@ -155,6 +155,7 @@ export default tseslint.config(
   {
     files: [
       'src/features/autospecs/**/*.{ts,tsx}',
+      'src/features/scheduling/**/*.{ts,tsx}',
       'src/features/workshop-bundles/**/*.{ts,tsx}',
       'src/features/workshop-technicians/**/*.{ts,tsx}',
       'src/features/workshop-work-orders/**/*.{ts,tsx}',
@@ -178,6 +179,24 @@ export default tseslint.config(
         {
           selector: 'Literal[value=/\\b(bg|text|border|ring)-(red|blue|green|yellow|gray|purple|pink|indigo)-(\\d{2,3})\\b/]',
           message: 'Hardcoded Tailwind color classes are not allowed in new features. Use design tokens from lib/designTokens.ts instead. Example: tokens.input.base, tokens.button.primary',
+        },
+      ],
+    },
+  },
+  // Scheduling-specific tightening — the scheduler uses a wider palette
+  // (slate/sky/amber/violet/emerald/stone/rose/zinc) for status nuance, so
+  // semantic tokens (tokens.statusBadge.*, tokens.utilizationBar.*,
+  // tokens.toggleButton.*) were added in designTokens.ts to cover them.
+  // This override forbids the extra palettes as hardcoded literals in
+  // scheduling source files to prevent regressions.
+  {
+    files: ['src/features/scheduling/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'Literal[value=/\\b(bg|text|border|ring)-(red|blue|green|yellow|gray|purple|pink|indigo|slate|sky|amber|violet|emerald|stone|rose|zinc|teal|cyan|lime|orange|fuchsia|neutral)-(\\d{2,3})\\b/]',
+          message: 'Hardcoded Tailwind color classes are not allowed in scheduling. Use design tokens from lib/designTokens.ts (tokens.statusBadge.*, tokens.utilizationBar.*, tokens.toggleButton.*).',
         },
       ],
     },

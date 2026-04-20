@@ -10,9 +10,21 @@ use App\Modules\Billing\Domain\TenantSubscription;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Scheduling\Application\Services\AppointmentConversionService;
+use App\Modules\Scheduling\Domain\Appointment;
+use App\Modules\Scheduling\Domain\AppointmentService as SchedulingAppointmentService;
+use App\Modules\Scheduling\Domain\Bay;
+use App\Modules\Scheduling\Domain\Contracts\AppointmentSequenceInterface;
+use App\Modules\Scheduling\Domain\Enums\AppointmentSource;
+use App\Modules\Scheduling\Domain\Enums\AppointmentStatus;
+use App\Modules\Scheduling\Domain\Enums\AppointmentType;
+use App\Modules\Scheduling\Domain\Enums\BayType;
+use App\Modules\Scheduling\Domain\Enums\WaitType;
+use App\Modules\Scheduling\Domain\ScheduleConfig;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -24,6 +36,7 @@ use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderStatus;
 use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderType;
 use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
@@ -159,6 +172,7 @@ class DemoTenantSeeder extends Seeder
 
         $this->seedWorkshopBundles($tenant, $company);
         $this->seedWorkOrders($tenant, $company, $user);
+        $this->seedScheduling($tenant, $company, $user);
 
         $this->command->info("Created unlimited demo tenant: {$tenant->name}");
         $this->command->line('  - Email: admin@demo.local');
@@ -420,6 +434,253 @@ class DemoTenantSeeder extends Seeder
         }
 
         $this->command->line('  - Seeded 5 demo work orders across statuses.');
+    }
+
+    /**
+     * Seed Scheduling demo data: 3 bays, 1 schedule config, 10-15
+     * appointments across the next 7 days covering every relevant status
+     * (Scheduled, Confirmed, CheckedIn, Converted, Cancelled). Two of the
+     * converted appointments are actually converted via
+     * `AppointmentConversionService::convertToWorkOrder` so the Plan-B
+     * mirror wiring is exercised end-to-end in demos.
+     *
+     * Idempotent via a sentinel-row check on `scheduling_bays`.
+     */
+    private function seedScheduling(Tenant $tenant, Company $company, User $openedBy): void
+    {
+        if (Bay::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('company_id', $company->id)
+            ->exists()
+        ) {
+            return;
+        }
+
+        // Ensure a default Location exists for the company. The backfill
+        // migration creates one automatically for existing companies, but
+        // when the seeder runs against a fresh DB the company row was
+        // just created so we make sure a `Main Location` exists.
+        $location = Location::firstOrCreate(
+            [
+                'company_id' => $company->id,
+                'code' => 'MAIN',
+            ],
+            [
+                'name' => 'Main Location',
+                'type' => 'shop',
+                'address_country' => $company->country_code,
+                'is_default' => true,
+                'is_active' => true,
+            ],
+        );
+
+        // Typical automotive shop operating hours: Mon-Fri 08:00-18:00,
+        // Sat 08:00-13:00, Sun closed. Same shape the Bay `operating_hours`
+        // jsonb column expects.
+        $operatingHours = [
+            'mon' => [['start' => '08:00', 'end' => '18:00']],
+            'tue' => [['start' => '08:00', 'end' => '18:00']],
+            'wed' => [['start' => '08:00', 'end' => '18:00']],
+            'thu' => [['start' => '08:00', 'end' => '18:00']],
+            'fri' => [['start' => '08:00', 'end' => '18:00']],
+            'sat' => [['start' => '08:00', 'end' => '13:00']],
+            'sun' => [],
+        ];
+
+        $baySpecs = [
+            ['code' => 'B1', 'name' => 'Bay 1', 'type' => BayType::General, 'order' => 1],
+            ['code' => 'B2', 'name' => 'Bay 2', 'type' => BayType::QuickService, 'order' => 2],
+            ['code' => 'ALN', 'name' => 'Alignment Bay', 'type' => BayType::Alignment, 'order' => 3],
+        ];
+
+        /** @var list<Bay> $bays */
+        $bays = [];
+        foreach ($baySpecs as $spec) {
+            $bay = new Bay;
+            $bay->id = (string) Str::uuid();
+            $bay->tenant_id = $tenant->id;
+            $bay->company_id = $company->id;
+            $bay->location_id = $location->id;
+            $bay->code = $spec['code'];
+            $bay->name = $spec['name'];
+            $bay->bay_type = $spec['type'];
+            $bay->display_order = $spec['order'];
+            $bay->operating_hours = $operatingHours;
+            $bay->is_active = true;
+            $bay->save();
+            $bays[] = $bay;
+        }
+
+        // Per-location schedule config — 15-minute slots, 60-minute default
+        // appointment duration, hybrid online booking enabled for demo.
+        $config = ScheduleConfig::firstOrCreate(
+            [
+                'tenant_id' => $tenant->id,
+                'company_id' => $company->id,
+                'location_id' => $location->id,
+            ],
+            [
+                'time_slot_minutes' => 15,
+                'default_appointment_duration_minutes' => 60,
+                'walk_in_buffer_hours_per_day' => '2.00',
+                'overbooking_threshold_percent' => 100,
+                'online_booking_enabled' => true,
+                'online_booking_advance_days' => 14,
+                'online_booking_min_notice_hours' => 2,
+                'online_booking_auto_confirm' => false,
+                'reminder_sms_hours_before' => 24,
+                'reminder_email_hours_before' => 48,
+            ],
+        );
+        unset($config); // Intentionally unused after creation — hydrated via fresh reads.
+
+        // Reuse the partner+vehicle pairs already seeded by seedWorkOrders
+        // so every appointment has a concrete customer + vehicle (required
+        // by AppointmentConversionService::assertConvertible).
+        $partners = Partner::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('company_id', $company->id)
+            ->where('type', 'customer')
+            ->orderBy('code')
+            ->take(5)
+            ->get();
+
+        $vehicles = Vehicle::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('company_id', $company->id)
+            ->orderBy('license_plate')
+            ->take(5)
+            ->get();
+
+        if ($partners->isEmpty() || $vehicles->isEmpty()) {
+            $this->command->warn('  - Cannot seed scheduling appointments: no partners/vehicles seeded. Run seedWorkOrders first.');
+
+            return;
+        }
+
+        // Grab one seeded bundle for the `service_ref_id` of the planned-
+        // service rows. Bundle ID is required so that the WorkOrder
+        // conversion path (`addBundle`) resolves to a real bundle.
+        $bundle = ServiceBundle::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('company_id', $company->id)
+            ->orderBy('code')
+            ->first();
+
+        /** @var AppointmentSequenceInterface $sequencer */
+        $sequencer = app(AppointmentSequenceInterface::class);
+        $year = (int) now()->format('Y');
+
+        /** @var list<array{offset_days: int, hour: int, minutes_duration: int, status: AppointmentStatus, type: AppointmentType, source: AppointmentSource, convert: bool}> $plan */
+        $plan = [
+            ['offset_days' => 0, 'hour' => 9, 'minutes_duration' => 60, 'status' => AppointmentStatus::Scheduled, 'type' => AppointmentType::StandardRepair, 'source' => AppointmentSource::Manual, 'convert' => false],
+            ['offset_days' => 0, 'hour' => 10, 'minutes_duration' => 45, 'status' => AppointmentStatus::Confirmed, 'type' => AppointmentType::QuickService, 'source' => AppointmentSource::Phone, 'convert' => true],
+            ['offset_days' => 0, 'hour' => 14, 'minutes_duration' => 90, 'status' => AppointmentStatus::CheckedIn, 'type' => AppointmentType::Diagnostic, 'source' => AppointmentSource::Online, 'convert' => true],
+            ['offset_days' => 0, 'hour' => 16, 'minutes_duration' => 60, 'status' => AppointmentStatus::Cancelled, 'type' => AppointmentType::TireService, 'source' => AppointmentSource::Phone, 'convert' => false],
+            ['offset_days' => 1, 'hour' => 8, 'minutes_duration' => 120, 'status' => AppointmentStatus::Scheduled, 'type' => AppointmentType::MajorRepair, 'source' => AppointmentSource::Manual, 'convert' => false],
+            ['offset_days' => 1, 'hour' => 11, 'minutes_duration' => 60, 'status' => AppointmentStatus::Confirmed, 'type' => AppointmentType::Maintenance, 'source' => AppointmentSource::Online, 'convert' => false],
+            ['offset_days' => 2, 'hour' => 9, 'minutes_duration' => 45, 'status' => AppointmentStatus::Scheduled, 'type' => AppointmentType::Inspection, 'source' => AppointmentSource::Walkin, 'convert' => false],
+            ['offset_days' => 2, 'hour' => 15, 'minutes_duration' => 90, 'status' => AppointmentStatus::Confirmed, 'type' => AppointmentType::Bodywork, 'source' => AppointmentSource::Phone, 'convert' => false],
+            ['offset_days' => 3, 'hour' => 8, 'minutes_duration' => 60, 'status' => AppointmentStatus::Scheduled, 'type' => AppointmentType::StandardRepair, 'source' => AppointmentSource::Manual, 'convert' => false],
+            ['offset_days' => 4, 'hour' => 10, 'minutes_duration' => 60, 'status' => AppointmentStatus::Scheduled, 'type' => AppointmentType::QuickService, 'source' => AppointmentSource::Online, 'convert' => false],
+            ['offset_days' => 5, 'hour' => 9, 'minutes_duration' => 120, 'status' => AppointmentStatus::Confirmed, 'type' => AppointmentType::Diagnostic, 'source' => AppointmentSource::Manual, 'convert' => false],
+            ['offset_days' => 6, 'hour' => 11, 'minutes_duration' => 60, 'status' => AppointmentStatus::Cancelled, 'type' => AppointmentType::Maintenance, 'source' => AppointmentSource::Phone, 'convert' => false],
+        ];
+
+        $converted = 0;
+        foreach ($plan as $i => $spec) {
+            /** @var Partner $partner */
+            $partner = $partners[$i % $partners->count()];
+            /** @var Vehicle $vehicle */
+            $vehicle = $vehicles[$i % $vehicles->count()];
+            /** @var Bay $bay */
+            $bay = $bays[$i % count($bays)];
+
+            $start = Carbon::now()
+                ->startOfDay()
+                ->addDays($spec['offset_days'])
+                ->addHours($spec['hour']);
+            $end = $start->copy()->addMinutes($spec['minutes_duration']);
+
+            $appointment = new Appointment;
+            $appointment->id = (string) Str::uuid();
+            $appointment->tenant_id = $tenant->id;
+            $appointment->company_id = $company->id;
+            $appointment->location_id = $location->id;
+            $appointment->appointment_number = $sequencer->nextNumber($company->id, $year);
+            $appointment->bay_id = $bay->id;
+            $appointment->primary_technician_profile_id = null;
+            $appointment->customer_partner_id = $partner->id;
+            $appointment->vehicle_id = $vehicle->id;
+            $appointment->customer_name = $partner->name;
+            $appointment->customer_phone = $partner->phone;
+            $appointment->customer_email = $partner->email;
+            $appointment->vehicle_plate = $vehicle->license_plate;
+            $appointment->vehicle_description = trim(($vehicle->brand ?? '').' '.($vehicle->model ?? ''));
+            $appointment->appointment_type = $spec['type'];
+            $appointment->wait_type = WaitType::DropOff;
+            $appointment->status = $spec['status'];
+            $appointment->scheduled_start = $start;
+            $appointment->scheduled_end = $end;
+            $appointment->estimated_duration_minutes = $spec['minutes_duration'];
+            $appointment->actual_arrival_at = $spec['status'] === AppointmentStatus::CheckedIn
+                ? $start->copy()->subMinutes(5)
+                : null;
+            $appointment->services_summary = "Demo appointment — {$spec['type']->value}";
+            $appointment->source = $spec['source'];
+            $appointment->is_auto_confirmed = false;
+            $appointment->save();
+
+            // One planned-service row per appointment, pointing at a seeded
+            // bundle when available (required for the convert path to land
+            // a real WorkOrder line via `addBundle`).
+            if ($bundle !== null) {
+                $service = new SchedulingAppointmentService;
+                $service->id = (string) Str::uuid();
+                $service->tenant_id = $tenant->id;
+                $service->appointment_id = $appointment->id;
+                $service->service_ref_type = SchedulingAppointmentService::REF_TYPE_BUNDLE;
+                $service->service_ref_id = $bundle->id;
+                $service->display_name = $bundle->name;
+                $service->estimated_duration_minutes = $spec['minutes_duration'];
+                $service->estimated_price = $bundle->base_price ?? '0.000';
+                $service->display_order = 0;
+                $service->save();
+            }
+
+            // For the two appointments flagged `convert`, actually run the
+            // Plan-B conversion path so the Mirror* listeners get exercised.
+            // We restore the original `status` after the conversion because
+            // AppointmentConversionService keeps the pre-conversion status
+            // intact (per Spec D §7.2) — the Mirror listeners advance it
+            // when the WorkOrder transitions, which isn't happening here.
+            if ($spec['convert'] && $converted < 2 && $bundle !== null) {
+                $originalStatus = $appointment->status;
+                /** @var AppointmentConversionService $conversion */
+                $conversion = app(AppointmentConversionService::class);
+                try {
+                    $conversion->convertToWorkOrder($appointment->id, $openedBy->id);
+                    $converted++;
+                    // Re-hydrate and keep the demo-friendly status so the
+                    // Scheduler view still shows "Confirmed" / "CheckedIn"
+                    // rather than the (unchanged) pre-conversion status.
+                    $fresh = $appointment->fresh();
+                    if ($fresh !== null) {
+                        $fresh->status = $originalStatus;
+                        $fresh->save();
+                    }
+                } catch (\Throwable $e) {
+                    $this->command->warn("  - Skipped conversion for demo appointment: {$e->getMessage()}");
+                }
+            }
+        }
+
+        $this->command->line(sprintf(
+            '  - Seeded %d bays + 1 schedule config + %d appointments (%d converted to work orders) for mechanic demo.',
+            count($bays),
+            count($plan),
+            $converted,
+        ));
     }
 
     /**

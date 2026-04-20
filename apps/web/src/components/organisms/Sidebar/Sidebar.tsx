@@ -52,6 +52,7 @@ import {
   Search,
   Sparkles,
   Package2,
+  Calendar,
 } from 'lucide-react'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useCompanyConfig } from '../../../contexts'
@@ -91,6 +92,7 @@ const MODULE_NAME_MAP: Record<string, string | string[]> = {
   services: 'Workshop',
   'workshop-bundles': 'Workshop',
   'workshop-work-orders': 'Workshop',
+  scheduling: 'Workshop',
   'composite-items': 'CompositeItems',
   parapharmacy: 'Parapharmacy',
   'parts-catalog': 'PlatformIntegration',
@@ -274,6 +276,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
       // Only duplicate services into the Automotive group when the tenant's
       // vertical is automotive — otherwise services live under Inventory.
       ...(isAutomotiveVertical ? servicesChildren : []),
+      { key: 'scheduling', href: '/scheduling', icon: Calendar, module: 'scheduling' },
       { key: 'workshopWorkOrders', href: '/workshop/work-orders', icon: ClipboardList, module: 'workshop-work-orders' },
       { key: 'workshopBundles', href: '/workshop/bundles', icon: Package2, module: 'workshop-bundles' },
       { key: 'workshopTechnicians', href: '/workshop/technicians', icon: Users, module: 'workshop-technicians' },
