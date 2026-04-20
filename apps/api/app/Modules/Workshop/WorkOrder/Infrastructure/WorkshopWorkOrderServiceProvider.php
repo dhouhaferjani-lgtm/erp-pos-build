@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Workshop\WorkOrder\Infrastructure;
 
+use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderAssignmentService;
 use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderAuthoringService;
 use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderBundleService;
 use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderLineService;
@@ -41,6 +42,7 @@ final class WorkshopWorkOrderServiceProvider extends ServiceProvider
         $this->app->singleton(WorkOrderAuthoringService::class);
         $this->app->singleton(WorkOrderLineService::class);
         $this->app->singleton(WorkOrderBundleService::class);
+        $this->app->singleton(WorkOrderAssignmentService::class);
         // TransitionService and CreationService bindings land in Tasks 12 + 14.
     }
 }
