@@ -21,6 +21,13 @@
     "lead": "Responsable",
     "history": "Historique"
   },
+  "complete_dialog": {
+    "title": "Clôturer l'ordre de réparation",
+    "mileage_label": "Kilométrage à la clôture",
+    "mileage_hint": "Laisser vide pour ignorer",
+    "confirm": "Clôturer",
+    "cancel": "Annuler"
+  },
   "create": {
     "title": "Nouvel ordre",
     "subtitle": "Démarrer un travail depuis la réception."

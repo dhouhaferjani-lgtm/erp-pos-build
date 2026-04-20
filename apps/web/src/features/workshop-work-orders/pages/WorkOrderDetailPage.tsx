@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Wrench } from 'lucide-react'
@@ -9,6 +10,7 @@ import { ApprovalBadge } from '../components/ApprovalBadge'
 import { TransitionBar } from '../components/TransitionBar'
 import { TotalsPanel } from '../components/TotalsPanel'
 import { WorkOrderLineRow } from '../components/WorkOrderLineRow'
+import { CompleteWorkOrderDialog } from '../components/CompleteWorkOrderDialog'
 import {
   useApproveWorkOrder,
   useCancelWorkOrder,
@@ -26,6 +28,7 @@ export function WorkOrderDetailPage() {
   const approveMutation = useApproveWorkOrder(id ?? '')
   const cancelMutation = useCancelWorkOrder(id ?? '')
   const completeMutation = useCompleteWorkOrder(id ?? '')
+  const [isCompleteDialogOpen, setIsCompleteDialogOpen] = useState(false)
 
   const { hasPermission } = usePermissions()
   const canTransition = hasPermission('work-orders.transition')
@@ -76,7 +79,20 @@ export function WorkOrderDetailPage() {
     cancelMutation.mutate({ reason_code: 'customer_declined' })
   }
   const handleComplete = () => {
-    completeMutation.mutate({})
+    setIsCompleteDialogOpen(true)
+  }
+  const handleCompleteConfirm = (payload: { completion_mileage: number | null }) => {
+    completeMutation.mutate(
+      {
+        completion_mileage: payload.completion_mileage,
+        expected_updated_at: wo.updated_at,
+      },
+      {
+        onSuccess: () => {
+          setIsCompleteDialogOpen(false)
+        },
+      },
+    )
   }
 
   return (
@@ -174,6 +190,15 @@ export function WorkOrderDetailPage() {
           </ul>
         </div>
       )}
+
+      <CompleteWorkOrderDialog
+        isOpen={isCompleteDialogOpen}
+        onClose={() => {
+          setIsCompleteDialogOpen(false)
+        }}
+        onConfirm={handleCompleteConfirm}
+        isPending={completeMutation.isPending}
+      />
     </div>
   )
 }

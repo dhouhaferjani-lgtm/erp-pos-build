@@ -21,6 +21,13 @@
     "lead": "Lead",
     "history": "History"
   },
+  "complete_dialog": {
+    "title": "Complete work order",
+    "mileage_label": "Vehicle mileage at completion",
+    "mileage_hint": "Leave empty to skip mileage logging",
+    "confirm": "Complete",
+    "cancel": "Cancel"
+  },
   "create": {
     "title": "New work order",
     "subtitle": "Start a new job from intake."
