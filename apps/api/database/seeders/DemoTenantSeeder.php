@@ -523,7 +523,7 @@ class DemoTenantSeeder extends Seeder
                 'time_slot_minutes' => 15,
                 'default_appointment_duration_minutes' => 60,
                 'walk_in_buffer_hours_per_day' => '2.00',
-                'overbooking_threshold_percent' => 10,
+                'overbooking_threshold_percent' => 100,
                 'online_booking_enabled' => true,
                 'online_booking_advance_days' => 14,
                 'online_booking_min_notice_hours' => 2,

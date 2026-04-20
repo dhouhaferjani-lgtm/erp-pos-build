@@ -38,7 +38,7 @@ final class SchedulingServiceProvider extends ServiceProvider
         $this->app->bind(AppointmentSequenceInterface::class, EloquentAppointmentSequence::class);
 
         $this->app->singleton(CaptchaVerifierInterface::class, static function (Application $app): CaptchaVerifierInterface {
-            if ($app->environment('testing')) {
+            if ($app->environment('testing', 'local')) {
                 return new AlwaysPassCaptchaVerifier;
             }
 
