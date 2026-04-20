@@ -155,7 +155,6 @@ export default tseslint.config(
   {
     files: [
       'src/features/autospecs/**/*.{ts,tsx}',
-      'src/features/marketing/**/*.{ts,tsx}',
       'src/features/workshop-bundles/**/*.{ts,tsx}',
       'src/features/workshop-technicians/**/*.{ts,tsx}',
     ],
