@@ -1,11 +1,27 @@
+// Minimal, self-contained select-based partner picker. Will migrate to a
+// dedicated <VehiclePartnerPicker> molecule (search + paginated results) once
+// the vehicles feature grows beyond the 200-row cap.
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
+import { useQuery } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
 import { usePermissions } from '@/hooks/usePermissions'
+import { api } from '@/lib/api'
 import { useTransferVehicleOwnership } from '../../hooks/useTransferVehicleOwnership'
 import type { OwnershipReason } from '../../types'
+
+interface PartnerOption {
+  id: string
+  name: string
+  display_name?: string
+  type: string
+}
+
+interface PartnerListResponse {
+  data: PartnerOption[]
+}
 
 interface TransferOwnershipModalProps {
   vehicleId: string
@@ -41,6 +57,18 @@ export function TransferOwnershipModal({
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   const mutation = useTransferVehicleOwnership(vehicleId)
+
+  const { data: partnersData, isLoading: partnersLoading } = useQuery({
+    queryKey: ['partners', 'transfer-owner-picker'],
+    queryFn: async () => {
+      // Backend `type=customer` filter already matches Customer + Both.
+      const response = await api.get<PartnerListResponse>(
+        '/partners?type=customer&per_page=200&is_active=true',
+      )
+      return response.data.data
+    },
+    enabled: isOpen && canTransfer,
+  })
 
   if (!isOpen || !canTransfer) {
     return null
@@ -94,14 +122,22 @@ export function TransferOwnershipModal({
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <label className="flex flex-col gap-1">
             <span className={`text-sm ${textColors.secondary}`}>{t('ownership.newOwner')}</span>
-            <input
-              type="text"
+            <select
               required
               value={newOwnerId}
               onChange={(e) => { setNewOwnerId(e.target.value) }}
-              placeholder="partner uuid"
+              disabled={partnersLoading}
               className={`rounded border px-2 py-1 text-sm ${borderColors.default}`}
-            />
+            >
+              <option value="" disabled>
+                {partnersLoading ? t('common:status.loading') : t('ownership.newOwner')}
+              </option>
+              {(partnersData ?? []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.display_name ?? p.name}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className="flex flex-col gap-1">
