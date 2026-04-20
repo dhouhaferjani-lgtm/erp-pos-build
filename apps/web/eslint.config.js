@@ -56,6 +56,7 @@ export default tseslint.config(
   {
     files: [
       'src/features/marketing/**/*.{ts,tsx}',
+      'src/features/workshop-technicians/**/*.{ts,tsx}',
     ],
     rules: {
       'no-restricted-syntax': [
