@@ -29,6 +29,7 @@
 | [Inventory](#inventory-module) | Stock management | StockLevel, StockMovement, InventoryCounting |
 | [Treasury](#treasury-module) | Payments and instruments | Payment, PaymentMethod, PaymentInstrument |
 | [Accounting](#accounting-module) | Chart of accounts, GL | Account, JournalEntry |
+| [Workshop / Work Orders](./workshop-work-orders.md) | Workshop job lifecycle and state machine | WorkOrder, WorkOrderLine, WorkOrderAssignment |
 
 ### Platform Modules
 | Module | Purpose | Key Entities |
