@@ -107,11 +107,11 @@ describe('WorkOrderCreatePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'actions.create' }))
 
     expect(createMock).toHaveBeenCalledTimes(1)
-    const [payload] = createMock.mock.calls[0] ?? []
+    const payload: unknown = createMock.mock.calls[0]?.[0]
     if (payload === null || typeof payload !== 'object') {
       throw new Error('payload must be object')
     }
-    const record: Record<string, unknown> = { ...payload }
+    const record = payload as Record<string, unknown>
     expect(record['customer_partner_id']).toBe(partner.id)
     expect(record['vehicle_id']).toBe(vehicle.id)
   })
