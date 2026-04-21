@@ -45,6 +45,7 @@ use Illuminate\Support\Carbon;
  * @property string $vehicle_id
  * @property string $opened_by_user_id
  * @property string|null $primary_technician_profile_id
+ * @property string|null $appointment_id
  * @property int|null $mileage_at_intake
  * @property string|null $customer_complaint
  * @property string|null $diagnosis
@@ -117,6 +118,7 @@ class WorkOrder extends Model
         'vehicle_id',
         'opened_by_user_id',
         'primary_technician_profile_id',
+        'appointment_id',
         'mileage_at_intake',
         'customer_complaint',
         'diagnosis',
