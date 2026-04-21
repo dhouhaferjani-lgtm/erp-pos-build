@@ -23,6 +23,7 @@ use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderResumed;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderStarted;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderWaitingParts;
 use App\Modules\Workshop\WorkOrder\Domain\Exceptions\StaleWorkOrderException;
+use App\Modules\Workshop\WorkOrder\Domain\Exceptions\WorkOrderNoLinesException;
 use App\Modules\Workshop\WorkOrder\Domain\Exceptions\WorkOrderTransitionException;
 use App\Modules\Workshop\WorkOrder\Domain\Services\StatusMachine;
 use App\Modules\Workshop\WorkOrder\Domain\ValueObjects\PartNeed;
@@ -71,6 +72,15 @@ final readonly class WorkOrderTransitionService
                 throw new WorkOrderTransitionException(
                     "Cannot transition WorkOrder {$wo->id} from {$from->value} to {$to->value}."
                 );
+            }
+
+            // Pre-condition: Invoicing a zero-line WO would emit a posted
+            // Document with total = 0.000 and no DocumentLines — a fiscal
+            // compliance hazard (audit finding 🔴-6a). Reject before any
+            // side effect runs. The surrounding DB transaction ensures
+            // nothing has been persisted up to this point.
+            if ($to === WorkOrderStatus::Invoiced && $wo->lines()->count() === 0) {
+                throw WorkOrderNoLinesException::forWorkOrder($wo->id);
             }
 
             $occurred = $command->occurred_at;
