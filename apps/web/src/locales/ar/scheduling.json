@@ -1,1 +1,175 @@
-{}
+{
+  "pageTitle": "جدولة المواعيد",
+  "scheduler": {
+    "title": "المُجدوِل",
+    "subtitle": "خطّط عبء العمل في المحطّات يومًا بيوم.",
+    "viewDay": "يوم",
+    "viewWeek": "أسبوع",
+    "today": "اليوم",
+    "previous": "السابق",
+    "next": "التالي",
+    "newAppointment": "حجز موعد",
+    "emptyDay": "لا توجد مواعيد مجدولة لهذا اليوم.",
+    "emptyBay": "لا يوجد حجز على هذه المحطّة.",
+    "noBays": "لم تُعدّ أي محطّة. أضف محطّة واحدة على الأقل في الإعدادات لبدء الجدولة.",
+    "loading": "جارٍ تحميل التقويم…",
+    "loadError": "تعذّر تحميل التقويم.",
+    "unassignedBay": "غير مُسنَد"
+  },
+  "status": {
+    "scheduled": "مجدول",
+    "confirmed": "مؤكَّد",
+    "checked_in": "تمّ الحضور",
+    "in_progress": "قيد التنفيذ",
+    "completed": "مكتمل",
+    "closed": "مُغلَق",
+    "no_show": "لم يحضر",
+    "cancelled": "مُلغى"
+  },
+  "source": {
+    "manual": "يدوي",
+    "phone": "هاتف",
+    "online": "عبر الإنترنت",
+    "walkin": "زيارة مباشرة"
+  },
+  "waitType": {
+    "waiter": "ينتظر العميل",
+    "drop_off": "إيداع",
+    "pickup_scheduled": "استلام مجدول"
+  },
+  "appointmentType": {
+    "quick_service": "خدمة سريعة",
+    "inspection": "فحص",
+    "diagnostic": "تشخيص",
+    "standard_repair": "إصلاح عادي",
+    "major_repair": "إصلاح كبير",
+    "maintenance": "صيانة",
+    "tire_service": "خدمة الإطارات",
+    "bodywork": "هيكل وصفائح",
+    "other": "أخرى"
+  },
+  "bayType": {
+    "general": "عامة",
+    "quick_service": "خدمة سريعة",
+    "alignment": "ضبط الزوايا",
+    "heavy": "ثقيلة",
+    "specialist": "متخصّصة",
+    "flat": "مسطّحة",
+    "other": "أخرى"
+  },
+  "actions": {
+    "book": "حجز موعد",
+    "confirm": "تأكيد",
+    "reschedule": "إعادة جدولة",
+    "checkIn": "تسجيل حضور",
+    "cancel": "إلغاء",
+    "convert": "تحويل إلى أمر عمل",
+    "save": "حفظ",
+    "close": "إغلاق",
+    "back": "عودة"
+  },
+  "fields": {
+    "appointmentNumber": "رقم الموعد",
+    "status": "الحالة",
+    "source": "المصدر",
+    "type": "النوع",
+    "bay": "المحطّة",
+    "technician": "الفني",
+    "customer": "العميل",
+    "customerName": "اسم العميل",
+    "customerPhone": "الهاتف",
+    "customerEmail": "البريد الإلكتروني",
+    "vehicle": "المركبة",
+    "vehiclePlate": "رقم اللوحة",
+    "vehicleDescription": "وصف المركبة",
+    "waitType": "نوع الانتظار",
+    "scheduledStart": "يبدأ في",
+    "scheduledEnd": "ينتهي في",
+    "estimatedDuration": "المدّة التقديرية (دقائق)",
+    "actualArrival": "الوصول الفعلي",
+    "servicesSummary": "ملخّص الخدمات",
+    "customerNotes": "ملاحظات العميل",
+    "internalNotes": "ملاحظات داخلية",
+    "colorLabel": "لون التمييز",
+    "plannedServices": "الخدمات المخطّطة",
+    "location": "الموقع",
+    "appointmentType": "نوع الموعد"
+  },
+  "drawer": {
+    "bookTitle": "حجز موعد",
+    "rescheduleTitle": "إعادة جدولة الموعد",
+    "editTitle": "تعديل الموعد",
+    "sectionCustomer": "العميل",
+    "sectionVehicle": "المركبة",
+    "sectionSchedule": "الجدولة",
+    "sectionServices": "الخدمات",
+    "sectionNotes": "الملاحظات",
+    "savingLabel": "جارٍ الحفظ…",
+    "successBooked": "تمّ حجز الموعد.",
+    "successUpdated": "تمّ تحديث الموعد.",
+    "successConfirmed": "تمّ تأكيد الموعد.",
+    "successRescheduled": "تمّت إعادة جدولة الموعد.",
+    "successCheckedIn": "تمّ تسجيل حضور العميل.",
+    "successCancelled": "تمّ إلغاء الموعد.",
+    "successConverted": "تمّ تحويل الموعد إلى أمر عمل."
+  },
+  "errors": {
+    "required": "هذا الحقل مطلوب.",
+    "invalidDate": "يرجى إدخال تاريخ صالح.",
+    "invalidRange": "يجب أن تكون النهاية بعد البداية.",
+    "conflict": "يتعارض الموعد مع حجز قائم على هذه المحطّة.",
+    "notConvertible": "لا يمكن تحويل هذا الموعد في حالته الحالية.",
+    "invalidTransition": "هذا الانتقال غير مسموح به في الحالة الحالية.",
+    "generic": "حدث خطأ ما. يرجى المحاولة مرة أخرى."
+  },
+  "conflict": {
+    "title": "تعارض في الجدولة",
+    "bayBusy": "المحطّة محجوزة بالفعل في الفترة المختارة.",
+    "outsideHours": "الفترة المختارة خارج ساعات عمل المحطّة.",
+    "seeExisting": "عرض الموعد المتعارض"
+  },
+  "reminder": {
+    "smsSent": "تمّ إرسال تذكير عبر رسالة نصّية",
+    "emailSent": "تمّ إرسال تذكير عبر البريد الإلكتروني",
+    "smsFailed": "فشل إرسال التذكير عبر الرسالة النصّية",
+    "emailFailed": "فشل إرسال التذكير عبر البريد الإلكتروني",
+    "skipped": "تمّ تخطّي التذكير"
+  },
+  "capacity": {
+    "title": "تقرير الطاقة الاستيعابية",
+    "subtitle": "ما هي نسبة الحجز على كل محطّة اليوم.",
+    "bay": "المحطّة",
+    "utilization": "نسبة الاستخدام",
+    "bookedMinutes": "الدقائق المحجوزة",
+    "availableMinutes": "الدقائق المتاحة",
+    "overbooked": "زائد عن الطاقة",
+    "underutilized": "قليل الاستغلال",
+    "healthy": "جيّد",
+    "empty": "لا توجد بيانات طاقة استيعابية للفترة المختارة."
+  },
+  "detail": {
+    "title": "تفاصيل الموعد",
+    "notFound": "لم يتم العثور على الموعد.",
+    "timeline": "التسلسل الزمني",
+    "plannedServicesTitle": "الخدمات المخطّطة",
+    "noServices": "لا توجد خدمات مخطّطة.",
+    "convertedTo": "حُوِّل إلى أمر عمل",
+    "confirmCancelTitle": "إلغاء هذا الموعد؟",
+    "confirmCancelBody": "هل أنت متأكد من إلغاء هذا الموعد؟ لا يمكن التراجع.",
+    "reasonLabel": "سبب الإلغاء",
+    "reasonPlaceholder": "مثال: طلب العميل"
+  },
+  "availability": {
+    "title": "البحث عن فترة متاحة",
+    "duration": "المدّة (دقائق)",
+    "from": "من",
+    "to": "إلى",
+    "search": "بحث عن فترات",
+    "emptySlots": "لا توجد فترات متاحة في النطاق المحدّد.",
+    "pick": "اختيار الفترة"
+  },
+  "upcoming": {
+    "title": "المواعيد القادمة",
+    "empty": "لا توجد مواعيد قادمة."
+  }
+}
