@@ -96,6 +96,10 @@ const mockApiPatch = vi.hoisted(() => vi.fn())
 const mockApiDelete = vi.hoisted(() => vi.fn())
 const mockApiGetHelper = vi.hoisted(() => vi.fn())
 
+interface ApiEnvelope<T> {
+  data: { data: T }
+}
+
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
   return {
@@ -107,12 +111,14 @@ vi.mock('@/lib/api', async () => {
       delete: mockApiDelete,
     },
     apiGet: mockApiGetHelper,
-    apiPost: vi.fn().mockImplementation((url: string, body: unknown) =>
-      mockApiPost(url, body).then((r: { data: { data: unknown } }) => r.data.data),
-    ),
-    apiPatch: vi.fn().mockImplementation((url: string, body: unknown) =>
-      mockApiPatch(url, body).then((r: { data: { data: unknown } }) => r.data.data),
-    ),
+    apiPost: vi.fn().mockImplementation(async (url: string, body: unknown) => {
+      const r = (await mockApiPost(url, body)) as ApiEnvelope<unknown>
+      return r.data.data
+    }),
+    apiPatch: vi.fn().mockImplementation(async (url: string, body: unknown) => {
+      const r = (await mockApiPatch(url, body)) as ApiEnvelope<unknown>
+      return r.data.data
+    }),
     apiDelete: vi.fn().mockImplementation(() => Promise.resolve(undefined)),
   }
 })
