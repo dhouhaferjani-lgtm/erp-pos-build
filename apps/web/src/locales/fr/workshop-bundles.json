@@ -66,5 +66,84 @@
     "empty": "Aucune ligne dans ce forfait.",
     "pricedLines": "Lignes facturées",
     "informationalLines": "Informatif (consommé mais non facturé)"
+  },
+  "authoring": {
+    "componentType": {
+      "part": "Pièce",
+      "labor": "Main-d'œuvre",
+      "nestedBundle": "Forfait imbriqué"
+    },
+    "fields": {
+      "componentType": "Type de composant",
+      "nestedBundle": "Forfait imbriqué",
+      "quantity": "Quantité",
+      "unit": "Unité",
+      "unitPlaceholder": "Choisir une unité…",
+      "overridePrice": "Prix unitaire spécifique ({{currency}})",
+      "overridePricePlaceholder": "Laisser vide pour le prix du catalogue",
+      "isOptional": "Ligne optionnelle (ne bloque pas la clôture)",
+      "notes": "Notes"
+    },
+    "errors": {
+      "productRequired": "Sélectionnez une pièce.",
+      "serviceRequired": "Sélectionnez une prestation.",
+      "nestedBundleRequired": "Sélectionnez un forfait imbriqué.",
+      "referenceRequired": "Une référence est requise.",
+      "quantityRequired": "La quantité est requise.",
+      "quantityPositive": "La quantité doit être supérieure à zéro.",
+      "unitRequired": "L'unité est requise.",
+      "pricePositive": "Le prix doit être positif ou nul.",
+      "cycleDetected": "Ce forfait imbriqué créerait un cycle.",
+      "generic": "Impossible d'enregistrer ce composant."
+    },
+    "modal": {
+      "createTitle": "Ajouter un composant",
+      "editTitle": "Modifier le composant",
+      "save": "Enregistrer le composant",
+      "saving": "Enregistrement…",
+      "cancel": "Annuler",
+      "close": "Fermer la fenêtre",
+      "loading": "Chargement…"
+    },
+    "row": {
+      "edit": "Modifier",
+      "delete": "Supprimer"
+    },
+    "detail": {
+      "addComponent": "Ajouter un composant"
+    },
+    "deleteConfirm": {
+      "title": "Supprimer ce composant ?",
+      "body": "La ligne est retirée du forfait. Les ordres de travail existants ne sont pas affectés.",
+      "confirm": "Supprimer",
+      "cancel": "Annuler"
+    },
+    "applicability": {
+      "sectionTitle": "Applicabilités véhicule",
+      "addRule": "Ajouter une règle",
+      "remove": "Retirer",
+      "scopeUniversal": "Universel (tous véhicules)",
+      "scopeScoped": "Ciblé",
+      "vehicleType": "Type de véhicule",
+      "vehicleTypePlaceholder": "Choisir un type…",
+      "vehicleDisplay": "Libellé du véhicule",
+      "yearFrom": "Année de début",
+      "yearTo": "Année de fin",
+      "save": "Enregistrer la règle",
+      "cancel": "Annuler",
+      "addTitle": "Ajouter une règle d'applicabilité",
+      "errors": {
+        "pairInvariant": "Le type et le libellé doivent être tous deux vides (universel) ou tous deux renseignés (ciblé).",
+        "yearRange": "L'année de début doit être inférieure ou égale à l'année de fin."
+      },
+      "vehicleTypeOptions": {
+        "pc": "Voiture particulière",
+        "cv": "Véhicule utilitaire",
+        "mtb": "Moto",
+        "eng": "Moteur",
+        "axl": "Essieu",
+        "universal": "Universel"
+      }
+    }
   }
 }

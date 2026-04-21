@@ -24,6 +24,7 @@ Route::prefix('api/v1/workshop')->middleware(['api', 'auth:sanctum', SetPermissi
     Route::get('bundles/{id}/expansion', [BundleExpansionController::class, 'show']);
 
     Route::post('bundles/{id}/components', [BundleComponentController::class, 'store']);
+    Route::patch('bundles/{id}/components/{componentId}', [BundleComponentController::class, 'update']);
     Route::delete('bundles/{id}/components/{componentId}', [BundleComponentController::class, 'destroy']);
 
     Route::put('bundles/{id}/vehicle-applicabilities', [BundleApplicabilityController::class, 'replace']);
