@@ -1,1 +1,188 @@
-{}
+{
+  "team": {
+    "title": "فريق الورشة",
+    "subtitle": "الفنيّون والمهارات والجداول الأسبوعية.",
+    "loading": "جارٍ تحميل الفنيّين…",
+    "errorLoading": "تعذّر تحميل الفنيّين",
+    "empty": {
+      "title": "لا يوجد فنيّون بعد",
+      "body": "بمجرّد أن ينشئ المديرون ملفّات الفنيّين، ستظهر هنا."
+    }
+  },
+  "detail": {
+    "backToTeam": "العودة إلى الفريق",
+    "notFound": "لم يتم العثور على ملف الفني",
+    "weeklySchedule": "الجدول الأسبوعي",
+    "employment": "معلومات التوظيف",
+    "pay": "الأجر (وصول مقيّد)",
+    "personal": "المعلومات الشخصية (وصول مقيّد)"
+  },
+  "filters": {
+    "activeOnly": "النشطون فقط",
+    "specialty": "التخصّص",
+    "anySpecialty": "أي تخصّص"
+  },
+  "labels": {
+    "inactive": "غير نشط",
+    "hourlyBillingRate": "أجر الساعة",
+    "notSet": "—"
+  },
+  "fields": {
+    "hireDate": "تاريخ التوظيف",
+    "employeeCode": "رمز الموظّف",
+    "hourlyCostRate": "تكلفة الساعة",
+    "hourlyBillingRate": "أجر الساعة",
+    "nationalId": "رقم الهوية",
+    "personalAddress": "العنوان",
+    "personalPhone": "الهاتف",
+    "notes": "ملاحظات"
+  },
+  "schedule": {
+    "off": "إجازة"
+  },
+  "days": {
+    "mon": "الإثنين",
+    "tue": "الثلاثاء",
+    "wed": "الأربعاء",
+    "thu": "الخميس",
+    "fri": "الجمعة",
+    "sat": "السبت",
+    "sun": "الأحد"
+  },
+  "skillLevels": {
+    "apprentice": "متدرّب",
+    "junior": "مبتدئ",
+    "general": "عام",
+    "senior": "متقدّم",
+    "master": "خبير",
+    "specialist": "متخصّص"
+  },
+  "employmentStatus": {
+    "active": "نشط",
+    "on_leave": "في إجازة",
+    "terminated": "منتهية خدمته"
+  },
+  "specialties": {
+    "engine_mechanical": "المحرّك (ميكانيكي)",
+    "engine_diagnostic": "المحرّك (تشخيص)",
+    "transmission": "علبة السرعة",
+    "electrical": "الكهرباء",
+    "electronic": "الإلكترونيك",
+    "suspension": "التعليق",
+    "brakes": "الفرامل",
+    "ac_climate": "التكييف",
+    "tires": "الإطارات",
+    "alignment": "ضبط الزوايا",
+    "bodywork": "الهيكل والصفائح",
+    "paint": "الطلاء",
+    "hybrid_ev": "هجين / كهربائي",
+    "diesel": "ديزل",
+    "pre_control": "الفحص الفنّي المسبق",
+    "general_service": "صيانة عامة"
+  },
+  "availability": {
+    "status": {
+      "yes": "متاح",
+      "no": "غير متاح",
+      "partial": "جزئي"
+    }
+  },
+  "navigation": {
+    "team": "الفريق",
+    "payrollExports": "تصدير الرواتب"
+  },
+  "authoring": {
+    "tabs": {
+      "overview": "نظرة عامة",
+      "certifications": "الشهادات",
+      "timeOff": "الإجازات",
+      "timeEntries": "ساعات العمل"
+    },
+    "certifications": {
+      "title": "الشهادات",
+      "add": "إضافة شهادة",
+      "empty": "لم تُسجَّل أي شهادة بعد.",
+      "fields": {
+        "name": "اسم الشهادة",
+        "issuingBody": "الجهة المانحة",
+        "certificateNumber": "رقم الشهادة",
+        "issuedAt": "تاريخ الإصدار",
+        "expiresAt": "تاريخ انتهاء الصلاحية",
+        "notes": "ملاحظات"
+      },
+      "modal": {
+        "createTitle": "إضافة شهادة",
+        "editTitle": "تعديل الشهادة",
+        "save": "حفظ",
+        "saving": "جارٍ الحفظ…",
+        "cancel": "إلغاء"
+      },
+      "confirmDelete": "حذف هذه الشهادة؟"
+    },
+    "timeOff": {
+      "title": "الإجازات",
+      "add": "تسجيل إجازة",
+      "empty": "لا توجد إجازات مسجّلة.",
+      "fields": {
+        "reasonCode": "السبب",
+        "startsAt": "تاريخ البداية",
+        "endsAt": "تاريخ النهاية",
+        "isFullDay": "يوم كامل",
+        "notes": "ملاحظات"
+      },
+      "reason": {
+        "vacation": "عطلة",
+        "sick": "مرضية",
+        "training": "تدريب",
+        "personal": "شخصية",
+        "unpaid": "بدون أجر",
+        "other": "أخرى"
+      },
+      "modal": {
+        "createTitle": "تسجيل إجازة",
+        "editTitle": "تعديل الإجازة",
+        "save": "حفظ",
+        "saving": "جارٍ الحفظ…",
+        "cancel": "إلغاء"
+      },
+      "confirmDelete": "حذف هذه الإجازة؟"
+    },
+    "timeEntries": {
+      "title": "ساعات العمل",
+      "add": "تسجيل ساعات عمل",
+      "empty": "لا توجد ساعات عمل مسجّلة.",
+      "weekTotal": "هذا الأسبوع",
+      "monthTotal": "هذا الشهر",
+      "hoursShort": "{{hours}} س",
+      "lockedBadge": "مُقفَل",
+      "lockedTooltip": "هذا السجلّ مرتبط بأمر عمل مُقفَل ولا يمكن تعديله.",
+      "fields": {
+        "startedAt": "بدأ في",
+        "endedAt": "انتهى في",
+        "entryType": "النوع",
+        "workOrderId": "رقم أمر العمل (اختياري)",
+        "notes": "ملاحظات"
+      },
+      "entryType": {
+        "work_order": "أمر عمل",
+        "break": "استراحة",
+        "non_billable": "غير قابل للفوترة",
+        "manual_adjust": "تعديل يدوي"
+      },
+      "modal": {
+        "createTitle": "تسجيل ساعات عمل",
+        "editTitle": "تعديل السجلّ",
+        "save": "حفظ",
+        "saving": "جارٍ الحفظ…",
+        "cancel": "إلغاء"
+      },
+      "confirmDelete": "حذف هذا السجلّ؟"
+    },
+    "errors": {
+      "required": "هذا الحقل مطلوب.",
+      "overlap": "هذه الفترة تتداخل مع سجلّ قائم.",
+      "locked": "هذا السجلّ مرتبط بأمر عمل مُكتمل أو مفوتر.",
+      "generic": "حدث خطأ ما. يرجى المحاولة مرة أخرى."
+    }
+  }
+}
