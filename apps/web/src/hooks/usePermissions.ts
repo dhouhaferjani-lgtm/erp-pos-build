@@ -122,6 +122,13 @@ export const PERMISSIONS = {
   'workshop.technicians.view_pii': ['admin', 'manager'],
   'workshop.technicians.approve_time_off': ['admin', 'manager'],
   'workshop.technicians.adjust_time_entries': ['admin', 'manager'],
+  'workshop.technicians.manage_certifications': ['admin', 'manager'],
+  'workshop.technicians.manage_time_off': ['admin', 'manager'],
+  'workshop.technicians.manage_time_entries': ['admin', 'manager', 'technician'],
+
+  // Workshop — Payroll exports (Phase A.4)
+  'workshop.payroll.view': ['admin', 'manager'],
+  'workshop.payroll.generate': ['admin', 'manager'],
 
   // Workshop — Work Orders (Spec B)
   'work-orders.view': ['admin', 'manager', 'operator', 'technician'],
@@ -172,6 +179,7 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   contacts: ['contacts.view'],
   enrichment: ['enrichment.view'],
   'workshop-technicians': ['workshop.technicians.view'],
+  'workshop-payroll': ['workshop.payroll.view'],
   'workshop-work-orders': ['work-orders.view'],
   scheduling: ['scheduling.appointments.view'],
 }

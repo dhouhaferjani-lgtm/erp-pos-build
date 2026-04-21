@@ -203,6 +203,7 @@ const KeyComponentFormPage = lazy(() => import('../features/parapharmacy/pages')
 // Workshop/Technician module (HRM-lite)
 const WorkshopTechniciansTeamListPage = lazy(() => import('../features/workshop-technicians/pages/TeamListPage').then((m) => ({ default: m.TeamListPage })))
 const WorkshopTechnicianDetailPage = lazy(() => import('../features/workshop-technicians/pages/TechnicianDetailPage').then((m) => ({ default: m.TechnicianDetailPage })))
+const WorkshopPayrollExportPage = lazy(() => import('../features/workshop-technicians/pages/PayrollExportPage').then((m) => ({ default: m.PayrollExportPage })))
 
 // Workshop/WorkOrder module (Spec B)
 const WorkshopWorkOrderListPage = lazy(() => import('../features/workshop-work-orders/pages/WorkOrderListPage').then((m) => ({ default: m.WorkOrderListPage })))
@@ -2184,6 +2185,16 @@ export function AppRoutes() {
               <RequirePermission permission="workshop.technicians.view">
                 <SuspenseWrapper>
                   <WorkshopTechnicianDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="payroll-exports"
+            element={
+              <RequirePermission permission="workshop.payroll.view">
+                <SuspenseWrapper>
+                  <WorkshopPayrollExportPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
