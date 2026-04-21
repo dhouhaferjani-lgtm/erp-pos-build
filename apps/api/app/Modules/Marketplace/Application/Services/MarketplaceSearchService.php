@@ -6,6 +6,7 @@ namespace App\Modules\Marketplace\Application\Services;
 
 use App\Modules\Marketplace\Application\DTOs\MarketplaceListingData;
 use App\Modules\Marketplace\Domain\Models\MarketplaceListing;
+use Illuminate\Database\Eloquent\Builder;
 
 class MarketplaceSearchService
 {
@@ -31,7 +32,7 @@ class MarketplaceSearchService
             ->available()
             ->forCountry($countryCode)
             ->forArticle($platformArticleId, $articleNumber, $barcode)
-            ->whereHas('seller', function (\Illuminate\Database\Eloquent\Builder $query): void {
+            ->whereHas('seller', function (Builder $query): void {
                 $query->whereRaw('seller_status = ?', ['active']);
             })
             ->orderBy('price')

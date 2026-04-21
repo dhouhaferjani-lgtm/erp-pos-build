@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Unit\POS;
 
+use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
@@ -12,10 +14,11 @@ use App\Modules\POS\Application\Services\ReceiptPaymentService;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptPayment;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Payment;
+use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -28,7 +31,9 @@ final class ReceiptPaymentServiceTest extends TestCase
     use RefreshDatabase;
 
     private ReceiptPaymentService $service;
+
     private CompanyContext $companyContext;
+
     private GeneralLedgerService $glService;
 
     protected function setUp(): void
@@ -446,8 +451,8 @@ final class ReceiptPaymentServiceTest extends TestCase
     // Helper method to set up test data
     private function setupTestData(): void
     {
-        $this->tenant = \App\Modules\Tenant\Domain\Tenant::factory()->create();
-        $this->company = \App\Modules\Company\Domain\Company::factory()->create([
+        $this->tenant = Tenant::factory()->create();
+        $this->company = Company::factory()->create([
             'tenant_id' => $this->tenant->id,
         ]);
 
@@ -455,7 +460,7 @@ final class ReceiptPaymentServiceTest extends TestCase
             'tenant_id' => $this->tenant->id,
         ]);
 
-        $this->cashAccount = \App\Modules\Accounting\Domain\Account::factory()->create([
+        $this->cashAccount = Account::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => '531',
@@ -463,7 +468,7 @@ final class ReceiptPaymentServiceTest extends TestCase
             'system_purpose' => 'cash',
         ]);
 
-        $this->bankAccount = \App\Modules\Accounting\Domain\Account::factory()->create([
+        $this->bankAccount = Account::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => '512',
@@ -471,7 +476,7 @@ final class ReceiptPaymentServiceTest extends TestCase
             'system_purpose' => 'bank',
         ]);
 
-        $this->revenueAccount = \App\Modules\Accounting\Domain\Account::factory()->create([
+        $this->revenueAccount = Account::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => '707',
@@ -479,13 +484,13 @@ final class ReceiptPaymentServiceTest extends TestCase
             'system_purpose' => 'product_revenue',
         ]);
 
-        $this->paymentMethod = \App\Modules\Treasury\Domain\PaymentMethod::factory()->create([
+        $this->paymentMethod = PaymentMethod::factory()->create([
             'company_id' => $this->company->id,
             'tenant_id' => $this->tenant->id,
             'name' => 'Cash',
         ]);
 
-        $this->cardPaymentMethod = \App\Modules\Treasury\Domain\PaymentMethod::factory()->create([
+        $this->cardPaymentMethod = PaymentMethod::factory()->create([
             'company_id' => $this->company->id,
             'tenant_id' => $this->tenant->id,
             'name' => 'Credit Card',
@@ -505,7 +510,7 @@ final class ReceiptPaymentServiceTest extends TestCase
     /**
      * Create a receipt with all required FK fields.
      *
-     * @param array<string, mixed> $overrides
+     * @param  array<string, mixed>  $overrides
      */
     private function createReceipt(array $overrides = []): Receipt
     {

@@ -6,10 +6,12 @@ namespace App\Modules\Inventory\Domain;
 
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
 use App\Modules\Product\Domain\Product;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -63,10 +65,10 @@ class StockReservation extends Model
         return $this->belongsTo(Product::class);
     }
 
-    /** @return BelongsTo<\App\Modules\Company\Domain\Location, $this> */
+    /** @return BelongsTo<Location, $this> */
     public function location(): BelongsTo
     {
-        return $this->belongsTo(\App\Modules\Company\Domain\Location::class);
+        return $this->belongsTo(Location::class);
     }
 
     /** @return BelongsTo<User, $this> */
@@ -90,8 +92,8 @@ class StockReservation extends Model
     // Scopes
 
     /**
-     * @param  \Illuminate\Database\Eloquent\Builder<StockReservation>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<StockReservation>
+     * @param  Builder<StockReservation>  $query
+     * @return Builder<StockReservation>
      */
     public function scopeActive($query)
     {
@@ -99,8 +101,8 @@ class StockReservation extends Model
     }
 
     /**
-     * @param  \Illuminate\Database\Eloquent\Builder<StockReservation>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<StockReservation>
+     * @param  Builder<StockReservation>  $query
+     * @return Builder<StockReservation>
      */
     public function scopeExpired($query)
     {
@@ -110,8 +112,8 @@ class StockReservation extends Model
     }
 
     /**
-     * @param  \Illuminate\Database\Eloquent\Builder<StockReservation>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<StockReservation>
+     * @param  Builder<StockReservation>  $query
+     * @return Builder<StockReservation>
      */
     public function scopeForProduct($query, string $productId)
     {
@@ -119,8 +121,8 @@ class StockReservation extends Model
     }
 
     /**
-     * @param  \Illuminate\Database\Eloquent\Builder<StockReservation>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<StockReservation>
+     * @param  Builder<StockReservation>  $query
+     * @return Builder<StockReservation>
      */
     public function scopeForLocation($query, string $locationId)
     {
@@ -128,8 +130,8 @@ class StockReservation extends Model
     }
 
     /**
-     * @param  \Illuminate\Database\Eloquent\Builder<StockReservation>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<StockReservation>
+     * @param  Builder<StockReservation>  $query
+     * @return Builder<StockReservation>
      */
     public function scopeForSource($query, ReservationSource $source, string $sourceId)
     {

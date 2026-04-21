@@ -15,6 +15,7 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
+use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use Illuminate\Support\Facades\DB;
 
@@ -54,7 +55,7 @@ class CartConversionService
                         'tenant_id' => $company->tenant_id,
                         'company_id' => $company->id,
                         'name' => $supplierBrand,
-                        'type' => \App\Modules\Partner\Domain\Enums\PartnerType::Supplier,
+                        'type' => PartnerType::Supplier,
                         'country_code' => $company->country_code,
                     ]);
                 }

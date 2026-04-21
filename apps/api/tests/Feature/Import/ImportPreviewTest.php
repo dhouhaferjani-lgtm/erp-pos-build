@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Import;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
@@ -52,7 +53,7 @@ class ImportPreviewTest extends TestCase
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
             'fiscal_year_start_month' => 1,
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
@@ -213,7 +214,7 @@ class ImportPreviewTest extends TestCase
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
             'fiscal_year_start_month' => 1,
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         $otherUser = User::create([

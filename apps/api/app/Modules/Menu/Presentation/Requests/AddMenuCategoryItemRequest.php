@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Menu\Presentation\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
@@ -43,7 +44,7 @@ class AddMenuCategoryItemRequest extends FormRequest
 
             $table = $type === 'product' ? 'products' : 'composite_items';
 
-            if (! \Illuminate\Support\Facades\DB::table($table)->where('id', $id)->exists()) {
+            if (! DB::table($table)->where('id', $id)->exists()) {
                 $validator->errors()->add('sellable_id', "The selected {$type} does not exist.");
             }
         });

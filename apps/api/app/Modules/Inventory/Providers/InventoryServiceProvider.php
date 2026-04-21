@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Providers;
 
 use App\Modules\Document\Domain\Events\InvoicePosted;
+use App\Modules\Inventory\Application\Contracts\InventoryReservationServiceInterface;
 use App\Modules\Inventory\Application\Listeners\ApplyStockAdjustmentsOnCountingCompleted;
+use App\Modules\Inventory\Application\Services\StockReservationService;
 use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
 use App\Modules\Inventory\Listeners\PostCOGSOnInvoice;
 use Illuminate\Support\Facades\Event;
@@ -15,7 +17,10 @@ class InventoryServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        //
+        $this->app->bind(
+            InventoryReservationServiceInterface::class,
+            StockReservationService::class,
+        );
     }
 
     public function boot(): void

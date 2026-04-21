@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Partner\Infrastructure\Broadcasting;
 
 use App\Modules\Accounting\Domain\Events\PartnerBalanceUpdated;
+use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
@@ -26,7 +27,7 @@ class PartnerBalanceUpdatedBroadcast implements ShouldBroadcastNow
     ) {}
 
     /**
-     * @return array<int, \Illuminate\Broadcasting\Channel>
+     * @return array<int, Channel>
      */
     public function broadcastOn(): array
     {

@@ -62,7 +62,7 @@ class ProductInventoryQueryServiceTest extends TestCase
             'code' => 'WH-MAIN',
         ]);
 
-        $this->service = new ProductInventoryQueryService();
+        $this->service = new ProductInventoryQueryService;
     }
 
     public function test_returns_inventory_dtos_keyed_by_platform_article_id(): void

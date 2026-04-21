@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Presentation\Resources;
 
+use App\Modules\POS\Domain\OrderLine;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * API Resource for order line transformation.
  *
- * @mixin \App\Modules\POS\Domain\OrderLine
+ * @mixin OrderLine
  */
 final class OrderLineResource extends JsonResource
 {

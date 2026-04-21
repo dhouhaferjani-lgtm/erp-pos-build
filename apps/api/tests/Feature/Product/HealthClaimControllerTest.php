@@ -22,6 +22,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -241,7 +242,7 @@ class HealthClaimControllerTest extends TestCase
         ]);
 
         DB::table('health_claim_product')->insert([
-            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'id' => (string) Str::uuid(),
             'product_id' => $product->id,
             'health_claim_id' => $claim->id,
             'created_at' => now(),

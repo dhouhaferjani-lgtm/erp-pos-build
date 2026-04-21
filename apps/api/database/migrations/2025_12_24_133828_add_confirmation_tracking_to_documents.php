@@ -37,13 +37,13 @@ return new class extends Migration
             Schema::table('documents', function (Blueprint $table) {
                 try {
                     $table->foreign('confirmed_by')->references('id')->on('users')->onDelete('set null');
-                } catch (\Exception $e) {
+                } catch (Exception $e) {
                     // Foreign key already exists, skip
                 }
 
                 try {
                     $table->foreign('cancelled_by')->references('id')->on('users')->onDelete('set null');
-                } catch (\Exception $e) {
+                } catch (Exception $e) {
                     // Foreign key already exists, skip
                 }
             });

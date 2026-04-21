@@ -13,6 +13,7 @@ use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Enums\PaymentTerms;
 use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Factories\PartnerFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -21,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -40,7 +42,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property numeric-string $receivable_balance
  * @property numeric-string $credit_balance
  * @property numeric-string $payable_balance
- * @property \Illuminate\Support\Carbon|null $balance_updated_at
+ * @property Carbon|null $balance_updated_at
  * @property string|null $code
  * @property string|null $email
  * @property string|null $phone
@@ -49,13 +51,13 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property PartnerTaxStatus $tax_status
  * @property string|null $tax_exemption_reason
  * @property string|null $tax_exemption_certificate_media_id
- * @property \Illuminate\Support\Carbon|null $tax_exemption_valid_until
+ * @property Carbon|null $tax_exemption_valid_until
  * @property bool $withholding_exempt
  * @property string|null $withholding_exemption_reason
  * @property string|null $withholding_exemption_certificate_id
  * @property string|null $notes
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property string|null $street_address
  * @property string|null $street_address_2
  * @property string|null $city
@@ -63,14 +65,14 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $postal_code
  * @property string|null $country
  * @property bool $is_active
- * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property Carbon|null $deleted_at
  * @property-read Tenant $tenant
  * @property-read Company $company
  * @property-read string $net_balance
  */
 class Partner extends Model
 {
-    /** @use HasFactory<\Database\Factories\PartnerFactory> */
+    /** @use HasFactory<PartnerFactory> */
     use HasFactory;
 
     use HasUuids;
@@ -149,9 +151,9 @@ class Partner extends Model
     /**
      * Create a new factory instance for the model.
      */
-    protected static function newFactory(): \Database\Factories\PartnerFactory
+    protected static function newFactory(): PartnerFactory
     {
-        return \Database\Factories\PartnerFactory::new();
+        return PartnerFactory::new();
     }
 
     /**

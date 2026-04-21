@@ -6,6 +6,7 @@ namespace Tests\Feature\Product;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Product\Domain\Category;
@@ -60,7 +61,7 @@ class CategoryTest extends TestCase
         ]);
 
         // Set company context for the test
-        app(\App\Modules\Company\Services\CompanyContext::class)->setCompanyId($this->company->id);
+        app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
     public function test_can_list_categories_with_pagination(): void

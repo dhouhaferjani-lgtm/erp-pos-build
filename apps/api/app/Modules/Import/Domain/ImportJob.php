@@ -133,7 +133,7 @@ class ImportJob extends Model
     public function getValidRowsCount(): int
     {
         // Use successful_rows if already validated, otherwise count from DB
-        if ($this->status === \App\Modules\Import\Domain\Enums\ImportStatus::Validated) {
+        if ($this->status === ImportStatus::Validated) {
             return $this->successful_rows;
         }
 

@@ -5,13 +5,14 @@ declare(strict_types=1);
 namespace Tests\Feature\Document;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\LocationType;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\DocumentVehicleContext;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
-use App\Modules\Company\Domain\Location;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
@@ -19,6 +20,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Vehicle\Domain\Vehicle;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
@@ -58,7 +60,7 @@ class DocumentConversionScenarioTest extends TestCase
         Location::create([
             'company_id' => $this->company->id,
             'name' => 'Main Warehouse',
-            'type' => \App\Modules\Company\Domain\Enums\LocationType::Warehouse,
+            'type' => LocationType::Warehouse,
             'is_default' => true,
             'is_active' => true,
         ]);
@@ -66,7 +68,7 @@ class DocumentConversionScenarioTest extends TestCase
         $this->converterRegistry = app(DocumentConverterRegistry::class);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function it_allows_direct_invoicing_for_services_only_orders(): void
     {
         // Create a service product (non-physical)
@@ -90,7 +92,7 @@ class DocumentConversionScenarioTest extends TestCase
         $this->assertEquals($order->document_number, $invoice->reference);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function it_auto_creates_delivery_note_for_products_only_orders(): void
     {
         // Create a physical product
@@ -113,7 +115,7 @@ class DocumentConversionScenarioTest extends TestCase
         $this->assertEquals(DocumentType::Invoice, $invoice->type);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function it_auto_creates_delivery_note_for_mixed_orders(): void
     {
         // Create both service and physical product
@@ -144,7 +146,7 @@ class DocumentConversionScenarioTest extends TestCase
         $this->assertEquals(DocumentType::Invoice, $invoice->type);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function it_allows_invoicing_after_delivery_for_products(): void
     {
         // Create a physical product
@@ -174,7 +176,7 @@ class DocumentConversionScenarioTest extends TestCase
         $this->assertEquals(DocumentType::Invoice, $invoice->type);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function it_prevents_duplicate_invoicing(): void
     {
         // Create a service product (non-physical)
@@ -204,7 +206,7 @@ class DocumentConversionScenarioTest extends TestCase
         $this->converterRegistry->convert($order, DocumentType::Invoice);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function it_allows_invoicing_manual_lines_without_product(): void
     {
         // Create sales order with manual lines (no product_id)
@@ -219,7 +221,7 @@ class DocumentConversionScenarioTest extends TestCase
         $this->assertEquals(DocumentType::Invoice, $invoice->type);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function it_marks_delivery_notes_as_invoiced_when_converting_order_to_invoice(): void
     {
         // Create a physical product
@@ -255,7 +257,7 @@ class DocumentConversionScenarioTest extends TestCase
         $this->assertEquals('order_conversion', $delivery->payload['invoiced_via'] ?? null);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function it_does_not_show_invoiced_dns_in_consolidation_after_order_conversion(): void
     {
         // Create a physical product
@@ -300,7 +302,7 @@ class DocumentConversionScenarioTest extends TestCase
         $this->assertCount(0, $uninvoicedDnsAfter);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function quote_to_order_preserves_vehicle_context(): void
     {
         $vehicle = Vehicle::factory()->create([
@@ -364,7 +366,7 @@ class DocumentConversionScenarioTest extends TestCase
         $this->assertEquals($vehicle->id, $order->vehicle_id);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function order_to_delivery_note_preserves_vehicle_context(): void
     {
         $vehicle = Vehicle::factory()->create([
@@ -402,7 +404,7 @@ class DocumentConversionScenarioTest extends TestCase
         $this->assertEquals($vehicle->id, $delivery->vehicle_id);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function order_to_invoice_preserves_vehicle_context(): void
     {
         $vehicle = Vehicle::factory()->create([

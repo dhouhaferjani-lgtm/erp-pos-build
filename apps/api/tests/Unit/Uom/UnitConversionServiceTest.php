@@ -18,7 +18,7 @@ class UnitConversionServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new UnitConversionService();
+        $this->service = new UnitConversionService;
     }
 
     /** @test */

@@ -57,7 +57,7 @@ class PromotionEvaluationServiceTest extends TestCase
 
     private function makePromotion(array $overrides = []): Promotion
     {
-        $promotion = new Promotion();
+        $promotion = new Promotion;
         $promotion->id = $overrides['id'] ?? 'promo-1';
         $promotion->name = $overrides['name'] ?? 'Test Promotion';
         $promotion->type = $overrides['type'] ?? PromotionType::HappyHour;
@@ -365,7 +365,7 @@ class PromotionEvaluationServiceTest extends TestCase
         $now = Carbon::parse('2026-03-02 12:00:00');
 
         // Within range — use makePromotion helper which sets attributes without DB
-        $promotion = new Promotion();
+        $promotion = new Promotion;
         $promotion->status = PromotionStatus::Active;
         // Set raw attributes to bypass Eloquent date casting (no DB in unit test)
         $ref = new \ReflectionProperty(Promotion::class, 'attributes');

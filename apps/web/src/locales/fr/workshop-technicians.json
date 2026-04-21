@@ -1,0 +1,188 @@
+{
+  "team": {
+    "title": "Équipe atelier",
+    "subtitle": "Techniciens, compétences et plannings hebdomadaires.",
+    "loading": "Chargement des techniciens…",
+    "errorLoading": "Impossible de charger les techniciens",
+    "empty": {
+      "title": "Aucun technicien pour le moment",
+      "body": "Dès que les responsables créeront des profils, ils s'afficheront ici."
+    }
+  },
+  "detail": {
+    "backToTeam": "Retour à l'équipe",
+    "notFound": "Profil technicien introuvable",
+    "weeklySchedule": "Planning hebdomadaire",
+    "employment": "Emploi",
+    "pay": "Rémunération (restreint)",
+    "personal": "Informations personnelles (restreint)"
+  },
+  "filters": {
+    "activeOnly": "Actifs uniquement",
+    "specialty": "Spécialité",
+    "anySpecialty": "Toutes les spécialités"
+  },
+  "labels": {
+    "inactive": "Inactif",
+    "hourlyBillingRate": "Taux horaire facturé",
+    "notSet": "—"
+  },
+  "fields": {
+    "hireDate": "Date d'embauche",
+    "employeeCode": "Code employé",
+    "hourlyCostRate": "Coût horaire",
+    "hourlyBillingRate": "Taux horaire facturé",
+    "nationalId": "Pièce d'identité",
+    "personalAddress": "Adresse",
+    "personalPhone": "Téléphone",
+    "notes": "Notes"
+  },
+  "schedule": {
+    "off": "Repos"
+  },
+  "days": {
+    "mon": "Lun",
+    "tue": "Mar",
+    "wed": "Mer",
+    "thu": "Jeu",
+    "fri": "Ven",
+    "sat": "Sam",
+    "sun": "Dim"
+  },
+  "skillLevels": {
+    "apprentice": "Apprenti",
+    "junior": "Junior",
+    "general": "Généraliste",
+    "senior": "Sénior",
+    "master": "Expert",
+    "specialist": "Spécialiste"
+  },
+  "employmentStatus": {
+    "active": "Actif",
+    "on_leave": "En congé",
+    "terminated": "Terminé"
+  },
+  "specialties": {
+    "engine_mechanical": "Moteur (méca.)",
+    "engine_diagnostic": "Moteur (diag.)",
+    "transmission": "Transmission",
+    "electrical": "Électricité",
+    "electronic": "Électronique",
+    "suspension": "Suspension",
+    "brakes": "Freins",
+    "ac_climate": "Clim & climat",
+    "tires": "Pneumatiques",
+    "alignment": "Géométrie",
+    "bodywork": "Carrosserie",
+    "paint": "Peinture",
+    "hybrid_ev": "Hybride / VE",
+    "diesel": "Diesel",
+    "pre_control": "Pré-contrôle",
+    "general_service": "Entretien général"
+  },
+  "availability": {
+    "status": {
+      "yes": "Disponible",
+      "no": "Indisponible",
+      "partial": "Partielle"
+    }
+  },
+  "navigation": {
+    "team": "Équipe",
+    "payrollExports": "Exports paie"
+  },
+  "authoring": {
+    "tabs": {
+      "overview": "Aperçu",
+      "certifications": "Certifications",
+      "timeOff": "Congés",
+      "timeEntries": "Heures"
+    },
+    "certifications": {
+      "title": "Certifications",
+      "add": "Ajouter une certification",
+      "empty": "Aucune certification enregistrée.",
+      "fields": {
+        "name": "Nom de la certification",
+        "issuingBody": "Organisme émetteur",
+        "certificateNumber": "Numéro de certificat",
+        "issuedAt": "Délivrée le",
+        "expiresAt": "Expire le",
+        "notes": "Notes"
+      },
+      "modal": {
+        "createTitle": "Ajouter une certification",
+        "editTitle": "Modifier la certification",
+        "save": "Enregistrer",
+        "saving": "Enregistrement…",
+        "cancel": "Annuler"
+      },
+      "confirmDelete": "Supprimer cette certification ?"
+    },
+    "timeOff": {
+      "title": "Congés",
+      "add": "Ajouter un congé",
+      "empty": "Aucun congé enregistré.",
+      "fields": {
+        "reasonCode": "Motif",
+        "startsAt": "Début",
+        "endsAt": "Fin",
+        "isFullDay": "Journée entière",
+        "notes": "Notes"
+      },
+      "reason": {
+        "vacation": "Vacances",
+        "sick": "Maladie",
+        "training": "Formation",
+        "personal": "Personnel",
+        "unpaid": "Sans solde",
+        "other": "Autre"
+      },
+      "modal": {
+        "createTitle": "Ajouter un congé",
+        "editTitle": "Modifier le congé",
+        "save": "Enregistrer",
+        "saving": "Enregistrement…",
+        "cancel": "Annuler"
+      },
+      "confirmDelete": "Supprimer ce congé ?"
+    },
+    "timeEntries": {
+      "title": "Heures",
+      "add": "Ajouter des heures",
+      "empty": "Aucune heure enregistrée.",
+      "weekTotal": "Cette semaine",
+      "monthTotal": "Ce mois",
+      "hoursShort": "{{hours}} h",
+      "lockedBadge": "Verrouillé",
+      "lockedTooltip": "Cette saisie est liée à un ordre de réparation verrouillé et ne peut être modifiée.",
+      "fields": {
+        "startedAt": "Début",
+        "endedAt": "Fin",
+        "entryType": "Type",
+        "workOrderId": "ID de l'ordre (optionnel)",
+        "notes": "Notes"
+      },
+      "entryType": {
+        "work_order": "Ordre de réparation",
+        "break": "Pause",
+        "non_billable": "Non facturable",
+        "manual_adjust": "Ajustement manuel"
+      },
+      "modal": {
+        "createTitle": "Ajouter des heures",
+        "editTitle": "Modifier les heures",
+        "save": "Enregistrer",
+        "saving": "Enregistrement…",
+        "cancel": "Annuler"
+      },
+      "confirmDelete": "Supprimer cette saisie ?"
+    },
+    "errors": {
+      "required": "Ce champ est requis.",
+      "overlap": "Cette période chevauche une saisie existante.",
+      "locked": "Cette saisie est liée à un ordre terminé ou facturé.",
+      "generic": "Une erreur est survenue. Veuillez réessayer."
+    }
+  }
+}

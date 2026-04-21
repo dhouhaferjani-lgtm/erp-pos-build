@@ -9,9 +9,7 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
-use App\Modules\Product\Domain\Product;
 use App\Modules\POS\Application\Services\ReceiptReturnService;
-use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Receipt;
@@ -20,6 +18,7 @@ use App\Modules\POS\Domain\Services\CashDrawerService;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -65,7 +64,7 @@ class ReceiptReturnServiceTest extends TestCase
         $this->terminal = $this->createTerminal();
         $this->createOpenShift();
 
-        $companyContext = new CompanyContext();
+        $companyContext = new CompanyContext;
         $companyContext->setCompanyId($this->company->id);
 
         $this->service = new ReceiptReturnService(

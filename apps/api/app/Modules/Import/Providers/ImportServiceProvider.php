@@ -6,6 +6,8 @@ namespace App\Modules\Import\Providers;
 
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
+use App\Modules\Import\Presentation\Controllers\ImportController;
+use App\Modules\Import\Presentation\Controllers\MigrationWizardController;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Import\Services\MigrationWizardService;
 use App\Modules\Import\Services\ValidationEngine;
@@ -55,21 +57,21 @@ class ImportServiceProvider extends ServiceProvider
             ->prefix('api/v1')
             ->group(function (): void {
                 // Import routes
-                Route::get('/imports', [\App\Modules\Import\Presentation\Controllers\ImportController::class, 'index']);
-                Route::post('/imports', [\App\Modules\Import\Presentation\Controllers\ImportController::class, 'store']);
-                Route::get('/imports/{id}', [\App\Modules\Import\Presentation\Controllers\ImportController::class, 'show']);
-                Route::get('/imports/{id}/preview', [\App\Modules\Import\Presentation\Controllers\ImportController::class, 'preview']);
-                Route::get('/imports/{id}/errors', [\App\Modules\Import\Presentation\Controllers\ImportController::class, 'errors']);
-                Route::get('/imports/{id}/error-summary', [\App\Modules\Import\Presentation\Controllers\ImportController::class, 'errorSummary']);
-                Route::post('/imports/{id}/execute', [\App\Modules\Import\Presentation\Controllers\ImportController::class, 'execute']);
-                Route::get('/imports/{id}/failed-rows.csv', [\App\Modules\Import\Presentation\Controllers\ImportController::class, 'downloadFailedRows']);
+                Route::get('/imports', [ImportController::class, 'index']);
+                Route::post('/imports', [ImportController::class, 'store']);
+                Route::get('/imports/{id}', [ImportController::class, 'show']);
+                Route::get('/imports/{id}/preview', [ImportController::class, 'preview']);
+                Route::get('/imports/{id}/errors', [ImportController::class, 'errors']);
+                Route::get('/imports/{id}/error-summary', [ImportController::class, 'errorSummary']);
+                Route::post('/imports/{id}/execute', [ImportController::class, 'execute']);
+                Route::get('/imports/{id}/failed-rows.csv', [ImportController::class, 'downloadFailedRows']);
 
                 // Migration wizard routes
-                Route::get('/migration-wizard/order', [\App\Modules\Import\Presentation\Controllers\MigrationWizardController::class, 'order']);
-                Route::get('/migration-wizard/dependencies/{type}', [\App\Modules\Import\Presentation\Controllers\MigrationWizardController::class, 'dependencies']);
-                Route::post('/migration-wizard/suggest-mapping', [\App\Modules\Import\Presentation\Controllers\MigrationWizardController::class, 'suggestMapping']);
-                Route::get('/migration-wizard/template/{type}', [\App\Modules\Import\Presentation\Controllers\MigrationWizardController::class, 'template']);
-                Route::get('/migration-wizard/status', [\App\Modules\Import\Presentation\Controllers\MigrationWizardController::class, 'status']);
+                Route::get('/migration-wizard/order', [MigrationWizardController::class, 'order']);
+                Route::get('/migration-wizard/dependencies/{type}', [MigrationWizardController::class, 'dependencies']);
+                Route::post('/migration-wizard/suggest-mapping', [MigrationWizardController::class, 'suggestMapping']);
+                Route::get('/migration-wizard/template/{type}', [MigrationWizardController::class, 'template']);
+                Route::get('/migration-wizard/status', [MigrationWizardController::class, 'status']);
             });
     }
 }

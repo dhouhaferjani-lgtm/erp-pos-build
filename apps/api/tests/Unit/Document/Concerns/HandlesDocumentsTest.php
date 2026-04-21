@@ -20,6 +20,7 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Vehicle\Application\Services\VehicleContextBuilder;
 use App\Modules\Vehicle\Domain\Vehicle;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -668,9 +669,9 @@ class MockDocumentController extends Controller
     // Public wrappers for protected methods to enable testing
 
     /**
-     * @return \Illuminate\Database\Eloquent\Builder<Document>
+     * @return Builder<Document>
      */
-    public function publicBaseQuery(): \Illuminate\Database\Eloquent\Builder
+    public function publicBaseQuery(): Builder
     {
         return $this->baseQuery();
     }
@@ -702,10 +703,10 @@ class MockDocumentController extends Controller
     }
 
     /**
-     * @param  \Illuminate\Database\Eloquent\Builder<Document>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<Document>
+     * @param  Builder<Document>  $query
+     * @return Builder<Document>
      */
-    public function publicApplyFilters(\Illuminate\Database\Eloquent\Builder $query, Request $request): \Illuminate\Database\Eloquent\Builder
+    public function publicApplyFilters(Builder $query, Request $request): Builder
     {
         return $this->applyFilters($query, $request);
     }

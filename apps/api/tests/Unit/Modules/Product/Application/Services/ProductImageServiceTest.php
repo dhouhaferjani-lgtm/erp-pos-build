@@ -16,7 +16,7 @@ class ProductImageServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new ProductImageService();
+        $this->service = new ProductImageService;
     }
 
     public function test_serve_returns_inline_content_disposition(): void
@@ -25,7 +25,7 @@ class ProductImageServiceTest extends TestCase
         Storage::disk('s3')->put('products/tenant/product/test.jpg', 'fake-image-content');
 
         /** @var ProductImage $image */
-        $image = new ProductImage();
+        $image = new ProductImage;
         $image->storage_disk = 's3';
         $image->storage_path = 'products/tenant/product/test.jpg';
         $image->original_filename = 'test.jpg';
@@ -44,7 +44,7 @@ class ProductImageServiceTest extends TestCase
         Storage::disk('s3')->put('products/tenant/product/photo.png', 'fake-image-content');
 
         /** @var ProductImage $image */
-        $image = new ProductImage();
+        $image = new ProductImage;
         $image->storage_disk = 's3';
         $image->storage_path = 'products/tenant/product/photo.png';
         $image->original_filename = 'photo.png';

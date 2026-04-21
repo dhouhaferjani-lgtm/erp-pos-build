@@ -1,0 +1,47 @@
+{
+  "common": {
+    "searchPlaceholder": "Search…",
+    "loading": "Loading…",
+    "error": "Could not load results.",
+    "clear": "Clear selection",
+    "close": "Close",
+    "minCharacters": "Type at least 2 characters to search."
+  },
+  "partner": {
+    "label": "Customer",
+    "searchPlaceholder": "Search customer by name, email, or tax ID…",
+    "empty": "No matching partners.",
+    "addNew": "Add new customer",
+    "selectedChip": "Selected customer",
+    "typeChip": {
+      "customer": "Customer",
+      "supplier": "Supplier",
+      "both": "Customer & Supplier"
+    }
+  },
+  "vehicle": {
+    "label": "Vehicle",
+    "searchPlaceholder": "Search vehicle by plate, VIN, brand, or model…",
+    "empty": "No matching vehicles.",
+    "emptyForPartner": "This customer has no vehicles yet.",
+    "addNew": "Add new vehicle",
+    "selectedChip": "Selected vehicle",
+    "disabledHint": "Pick a customer first."
+  },
+  "bundle": {
+    "label": "Bundle",
+    "triggerPlaceholder": "Pick a bundle…",
+    "changeBundle": "Change bundle",
+    "noBundleSelected": "No bundle selected"
+  },
+  "product": {
+    "label": "Part",
+    "searchPlaceholder": "Search a part by name or SKU…",
+    "empty": "No matching products."
+  },
+  "service": {
+    "label": "Labor service",
+    "searchPlaceholder": "Search a labor service by name or code…",
+    "empty": "No matching services."
+  }
+}

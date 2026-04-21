@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\Expense\Presentation\Resources;
 
+use App\Modules\Document\Domain\Document;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * API resource for expense documents.
  *
- * @property-read \App\Modules\Document\Domain\Document $resource
+ * @property-read Document $resource
  */
 class ExpenseResource extends JsonResource
 {

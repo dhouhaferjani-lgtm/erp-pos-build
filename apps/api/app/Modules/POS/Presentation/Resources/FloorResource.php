@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Presentation\Resources;
 
+use App\Modules\POS\Domain\Floor;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * API Resource for floor transformation.
  *
- * @mixin \App\Modules\POS\Domain\Floor
+ * @mixin Floor
  */
 final class FloorResource extends JsonResource
 {

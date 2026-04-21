@@ -32,13 +32,16 @@ echo -e "\n${YELLOW}Running PHPUnit tests...${NC}"
 php artisan test
 echo -e "${GREEN}✓ PHPUnit passed${NC}"
 
-# Type Generation
-echo -e "\n${YELLOW}Generating TypeScript types...${NC}"
-if php artisan typescript:transform 2>/dev/null; then
-    echo -e "${GREEN}✓ TypeScript types generated${NC}"
-else
-    echo -e "${YELLOW}⚠ TypeScript transformer not configured yet (skipping)${NC}"
+# Type Generation — regenerate then fail on any drift between DTOs and committed generated.ts
+echo -e "\n${YELLOW}Regenerating TypeScript types and checking for drift...${NC}"
+php artisan typescript:transform
+if ! git -C "$ROOT_DIR" diff --exit-code packages/shared/types/generated.ts > /dev/null 2>&1; then
+    echo -e "${RED}✗ Generated TypeScript types are out of sync with DTOs.${NC}"
+    echo -e "${RED}  Run 'cd apps/api && php artisan typescript:transform' and commit the diff.${NC}"
+    git -C "$ROOT_DIR" --no-pager diff --stat packages/shared/types/generated.ts
+    exit 1
 fi
+echo -e "${GREEN}✓ TypeScript types are in sync${NC}"
 
 # Frontend checks
 echo -e "\n${YELLOW}🌐 Frontend Checks${NC}"

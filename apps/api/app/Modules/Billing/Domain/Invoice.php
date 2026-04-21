@@ -7,6 +7,7 @@ namespace App\Modules\Billing\Domain;
 use App\Modules\Billing\Domain\Enums\InvoiceStatus;
 use App\Modules\Billing\Domain\ValueObjects\Money;
 use App\Modules\Tenant\Domain\Tenant;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -33,20 +34,20 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property array<string, mixed> $billing_address
  * @property string|null $billing_email
  * @property string|null $billing_name
- * @property \Carbon\Carbon $invoice_date
- * @property \Carbon\Carbon $due_date
- * @property \Carbon\Carbon|null $paid_at
- * @property \Carbon\Carbon|null $sent_at
- * @property \Carbon\Carbon|null $period_start
- * @property \Carbon\Carbon|null $period_end
+ * @property Carbon $invoice_date
+ * @property Carbon $due_date
+ * @property Carbon|null $paid_at
+ * @property Carbon|null $sent_at
+ * @property Carbon|null $period_start
+ * @property Carbon|null $period_end
  * @property string|null $pdf_path
  * @property string|null $notes
  * @property string|null $footer_text
  * @property string|null $stripe_invoice_id
  * @property array<string, mixed> $metadata
- * @property \Carbon\Carbon $created_at
- * @property \Carbon\Carbon $updated_at
- * @property \Carbon\Carbon|null $deleted_at
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
+ * @property Carbon|null $deleted_at
  */
 final class Invoice extends Model
 {

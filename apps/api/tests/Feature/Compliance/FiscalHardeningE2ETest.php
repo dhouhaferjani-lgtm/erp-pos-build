@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Compliance;
 
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Compliance\Services\FiscalHashService;
+use App\Modules\Document\Application\DTOs\DocumentData;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -14,6 +18,7 @@ use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -71,13 +76,13 @@ class FiscalHardeningE2ETest extends TestCase
         ];
 
         foreach ($accounts as $accountData) {
-            \App\Modules\Accounting\Domain\Account::create([
+            Account::create([
                 'tenant_id' => $this->tenant->id,
                 'company_id' => $this->company->id,
                 'code' => $accountData['code'],
                 'name' => $accountData['name'],
-                'type' => \App\Modules\Accounting\Domain\Enums\AccountType::from($accountData['type']),
-                'system_purpose' => \App\Modules\Accounting\Domain\Enums\SystemAccountPurpose::from($accountData['purpose']),
+                'type' => AccountType::from($accountData['type']),
+                'system_purpose' => SystemAccountPurpose::from($accountData['purpose']),
                 'is_active' => true,
             ]);
         }
@@ -137,7 +142,7 @@ class FiscalHardeningE2ETest extends TestCase
                 ->update(['total' => '9999.99']);
 
             $this->fail('Expected trigger to block total modification on sealed document');
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             // Verify we got the expected trigger error
             $this->assertStringContainsString('sealed', strtolower($e->getMessage()));
             echo "\n✓ Immutability trigger correctly blocked total modification";
@@ -162,7 +167,7 @@ class FiscalHardeningE2ETest extends TestCase
                 ->update(['subtotal' => '8000.00']);
 
             $this->fail('Expected trigger to block subtotal modification');
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             $this->assertStringContainsString('sealed', strtolower($e->getMessage()));
             echo "\n✓ Immutability trigger correctly blocked subtotal modification";
         }
@@ -185,7 +190,7 @@ class FiscalHardeningE2ETest extends TestCase
                 ->update(['document_number' => 'FAKE-001']);
 
             $this->fail('Expected trigger to block document_number modification');
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             $this->assertStringContainsString('sealed', strtolower($e->getMessage()));
             echo "\n✓ Immutability trigger correctly blocked document_number modification";
         }
@@ -208,7 +213,7 @@ class FiscalHardeningE2ETest extends TestCase
                 ->update(['fiscal_hash' => 'tampered_hash_value']);
 
             $this->fail('Expected trigger to block fiscal_hash modification');
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             $this->assertStringContainsString('sealed', strtolower($e->getMessage()));
             echo "\n✓ Immutability trigger correctly blocked fiscal_hash modification";
         }
@@ -329,7 +334,7 @@ class FiscalHardeningE2ETest extends TestCase
         $invoice = $this->createAndPostInvoice();
 
         // Use the DTO directly to verify fiscal fields are included
-        $dto = \App\Modules\Document\Application\DTOs\DocumentData::fromModel($invoice);
+        $dto = DocumentData::fromModel($invoice);
 
         $this->assertEquals('TAX_INVOICE', $dto->fiscal_category);
         $this->assertEquals('SEALED', $dto->fiscal_status);
@@ -412,13 +417,13 @@ class FiscalHardeningE2ETest extends TestCase
             ['code' => '709000', 'name' => 'Sales Returns', 'type' => 'revenue', 'purpose' => 'sales_return'],
         ];
         foreach ($accounts as $accountData) {
-            \App\Modules\Accounting\Domain\Account::create([
+            Account::create([
                 'tenant_id' => $this->tenant->id,
                 'company_id' => $company2->id,
                 'code' => $accountData['code'],
                 'name' => $accountData['name'],
-                'type' => \App\Modules\Accounting\Domain\Enums\AccountType::from($accountData['type']),
-                'system_purpose' => \App\Modules\Accounting\Domain\Enums\SystemAccountPurpose::from($accountData['purpose']),
+                'type' => AccountType::from($accountData['type']),
+                'system_purpose' => SystemAccountPurpose::from($accountData['purpose']),
                 'is_active' => true,
             ]);
         }

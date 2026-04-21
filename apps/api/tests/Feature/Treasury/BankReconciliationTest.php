@@ -15,11 +15,9 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
-use App\Modules\Treasury\Domain\BankReconciliation;
 use App\Modules\Treasury\Domain\BankReconciliationItem;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
-use App\Modules\Treasury\Domain\Enums\ReconciliationStatus;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
@@ -696,7 +694,7 @@ class BankReconciliationTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)->getJson(
-            '/api/v1/bank-reconciliations?repository_id=' . $otherRepo->id
+            '/api/v1/bank-reconciliations?repository_id='.$otherRepo->id
         );
 
         $response->assertStatus(200);

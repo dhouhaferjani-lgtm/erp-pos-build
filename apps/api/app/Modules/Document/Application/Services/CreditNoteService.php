@@ -13,6 +13,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Partner\Domain\Partner;
 use Illuminate\Support\Facades\DB;
 
 class CreditNoteService
@@ -275,8 +276,8 @@ class CreditNoteService
     ): Document {
         return DB::transaction(function () use ($partnerId, $lines, $reason, $notes): Document {
             // Get partner to validate and extract company/tenant info
-            /** @var \App\Modules\Partner\Domain\Partner $partner */
-            $partner = \App\Modules\Partner\Domain\Partner::lockForUpdate()->findOrFail($partnerId);
+            /** @var Partner $partner */
+            $partner = Partner::lockForUpdate()->findOrFail($partnerId);
 
             $companyId = $partner->company_id;
             $tenantId = $partner->tenant_id;

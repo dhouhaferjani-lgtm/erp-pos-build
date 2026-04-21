@@ -8,6 +8,7 @@ use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\ValidateLocationAccess;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Scheduling\Infrastructure\Http\Middleware\VerifyCaptcha;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
@@ -15,6 +16,7 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use Sentry\Laravel\Integration;
 use Sentry\State\Scope;
 
@@ -31,6 +33,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'super_admin' => EnsureSuperAdmin::class,
             'validate.location.access' => ValidateLocationAccess::class,
             'module' => RequireModule::class,
+            'scheduling.captcha' => VerifyCaptcha::class,
         ]);
 
         // Exclude auth endpoints from CSRF verification for token-based clients
@@ -42,7 +45,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->prependToGroup('api', [
-            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
+            EnsureFrontendRequestsAreStateful::class,
         ]);
 
         $middleware->appendToGroup('api', [

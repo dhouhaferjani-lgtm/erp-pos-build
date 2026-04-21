@@ -4,8 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Service;
 
+use App\Modules\Company\Domain\Company;
+use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -38,14 +43,14 @@ class ServiceMigrationTest extends TestCase
     #[Test]
     public function service_categories_has_unique_name_per_company_constraint(): void
     {
-        $tenant = \App\Modules\Tenant\Domain\Tenant::factory()->create();
-        $company = \App\Modules\Company\Domain\Company::factory()->create([
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create([
             'tenant_id' => $tenant->id,
         ]);
 
         // Create first category
-        \Illuminate\Support\Facades\DB::table('service_categories')->insert([
-            'id' => \Illuminate\Support\Str::uuid()->toString(),
+        DB::table('service_categories')->insert([
+            'id' => Str::uuid()->toString(),
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,
             'name' => 'Maintenance',
@@ -56,10 +61,10 @@ class ServiceMigrationTest extends TestCase
         ]);
 
         // Attempt to create duplicate should fail
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
-        \Illuminate\Support\Facades\DB::table('service_categories')->insert([
-            'id' => \Illuminate\Support\Str::uuid()->toString(),
+        DB::table('service_categories')->insert([
+            'id' => Str::uuid()->toString(),
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,
             'name' => 'Maintenance',
@@ -99,14 +104,14 @@ class ServiceMigrationTest extends TestCase
     #[Test]
     public function services_has_unique_code_per_company_constraint(): void
     {
-        $tenant = \App\Modules\Tenant\Domain\Tenant::factory()->create();
-        $company = \App\Modules\Company\Domain\Company::factory()->create([
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create([
             'tenant_id' => $tenant->id,
         ]);
 
         // Create first service
-        \Illuminate\Support\Facades\DB::table('services')->insert([
-            'id' => \Illuminate\Support\Str::uuid()->toString(),
+        DB::table('services')->insert([
+            'id' => Str::uuid()->toString(),
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,
             'code' => 'OIL-CHANGE',
@@ -120,10 +125,10 @@ class ServiceMigrationTest extends TestCase
         ]);
 
         // Attempt to create duplicate should fail
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
-        \Illuminate\Support\Facades\DB::table('services')->insert([
-            'id' => \Illuminate\Support\Str::uuid()->toString(),
+        DB::table('services')->insert([
+            'id' => Str::uuid()->toString(),
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,
             'code' => 'OIL-CHANGE',
@@ -140,15 +145,15 @@ class ServiceMigrationTest extends TestCase
     #[Test]
     public function services_can_reference_category(): void
     {
-        $tenant = \App\Modules\Tenant\Domain\Tenant::factory()->create();
-        $company = \App\Modules\Company\Domain\Company::factory()->create([
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create([
             'tenant_id' => $tenant->id,
         ]);
 
-        $categoryId = \Illuminate\Support\Str::uuid()->toString();
+        $categoryId = Str::uuid()->toString();
 
         // Create category first
-        \Illuminate\Support\Facades\DB::table('service_categories')->insert([
+        DB::table('service_categories')->insert([
             'id' => $categoryId,
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,
@@ -160,8 +165,8 @@ class ServiceMigrationTest extends TestCase
         ]);
 
         // Create service with category reference
-        $serviceId = \Illuminate\Support\Str::uuid()->toString();
-        \Illuminate\Support\Facades\DB::table('services')->insert([
+        $serviceId = Str::uuid()->toString();
+        DB::table('services')->insert([
             'id' => $serviceId,
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,
@@ -176,7 +181,7 @@ class ServiceMigrationTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $service = \Illuminate\Support\Facades\DB::table('services')
+        $service = DB::table('services')
             ->where('id', $serviceId)
             ->first();
 
@@ -186,16 +191,16 @@ class ServiceMigrationTest extends TestCase
     #[Test]
     public function service_categories_support_parent_child_hierarchy(): void
     {
-        $tenant = \App\Modules\Tenant\Domain\Tenant::factory()->create();
-        $company = \App\Modules\Company\Domain\Company::factory()->create([
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create([
             'tenant_id' => $tenant->id,
         ]);
 
-        $parentId = \Illuminate\Support\Str::uuid()->toString();
-        $childId = \Illuminate\Support\Str::uuid()->toString();
+        $parentId = Str::uuid()->toString();
+        $childId = Str::uuid()->toString();
 
         // Create parent category
-        \Illuminate\Support\Facades\DB::table('service_categories')->insert([
+        DB::table('service_categories')->insert([
             'id' => $parentId,
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,
@@ -208,7 +213,7 @@ class ServiceMigrationTest extends TestCase
         ]);
 
         // Create child category
-        \Illuminate\Support\Facades\DB::table('service_categories')->insert([
+        DB::table('service_categories')->insert([
             'id' => $childId,
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,
@@ -220,7 +225,7 @@ class ServiceMigrationTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $child = \Illuminate\Support\Facades\DB::table('service_categories')
+        $child = DB::table('service_categories')
             ->where('id', $childId)
             ->first();
 

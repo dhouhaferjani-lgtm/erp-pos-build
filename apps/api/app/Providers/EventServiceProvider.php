@@ -7,13 +7,34 @@ namespace App\Providers;
 use App\Modules\Accounting\Listeners\InvoicePostedListener;
 use App\Modules\Company\Domain\Events\CompanyCreated;
 use App\Modules\Company\Listeners\CreateFiscalYearsForNewCompany;
-use App\Modules\Progression\Infrastructure\Listeners\RegisterCompanyWithGrowthAdvisor;
 use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Import\Infrastructure\Listeners\BroadcastImportEventsListener;
 use App\Modules\Loyalty\Application\Listeners\EarnPointsOnReceiptCompleted;
+use App\Modules\Partner\Domain\Events\PartnerDeleted;
 use App\Modules\Partner\Infrastructure\Listeners\BroadcastPartnerEventsListener;
-use App\Modules\POS\Infrastructure\Listeners\BroadcastPosEventsListener;
 use App\Modules\POS\Domain\Events\ReceiptCompleted;
+use App\Modules\POS\Infrastructure\Listeners\BroadcastPosEventsListener;
+use App\Modules\Progression\Infrastructure\Listeners\RegisterCompanyWithGrowthAdvisor;
+use App\Modules\Scheduling\Infrastructure\Listeners\MirrorAppointmentOnWorkOrderCancelled;
+use App\Modules\Scheduling\Infrastructure\Listeners\MirrorAppointmentOnWorkOrderClosed;
+use App\Modules\Scheduling\Infrastructure\Listeners\MirrorAppointmentOnWorkOrderCompleted;
+use App\Modules\Scheduling\Infrastructure\Listeners\MirrorAppointmentOnWorkOrderStarted;
+use App\Modules\Vehicle\Domain\Events\VehicleOwnerChanged;
+use App\Modules\Vehicle\Infrastructure\Listeners\CloseOwnershipsOnPartnerDeleted;
+use App\Modules\Vehicle\Infrastructure\Listeners\RecordVehicleOwnerChangedAuditEvent;
+use App\Modules\Vehicle\Infrastructure\Listeners\WriteMileageReadingFromWorkOrderCompleted;
+use App\Modules\Workshop\Technician\Application\Listeners\ReopenTimeEntryOnWorkOrderResumed;
+use App\Modules\Workshop\Technician\Infrastructure\Listeners\CloseTimeEntryOnWorkOrderCompleted;
+use App\Modules\Workshop\Technician\Infrastructure\Listeners\CloseTimeEntryOnWorkOrderPaused;
+use App\Modules\Workshop\Technician\Infrastructure\Listeners\CreateTimeEntryOnWorkOrderStarted;
+use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCancelled;
+use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderClosed;
+use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCompleted;
+use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderPartsNeeded;
+use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderPaused;
+use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderResumed;
+use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderStarted;
+use App\Modules\Workshop\WorkOrder\Infrastructure\Listeners\LogPartsNeededForProcurement;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 
 class EventServiceProvider extends ServiceProvider
@@ -33,6 +54,42 @@ class EventServiceProvider extends ServiceProvider
         ],
         ReceiptCompleted::class => [
             EarnPointsOnReceiptCompleted::class,
+        ],
+        PartnerDeleted::class => [
+            CloseOwnershipsOnPartnerDeleted::class,
+        ],
+        VehicleOwnerChanged::class => [
+            RecordVehicleOwnerChangedAuditEvent::class,
+        ],
+
+        // ----------------------------------------------------------------------
+        // Workshop/Technician + Vehicle mileage listeners subscribing to the
+        // Plan B (WorkOrder) lifecycle events. Canonical event signatures live
+        // under \App\Modules\Workshop\WorkOrder\Domain\Events\*.
+        // ----------------------------------------------------------------------
+        WorkOrderStarted::class => [
+            CreateTimeEntryOnWorkOrderStarted::class,
+            MirrorAppointmentOnWorkOrderStarted::class,
+        ],
+        WorkOrderPaused::class => [
+            CloseTimeEntryOnWorkOrderPaused::class,
+        ],
+        WorkOrderResumed::class => [
+            ReopenTimeEntryOnWorkOrderResumed::class,
+        ],
+        WorkOrderCompleted::class => [
+            CloseTimeEntryOnWorkOrderCompleted::class,
+            WriteMileageReadingFromWorkOrderCompleted::class,
+            MirrorAppointmentOnWorkOrderCompleted::class,
+        ],
+        WorkOrderCancelled::class => [
+            MirrorAppointmentOnWorkOrderCancelled::class,
+        ],
+        WorkOrderClosed::class => [
+            MirrorAppointmentOnWorkOrderClosed::class,
+        ],
+        WorkOrderPartsNeeded::class => [
+            LogPartsNeededForProcurement::class,
         ],
     ];
 

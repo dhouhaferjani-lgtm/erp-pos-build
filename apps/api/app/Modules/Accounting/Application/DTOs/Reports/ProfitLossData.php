@@ -7,6 +7,7 @@ namespace App\Modules\Accounting\Application\DTOs\Reports;
 use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\DataCollection;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 /**
  * ProfitLossData
@@ -68,6 +69,7 @@ use Spatie\LaravelData\DataCollection;
  * }
  * ```
  */
+#[TypeScript]
 final class ProfitLossData extends Data
 {
     /**

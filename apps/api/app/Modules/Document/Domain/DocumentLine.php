@@ -11,6 +11,7 @@ use App\Modules\Service\Domain\Service;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -34,10 +35,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property numeric-string|null $landed_unit_cost
  * @property string|null $notes
  * @property string|null $source_line_id
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read Document $document
- * @property-read \App\Modules\Company\Domain\Location|null $location
+ * @property-read Location|null $location
  * @property-read Product|null $product
  * @property-read Batch|null $batch
  * @property-read Service|null $service

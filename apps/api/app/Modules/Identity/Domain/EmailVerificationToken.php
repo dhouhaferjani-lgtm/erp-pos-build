@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Identity\Domain;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,8 +13,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $id
  * @property string $user_id
  * @property string $token
- * @property \Carbon\Carbon $expires_at
- * @property \Carbon\Carbon $created_at
+ * @property Carbon $expires_at
+ * @property Carbon $created_at
  * @property-read User $user
  */
 class EmailVerificationToken extends Model

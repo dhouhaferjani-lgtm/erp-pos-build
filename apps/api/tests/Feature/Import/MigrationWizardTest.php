@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Import;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
@@ -12,7 +13,9 @@ use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Services\MigrationWizardService;
+use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -52,7 +55,7 @@ class MigrationWizardTest extends TestCase
             'currency' => 'TND',
             'locale' => 'fr_TN',
             'timezone' => 'Africa/Tunis',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
@@ -129,7 +132,7 @@ class MigrationWizardTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Test Product',
             'sku' => 'TEST-001',
-            'type' => \App\Modules\Product\Domain\Enums\ProductType::Part,
+            'type' => ProductType::Part,
         ]);
 
         Location::create([
@@ -180,7 +183,7 @@ class MigrationWizardTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'name' => 'Test Partner',
-            'type' => \App\Modules\Partner\Domain\Enums\PartnerType::Customer,
+            'type' => PartnerType::Customer,
         ]);
 
         /** @var MigrationWizardService $wizard */
@@ -260,7 +263,7 @@ class MigrationWizardTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'name' => 'Test Partner',
-            'type' => \App\Modules\Partner\Domain\Enums\PartnerType::Customer,
+            'type' => PartnerType::Customer,
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')

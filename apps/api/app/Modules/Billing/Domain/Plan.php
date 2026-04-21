@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Billing\Domain;
 
 use App\Modules\Billing\Domain\ValueObjects\Money;
+use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -26,7 +28,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $display_order
  * @property string|null $stripe_monthly_price_id
  * @property string|null $stripe_yearly_price_id
- * @property \Carbon\Carbon $created_at
+ * @property Carbon $created_at
  */
 final class Plan extends Model
 {
@@ -181,8 +183,8 @@ final class Plan extends Model
     /**
      * Scope to active plans only.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<Plan>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<Plan>
+     * @param  Builder<Plan>  $query
+     * @return Builder<Plan>
      */
     public function scopeActive($query)
     {
@@ -192,8 +194,8 @@ final class Plan extends Model
     /**
      * Scope to public plans only.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<Plan>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<Plan>
+     * @param  Builder<Plan>  $query
+     * @return Builder<Plan>
      */
     public function scopePublic($query)
     {

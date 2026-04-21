@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Uom\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Uom\Application\DTOs\ConversionResultData;
 use App\Modules\Uom\Application\DTOs\UnitCategoryData;
 use App\Modules\Uom\Application\DTOs\UnitData;
@@ -202,7 +203,7 @@ class UomController extends Controller
         }
 
         // Check if unit is in use
-        $productsCount = \App\Modules\Product\Domain\Product::where('unit_id', $id)->count();
+        $productsCount = Product::where('unit_id', $id)->count();
         if ($productsCount > 0) {
             return response()->json([
                 'error' => [

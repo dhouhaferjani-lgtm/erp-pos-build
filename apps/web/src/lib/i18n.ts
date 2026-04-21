@@ -33,6 +33,12 @@ import enCountries from '../locales/en/countries.json'
 import enProgression from '../locales/en/progression.json'
 import enSmartPrompts from '../locales/en/smart-prompts.json'
 import enEnrichment from '../locales/en/enrichment.json'
+import enWorkshopTechnicians from '../locales/en/workshop-technicians.json'
+import enWorkshopBundles from '../locales/en/workshop-bundles.json'
+import enWorkshopWorkOrders from '../locales/en/workshop-work-orders.json'
+import enScheduling from '../locales/en/scheduling.json'
+import enVehicleOwnership from '../locales/en/vehicle-ownership.json'
+import enPickers from '../locales/en/pickers.json'
 
 import frCommon from '../locales/fr/common.json'
 import frAuth from '../locales/fr/auth.json'
@@ -64,6 +70,12 @@ import frCountries from '../locales/fr/countries.json'
 import frProgression from '../locales/fr/progression.json'
 import frSmartPrompts from '../locales/fr/smart-prompts.json'
 import frEnrichment from '../locales/fr/enrichment.json'
+import frWorkshopTechnicians from '../locales/fr/workshop-technicians.json'
+import frWorkshopBundles from '../locales/fr/workshop-bundles.json'
+import frWorkshopWorkOrders from '../locales/fr/workshop-work-orders.json'
+import frScheduling from '../locales/fr/scheduling.json'
+import frVehicleOwnership from '../locales/fr/vehicle-ownership.json'
+import frPickers from '../locales/fr/pickers.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -105,6 +117,12 @@ const resources = {
     progression: enProgression,
     'smart-prompts': enSmartPrompts,
     enrichment: enEnrichment,
+    'workshop-technicians': enWorkshopTechnicians,
+    'workshop-bundles': enWorkshopBundles,
+    'workshop-work-orders': enWorkshopWorkOrders,
+    scheduling: enScheduling,
+    'vehicle-ownership': enVehicleOwnership,
+    pickers: enPickers,
   },
   fr: {
     common: frCommon,
@@ -137,6 +155,12 @@ const resources = {
     progression: frProgression,
     'smart-prompts': frSmartPrompts,
     enrichment: frEnrichment,
+    'workshop-technicians': frWorkshopTechnicians,
+    'workshop-bundles': frWorkshopBundles,
+    'workshop-work-orders': frWorkshopWorkOrders,
+    scheduling: frScheduling,
+    'vehicle-ownership': frVehicleOwnership,
+    pickers: frPickers,
   },
   ar: {
     // Arabic falls back to English - translations to be added later
@@ -170,6 +194,12 @@ const resources = {
     progression: enProgression,
     'smart-prompts': enSmartPrompts,
     enrichment: enEnrichment,
+    'workshop-technicians': enWorkshopTechnicians,
+    'workshop-bundles': enWorkshopBundles,
+    'workshop-work-orders': enWorkshopWorkOrders,
+    scheduling: enScheduling,
+    'vehicle-ownership': enVehicleOwnership,
+    pickers: enPickers,
   },
 }
 
@@ -180,7 +210,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicle-ownership', 'pickers'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

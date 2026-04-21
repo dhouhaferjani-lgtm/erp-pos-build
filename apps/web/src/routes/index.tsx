@@ -155,6 +155,9 @@ const ServiceListPage = lazy(() => import('../features/services/ServiceListPage'
 const ServiceDetailPage = lazy(() => import('../features/services/ServiceDetailPage').then((m) => ({ default: m.ServiceDetailPage })))
 const ServiceForm = lazy(() => import('../features/services/ServiceForm').then((m) => ({ default: m.ServiceForm })))
 const ServiceCategoryListPage = lazy(() => import('../features/services/ServiceCategoryListPage').then((m) => ({ default: m.ServiceCategoryListPage })))
+const WorkshopBundleListPage = lazy(() => import('../features/workshop-bundles/pages/BundleListPage').then((m) => ({ default: m.BundleListPage })))
+const WorkshopBundleCreatePage = lazy(() => import('../features/workshop-bundles/pages/BundleCreatePage').then((m) => ({ default: m.BundleCreatePage })))
+const WorkshopBundleDetailPage = lazy(() => import('../features/workshop-bundles/pages/BundleDetailPage').then((m) => ({ default: m.BundleDetailPage })))
 
 // Opening Balances module
 const OpeningBalancesPage = lazy(() => import('../features/opening-balances/pages/OpeningBalancesPage').then((m) => ({ default: m.OpeningBalancesPage })))
@@ -196,6 +199,21 @@ const HealthClaimListPage = lazy(() => import('../features/parapharmacy/pages').
 const HealthClaimFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.HealthClaimFormPage })))
 const KeyComponentListPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.KeyComponentListPage })))
 const KeyComponentFormPage = lazy(() => import('../features/parapharmacy/pages').then((m) => ({ default: m.KeyComponentFormPage })))
+
+// Workshop/Technician module (HRM-lite)
+const WorkshopTechniciansTeamListPage = lazy(() => import('../features/workshop-technicians/pages/TeamListPage').then((m) => ({ default: m.TeamListPage })))
+const WorkshopTechnicianDetailPage = lazy(() => import('../features/workshop-technicians/pages/TechnicianDetailPage').then((m) => ({ default: m.TechnicianDetailPage })))
+const WorkshopPayrollExportPage = lazy(() => import('../features/workshop-technicians/pages/PayrollExportPage').then((m) => ({ default: m.PayrollExportPage })))
+
+// Workshop/WorkOrder module (Spec B)
+const WorkshopWorkOrderListPage = lazy(() => import('../features/workshop-work-orders/pages/WorkOrderListPage').then((m) => ({ default: m.WorkOrderListPage })))
+const WorkshopWorkOrderDetailPage = lazy(() => import('../features/workshop-work-orders/pages/WorkOrderDetailPage').then((m) => ({ default: m.WorkOrderDetailPage })))
+const WorkshopWorkOrderCreatePage = lazy(() => import('../features/workshop-work-orders/pages/WorkOrderCreatePage').then((m) => ({ default: m.WorkOrderCreatePage })))
+
+// Scheduling module (Spec D)
+const SchedulerPage = lazy(() => import('../features/scheduling/pages/SchedulerPage').then((m) => ({ default: m.SchedulerPage })))
+const SchedulingAppointmentDetailPage = lazy(() => import('../features/scheduling/pages/AppointmentDetailPage').then((m) => ({ default: m.AppointmentDetailPage })))
+const SchedulingCapacityReportPage = lazy(() => import('../features/scheduling/pages/CapacityReportPage').then((m) => ({ default: m.CapacityReportPage })))
 
 // CRM module
 const CrmCompanyListPage = lazy(() => import('../features/crm/pages/CompanyListPage').then((m) => ({ default: m.CompanyListPage })))
@@ -1193,6 +1211,108 @@ export function AppRoutes() {
           />
         </Route>
 
+        {/* Workshop Work Orders Module (Spec B) */}
+        <Route path="workshop/work-orders">
+          <Route
+            index
+            element={
+              <RequirePermission permission="work-orders.view">
+                <SuspenseWrapper>
+                  <WorkshopWorkOrderListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="new"
+            element={
+              <RequirePermission permission="work-orders.create">
+                <SuspenseWrapper>
+                  <WorkshopWorkOrderCreatePage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path=":id"
+            element={
+              <RequirePermission permission="work-orders.view">
+                <SuspenseWrapper>
+                  <WorkshopWorkOrderDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+        </Route>
+
+        {/* Scheduling Module (Spec D) */}
+        <Route path="scheduling">
+          <Route
+            index
+            element={
+              <RequirePermission permission="scheduling.appointments.view">
+                <SuspenseWrapper>
+                  <SchedulerPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="appointments/:id"
+            element={
+              <RequirePermission permission="scheduling.appointments.view">
+                <SuspenseWrapper>
+                  <SchedulingAppointmentDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="capacity"
+            element={
+              <RequirePermission permission="scheduling.appointments.view">
+                <SuspenseWrapper>
+                  <SchedulingCapacityReportPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+        </Route>
+
+        {/* Workshop Service Bundles Module */}
+        <Route path="workshop/bundles">
+          <Route
+            index
+            element={
+              <RequirePermission permission="workshop-bundles.view">
+                <SuspenseWrapper>
+                  <WorkshopBundleListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="new"
+            element={
+              <RequirePermission permission="workshop-bundles.manage">
+                <SuspenseWrapper>
+                  <WorkshopBundleCreatePage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path=":id"
+            element={
+              <RequirePermission permission="workshop-bundles.view">
+                <SuspenseWrapper>
+                  <WorkshopBundleDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+        </Route>
+
         {/* Expenses Module */}
         <Route path="expenses">
           <Route
@@ -2040,6 +2160,41 @@ export function AppRoutes() {
               <RequirePermission permission="contacts.update">
                 <SuspenseWrapper>
                   <CrmContactFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+        </Route>
+
+        {/* Workshop module — Technician profiles (HRM-lite) */}
+        <Route path="workshop">
+          <Route index element={<Navigate to="/workshop/technicians" replace />} />
+          <Route
+            path="technicians"
+            element={
+              <RequirePermission permission="workshop.technicians.view">
+                <SuspenseWrapper>
+                  <WorkshopTechniciansTeamListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="technicians/:id"
+            element={
+              <RequirePermission permission="workshop.technicians.view">
+                <SuspenseWrapper>
+                  <WorkshopTechnicianDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="payroll-exports"
+            element={
+              <RequirePermission permission="workshop.payroll.view">
+                <SuspenseWrapper>
+                  <WorkshopPayrollExportPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

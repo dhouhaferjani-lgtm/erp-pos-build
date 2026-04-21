@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Service\Domain\Enums\PricingType;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Factories\ServiceFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -16,6 +17,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 /**
  * Service entity for catalog management.
@@ -34,19 +36,19 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $hourly_rate
  * @property string|null $tax_rate
  * @property bool $is_active
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
  * @property-read Tenant $tenant
  * @property-read Company $company
  * @property-read ServiceCategory|null $category
  * @property-read Collection<int, DocumentLine> $documentLines
  *
- * @use HasFactory<\Database\Factories\ServiceFactory>
+ * @use HasFactory<ServiceFactory>
  */
 class Service extends Model
 {
-    /** @use HasFactory<\Database\Factories\ServiceFactory> */
+    /** @use HasFactory<ServiceFactory> */
     use HasFactory;
 
     use HasUuids;
@@ -101,9 +103,9 @@ class Service extends Model
     /**
      * Create a new factory instance for the model.
      */
-    protected static function newFactory(): \Database\Factories\ServiceFactory
+    protected static function newFactory(): ServiceFactory
     {
-        return \Database\Factories\ServiceFactory::new();
+        return ServiceFactory::new();
     }
 
     /**

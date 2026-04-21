@@ -7,6 +7,7 @@ namespace Tests\Feature\Import;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
@@ -17,6 +18,7 @@ use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -58,7 +60,7 @@ class ImportTypesTest extends TestCase
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
@@ -256,7 +258,7 @@ class ImportTypesTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Test Product',
             'sku' => 'TEST-001',
-            'type' => \App\Modules\Product\Domain\Enums\ProductType::Part,
+            'type' => ProductType::Part,
         ]);
 
         $location = Location::create([

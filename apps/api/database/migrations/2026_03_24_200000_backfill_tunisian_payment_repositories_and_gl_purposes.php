@@ -145,7 +145,7 @@ return new class extends Migration
                 ->first();
 
             if ($account !== null) {
-                /** @var \stdClass $account */
+                /** @var stdClass $account */
                 DB::table('accounts')
                     ->where('id', $account->id)
                     ->update([
@@ -166,7 +166,7 @@ return new class extends Migration
                     ->where('company_id', $company->id)
                     ->where('code', $parentCode)
                     ->first();
-                /** @var \stdClass|null $parent */
+                /** @var stdClass|null $parent */
                 $parentId = $parent?->id;
             }
 

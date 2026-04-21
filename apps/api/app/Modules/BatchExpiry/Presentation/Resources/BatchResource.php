@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\BatchExpiry\Presentation\Resources;
 
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\Product\Domain\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -38,7 +39,7 @@ class BatchResource extends JsonResource
             'total_quantity' => $this->total_quantity ?? 0,
             'available_quantity' => $this->available_quantity ?? 0,
             'product' => $this->whenLoaded('product', function () {
-                /** @var \App\Modules\Product\Domain\Product $product */
+                /** @var Product $product */
                 $product = $this->product;
 
                 return [

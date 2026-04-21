@@ -7,6 +7,7 @@ namespace App\Modules\Document\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Application\Services\AgedReceivablesService;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -124,7 +125,7 @@ class ReportsController extends Controller
             return response()->json([
                 'data' => $statement,
             ]);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        } catch (ModelNotFoundException $e) {
             return response()->json([
                 'error' => 'Partner not found',
             ], 404);

@@ -14,17 +14,24 @@ use App\Modules\Document\Domain\Enums\FacturXProfile;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\PaymentStatus;
+use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
+use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use Database\Factories\DocumentFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -37,9 +44,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property FiscalStatus $fiscal_status
  * @property DocumentStatus $status
  * @property string $document_number
- * @property \Illuminate\Support\Carbon $document_date
- * @property \Illuminate\Support\Carbon|null $due_date
- * @property \Illuminate\Support\Carbon|null $valid_until
+ * @property Carbon $document_date
+ * @property Carbon|null $due_date
+ * @property Carbon|null $valid_until
  * @property string $currency
  * @property numeric-string|null $subtotal
  * @property numeric-string|null $discount_amount
@@ -49,7 +56,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $fiscal_hash
  * @property string|null $facturx_xml
  * @property FacturXProfile|null $facturx_profile
- * @property \Illuminate\Support\Carbon|null $facturx_generated_at
+ * @property Carbon|null $facturx_generated_at
  * @property string|null $previous_hash
  * @property int|null $chain_sequence
  * @property string|null $notes
@@ -57,17 +64,17 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $reference
  * @property bool $is_historical
  * @property string|null $external_document_number
- * @property \Illuminate\Support\Carbon|null $external_document_date
+ * @property Carbon|null $external_document_date
  * @property string|null $source_document_id
- * @property \Illuminate\Support\Carbon|null $confirmed_at
+ * @property Carbon|null $confirmed_at
  * @property string|null $confirmed_by
- * @property \Illuminate\Support\Carbon|null $cancelled_at
+ * @property Carbon|null $cancelled_at
  * @property string|null $cancelled_by
  * @property string|null $cancellation_reason
  * @property array<string, mixed>|null $payload
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
  * @property-read Tenant $tenant
  * @property-read Company $company
  * @property-read Partner $partner
@@ -88,11 +95,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 class Document extends Model
 {
+    /** @use HasFactory<DocumentFactory> */
+    use HasFactory;
+
     use HasUuids;
-
-    /** @use \Illuminate\Database\Eloquent\Factories\HasFactory<\Database\Factories\DocumentFactory> */
-    use \Illuminate\Database\Eloquent\Factories\HasFactory;
-
     use SoftDeletes;
 
     /**
@@ -206,9 +212,9 @@ class Document extends Model
     }
 
     /**
-     * @return \Illuminate\Database\Eloquent\Relations\HasOne<DocumentVehicleContext, $this>
+     * @return HasOne<DocumentVehicleContext, $this>
      */
-    public function vehicleContext(): \Illuminate\Database\Eloquent\Relations\HasOne
+    public function vehicleContext(): HasOne
     {
         return $this->hasOne(DocumentVehicleContext::class);
     }
@@ -264,11 +270,11 @@ class Document extends Model
     }
 
     /**
-     * @return \Illuminate\Database\Eloquent\Relations\HasOne<\App\Modules\Expense\Domain\ExpenseMetadata, $this>
+     * @return HasOne<ExpenseMetadata, $this>
      */
-    public function expenseMetadata(): \Illuminate\Database\Eloquent\Relations\HasOne
+    public function expenseMetadata(): HasOne
     {
-        return $this->hasOne(\App\Modules\Expense\Domain\ExpenseMetadata::class);
+        return $this->hasOne(ExpenseMetadata::class);
     }
 
     /**
@@ -546,7 +552,7 @@ class Document extends Model
         }
 
         // Use TaxCalculationService to calculate all taxes (line taxes + stamp duties)
-        $taxCalculationService = app(\App\Modules\Taxation\Domain\Services\TaxCalculationService::class);
+        $taxCalculationService = app(TaxCalculationService::class);
         $taxResult = $taxCalculationService->calculateDocumentTaxes($this);
 
         $this->update([
@@ -666,7 +672,7 @@ class Document extends Model
 
         // Check if any payments are pending bank reconciliation
         $hasPendingPayments = $this->allocations()
-            ->whereHas('payment', fn (\Illuminate\Database\Eloquent\Builder $q) => $q->whereRaw("status != 'reconciled'"))
+            ->whereHas('payment', fn (Builder $q) => $q->whereRaw("status != 'reconciled'"))
             ->exists();
 
         return match (true) {
@@ -710,7 +716,7 @@ class Document extends Model
         if ($deliveryNotes->isEmpty()) {
             // Check if any lines require physical delivery
             $hasPhysicalProducts = $this->lines()
-                ->whereHas('product', fn (\Illuminate\Database\Eloquent\Builder $q) => $q->whereRaw('is_physical = true'))
+                ->whereHas('product', fn (Builder $q) => $q->whereRaw('is_physical = true'))
                 ->exists();
 
             return $hasPhysicalProducts
@@ -759,9 +765,9 @@ class Document extends Model
     /**
      * Create a new factory instance for the model.
      */
-    /** @return \Database\Factories\DocumentFactory */
-    protected static function newFactory(): \Illuminate\Database\Eloquent\Factories\Factory
+    /** @return DocumentFactory */
+    protected static function newFactory(): Factory
     {
-        return \Database\Factories\DocumentFactory::new();
+        return DocumentFactory::new();
     }
 }

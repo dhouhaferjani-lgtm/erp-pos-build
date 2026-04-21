@@ -6,6 +6,7 @@ namespace App\Modules\Coupon\Application\Services;
 
 use App\Modules\Coupon\Domain\Contracts\CouponValidatorContract;
 use App\Modules\Coupon\Domain\Entities\Coupon;
+use App\Modules\Coupon\Domain\Enums\CouponStatus;
 use App\Modules\Coupon\Domain\Exceptions\CouponInvalidException;
 use App\Modules\Coupon\Domain\Services\CouponValidationService;
 use App\Modules\Promotion\Domain\ValueObjects\CartContext;
@@ -60,12 +61,12 @@ final class CouponApplicationService implements CouponValidatorContract
 
         // Auto-exhaust if limit reached
         if ($coupon->max_uses !== null && $coupon->use_count >= $coupon->max_uses) {
-            $coupon->update(['status' => \App\Modules\Coupon\Domain\Enums\CouponStatus::Exhausted]);
+            $coupon->update(['status' => CouponStatus::Exhausted]);
         }
 
         // Auto-exhaust single-use coupons
         if ($coupon->is_single_use) {
-            $coupon->update(['status' => \App\Modules\Coupon\Domain\Enums\CouponStatus::Exhausted]);
+            $coupon->update(['status' => CouponStatus::Exhausted]);
         }
     }
 }

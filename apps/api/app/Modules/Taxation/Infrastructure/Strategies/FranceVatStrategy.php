@@ -50,7 +50,7 @@ class FranceVatStrategy implements VatReportStrategyInterface
             /** @var Carbon $start */
             $end = $start->copy()->endOfMonth();
 
-            $label = self::FRENCH_MONTHS[$month] . ' ' . $periodYear;
+            $label = self::FRENCH_MONTHS[$month].' '.$periodYear;
 
             $periods[] = [
                 'label' => $label,

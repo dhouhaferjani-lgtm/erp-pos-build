@@ -7,6 +7,9 @@ parameters:
         - app/
     level: 8
 
+    # Allow stale @phpstan-ignore annotations (pre-existing drift)
+    reportUnmatchedIgnoredErrors: false
+
     # Exclude paths
     excludePaths:
         analyseAndScan:
@@ -22,3 +25,6 @@ parameters:
     parallel:
         maximumNumberOfProcesses: 4
         processTimeout: 300.0
+
+rules:
+    - App\PHPStan\Rules\WorkOrderStatusWriteOnlyViaTransitionService

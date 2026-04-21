@@ -15,6 +15,7 @@ enum ReservationSource: string
     case CustomerReturnPending = 'customer_return_pending';
     case QualityCheck = 'quality_check';
     case TransferPending = 'transfer_pending';
+    case WorkOrder = 'work_order';
 
     public function getDefaultExpiry(ReservationSettings $settings): ?\DateTimeInterface
     {
@@ -28,6 +29,11 @@ enum ReservationSource: string
             self::ManualHold => null,
             self::QualityCheck => now()->addDays(3),
             self::TransferPending => now()->addDays(1),
+            // WorkOrder reservations live as long as the WO is open — the caller supplies
+            // an explicit expiry via InventoryReservationServiceInterface::reserveForWorkOrder,
+            // so the default here is "no expiry" (null). WO cancellation/closure releases
+            // them explicitly via releaseForWorkOrder.
+            self::WorkOrder => null,
         };
     }
 
@@ -37,7 +43,14 @@ enum ReservationSource: string
             self::SalesOrder => true,
             self::MarketplaceOrder => true,
             self::ManualHold => true,
-            default => false,
+            // WorkOrder-sourced reservations do NOT trigger the POS fraud-alert heuristic.
+            // Workshop has its own authorisation/approval flow (quote → customer approval)
+            // that already scopes who can consume stock.
+            self::WorkOrder => false,
+            self::EcommerceCart,
+            self::CustomerReturnPending,
+            self::QualityCheck,
+            self::TransferPending => false,
         };
     }
 
@@ -51,6 +64,7 @@ enum ReservationSource: string
             self::CustomerReturnPending => 'Pending Customer Return',
             self::QualityCheck => 'Quality Check',
             self::TransferPending => 'Pending Transfer',
+            self::WorkOrder => 'Work Order',
         };
     }
 }

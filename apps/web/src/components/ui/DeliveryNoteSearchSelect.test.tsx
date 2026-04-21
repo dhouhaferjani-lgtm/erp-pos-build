@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { renderWithProviders } from '@/test/renderWithProviders'
 import { DeliveryNoteSearchSelect } from './DeliveryNoteSearchSelect'
 import * as api from '../../lib/api'
+import { makeDeliveryNote } from '@/features/documents/__fixtures__/deliveryNote'
 
 // Mock the API
 vi.mock('../../lib/api', () => ({
@@ -12,15 +13,35 @@ vi.mock('../../lib/api', () => ({
   },
 }))
 
-// Mock react-i18next
+/**
+ * Translation mock.
+ *
+ * The underlying component uses `t('common:actions.select') || 'Select'`
+ * as a self-fallback — so when the mock returns `key`, the `||` falls
+ * through to the literal key (truthy) and never to the component fallback.
+ * This map pins a small subset of keys to their expected English values.
+ */
+const i18nMap: Record<string, string> = {
+  'common:actions.select': 'Select',
+  'common:unknown': 'Unknown',
+  'common:status.loading': 'Loading...',
+  'common:loading': 'Loading...',
+  'sales:lineItems.title': 'Line Items',
+  'sales:lineItems.quantity': 'Items',
+  'sales:deliveryNotes.searchPlaceholder':
+    'Search by delivery note number or partner...',
+  'sales:deliveryNotes.noResults': 'No delivery notes found',
+  'sales:deliveryNotes.noConfirmed': 'No confirmed delivery notes available',
+}
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: string) => fallback || key,
+    t: (key: string, fallback?: string) => i18nMap[key] ?? fallback ?? key,
   }),
 }))
 
 const mockDeliveryNotes = [
-  {
+  makeDeliveryNote({
     id: '1',
     document_number: 'DN-001',
     document_date: '2024-01-15',
@@ -31,8 +52,8 @@ const mockDeliveryNotes = [
       { id: 'l1', product_code: 'PROD-1', quantity: 5 },
       { id: 'l2', product_code: 'PROD-2', quantity: 3 },
     ],
-  },
-  {
+  }),
+  makeDeliveryNote({
     id: '2',
     document_number: 'DN-002',
     document_date: '2024-01-20',
@@ -42,27 +63,16 @@ const mockDeliveryNotes = [
     lines: [
       { id: 'l3', product_code: 'PROD-3', quantity: 10 },
     ],
-  },
+  }),
 ]
 
 describe('DeliveryNoteSearchSelect', () => {
-  let queryClient: QueryClient
-
   beforeEach(() => {
-    queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-      },
-    })
     vi.clearAllMocks()
   })
 
   const renderComponent = (props = {}) => {
-    return render(
-      <QueryClientProvider client={queryClient}>
-        <DeliveryNoteSearchSelect onChange={vi.fn()} {...props} />
-      </QueryClientProvider>
-    )
+    return renderWithProviders(<DeliveryNoteSearchSelect onChange={vi.fn()} {...props} />)
   }
 
   it('renders with label when provided', () => {
@@ -155,16 +165,19 @@ describe('DeliveryNoteSearchSelect', () => {
   it('displays selected delivery note', () => {
     renderComponent({ value: mockDeliveryNotes[0] })
 
-    expect(screen.getByText('DN-001')).toBeInTheDocument()
+    // Trigger renders a formatted summary string combining the doc number,
+    // partner name, and counts: "DN-001 - ACME Corp - 2024-01-15 (…)"
+    expect(screen.getByText(/DN-001/)).toBeInTheDocument()
     expect(screen.getByText(/ACME Corp/)).toBeInTheDocument()
   })
 
   it('shows clear button when value is selected', () => {
-    const { container } = renderComponent({ value: mockDeliveryNotes[0] })
+    renderComponent({ value: mockDeliveryNotes[0] })
 
-    // Clear button is an X icon
-    const clearButtons = container.querySelectorAll('button')
-    expect(clearButtons.length).toBeGreaterThan(1) // Main button + clear button
+    // The trigger is now a `<div role="button">`; the clear affordance is
+    // the only real `<button>` in the DOM when a value is selected.
+    const clearButton = screen.getByRole('button', { name: /clear selection/i })
+    expect(clearButton).toBeInTheDocument()
   })
 
   it('clears selection when clear button is clicked', async () => {
@@ -185,8 +198,12 @@ describe('DeliveryNoteSearchSelect', () => {
   it('can be disabled', () => {
     renderComponent({ disabled: true })
 
+    // The trigger is a div with `role="button"`; the disabled affordance is
+    // `aria-disabled="true"` plus `tabIndex=-1`, since div elements cannot
+    // carry the native disabled attribute.
     const button = screen.getByRole('button')
-    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute('aria-disabled', 'true')
+    expect(button).toHaveAttribute('tabindex', '-1')
   })
 
   it('shows loading state', async () => {

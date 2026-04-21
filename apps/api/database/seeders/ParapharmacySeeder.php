@@ -29,6 +29,7 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -263,9 +264,9 @@ class ParapharmacySeeder extends Seeder
     /**
      * Seed 1000+ products across 6 parapharmacy categories.
      *
-     * @return \Illuminate\Support\Collection<int, Product>
+     * @return Collection<int, Product>
      */
-    private function seedProducts(Company $company): \Illuminate\Support\Collection
+    private function seedProducts(Company $company): Collection
     {
         // Load reference data
         $ingredients = Ingredient::all();
@@ -367,7 +368,7 @@ class ParapharmacySeeder extends Seeder
     private function assignIngredients(
         Product $product,
         ParapharmacyCategory $category,
-        \Illuminate\Support\Collection $ingredients
+        Collection $ingredients
     ): void {
         // Determine how many ingredients to assign
         $ingredientCount = match ($category) {
@@ -407,7 +408,7 @@ class ParapharmacySeeder extends Seeder
     private function assignCertifications(
         Product $product,
         ParapharmacyCategory $category,
-        \Illuminate\Support\Collection $certifications
+        Collection $certifications
     ): void {
         // 60% of products get certifications
         if (rand(1, 100) > 60) {
@@ -451,7 +452,7 @@ class ParapharmacySeeder extends Seeder
     private function assignHealthClaims(
         Product $product,
         ParapharmacyCategory $category,
-        \Illuminate\Support\Collection $healthClaims
+        Collection $healthClaims
     ): void {
         // Probability of health claims by category
         $probability = match ($category) {
@@ -494,7 +495,7 @@ class ParapharmacySeeder extends Seeder
     private function assignKeyComponents(
         Product $product,
         ParapharmacyCategory $category,
-        \Illuminate\Support\Collection $keyComponents
+        Collection $keyComponents
     ): void {
         $metadata = $product->parapharmacyMetadata;
         if (! $metadata) {
@@ -605,7 +606,7 @@ class ParapharmacySeeder extends Seeder
     private function seedStockLevels(
         Company $company,
         Location $location,
-        \Illuminate\Support\Collection $products
+        Collection $products
     ): void {
         $stockCount = 0;
 

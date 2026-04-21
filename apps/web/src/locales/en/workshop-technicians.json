@@ -1,0 +1,188 @@
+{
+  "team": {
+    "title": "Workshop team",
+    "subtitle": "Technicians, skills, and weekly schedules.",
+    "loading": "Loading technicians…",
+    "errorLoading": "Could not load technicians",
+    "empty": {
+      "title": "No technicians yet",
+      "body": "Once managers create technician profiles, they'll appear here."
+    }
+  },
+  "detail": {
+    "backToTeam": "Back to team",
+    "notFound": "Technician profile not found",
+    "weeklySchedule": "Weekly schedule",
+    "employment": "Employment",
+    "pay": "Pay (restricted)",
+    "personal": "Personal (restricted)"
+  },
+  "filters": {
+    "activeOnly": "Active only",
+    "specialty": "Specialty",
+    "anySpecialty": "Any specialty"
+  },
+  "labels": {
+    "inactive": "Inactive",
+    "hourlyBillingRate": "Hourly billing",
+    "notSet": "—"
+  },
+  "fields": {
+    "hireDate": "Hire date",
+    "employeeCode": "Employee code",
+    "hourlyCostRate": "Hourly cost",
+    "hourlyBillingRate": "Hourly billing",
+    "nationalId": "National ID",
+    "personalAddress": "Address",
+    "personalPhone": "Phone",
+    "notes": "Notes"
+  },
+  "schedule": {
+    "off": "Off"
+  },
+  "days": {
+    "mon": "Mon",
+    "tue": "Tue",
+    "wed": "Wed",
+    "thu": "Thu",
+    "fri": "Fri",
+    "sat": "Sat",
+    "sun": "Sun"
+  },
+  "skillLevels": {
+    "apprentice": "Apprentice",
+    "junior": "Junior",
+    "general": "General",
+    "senior": "Senior",
+    "master": "Master",
+    "specialist": "Specialist"
+  },
+  "employmentStatus": {
+    "active": "Active",
+    "on_leave": "On leave",
+    "terminated": "Terminated"
+  },
+  "specialties": {
+    "engine_mechanical": "Engine (mech.)",
+    "engine_diagnostic": "Engine (diag.)",
+    "transmission": "Transmission",
+    "electrical": "Electrical",
+    "electronic": "Electronic",
+    "suspension": "Suspension",
+    "brakes": "Brakes",
+    "ac_climate": "A/C & climate",
+    "tires": "Tires",
+    "alignment": "Alignment",
+    "bodywork": "Bodywork",
+    "paint": "Paint",
+    "hybrid_ev": "Hybrid / EV",
+    "diesel": "Diesel",
+    "pre_control": "Pre-control",
+    "general_service": "General service"
+  },
+  "availability": {
+    "status": {
+      "yes": "Available",
+      "no": "Unavailable",
+      "partial": "Partial"
+    }
+  },
+  "navigation": {
+    "team": "Team",
+    "payrollExports": "Payroll exports"
+  },
+  "authoring": {
+    "tabs": {
+      "overview": "Overview",
+      "certifications": "Certifications",
+      "timeOff": "Time off",
+      "timeEntries": "Time entries"
+    },
+    "certifications": {
+      "title": "Certifications",
+      "add": "Add certification",
+      "empty": "No certifications recorded yet.",
+      "fields": {
+        "name": "Certification name",
+        "issuingBody": "Issuing body",
+        "certificateNumber": "Certificate number",
+        "issuedAt": "Issued on",
+        "expiresAt": "Expires on",
+        "notes": "Notes"
+      },
+      "modal": {
+        "createTitle": "Add certification",
+        "editTitle": "Edit certification",
+        "save": "Save",
+        "saving": "Saving…",
+        "cancel": "Cancel"
+      },
+      "confirmDelete": "Delete this certification?"
+    },
+    "timeOff": {
+      "title": "Time off",
+      "add": "Log time off",
+      "empty": "No time off logged.",
+      "fields": {
+        "reasonCode": "Reason",
+        "startsAt": "Starts at",
+        "endsAt": "Ends at",
+        "isFullDay": "Full day",
+        "notes": "Notes"
+      },
+      "reason": {
+        "vacation": "Vacation",
+        "sick": "Sick",
+        "training": "Training",
+        "personal": "Personal",
+        "unpaid": "Unpaid",
+        "other": "Other"
+      },
+      "modal": {
+        "createTitle": "Log time off",
+        "editTitle": "Edit time off",
+        "save": "Save",
+        "saving": "Saving…",
+        "cancel": "Cancel"
+      },
+      "confirmDelete": "Delete this time-off entry?"
+    },
+    "timeEntries": {
+      "title": "Time entries",
+      "add": "Log time entry",
+      "empty": "No time entries logged.",
+      "weekTotal": "This week",
+      "monthTotal": "This month",
+      "hoursShort": "{{hours}} h",
+      "lockedBadge": "Locked",
+      "lockedTooltip": "This entry is linked to a locked work order and cannot be edited.",
+      "fields": {
+        "startedAt": "Started at",
+        "endedAt": "Ended at",
+        "entryType": "Type",
+        "workOrderId": "Work order ID (optional)",
+        "notes": "Notes"
+      },
+      "entryType": {
+        "work_order": "Work order",
+        "break": "Break",
+        "non_billable": "Non-billable",
+        "manual_adjust": "Manual adjustment"
+      },
+      "modal": {
+        "createTitle": "Log time entry",
+        "editTitle": "Edit time entry",
+        "save": "Save",
+        "saving": "Saving…",
+        "cancel": "Cancel"
+      },
+      "confirmDelete": "Delete this time entry?"
+    },
+    "errors": {
+      "required": "This field is required.",
+      "overlap": "This window overlaps an existing entry.",
+      "locked": "This entry is linked to a completed or invoiced work order.",
+      "generic": "Something went wrong. Please try again."
+    }
+  }
+}

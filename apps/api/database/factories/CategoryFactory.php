@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Modules\Product\Domain\Category>
+ * @extends Factory<Category>
  */
 class CategoryFactory extends Factory
 {

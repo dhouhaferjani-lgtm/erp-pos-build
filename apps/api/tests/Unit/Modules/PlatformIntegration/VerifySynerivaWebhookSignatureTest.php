@@ -12,6 +12,7 @@ use Tests\TestCase;
 class VerifySynerivaWebhookSignatureTest extends TestCase
 {
     private VerifySynerivaWebhookSignature $middleware;
+
     private string $secret = 'test-webhook-secret-key';
 
     protected function setUp(): void
@@ -19,14 +20,14 @@ class VerifySynerivaWebhookSignatureTest extends TestCase
         parent::setUp();
 
         config(['services.platform.webhook_secret' => $this->secret]);
-        $this->middleware = new VerifySynerivaWebhookSignature();
+        $this->middleware = new VerifySynerivaWebhookSignature;
     }
 
     public function test_valid_signature_passes(): void
     {
         $body = '{"event":"enrichment.completed","tracking_id":"trk-123"}';
         $timestamp = (string) time();
-        $signature = 'sha256=' . hash_hmac('sha256', $timestamp . '.' . $body, $this->secret);
+        $signature = 'sha256='.hash_hmac('sha256', $timestamp.'.'.$body, $this->secret);
 
         $request = Request::create('/webhook', 'POST', content: $body);
         $request->headers->set('X-Syneriva-Signature', $signature);
@@ -83,7 +84,7 @@ class VerifySynerivaWebhookSignatureTest extends TestCase
     {
         $body = '{"event":"enrichment.completed"}';
         $timestamp = (string) (time() - 600); // 10 minutes ago
-        $signature = 'sha256=' . hash_hmac('sha256', $timestamp . '.' . $body, $this->secret);
+        $signature = 'sha256='.hash_hmac('sha256', $timestamp.'.'.$body, $this->secret);
 
         $request = Request::create('/webhook', 'POST', content: $body);
         $request->headers->set('X-Syneriva-Signature', $signature);
@@ -100,7 +101,7 @@ class VerifySynerivaWebhookSignatureTest extends TestCase
         $originalBody = '{"event":"enrichment.completed","tracking_id":"trk-123"}';
         $tamperedBody = '{"event":"enrichment.completed","tracking_id":"trk-hacked"}';
         $timestamp = (string) time();
-        $signature = 'sha256=' . hash_hmac('sha256', $timestamp . '.' . $originalBody, $this->secret);
+        $signature = 'sha256='.hash_hmac('sha256', $timestamp.'.'.$originalBody, $this->secret);
 
         $request = Request::create('/webhook', 'POST', content: $tamperedBody);
         $request->headers->set('X-Syneriva-Signature', $signature);

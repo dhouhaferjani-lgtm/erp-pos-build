@@ -12,9 +12,11 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Vehicle\Domain\Vehicle;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -336,7 +338,7 @@ class DatabaseSeeder extends Seeder
         $goodsCount = 800;
         $batchSize = 100;
         for ($i = 0; $i < $goodsCount; $i += $batchSize) {
-            \App\Modules\Product\Domain\Product::factory()
+            Product::factory()
                 ->count(min($batchSize, $goodsCount - $i))
                 ->goods()
                 ->create([
@@ -346,7 +348,7 @@ class DatabaseSeeder extends Seeder
         }
 
         // Create 150 services
-        \App\Modules\Product\Domain\Product::factory()
+        Product::factory()
             ->count(150)
             ->service()
             ->create([
@@ -355,7 +357,7 @@ class DatabaseSeeder extends Seeder
             ]);
 
         // Create 50 inactive products
-        \App\Modules\Product\Domain\Product::factory()
+        Product::factory()
             ->count(50)
             ->inactive()
             ->create([
@@ -387,7 +389,7 @@ class DatabaseSeeder extends Seeder
         foreach ($selectedCustomers as $customer) {
             $count = rand(1, 3);
 
-            \App\Modules\Vehicle\Domain\Vehicle::factory()
+            Vehicle::factory()
                 ->count($count)
                 ->create([
                     'tenant_id' => $company->tenant_id,

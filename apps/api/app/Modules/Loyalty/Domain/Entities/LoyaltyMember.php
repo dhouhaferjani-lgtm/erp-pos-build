@@ -6,13 +6,16 @@ namespace App\Modules\Loyalty\Domain\Entities;
 
 use App\Modules\Loyalty\Domain\Enums\MemberStatus;
 use App\Modules\Partner\Domain\Partner;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -24,19 +27,19 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $email
  * @property string|null $first_name
  * @property string|null $last_name
- * @property \Illuminate\Support\Carbon|null $date_of_birth
+ * @property Carbon|null $date_of_birth
  * @property MemberStatus $status
- * @property \Illuminate\Support\Carbon $enrollment_date
+ * @property Carbon $enrollment_date
  * @property string|null $external_id
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \Illuminate\Database\Eloquent\Model|null $loyaltyable
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property-read Model|null $loyaltyable
  * @property-read Partner|null $customer
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Enrollment> $enrollments
+ * @property-read Collection<int, Enrollment> $enrollments
  */
 class LoyaltyMember extends Model
 {
-    /** @use HasFactory<\Illuminate\Database\Eloquent\Factories\Factory<static>> */
+    /** @use HasFactory<Factory<static>> */
     use HasFactory;
 
     use HasUuids;
@@ -72,7 +75,7 @@ class LoyaltyMember extends Model
     /**
      * Get the loyaltyable entity (Contact or Partner)
      *
-     * @return MorphTo<\Illuminate\Database\Eloquent\Model, $this>
+     * @return MorphTo<Model, $this>
      */
     public function loyaltyable(): MorphTo
     {

@@ -1,8 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ProductInfoModal, type ProductDetailResponse, type StockLevel } from './ProductInfoModal'
+import { renderWithProviders } from '@/test/renderWithProviders'
+import { ProductInfoModal, type StockLevel } from './ProductInfoModal'
+import {
+  makeProductDetail,
+  makeProductDetailWithParapharmacy,
+  makeStockLevel,
+  makeStockLevelsResponse,
+} from '@/features/pos/__fixtures__/productInfo'
 import * as api from '@/lib/api'
 
 // Mock useCurrency
@@ -62,115 +68,53 @@ vi.mock('@/lib/api', () => ({
   apiGet: vi.fn(),
 }))
 
-const mockProduct: ProductDetailResponse = {
-  id: '1',
-  name: 'Test Product',
-  sku: 'TEST-001',
-  description: 'Test product description',
-  sale_price: '29.99',
-  tax_rate: '19',
-  category: {
-    id: 'cat-1',
-    name: 'Test Category',
-  },
-  image_url: 'https://example.com/image.jpg',
-}
+const mockProduct = makeProductDetail()
+const mockProductWithParapharmacy = makeProductDetailWithParapharmacy()
 
-const mockProductWithParapharmacy: ProductDetailResponse = {
-  ...mockProduct,
-  parapharmacy_metadata: {
-    ingredients: [
-      {
-        id: 'ing-1',
-        name: { en: 'Vitamin C', fr: 'Vitamine C' },
-        concentration: '500mg',
-      },
-      {
-        id: 'ing-2',
-        name: { en: 'Zinc', fr: 'Zinc' },
-        concentration: '15mg',
-      },
-    ],
-    key_components: [
-      {
-        id: 'kc-1',
-        name: { en: 'Antioxidant Blend', fr: 'Mélange antioxydant' },
-        benefit: { en: 'Supports immune system', fr: 'Soutient le système immunitaire' },
-      },
-    ],
-    health_claims: [
-      {
-        id: 'hc-1',
-        claim: { en: 'Contributes to normal immune function', fr: 'Contribue à la fonction immunitaire normale' },
-        regulation_reference: 'EU Reg 432/2012',
-      },
-    ],
-    certifications: [
-      {
-        id: 'cert-1',
-        name: { en: 'Organic Certified', fr: 'Certifié biologique' },
-        logo_url: 'https://example.com/cert-logo.jpg',
-        issuing_body: 'EU Organic',
-      },
-    ],
-  },
-}
-
-const mockStockLevels: StockLevel[] = [
-  {
+const mockStockLevels = [
+  makeStockLevel({
     id: 'stock-1',
     location_id: 'loc-1',
     location_name: 'Main Warehouse',
     quantity: '60',
     available: '50',
     reserved: '10',
-    incoming: '0',
-    projected_available: '50',
-    min_quantity: null,
-    max_quantity: null,
-    is_below_minimum: false,
-  },
-  {
+  }),
+  makeStockLevel({
     id: 'stock-2',
     location_id: 'loc-2',
     location_name: 'Retail Store',
     quantity: '7',
     available: '5',
     reserved: '2',
-    incoming: '0',
     projected_available: '5',
-    min_quantity: null,
-    max_quantity: null,
-    is_below_minimum: false,
-  },
-  {
+  }),
+  makeStockLevel({
     id: 'stock-3',
     location_id: 'loc-3',
     location_name: 'Distribution Center',
     quantity: '0',
     available: '0',
     reserved: '0',
-    incoming: '0',
     projected_available: '0',
-    min_quantity: null,
-    max_quantity: null,
-    is_below_minimum: false,
-  },
+  }),
 ]
 
-function createTestQueryClient() {
-  return new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false,
-      },
-    },
-  })
-}
-
-function renderWithClient(ui: React.ReactElement) {
-  const queryClient = createTestQueryClient()
-  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
+/**
+ * Route `apiGet` by URL so product detail and stock-levels queries
+ * always resolve to the right payload, regardless of call order or
+ * query-client re-firing.
+ */
+function configureApiMock(
+  product: ReturnType<typeof makeProductDetail> = mockProduct,
+  stockLocations: StockLevel[] = mockStockLevels,
+) {
+  vi.mocked(api.apiGet).mockImplementation(((url: string) => {
+    if (url.endsWith('/stock-levels')) {
+      return Promise.resolve(makeStockLevelsResponse(stockLocations))
+    }
+    return Promise.resolve(product)
+  }) as typeof api.apiGet)
 }
 
 describe('ProductInfoModal', () => {
@@ -179,7 +123,7 @@ describe('ProductInfoModal', () => {
   })
 
   it('should not render when isOpen is false', () => {
-    renderWithClient(
+    renderWithProviders(
       <ProductInfoModal isOpen={false} onClose={vi.fn()} productId="1" />
     )
 
@@ -189,7 +133,7 @@ describe('ProductInfoModal', () => {
   it('should render modal when isOpen is true', async () => {
     vi.mocked(api.apiGet).mockResolvedValueOnce(mockProduct)
 
-    renderWithClient(
+    renderWithProviders(
       <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
     )
 
@@ -201,7 +145,7 @@ describe('ProductInfoModal', () => {
   it('should display loading state while fetching product', () => {
     vi.mocked(api.apiGet).mockImplementation(() => new Promise(() => {}))
 
-    renderWithClient(
+    renderWithProviders(
       <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
     )
 
@@ -213,7 +157,7 @@ describe('ProductInfoModal', () => {
   it('should display error state when product fetch fails', async () => {
     vi.mocked(api.apiGet).mockRejectedValueOnce(new Error('Failed to fetch'))
 
-    renderWithClient(
+    renderWithProviders(
       <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
     )
 
@@ -225,7 +169,7 @@ describe('ProductInfoModal', () => {
   it('should display product details in Details tab', async () => {
     vi.mocked(api.apiGet).mockResolvedValueOnce(mockProduct)
 
-    renderWithClient(
+    renderWithProviders(
       <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
     )
 
@@ -242,7 +186,7 @@ describe('ProductInfoModal', () => {
   it('should display product image when available', async () => {
     vi.mocked(api.apiGet).mockResolvedValueOnce(mockProduct)
 
-    renderWithClient(
+    renderWithProviders(
       <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
     )
 
@@ -257,7 +201,7 @@ describe('ProductInfoModal', () => {
     const productWithoutImage = { ...mockProduct, image_url: undefined }
     vi.mocked(api.apiGet).mockResolvedValueOnce(productWithoutImage)
 
-    renderWithClient(
+    renderWithProviders(
       <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
     )
 
@@ -270,7 +214,7 @@ describe('ProductInfoModal', () => {
   it('should render all three tabs when product has parapharmacy data', async () => {
     vi.mocked(api.apiGet).mockResolvedValueOnce(mockProductWithParapharmacy)
 
-    renderWithClient(
+    renderWithProviders(
       <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
     )
 
@@ -286,7 +230,7 @@ describe('ProductInfoModal', () => {
   it('should not render parapharmacy tab when product has no parapharmacy data', async () => {
     vi.mocked(api.apiGet).mockResolvedValueOnce(mockProduct)
 
-    renderWithClient(
+    renderWithProviders(
       <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
     )
 
@@ -301,11 +245,9 @@ describe('ProductInfoModal', () => {
 
   it('should switch to stock tab and load stock data', async () => {
     const user = userEvent.setup()
-    vi.mocked(api.apiGet)
-      .mockResolvedValueOnce(mockProduct) // Product details
-      .mockResolvedValueOnce({ locations: mockStockLevels, totals: { quantity: '67', reserved: '12', available: '55', incoming: '0', projected_available: '55' } }) // Stock levels
+    configureApiMock()
 
-    renderWithClient(
+    renderWithProviders(
       <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
     )
 
@@ -328,7 +270,7 @@ describe('ProductInfoModal', () => {
     const user = userEvent.setup()
     vi.mocked(api.apiGet).mockResolvedValueOnce(mockProductWithParapharmacy)
 
-    renderWithClient(
+    renderWithProviders(
       <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
     )
 
@@ -366,7 +308,7 @@ describe('ProductInfoModal', () => {
     const onClose = vi.fn()
     vi.mocked(api.apiGet).mockResolvedValueOnce(mockProduct)
 
-    renderWithClient(
+    renderWithProviders(
       <ProductInfoModal isOpen={true} onClose={onClose} productId="1" />
     )
 
@@ -385,7 +327,7 @@ describe('ProductInfoModal', () => {
     const onAddToCart = vi.fn()
     vi.mocked(api.apiGet).mockResolvedValueOnce(mockProduct)
 
-    renderWithClient(
+    renderWithProviders(
       <ProductInfoModal
         isOpen={true}
         onClose={vi.fn()}
@@ -408,7 +350,7 @@ describe('ProductInfoModal', () => {
   it('should not render Add button when onAddToCart is not provided', async () => {
     vi.mocked(api.apiGet).mockResolvedValueOnce(mockProduct)
 
-    renderWithClient(
+    renderWithProviders(
       <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
     )
 
@@ -422,7 +364,7 @@ describe('ProductInfoModal', () => {
   it('should apply touch-optimized styles when touchOptimized is true', async () => {
     vi.mocked(api.apiGet).mockResolvedValueOnce(mockProduct)
 
-    renderWithClient(
+    renderWithProviders(
       <ProductInfoModal
         isOpen={true}
         onClose={vi.fn()}
@@ -439,11 +381,9 @@ describe('ProductInfoModal', () => {
 
   it('should display "No data available" when stock levels are empty', async () => {
     const user = userEvent.setup()
-    vi.mocked(api.apiGet)
-      .mockResolvedValueOnce(mockProduct)
-      .mockResolvedValueOnce({ locations: [], totals: { quantity: '0', reserved: '0', available: '0', incoming: '0', projected_available: '0' } })
+    configureApiMock(mockProduct, [])
 
-    renderWithClient(
+    renderWithProviders(
       <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
     )
 
@@ -461,11 +401,9 @@ describe('ProductInfoModal', () => {
 
   it('should highlight low stock levels with yellow color', async () => {
     const user = userEvent.setup()
-    vi.mocked(api.apiGet)
-      .mockResolvedValueOnce(mockProduct)
-      .mockResolvedValueOnce({ locations: mockStockLevels, totals: { quantity: '67', reserved: '12', available: '55', incoming: '0', projected_available: '55' } })
+    configureApiMock()
 
-    renderWithClient(
+    renderWithProviders(
       <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
     )
 
@@ -485,11 +423,9 @@ describe('ProductInfoModal', () => {
 
   it('should highlight out of stock with red color', async () => {
     const user = userEvent.setup()
-    vi.mocked(api.apiGet)
-      .mockResolvedValueOnce(mockProduct)
-      .mockResolvedValueOnce({ locations: mockStockLevels, totals: { quantity: '67', reserved: '12', available: '55', incoming: '0', projected_available: '55' } })
+    configureApiMock()
 
-    renderWithClient(
+    renderWithProviders(
       <ProductInfoModal isOpen={true} onClose={vi.fn()} productId="1" />
     )
 

@@ -114,8 +114,8 @@ final class MenuItemPricePrecisionTest extends TestCase
 
     private function makeCompositeItemWithPivot(string $basePrice, ?string $overridePrice = null): CompositeItem
     {
-        $item = new CompositeItem();
-        $item->id = 'ci-' . md5($basePrice);
+        $item = new CompositeItem;
+        $item->id = 'ci-'.md5($basePrice);
         $item->code = 'CI-001';
         $item->name = 'Test Composite';
         $item->vertical_type = VerticalType::Fnb;
@@ -131,8 +131,8 @@ final class MenuItemPricePrecisionTest extends TestCase
         $item->setRelation('modifierGroups', collect());
 
         // Simulate the pivot from menu_category_items
-        $pivot = new Pivot();
-        $pivot->setAttribute('id', 'pivot-' . md5($basePrice));
+        $pivot = new Pivot;
+        $pivot->setAttribute('id', 'pivot-'.md5($basePrice));
         $pivot->setAttribute('override_price', $overridePrice);
         $pivot->setAttribute('display_order', 0);
         $pivot->setAttribute('is_available', true);
@@ -143,15 +143,15 @@ final class MenuItemPricePrecisionTest extends TestCase
 
     private function makeProductWithPivot(string $salePrice, ?string $overridePrice = null): Product
     {
-        $product = new Product();
-        $product->id = 'p-' . md5($salePrice);
+        $product = new Product;
+        $product->id = 'p-'.md5($salePrice);
         $product->sku = 'SKU-001';
         $product->name = 'Test Product';
         $product->sale_price = $salePrice;
         $product->tax_rate = null;
 
-        $pivot = new Pivot();
-        $pivot->setAttribute('id', 'pivot-' . md5($salePrice));
+        $pivot = new Pivot;
+        $pivot->setAttribute('id', 'pivot-'.md5($salePrice));
         $pivot->setAttribute('override_price', $overridePrice);
         $pivot->setAttribute('display_order', 0);
         $pivot->setAttribute('is_available', true);

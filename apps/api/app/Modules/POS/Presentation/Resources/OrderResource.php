@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Presentation\Resources;
 
+use App\Modules\POS\Domain\Order;
+use App\Modules\POS\Domain\Table;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * API Resource for order transformation.
  *
- * @mixin \App\Modules\POS\Domain\Order
+ * @mixin Order
  */
 final class OrderResource extends JsonResource
 {
@@ -48,7 +50,7 @@ final class OrderResource extends JsonResource
             'cancelled_at' => $this->cancelled_at?->toISOString(),
             'receipt_id' => $this->receipt_id,
             'table' => $this->when($this->relationLoaded('table') && $this->table !== null, function () {
-                /** @var \App\Modules\POS\Domain\Table $table */
+                /** @var Table $table */
                 $table = $this->table;
 
                 return [

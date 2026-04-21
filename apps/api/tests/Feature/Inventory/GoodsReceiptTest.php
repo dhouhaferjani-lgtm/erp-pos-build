@@ -146,7 +146,7 @@ class GoodsReceiptTest extends TestCase
             'fiscal_category' => FiscalCategory::NonFiscal,
             'fiscal_status' => FiscalStatus::Draft,
             'status' => $status,
-            'document_number' => 'PO-' . fake()->unique()->numerify('####'),
+            'document_number' => 'PO-'.fake()->unique()->numerify('####'),
             'document_date' => now(),
             'currency' => 'TND',
             'subtotal' => '0.00',
@@ -489,7 +489,7 @@ class GoodsReceiptTest extends TestCase
         // Batch receiving is effectively a no-op for non-batch-tracked products.
         $this->markTestSkipped(
             'Batch receiving requires a `requires_batch_tracking` property on Product which does not exist yet. '
-            . 'The GoodsReceiptService has batch logic but it is unreachable for standard products.'
+            .'The GoodsReceiptService has batch logic but it is unreachable for standard products.'
         );
     }
 
@@ -733,7 +733,7 @@ class GoodsReceiptTest extends TestCase
         // A dedicated goods-receipt API endpoint does not exist yet.
         $this->markTestSkipped(
             'No HTTP endpoint exists for goods receipt (GoodsReceiptService is service-layer only). '
-            . 'Authorization test requires a controller route with `can:inventory.receive` middleware.'
+            .'Authorization test requires a controller route with `can:inventory.receive` middleware.'
         );
     }
 
