@@ -118,21 +118,22 @@ class ShowVehicleTest extends TestCase
         $response = $this->actingAs($this->user, 'sanctum')
             ->getJson("/api/v1/vehicles/{$this->vehicle->id}");
 
+        // Detail envelope is flat (closes 🟠-3): vehicle fields live directly
+        // under `data`, and `current_ownership` / `recent_mileage_readings` are
+        // siblings at the same level — mirroring the list endpoint shape.
         $response->assertOk()
             ->assertJsonStructure([
                 'data' => [
-                    'vehicle' => [
-                        'id',
-                        'license_plate',
-                        'current_owner_partner_id',
-                        'current_owner_display_name',
-                    ],
+                    'id',
+                    'license_plate',
+                    'current_owner_partner_id',
+                    'current_owner_display_name',
                     'current_ownership',
                     'recent_mileage_readings',
                 ],
             ])
-            ->assertJsonPath('data.vehicle.current_owner_partner_id', $this->customer->id)
-            ->assertJsonPath('data.vehicle.current_owner_display_name', 'Alice Current');
+            ->assertJsonPath('data.current_owner_partner_id', $this->customer->id)
+            ->assertJsonPath('data.current_owner_display_name', 'Alice Current');
     }
 
     public function test_show_returns_null_current_ownership_when_no_open_ownership(): void
@@ -142,6 +143,6 @@ class ShowVehicleTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('data.current_ownership', null)
-            ->assertJsonPath('data.vehicle.current_owner_partner_id', null);
+            ->assertJsonPath('data.current_owner_partner_id', null);
     }
 }

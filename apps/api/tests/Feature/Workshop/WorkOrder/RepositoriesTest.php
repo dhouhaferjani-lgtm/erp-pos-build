@@ -106,9 +106,9 @@ final class RepositoriesTest extends TestCase
         $n3 = $seq->next($wo->company_id);
 
         $year = date('Y');
-        $this->assertSame("WO-{$year}-0001", $n1);
-        $this->assertSame("WO-{$year}-0002", $n2);
-        $this->assertSame("WO-{$year}-0003", $n3);
+        $this->assertSame("WO-{$year}-000001", $n1);
+        $this->assertSame("WO-{$year}-000002", $n2);
+        $this->assertSame("WO-{$year}-000003", $n3);
     }
 
     public function test_sequence_is_scoped_per_company(): void
@@ -120,8 +120,8 @@ final class RepositoriesTest extends TestCase
         $companyB = Company::factory()->create(['tenant_id' => $tenant->id]);
 
         $seq = $this->app->make(WorkOrderSequenceInterface::class);
-        $this->assertSame('WO-'.date('Y').'-0001', $seq->next($companyA->id));
-        $this->assertSame('WO-'.date('Y').'-0001', $seq->next($companyB->id));
-        $this->assertSame('WO-'.date('Y').'-0002', $seq->next($companyA->id));
+        $this->assertSame('WO-'.date('Y').'-000001', $seq->next($companyA->id));
+        $this->assertSame('WO-'.date('Y').'-000001', $seq->next($companyB->id));
+        $this->assertSame('WO-'.date('Y').'-000002', $seq->next($companyA->id));
     }
 }

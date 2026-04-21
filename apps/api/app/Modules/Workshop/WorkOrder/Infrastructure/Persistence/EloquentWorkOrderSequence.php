@@ -15,7 +15,8 @@ use RuntimeException;
  * Mirrors `DocumentNumberingService::generateNumber()` — pessimistic
  * `lockForUpdate()` on the per-(company, year) sequence row inside a
  * transaction, guaranteeing gap-free monotonic numbering under concurrent
- * creation. Format: `WO-YYYY-NNNN`.
+ * creation. Format: `WO-YYYY-NNNNNN` (6-digit padding — matches the
+ * AppointmentSequence + seeded demo data; closes audit finding 🟠-2).
  */
 final readonly class EloquentWorkOrderSequence implements WorkOrderSequenceInterface
 {
@@ -49,7 +50,7 @@ final readonly class EloquentWorkOrderSequence implements WorkOrderSequenceInter
             $nextNumber = $sequence->last_number + 1;
             $sequence->update(['last_number' => $nextNumber]);
 
-            return sprintf('WO-%d-%04d', $year, $nextNumber);
+            return sprintf('WO-%d-%06d', $year, $nextNumber);
         });
 
         return $number;
