@@ -35,13 +35,11 @@ final class ServiceBundleComponentData extends Data
             BundleComponentType::NestedBundle => $component->nested_bundle_id,
         };
 
-        $displayName = $component->relationLoaded('product') && $component->product !== null
-            ? $component->product->name
-            : ($component->relationLoaded('service') && $component->service !== null
-                ? $component->service->name
-                : ($component->relationLoaded('nestedBundle') && $component->nestedBundle !== null
-                    ? $component->nestedBundle->name
-                    : ''));
+        $displayName = match ($component->component_type) {
+            BundleComponentType::Part => self::resolvePartName($component),
+            BundleComponentType::Labor => self::resolveLaborName($component),
+            BundleComponentType::NestedBundle => self::resolveNestedBundleName($component),
+        };
 
         $unit = $component->relationLoaded('unit')
             ? $component->unit->symbol
@@ -62,5 +60,36 @@ final class ServiceBundleComponentData extends Data
             display_order: $component->display_order,
             notes: $component->notes,
         );
+    }
+
+    private static function resolvePartName(ServiceBundleComponent $component): string
+    {
+        // Use the eager-loaded relation when present; fall back to a
+        // lazy load so that upstream call sites that only loaded
+        // `components` (without `components.product`) still produce a
+        // non-empty display name.
+        $product = $component->relationLoaded('product')
+            ? $component->product
+            : $component->product()->first();
+
+        return $product === null ? '' : $product->name;
+    }
+
+    private static function resolveLaborName(ServiceBundleComponent $component): string
+    {
+        $service = $component->relationLoaded('service')
+            ? $component->service
+            : $component->service()->first();
+
+        return $service === null ? '' : $service->name;
+    }
+
+    private static function resolveNestedBundleName(ServiceBundleComponent $component): string
+    {
+        $nested = $component->relationLoaded('nestedBundle')
+            ? $component->nestedBundle
+            : $component->nestedBundle()->first();
+
+        return $nested === null ? '' : $nested->name;
     }
 }

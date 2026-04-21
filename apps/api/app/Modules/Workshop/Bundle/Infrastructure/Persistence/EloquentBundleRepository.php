@@ -30,7 +30,13 @@ final class EloquentBundleRepository implements BundleRepositoryInterface
     public function findWithComponentsAndApplicabilities(string $bundleId): ?ServiceBundle
     {
         return ServiceBundle::query()
-            ->with(['components', 'vehicleApplicabilities'])
+            ->with([
+                'components.product',
+                'components.service',
+                'components.nestedBundle',
+                'components.unit',
+                'vehicleApplicabilities',
+            ])
             ->find($bundleId);
     }
 
@@ -105,7 +111,13 @@ final class EloquentBundleRepository implements BundleRepositoryInterface
             });
         }
 
-        return $query->orderBy('name')->with(['components', 'vehicleApplicabilities'])->get();
+        return $query->orderBy('name')->with([
+            'components.product',
+            'components.service',
+            'components.nestedBundle',
+            'components.unit',
+            'vehicleApplicabilities',
+        ])->get();
     }
 
     public function save(ServiceBundle $bundle): ServiceBundle
