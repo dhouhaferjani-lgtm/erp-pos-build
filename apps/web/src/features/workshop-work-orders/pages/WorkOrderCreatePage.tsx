@@ -4,6 +4,12 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft, ClipboardList } from 'lucide-react'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
 import { getErrorMessage } from '@/lib/api'
+import {
+  PartnerPicker,
+  VehiclePicker,
+  type PartnerPickerValue,
+  type VehiclePickerValue,
+} from '@/components/molecules/pickers'
 import { useCreateWorkOrder } from '../hooks/useWorkOrders'
 import type { CreateWorkOrderInput, WorkOrderType } from '../types'
 
@@ -34,12 +40,32 @@ export function WorkOrderCreatePage() {
     vehicle_id: '',
     currency: 'TND',
   })
+  const [customer, setCustomer] = useState<PartnerPickerValue | null>(null)
+  const [vehicle, setVehicle] = useState<VehiclePickerValue | null>(null)
+  const [validationError, setValidationError] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
+
+  const handleCustomerChange = (next: PartnerPickerValue | null): void => {
+    setCustomer(next)
+    // Drop the vehicle when the customer changes to prevent cross-owner
+    // selection; VehiclePicker also resets its own state via partnerId.
+    setVehicle(null)
+  }
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
     setSubmitError(null)
-    create.mutate(form, {
+    setValidationError(null)
+    if (customer === null || vehicle === null) {
+      setValidationError(t('validation.customerAndVehicleRequired', { defaultValue: 'Pick a customer and a vehicle.' }))
+      return
+    }
+    const payload: CreateWorkOrderInput = {
+      ...form,
+      customer_partner_id: customer.id,
+      vehicle_id: vehicle.id,
+    }
+    create.mutate(payload, {
       onSuccess: (wo) => {
         void navigate(`/workshop/work-orders/${wo.id}`)
       },
@@ -93,34 +119,25 @@ export function WorkOrderCreatePage() {
           </label>
         </div>
         <div>
-          <label className={`block text-sm font-medium ${textColors.secondary}`}>
-            {t('fields.customerPartnerId')}
-            <input
-              type="text"
-              value={form.customer_partner_id}
-              onChange={(e) => {
-                setForm({ ...form, customer_partner_id: e.target.value })
-              }}
-              placeholder="UUID"
-              className={tokens.input.base}
-              required
-            />
-          </label>
+          <PartnerPicker
+            value={customer}
+            onChange={handleCustomerChange}
+            label={t('fields.customerPartnerId')}
+            partnerType="customer"
+            required
+            testId="work-order-customer-picker"
+          />
         </div>
         <div>
-          <label className={`block text-sm font-medium ${textColors.secondary}`}>
-            {t('fields.vehicleId')}
-            <input
-              type="text"
-              value={form.vehicle_id}
-              onChange={(e) => {
-                setForm({ ...form, vehicle_id: e.target.value })
-              }}
-              placeholder="UUID"
-              className={tokens.input.base}
-              required
-            />
-          </label>
+          <VehiclePicker
+            value={vehicle}
+            onChange={setVehicle}
+            label={t('fields.vehicleId')}
+            required
+            disabled={customer === null}
+            {...(customer !== null ? { partnerId: customer.id } : {})}
+            testId="work-order-vehicle-picker"
+          />
         </div>
         <div>
           <label className={`block text-sm font-medium ${textColors.secondary}`}>
@@ -151,6 +168,12 @@ export function WorkOrderCreatePage() {
             />
           </label>
         </div>
+
+        {validationError !== null && (
+          <div className={`${tokens.alert.base} ${tokens.alert.error}`} role="alert">
+            {validationError}
+          </div>
+        )}
 
         {submitError !== null && (
           <div

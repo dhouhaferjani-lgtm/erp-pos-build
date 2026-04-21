@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { textColors, tokens } from '@/lib/designTokens'
+import {
+  PartnerPicker,
+  VehiclePicker,
+  type PartnerPickerValue,
+  type VehiclePickerValue,
+} from '@/components/molecules/pickers'
 import { ConflictAlert } from '../molecules/ConflictAlert'
 import { useBays, useBookAppointment } from '../../hooks/useScheduling'
 import { isAppointmentType, isWaitType } from '../../types'
@@ -90,7 +96,7 @@ function AppointmentFormDrawerContent({
   initialEnd,
   initialBayId,
 }: AppointmentFormDrawerProps) {
-  const { t } = useTranslation('scheduling')
+  const { t } = useTranslation(['scheduling', 'pickers'])
   const baysQuery = useBays()
   const booking = useBookAppointment()
 
@@ -109,11 +115,21 @@ function AppointmentFormDrawerContent({
     internal_notes: '',
     services_summary: '',
   })
+  const [customer, setCustomer] = useState<PartnerPickerValue | null>(null)
+  const [vehicle, setVehicle] = useState<VehiclePickerValue | null>(null)
+  // Walk-in mode preserves the legacy free-text name + plate path that
+  // storefront / public-booking flows (see Plan D CAPTCHA) rely on.
+  const [isWalkIn, setIsWalkIn] = useState(false)
   const [conflict, setConflict] = useState<ConflictDetail | null>(null)
   const [genericError, setGenericError] = useState<string | null>(null)
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]): void => {
     setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const handleCustomerChange = (next: PartnerPickerValue | null): void => {
+    setCustomer(next)
+    setVehicle(null)
   }
 
   const submit = (e: React.FormEvent<HTMLFormElement>): void => {
@@ -132,13 +148,33 @@ function AppointmentFormDrawerContent({
       return
     }
 
+    // Backend requires at least one of: customer_partner_id (picker) OR
+    // customer_name (walk-in). The StoreAppointmentRequest validation
+    // already enforces this server-side.
+    if (!isWalkIn && customer === null) {
+      setGenericError(t('errors.customerRequired', { defaultValue: 'Pick a customer or switch to walk-in mode.' }))
+      return
+    }
+    if (isWalkIn && form.customer_name.trim() === '') {
+      setGenericError(t('errors.customerNameRequired', { defaultValue: 'Customer name is required for walk-ins.' }))
+      return
+    }
+
     const input: BookAppointmentInput = {
       location_id: locationId,
       bay_id: form.bay_id === '' ? null : form.bay_id,
-      customer_name: form.customer_name.trim() === '' ? null : form.customer_name.trim(),
+      customer_partner_id: isWalkIn ? null : (customer?.id ?? null),
+      vehicle_id: isWalkIn ? null : (vehicle?.id ?? null),
+      customer_name: isWalkIn
+        ? (form.customer_name.trim() === '' ? null : form.customer_name.trim())
+        : (customer?.name ?? null),
       customer_phone: form.customer_phone.trim() === '' ? null : form.customer_phone.trim(),
-      vehicle_plate: form.vehicle_plate.trim() === '' ? null : form.vehicle_plate.trim(),
-      vehicle_description: form.vehicle_description.trim() === '' ? null : form.vehicle_description.trim(),
+      vehicle_plate: isWalkIn
+        ? (form.vehicle_plate.trim() === '' ? null : form.vehicle_plate.trim())
+        : (vehicle?.license_plate ?? null),
+      vehicle_description: isWalkIn
+        ? (form.vehicle_description.trim() === '' ? null : form.vehicle_description.trim())
+        : (vehicle !== null ? `${vehicle.brand} ${vehicle.model}` : null),
       appointment_type: form.appointment_type,
       wait_type: form.wait_type,
       scheduled_start: startIso,
@@ -200,52 +236,110 @@ function AppointmentFormDrawerContent({
             </div>
           ) : null}
 
-          <fieldset className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <legend className={`text-sm font-semibold ${textColors.primary}`}>
-              {t('drawer.sectionCustomer')}
-            </legend>
-            <label className="block">
-              <span className={tokens.label.base}>{t('fields.customerName')}</span>
-              <input
-                type="text"
-                className={tokens.input.base}
-                value={form.customer_name}
-                onChange={(e) => { update('customer_name', e.target.value) }}
-              />
-            </label>
-            <label className="block">
-              <span className={tokens.label.base}>{t('fields.customerPhone')}</span>
-              <input
-                type="tel"
-                className={tokens.input.base}
-                value={form.customer_phone}
-                onChange={(e) => { update('customer_phone', e.target.value) }}
-              />
-            </label>
+          <fieldset className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <legend className={`text-sm font-semibold ${textColors.primary}`}>
+                {t('drawer.sectionCustomer')}
+              </legend>
+              <label className={`flex items-center gap-2 text-xs ${textColors.tertiary}`}>
+                <input
+                  type="checkbox"
+                  className={tokens.checkbox.base}
+                  checked={isWalkIn}
+                  onChange={(e) => {
+                    setIsWalkIn(e.target.checked)
+                    if (e.target.checked) {
+                      setCustomer(null)
+                      setVehicle(null)
+                    }
+                  }}
+                  data-testid="appointment-walkin-toggle"
+                />
+                {t('drawer.walkInMode', { defaultValue: 'Walk-in (free-text)' })}
+              </label>
+            </div>
+            {isWalkIn ? (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <label className="block">
+                  <span className={tokens.label.base}>{t('fields.customerName')}</span>
+                  <input
+                    type="text"
+                    className={tokens.input.base}
+                    value={form.customer_name}
+                    onChange={(e) => { update('customer_name', e.target.value) }}
+                    data-testid="appointment-customer-name"
+                  />
+                </label>
+                <label className="block">
+                  <span className={tokens.label.base}>{t('fields.customerPhone')}</span>
+                  <input
+                    type="tel"
+                    className={tokens.input.base}
+                    value={form.customer_phone}
+                    onChange={(e) => { update('customer_phone', e.target.value) }}
+                  />
+                </label>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <PartnerPicker
+                  value={customer}
+                  onChange={handleCustomerChange}
+                  label={t('fields.customerName')}
+                  partnerType="customer"
+                  allowNewInline
+                  testId="appointment-customer-picker"
+                />
+                <label className="block">
+                  <span className={tokens.label.base}>{t('fields.customerPhone')}</span>
+                  <input
+                    type="tel"
+                    className={tokens.input.base}
+                    value={form.customer_phone}
+                    onChange={(e) => { update('customer_phone', e.target.value) }}
+                  />
+                </label>
+              </div>
+            )}
           </fieldset>
 
-          <fieldset className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <fieldset className="flex flex-col gap-3">
             <legend className={`text-sm font-semibold ${textColors.primary}`}>
               {t('drawer.sectionVehicle')}
             </legend>
-            <label className="block">
-              <span className={tokens.label.base}>{t('fields.vehiclePlate')}</span>
-              <input
-                type="text"
-                className={tokens.input.base}
-                value={form.vehicle_plate}
-                onChange={(e) => { update('vehicle_plate', e.target.value) }}
+            {isWalkIn ? (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <label className="block">
+                  <span className={tokens.label.base}>{t('fields.vehiclePlate')}</span>
+                  <input
+                    type="text"
+                    className={tokens.input.base}
+                    value={form.vehicle_plate}
+                    onChange={(e) => { update('vehicle_plate', e.target.value) }}
+                    data-testid="appointment-vehicle-plate"
+                  />
+                </label>
+                <label className="block">
+                  <span className={tokens.label.base}>{t('fields.vehicleDescription')}</span>
+                  <input
+                    type="text"
+                    className={tokens.input.base}
+                    value={form.vehicle_description}
+                    onChange={(e) => { update('vehicle_description', e.target.value) }}
+                  />
+                </label>
+              </div>
+            ) : (
+              <VehiclePicker
+                value={vehicle}
+                onChange={setVehicle}
+                label={t('fields.vehiclePlate')}
+                disabled={customer === null}
+                allowNewInline
+                {...(customer !== null ? { partnerId: customer.id } : {})}
+                testId="appointment-vehicle-picker"
               />
-            </label>
-            <label className="block">
-              <span className={tokens.label.base}>{t('fields.vehicleDescription')}</span>
-              <input
-                type="text"
-                className={tokens.input.base}
-                value={form.vehicle_description}
-                onChange={(e) => { update('vehicle_description', e.target.value) }}
-              />
-            </label>
+            )}
           </fieldset>
 
           <fieldset className="grid grid-cols-1 gap-3 md:grid-cols-2">
