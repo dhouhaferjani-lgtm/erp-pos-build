@@ -77,6 +77,14 @@ final class SyncReceiptsRequest extends FormRequest
             'receipts.*.payment_method_id' => ['required', 'uuid'],
             'receipts.*.payment_repository_id' => ['required', 'uuid'],
             'receipts.*.created_at' => ['required', 'date'],
+            'receipts.*.payments' => ['required', 'array', 'min:1', 'max:5'],
+            'receipts.*.payments.*.payment_method_id' => ['required', 'uuid'],
+            'receipts.*.payments.*.repository_id' => ['required', 'uuid'],
+            'receipts.*.payments.*.amount' => ['required', 'numeric', 'gt:0'],
+            'receipts.*.payments.*.card_last_four' => ['nullable', 'string', 'size:4'],
+            'receipts.*.payments.*.transaction_reference' => ['nullable', 'string', 'max:100'],
+            'receipts.*.consumption_mode' => ['nullable', 'string', 'in:SUR_PLACE,A_EMPORTER'],
+            'receipts.*.table_id' => ['nullable', 'uuid'],
         ];
     }
 
@@ -94,6 +102,7 @@ final class SyncReceiptsRequest extends FormRequest
             'receipts.*.terminal_id.required' => 'Terminal ID is required for each receipt',
             'receipts.*.lines.required' => 'Each receipt must have at least one line item',
             'receipts.*.offline_fiscal_hash.size' => 'Offline fiscal hash must be a 64-character SHA-256 hex string',
+            'receipts.*.payments.required' => 'At least one payment entry is required per receipt',
         ];
     }
 }

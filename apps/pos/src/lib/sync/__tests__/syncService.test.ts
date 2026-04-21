@@ -5,13 +5,18 @@ vi.mock('@/lib/api', () => ({
   apiPost: vi.fn(),
 }));
 
-vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({
-  getPendingReceiptsForSync: vi.fn(),
-  updateReceiptStatus: vi.fn().mockResolvedValue(undefined),
-  incrementRetryCount: vi.fn().mockResolvedValue(undefined),
-  cleanupSyncedReceipts: vi.fn().mockResolvedValue(undefined),
-  cleanupStuckReceipts: vi.fn().mockResolvedValue(undefined),
-}));
+vi.mock('@/lib/db/repositories/offlineReceiptRepository', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/db/repositories/offlineReceiptRepository')>('@/lib/db/repositories/offlineReceiptRepository');
+  return {
+    ...actual,
+    getPendingReceiptsForSync: vi.fn(),
+    updateReceiptStatus: vi.fn().mockResolvedValue(undefined),
+    incrementRetryCount: vi.fn().mockResolvedValue(undefined),
+    cleanupSyncedReceipts: vi.fn().mockResolvedValue(undefined),
+    cleanupStuckReceipts: vi.fn().mockResolvedValue(undefined),
+    setServerReceiptId: vi.fn().mockResolvedValue(undefined),
+  };
+});
 
 vi.mock('@/lib/db/repositories/cashDrawerRepository', () => ({
   getPendingCashDrawerOps: vi.fn().mockResolvedValue([]),
@@ -66,6 +71,7 @@ import {
   getPendingReceiptsForSync,
   updateReceiptStatus,
   incrementRetryCount,
+  setServerReceiptId,
 } from '@/lib/db/repositories/offlineReceiptRepository';
 import { upsertProducts } from '@/lib/db/repositories/productRepository';
 import { upsertTerminalState } from '@/lib/db/repositories/terminalStateRepository';
@@ -74,6 +80,33 @@ import { makeOfflineReceipt } from '@/test/helpers';
 
 function makeMockDb() {
   return {} as import('@tauri-apps/plugin-sql').default;
+}
+
+/**
+ * Helper: build a well-formed batch sync response for one or more results.
+ */
+function syncBatchResponse(items: Array<{
+  idempotency_key: string;
+  status: 'synced' | 'duplicate' | 'failed' | 'chain_broken';
+  receipt_id?: string | null;
+  error?: string | null;
+}>) {
+  const synced = items.filter((i) => i.status === 'synced').length;
+  const duplicates = items.filter((i) => i.status === 'duplicate').length;
+  const failed = items.filter((i) => i.status === 'failed' || i.status === 'chain_broken').length;
+  return {
+    results: items.map((i) => ({
+      idempotency_key: i.idempotency_key,
+      status: i.status,
+      receipt_id: i.receipt_id ?? 'srv-' + i.idempotency_key,
+      server_fiscal_hash: 'hash-' + i.idempotency_key,
+      error: i.error ?? null,
+    })),
+    total: items.length,
+    synced,
+    duplicates,
+    failed,
+  };
 }
 
 describe('syncService', () => {
@@ -87,11 +120,13 @@ describe('syncService', () => {
   describe('pushOfflineReceipts', () => {
     it('pushes all pending receipts successfully', async () => {
       const receipts = [
-        makeOfflineReceipt({ id: 'r1', hash_sequence: 1 }),
-        makeOfflineReceipt({ id: 'r2', hash_sequence: 2 }),
+        makeOfflineReceipt({ id: 'r1', idempotency_key: 'idem-r1', hash_sequence: 1 }),
+        makeOfflineReceipt({ id: 'r2', idempotency_key: 'idem-r2', hash_sequence: 2 }),
       ];
       vi.mocked(getPendingReceiptsForSync).mockResolvedValue(receipts);
-      vi.mocked(apiPost).mockResolvedValue({ success: true });
+      vi.mocked(apiPost)
+        .mockResolvedValueOnce(syncBatchResponse([{ idempotency_key: 'idem-r1', status: 'synced' }]))
+        .mockResolvedValueOnce(syncBatchResponse([{ idempotency_key: 'idem-r2', status: 'synced' }]));
 
       const result = await pushOfflineReceipts(db);
 
@@ -102,9 +137,9 @@ describe('syncService', () => {
     });
 
     it('marks receipt as syncing before pushing', async () => {
-      const receipt = makeOfflineReceipt({ id: 'r1' });
+      const receipt = makeOfflineReceipt({ id: 'r1', idempotency_key: 'idem-r1' });
       vi.mocked(getPendingReceiptsForSync).mockResolvedValue([receipt]);
-      vi.mocked(apiPost).mockResolvedValue({ success: true });
+      vi.mocked(apiPost).mockResolvedValueOnce(syncBatchResponse([{ idempotency_key: 'idem-r1', status: 'synced' }]));
 
       await pushOfflineReceipts(db);
 
@@ -126,15 +161,15 @@ describe('syncService', () => {
 
     it('halts sync on hash chain break error', async () => {
       const receipts = [
-        makeOfflineReceipt({ id: 'r1', hash_sequence: 1 }),
-        makeOfflineReceipt({ id: 'r2', hash_sequence: 2 }),
-        makeOfflineReceipt({ id: 'r3', hash_sequence: 3 }),
+        makeOfflineReceipt({ id: 'r1', idempotency_key: 'idem-r1', hash_sequence: 1 }),
+        makeOfflineReceipt({ id: 'r2', idempotency_key: 'idem-r2', hash_sequence: 2 }),
+        makeOfflineReceipt({ id: 'r3', idempotency_key: 'idem-r3', hash_sequence: 3 }),
       ];
       vi.mocked(getPendingReceiptsForSync).mockResolvedValue(receipts);
 
       vi.mocked(apiPost)
-        .mockResolvedValueOnce({ success: true })
-        .mockRejectedValueOnce(new Error('Hash chain mismatch'));
+        .mockResolvedValueOnce(syncBatchResponse([{ idempotency_key: 'idem-r1', status: 'synced' }]))
+        .mockResolvedValueOnce(syncBatchResponse([{ idempotency_key: 'idem-r2', status: 'chain_broken', error: 'hash mismatch' }]));
 
       const result = await pushOfflineReceipts(db);
 
@@ -142,19 +177,19 @@ describe('syncService', () => {
       expect(result.failed).toBe(1);
       expect(result.chainBreak).toBe(true);
       expect(apiPost).toHaveBeenCalledTimes(2);
-      expect(result.errors).toContain('CHAIN_BREAK: Sync halted. Operator must resolve hash chain conflict.');
+      expect(result.errors).toContain('CHAIN_BREAK at receipt ' + receipts[1]!.receipt_number);
     });
 
     it('continues pushing after non-chain-break error', async () => {
       const receipts = [
-        makeOfflineReceipt({ id: 'r1', hash_sequence: 1 }),
-        makeOfflineReceipt({ id: 'r2', hash_sequence: 2 }),
+        makeOfflineReceipt({ id: 'r1', idempotency_key: 'idem-r1', hash_sequence: 1 }),
+        makeOfflineReceipt({ id: 'r2', idempotency_key: 'idem-r2', hash_sequence: 2 }),
       ];
       vi.mocked(getPendingReceiptsForSync).mockResolvedValue(receipts);
 
       vi.mocked(apiPost)
         .mockRejectedValueOnce(new Error('Timeout'))
-        .mockResolvedValueOnce({ success: true });
+        .mockResolvedValueOnce(syncBatchResponse([{ idempotency_key: 'idem-r2', status: 'synced' }]));
 
       const result = await pushOfflineReceipts(db);
 
@@ -173,6 +208,118 @@ describe('syncService', () => {
       expect(result.failed).toBe(0);
       expect(result.errors).toHaveLength(0);
       expect(result.chainBreak).toBe(false);
+    });
+
+    it('captures server_receipt_id from sync response and writes it to SQLite', async () => {
+      const receipt = makeOfflineReceipt({
+        id: 'client-uuid-1',
+        idempotency_key: 'idem-1',
+        status: 'pending',
+      });
+      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
+
+      vi.mocked(apiPost).mockResolvedValueOnce({
+        results: [{
+          idempotency_key: 'idem-1',
+          status: 'synced',
+          receipt_id: 'server-uuid-99',
+          server_fiscal_hash: 'hash-99',
+          error: null,
+        }],
+        total: 1,
+        synced: 1,
+        duplicates: 0,
+        failed: 0,
+      });
+
+      const result = await pushOfflineReceipts(db);
+
+      expect(result.pushed).toBe(1);
+      expect(setServerReceiptId).toHaveBeenCalledWith(expect.anything(), 'idem-1', 'server-uuid-99');
+    });
+
+    it('setServerReceiptId failure does not clobber synced status or decrement pushed count', async () => {
+      const receipt = makeOfflineReceipt({
+        id: 'r-writeback',
+        idempotency_key: 'idem-writeback',
+        status: 'pending',
+      });
+      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
+      vi.mocked(apiPost).mockResolvedValueOnce({
+        results: [{
+          idempotency_key: 'idem-writeback',
+          status: 'synced',
+          receipt_id: 'server-uuid-wb',
+          server_fiscal_hash: 'hash-wb',
+          error: null,
+        }],
+        total: 1, synced: 1, duplicates: 0, failed: 0,
+      });
+      vi.mocked(setServerReceiptId).mockRejectedValueOnce(new Error('SQLite write error'));
+
+      const result = await pushOfflineReceipts(db);
+
+      // Receipt must be counted as pushed, not failed
+      expect(result.pushed).toBe(1);
+      expect(result.failed).toBe(0);
+      // Status must remain 'synced' — the last call to updateReceiptStatus for this receipt should be 'synced'
+      const statusCalls = vi.mocked(updateReceiptStatus).mock.calls.filter(
+        (c) => c[1] === 'r-writeback',
+      );
+      const finalStatus = statusCalls[statusCalls.length - 1]![2];
+      expect(finalStatus).toBe('synced');
+    });
+
+    it('malformed payments_json falls back to synthesized entry and warns', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      const receipt = makeOfflineReceipt({
+        idempotency_key: 'idem-corrupt',
+        payments_json: 'not-json',
+      });
+      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
+      vi.mocked(apiPost).mockResolvedValueOnce({
+        results: [{ idempotency_key: 'idem-corrupt', status: 'synced', receipt_id: 'srv-c', server_fiscal_hash: 'h', error: null }],
+        total: 1, synced: 1, duplicates: 0, failed: 0,
+      });
+
+      await pushOfflineReceipts(db);
+
+      const callArgs = vi.mocked(apiPost).mock.calls[0]![1] as { receipts: Record<string, unknown>[] };
+      const payload = callArgs['receipts'][0]!;
+      expect(Array.isArray(payload['payments'])).toBe(true);
+      expect((payload['payments'] as unknown[]).length).toBe(1);
+      expect((payload['payments'] as Record<string, unknown>[])[0]!['payment_method_id']).toBe(receipt.payment_method_id);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('malformed payments_json'),
+        expect.anything(),
+      );
+
+      warnSpy.mockRestore();
+    });
+
+    it('sends payments[], consumption_mode, table_id in sync payload', async () => {
+      const receipt = makeOfflineReceipt({
+        idempotency_key: 'idem-fnb',
+        payments_json: '[{"payment_method_id":"pm-1","repository_id":"repo-1","amount":"30.00"}]',
+        consumption_mode: 'SUR_PLACE',
+        table_id: 'table-5',
+      });
+      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
+      vi.mocked(apiPost).mockResolvedValueOnce({
+        results: [{ idempotency_key: 'idem-fnb', status: 'synced', receipt_id: 'srv-1', server_fiscal_hash: 'h', error: null }],
+        total: 1, synced: 1, duplicates: 0, failed: 0,
+      });
+
+      await pushOfflineReceipts(db);
+
+      const callArgs = vi.mocked(apiPost).mock.calls[0]![1] as { receipts: Record<string, unknown>[] };
+      const payload = callArgs['receipts'][0]!;
+      expect(payload['payments']).toEqual([
+        { payment_method_id: 'pm-1', repository_id: 'repo-1', amount: '30.00', card_last_four: null, transaction_reference: null },
+      ]);
+      expect(payload['consumption_mode']).toBe('SUR_PLACE');
+      expect(payload['table_id']).toBe('table-5');
     });
   });
 

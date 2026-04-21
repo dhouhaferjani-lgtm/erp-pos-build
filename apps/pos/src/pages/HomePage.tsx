@@ -5,17 +5,18 @@ import { useOperatorStore } from '@/stores/operatorStore';
 import { useProductStore } from '@/stores/productStore';
 import { useCartStore, computeTaxAmount } from '@/stores/cartStore';
 import { usePaymentStore } from '@/stores/paymentStore';
-import { useAuthStore } from '@/stores/authStore';
 import { useHoldStore } from '@/stores/holdStore';
 import { useScannerStore } from '@/stores/scannerStore';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { getErrorMessage } from '@/lib/api';
 import { useCurrency } from '@/lib/currency';
 import { fetchReceipt } from '@/api/receiptApi';
-import { buildEscPosReceiptData, buildEscPosFromOfflineReceipt } from '@/lib/buildReceiptData';
+import { buildEscPosReceiptData } from '@/lib/buildReceiptData';
 import type { ReceiptVisibilitySettings } from '@/lib/buildReceiptData';
 import type { ReceiptData } from '@/lib/printing';
 import { hasModule } from '@/stores/productStore';
+import { ChainBreakAlert } from '@/components/atoms/ChainBreakAlert';
+import { TerminalNotReadyBanner } from '@/components/atoms/TerminalNotReadyBanner';
 import { ConsumptionModeToggle } from '@/components/atoms/ConsumptionModeToggle';
 import { TableSelector } from '@/components/atoms/TableSelector';
 import { ProductGrid } from '@/components/organisms/ProductGrid';
@@ -42,6 +43,7 @@ export function HomePage() {
   const { t } = useTranslation();
   const { decimals: currencyDecimals } = useCurrency();
   const { shift, terminal, openShift, isLoading: terminalLoading } = useTerminalStore();
+  const hashChainReady = useTerminalStore((s) => s.hashChainReady);
   const operator = useOperatorStore((s) => s.operator);
   const [openingCash, setOpeningCash] = useState('0.00');
   const [shiftError, setShiftError] = useState<string | null>(null);
@@ -88,8 +90,9 @@ export function HomePage() {
   const isProcessing = usePaymentStore((s) => s.isProcessing);
   const lastReceipt = usePaymentStore((s) => s.lastReceipt);
   const changeDue = usePaymentStore((s) => s.changeDue);
-  const isOfflineReceipt = usePaymentStore((s) => s.isOfflineReceipt);
   const clearLastReceipt = usePaymentStore((s) => s.clearLastReceipt);
+  const lastReceiptIdempotencyKey = usePaymentStore((s) => s.lastReceiptIdempotencyKey);
+  const lastReceiptServerId = usePaymentStore((s) => s.lastReceiptServerId);
   const paymentError = usePaymentStore((s) => s.error);
 
   // Hold store
@@ -109,6 +112,7 @@ export function HomePage() {
 
   // ESC/POS receipt data for thermal printing
   const [escPosData, setEscPosData] = useState<ReceiptData | null>(null);
+  const [escPosSource, setEscPosSource] = useState<'local' | 'server' | null>(null);
 
   // Modifier selection state
   const [modifierProduct, setModifierProduct] = useState<POSProduct | null>(null);
@@ -183,60 +187,50 @@ export function HomePage() {
     };
   }, [companyConfig?.receipt_visibility]);
 
-  // Fetch full receipt for ESC/POS thermal printing when success modal opens
-  // Skip API fetch for offline receipts — the receipt doesn't exist on the server yet
+  // Fetch full receipt for ESC/POS thermal printing when success modal opens.
+  // Prefer API when server ID is known (post-sync); fall back to local SQLite for pending receipts.
+  // escPosSource tracks whether we already have 'server' data (no upgrade needed) or only 'local'
+  // data (upgrade when lastReceiptServerId becomes available mid-modal).
   useEffect(() => {
     if (!showSuccessModal) {
       setEscPosData(null);
+      setEscPosSource(null);
       return;
     }
-    if (!lastReceipt || escPosData || isOfflineReceipt) return;
+    if (!lastReceipt) return;
+    // Already have the best-available data
+    if (escPosSource === 'server') return;
+    if (escPosSource === 'local' && !lastReceiptServerId) return;
 
-    // Offline receipts: build ESC/POS data from local cart data
-    if (isOfflineReceipt) {
-      const authState = useAuthStore.getState();
-      const company = authState.companies.find((c) => c.id === authState.companyId);
-      const cashMethod = paymentMethods.find((m) => m.is_physical && !m.has_maturity && m.is_active);
-      setEscPosData(buildEscPosFromOfflineReceipt(
-        {
-          isOffline: true,
-          receiptId: lastReceipt.id,
-          receiptNumber: lastReceipt.receipt_number,
-          total: lastReceipt.total,
-          subtotal: lastReceipt.subtotal,
-          taxAmount: lastReceipt.tax_amount,
-          discountAmount: lastReceipt.discount_amount,
-          changeDue,
-          currency: lastReceipt.currency ?? company?.currency ?? 'EUR',
-          onlineReceipt: null,
-          onlinePayment: null,
-        },
-        cartItems,
-        company?.name ?? '',
-        terminal?.name ?? '',
-        operator?.name ?? '',
-        cashMethod?.name ?? 'Cash',
-        receiptVisibility,
-      ));
-      return;
-    }
-
-    // Online receipts: fetch full receipt from API
     let cancelled = false;
-    fetchReceipt(lastReceipt.id)
-      .then((fullReceipt) => {
-        if (!cancelled) {
-          setEscPosData(buildEscPosReceiptData(fullReceipt, receiptVisibility));
+
+    const loader = async () => {
+      try {
+        if (lastReceiptServerId) {
+          const fullReceipt = await fetchReceipt(lastReceiptServerId);
+          if (!cancelled) {
+            setEscPosData(buildEscPosReceiptData(fullReceipt, receiptVisibility));
+            setEscPosSource('server');
+          }
+          return;
         }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          console.error('[POS] Failed to fetch receipt for thermal print:', err);
+        if (lastReceiptIdempotencyKey) {
+          const { getOfflineReceiptForPrint } = await import('@/lib/offline/getOfflineReceiptForPrint');
+          const localReceipt = await getOfflineReceiptForPrint(lastReceiptIdempotencyKey);
+          if (!cancelled) {
+            setEscPosData(buildEscPosReceiptData(localReceipt, receiptVisibility));
+            setEscPosSource('local');
+          }
         }
-      });
+      } catch (err) {
+        if (!cancelled) console.error('[POS] Failed to assemble receipt for thermal print:', err);
+      }
+    };
+
+    void loader();
 
     return () => { cancelled = true; };
-  }, [showSuccessModal, lastReceipt, escPosData, receiptVisibility, isOfflineReceipt, cartItems, terminal, operator, paymentMethods, changeDue]);
+  }, [showSuccessModal, lastReceipt, lastReceiptIdempotencyKey, lastReceiptServerId, escPosSource, receiptVisibility]);
 
   // Smart Prompts: fetch recommendations when cart changes
   useEffect(() => {
@@ -558,7 +552,10 @@ export function HomePage() {
   // Open shift screen
   if (!shift) {
     return (
-      <div className="flex h-full items-center justify-center">
+      <div className="flex h-full flex-col">
+        <TerminalNotReadyBanner />
+        <ChainBreakAlert />
+        <div className="flex flex-1 items-center justify-center">
         <div className="w-full max-w-sm text-center">
           <h2 className="text-xl font-bold text-gray-900">{t('shift.openTitle')}</h2>
           <p className="mt-1 text-sm text-gray-500">
@@ -594,12 +591,16 @@ export function HomePage() {
             {terminalLoading ? t('shift.openingLoading') : t('shift.openingButton')}
           </button>
         </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className={`flex h-full relative ${cartPosition === 'end' ? 'flex-row-reverse' : 'flex-row'}`}>
+    <div className="flex h-full flex-col">
+      <TerminalNotReadyBanner />
+      <ChainBreakAlert />
+      <div className={`flex flex-1 relative ${cartPosition === 'end' ? 'flex-row-reverse' : 'flex-row'}`}>
       {/* Barcode scan feedback */}
       {scanMessage && (
         <div
@@ -638,6 +639,7 @@ export function HomePage() {
           onRemoveDiscount={handleRemoveDiscount}
           paymentMethods={paymentMethods}
           smartPromptsSlot={smartPromptsInline}
+          checkoutDisabled={!hashChainReady || isProcessing}
         />
       </div>
 
@@ -691,7 +693,6 @@ export function HomePage() {
           changeDue={changeDue}
           receiptId={lastReceipt.id}
           receiptData={escPosData ?? undefined}
-          isOfflineReceipt={isOfflineReceipt}
         />
       )}
 
@@ -757,6 +758,7 @@ export function HomePage() {
         currentQuantity={quantityEditItem?.quantity ?? 1}
         onConfirm={handleQuantityConfirm}
       />
+      </div>
     </div>
   );
 }

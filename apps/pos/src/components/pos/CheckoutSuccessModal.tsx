@@ -27,8 +27,6 @@ interface CheckoutSuccessModalProps {
   receiptId?: string;
   /** Optional pre-built receipt data for ESC/POS printing. */
   receiptData?: ReceiptData;
-  /** Whether this receipt was created offline. */
-  isOfflineReceipt?: boolean;
 }
 
 export function CheckoutSuccessModal({
@@ -39,7 +37,6 @@ export function CheckoutSuccessModal({
   changeDue,
   receiptId,
   receiptData,
-  isOfflineReceipt = false,
 }: CheckoutSuccessModalProps) {
   const { t } = useTranslation('pos');
   const { format } = useCurrency();
@@ -168,14 +165,6 @@ export function CheckoutSuccessModal({
             <CheckCircle className="h-12 w-12 text-green-600" />
           </div>
         </div>
-
-        {/* Offline banner */}
-        {isOfflineReceipt && (
-          <div className="rounded-md bg-amber-50 p-3 text-sm text-amber-700">
-            <p className="font-medium">{t('payment.offlineSaved')}</p>
-            <p className="mt-1">{t('payment.offlineWillSync')}</p>
-          </div>
-        )}
 
         {/* Receipt number */}
         <div>

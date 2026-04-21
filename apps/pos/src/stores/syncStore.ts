@@ -9,6 +9,9 @@ interface SyncState {
   pendingReceiptCount: number;
   lastError: string | null;
   scheduler: SyncScheduler | null;
+  chainBreak: boolean;
+  chainBreakReceiptNumber: string | null;
+  chainBreakAcknowledgedAt: string | null;
 }
 
 interface SyncActions {
@@ -19,6 +22,8 @@ interface SyncActions {
   setScheduler: (scheduler: SyncScheduler | null) => void;
   triggerSync: () => void;
   reset: () => void;
+  setChainBreak: (broken: boolean, receiptNumber: string | null) => void;
+  acknowledgeChainBreak: () => void;
 }
 
 type SyncStore = SyncState & SyncActions;
@@ -30,6 +35,9 @@ const initialState: SyncState = {
   pendingReceiptCount: 0,
   lastError: null,
   scheduler: null,
+  chainBreak: false,
+  chainBreakReceiptNumber: null,
+  chainBreakAcknowledgedAt: null,
 };
 
 export const useSyncStore = create<SyncStore>()((set, get) => ({
@@ -77,4 +85,12 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
   reset: () => {
     set(initialState);
   },
+
+  setChainBreak: (broken, receiptNumber) => set({
+    chainBreak: broken,
+    chainBreakReceiptNumber: receiptNumber,
+    chainBreakAcknowledgedAt: broken ? null : new Date().toISOString(),
+  }),
+
+  acknowledgeChainBreak: () => set({ chainBreakAcknowledgedAt: new Date().toISOString() }),
 }));

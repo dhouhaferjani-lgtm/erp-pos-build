@@ -303,6 +303,11 @@ final class ReceiptSyncService
                 'discount_amount' => $payload->discountAmount,
                 'total' => $total,
                 'currency' => $payload->currency,
+                'consumption_mode' => $payload->consumptionMode !== null
+                    ? \App\Modules\POS\Domain\Enums\ConsumptionMode::from($payload->consumptionMode)
+                    : null,
+                'table_id' => $payload->tableId,
+                'fiscal_status' => 'fiscalized',
                 'is_voided' => false,
                 'vat_breakdown_hash' => $vatHash,
                 'payment_methods_hash' => $paymentHash,
@@ -354,15 +359,17 @@ final class ReceiptSyncService
                 }
             }
 
-            // 13. Create payment record if payment info provided
-            if ($payload->paymentMethodId !== '') {
-                $paymentMethod = PaymentMethod::find($payload->paymentMethodId);
+            // 13. Create payment records — loop over the payments array
+            foreach ($payload->payments as $entry) {
+                $method = PaymentMethod::findOrFail($entry['payment_method_id']);
                 ReceiptPayment::create([
                     'id' => Str::uuid()->toString(),
                     'receipt_id' => $receipt->id,
-                    'payment_method_id' => $payload->paymentMethodId,
-                    'payment_type' => $paymentMethod->code ?? 'unknown',
-                    'amount' => $total,
+                    'payment_method_id' => $entry['payment_method_id'],
+                    'payment_type' => $method->code,
+                    'amount' => $entry['amount'],
+                    'card_last_four' => $entry['card_last_four'] ?? null,
+                    'transaction_reference' => $entry['transaction_reference'] ?? null,
                 ]);
             }
 

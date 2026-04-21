@@ -300,4 +300,27 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 16,
+    name: 'add_offline_first_columns_to_offline_receipts',
+    sql: '',
+    async run(db) {
+      const statements = [
+        "ALTER TABLE offline_receipts ADD COLUMN server_receipt_id TEXT",
+        "ALTER TABLE offline_receipts ADD COLUMN payments_json TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE offline_receipts ADD COLUMN consumption_mode TEXT",
+        "ALTER TABLE offline_receipts ADD COLUMN table_id TEXT",
+      ];
+      for (const stmt of statements) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
 ];

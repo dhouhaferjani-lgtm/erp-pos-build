@@ -116,6 +116,8 @@ describe('offlineCheckoutService - executeCheckout', () => {
       discountAmount: '0.00',
       changeDue: 50,
       fiscalHash: 'offline-hash-123',
+      idempotencyKey: 'idem-001',
+      localId: 'local-id-001',
     });
 
     const result = await executeCheckout(db, makeInput());
@@ -139,6 +141,8 @@ describe('offlineCheckoutService - executeCheckout', () => {
       discountAmount: '0.00',
       changeDue: 50,
       fiscalHash: 'fallback-hash-456',
+      idempotencyKey: 'idem-002',
+      localId: 'local-id-002',
     });
 
     const result = await executeCheckout(db, makeInput());
@@ -168,6 +172,8 @@ describe('offlineCheckoutService - executeCheckout', () => {
       discountAmount: '0.00',
       changeDue: 50,
       fiscalHash: 'fallback-hash-789',
+      idempotencyKey: 'idem-003',
+      localId: 'local-id-003',
     });
 
     const result = await executeCheckout(db, makeInput());
@@ -193,6 +199,8 @@ describe('offlineCheckoutService - executeCheckout', () => {
       discountAmount: '5.00',
       changeDue: 55,
       fiscalHash: 'hash-abc',
+      idempotencyKey: 'idem-004',
+      localId: 'local-id-004',
     });
 
     const result = await executeCheckout(db, makeInput());

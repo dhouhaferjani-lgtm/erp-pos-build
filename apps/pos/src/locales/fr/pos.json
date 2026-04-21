@@ -48,8 +48,6 @@
     "transactionRef": "Référence",
     "morePaymentMethods": "Plus...",
     "processingQuickCheckout": "Traitement du paiement...",
-    "offlineSaved": "Vente enregistrée localement",
-    "offlineWillSync": "Synchronisation automatique au retour de la connexion",
     "pendingSyncCount": "{{count}} vente(s) en attente de synchronisation"
   },
   "cashPayment": {
@@ -494,7 +492,26 @@
     "unexpected": "Une erreur inattendue s'est produite",
     "noCashMethod": "Aucun moyen de paiement espèces configuré. Veuillez configurer un moyen de paiement espèces dans Paramètres → Moyens de paiement.",
     "noCashRegister": "Aucune caisse enregistreuse configurée. Veuillez configurer une caisse dans Paramètres → Dépôts de paiement.",
-    "checkoutFailed": "Échec du paiement"
+    "checkoutFailed": "Échec du paiement",
+    "noCompanySelected": "Aucune entreprise sélectionnée. Veuillez sélectionner une entreprise avant d'encaisser.",
+    "noOperatorIdentified": "Aucun opérateur identifié. Veuillez vous connecter avec votre code PIN avant d'encaisser.",
+    "noPaymentProvided": "Au moins un moyen de paiement est requis.",
+    "unknownPaymentMethod": "Moyen de paiement inconnu dans le paiement mixte.",
+    "noCardMethod": "Aucun moyen de paiement par carte n'est configuré pour ce terminal.",
+    "noCardRepository": "Aucun dépôt carte (virtuel ou compte bancaire) n'est configuré pour ce terminal."
+  },
+  "terminalNotReady": {
+    "title": "Terminal non activé",
+    "description": "Ce terminal doit se connecter à Internet une fois pour activer sa chaîne de hash fiscale. L'encaissement est désactivé jusqu'à l'activation.",
+    "syncNow": "Tenter l'activation"
+  },
+  "chainBreak": {
+    "title": "Chaîne fiscale rompue",
+    "description": "La chaîne de hash des tickets est rompue après le ticket {{receiptNumber}}. Les tickets suivants seront rejetés par le serveur. Arrêtez d'encaisser et contactez le support immédiatement.",
+    "contactSupport": "Mentionnez cette alerte lors du contact avec le support. Ne supprimez ni ne modifiez aucun ticket.",
+    "acknowledge": "J'ai compris",
+    "unknownReceipt": "(inconnu)",
+    "acknowledgedAt": "Accusé de réception à {{time}} — l'alerte persiste jusqu'à la résolution par le support."
   },
   "receiptLabel": {
     "receipt": "Reçu :",
