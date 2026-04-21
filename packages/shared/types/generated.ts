@@ -548,7 +548,7 @@ export type ItemResolutionMethod = 'pending' | 'auto_all_match' | 'auto_counters
 export type MovementReason = 'goods_receipt' | 'customer_return' | 'adjustment_positive' | 'transfer_in' | 'production_output' | 'opening_balance' | 'delivery' | 'supplier_return' | 'adjustment_negative' | 'transfer_out' | 'damage' | 'expiry' | 'write_off' | 'consumption' | 'pos_sale' | 'pos_return';
 export type MovementType = 'receipt' | 'issue' | 'transfer_in' | 'transfer_out' | 'adjustment' | 'opening';
 export type ReleaseReason = 'delivered' | 'cancelled' | 'expired' | 'manual_release' | 'converted' | 'order_modified' | 'insufficient_stock';
-export type ReservationSource = 'sales_order' | 'ecommerce_cart' | 'marketplace_order' | 'manual_hold' | 'customer_return_pending' | 'quality_check' | 'transfer_pending';
+export type ReservationSource = 'sales_order' | 'ecommerce_cart' | 'marketplace_order' | 'manual_hold' | 'customer_return_pending' | 'quality_check' | 'transfer_pending' | 'work_order';
 }
 declare namespace App.Modules.Loyalty.Application.DTOs {
 export type EarningConditionsData = {
@@ -1292,6 +1292,15 @@ export type DiscountType = 'percentage' | 'fixed' | 'free_item';
 export type PromotionStatus = 'draft' | 'active' | 'paused' | 'expired' | 'archived';
 export type PromotionType = 'happy_hour' | 'buy_x_get_y' | 'volume_discount' | 'category_discount' | 'combo_discount';
 }
+declare namespace App.Modules.Scheduling.Domain.Enums {
+export type AppointmentSource = 'manual' | 'phone' | 'online' | 'walkin';
+export type AppointmentStatus = 'scheduled' | 'confirmed' | 'checked_in' | 'in_progress' | 'completed' | 'closed' | 'no_show' | 'cancelled';
+export type AppointmentType = 'quick_service' | 'inspection' | 'diagnostic' | 'standard_repair' | 'major_repair' | 'maintenance' | 'tire_service' | 'bodywork' | 'other';
+export type BayType = 'general' | 'quick_service' | 'alignment' | 'heavy' | 'specialist' | 'flat' | 'other';
+export type ReminderChannel = 'email' | 'sms';
+export type ReminderDeliveryStatus = 'pending' | 'sent' | 'failed' | 'skipped';
+export type WaitType = 'waiter' | 'drop_off' | 'pickup_scheduled';
+}
 declare namespace App.Modules.Service.Application.DTOs {
 export type ServiceCategoryData = {
 id: string;
@@ -1397,6 +1406,395 @@ category: App.Modules.Uom.Application.DTOs.UnitCategoryData | null;
 }
 declare namespace App.Modules.Uom.Domain.Enums {
 export type RoundingMethod = 'half_up' | 'floor' | 'ceil';
+}
+declare namespace App.Modules.Vehicle.Application.DTOs {
+export type VehicleData = {
+id: string;
+tenant_id: string;
+company_id: string;
+license_plate: string;
+brand: string;
+model: string;
+year: number | null;
+color: string | null;
+mileage: number | null;
+vin: string | null;
+engine_code: string | null;
+fuel_type: App.Modules.Vehicle.Domain.Enums.FuelType | null;
+transmission: App.Modules.Vehicle.Domain.Enums.TransmissionType | null;
+body_type: App.Modules.Vehicle.Domain.Enums.BodyType | null;
+notes: string | null;
+current_owner_partner_id: string | null;
+current_owner_display_name: string | null;
+partner_id: string | null;
+created_at: string;
+updated_at: string | null;
+};
+export type VehicleMileageReadingData = {
+id: string;
+vehicle_id: string;
+mileage: number;
+recorded_at: string;
+source: App.Modules.Vehicle.Domain.Enums.MileageSource;
+context_document_id: string | null;
+context_work_order_id: string | null;
+notes: string | null;
+};
+export type VehicleOwnershipData = {
+id: string;
+vehicle_id: string;
+owner_partner_id: string;
+owner_display_name: string;
+acquired_at: string;
+released_at: string | null;
+reason_code: App.Modules.Vehicle.Domain.Enums.OwnershipReason;
+notes: string | null;
+recorded_by_user_id: string | null;
+};
+export type VehicleWithCurrentOwnerData = {
+vehicle: App.Modules.Vehicle.Application.DTOs.VehicleData;
+current_ownership: App.Modules.Vehicle.Application.DTOs.VehicleOwnershipData | null;
+recent_mileage_readings: any;
+};
+}
+declare namespace App.Modules.Vehicle.Domain.Enums {
+export type BodyType = 'sedan' | 'hatchback' | 'suv' | 'pickup' | 'van' | 'coupe' | 'convertible' | 'wagon' | 'truck' | 'motorcycle' | 'other';
+export type FuelType = 'gasoline' | 'diesel' | 'electric' | 'hybrid' | 'plugin_hybrid' | 'lpg' | 'cng' | 'hydrogen' | 'other';
+export type MileageSource = 'service' | 'manual' | 'odometer_photo' | 'external_api' | 'work_order_completion';
+export type OwnershipReason = 'initial_registration' | 'purchase' | 'sale' | 'transfer' | 'trade_in' | 'fleet_assignment' | 'fleet_return' | 'other';
+export type TransmissionType = 'manual' | 'automatic' | 'semi_automatic' | 'cvt' | 'dual_clutch' | 'other';
+}
+declare namespace App.Modules.Workshop.Bundle.Application.DTOs {
+export type ApplicableBundleData = {
+id: string;
+code: string;
+name: string;
+description: string | null;
+pricing_mode: App.Modules.Workshop.Bundle.Domain.Enums.BundlePricingMode;
+base_price: string | null;
+currency: string;
+service_interval_km: number | null;
+service_interval_months: number | null;
+estimated_labor_hours: string | null;
+component_count: number;
+};
+export type BundleExpansionLineData = {
+component_type: App.Modules.Workshop.Bundle.Domain.Enums.BundleComponentType;
+component_id: string | null;
+display_name: string;
+quantity: string;
+unit: string;
+unit_price: string;
+line_total: string;
+is_optional: boolean;
+is_from_fixed_bundle: boolean;
+};
+export type ServiceBundleComponentData = {
+id: string;
+bundle_id: string;
+component_type: App.Modules.Workshop.Bundle.Domain.Enums.BundleComponentType;
+component_id: string;
+component_display_name: string;
+quantity: string;
+unit: string;
+override_unit_price: string | null;
+is_optional: boolean;
+display_order: number;
+notes: string | null;
+};
+export type ServiceBundleData = {
+id: string;
+tenant_id: string;
+company_id: string;
+code: string;
+name: string;
+description: string | null;
+pricing_mode: App.Modules.Workshop.Bundle.Domain.Enums.BundlePricingMode;
+base_price: string | null;
+currency: string;
+tax_rate: string | null;
+estimated_labor_hours: string | null;
+service_interval_km: number | null;
+service_interval_months: number | null;
+is_active: boolean;
+components: any;
+vehicle_applicabilities: any;
+created_at: string;
+updated_at: string | null;
+};
+export type ServiceBundleVehicleApplicabilityData = {
+id: string;
+bundle_id: string;
+platform_vehicle_id: string | null;
+vehicle_type: App.Modules.Product.Domain.Enums.VehicleTypeRef | null;
+vehicle_display: string | null;
+year_from: number | null;
+year_to: number | null;
+};
+}
+declare namespace App.Modules.Workshop.Bundle.Domain.Enums {
+export type BundleComponentType = 'part' | 'labor' | 'nested_bundle';
+export type BundlePricingMode = 'standard' | 'fixed_bundle';
+}
+declare namespace App.Modules.Workshop.Technician.Application.DTOs {
+export type AvailabilityResultData = {
+status: string;
+reason: string;
+};
+export type PayrollExportLineData = {
+technician_profile_id: string;
+user_display_name: string;
+employee_code: string;
+week_starts_at: string;
+total_minutes: number;
+work_order_minutes: number;
+overtime_minutes: number;
+estimated_billable_amount: string | null;
+estimated_cost_amount: string | null;
+currency: string;
+};
+export type ScheduleWindowData = {
+start: string;
+end: string;
+};
+export type TechnicianCertificationData = {
+id: string;
+technician_profile_id: string;
+certification_name: string;
+issuing_body: string | null;
+certificate_number: string | null;
+issued_at: string | null;
+expires_at: string | null;
+notes: string | null;
+created_at: string;
+};
+export type TechnicianProfileData = {
+id: string;
+tenant_id: string;
+company_id: string;
+user_id: string;
+user_display_name: string;
+user_email: string | null;
+skill_level: App.Modules.Workshop.Technician.Domain.Enums.SkillLevel;
+specialties: Array<any>;
+hourly_cost_rate: string | null;
+hourly_billing_rate: string | null;
+currency: string;
+weekly_schedule: App.Modules.Workshop.Technician.Application.DTOs.WeeklyScheduleData;
+hire_date: string | null;
+employment_status: App.Modules.Workshop.Technician.Domain.Enums.EmploymentStatus;
+employee_code: string | null;
+notes: string | null;
+national_id: string | null;
+personal_address: string | null;
+personal_phone: string | null;
+is_active: boolean;
+created_at: string;
+updated_at: string | null;
+};
+export type TechnicianTimeEntryData = {
+id: string;
+technician_profile_id: string;
+company_id: string;
+started_at: string;
+ended_at: string | null;
+duration_minutes: number | null;
+entry_type: App.Modules.Workshop.Technician.Domain.Enums.TimeEntryType;
+work_order_id: string | null;
+work_order_status: App.Modules.Workshop.WorkOrder.Domain.Enums.WorkOrderStatus | null;
+source: App.Modules.Workshop.Technician.Domain.Enums.TimeEntrySource;
+recorded_by_user_id: string | null;
+notes: string | null;
+};
+export type TechnicianTimeOffData = {
+id: string;
+technician_profile_id: string;
+starts_at: string;
+ends_at: string;
+reason_code: App.Modules.Workshop.Technician.Domain.Enums.TimeOffReason;
+is_full_day: boolean;
+is_approved: boolean;
+approved_by_user_id: string | null;
+notes: string | null;
+};
+export type WeeklyHoursSummaryData = {
+technician_profile_id: string;
+week_starts_at: string;
+total_minutes: number;
+minutes_by_entry_type: Array<any>;
+work_order_breakdown: any;
+estimated_billable_amount: string | null;
+estimated_cost_amount: string | null;
+overtime_minutes: number;
+currency: string;
+};
+export type WeeklyScheduleData = {
+mon: any;
+tue: any;
+wed: any;
+thu: any;
+fri: any;
+sat: any;
+sun: any;
+};
+export type WorkOrderHoursBreakdownData = {
+work_order_id: string;
+minutes: number;
+};
+}
+declare namespace App.Modules.Workshop.Technician.Domain.Enums {
+export type EmploymentStatus = 'active' | 'on_leave' | 'terminated';
+export type SkillLevel = 'apprentice' | 'junior' | 'general' | 'senior' | 'master' | 'specialist';
+export type SpecialtyCode = 'engine_mechanical' | 'engine_diagnostic' | 'transmission' | 'electrical' | 'electronic' | 'suspension' | 'brakes' | 'ac_climate' | 'tires' | 'alignment' | 'bodywork' | 'paint' | 'hybrid_ev' | 'diesel' | 'pre_control' | 'general_service';
+export type TimeEntrySource = 'event' | 'manual' | 'import';
+export type TimeEntryType = 'work_order' | 'break' | 'non_billable' | 'manual_adjust';
+export type TimeOffReason = 'vacation' | 'sick' | 'training' | 'personal' | 'unpaid' | 'other';
+}
+declare namespace App.Modules.Workshop.WorkOrder.Application.DTOs {
+export type ApprovalEvidenceData = {
+method: App.Modules.Workshop.WorkOrder.Domain.Enums.ApprovalMethod;
+captured_at: string;
+captured_by_user_id: string | null;
+captured_by_display_name: string | null;
+reference: string | null;
+};
+export type PartNeedData = {
+work_order_id: string;
+work_order_line_id: string;
+product_id: string | null;
+display_name: string;
+quantity: string;
+unit: string;
+vehicle_id: string;
+vehicle_display_name: string;
+preferred_brand: string | null;
+urgency: string | null;
+notes: string | null;
+};
+export type WorkOrderAssignmentData = {
+id: string;
+work_order_id: string;
+technician_profile_id: string;
+technician_display_name: string | null;
+is_lead: boolean;
+assigned_at: string;
+unassigned_at: string | null;
+assigned_by_user_id: string;
+notes: string | null;
+};
+export type WorkOrderData = {
+id: string;
+tenant_id: string;
+company_id: string;
+location_id: string | null;
+work_order_number: string;
+status: App.Modules.Workshop.WorkOrder.Domain.Enums.WorkOrderStatus;
+type: App.Modules.Workshop.WorkOrder.Domain.Enums.WorkOrderType;
+customer_partner_id: string;
+customer_display_name: string;
+vehicle_id: string;
+vehicle_display_name: string;
+opened_by_user_id: string;
+primary_technician_profile_id: string | null;
+primary_technician_display_name: string | null;
+mileage_at_intake: number | null;
+customer_complaint: string | null;
+diagnosis: string | null;
+internal_notes: string | null;
+scheduled_start_at: string | null;
+scheduled_end_at: string | null;
+promised_at: string | null;
+started_at: string | null;
+paused_at: string | null;
+completed_at: string | null;
+cancelled_at: string | null;
+cancellation_reason: App.Modules.Workshop.WorkOrder.Domain.Enums.CancellationReason | null;
+approval_captured_at: string | null;
+approval_method: App.Modules.Workshop.WorkOrder.Domain.Enums.ApprovalMethod | null;
+approval_reference: string | null;
+currency: string;
+estimated_totals: App.Modules.Workshop.WorkOrder.Application.DTOs.WorkOrderTotalsData;
+actual_totals: App.Modules.Workshop.WorkOrder.Application.DTOs.WorkOrderTotalsData;
+quote_document_id: string | null;
+invoice_document_id: string | null;
+lines: { [key: number]: App.Modules.Workshop.WorkOrder.Application.DTOs.WorkOrderLineData };
+assignments: { [key: number]: App.Modules.Workshop.WorkOrder.Application.DTOs.WorkOrderAssignmentData };
+status_history: { [key: number]: App.Modules.Workshop.WorkOrder.Application.DTOs.WorkOrderStatusTransitionData };
+created_at: string;
+updated_at: string | null;
+};
+export type WorkOrderLineData = {
+id: string;
+work_order_id: string;
+line_type: App.Modules.Workshop.WorkOrder.Domain.Enums.WorkOrderLineType;
+display_order: number;
+product_id: string | null;
+service_id: string | null;
+service_bundle_id: string | null;
+display_name: string;
+sku_or_code: string | null;
+description: string | null;
+quantity: string;
+unit: string;
+unit_price: string;
+tax_rate: string;
+discount_percent: string;
+line_total_excl_tax: string;
+line_total_tax: string;
+line_total_incl_tax: string;
+labor_hours_estimated: string | null;
+labor_hours_actual: string | null;
+assigned_technician_profile_id: string | null;
+stock_reservation_id: string | null;
+is_customer_supplied: boolean;
+core_deposit_partner_id: string | null;
+core_deposit_status: App.Modules.Workshop.WorkOrder.Domain.Enums.CoreDepositStatus | null;
+core_return_of_line_id: string | null;
+from_bundle_id: string | null;
+is_bundle_informational: boolean;
+is_completed: boolean;
+completed_at: string | null;
+};
+export type WorkOrderListItemData = {
+id: string;
+work_order_number: string;
+status: App.Modules.Workshop.WorkOrder.Domain.Enums.WorkOrderStatus;
+type: App.Modules.Workshop.WorkOrder.Domain.Enums.WorkOrderType;
+customer_display_name: string;
+vehicle_display_name: string;
+primary_technician_display_name: string | null;
+scheduled_start_at: string | null;
+promised_at: string | null;
+currency: string;
+estimated_grand_total: string | null;
+actual_grand_total: string | null;
+created_at: string;
+};
+export type WorkOrderStatusTransitionData = {
+id: string;
+work_order_id: string;
+from_status: App.Modules.Workshop.WorkOrder.Domain.Enums.WorkOrderStatus | null;
+to_status: App.Modules.Workshop.WorkOrder.Domain.Enums.WorkOrderStatus;
+reason_code: string | null;
+triggered_by_user_id: string | null;
+triggered_at: string;
+context: Array<any> | null;
+};
+export type WorkOrderTotalsData = {
+parts_total: string;
+labor_total: string;
+other_total: string;
+tax_total: string;
+grand_total: string;
+};
+}
+declare namespace App.Modules.Workshop.WorkOrder.Domain.Enums {
+export type ApprovalMethod = 'in_person' | 'phone' | 'email' | 'sms' | 'signed_document';
+export type CancellationReason = 'customer_declined' | 'customer_no_show' | 'internal_error' | 'duplicate' | 'vehicle_unfit' | 'other';
+export type CoreDepositStatus = 'outstanding' | 'returned' | 'expired' | 'credited';
+export type WorkOrderLineType = 'part' | 'labor' | 'core_charge' | 'core_return' | 'sublet' | 'environmental_fee' | 'misc_fee' | 'bundle_header';
+export type WorkOrderStatus = 'received' | 'diagnosed' | 'quoted' | 'approved' | 'in_progress' | 'paused' | 'waiting_parts' | 'completed' | 'invoiced' | 'closed' | 'cancelled';
+export type WorkOrderType = 'repair' | 'maintenance' | 'inspection' | 'bodywork' | 'tire_service' | 'electrical' | 'diagnostic' | 'other';
 }
 declare namespace App.Shared.Application.DTOs {
 export type PaginationData = {
