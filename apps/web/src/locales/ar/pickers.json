@@ -1,0 +1,47 @@
+{
+  "common": {
+    "searchPlaceholder": "بحث…",
+    "loading": "جارٍ التحميل…",
+    "error": "تعذّر تحميل النتائج.",
+    "clear": "إلغاء الاختيار",
+    "close": "إغلاق",
+    "minCharacters": "اكتب حرفين على الأقل للبحث."
+  },
+  "partner": {
+    "label": "العميل",
+    "searchPlaceholder": "ابحث عن العميل بالاسم أو البريد الإلكتروني أو الرقم الضريبي…",
+    "empty": "لا يوجد شركاء مطابقون.",
+    "addNew": "إضافة عميل جديد",
+    "selectedChip": "العميل المختار",
+    "typeChip": {
+      "customer": "عميل",
+      "supplier": "مورّد",
+      "both": "عميل ومورّد"
+    }
+  },
+  "vehicle": {
+    "label": "المركبة",
+    "searchPlaceholder": "ابحث عن المركبة برقم اللوحة أو VIN أو الماركة أو الموديل…",
+    "empty": "لا توجد مركبات مطابقة.",
+    "emptyForPartner": "لا يمتلك هذا العميل أي مركبة بعد.",
+    "addNew": "إضافة مركبة جديدة",
+    "selectedChip": "المركبة المختارة",
+    "disabledHint": "اختر عميلًا أولًا."
+  },
+  "bundle": {
+    "label": "الباقة",
+    "triggerPlaceholder": "اختر باقة…",
+    "changeBundle": "تغيير الباقة",
+    "noBundleSelected": "لم يتمّ اختيار باقة"
+  },
+  "product": {
+    "label": "قطعة غيار",
+    "searchPlaceholder": "ابحث عن قطعة بالاسم أو SKU…",
+    "empty": "لا توجد منتجات مطابقة."
+  },
+  "service": {
+    "label": "خدمة يد عاملة",
+    "searchPlaceholder": "ابحث عن خدمة باليد العاملة بالاسم أو الرمز…",
+    "empty": "لا توجد خدمات مطابقة."
+  }
+}

@@ -37,6 +37,7 @@ import enWorkshopTechnicians from '../locales/en/workshop-technicians.json'
 import enWorkshopBundles from '../locales/en/workshop-bundles.json'
 import enWorkshopWorkOrders from '../locales/en/workshop-work-orders.json'
 import enScheduling from '../locales/en/scheduling.json'
+import enVehicles from '../locales/en/vehicles.json'
 import enVehicleOwnership from '../locales/en/vehicle-ownership.json'
 import enPickers from '../locales/en/pickers.json'
 
@@ -74,8 +75,23 @@ import frWorkshopTechnicians from '../locales/fr/workshop-technicians.json'
 import frWorkshopBundles from '../locales/fr/workshop-bundles.json'
 import frWorkshopWorkOrders from '../locales/fr/workshop-work-orders.json'
 import frScheduling from '../locales/fr/scheduling.json'
+import frVehicles from '../locales/fr/vehicles.json'
 import frVehicleOwnership from '../locales/fr/vehicle-ownership.json'
 import frPickers from '../locales/fr/pickers.json'
+
+// Arabic: fully translated AutoSpecs + shared foundations (🟠-4 Tunisia Go-Live).
+// Other namespaces still fall back to the EN bundle below.
+import arCommon from '../locales/ar/common.json'
+import arValidation from '../locales/ar/validation.json'
+import arWorkshopBundles from '../locales/ar/workshop-bundles.json'
+import arWorkshopTechnicians from '../locales/ar/workshop-technicians.json'
+import arWorkshopWorkOrders from '../locales/ar/workshop-work-orders.json'
+import arVehicles from '../locales/ar/vehicles.json'
+import arVehicleOwnership from '../locales/ar/vehicle-ownership.json'
+import arScheduling from '../locales/ar/scheduling.json'
+import arPickers from '../locales/ar/pickers.json'
+import arMenu from '../locales/ar/menu.json'
+import arPartsCatalog from '../locales/ar/parts-catalog.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -121,6 +137,7 @@ const resources = {
     'workshop-bundles': enWorkshopBundles,
     'workshop-work-orders': enWorkshopWorkOrders,
     scheduling: enScheduling,
+    vehicles: enVehicles,
     'vehicle-ownership': enVehicleOwnership,
     pickers: enPickers,
   },
@@ -159,33 +176,36 @@ const resources = {
     'workshop-bundles': frWorkshopBundles,
     'workshop-work-orders': frWorkshopWorkOrders,
     scheduling: frScheduling,
+    vehicles: frVehicles,
     'vehicle-ownership': frVehicleOwnership,
     pickers: frPickers,
   },
   ar: {
-    // Arabic falls back to English - translations to be added later
-    common: enCommon,
+    // 🟠-4 Tunisia Go-Live: AutoSpecs namespaces + shared foundations are now
+    // fully translated. Non-AutoSpecs namespaces still fall back to EN until
+    // IziPOS localization closes those gaps (tracked separately).
+    common: arCommon,
     auth: enAuth,
     sales: enSales,
     inventory: enInventory,
     treasury: enTreasury,
-    validation: enValidation,
+    validation: arValidation,
     pricing: enPricing,
     finance: enFinance,
     import: enImport,
-    settings: enSettings, // Fallback to English
+    settings: enSettings,
     uom: enUom,
     products: enProducts,
     parapharmacy: enParapharmacy,
     batches: enBatches,
     pos: enPos,
     catalog: enCatalog,
-    menu: enMenu,
+    menu: arMenu,
     promotions: enPromotions,
     coupons: enCoupons,
     categories: enCategories,
     crm: enCrm,
-    'parts-catalog': enPartsCatalog,
+    'parts-catalog': arPartsCatalog,
     loyalty: enLoyalty,
     compliance: enCompliance,
     withholding: enWithholding,
@@ -194,12 +214,13 @@ const resources = {
     progression: enProgression,
     'smart-prompts': enSmartPrompts,
     enrichment: enEnrichment,
-    'workshop-technicians': enWorkshopTechnicians,
-    'workshop-bundles': enWorkshopBundles,
-    'workshop-work-orders': enWorkshopWorkOrders,
-    scheduling: enScheduling,
-    'vehicle-ownership': enVehicleOwnership,
-    pickers: enPickers,
+    'workshop-technicians': arWorkshopTechnicians,
+    'workshop-bundles': arWorkshopBundles,
+    'workshop-work-orders': arWorkshopWorkOrders,
+    scheduling: arScheduling,
+    vehicles: arVehicles,
+    'vehicle-ownership': arVehicleOwnership,
+    pickers: arPickers,
   },
 }
 
@@ -210,7 +231,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicle-ownership', 'pickers'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],
