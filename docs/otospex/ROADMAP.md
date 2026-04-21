@@ -361,6 +361,13 @@ class WorkOrder {
 
 ### 6.2 Work Order Status Machine
 
+> **Canonical reference:** The state machine below is a pre-PR-8 planning
+> draft and is **superseded** by the shipped implementation. For the
+> authoritative list of states, transitions, events, and HTTP error
+> envelopes, see [`docs/modules/workshop-work-orders.md`](../modules/workshop-work-orders.md).
+> Notably, the shipped enum also includes `Diagnosed`, `Paused`, and
+> `WaitingParts` states that are not shown in the diagram below.
+
 ```
                                 ┌────────────┐
          Customer drops off ──▶ │  Received  │

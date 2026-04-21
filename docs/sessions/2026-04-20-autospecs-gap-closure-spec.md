@@ -76,6 +76,12 @@ All user-facing strings in new frontend code → `t()` keys under the correct na
 
 New `.tsx` files in `apps/web/src/` must use tokens from `@/lib/designTokens` exclusively — no `bg-blue-600`/`text-gray-700`/etc.
 
+### 1.8 Work Order state machine (canonical reference)
+
+Any branch that touches WorkOrder status transitions, events, or endpoints must align with **`docs/modules/workshop-work-orders.md`** — that doc is the source of truth for the shipped state machine (11 states, 20 edges). Pre-merge drafts of this spec and `docs/otospex/ROADMAP.md` §6.2 mentioned states (`Draft`, `Parts Reserved`, `Paid`) that were never shipped; ignore those and use the module doc.
+
+Specifically: where §5 below references WO statuses (e.g. §5.3.3's `completed` / `invoiced` immutability rule for time entries), the authoritative value list is `WorkOrderStatus` at `apps/api/app/Modules/Workshop/WorkOrder/Domain/Enums/WorkOrderStatus.php`, cross-referenced in the module doc.
+
 ---
 
 ## 2. Phase A.1 — `chore/autospecs-demo-seeder`
