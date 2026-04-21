@@ -22,6 +22,7 @@ final readonly class CreateWorkOrderCommand
         public string $vehicle_id,
         public string $opened_by_user_id,
         public ?string $primary_technician_profile_id,
+        public ?string $appointment_id,
         public ?int $mileage_at_intake,
         public ?string $customer_complaint,
         public ?string $internal_notes,

@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Scheduling\Domain\Appointment;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Vehicle\Domain\Vehicle;
 use App\Modules\Workshop\Technician\Domain\TechnicianProfile;
@@ -45,6 +46,7 @@ use Illuminate\Support\Carbon;
  * @property string $vehicle_id
  * @property string $opened_by_user_id
  * @property string|null $primary_technician_profile_id
+ * @property string|null $appointment_id
  * @property int|null $mileage_at_intake
  * @property string|null $customer_complaint
  * @property string|null $diagnosis
@@ -84,6 +86,7 @@ use Illuminate\Support\Carbon;
  * @property-read Vehicle $vehicle
  * @property-read User $openedBy
  * @property-read TechnicianProfile|null $primaryTechnician
+ * @property-read Appointment|null $appointment
  * @property-read Document|null $quoteDocument
  * @property-read Document|null $invoiceDocument
  * @property-read Collection<int, WorkOrderLine> $lines
@@ -117,6 +120,7 @@ class WorkOrder extends Model
         'vehicle_id',
         'opened_by_user_id',
         'primary_technician_profile_id',
+        'appointment_id',
         'mileage_at_intake',
         'customer_complaint',
         'diagnosis',
@@ -222,6 +226,17 @@ class WorkOrder extends Model
     public function primaryTechnician(): BelongsTo
     {
         return $this->belongsTo(TechnicianProfile::class, 'primary_technician_profile_id');
+    }
+
+    /**
+     * Source appointment (reverse side of the bidirectional link — finding 🟠-1).
+     * Nullable because direct-intake WOs have no source appointment.
+     *
+     * @return BelongsTo<Appointment, $this>
+     */
+    public function appointment(): BelongsTo
+    {
+        return $this->belongsTo(Appointment::class, 'appointment_id');
     }
 
     /** @return BelongsTo<Document, $this> */

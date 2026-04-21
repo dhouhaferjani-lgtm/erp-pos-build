@@ -49,6 +49,7 @@ final readonly class WorkOrderAuthoringService
                 'vehicle_id' => $command->vehicle_id,
                 'opened_by_user_id' => $command->opened_by_user_id,
                 'primary_technician_profile_id' => $command->primary_technician_profile_id,
+                'appointment_id' => $command->appointment_id,
                 'mileage_at_intake' => $command->mileage_at_intake,
                 'customer_complaint' => $command->customer_complaint,
                 'internal_notes' => $command->internal_notes,

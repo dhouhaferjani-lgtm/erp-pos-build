@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Shift;
@@ -17,6 +18,8 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Permission;
@@ -168,13 +171,13 @@ final class SyncReceiptsTest extends TestCase
 
     public function test_sync_receipt_with_split_payments_persists_all_payment_rows(): void
     {
-        $paymentMethod2 = \App\Modules\Treasury\Domain\PaymentMethod::factory()->create([
+        $paymentMethod2 = PaymentMethod::factory()->create([
             'company_id' => $this->company->id,
             'tenant_id' => $this->tenant->id,
             'name' => 'Card',
             'code' => 'CARD',
         ]);
-        $paymentRepo2 = \App\Modules\Treasury\Domain\PaymentRepository::factory()->create([
+        $paymentRepo2 = PaymentRepository::factory()->create([
             'company_id' => $this->company->id,
             'tenant_id' => $this->tenant->id,
         ]);
@@ -192,7 +195,7 @@ final class SyncReceiptsTest extends TestCase
         $response->assertStatus(200);
         $response->assertJsonPath('data.results.0.status', 'synced');
 
-        $receipt = \App\Modules\POS\Domain\Receipt::where('idempotency_key', $payload['idempotency_key'])->first();
+        $receipt = Receipt::where('idempotency_key', $payload['idempotency_key'])->first();
         $this->assertNotNull($receipt);
         $this->assertCount(2, $receipt->payments);
         $this->assertEquals('10.000', $receipt->payments->firstWhere('payment_method_id', $this->paymentMethod->id)->amount);
@@ -205,8 +208,8 @@ final class SyncReceiptsTest extends TestCase
     public function test_sync_receipt_persists_fnb_consumption_mode_and_table_id(): void
     {
         // Table has no factory — insert raw so we don't depend on one being added.
-        $tableId = \Illuminate\Support\Str::uuid()->toString();
-        \Illuminate\Support\Facades\DB::table('pos_tables')->insert([
+        $tableId = Str::uuid()->toString();
+        DB::table('pos_tables')->insert([
             'id' => $tableId,
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -230,10 +233,10 @@ final class SyncReceiptsTest extends TestCase
 
         $response->assertStatus(200);
 
-        $receipt = \App\Modules\POS\Domain\Receipt::where('idempotency_key', $payload['idempotency_key'])->first();
+        $receipt = Receipt::where('idempotency_key', $payload['idempotency_key'])->first();
         $this->assertNotNull($receipt);
         // consumption_mode is cast to ConsumptionMode enum on the Receipt model — assert via enum equality.
-        $this->assertSame(\App\Modules\POS\Domain\Enums\ConsumptionMode::SurPlace, $receipt->consumption_mode);
+        $this->assertSame(ConsumptionMode::SurPlace, $receipt->consumption_mode);
         $this->assertEquals($tableId, $receipt->table_id);
     }
 
