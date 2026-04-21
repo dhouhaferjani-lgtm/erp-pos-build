@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Workshop\Technician\Presentation\Controllers\TechnicianCertificationController;
 use App\Modules\Workshop\Technician\Presentation\Controllers\TechnicianProfileController;
+use App\Modules\Workshop\Technician\Presentation\Controllers\TechnicianTimeEntryController;
 use App\Modules\Workshop\Technician\Presentation\Controllers\TechnicianTimeOffController;
 use Illuminate\Support\Facades\Route;
 
@@ -65,4 +66,22 @@ Route::prefix('api/v1')
         Route::delete('/workshop/technicians/{technicianId}/time-off/{timeOffId}', [TechnicianTimeOffController::class, 'destroy'])
             ->middleware('can:workshop.technicians.manage_time_off')
             ->name('workshop.technicians.time-off.destroy');
+
+        // --- Time-entries CRUD (Phase A.4) -----------------------------
+        // `store` has no route-level `can:` gate because technicians can
+        // self-log their own entries (controller enforces "manage OR self").
+        // `update` / `destroy` use `can:manage_time_entries`, and the
+        // controller additionally rejects writes to entries whose linked
+        // work-order is locked (Completed or Invoiced) with 422 / TIME_ENTRY_LOCKED.
+        Route::get('/workshop/technicians/{technicianId}/time-entries', [TechnicianTimeEntryController::class, 'index'])
+            ->middleware('can:workshop.technicians.view')
+            ->name('workshop.technicians.time-entries.index');
+        Route::post('/workshop/technicians/{technicianId}/time-entries', [TechnicianTimeEntryController::class, 'store'])
+            ->name('workshop.technicians.time-entries.store');
+        Route::patch('/workshop/technicians/{technicianId}/time-entries/{timeEntryId}', [TechnicianTimeEntryController::class, 'update'])
+            ->middleware('can:workshop.technicians.manage_time_entries')
+            ->name('workshop.technicians.time-entries.update');
+        Route::delete('/workshop/technicians/{technicianId}/time-entries/{timeEntryId}', [TechnicianTimeEntryController::class, 'destroy'])
+            ->middleware('can:workshop.technicians.manage_time_entries')
+            ->name('workshop.technicians.time-entries.destroy');
     });
