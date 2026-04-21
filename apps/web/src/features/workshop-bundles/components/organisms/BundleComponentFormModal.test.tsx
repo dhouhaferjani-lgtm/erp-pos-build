@@ -155,10 +155,10 @@ describe('BundleComponentFormModal', () => {
     })
     const [url, payload] = mockApiPost.mock.calls[0] as [string, Record<string, unknown>]
     expect(url).toContain('/workshop/bundles/bundle-1/components')
-    expect(payload.component_type).toBe('part')
-    expect(payload.component_id).toBe('prod-1')
-    expect(payload.quantity).toBe('2.000')
-    expect(payload.unit_id).toBe('unit-each')
+    expect(payload['component_type']).toBe('part')
+    expect(payload['component_id']).toBe('prod-1')
+    expect(payload['quantity']).toBe('2.000')
+    expect(payload['unit_id']).toBe('unit-each')
     expect(onSaved).toHaveBeenCalled()
   })
 

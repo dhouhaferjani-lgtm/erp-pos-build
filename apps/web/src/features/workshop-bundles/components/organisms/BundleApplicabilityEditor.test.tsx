@@ -71,9 +71,9 @@ describe('BundleApplicabilityEditor', () => {
     expect(url).toContain('/workshop/bundles/bundle-1/vehicle-applicabilities')
     expect(payload.applicabilities.length).toBe(1)
     const first = payload.applicabilities[0]
-    expect(first.vehicle_type).toBe('pc')
-    expect(first.vehicle_display).toBe('Peugeot 308')
-    expect(first.platform_vehicle_id).toBeNull()
+    expect(first['vehicle_type']).toBe('pc')
+    expect(first['vehicle_display']).toBe('Peugeot 308')
+    expect(first['platform_vehicle_id']).toBeNull()
   })
 
   it('enforces the both-null-or-both-non-null invariant before calling the API', async () => {
@@ -127,6 +127,6 @@ describe('BundleApplicabilityEditor', () => {
       { applicabilities: Array<Record<string, unknown>> },
     ]
     expect(payload.applicabilities.length).toBe(1)
-    expect(payload.applicabilities[0].vehicle_display).toBe('Renault Kangoo')
+    expect(payload.applicabilities[0]['vehicle_display']).toBe('Renault Kangoo')
   })
 })
