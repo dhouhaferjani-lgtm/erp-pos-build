@@ -1697,6 +1697,7 @@ vehicle_display_name: string;
 opened_by_user_id: string;
 primary_technician_profile_id: string | null;
 primary_technician_display_name: string | null;
+appointment_id: string | null;
 mileage_at_intake: number | null;
 customer_complaint: string | null;
 diagnosis: string | null;
