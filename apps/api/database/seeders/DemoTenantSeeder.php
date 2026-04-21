@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Enums\Vertical;
 use App\Modules\Billing\Domain\Enums\SubscriptionStatus;
 use App\Modules\Billing\Domain\Plan;
 use App\Modules\Billing\Domain\TenantSubscription;
@@ -12,8 +13,11 @@ use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Product\Domain\Enums\ProductType;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Scheduling\Application\Services\AppointmentConversionService;
 use App\Modules\Scheduling\Domain\Appointment;
 use App\Modules\Scheduling\Domain\AppointmentService as SchedulingAppointmentService;
@@ -25,18 +29,30 @@ use App\Modules\Scheduling\Domain\Enums\AppointmentType;
 use App\Modules\Scheduling\Domain\Enums\BayType;
 use App\Modules\Scheduling\Domain\Enums\WaitType;
 use App\Modules\Scheduling\Domain\ScheduleConfig;
+use App\Modules\Service\Domain\Enums\PricingType;
+use App\Modules\Service\Domain\Service;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Domain\Entities\Unit;
+use App\Modules\Uom\Domain\Entities\UnitCategory;
 use App\Modules\Vehicle\Domain\Vehicle;
+use App\Modules\Workshop\Bundle\Domain\Enums\BundleComponentType;
 use App\Modules\Workshop\Bundle\Domain\Enums\BundlePricingMode;
 use App\Modules\Workshop\Bundle\Domain\ServiceBundle;
+use App\Modules\Workshop\Bundle\Domain\ServiceBundleComponent;
 use App\Modules\Workshop\Bundle\Domain\ServiceBundleVehicleApplicability;
+use App\Modules\Workshop\Technician\Domain\Enums\EmploymentStatus;
+use App\Modules\Workshop\Technician\Domain\Enums\SkillLevel;
+use App\Modules\Workshop\Technician\Domain\Enums\SpecialtyCode;
+use App\Modules\Workshop\Technician\Domain\TechnicianCertification;
+use App\Modules\Workshop\Technician\Domain\TechnicianProfile;
 use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderStatus;
 use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderType;
 use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
@@ -62,12 +78,27 @@ use Spatie\Permission\Models\Role;
 class DemoTenantSeeder extends Seeder
 {
     /**
+     * Cached automotive units for the current tenant being seeded. Reset at
+     * the top of `createUnlimitedDemoTenant` so re-running the seeder for a
+     * different tenant still seeds fresh units.
+     *
+     * @var ?array{L: Unit, EA: Unit, HR: Unit, KG: Unit}
+     */
+    private ?array $automotiveUnits = null;
+
+    /**
      * Run the database seeds.
      */
     public function run(): void
     {
         // Ensure plans exist
         $this->call(PlansSeeder::class);
+
+        // Explicit: AutoSpecs demos rely on roles/permissions (admin,
+        // technician, etc.) being present. PlansSeeder does NOT invoke
+        // this — calling it here removes the manual `db:seed --class=
+        // RolesAndPermissionsSeeder` step operators previously needed.
+        $this->call(RolesAndPermissionsSeeder::class);
 
         // Original demo tenants
         $this->createUnlimitedDemoTenant();
@@ -88,6 +119,9 @@ class DemoTenantSeeder extends Seeder
      */
     private function createUnlimitedDemoTenant(): void
     {
+        // Reset per-tenant unit cache so re-runs / other tenants seed fresh.
+        $this->automotiveUnits = null;
+
         $unlimitedPlan = Plan::where('code', 'unlimited')->first();
         if ($unlimitedPlan === null) {
             $this->command->error('Unlimited plan not found. Run PlansSeeder first.');
@@ -95,13 +129,15 @@ class DemoTenantSeeder extends Seeder
             return;
         }
 
-        // Create tenant
+        // Create tenant — note the Mechanic vertical so AutoSpecs modules
+        // (Workshop, Scheduling, Vehicle) activate out of the box.
         $tenant = Tenant::updateOrCreate(
             ['slug' => 'demo-unlimited'],
             [
                 'name' => 'Demo Unlimited',
                 'status' => TenantStatus::Active,
                 'plan' => 'enterprise', // Legacy field
+                'vertical' => Vertical::Mechanic,
                 'tax_id' => 'TN12345678',
                 'country_code' => 'TN',
                 'currency_code' => 'TND',
@@ -156,7 +192,9 @@ class DemoTenantSeeder extends Seeder
             ]
         );
 
-        // Create admin user
+        // Create admin user — explicit enum + verified + password for
+        // deterministic smoke testing. `admin@demo.local` is intentional;
+        // `admin@otospex.com` is reserved for the live Otospex admin.
         $user = User::updateOrCreate(
             ['email' => 'admin@demo.local'],
             [
@@ -164,13 +202,24 @@ class DemoTenantSeeder extends Seeder
                 'name' => 'Demo Admin',
                 'password' => Hash::make('password'),
                 'email_verified_at' => now(),
-                'status' => 'active',
+                'status' => UserStatus::Active,
             ]
         );
 
         $this->assignAdminRoleAndMembership($user, $tenant, $company);
 
+        // Tunisia COA must exist before accounting-linked seed paths run.
+        // Guarded on company_id so a re-seed doesn't duplicate the chart.
+        if (DB::table('accounts')->where('company_id', $company->id)->doesntExist()) {
+            $coaSeeder = new TunisiaChartOfAccountsSeeder;
+            $coaSeeder->setCommand($this->command);
+            $coaSeeder->run($company->id, $tenant->id);
+        }
+
+        $this->seedAutomotiveCatalog($tenant, $company);
+        $this->seedWorkshopTechnicians($tenant, $company, $user);
         $this->seedWorkshopBundles($tenant, $company);
+        $this->hydrateBundleComponents($tenant, $company);
         $this->seedWorkOrders($tenant, $company, $user);
         $this->seedScheduling($tenant, $company, $user);
 
@@ -178,6 +227,424 @@ class DemoTenantSeeder extends Seeder
         $this->command->line('  - Email: admin@demo.local');
         $this->command->line('  - Password: password');
         $this->command->line('  - Plan: Unlimited (no restrictions)');
+        $this->command->line('  - Vertical: mechanic (AutoSpecs ready)');
+    }
+
+    /**
+     * Seed the minimum automotive inventory required to hydrate the 6 demo
+     * bundles. Idempotent via (tenant_id, sku) on products and
+     * (tenant_id, code) on services. Units are tenant-scoped so the demo
+     * remains self-contained if `UomSeeder` has not been run.
+     *
+     * @see docs/sessions/2026-04-20-autospecs-gap-closure-spec.md §2.3.3
+     */
+    private function seedAutomotiveCatalog(Tenant $tenant, Company $company): void
+    {
+        $units = $this->ensureAutomotiveUnits($tenant);
+
+        /** @var list<array{sku: string, name: string, unit_code: string, sale_price: string, tax_rate: string}> $products */
+        $products = [
+            ['sku' => 'OIL-5W30-5L', 'name' => 'Huile moteur 5W30 (bidon 5L)', 'unit_code' => 'L', 'sale_price' => '85.000', 'tax_rate' => '19.000'],
+            ['sku' => 'OIL-10W40-5L', 'name' => 'Huile moteur 10W40 (bidon 5L)', 'unit_code' => 'L', 'sale_price' => '75.000', 'tax_rate' => '19.000'],
+            ['sku' => 'FILT-OIL-STD', 'name' => 'Filtre à huile standard', 'unit_code' => 'EA', 'sale_price' => '25.000', 'tax_rate' => '19.000'],
+            ['sku' => 'FILT-OIL-DIESEL', 'name' => 'Filtre à huile diesel', 'unit_code' => 'EA', 'sale_price' => '30.000', 'tax_rate' => '19.000'],
+            ['sku' => 'FILT-AIR-STD', 'name' => 'Filtre à air standard', 'unit_code' => 'EA', 'sale_price' => '18.000', 'tax_rate' => '19.000'],
+            ['sku' => 'BRAKE-PAD-FRONT', 'name' => 'Plaquettes de frein (avant, jeu)', 'unit_code' => 'EA', 'sale_price' => '95.000', 'tax_rate' => '19.000'],
+            ['sku' => 'BRAKE-DISC', 'name' => 'Disque de frein', 'unit_code' => 'EA', 'sale_price' => '120.000', 'tax_rate' => '19.000'],
+            ['sku' => 'TIRE-195-65-R15', 'name' => 'Pneu 195/65 R15', 'unit_code' => 'EA', 'sale_price' => '210.000', 'tax_rate' => '19.000'],
+            ['sku' => 'COOLANT-1L', 'name' => 'Liquide de refroidissement 1L', 'unit_code' => 'L', 'sale_price' => '22.000', 'tax_rate' => '19.000'],
+            ['sku' => 'SPARK-PLUG', 'name' => "Bougie d'allumage", 'unit_code' => 'EA', 'sale_price' => '12.000', 'tax_rate' => '19.000'],
+        ];
+
+        foreach ($products as $spec) {
+            Product::updateOrCreate(
+                [
+                    'tenant_id' => $tenant->id,
+                    'sku' => $spec['sku'],
+                ],
+                [
+                    'company_id' => $company->id,
+                    'name' => $spec['name'],
+                    'type' => ProductType::Part,
+                    'is_physical' => true,
+                    'sale_price' => $spec['sale_price'],
+                    'tax_rate' => $spec['tax_rate'],
+                    'unit' => $spec['unit_code'],
+                    'unit_id' => $units[$spec['unit_code']]->id,
+                    'is_active' => true,
+                ]
+            );
+        }
+
+        /** @var list<array{code: string, name: string, pricing_type: PricingType, base_price: string, hourly_rate: ?string, default_duration_minutes: int, tax_rate: string}> $services */
+        $services = [
+            ['code' => 'LAB-OIL-CHANGE', 'name' => 'Vidange + remplacement filtres', 'pricing_type' => PricingType::Hourly, 'base_price' => '45.000', 'hourly_rate' => '45.000', 'default_duration_minutes' => 45, 'tax_rate' => '19.000'],
+            ['code' => 'LAB-BRAKE-FRONT', 'name' => 'Remplacement plaquettes de frein avant', 'pricing_type' => PricingType::Hourly, 'base_price' => '45.000', 'hourly_rate' => '45.000', 'default_duration_minutes' => 60, 'tax_rate' => '19.000'],
+            ['code' => 'LAB-ALIGN', 'name' => 'Parallélisme', 'pricing_type' => PricingType::FlatRate, 'base_price' => '80.000', 'hourly_rate' => null, 'default_duration_minutes' => 60, 'tax_rate' => '19.000'],
+            ['code' => 'LAB-DIAG-OBD', 'name' => 'Diagnostic OBD électronique', 'pricing_type' => PricingType::FlatRate, 'base_price' => '60.000', 'hourly_rate' => null, 'default_duration_minutes' => 45, 'tax_rate' => '19.000'],
+            ['code' => 'LAB-TIRE-MOUNT', 'name' => 'Montage + équilibrage pneu', 'pricing_type' => PricingType::Hourly, 'base_price' => '35.000', 'hourly_rate' => '35.000', 'default_duration_minutes' => 30, 'tax_rate' => '19.000'],
+            ['code' => 'LAB-TIMING-BELT', 'name' => 'Remplacement courroie de distribution', 'pricing_type' => PricingType::Hourly, 'base_price' => '50.000', 'hourly_rate' => '50.000', 'default_duration_minutes' => 240, 'tax_rate' => '19.000'],
+        ];
+
+        foreach ($services as $spec) {
+            Service::updateOrCreate(
+                [
+                    'tenant_id' => $tenant->id,
+                    'code' => $spec['code'],
+                ],
+                [
+                    'company_id' => $company->id,
+                    'name' => $spec['name'],
+                    'pricing_type' => $spec['pricing_type'],
+                    'base_price' => $spec['base_price'],
+                    'currency' => 'TND',
+                    'hourly_rate' => $spec['hourly_rate'],
+                    'default_duration_minutes' => $spec['default_duration_minutes'],
+                    'tax_rate' => $spec['tax_rate'],
+                    'is_active' => true,
+                ]
+            );
+        }
+
+        $this->command->line(sprintf(
+            '  - Automotive catalog: %d products + %d services seeded.',
+            count($products),
+            count($services),
+        ));
+    }
+
+    /**
+     * Ensure the four automotive-catalog units exist for this tenant.
+     * Units are tenant-scoped (not `UomSeeder` system units) so re-runs
+     * remain idempotent and the demo stays self-contained.
+     *
+     * Result is cached on the instance — both callers (seedAutomotiveCatalog
+     * + hydrateBundleComponents) can invoke it without hitting the DB twice.
+     *
+     * @return array{L: Unit, EA: Unit, HR: Unit, KG: Unit}
+     */
+    private function ensureAutomotiveUnits(Tenant $tenant): array
+    {
+        if ($this->automotiveUnits !== null) {
+            return $this->automotiveUnits;
+        }
+
+        $categories = [
+            'volume' => UnitCategory::firstOrCreate(
+                ['code' => 'autospecs_volume'],
+                [
+                    'name' => 'Automotive volume',
+                    'description' => 'Volume units used by the mechanic demo seeder.',
+                    'is_system' => false,
+                    'is_active' => true,
+                ],
+            ),
+            'pieces' => UnitCategory::firstOrCreate(
+                ['code' => 'autospecs_pieces'],
+                [
+                    'name' => 'Automotive pieces',
+                    'description' => 'Discrete-item units used by the mechanic demo seeder.',
+                    'is_system' => false,
+                    'is_active' => true,
+                ],
+            ),
+            'time' => UnitCategory::firstOrCreate(
+                ['code' => 'autospecs_time'],
+                [
+                    'name' => 'Automotive labor time',
+                    'description' => 'Time-of-labor units used by the mechanic demo seeder.',
+                    'is_system' => false,
+                    'is_active' => true,
+                ],
+            ),
+            'weight' => UnitCategory::firstOrCreate(
+                ['code' => 'autospecs_weight'],
+                [
+                    'name' => 'Automotive weight',
+                    'description' => 'Mass units used by the mechanic demo seeder.',
+                    'is_system' => false,
+                    'is_active' => true,
+                ],
+            ),
+        ];
+
+        $l = Unit::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'code' => 'L'],
+            [
+                'category_id' => $categories['volume']->id,
+                'name' => 'Litre',
+                'symbol' => 'L',
+                'conversion_factor' => '1',
+                'decimal_places' => 3,
+                'is_base_unit' => true,
+                'is_system' => false,
+                'is_active' => true,
+            ],
+        );
+
+        $ea = Unit::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'code' => 'EA'],
+            [
+                'category_id' => $categories['pieces']->id,
+                'name' => 'Each',
+                'symbol' => 'ea',
+                'conversion_factor' => '1',
+                'decimal_places' => 0,
+                'is_base_unit' => true,
+                'is_system' => false,
+                'is_active' => true,
+            ],
+        );
+
+        $hr = Unit::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'code' => 'HR'],
+            [
+                'category_id' => $categories['time']->id,
+                'name' => 'Hour',
+                'symbol' => 'h',
+                'conversion_factor' => '1',
+                'decimal_places' => 2,
+                'is_base_unit' => true,
+                'is_system' => false,
+                'is_active' => true,
+            ],
+        );
+
+        $kg = Unit::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'code' => 'KG'],
+            [
+                'category_id' => $categories['weight']->id,
+                'name' => 'Kilogram',
+                'symbol' => 'kg',
+                'conversion_factor' => '1',
+                'decimal_places' => 3,
+                'is_base_unit' => true,
+                'is_system' => false,
+                'is_active' => true,
+            ],
+        );
+
+        $this->automotiveUnits = [
+            'L' => $l,
+            'EA' => $ea,
+            'HR' => $hr,
+            'KG' => $kg,
+        ];
+
+        return $this->automotiveUnits;
+    }
+
+    /**
+     * Seed 3 technician profiles (including the admin) + 2 certifications
+     * so `CreateTimeEntryOnWorkOrderStarted` and the Plan-C UI have real
+     * data on a clean seed.
+     *
+     * @see docs/sessions/2026-04-20-autospecs-gap-closure-spec.md §2.3.4
+     */
+    private function seedWorkshopTechnicians(Tenant $tenant, Company $company, User $adminUser): void
+    {
+        $fullSchedule = [
+            'monday' => [['start' => '08:00', 'end' => '17:00']],
+            'tuesday' => [['start' => '08:00', 'end' => '17:00']],
+            'wednesday' => [['start' => '08:00', 'end' => '17:00']],
+            'thursday' => [['start' => '08:00', 'end' => '17:00']],
+            'friday' => [['start' => '08:00', 'end' => '17:00']],
+            'saturday' => [],
+            'sunday' => [],
+        ];
+
+        $halfDaySaturday = [
+            'monday' => [['start' => '09:00', 'end' => '18:00']],
+            'tuesday' => [['start' => '09:00', 'end' => '18:00']],
+            'wednesday' => [['start' => '09:00', 'end' => '18:00']],
+            'thursday' => [['start' => '09:00', 'end' => '18:00']],
+            'friday' => [['start' => '09:00', 'end' => '18:00']],
+            'saturday' => [['start' => '09:00', 'end' => '13:00']],
+            'sunday' => [],
+        ];
+
+        // 1. Admin also wears the tech hat so the time-entry listener has
+        //    a TechnicianProfile for the admin-started WO path.
+        $this->ensureTechnicianProfile(
+            $tenant,
+            $company,
+            $adminUser,
+            SkillLevel::Master,
+            [SpecialtyCode::GeneralService, SpecialtyCode::PreControl],
+            '25.000',
+            '60.000',
+            'ADMIN-01',
+            $fullSchedule,
+        );
+
+        // 2. Yassine Trabelsi — senior mechanic, diesel-capable.
+        $yassine = $this->ensureTechnicianUser(
+            $tenant,
+            $company,
+            'yassine.trabelsi@demo.local',
+            'Yassine Trabelsi',
+        );
+        $yassineProfile = $this->ensureTechnicianProfile(
+            $tenant,
+            $company,
+            $yassine,
+            SkillLevel::Senior,
+            [SpecialtyCode::EngineMechanical, SpecialtyCode::Brakes, SpecialtyCode::Diesel],
+            '18.000',
+            '45.000',
+            'TECH-01',
+            $fullSchedule,
+        );
+        $this->ensureCertification(
+            $tenant,
+            $yassineProfile,
+            'ASE Master Technician',
+            'ASE',
+            'ASE-MASTER-2024-001',
+        );
+
+        // 3. Sarra Ben Ali — tires & alignment, half-day Saturday.
+        $sarra = $this->ensureTechnicianUser(
+            $tenant,
+            $company,
+            'sarra.ben-ali@demo.local',
+            'Sarra Ben Ali',
+        );
+        $sarraProfile = $this->ensureTechnicianProfile(
+            $tenant,
+            $company,
+            $sarra,
+            SkillLevel::General,
+            [SpecialtyCode::Tires, SpecialtyCode::Alignment, SpecialtyCode::AcClimate],
+            '14.000',
+            '35.000',
+            'TECH-02',
+            $halfDaySaturday,
+        );
+        $this->ensureCertification(
+            $tenant,
+            $sarraProfile,
+            'Michelin Tire Certified',
+            'Michelin',
+            'MICH-TC-2024-045',
+        );
+
+        $this->command->line('  - Workshop technicians: 3 profiles (1 admin + 2 named) + 2 certifications.');
+    }
+
+    /**
+     * Create or refresh a user that doubles as a technician. Users bootstrap
+     * with Active status + verified email + a primary `Technician` membership
+     * + the spatie `technician` role, mirroring Plan C #1/#2/#3.
+     */
+    private function ensureTechnicianUser(
+        Tenant $tenant,
+        Company $company,
+        string $email,
+        string $name,
+    ): User {
+        /** @var User $user */
+        $user = User::updateOrCreate(
+            ['email' => $email],
+            [
+                'tenant_id' => $tenant->id,
+                'name' => $name,
+                'password' => Hash::make('password'),
+                'email_verified_at' => now(),
+                'status' => UserStatus::Active,
+            ]
+        );
+
+        UserCompanyMembership::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'company_id' => $company->id,
+            ],
+            [
+                'role' => MembershipRole::Technician,
+                'is_primary' => true,
+                'status' => MembershipStatus::Active,
+                'accepted_at' => now(),
+            ]
+        );
+
+        // Spatie role assignment is team-scoped on tenant_id.
+        setPermissionsTeamId($tenant->id);
+        $technicianRole = Role::where('name', 'technician')
+            ->where('guard_name', 'sanctum')
+            ->first();
+        if ($technicianRole !== null && ! $user->hasRole($technicianRole)) {
+            $user->assignRole($technicianRole);
+        }
+
+        return $user;
+    }
+
+    /**
+     * Create or refresh a technician profile. Keyed on (tenant, company,
+     * user) per the migration's unique partial index.
+     *
+     * @param  list<SpecialtyCode>  $specialties
+     * @param  array<string, list<array{start: string, end: string}>>  $weeklySchedule
+     */
+    private function ensureTechnicianProfile(
+        Tenant $tenant,
+        Company $company,
+        User $user,
+        SkillLevel $skillLevel,
+        array $specialties,
+        string $hourlyCostRate,
+        string $hourlyBillingRate,
+        string $employeeCode,
+        array $weeklySchedule,
+    ): TechnicianProfile {
+        /** @var TechnicianProfile $profile */
+        $profile = TechnicianProfile::updateOrCreate(
+            [
+                'tenant_id' => $tenant->id,
+                'company_id' => $company->id,
+                'user_id' => $user->id,
+            ],
+            [
+                'skill_level' => $skillLevel,
+                'specialties' => array_map(static fn (SpecialtyCode $c): string => $c->value, $specialties),
+                'hourly_cost_rate' => $hourlyCostRate,
+                'hourly_billing_rate' => $hourlyBillingRate,
+                'currency' => 'TND',
+                'weekly_schedule' => $weeklySchedule,
+                'employment_status' => EmploymentStatus::Active,
+                'employee_code' => $employeeCode,
+                'is_active' => true,
+            ]
+        );
+
+        return $profile;
+    }
+
+    /**
+     * Attach a single certification to a technician profile. Idempotent via
+     * (tenant, technician_profile, certification_name, certificate_number).
+     */
+    private function ensureCertification(
+        Tenant $tenant,
+        TechnicianProfile $profile,
+        string $name,
+        string $issuingBody,
+        string $certificateNumber,
+    ): void {
+        TechnicianCertification::updateOrCreate(
+            [
+                'tenant_id' => $tenant->id,
+                'technician_profile_id' => $profile->id,
+                'certification_name' => $name,
+                'certificate_number' => $certificateNumber,
+            ],
+            [
+                'issuing_body' => $issuingBody,
+                'issued_at' => now()->subYear()->format('Y-m-d'),
+                'expires_at' => now()->addYears(2)->format('Y-m-d'),
+            ]
+        );
     }
 
     /**
@@ -298,6 +765,145 @@ class DemoTenantSeeder extends Seeder
                 ],
             );
         }
+    }
+
+    /**
+     * Wire components for each of the 6 seeded bundle headers. Runs after
+     * `seedAutomotiveCatalog` + `seedWorkshopBundles`; safe to re-run.
+     *
+     * @see docs/sessions/2026-04-20-autospecs-gap-closure-spec.md §2.3.5
+     */
+    private function hydrateBundleComponents(Tenant $tenant, Company $company): void
+    {
+        /** @var array<string, Product> $products */
+        $products = Product::where('tenant_id', $tenant->id)
+            ->whereIn('sku', [
+                'OIL-5W30-5L', 'OIL-10W40-5L', 'FILT-OIL-STD', 'FILT-OIL-DIESEL',
+                'FILT-AIR-STD', 'BRAKE-PAD-FRONT', 'BRAKE-DISC', 'TIRE-195-65-R15',
+                'COOLANT-1L', 'SPARK-PLUG',
+            ])
+            ->get()
+            ->keyBy('sku')
+            ->all();
+
+        /** @var array<string, Service> $services */
+        $services = Service::where('tenant_id', $tenant->id)
+            ->whereIn('code', [
+                'LAB-OIL-CHANGE', 'LAB-BRAKE-FRONT', 'LAB-ALIGN',
+                'LAB-DIAG-OBD', 'LAB-TIRE-MOUNT', 'LAB-TIMING-BELT',
+            ])
+            ->get()
+            ->keyBy('code')
+            ->all();
+
+        /** @var array<string, ServiceBundle> $bundles */
+        $bundles = ServiceBundle::where('tenant_id', $tenant->id)
+            ->where('company_id', $company->id)
+            ->whereIn('code', [
+                'VIDANGE-10K-ESSENCE', 'VIDANGE-10K-DIESEL', 'FREINAGE-AV',
+                'REVISION-40K', 'PNEUS-REMPLACEMENT-4', 'DIAGNOSTIC-OBD',
+            ])
+            ->get()
+            ->keyBy('code')
+            ->all();
+
+        $units = $this->ensureAutomotiveUnits($tenant);
+
+        /** @var array<string, list<array{type: BundleComponentType, ref_key: string, qty: string, unit_code: string}>> $recipes */
+        $recipes = [
+            'VIDANGE-10K-ESSENCE' => [
+                ['type' => BundleComponentType::Part, 'ref_key' => 'OIL-5W30-5L', 'qty' => '1.000', 'unit_code' => 'L'],
+                ['type' => BundleComponentType::Part, 'ref_key' => 'FILT-OIL-STD', 'qty' => '1.000', 'unit_code' => 'EA'],
+                ['type' => BundleComponentType::Labor, 'ref_key' => 'LAB-OIL-CHANGE', 'qty' => '0.750', 'unit_code' => 'HR'],
+            ],
+            'VIDANGE-10K-DIESEL' => [
+                ['type' => BundleComponentType::Part, 'ref_key' => 'OIL-10W40-5L', 'qty' => '1.000', 'unit_code' => 'L'],
+                ['type' => BundleComponentType::Part, 'ref_key' => 'FILT-OIL-DIESEL', 'qty' => '1.000', 'unit_code' => 'EA'],
+                ['type' => BundleComponentType::Part, 'ref_key' => 'FILT-AIR-STD', 'qty' => '1.000', 'unit_code' => 'EA'],
+                ['type' => BundleComponentType::Labor, 'ref_key' => 'LAB-OIL-CHANGE', 'qty' => '1.000', 'unit_code' => 'HR'],
+            ],
+            'FREINAGE-AV' => [
+                ['type' => BundleComponentType::Part, 'ref_key' => 'BRAKE-PAD-FRONT', 'qty' => '1.000', 'unit_code' => 'EA'],
+                ['type' => BundleComponentType::Part, 'ref_key' => 'BRAKE-DISC', 'qty' => '2.000', 'unit_code' => 'EA'],
+                ['type' => BundleComponentType::Labor, 'ref_key' => 'LAB-BRAKE-FRONT', 'qty' => '1.000', 'unit_code' => 'HR'],
+            ],
+            'REVISION-40K' => [
+                ['type' => BundleComponentType::NestedBundle, 'ref_key' => 'VIDANGE-10K-ESSENCE', 'qty' => '1.000', 'unit_code' => 'EA'],
+                ['type' => BundleComponentType::Part, 'ref_key' => 'COOLANT-1L', 'qty' => '2.000', 'unit_code' => 'L'],
+                ['type' => BundleComponentType::Part, 'ref_key' => 'SPARK-PLUG', 'qty' => '4.000', 'unit_code' => 'EA'],
+                ['type' => BundleComponentType::Labor, 'ref_key' => 'LAB-TIMING-BELT', 'qty' => '4.000', 'unit_code' => 'HR'],
+            ],
+            'PNEUS-REMPLACEMENT-4' => [
+                ['type' => BundleComponentType::Part, 'ref_key' => 'TIRE-195-65-R15', 'qty' => '4.000', 'unit_code' => 'EA'],
+                ['type' => BundleComponentType::Labor, 'ref_key' => 'LAB-TIRE-MOUNT', 'qty' => '2.000', 'unit_code' => 'HR'],
+                ['type' => BundleComponentType::Labor, 'ref_key' => 'LAB-ALIGN', 'qty' => '1.000', 'unit_code' => 'EA'],
+            ],
+            'DIAGNOSTIC-OBD' => [
+                ['type' => BundleComponentType::Labor, 'ref_key' => 'LAB-DIAG-OBD', 'qty' => '1.000', 'unit_code' => 'EA'],
+            ],
+        ];
+
+        $componentCount = 0;
+        foreach ($recipes as $bundleCode => $components) {
+            if (! isset($bundles[$bundleCode])) {
+                $this->command->warn("  - hydrateBundleComponents: missing bundle {$bundleCode}, skipping.");
+
+                continue;
+            }
+            $bundle = $bundles[$bundleCode];
+
+            foreach ($components as $index => $spec) {
+                $displayOrder = $index + 1;
+                $attributes = [
+                    'component_type' => $spec['type'],
+                    'quantity' => $spec['qty'],
+                    'unit_id' => $units[$spec['unit_code']]->id,
+                    'is_optional' => false,
+                    'product_id' => null,
+                    'service_id' => null,
+                    'nested_bundle_id' => null,
+                ];
+
+                switch ($spec['type']) {
+                    case BundleComponentType::Part:
+                        if (! isset($products[$spec['ref_key']])) {
+                            $this->command->warn("  - hydrateBundleComponents: missing product {$spec['ref_key']} for {$bundleCode}, skipping.");
+
+                            continue 2;
+                        }
+                        $attributes['product_id'] = $products[$spec['ref_key']]->id;
+                        break;
+                    case BundleComponentType::Labor:
+                        if (! isset($services[$spec['ref_key']])) {
+                            $this->command->warn("  - hydrateBundleComponents: missing service {$spec['ref_key']} for {$bundleCode}, skipping.");
+
+                            continue 2;
+                        }
+                        $attributes['service_id'] = $services[$spec['ref_key']]->id;
+                        break;
+                    case BundleComponentType::NestedBundle:
+                        if (! isset($bundles[$spec['ref_key']])) {
+                            $this->command->warn("  - hydrateBundleComponents: missing nested bundle {$spec['ref_key']} for {$bundleCode}, skipping.");
+
+                            continue 2;
+                        }
+                        $attributes['nested_bundle_id'] = $bundles[$spec['ref_key']]->id;
+                        break;
+                }
+
+                ServiceBundleComponent::updateOrCreate(
+                    [
+                        'tenant_id' => $tenant->id,
+                        'bundle_id' => $bundle->id,
+                        'display_order' => $displayOrder,
+                    ],
+                    $attributes,
+                );
+                $componentCount++;
+            }
+        }
+
+        $this->command->line("  - Bundle components: hydrated {$componentCount} component rows across ".count($recipes).' bundles.');
     }
 
     /**
@@ -513,7 +1119,7 @@ class DemoTenantSeeder extends Seeder
 
         // Per-location schedule config — 15-minute slots, 60-minute default
         // appointment duration, hybrid online booking enabled for demo.
-        $config = ScheduleConfig::firstOrCreate(
+        ScheduleConfig::firstOrCreate(
             [
                 'tenant_id' => $tenant->id,
                 'company_id' => $company->id,
@@ -532,7 +1138,6 @@ class DemoTenantSeeder extends Seeder
                 'reminder_email_hours_before' => 48,
             ],
         );
-        unset($config); // Intentionally unused after creation — hydrated via fresh reads.
 
         // Reuse the partner+vehicle pairs already seeded by seedWorkOrders
         // so every appointment has a concrete customer + vehicle (required
