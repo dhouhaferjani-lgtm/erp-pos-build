@@ -182,7 +182,7 @@ export function VehiclePicker({
         </div>
         <button
           type="button"
-          className={`${textColors.tertiary} hover:${textColors.primary}`}
+          className={`${textColors.tertiary} ${textColors.hoverPrimary}`}
           aria-label={t('common.clear')}
           disabled={disabled}
           onClick={() => {

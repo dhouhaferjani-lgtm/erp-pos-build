@@ -188,7 +188,7 @@ export function BundlePicker({
             type="button"
             disabled={disabled}
             aria-label={t('pickers:common.clear')}
-            className={`${textColors.tertiary} hover:${textColors.primary}`}
+            className={`${textColors.tertiary} ${textColors.hoverPrimary}`}
             onClick={() => {
               onChange(null)
             }}
