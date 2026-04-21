@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
@@ -6,11 +7,17 @@ import { SkillLevelBadge } from '../components/SkillLevelBadge'
 import { SpecialtyChip } from '../components/SpecialtyChip'
 import { EmploymentStatusBadge } from '../components/EmploymentStatusBadge'
 import { WeeklyScheduleView } from '../components/WeeklyScheduleView'
+import { CertificationsTab } from '../components/CertificationsTab'
+import { TimeOffTab } from '../components/TimeOffTab'
+import { TimeEntriesTab } from '../components/TimeEntriesTab'
+
+type AuthoringTab = 'overview' | 'certifications' | 'timeOff' | 'timeEntries'
 
 export function TechnicianDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { t } = useTranslation('workshop-technicians')
   const { data, isLoading, isError, error } = useTechnician(id)
+  const [activeTab, setActiveTab] = useState<AuthoringTab>('overview')
 
   if (isLoading) {
     return <div className="p-6 text-sm text-slate-500">{t('team.loading')}</div>
@@ -70,6 +77,52 @@ export function TechnicianDetailPage() {
         ) : null}
       </header>
 
+      <nav aria-label="authoring tabs" className="border-b border-slate-200">
+        <ul className="-mb-px flex gap-4 text-sm">
+          {(['overview', 'certifications', 'timeOff', 'timeEntries'] as const).map((tab) => (
+            <li key={tab}>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab(tab)
+                }}
+                className={
+                  activeTab === tab
+                    ? 'border-b-2 border-slate-900 px-1 py-2 font-medium text-slate-900'
+                    : 'px-1 py-2 text-slate-600 hover:text-slate-900'
+                }
+              >
+                {t(`authoring.tabs.${tab}`)}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      {activeTab === 'certifications' ? (
+        <CertificationsTab technicianId={data.id} />
+      ) : activeTab === 'timeOff' ? (
+        <TimeOffTab technicianId={data.id} />
+      ) : activeTab === 'timeEntries' ? (
+        <TimeEntriesTab technicianId={data.id} />
+      ) : (
+        <OverviewSections data={data} showPay={showPay} showPii={showPii} />
+      )}
+    </div>
+  )
+}
+
+interface OverviewSectionsProps {
+  data: ReturnType<typeof useTechnician>['data']
+  showPay: boolean
+  showPii: boolean
+}
+
+function OverviewSections({ data, showPay, showPii }: OverviewSectionsProps) {
+  const { t } = useTranslation('workshop-technicians')
+  if (data === undefined) return null
+  return (
+    <>
       <section aria-labelledby="schedule-heading" className="space-y-3">
         <h2 id="schedule-heading" className="text-sm font-semibold text-slate-900">
           {t('detail.weeklySchedule')}
@@ -171,6 +224,6 @@ export function TechnicianDetailPage() {
           </p>
         </section>
       ) : null}
-    </div>
+    </>
   )
 }
