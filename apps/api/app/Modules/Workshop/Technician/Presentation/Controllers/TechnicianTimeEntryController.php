@@ -72,9 +72,40 @@ final class TechnicianTimeEntryController extends Controller
 
         $rows = $query->get();
 
+        // Batch-resolve WO status for each distinct work_order_id so the DTO
+        // can project `work_order_status` without a per-row query. We route
+        // through WorkOrderRepositoryInterface (one call per WO) rather than
+        // importing the WorkOrder model directly (CLAUDE.md rule #6).
+        /** @var array<string, WorkOrderStatus|null> $statusByWorkOrderId */
+        $statusByWorkOrderId = [];
+        foreach ($rows as $row) {
+            $workOrderId = $row->work_order_id;
+            if (! is_string($workOrderId) || $workOrderId === '') {
+                continue;
+            }
+            if (array_key_exists($workOrderId, $statusByWorkOrderId)) {
+                continue;
+            }
+            if (! Str::isUuid($workOrderId)) {
+                $statusByWorkOrderId[$workOrderId] = null;
+
+                continue;
+            }
+            $wo = $this->workOrders->findById($workOrderId);
+            $statusByWorkOrderId[$workOrderId] = $wo?->status;
+        }
+
         /** @var list<array<string, mixed>> $data */
         $data = $rows
-            ->map(static fn (TechnicianTimeEntry $r): array => TechnicianTimeEntryData::fromModel($r)->toArray())
+            ->map(static function (TechnicianTimeEntry $r) use ($statusByWorkOrderId): array {
+                $status = null;
+                $workOrderId = $r->work_order_id;
+                if (is_string($workOrderId) && array_key_exists($workOrderId, $statusByWorkOrderId)) {
+                    $status = $statusByWorkOrderId[$workOrderId];
+                }
+
+                return TechnicianTimeEntryData::fromModel($r, $status)->toArray();
+            })
             ->values()
             ->all();
 
@@ -132,7 +163,7 @@ final class TechnicianTimeEntryController extends Controller
         ]);
 
         return response()->json(
-            ['data' => TechnicianTimeEntryData::fromModel($row)->toArray()],
+            ['data' => TechnicianTimeEntryData::fromModel($row, $this->lookupStatus($row->work_order_id))->toArray()],
             201,
         );
     }
@@ -182,8 +213,13 @@ final class TechnicianTimeEntryController extends Controller
         }
         $row->save();
 
+        $refreshed = $row->refresh();
+
         return response()->json([
-            'data' => TechnicianTimeEntryData::fromModel($row->refresh())->toArray(),
+            'data' => TechnicianTimeEntryData::fromModel(
+                $refreshed,
+                $this->lookupStatus($refreshed->work_order_id),
+            )->toArray(),
         ]);
     }
 
@@ -219,19 +255,25 @@ final class TechnicianTimeEntryController extends Controller
 
     private function isWorkOrderLocked(string $workOrderId): bool
     {
-        if (! Str::isUuid($workOrderId)) {
+        $status = $this->lookupStatus($workOrderId);
+        if ($status === null) {
             return false;
         }
-        $wo = $this->workOrders->findById($workOrderId);
-        if ($wo === null) {
-            return false;
-        }
-        $status = $wo->status;
 
         return match ($status) {
             WorkOrderStatus::Completed, WorkOrderStatus::Invoiced => true,
             default => false,
         };
+    }
+
+    private function lookupStatus(?string $workOrderId): ?WorkOrderStatus
+    {
+        if (! is_string($workOrderId) || ! Str::isUuid($workOrderId)) {
+            return null;
+        }
+        $wo = $this->workOrders->findById($workOrderId);
+
+        return $wo?->status;
     }
 
     private function lockedResponse(): JsonResponse
