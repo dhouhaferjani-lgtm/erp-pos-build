@@ -1,1 +1,149 @@
-{}
+{
+  "list": {
+    "title": "باقات الخدمات",
+    "createCta": "باقة جديدة",
+    "loading": "جارٍ تحميل الباقات…",
+    "error": "تعذّر تحميل الباقات.",
+    "empty": "لا توجد باقات بعد. أنشئ واحدة للبدء.",
+    "inactive": "غير نشطة"
+  },
+  "create": {
+    "title": "باقة خدمات جديدة"
+  },
+  "detail": {
+    "title": "الباقة · {{name}}",
+    "loading": "جارٍ تحميل الباقة…",
+    "error": "تعذّر تحميل الباقة.",
+    "fields": "تفاصيل الباقة",
+    "components": "المكوّنات ({{count}})",
+    "emptyComponents": "لا توجد مكوّنات مرفقة بعد.",
+    "applicabilities": "قواعد تطبيق الباقة على المركبات",
+    "emptyApplicabilities": "عامة — تنطبق على جميع المركبات.",
+    "expansionPreview": "معاينة التفصيل"
+  },
+  "form": {
+    "code": "الرمز",
+    "name": "الاسم",
+    "description": "الوصف",
+    "pricingMode": "نمط التسعير",
+    "pricingMode.standard": "قياسي (مجموع المكوّنات)",
+    "pricingMode.fixedBundle": "باقة ثابتة (سعر موحّد)",
+    "basePrice": "السعر الأساسي",
+    "currency": "العملة",
+    "taxRate": "نسبة الضريبة (%)",
+    "estimatedLaborHours": "ساعات العمل التقديرية",
+    "serviceIntervalKm": "فترة الصيانة (كم)",
+    "serviceIntervalMonths": "فترة الصيانة (بالأشهر)",
+    "cancel": "إلغاء",
+    "save": "حفظ",
+    "create": "إنشاء",
+    "saving": "جارٍ الحفظ…"
+  },
+  "priceChip": {
+    "sumOfLines": "مجموع البنود"
+  },
+  "interval": {
+    "km": "كل {{count}} كم",
+    "months_one": "كل {{count}} شهر",
+    "months_other": "كل {{count}} شهرًا"
+  },
+  "applicability": {
+    "universal": "عامة",
+    "vehicleFallback": "{{type}} رقم {{id}}"
+  },
+  "picker": {
+    "title": "اختيار باقة خدمات",
+    "searchPlaceholder": "ابحث بالاسم أو الرمز…",
+    "loading": "جارٍ تحميل الباقات المتاحة…",
+    "empty": "لا توجد باقات قابلة للتطبيق على هذه المركبة.",
+    "selectPreview": "اختر باقة لمعاينة تفاصيلها.",
+    "cancel": "إلغاء",
+    "confirm": "إضافة إلى أمر العمل"
+  },
+  "expansion": {
+    "loading": "جارٍ تحميل المعاينة…",
+    "error": "تعذّر تحميل التفصيل.",
+    "empty": "لا توجد بنود في هذه الباقة بعد.",
+    "pricedLines": "بنود مسعّرة",
+    "informationalLines": "إعلامي (مستهلك ولكن غير مفوتر)"
+  },
+  "authoring": {
+    "componentType": {
+      "part": "قطعة غيار",
+      "labor": "خدمة يد عاملة",
+      "nestedBundle": "باقة متداخلة"
+    },
+    "fields": {
+      "componentType": "نوع المكوّن",
+      "nestedBundle": "باقة متداخلة",
+      "quantity": "الكمية",
+      "unit": "الوحدة",
+      "unitPlaceholder": "اختر وحدة…",
+      "overridePrice": "سعر وحدة مخصّص ({{currency}})",
+      "overridePricePlaceholder": "اتركه فارغًا لاستخدام سعر الكتالوج",
+      "isOptional": "بند اختياري (لا يعيق إتمام العمل)",
+      "notes": "ملاحظات"
+    },
+    "errors": {
+      "productRequired": "اختر قطعة غيار.",
+      "serviceRequired": "اختر خدمة يد عاملة.",
+      "nestedBundleRequired": "اختر باقة متداخلة.",
+      "referenceRequired": "يجب تحديد مرجع للمكوّن.",
+      "quantityRequired": "الكمية مطلوبة.",
+      "quantityPositive": "يجب أن تكون الكمية أكبر من صفر.",
+      "unitRequired": "الوحدة مطلوبة.",
+      "pricePositive": "يجب أن يكون السعر صفرًا أو موجبًا.",
+      "cycleDetected": "هذه الباقة المتداخلة ستُنشئ حلقة مغلقة.",
+      "generic": "تعذّر حفظ هذا المكوّن."
+    },
+    "modal": {
+      "createTitle": "إضافة مكوّن",
+      "editTitle": "تعديل المكوّن",
+      "save": "حفظ المكوّن",
+      "saving": "جارٍ الحفظ…",
+      "cancel": "إلغاء",
+      "close": "إغلاق النافذة",
+      "loading": "جارٍ التحميل…"
+    },
+    "row": {
+      "edit": "تعديل",
+      "delete": "حذف"
+    },
+    "detail": {
+      "addComponent": "إضافة مكوّن"
+    },
+    "deleteConfirm": {
+      "title": "حذف المكوّن؟",
+      "body": "سيُحذف البند من الباقة. أوامر العمل القائمة لن تتأثر.",
+      "confirm": "حذف",
+      "cancel": "إلغاء"
+    },
+    "applicability": {
+      "sectionTitle": "قواعد تطبيق الباقة على المركبات",
+      "addRule": "إضافة قاعدة",
+      "remove": "إزالة",
+      "scopeUniversal": "عامة (تنطبق على جميع المركبات)",
+      "scopeScoped": "مقيّدة",
+      "vehicleType": "نوع المركبة",
+      "vehicleTypePlaceholder": "اختر نوع مركبة…",
+      "vehicleDisplay": "وصف المركبة",
+      "yearFrom": "من سنة",
+      "yearTo": "إلى سنة",
+      "save": "حفظ القاعدة",
+      "cancel": "إلغاء",
+      "addTitle": "إضافة قاعدة تطبيق",
+      "errors": {
+        "pairInvariant": "يجب أن يكون نوع المركبة والوصف إما فارغَين معًا (عامة) أو معبأَين معًا (مقيّدة).",
+        "yearRange": "يجب أن تكون سنة البداية أصغر من أو تساوي سنة النهاية."
+      },
+      "vehicleTypeOptions": {
+        "pc": "سيارة ركاب",
+        "cv": "مركبة تجارية",
+        "mtb": "دراجة نارية",
+        "eng": "محرّك",
+        "axl": "محور",
+        "universal": "عامة"
+      }
+    }
+  }
+}
