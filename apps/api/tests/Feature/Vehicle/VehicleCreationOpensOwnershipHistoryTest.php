@@ -127,7 +127,7 @@ final class VehicleCreationOpensOwnershipHistoryTest extends TestCase
         $row = VehicleOwnership::query()
             ->where('vehicle_id', $vehicleId)
             ->firstOrFail();
-        $this->assertNotNull($row->acquired_at);
+        $this->assertTrue($row->acquired_at->isAfter(now()->subMinute()));
         $this->assertSame($this->tenant->id, $row->tenant_id);
         $this->assertSame($this->company->id, $row->company_id);
         $this->assertSame($this->user->id, $row->recorded_by_user_id);
