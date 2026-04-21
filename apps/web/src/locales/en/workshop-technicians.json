@@ -88,6 +88,101 @@
     }
   },
   "navigation": {
-    "team": "Team"
+    "team": "Team",
+    "payrollExports": "Payroll exports"
+  },
+  "authoring": {
+    "tabs": {
+      "overview": "Overview",
+      "certifications": "Certifications",
+      "timeOff": "Time off",
+      "timeEntries": "Time entries"
+    },
+    "certifications": {
+      "title": "Certifications",
+      "add": "Add certification",
+      "empty": "No certifications recorded yet.",
+      "fields": {
+        "name": "Certification name",
+        "issuingBody": "Issuing body",
+        "certificateNumber": "Certificate number",
+        "issuedAt": "Issued on",
+        "expiresAt": "Expires on",
+        "notes": "Notes"
+      },
+      "modal": {
+        "createTitle": "Add certification",
+        "editTitle": "Edit certification",
+        "save": "Save",
+        "saving": "Saving…",
+        "cancel": "Cancel"
+      },
+      "confirmDelete": "Delete this certification?"
+    },
+    "timeOff": {
+      "title": "Time off",
+      "add": "Log time off",
+      "empty": "No time off logged.",
+      "fields": {
+        "reasonCode": "Reason",
+        "startsAt": "Starts at",
+        "endsAt": "Ends at",
+        "isFullDay": "Full day",
+        "notes": "Notes"
+      },
+      "reason": {
+        "vacation": "Vacation",
+        "sick": "Sick",
+        "training": "Training",
+        "personal": "Personal",
+        "unpaid": "Unpaid",
+        "other": "Other"
+      },
+      "modal": {
+        "createTitle": "Log time off",
+        "editTitle": "Edit time off",
+        "save": "Save",
+        "saving": "Saving…",
+        "cancel": "Cancel"
+      },
+      "confirmDelete": "Delete this time-off entry?"
+    },
+    "timeEntries": {
+      "title": "Time entries",
+      "add": "Log time entry",
+      "empty": "No time entries logged.",
+      "weekTotal": "This week",
+      "monthTotal": "This month",
+      "hoursShort": "{{hours}} h",
+      "lockedBadge": "Locked",
+      "lockedTooltip": "This entry is linked to a locked work order and cannot be edited.",
+      "fields": {
+        "startedAt": "Started at",
+        "endedAt": "Ended at",
+        "entryType": "Type",
+        "workOrderId": "Work order ID (optional)",
+        "notes": "Notes"
+      },
+      "entryType": {
+        "work_order": "Work order",
+        "break": "Break",
+        "non_billable": "Non-billable",
+        "manual_adjust": "Manual adjustment"
+      },
+      "modal": {
+        "createTitle": "Log time entry",
+        "editTitle": "Edit time entry",
+        "save": "Save",
+        "saving": "Saving…",
+        "cancel": "Cancel"
+      },
+      "confirmDelete": "Delete this time entry?"
+    },
+    "errors": {
+      "required": "This field is required.",
+      "overlap": "This window overlaps an existing entry.",
+      "locked": "This entry is linked to a completed or invoiced work order.",
+      "generic": "Something went wrong. Please try again."
+    }
   }
 }
