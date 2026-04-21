@@ -61,8 +61,43 @@ export function BundleComponentFormModal({
   onClose,
   onSaved,
 }: BundleComponentFormModalProps) {
+  const { data: units, isLoading: unitsLoading } = useUnits()
+  const isEditMode = component !== undefined
+  // In edit mode we need the units list to resolve the persisted unit
+  // symbol back to a unit id for the <select>. If we rendered before the
+  // units arrived, `useState(initial)` would lock in an empty unit_id and
+  // the user would see a blank select / trip the client-side
+  // unitRequired guard. Gate rendering on units being loaded.
+  if (isEditMode && (unitsLoading || units === undefined)) {
+    return <BundleComponentFormModalLoading onClose={onClose} />
+  }
+  return (
+    <BundleComponentFormModalReady
+      bundle={bundle}
+      component={component}
+      units={units ?? []}
+      onClose={onClose}
+      onSaved={onSaved}
+    />
+  )
+}
+
+interface BundleComponentFormModalReadyProps {
+  bundle: ServiceBundleData
+  component?: ServiceBundleComponentData | undefined
+  onClose: () => void
+  onSaved: () => void
+  units: { id: string; code: string; name: string; symbol: string }[]
+}
+
+function BundleComponentFormModalReady({
+  bundle,
+  component,
+  onClose,
+  onSaved,
+  units,
+}: BundleComponentFormModalReadyProps) {
   const { t } = useTranslation('workshop-bundles')
-  const { data: units } = useUnits()
   const addMutation = useAddBundleComponent(bundle.id)
   const updateMutation = useUpdateBundleComponent(bundle.id)
 
@@ -71,6 +106,13 @@ export function BundleComponentFormModal({
   // Seed picker slots from the existing component in edit mode. Product /
   // Service / NestedBundle pickers only need id + a display label, which
   // we can synthesise from the persisted component_display_name.
+  //
+  // `component.unit` is the unit's *symbol* (e.g. "EA", "HR"), not its
+  // UUID — the DTO projects the symbol for display. To pre-select the
+  // correct option in the unit <select>, we resolve the symbol back to a
+  // unit id against the loaded units list. If the symbol doesn't match
+  // (shouldn't happen, but possible after a unit rename/delete), fall
+  // back to empty string and let the user re-pick.
   const initial: FormState = useMemo(() => {
     if (component === undefined) {
       return {
@@ -85,13 +127,15 @@ export function BundleComponentFormModal({
         notes: '',
       }
     }
+    const resolvedUnitId =
+      units.find((u) => u.symbol === component.unit)?.id ?? ''
     const seed: FormState = {
       component_type: component.component_type,
       product: null,
       service: null,
       nestedBundle: null,
       quantity: component.quantity,
-      unit_id: '',
+      unit_id: resolvedUnitId,
       override_unit_price: component.override_unit_price ?? '',
       is_optional: component.is_optional,
       notes: component.notes ?? '',
@@ -124,7 +168,7 @@ export function BundleComponentFormModal({
       }
     }
     return seed
-  }, [component, bundle.currency])
+  }, [component, bundle.currency, units])
 
   const [state, setState] = useState<FormState>(initial)
   const [errors, setErrors] = useState<FormErrors>({})
@@ -348,7 +392,7 @@ export function BundleComponentFormModal({
                 }}
               >
                 <option value="">{t('authoring.fields.unitPlaceholder')}</option>
-                {(units ?? []).map((u) => (
+                {units.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.symbol} — {u.name}
                   </option>
@@ -426,6 +470,44 @@ export function BundleComponentFormModal({
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Placeholder rendered while `useUnits` is resolving in edit mode. The
+ * outer modal gates on this so `useState(initial)` inside the Ready
+ * subcomponent runs AFTER units are available, letting us resolve the
+ * persisted unit symbol back to its id for the <select>.
+ */
+function BundleComponentFormModalLoading({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation('workshop-bundles')
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50"
+      data-testid="bundle-component-form-modal"
+    >
+      <div
+        className="relative mx-4 rounded-xl bg-white p-6 shadow-xl"
+        style={{ width: '560px', maxWidth: '100%' }}
+      >
+        <div className={`mb-4 flex items-center justify-between border-b ${borderColors.light} pb-3`}>
+          <h2 className={`text-lg font-semibold ${textColors.primary}`}>
+            {t('authoring.modal.editTitle')}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t('authoring.modal.close')}
+            className={tokens.modal.closeButton}
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className={`py-8 text-center text-sm ${textColors.tertiary}`}>
+          {t('authoring.modal.loading')}
+        </div>
       </div>
     </div>
   )

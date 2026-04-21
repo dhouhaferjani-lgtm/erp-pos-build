@@ -4,7 +4,53 @@ import userEvent from '@testing-library/user-event'
 import { AxiosError, AxiosHeaders } from 'axios'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { BundleComponentFormModal } from './BundleComponentFormModal'
-import type { ServiceBundleData } from '../../types'
+import type { ServiceBundleComponentData, ServiceBundleData } from '../../types'
+
+// Auto-selects a nested bundle on mount so the cycle-branch test can drive
+// the submit path without emulating the full BundlePickerModal flow. The
+// stub fires `onChange` once on mount when `value` is null to mirror the
+// real controlled picker lifecycle (user picks → onChange fires once).
+vi.mock('@/components/molecules/pickers', async () => {
+  const actual = await vi.importActual<
+    typeof import('@/components/molecules/pickers')
+  >('@/components/molecules/pickers')
+  const { useEffect } = await vi.importActual<typeof import('react')>('react')
+  return {
+    ...actual,
+    BundlePicker: ({
+      value,
+      onChange,
+    }: {
+      value: unknown
+      onChange: (next: unknown) => void
+    }) => {
+      useEffect(() => {
+        if (value === null) {
+          onChange({
+            id: 'nested-bundle-1',
+            code: 'NESTED',
+            name: 'Nested bundle',
+            description: null,
+            pricing_mode: 'standard',
+            base_price: null,
+            currency: 'TND',
+            service_interval_km: null,
+            service_interval_months: null,
+            estimated_labor_hours: null,
+            component_count: 0,
+          })
+        }
+        // Only run once on mount — the real picker doesn't auto-reselect.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [])
+      return (
+        <div data-testid="bundle-picker-stub">
+          nested: {(value as { name?: string } | null)?.name ?? 'none'}
+        </div>
+      )
+    },
+  }
+})
 
 const mockApiGet = vi.hoisted(() => vi.fn())
 const mockApiPost = vi.hoisted(() => vi.fn())
@@ -196,15 +242,106 @@ describe('BundleComponentFormModal', () => {
       <BundleComponentFormModal bundle={bundle} onClose={() => undefined} onSaved={() => undefined} />,
     )
 
-    // Switch to nested_bundle and manually populate via state through the UI
+    // Switch to nested_bundle — the mocked BundlePicker auto-selects
+    // `nested-bundle-1` on mount so we can actually drive submit through
+    // to the API rejection and exercise the BUNDLE_CYCLE onError branch.
     const typeSelect = screen.getByTestId('bundle-component-type-select') as HTMLSelectElement
     await user.selectOptions(typeSelect, 'nested_bundle')
 
-    // BundlePicker renders a trigger button when no value selected; we cannot
-    // drive its modal flow easily in a unit test. Instead, assert that submit
-    // without a selected nested bundle surfaces the nested-bundle-required
-    // error — which validates the cycle-path's sibling guard.
+    // Wait for the stub's mount-effect to fire onChange with the nested bundle.
+    await waitFor(() => {
+      expect(screen.getByText(/nested: Nested bundle/i)).toBeInTheDocument()
+    })
+
+    // Seed a unit id so client-side unitRequired doesn't short-circuit.
+    const unitSelect = screen.getByTestId('bundle-component-unit-select') as HTMLSelectElement
+    await waitFor(() => {
+      expect(unitSelect.options.length).toBeGreaterThan(1)
+    })
+    fireEvent.change(unitSelect, { target: { value: 'unit-each' } })
+
     await user.click(screen.getByRole('button', { name: /save component/i }))
-    expect(screen.getByText(/Select a nested bundle/i)).toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalled()
+    })
+    const [, payload] = mockApiPost.mock.calls[0] as [string, Record<string, unknown>]
+    expect(payload['component_type']).toBe('nested_bundle')
+    expect(payload['component_id']).toBe('nested-bundle-1')
+
+    // The cycle translation ("This nested bundle would create a cycle.")
+    // must surface at the nested-bundle field after the rejected POST.
+    await waitFor(() => {
+      expect(screen.getByText(/would create a cycle/i)).toBeInTheDocument()
+    })
+  })
+
+  it('pre-selects the unit in edit mode and PATCHes with the resolved unit_id', async () => {
+    mockApiGet.mockResolvedValue(listResponse([]))
+    mockApiPatch.mockResolvedValue({
+      data: {
+        data: {
+          id: 'comp-7',
+          bundle_id: bundle.id,
+          component_type: 'part',
+          component_id: 'prod-9',
+          component_display_name: 'Brake pad',
+          quantity: '3.000',
+          unit: 'EA',
+          override_unit_price: null,
+          is_optional: false,
+          display_order: 0,
+          notes: null,
+        },
+      },
+    })
+
+    const existing: ServiceBundleComponentData = {
+      id: 'comp-7',
+      bundle_id: bundle.id,
+      component_type: 'part',
+      component_id: 'prod-9',
+      component_display_name: 'Brake pad',
+      quantity: '3.000',
+      unit: 'EA',
+      override_unit_price: null,
+      is_optional: false,
+      display_order: 0,
+      notes: null,
+    }
+
+    const onSaved = vi.fn()
+    const user = userEvent.setup()
+    renderWithProviders(
+      <BundleComponentFormModal
+        bundle={bundle}
+        component={existing}
+        onClose={() => undefined}
+        onSaved={onSaved}
+      />,
+    )
+
+    // Edit mode gates on useUnits resolving. Wait past the loading
+    // placeholder until the real unit <select> is in the DOM with its
+    // pre-selected value.
+    const unitSelect = (await screen.findByTestId(
+      'bundle-component-unit-select',
+    )) as HTMLSelectElement
+
+    // Symbol "EA" in the DTO must resolve to the 'unit-each' id.
+    expect(unitSelect.value).toBe('unit-each')
+
+    await user.click(screen.getByRole('button', { name: /save component/i }))
+
+    await waitFor(() => {
+      expect(mockApiPatch).toHaveBeenCalled()
+    })
+    const [url, payload] = mockApiPatch.mock.calls[0] as [string, Record<string, unknown>]
+    expect(url).toContain('/workshop/bundles/bundle-1/components/comp-7')
+    expect(payload['unit_id']).toBe('unit-each')
+    expect(payload['component_type']).toBe('part')
+    expect(payload['component_id']).toBe('prod-9')
+    expect(payload['quantity']).toBe('3.000')
+    expect(onSaved).toHaveBeenCalled()
   })
 })

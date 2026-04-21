@@ -102,7 +102,8 @@
       "save": "Save component",
       "saving": "Saving…",
       "cancel": "Cancel",
-      "close": "Close modal"
+      "close": "Close modal",
+      "loading": "Loading…"
     },
     "row": {
       "edit": "Edit",
