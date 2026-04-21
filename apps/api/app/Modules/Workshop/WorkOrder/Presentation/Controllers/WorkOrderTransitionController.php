@@ -6,6 +6,7 @@ namespace App\Modules\Workshop\WorkOrder\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Workshop\Bundle\Domain\Exceptions\BundleCycleException;
 use App\Modules\Workshop\WorkOrder\Application\Commands\CaptureApprovalCommand;
 use App\Modules\Workshop\WorkOrder\Application\Commands\TransitionStatusCommand;
 use App\Modules\Workshop\WorkOrder\Application\DTOs\WorkOrderData;
@@ -14,6 +15,7 @@ use App\Modules\Workshop\WorkOrder\Domain\Contracts\WorkOrderRepositoryInterface
 use App\Modules\Workshop\WorkOrder\Domain\Enums\ApprovalMethod;
 use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderStatus;
 use App\Modules\Workshop\WorkOrder\Domain\Exceptions\StaleWorkOrderException;
+use App\Modules\Workshop\WorkOrder\Domain\Exceptions\WorkOrderNoLinesException;
 use App\Modules\Workshop\WorkOrder\Domain\Exceptions\WorkOrderTransitionException;
 use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
 use App\Modules\Workshop\WorkOrder\Presentation\Requests\CancelRequest;
@@ -58,6 +60,8 @@ final class WorkOrderTransitionController extends Controller
             ));
         } catch (StaleWorkOrderException $e) {
             return $this->conflict($e);
+        } catch (WorkOrderNoLinesException $e) {
+            return $this->noLines($e);
         } catch (WorkOrderTransitionException $e) {
             return response()->json([
                 'message' => $e->getMessage(),
@@ -190,6 +194,23 @@ final class WorkOrderTransitionController extends Controller
             'expected_updated_at' => $e->expectedUpdatedAt->format(\DateTimeInterface::ATOM),
             'current_updated_at' => $e->currentUpdatedAt->format(\DateTimeInterface::ATOM),
         ], 409);
+    }
+
+    /**
+     * Zero-line WO → Invoiced is a fiscal-compliance guard (audit finding
+     * 🔴-6a). Emits the same `{ error: { code, message } }` envelope used
+     * by {@see BundleCycleException}
+     * (mapped in BundleComponentController) so clients see one consistent
+     * shape for domain-rule rejections across Workshop.
+     */
+    private function noLines(WorkOrderNoLinesException $e): JsonResponse
+    {
+        return response()->json([
+            'error' => [
+                'code' => 'WORK_ORDER_NO_LINES',
+                'message' => $e->getMessage(),
+            ],
+        ], 422);
     }
 
     private function detail(Request $request, WorkOrder $wo): JsonResponse

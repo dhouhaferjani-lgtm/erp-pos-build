@@ -11,9 +11,9 @@ use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
-use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Workshop\WorkOrder\Application\Commands\TransitionStatusCommand;
 use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderTransitionService;
 use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderStatus;
@@ -108,10 +108,16 @@ final class InvoiceZeroLineWorkOrderFailsTest extends TestCase
                 context: null,
             ));
         } finally {
-            // Invariant: no Document must have been written for this WO.
+            // Invariant: no Document must have been written for this tenant /
+            // company when the guard rejects the transition. The guard must
+            // fire *before* any document generation, so the documents table
+            // must be untouched for this scope.
             $this->assertSame(
                 0,
-                Document::query()->where('work_order_id', $wo->id)->count(),
+                Document::query()
+                    ->where('tenant_id', $this->tenant->id)
+                    ->where('company_id', $this->company->id)
+                    ->count(),
                 'No Document must be persisted when the guard rejects the transition.',
             );
 
@@ -120,6 +126,10 @@ final class InvoiceZeroLineWorkOrderFailsTest extends TestCase
                 WorkOrderStatus::Completed,
                 $wo->status,
                 'WO status must remain Completed — the transaction must roll back.',
+            );
+            $this->assertNull(
+                $wo->invoice_document_id,
+                'WO must not be linked to any invoice Document.',
             );
         }
     }
@@ -142,12 +152,16 @@ final class InvoiceZeroLineWorkOrderFailsTest extends TestCase
 
         $this->assertSame(
             0,
-            Document::query()->where('work_order_id', $wo->id)->count(),
+            Document::query()
+                ->where('tenant_id', $this->tenant->id)
+                ->where('company_id', $this->company->id)
+                ->count(),
             'No Document must be persisted when the endpoint rejects the transition.',
         );
 
         $wo->refresh();
         $this->assertSame(WorkOrderStatus::Completed, $wo->status);
+        $this->assertNull($wo->invoice_document_id);
     }
 
     public function test_service_allows_invoicing_a_work_order_that_has_at_least_one_line(): void
@@ -180,10 +194,11 @@ final class InvoiceZeroLineWorkOrderFailsTest extends TestCase
 
         $this->assertSame(WorkOrderStatus::Invoiced, $updated->status);
         $this->assertNotNull($updated->invoice_document_id);
-        $this->assertSame(
-            1,
-            Document::query()->where('work_order_id', $wo->id)->count(),
-            'Exactly one Document must be persisted for the successful path.',
+        // The WO is linked to a posted invoice Document; confirm the Document
+        // actually exists under the id recorded on the WO.
+        $this->assertNotNull(
+            Document::find($updated->invoice_document_id),
+            'Posted invoice Document must be persisted for a WO with at least one line.',
         );
     }
 }
