@@ -1,1 +1,95 @@
-{}
+{
+  "ownership": {
+    "title": "الملكية",
+    "currentOwner": "المالك الحالي",
+    "noOwner": "لا يوجد مالك حالي",
+    "history": "سجلّ الملكية",
+    "transfer": "نقل الملكية",
+    "transferButton": "نقل",
+    "confirmTransfer": "تأكيد النقل",
+    "cancel": "إلغاء",
+    "newOwner": "المالك الجديد",
+    "occurredAt": "تاريخ العملية",
+    "reason": "السبب",
+    "notes": "ملاحظات (اختياري)",
+    "notesPlaceholder": "سياق إضافي لعملية النقل (اختياري)",
+    "acquiredAt": "تاريخ الاقتناء",
+    "releasedAt": "تاريخ التنازل",
+    "current": "حالي",
+    "closed": "مُغلَق",
+    "transferSuccess": "تمّ نقل الملكية بنجاح.",
+    "transferError": "تعذّر نقل الملكية. يرجى المحاولة مرة أخرى."
+  },
+  "mileage": {
+    "title": "الكيلومترات",
+    "latest": "آخر قراءة",
+    "empty": "لا توجد قراءات كيلومترات بعد.",
+    "logReading": "تسجيل قراءة",
+    "logButton": "تسجيل",
+    "mileage": "الكيلومترات",
+    "recordedAt": "تاريخ التسجيل",
+    "source": "المصدر",
+    "notes": "ملاحظات (اختياري)",
+    "logSuccess": "تمّ تسجيل قراءة الكيلومترات.",
+    "logError": "تعذّر تسجيل القراءة. يرجى المحاولة مرة أخرى."
+  },
+  "partnerVehicles": {
+    "title": "المركبات",
+    "empty": "لا يمتلك هذا العميل أي مركبة بعد.",
+    "addVehicle": "إضافة مركبة"
+  },
+  "fuelType": {
+    "gasoline": "بنزين",
+    "diesel": "ديزل",
+    "electric": "كهربائي",
+    "hybrid": "هجين",
+    "plugin_hybrid": "هجين قابل للشحن",
+    "lpg": "غاز البترول المسال (LPG)",
+    "cng": "غاز طبيعي مضغوط (CNG)",
+    "hydrogen": "هيدروجين",
+    "other": "أخرى"
+  },
+  "transmissionType": {
+    "manual": "يدوي",
+    "automatic": "أوتوماتيكي",
+    "semi_automatic": "نصف أوتوماتيكي",
+    "cvt": "ناقل حركة متغيّر (CVT)",
+    "dual_clutch": "قابض مزدوج",
+    "other": "أخرى"
+  },
+  "bodyType": {
+    "sedan": "سيدان",
+    "hatchback": "هاتشباك",
+    "suv": "سيارة دفع رباعي",
+    "pickup": "بيك آب",
+    "van": "شاحنة صغيرة (فان)",
+    "coupe": "كوبيه",
+    "convertible": "مكشوفة",
+    "wagon": "ستيشن",
+    "truck": "شاحنة",
+    "motorcycle": "دراجة نارية",
+    "other": "أخرى"
+  },
+  "ownershipReason": {
+    "initial_registration": "تسجيل ابتدائي",
+    "purchase": "شراء",
+    "sale": "بيع",
+    "transfer": "نقل ملكية",
+    "trade_in": "استبدال",
+    "fleet_assignment": "إسناد إلى الأسطول",
+    "fleet_return": "إرجاع من الأسطول",
+    "other": "أخرى"
+  },
+  "mileageSource": {
+    "service": "خدمة",
+    "manual": "يدوي",
+    "odometer_photo": "صورة عدّاد المسافات",
+    "external_api": "واجهة برمجية خارجية"
+  },
+  "page": {
+    "ownershipSection": "الملكية",
+    "mileageSection": "قراءات الكيلومترات",
+    "transferOwnership": "نقل الملكية",
+    "logMileage": "تسجيل قراءة كيلومترات"
+  }
+}

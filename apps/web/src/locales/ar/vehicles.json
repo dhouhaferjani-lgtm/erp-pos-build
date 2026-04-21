@@ -1,1 +1,39 @@
-{}
+{
+  "title": "المركبات",
+  "singular": "مركبة",
+  "plural": "مركبات",
+  "registered": "مسجّلة",
+  "new": "إضافة مركبة",
+  "searchPlaceholder": "ابحث برقم اللوحة أو VIN أو الماركة أو الموديل…",
+  "table": {
+    "vehicle": "المركبة",
+    "fuel": "الوقود"
+  },
+  "edit": "تعديل المركبة",
+  "licensePlate": "رقم اللوحة",
+  "brand": "الماركة",
+  "model": "الموديل",
+  "year": "السنة",
+  "color": "اللون",
+  "vin": "رقم الهيكل (VIN)",
+  "mileage": "عدد الكيلومترات",
+  "fuelType": "نوع الوقود",
+  "transmission": "ناقل الحركة",
+  "engineCode": "رمز المحرّك",
+  "notes": "ملاحظات",
+  "sections": {
+    "vehicleInfo": "معلومات المركبة",
+    "technicalDetails": "التفاصيل التقنية"
+  },
+  "messages": {
+    "deleteVehicle": "حذف المركبة",
+    "confirmDeleteVehicle": "هل أنت متأكد من حذف \"{{brand}} {{model}}\" ({{licensePlate}})؟ لا يمكن التراجع عن هذا الإجراء.",
+    "notFound": "لم يتم العثور على المركبة أو حدث خطأ في التحميل."
+  },
+  "created": "تم الإنشاء",
+  "updated": "تم التحديث",
+  "empty": {
+    "title": "لا توجد مركبات بعد",
+    "description": "ابدأ بإضافة أوّل مركبة."
+  }
+}
