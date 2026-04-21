@@ -13,6 +13,7 @@ use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\POS\Application\DTOs\SyncReceiptPayload;
 use App\Modules\POS\Application\DTOs\SyncReceiptResult;
+use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Enums\SyncStatus;
@@ -304,7 +305,7 @@ final class ReceiptSyncService
                 'total' => $total,
                 'currency' => $payload->currency,
                 'consumption_mode' => $payload->consumptionMode !== null
-                    ? \App\Modules\POS\Domain\Enums\ConsumptionMode::from($payload->consumptionMode)
+                    ? ConsumptionMode::from($payload->consumptionMode)
                     : null,
                 'table_id' => $payload->tableId,
                 'fiscal_status' => 'fiscalized',
