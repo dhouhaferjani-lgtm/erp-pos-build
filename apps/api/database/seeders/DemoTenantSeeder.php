@@ -78,6 +78,15 @@ use Spatie\Permission\Models\Role;
 class DemoTenantSeeder extends Seeder
 {
     /**
+     * Cached automotive units for the current tenant being seeded. Reset at
+     * the top of `createUnlimitedDemoTenant` so re-running the seeder for a
+     * different tenant still seeds fresh units.
+     *
+     * @var ?array{L: Unit, EA: Unit, HR: Unit, KG: Unit}
+     */
+    private ?array $automotiveUnits = null;
+
+    /**
      * Run the database seeds.
      */
     public function run(): void
@@ -110,6 +119,9 @@ class DemoTenantSeeder extends Seeder
      */
     private function createUnlimitedDemoTenant(): void
     {
+        // Reset per-tenant unit cache so re-runs / other tenants seed fresh.
+        $this->automotiveUnits = null;
+
         $unlimitedPlan = Plan::where('code', 'unlimited')->first();
         if ($unlimitedPlan === null) {
             $this->command->error('Unlimited plan not found. Run PlansSeeder first.');
@@ -306,10 +318,17 @@ class DemoTenantSeeder extends Seeder
      * Units are tenant-scoped (not `UomSeeder` system units) so re-runs
      * remain idempotent and the demo stays self-contained.
      *
+     * Result is cached on the instance — both callers (seedAutomotiveCatalog
+     * + hydrateBundleComponents) can invoke it without hitting the DB twice.
+     *
      * @return array{L: Unit, EA: Unit, HR: Unit, KG: Unit}
      */
     private function ensureAutomotiveUnits(Tenant $tenant): array
     {
+        if ($this->automotiveUnits !== null) {
+            return $this->automotiveUnits;
+        }
+
         $categories = [
             'volume' => UnitCategory::firstOrCreate(
                 ['code' => 'autospecs_volume'],
@@ -405,12 +424,14 @@ class DemoTenantSeeder extends Seeder
             ],
         );
 
-        return [
+        $this->automotiveUnits = [
             'L' => $l,
             'EA' => $ea,
             'HR' => $hr,
             'KG' => $kg,
         ];
+
+        return $this->automotiveUnits;
     }
 
     /**
@@ -1098,7 +1119,7 @@ class DemoTenantSeeder extends Seeder
 
         // Per-location schedule config — 15-minute slots, 60-minute default
         // appointment duration, hybrid online booking enabled for demo.
-        $config = ScheduleConfig::firstOrCreate(
+        ScheduleConfig::firstOrCreate(
             [
                 'tenant_id' => $tenant->id,
                 'company_id' => $company->id,
@@ -1117,7 +1138,6 @@ class DemoTenantSeeder extends Seeder
                 'reminder_email_hours_before' => 48,
             ],
         );
-        unset($config); // Intentionally unused after creation — hydrated via fresh reads.
 
         // Reuse the partner+vehicle pairs already seeded by seedWorkOrders
         // so every appointment has a concrete customer + vehicle (required

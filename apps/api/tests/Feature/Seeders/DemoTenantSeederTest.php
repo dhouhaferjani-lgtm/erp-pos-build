@@ -88,7 +88,7 @@ final class DemoTenantSeederTest extends TestCase
         $this->assertSame(MembershipStatus::Active, $membership->status);
     }
 
-    public function test_seeder_creates_at_least_3_technician_profiles_for_mechanic_tenant(): void
+    public function test_seeder_creates_exactly_3_technician_profiles_for_mechanic_tenant(): void
     {
         $this->seedDemo();
 
@@ -99,7 +99,7 @@ final class DemoTenantSeederTest extends TestCase
             ->where('company_id', $company->id)
             ->count();
 
-        $this->assertGreaterThanOrEqual(3, $count);
+        $this->assertSame(3, $count);
     }
 
     public function test_admin_demo_local_has_technician_profile_for_listener_safety(): void
@@ -184,6 +184,87 @@ final class DemoTenantSeederTest extends TestCase
         /** @var Product $second */
         $second = Product::findOrFail($components[1]->product_id);
         $this->assertSame('FILT-OIL-STD', $second->sku);
+    }
+
+    public function test_revision_40k_resolves_nested_bundle_and_full_component_chain(): void
+    {
+        $this->seedDemo();
+
+        $tenant = $this->getDemoTenant();
+
+        /** @var ServiceBundle $bundle */
+        $bundle = ServiceBundle::where('tenant_id', $tenant->id)
+            ->where('code', 'REVISION-40K')
+            ->firstOrFail();
+
+        /** @var ServiceBundle $vidangeBundle */
+        $vidangeBundle = ServiceBundle::where('tenant_id', $tenant->id)
+            ->where('code', 'VIDANGE-10K-ESSENCE')
+            ->firstOrFail();
+
+        /** @var array<int, ServiceBundleComponent> $components */
+        $components = ServiceBundleComponent::where('bundle_id', $bundle->id)
+            ->orderBy('display_order')
+            ->get()
+            ->all();
+
+        $this->assertCount(4, $components);
+
+        // Component 1 — nested bundle pointing at VIDANGE-10K-ESSENCE.
+        $this->assertSame(BundleComponentType::NestedBundle, $components[0]->component_type);
+        $this->assertSame($vidangeBundle->id, $components[0]->nested_bundle_id);
+        $this->assertNull($components[0]->product_id);
+        $this->assertNull($components[0]->service_id);
+
+        // Component 2 — COOLANT-1L part.
+        $this->assertSame(BundleComponentType::Part, $components[1]->component_type);
+        $this->assertNotNull($components[1]->product_id);
+        /** @var Product $coolant */
+        $coolant = Product::findOrFail($components[1]->product_id);
+        $this->assertSame('COOLANT-1L', $coolant->sku);
+
+        // Component 3 — SPARK-PLUG part.
+        $this->assertSame(BundleComponentType::Part, $components[2]->component_type);
+        $this->assertNotNull($components[2]->product_id);
+        /** @var Product $spark */
+        $spark = Product::findOrFail($components[2]->product_id);
+        $this->assertSame('SPARK-PLUG', $spark->sku);
+
+        // Component 4 — LAB-TIMING-BELT labor service.
+        $this->assertSame(BundleComponentType::Labor, $components[3]->component_type);
+        $this->assertNotNull($components[3]->service_id);
+        /** @var Service $timingBelt */
+        $timingBelt = Service::findOrFail($components[3]->service_id);
+        $this->assertSame('LAB-TIMING-BELT', $timingBelt->code);
+    }
+
+    public function test_diagnostic_obd_is_labor_only_recipe(): void
+    {
+        $this->seedDemo();
+
+        $tenant = $this->getDemoTenant();
+
+        /** @var ServiceBundle $bundle */
+        $bundle = ServiceBundle::where('tenant_id', $tenant->id)
+            ->where('code', 'DIAGNOSTIC-OBD')
+            ->firstOrFail();
+
+        /** @var array<int, ServiceBundleComponent> $components */
+        $components = ServiceBundleComponent::where('bundle_id', $bundle->id)
+            ->orderBy('display_order')
+            ->get()
+            ->all();
+
+        $this->assertCount(1, $components);
+
+        $this->assertSame(BundleComponentType::Labor, $components[0]->component_type);
+        $this->assertNotNull($components[0]->service_id);
+        $this->assertNull($components[0]->product_id);
+        $this->assertNull($components[0]->nested_bundle_id);
+
+        /** @var Service $labor */
+        $labor = Service::findOrFail($components[0]->service_id);
+        $this->assertSame('LAB-DIAG-OBD', $labor->code);
     }
 
     public function test_tunisia_chart_of_accounts_seeded_for_mechanic_tenant_company(): void
