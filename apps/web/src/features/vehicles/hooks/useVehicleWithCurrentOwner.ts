@@ -6,8 +6,15 @@ import type {
   VehicleOwnershipData,
 } from '../types'
 
-export interface VehicleWithCurrentOwner {
-  vehicle: VehicleData
+/**
+ * Detail-response shape for `GET /api/v1/vehicles/{id}`.
+ *
+ * Backend serialises vehicle fields flat under `data` (matching the list
+ * endpoint), with `current_ownership` and `recent_mileage_readings` as
+ * siblings — see docs/conventions/01-API-RESPONSES.md. Closed audit
+ * finding 🟠-3.
+ */
+export interface VehicleWithCurrentOwner extends VehicleData {
   current_ownership: VehicleOwnershipData | null
   recent_mileage_readings: VehicleMileageReadingData[]
 }

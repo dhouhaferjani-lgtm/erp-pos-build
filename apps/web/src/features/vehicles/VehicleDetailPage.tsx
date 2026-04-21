@@ -96,7 +96,7 @@ export function VehicleDetailPage() {
     )
   }
 
-  if (error || !data?.vehicle) {
+  if (error || !data) {
     return (
       <div className="space-y-6">
         <Link
@@ -113,7 +113,10 @@ export function VehicleDetailPage() {
     )
   }
 
-  const vehicle = data.vehicle
+  // `data` extends VehicleData directly — vehicle fields live at the top
+  // level of the detail response (closes 🟠-3). Aliased for readability in
+  // the JSX below.
+  const vehicle = data
 
   return (
     <div className="space-y-6">
