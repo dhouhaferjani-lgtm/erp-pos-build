@@ -36,6 +36,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Uom\Domain\Entities\Unit;
 use App\Modules\Uom\Domain\Entities\UnitCategory;
+use App\Modules\Vehicle\Application\Services\VehicleOwnershipService;
 use App\Modules\Vehicle\Domain\Vehicle;
 use App\Modules\Workshop\Bundle\Domain\Enums\BundleComponentType;
 use App\Modules\Workshop\Bundle\Domain\Enums\BundlePricingMode;
@@ -983,6 +984,19 @@ class DemoTenantSeeder extends Seeder
                     'fuel_type' => 'gasoline',
                     'transmission' => 'manual',
                 ],
+            );
+
+            // Open the initial ownership history row so fresh demo seeds have
+            // a complete customer→vehicle lineage from the start of the chain
+            // (closes 🔴-1 from 2026-04-21 autospecs-ops-audit). Idempotent:
+            // the service no-ops if an open row already exists (e.g. because a
+            // prior run already inserted it, or the backfill migration ran).
+            $ownershipService = app(VehicleOwnershipService::class);
+            $ownershipService->openInitialOwnership(
+                vehicle: $vehicle,
+                ownerPartnerId: $partner->id,
+                acquiredAt: new \DateTimeImmutable,
+                recordedByUserId: $openedBy->id,
             );
 
             $year = date('Y');
