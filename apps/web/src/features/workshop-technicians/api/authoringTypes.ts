@@ -68,6 +68,25 @@ export type TimeEntryType =
 
 export type TimeEntrySource = 'event' | 'manual' | 'import'
 
+/**
+ * Mirrors `App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderStatus`. Kept
+ * inline here (rather than imported from `@autoerp/shared`) because the
+ * workshop-technicians authoring UI currently sources types from this local
+ * file. The canonical list lives in the PHP enum + the generated.ts output.
+ */
+export type WorkOrderStatus =
+  | 'received'
+  | 'diagnosed'
+  | 'quoted'
+  | 'approved'
+  | 'in_progress'
+  | 'paused'
+  | 'waiting_parts'
+  | 'completed'
+  | 'invoiced'
+  | 'closed'
+  | 'cancelled'
+
 export interface TechnicianTimeEntry {
   id: string
   technician_profile_id: string
@@ -77,6 +96,7 @@ export interface TechnicianTimeEntry {
   duration_minutes: number | null
   entry_type: TimeEntryType
   work_order_id: string | null
+  work_order_status: WorkOrderStatus | null
   source: TimeEntrySource
   recorded_by_user_id: string | null
   notes: string | null

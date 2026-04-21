@@ -23,13 +23,15 @@ function startOfMonth(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), 1)
 }
 
-function isLocked(_entry: TechnicianTimeEntry): boolean {
-  // The backend owns the authoritative lock state; the frontend only has
-  // access to work_order_id. We can't query the WO status from here without
-  // a separate fetch, so for v1 we never preemptively block — the user sees
-  // the lock message from the 422 response on edit attempts. A future iteration
-  // may embed WO status in the time-entry DTO to show the badge proactively.
-  return false
+function isLocked(entry: TechnicianTimeEntry): boolean {
+  // Spec §5.4.1: Edit/Delete must be disabled when the linked WO is in a
+  // locked status (Completed or Invoiced). The backend projects
+  // `work_order_status` on TechnicianTimeEntryData so we can compute this
+  // synchronously without a per-row fetch.
+  return (
+    entry.work_order_status === 'completed' ||
+    entry.work_order_status === 'invoiced'
+  )
 }
 
 export function TimeEntriesTab({ technicianId }: TimeEntriesTabProps) {
