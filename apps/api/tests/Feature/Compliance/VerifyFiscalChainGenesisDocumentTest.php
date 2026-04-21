@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Feature\Compliance;
 
 use App\Modules\Company\Domain\Company;
-use App\Modules\Compliance\Commands\VerifyFiscalChainsCommand;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -14,6 +13,7 @@ use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -65,11 +65,10 @@ class VerifyFiscalChainGenesisDocumentTest extends TestCase
         $this->assertNotNull($posted->fiscal_hash, 'Precondition: genesis doc must have a fiscal hash');
         $this->assertNull($posted->previous_hash, 'Precondition: genesis doc must have null previous_hash');
 
-        $exit = $this->artisan('fiscal:verify-chains', ['--company' => $company->id])
-            ->expectsOutputToContain('ALL CHAINS VALID')
-            ->run();
+        [$exit, $output] = $this->runVerify($company->id);
 
         $this->assertSame(0, $exit, 'Genesis document must verify as valid via artisan fiscal:verify-chains');
+        $this->assertStringContainsString('ALL CHAINS VALID', $output, 'Command output must contain success banner');
     }
 
     public function test_stored_hashes_match_seed_based_recalculation_across_chain(): void
@@ -80,7 +79,9 @@ class VerifyFiscalChainGenesisDocumentTest extends TestCase
         $inv2 = $this->postingService->post($this->createConfirmedInvoice($tenant, $company, $partner, 'INV-P-0002'));
         $inv3 = $this->postingService->post($this->createConfirmedInvoice($tenant, $company, $partner, 'INV-P-0003'));
 
-        $seed = $company->fresh()->fiscal_chain_seed;
+        /** @var Company $refreshedCompany */
+        $refreshedCompany = Company::findOrFail($company->id);
+        $seed = $refreshedCompany->fiscal_chain_seed;
         $this->assertNotNull($seed, 'Company must have a fiscal_chain_seed');
 
         // Genesis: hashed using company seed, previousHash=null
@@ -98,8 +99,8 @@ class VerifyFiscalChainGenesisDocumentTest extends TestCase
         $this->assertSame($expected3, $inv3->fiscal_hash, 'Third doc fiscal_hash must match chained calculation');
 
         // And the verify command agrees.
-        $exit = $this->artisan('fiscal:verify-chains', ['--company' => $company->id])->run();
-        $this->assertSame(0, $exit, 'fiscal:verify-chains must pass for a legitimate 3-doc chain');
+        [$exit, $output] = $this->runVerify($company->id);
+        $this->assertSame(0, $exit, 'fiscal:verify-chains must pass for a legitimate 3-doc chain. Output: '.$output);
     }
 
     public function test_verify_command_detects_tampering(): void
@@ -107,17 +108,16 @@ class VerifyFiscalChainGenesisDocumentTest extends TestCase
         [$tenant, $company, $partner] = $this->makeTenantCompanyPartner('tamper-co');
 
         $inv1 = $this->postingService->post($this->createConfirmedInvoice($tenant, $company, $partner, 'INV-T-0001'));
-        $inv2 = $this->postingService->post($this->createConfirmedInvoice($tenant, $company, $partner, 'INV-T-0002'));
+        $this->postingService->post($this->createConfirmedInvoice($tenant, $company, $partner, 'INV-T-0002'));
 
         // Tamper: change the stored total of the first (genesis) doc directly in DB.
         // Using DB::table to bypass the sealed-document guard on Document::update().
         DB::table('documents')->where('id', $inv1->id)->update(['total' => '999999.99']);
 
-        $exit = $this->artisan('fiscal:verify-chains', ['--company' => $company->id])
-            ->expectsOutputToContain('INVALID')
-            ->run();
+        [$exit, $output] = $this->runVerify($company->id);
 
-        $this->assertSame(VerifyFiscalChainsCommand::FAILURE, $exit, 'Tampered genesis document must fail verification');
+        $this->assertSame(1, $exit, 'Tampered genesis document must fail verification');
+        $this->assertStringContainsString('INVALID', $output, 'Command output must flag chain invalid');
     }
 
     public function test_verify_command_passes_across_all_five_verticals(): void
@@ -139,8 +139,8 @@ class VerifyFiscalChainGenesisDocumentTest extends TestCase
             $this->postingService->post($this->createConfirmedInvoice($tenant, $company, $partner, strtoupper($slug).'-INV-0001'));
             $this->postingService->post($this->createConfirmedInvoice($tenant, $company, $partner, strtoupper($slug).'-INV-0002'));
 
-            $exit = $this->artisan('fiscal:verify-chains', ['--company' => $company->id])->run();
-            $this->assertSame(0, $exit, "Vertical {$slug} must verify cleanly");
+            [$exit, $output] = $this->runVerify($company->id);
+            $this->assertSame(0, $exit, "Vertical {$slug} must verify cleanly. Output: ".$output);
         }
     }
 
@@ -149,11 +149,28 @@ class VerifyFiscalChainGenesisDocumentTest extends TestCase
         [, $company] = $this->makeTenantCompanyPartner('empty-co');
 
         // No documents posted.
-        $exit = $this->artisan('fiscal:verify-chains', ['--company' => $company->id])
-            ->expectsOutputToContain('ALL CHAINS VALID')
-            ->run();
+        [$exit, $output] = $this->runVerify($company->id);
 
         $this->assertSame(0, $exit, 'A company with zero posted documents must verify as valid');
+        $this->assertStringContainsString('ALL CHAINS VALID', $output, 'Empty chain output must contain success banner');
+    }
+
+    /**
+     * Run the fiscal:verify-chains artisan command scoped to a single company.
+     *
+     * Returns [exitCode, capturedOutput]. Using the console Kernel directly
+     * keeps the return type a plain int (unlike $this->artisan() which returns
+     * Illuminate\Testing\PendingCommand|int and trips PHPStan level 8).
+     *
+     * @return array{0: int, 1: string}
+     */
+    private function runVerify(string $companyId): array
+    {
+        /** @var ConsoleKernel $kernel */
+        $kernel = $this->app->make(ConsoleKernel::class);
+        $exit = $kernel->call('fiscal:verify-chains', ['--company' => $companyId]);
+
+        return [$exit, $kernel->output()];
     }
 
     /**

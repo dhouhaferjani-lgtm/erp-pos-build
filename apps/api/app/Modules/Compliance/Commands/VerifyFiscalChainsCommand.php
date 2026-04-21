@@ -67,7 +67,7 @@ class VerifyFiscalChainsCommand extends Command
                 : [DocumentType::Invoice, DocumentType::CreditNote];
 
             foreach ($types as $type) {
-                $result = $this->verifyChainForCompanyAndType($company->id, $type);
+                $result = $this->verifyChainForCompanyAndType($company->id, $type, $company->fiscal_chain_seed);
 
                 $totalDocuments += $result['count'];
 
@@ -105,7 +105,7 @@ class VerifyFiscalChainsCommand extends Command
     /**
      * @return array{valid: bool, count: int, failed_at: int|null, details: string|null}
      */
-    private function verifyChainForCompanyAndType(string $companyId, DocumentType $type): array
+    private function verifyChainForCompanyAndType(string $companyId, DocumentType $type, ?string $genesisSeed): array
     {
         $documents = Document::where('company_id', $companyId)
             ->where('type', $type)
@@ -144,8 +144,11 @@ class VerifyFiscalChainsCommand extends Command
                 'currency' => $document->currency,
             ]);
 
+            // Pass the company's genesis seed so the genesis document (previousHash === null)
+            // recomputes to the same hash that was written by DocumentPostingService.
             $storedHash = $document->fiscal_hash ?? '';
-            if (! $this->hashService->verifyHash($input, $previousHash, $storedHash)) {
+            $seedForThisDoc = $previousHash === null ? $genesisSeed : null;
+            if (! $this->hashService->verifyHash($input, $previousHash, $storedHash, $seedForThisDoc)) {
                 return [
                     'valid' => false,
                     'count' => $documents->count(),
