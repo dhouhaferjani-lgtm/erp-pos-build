@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
+use App\Modules\Workshop\Technician\Presentation\Controllers\PayrollExportController;
 use App\Modules\Workshop\Technician\Presentation\Controllers\TechnicianCertificationController;
 use App\Modules\Workshop\Technician\Presentation\Controllers\TechnicianProfileController;
 use App\Modules\Workshop\Technician\Presentation\Controllers\TechnicianTimeEntryController;
@@ -84,4 +85,12 @@ Route::prefix('api/v1')
         Route::delete('/workshop/technicians/{technicianId}/time-entries/{timeEntryId}', [TechnicianTimeEntryController::class, 'destroy'])
             ->middleware('can:workshop.technicians.manage_time_entries')
             ->name('workshop.technicians.time-entries.destroy');
+
+        // --- Payroll exports (Phase A.4, stateless v1) -----------------
+        Route::get('/workshop/payroll-exports', [PayrollExportController::class, 'index'])
+            ->middleware('can:workshop.payroll.view')
+            ->name('workshop.payroll-exports.index');
+        Route::post('/workshop/payroll-exports', [PayrollExportController::class, 'generate'])
+            ->middleware('can:workshop.payroll.generate')
+            ->name('workshop.payroll-exports.generate');
     });
