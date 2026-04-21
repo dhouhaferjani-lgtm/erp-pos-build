@@ -187,6 +187,14 @@ class RolesAndPermissionsSeeder extends Seeder
             'workshop.technicians.view_pii',
             'workshop.technicians.approve_time_off',
             'workshop.technicians.adjust_time_entries',
+            // Authoring permissions added by Phase A.4 (technician authoring UI).
+            'workshop.technicians.manage_certifications',
+            'workshop.technicians.manage_time_off',
+            'workshop.technicians.manage_time_entries',
+
+            // Workshop — Payroll export (Phase A.4)
+            'workshop.payroll.view',
+            'workshop.payroll.generate',
 
             // Scheduling — Bays + Appointments (Spec D / Plan D)
             'scheduling.bays.view',
@@ -328,6 +336,10 @@ class RolesAndPermissionsSeeder extends Seeder
             'workshop.technicians.view', 'workshop.technicians.manage',
             'workshop.technicians.view_pay', 'workshop.technicians.view_pii',
             'workshop.technicians.approve_time_off', 'workshop.technicians.adjust_time_entries',
+            'workshop.technicians.manage_certifications',
+            'workshop.technicians.manage_time_off',
+            'workshop.technicians.manage_time_entries',
+            'workshop.payroll.view', 'workshop.payroll.generate',
             'scheduling.bays.view', 'scheduling.bays.manage',
             'scheduling.appointments.view', 'scheduling.appointments.create',
             'scheduling.appointments.update', 'scheduling.appointments.cancel',
@@ -433,6 +445,10 @@ class RolesAndPermissionsSeeder extends Seeder
             // Technicians see their own profile (list + show), but NOT pay nor PII —
             // those are admin/manager scope; PII masking is enforced at DTO layer.
             'workshop.technicians.view',
+            // Technicians may self-log time entries. The controller enforces
+            // "own entries only" for non-admin callers. They cannot edit/delete
+            // past entries once they're linked to a locked work-order.
+            'workshop.technicians.manage_time_entries',
             'workshop-bundles.view',
             // Technicians can view bays + their own upcoming appointments
             // (list / show only — no create / update / cancel).
