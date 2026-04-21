@@ -172,7 +172,6 @@ final class VehicleDetailResponseShapeTest extends TestCase
             ->getJson('/api/v1/vehicles');
         $listResponse->assertOk();
 
-        /** @var array<int, array<string, mixed>> $listItems */
         $listItems = $listResponse->json('data');
         $this->assertIsArray($listItems);
         $this->assertNotEmpty($listItems);
@@ -185,8 +184,8 @@ final class VehicleDetailResponseShapeTest extends TestCase
             ->getJson("/api/v1/vehicles/{$this->vehicle->id}");
         $detailResponse->assertOk();
 
-        /** @var array<string, mixed> $detailData */
         $detailData = $detailResponse->json('data');
+        $this->assertIsArray($detailData);
 
         // Every scalar field present in the list entry must be present at the
         // same key in the detail entry — same envelope, regardless of siblings.
