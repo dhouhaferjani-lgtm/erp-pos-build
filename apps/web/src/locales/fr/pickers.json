@@ -33,5 +33,15 @@
     "triggerPlaceholder": "Choisir un forfait…",
     "changeBundle": "Changer de forfait",
     "noBundleSelected": "Aucun forfait sélectionné"
+  },
+  "product": {
+    "label": "Pièce",
+    "searchPlaceholder": "Rechercher une pièce par nom ou SKU…",
+    "empty": "Aucune pièce correspondante."
+  },
+  "service": {
+    "label": "Prestation",
+    "searchPlaceholder": "Rechercher une prestation par nom ou code…",
+    "empty": "Aucune prestation correspondante."
   }
 }

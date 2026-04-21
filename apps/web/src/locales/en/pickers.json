@@ -33,5 +33,15 @@
     "triggerPlaceholder": "Pick a bundle…",
     "changeBundle": "Change bundle",
     "noBundleSelected": "No bundle selected"
+  },
+  "product": {
+    "label": "Part",
+    "searchPlaceholder": "Search a part by name or SKU…",
+    "empty": "No matching products."
+  },
+  "service": {
+    "label": "Labor service",
+    "searchPlaceholder": "Search a labor service by name or code…",
+    "empty": "No matching services."
   }
 }
