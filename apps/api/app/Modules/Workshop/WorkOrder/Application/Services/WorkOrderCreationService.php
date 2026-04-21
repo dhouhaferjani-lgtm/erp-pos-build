@@ -48,13 +48,18 @@ final readonly class WorkOrderCreationService implements WorkOrderCreationServic
         string $vehicleId,
         string $partnerId,
     ): WorkOrder {
-        return $this->db->transaction(function () use ($plannedServices, $vehicleId, $partnerId): WorkOrder {
+        return $this->db->transaction(function () use ($appointmentId, $plannedServices, $vehicleId, $partnerId): WorkOrder {
             // Appointment carries the when + who + specialty, but the public
             // contract only exposes ids (vehicle + partner). Scheduling
             // auto-enriches scheduled_start/end + primary_technician via its
             // own API layer when the full appointment DTO is provided; here
             // we create a skeleton WO that the scheduling listener then
             // patches before any status transition.
+            //
+            // `appointment_id` is set here so the WO↔Appointment link is
+            // bidirectional from the first save (closes audit finding 🟠-1).
+            // The reverse direction (appointment.work_order_id = $wo->id)
+            // is written by AppointmentConversionService after this returns.
             $wo = $this->authoring->create(new CreateWorkOrderCommand(
                 tenant_id: $this->resolveTenantId($partnerId),
                 company_id: $this->resolveCompanyId($partnerId),
@@ -64,6 +69,7 @@ final readonly class WorkOrderCreationService implements WorkOrderCreationServic
                 vehicle_id: $vehicleId,
                 opened_by_user_id: $this->resolveOpenedByUserId($partnerId),
                 primary_technician_profile_id: null,
+                appointment_id: $appointmentId,
                 mileage_at_intake: null,
                 customer_complaint: null,
                 internal_notes: null,

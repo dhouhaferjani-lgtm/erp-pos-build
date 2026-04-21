@@ -150,6 +150,9 @@ final class WorkOrderController extends Controller
             vehicle_id: (string) $data['vehicle_id'],
             opened_by_user_id: $userId,
             primary_technician_profile_id: isset($data['primary_technician_profile_id']) && is_string($data['primary_technician_profile_id']) ? $data['primary_technician_profile_id'] : null,
+            // Direct-intake WOs have no source appointment; the reverse
+            // bidirectional link is only populated by AppointmentConversionService.
+            appointment_id: null,
             mileage_at_intake: isset($data['mileage_at_intake']) ? (int) $data['mileage_at_intake'] : null,
             customer_complaint: isset($data['customer_complaint']) && is_string($data['customer_complaint']) ? $data['customer_complaint'] : null,
             internal_notes: isset($data['internal_notes']) && is_string($data['internal_notes']) ? $data['internal_notes'] : null,
