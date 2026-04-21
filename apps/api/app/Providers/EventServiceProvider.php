@@ -35,6 +35,7 @@ use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderPaused;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderResumed;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderStarted;
 use App\Modules\Workshop\WorkOrder\Infrastructure\Listeners\LogPartsNeededForProcurement;
+use App\Modules\Workshop\WorkOrder\Infrastructure\Listeners\WriteDocumentVehicleContextForWorkOrderInvoice;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 
 class EventServiceProvider extends ServiceProvider
@@ -51,6 +52,7 @@ class EventServiceProvider extends ServiceProvider
         ],
         InvoicePosted::class => [
             InvoicePostedListener::class,
+            WriteDocumentVehicleContextForWorkOrderInvoice::class,
         ],
         ReceiptCompleted::class => [
             EarnPointsOnReceiptCompleted::class,
