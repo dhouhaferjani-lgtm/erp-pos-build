@@ -11,6 +11,7 @@ use App\Modules\Workshop\Bundle\Application\Commands\DeactivateBundleCommand;
 use App\Modules\Workshop\Bundle\Application\Commands\RemoveComponentCommand;
 use App\Modules\Workshop\Bundle\Application\Commands\SetVehicleApplicabilitiesCommand;
 use App\Modules\Workshop\Bundle\Application\Commands\UpdateBundleCommand;
+use App\Modules\Workshop\Bundle\Application\Commands\UpdateComponentCommand;
 use App\Modules\Workshop\Bundle\Domain\Contracts\BundleRepositoryInterface;
 use App\Modules\Workshop\Bundle\Domain\Enums\BundleComponentType;
 use App\Modules\Workshop\Bundle\Domain\Enums\BundlePricingMode;
@@ -166,6 +167,80 @@ final readonly class BundleAuthoringService
         $component->is_optional = $command->is_optional;
         $component->display_order = $command->display_order;
         $component->notes = $command->notes;
+
+        $component->save();
+
+        return $component;
+    }
+
+    /**
+     * Patch-style partial update of an existing component. Only fields
+     * explicitly supplied are touched. When `component_type` is supplied,
+     * `new_component_reference_id` is required and the FK triplet is
+     * rewritten; cycle detection runs for `NestedBundle`.
+     */
+    public function updateComponent(UpdateComponentCommand $command): ServiceBundleComponent
+    {
+        $bundle = $this->bundles->findById($command->bundle_id);
+        if ($bundle === null) {
+            throw new InvalidArgumentException('Bundle not found: '.$command->bundle_id);
+        }
+
+        $component = ServiceBundleComponent::query()
+            ->where('bundle_id', $command->bundle_id)
+            ->where('id', $command->component_id)
+            ->first();
+
+        if ($component === null) {
+            throw new InvalidArgumentException('Component not found: '.$command->component_id);
+        }
+
+        if ($command->component_type !== null) {
+            if ($command->new_component_reference_id === null) {
+                throw new InvalidArgumentException(
+                    'When component_type is updated, the matching reference id must be supplied.',
+                );
+            }
+
+            if ($command->component_type === BundleComponentType::NestedBundle) {
+                $this->assertNoCycle($command->bundle_id, $command->new_component_reference_id);
+            }
+
+            $component->component_type = $command->component_type;
+            $component->product_id = $command->component_type === BundleComponentType::Part
+                ? $command->new_component_reference_id : null;
+            $component->service_id = $command->component_type === BundleComponentType::Labor
+                ? $command->new_component_reference_id : null;
+            $component->nested_bundle_id = $command->component_type === BundleComponentType::NestedBundle
+                ? $command->new_component_reference_id : null;
+        }
+
+        if ($command->quantity !== null) {
+            $this->assertQuantityPositive($command->quantity);
+            $component->quantity = CurrencyScale::bcformat($command->quantity, 3);
+        }
+
+        if ($command->unit_id !== null) {
+            $component->unit_id = $command->unit_id;
+        }
+
+        if ($command->override_unit_price_provided) {
+            $component->override_unit_price = $command->override_unit_price === null
+                ? null
+                : CurrencyScale::bcformat($command->override_unit_price, CurrencyScale::for($bundle->currency));
+        }
+
+        if ($command->is_optional !== null) {
+            $component->is_optional = $command->is_optional;
+        }
+
+        if ($command->display_order !== null) {
+            $component->display_order = $command->display_order;
+        }
+
+        if ($command->notes_provided) {
+            $component->notes = $command->notes;
+        }
 
         $component->save();
 
