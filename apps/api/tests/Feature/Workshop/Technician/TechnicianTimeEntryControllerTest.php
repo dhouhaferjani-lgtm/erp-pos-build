@@ -18,7 +18,6 @@ use App\Modules\Workshop\Technician\Domain\TechnicianProfile;
 use App\Modules\Workshop\Technician\Domain\TechnicianTimeEntry;
 use App\Modules\Workshop\WorkOrder\Domain\Contracts\WorkOrderRepositoryInterface;
 use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderStatus;
-use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Mockery;
@@ -83,10 +82,15 @@ final class TechnicianTimeEntryControllerTest extends TestCase
         if ($workOrderId === null || $status === null) {
             $repo->shouldReceive('findById')->andReturn(null);
         } else {
-            // Use a real WorkOrder instance (never persisted) so the mocked
-            // repo returns something with a real `status` attribute — Eloquent
-            // mocks break on attribute access via __set/__get.
-            $wo = new WorkOrder;
+            // Rule #6: do NOT import the WorkOrder Eloquent model in this
+            // Technician-module test. We instead stub an object of the
+            // correct class via Mockery, keyed off the FQCN as a string so
+            // there is no compile-time cross-module dependency here. The
+            // controller only reads `->status` from the returned value, so
+            // a Mockery double with that one property stubbed is enough.
+            /** @var class-string $workOrderFqcn */
+            $workOrderFqcn = 'App\\Modules\\Workshop\\WorkOrder\\Domain\\WorkOrder';
+            $wo = Mockery::mock($workOrderFqcn)->makePartial();
             $wo->id = $workOrderId;
             $wo->status = $status;
             $repo->shouldReceive('findById')->with($workOrderId)->andReturn($wo);
