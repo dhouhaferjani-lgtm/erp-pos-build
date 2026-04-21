@@ -53,6 +53,7 @@ import {
   Sparkles,
   Package2,
   Calendar,
+  Download,
 } from 'lucide-react'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useCompanyConfig } from '../../../contexts'
@@ -93,6 +94,7 @@ const MODULE_NAME_MAP: Record<string, string | string[]> = {
   'workshop-bundles': 'Workshop',
   'workshop-work-orders': 'Workshop',
   'workshop-technicians': 'Workshop',
+  'workshop-payroll': 'Workshop',
   scheduling: 'Workshop',
   'composite-items': 'CompositeItems',
   parapharmacy: 'Parapharmacy',
@@ -281,6 +283,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
       { key: 'workshopWorkOrders', href: '/workshop/work-orders', icon: ClipboardList, module: 'workshop-work-orders' },
       { key: 'workshopBundles', href: '/workshop/bundles', icon: Package2, module: 'workshop-bundles' },
       { key: 'workshopTechnicians', href: '/workshop/technicians', icon: Users, module: 'workshop-technicians' },
+      { key: 'workshopPayrollExports', href: '/workshop/payroll-exports', icon: Download, module: 'workshop-payroll' },
       { key: 'partsCatalog', href: '/parts-catalog', icon: Search, module: 'parts-catalog' },
     ],
   })
