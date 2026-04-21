@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Providers;
 
+use App\Modules\Document\Domain\Contracts\DocumentVehicleContextWriterInterface;
 use App\Modules\Document\Domain\Services\Conversion\Converters\DeliveryNoteToInvoiceConverter;
 use App\Modules\Document\Domain\Services\Conversion\Converters\InvoiceToCreditNoteConverter;
 use App\Modules\Document\Domain\Services\Conversion\Converters\PurchaseOrderToGoodsReceiptConverter;
@@ -12,6 +13,7 @@ use App\Modules\Document\Domain\Services\Conversion\Converters\SalesOrderToDeliv
 use App\Modules\Document\Domain\Services\Conversion\Converters\SalesOrderToInvoiceConverter;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
+use App\Modules\Document\Infrastructure\Persistence\EloquentDocumentVehicleContextWriter;
 use Illuminate\Support\ServiceProvider;
 
 class DocumentServiceProvider extends ServiceProvider
@@ -19,6 +21,11 @@ class DocumentServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(DocumentNumberingService::class);
+
+        $this->app->bind(
+            DocumentVehicleContextWriterInterface::class,
+            EloquentDocumentVehicleContextWriter::class,
+        );
 
         $this->app->singleton(DocumentConverterRegistry::class, function ($app) {
             $registry = new DocumentConverterRegistry;

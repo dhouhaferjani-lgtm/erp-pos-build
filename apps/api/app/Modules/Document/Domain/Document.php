@@ -38,6 +38,7 @@ use Illuminate\Support\Carbon;
  * @property string $tenant_id
  * @property string $company_id
  * @property string $partner_id
+ * @property string|null $work_order_id
  * @property string|null $vehicle_id
  * @property DocumentType $type
  * @property FiscalCategory $fiscal_category
@@ -114,6 +115,7 @@ class Document extends Model
         'company_id',
         'location_id',
         'partner_id',
+        'work_order_id',
         'type',
         'fiscal_category',
         'fiscal_status',
