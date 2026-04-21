@@ -178,6 +178,11 @@ final class ReceiptHashService
     /**
      * Verify a single receipt's hash
      *
+     * Forwards the terminal's genesis_seed to FiscalHashService so that genesis
+     * receipts (previous_hash === null) recompute to the same hash that was
+     * written by calculateHash() above. Without the seed, the first receipt
+     * on every terminal would spuriously fail verification.
+     *
      * @param  Receipt  $receipt  The receipt to verify
      * @return bool True if hash is valid
      */
@@ -188,7 +193,8 @@ final class ReceiptHashService
         return $this->fiscalHashService->verifyHash(
             input: $input,
             previousHash: $receipt->previous_hash,
-            storedHash: $receipt->fiscal_hash
+            storedHash: $receipt->fiscal_hash,
+            genesisSeed: $receipt->terminal->genesis_seed,
         );
     }
 

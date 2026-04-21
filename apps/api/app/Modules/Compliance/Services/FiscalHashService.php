@@ -100,14 +100,23 @@ final class FiscalHashService
     /**
      * Verify a single document's hash.
      *
+     * The $genesisSeed parameter MUST be supplied (matching the value used at
+     * post time) whenever $previousHash is null; otherwise genesis documents
+     * will spuriously fail verification. For chained documents (non-null
+     * $previousHash) the seed is ignored and may be omitted.
+     *
      * @param  string  $input  The serialized document data
      * @param  string|null  $previousHash  The previous document's hash
      * @param  string  $storedHash  The hash stored with the document
+     * @param  string|null  $genesisSeed  Company/terminal-specific seed used when the document is the genesis of its chain
      * @return bool True if the hash is valid
      */
-    public function verifyHash(string $input, ?string $previousHash, string $storedHash): bool
+    public function verifyHash(string $input, ?string $previousHash, string $storedHash, ?string $genesisSeed = null): bool
     {
-        return $this->calculateHash($input, $previousHash) === $storedHash;
+        return hash_equals(
+            $this->calculateHash($input, $previousHash, $genesisSeed),
+            $storedHash,
+        );
     }
 
     /**
