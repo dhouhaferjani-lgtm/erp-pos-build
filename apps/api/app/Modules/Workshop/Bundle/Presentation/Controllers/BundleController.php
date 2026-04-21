@@ -90,7 +90,7 @@ class BundleController extends Controller
         ));
 
         return response()->json([
-            'data' => ServiceBundleData::fromModel($bundle->load(['components', 'vehicleApplicabilities'])),
+            'data' => ServiceBundleData::fromModel($bundle->load(['components.product', 'components.service', 'components.nestedBundle', 'components.unit', 'vehicleApplicabilities'])),
         ], 201);
     }
 
@@ -147,7 +147,7 @@ class BundleController extends Controller
         ));
 
         return response()->json([
-            'data' => ServiceBundleData::fromModel($bundle->load(['components', 'vehicleApplicabilities'])),
+            'data' => ServiceBundleData::fromModel($bundle->load(['components.product', 'components.service', 'components.nestedBundle', 'components.unit', 'vehicleApplicabilities'])),
         ]);
     }
 

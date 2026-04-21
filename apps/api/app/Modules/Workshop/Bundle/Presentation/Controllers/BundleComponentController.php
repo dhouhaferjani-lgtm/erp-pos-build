@@ -44,17 +44,33 @@ class BundleComponentController extends Controller
 
         $data = $request->validated();
 
-        $component = $this->authoring->addComponent(new AddComponentCommand(
-            bundle_id: $bundleId,
-            component_type: BundleComponentType::from($data['component_type']),
-            component_id: $data['component_id'],
-            quantity: (string) $data['quantity'],
-            unit_id: $data['unit_id'],
-            override_unit_price: isset($data['override_unit_price']) ? (string) $data['override_unit_price'] : null,
-            is_optional: (bool) ($data['is_optional'] ?? false),
-            display_order: (int) ($data['display_order'] ?? 0),
-            notes: $data['notes'] ?? null,
-        ));
+        try {
+            $component = $this->authoring->addComponent(new AddComponentCommand(
+                bundle_id: $bundleId,
+                component_type: BundleComponentType::from($data['component_type']),
+                component_id: $data['component_id'],
+                quantity: (string) $data['quantity'],
+                unit_id: $data['unit_id'],
+                override_unit_price: isset($data['override_unit_price']) ? (string) $data['override_unit_price'] : null,
+                is_optional: (bool) ($data['is_optional'] ?? false),
+                display_order: (int) ($data['display_order'] ?? 0),
+                notes: $data['notes'] ?? null,
+            ));
+        } catch (BundleCycleException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'BUNDLE_CYCLE',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        } catch (InvalidArgumentException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'VALIDATION_ERROR',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        }
 
         return response()->json([
             'data' => ServiceBundleComponentData::fromModel($component->load(['product', 'service', 'nestedBundle', 'unit'])),
