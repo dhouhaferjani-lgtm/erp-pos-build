@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Workshop\Technician\Presentation\Controllers\TechnicianCertificationController;
 use App\Modules\Workshop\Technician\Presentation\Controllers\TechnicianProfileController;
+use App\Modules\Workshop\Technician\Presentation\Controllers\TechnicianTimeOffController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -49,4 +50,19 @@ Route::prefix('api/v1')
         Route::delete('/workshop/technicians/{technicianId}/certifications/{certificationId}', [TechnicianCertificationController::class, 'destroy'])
             ->middleware('can:workshop.technicians.manage_certifications')
             ->name('workshop.technicians.certifications.destroy');
+
+        // --- Time-off CRUD (Phase A.4) ---------------------------------
+        // `index` uses no `can:` gate — the controller does a self-view check
+        // so technicians can see their own entries even without the view perm.
+        Route::get('/workshop/technicians/{technicianId}/time-off', [TechnicianTimeOffController::class, 'index'])
+            ->name('workshop.technicians.time-off.index');
+        Route::post('/workshop/technicians/{technicianId}/time-off', [TechnicianTimeOffController::class, 'store'])
+            ->middleware('can:workshop.technicians.manage_time_off')
+            ->name('workshop.technicians.time-off.store');
+        Route::patch('/workshop/technicians/{technicianId}/time-off/{timeOffId}', [TechnicianTimeOffController::class, 'update'])
+            ->middleware('can:workshop.technicians.manage_time_off')
+            ->name('workshop.technicians.time-off.update');
+        Route::delete('/workshop/technicians/{technicianId}/time-off/{timeOffId}', [TechnicianTimeOffController::class, 'destroy'])
+            ->middleware('can:workshop.technicians.manage_time_off')
+            ->name('workshop.technicians.time-off.destroy');
     });
