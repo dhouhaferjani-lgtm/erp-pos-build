@@ -110,5 +110,13 @@
     "unassigned": "Unassigned",
     "done": "Done",
     "mileageKm": "{{value}} km"
+  },
+  "transitions": {
+    "errors": {
+      "work_order_no_lines": "Cannot invoice: add at least one line item first.",
+      "invalid_transition": "This transition isn't allowed from the current status.",
+      "work_order_stale": "This work order was updated by someone else. Please refresh and try again.",
+      "generic": "Could not update work order. Please try again."
+    }
   }
 }

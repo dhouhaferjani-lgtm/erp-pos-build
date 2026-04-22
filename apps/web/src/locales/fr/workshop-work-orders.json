@@ -110,5 +110,13 @@
     "unassigned": "Non affecté",
     "done": "Terminé",
     "mileageKm": "{{value}} km"
+  },
+  "transitions": {
+    "errors": {
+      "work_order_no_lines": "Facturation impossible : ajoutez d'abord au moins une ligne.",
+      "invalid_transition": "Cette transition n'est pas autorisée depuis le statut actuel.",
+      "work_order_stale": "Cet ordre de travail a été modifié ailleurs. Veuillez actualiser et réessayer.",
+      "generic": "Impossible de mettre à jour l'ordre de travail. Veuillez réessayer."
+    }
   }
 }
