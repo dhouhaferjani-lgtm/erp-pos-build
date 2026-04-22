@@ -19,6 +19,7 @@ import {
   useWorkOrder,
 } from '../hooks/useWorkOrders'
 import type { WorkOrderStatus } from '../types'
+import { createMutationErrorHandler } from './handleMutationError'
 
 export function WorkOrderDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -69,14 +70,21 @@ export function WorkOrderDetailPage() {
   }
 
   const redactFinancials = wo.estimated_totals === null && wo.actual_totals === null
+  const handleMutationError = createMutationErrorHandler(t)
   const handleTransition = (to: WorkOrderStatus) => {
-    transitionMutation.mutate({ to_status: to })
+    transitionMutation.mutate({ to_status: to }, { onError: handleMutationError })
   }
   const handleApprove = () => {
-    approveMutation.mutate({ approval_method: 'in_person' })
+    approveMutation.mutate(
+      { approval_method: 'in_person' },
+      { onError: handleMutationError },
+    )
   }
   const handleCancel = () => {
-    cancelMutation.mutate({ reason_code: 'customer_declined' })
+    cancelMutation.mutate(
+      { reason_code: 'customer_declined' },
+      { onError: handleMutationError },
+    )
   }
   const handleComplete = () => {
     setIsCompleteDialogOpen(true)
@@ -91,6 +99,7 @@ export function WorkOrderDetailPage() {
         onSuccess: () => {
           setIsCompleteDialogOpen(false)
         },
+        onError: handleMutationError,
       },
     )
   }
@@ -124,6 +133,14 @@ export function WorkOrderDetailPage() {
                 <ApprovalBadge method={wo.approval_method} capturedAt={wo.approval_captured_at} />
               )}
             </div>
+            {wo.invoice_document_id !== null && (
+              <Link
+                to={`/sales/invoices/${wo.invoice_document_id}`}
+                className={`mt-2 inline-flex items-center gap-1 text-sm ${textColors.secondary} hover:text-slate-900`}
+              >
+                {t('detail.invoice_link', { number: wo.invoice_document_id.slice(0, 8) })}
+              </Link>
+            )}
           </div>
           <TransitionBar
             current={wo.status}

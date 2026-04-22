@@ -48,9 +48,11 @@ use App\Modules\Workshop\Technician\Domain\Enums\SkillLevel;
 use App\Modules\Workshop\Technician\Domain\Enums\SpecialtyCode;
 use App\Modules\Workshop\Technician\Domain\TechnicianCertification;
 use App\Modules\Workshop\Technician\Domain\TechnicianProfile;
+use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderLineType;
 use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderStatus;
 use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderType;
 use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
+use App\Modules\Workshop\WorkOrder\Domain\WorkOrderLine;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -1039,21 +1041,136 @@ class DemoTenantSeeder extends Seeder
                     WorkOrderStatus::Completed,
                 ], true) ? $openedBy->id : null,
                 'currency' => $currency,
-                'estimated_parts_total' => '0.000',
-                'estimated_labor_total' => '0.000',
+                'estimated_parts_total' => $i === 4 ? '110.000' : '0.000',
+                'estimated_labor_total' => $i === 4 ? '33.750' : '0.000',
                 'estimated_other_total' => '0.000',
-                'estimated_tax_total' => '0.000',
-                'estimated_grand_total' => $estTotal,
-                'actual_parts_total' => '0.000',
-                'actual_labor_total' => '0.000',
+                'estimated_tax_total' => $i === 4 ? '27.312' : '0.000',
+                'estimated_grand_total' => $i === 4 ? '171.062' : $estTotal,
+                'actual_parts_total' => $i === 4 ? '110.000' : '0.000',
+                'actual_labor_total' => $i === 4 ? '33.750' : '0.000',
                 'actual_other_total' => '0.000',
-                'actual_tax_total' => '0.000',
-                'actual_grand_total' => $status === WorkOrderStatus::Completed ? $estTotal : '0.000',
+                'actual_tax_total' => $i === 4 ? '27.312' : '0.000',
+                'actual_grand_total' => $i === 4
+                    ? '171.062'
+                    : ($status === WorkOrderStatus::Completed ? $estTotal : '0.000'),
             ]);
             $wo->save();
+
+            // Attach 3 demo lines to the Completed WO (index 4) so the
+            // WO → Invoice E2E flow is walkable and the invoice back-link
+            // (BUG-2) has real content to anchor against. Other WOs stay
+            // line-less to keep the seeder deterministic.
+            if ($i === 4) {
+                $this->seedCompletedWorkOrderLines($tenant, $wo);
+            }
         }
 
         $this->command->line('  - Seeded 5 demo work orders across statuses.');
+    }
+
+    /**
+     * Attach 3 line items (2 parts + 1 labor) to the Completed demo WO using
+     * existing seeded products / services. Snapshots the price/tax columns
+     * inline so the line totals stay coherent even if the catalog rates drift
+     * later.
+     *
+     * Pre-computed totals:
+     *   parts (excl)  = 85.000 + 25.000 = 110.000
+     *   labor (excl)  = 33.750
+     *   tax           = 16.150 + 4.750 + 6.412 = 27.312
+     *   grand (incl)  = 101.150 + 29.750 + 40.162 = 171.062
+     *
+     * Note: the labor tax is bcmath-truncated, not rounded. The production
+     * CurrencyScale::bcformat() path uses bcadd($str, '0', $scale) which
+     * truncates, so 0.750 * 45.000 * 0.19 = 6.4125 becomes '6.412', not
+     * '6.413'. The 2 part lines hit exact arithmetic (no rounding ambiguity).
+     */
+    private function seedCompletedWorkOrderLines(Tenant $tenant, WorkOrder $wo): void
+    {
+        $oilProduct = Product::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('sku', 'OIL-5W30-5L')
+            ->firstOrFail();
+
+        $filterProduct = Product::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('sku', 'FILT-OIL-STD')
+            ->firstOrFail();
+
+        $laborService = Service::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('code', 'LAB-OIL-CHANGE')
+            ->firstOrFail();
+
+        $now = now();
+
+        WorkOrderLine::query()->create([
+            'tenant_id' => $tenant->id,
+            'work_order_id' => $wo->id,
+            'line_type' => WorkOrderLineType::Part->value,
+            'display_order' => 0,
+            'product_id' => $oilProduct->id,
+            'display_name' => $oilProduct->name,
+            'sku_or_code' => 'OIL-5W30-5L',
+            'quantity' => '1.000',
+            'unit' => 'L',
+            'unit_price' => '85.000',
+            'tax_rate' => '19.000',
+            'discount_percent' => '0.00',
+            'line_total_excl_tax' => '85.000',
+            'line_total_tax' => '16.150',
+            'line_total_incl_tax' => '101.150',
+            'is_customer_supplied' => false,
+            'is_bundle_informational' => false,
+            'is_completed' => true,
+            'completed_at' => $now,
+        ]);
+
+        WorkOrderLine::query()->create([
+            'tenant_id' => $tenant->id,
+            'work_order_id' => $wo->id,
+            'line_type' => WorkOrderLineType::Part->value,
+            'display_order' => 1,
+            'product_id' => $filterProduct->id,
+            'display_name' => $filterProduct->name,
+            'sku_or_code' => 'FILT-OIL-STD',
+            'quantity' => '1.000',
+            'unit' => 'EA',
+            'unit_price' => '25.000',
+            'tax_rate' => '19.000',
+            'discount_percent' => '0.00',
+            'line_total_excl_tax' => '25.000',
+            'line_total_tax' => '4.750',
+            'line_total_incl_tax' => '29.750',
+            'is_customer_supplied' => false,
+            'is_bundle_informational' => false,
+            'is_completed' => true,
+            'completed_at' => $now,
+        ]);
+
+        WorkOrderLine::query()->create([
+            'tenant_id' => $tenant->id,
+            'work_order_id' => $wo->id,
+            'line_type' => WorkOrderLineType::Labor->value,
+            'display_order' => 2,
+            'service_id' => $laborService->id,
+            'display_name' => $laborService->name,
+            'sku_or_code' => 'LAB-OIL-CHANGE',
+            'quantity' => '0.750',
+            'unit' => 'HR',
+            'unit_price' => '45.000',
+            'tax_rate' => '19.000',
+            'discount_percent' => '0.00',
+            'line_total_excl_tax' => '33.750',
+            'line_total_tax' => '6.412',
+            'line_total_incl_tax' => '40.162',
+            'labor_hours_estimated' => '0.75',
+            'labor_hours_actual' => '0.75',
+            'is_customer_supplied' => false,
+            'is_bundle_informational' => false,
+            'is_completed' => true,
+            'completed_at' => $now,
+        ]);
     }
 
     /**

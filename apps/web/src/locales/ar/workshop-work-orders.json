@@ -19,7 +19,8 @@
     "assignments": "الإسناد",
     "noAssignments": "لا يوجد فنيّون مُسنَدون.",
     "lead": "المسؤول",
-    "history": "السجلّ"
+    "history": "السجلّ",
+    "invoice_link": "عرض الفاتورة #{{number}}"
   },
   "complete_dialog": {
     "title": "إتمام أمر العمل",
@@ -30,7 +31,9 @@
   },
   "create": {
     "title": "أمر عمل جديد",
-    "subtitle": "ابدأ عملًا جديدًا من الاستلام."
+    "subtitle": "ابدأ عملًا جديدًا من الاستلام.",
+    "customer_label": "العميل",
+    "vehicle_label": "المركبة"
   },
   "filters": {
     "status": "الحالة",
@@ -89,8 +92,6 @@
   },
   "fields": {
     "type": "النوع",
-    "customerPartnerId": "العميل (معرّف الشريك UUID)",
-    "vehicleId": "معرّف المركبة UUID",
     "currency": "العملة",
     "customerComplaint": "شكوى العميل"
   },
@@ -110,5 +111,13 @@
     "unassigned": "غير مُسنَد",
     "done": "منجز",
     "mileageKm": "{{value}} كم"
+  },
+  "transitions": {
+    "errors": {
+      "work_order_no_lines": "تعذّرت الفوترة: أضف بندًا واحدًا على الأقل أولًا.",
+      "invalid_transition": "هذا الانتقال غير مسموح به من الحالة الحالية.",
+      "work_order_stale": "تم تحديث طلب العمل من قِبَل مستخدم آخر. يُرجى التحديث وإعادة المحاولة.",
+      "generic": "تعذّر تحديث طلب العمل. يُرجى المحاولة مرة أخرى."
+    }
   }
 }

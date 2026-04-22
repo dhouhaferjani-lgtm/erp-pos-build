@@ -19,7 +19,8 @@
     "assignments": "Affectations",
     "noAssignments": "Aucun technicien affecté.",
     "lead": "Responsable",
-    "history": "Historique"
+    "history": "Historique",
+    "invoice_link": "Voir la facture #{{number}}"
   },
   "complete_dialog": {
     "title": "Clôturer l'ordre de réparation",
@@ -30,7 +31,9 @@
   },
   "create": {
     "title": "Nouvel ordre",
-    "subtitle": "Démarrer un travail depuis la réception."
+    "subtitle": "Démarrer un travail depuis la réception.",
+    "customer_label": "Client",
+    "vehicle_label": "Véhicule"
   },
   "filters": {
     "status": "Statut",
@@ -89,8 +92,6 @@
   },
   "fields": {
     "type": "Type",
-    "customerPartnerId": "Client (UUID partenaire)",
-    "vehicleId": "UUID véhicule",
     "currency": "Devise",
     "customerComplaint": "Plainte client"
   },
@@ -110,5 +111,13 @@
     "unassigned": "Non affecté",
     "done": "Terminé",
     "mileageKm": "{{value}} km"
+  },
+  "transitions": {
+    "errors": {
+      "work_order_no_lines": "Facturation impossible : ajoutez d'abord au moins une ligne.",
+      "invalid_transition": "Cette transition n'est pas autorisée depuis le statut actuel.",
+      "work_order_stale": "Cet ordre de travail a été modifié ailleurs. Veuillez actualiser et réessayer.",
+      "generic": "Impossible de mettre à jour l'ordre de travail. Veuillez réessayer."
+    }
   }
 }
