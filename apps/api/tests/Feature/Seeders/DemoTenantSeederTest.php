@@ -18,6 +18,7 @@ use App\Modules\Workshop\Bundle\Domain\Enums\BundleComponentType;
 use App\Modules\Workshop\Bundle\Domain\ServiceBundle;
 use App\Modules\Workshop\Bundle\Domain\ServiceBundleComponent;
 use App\Modules\Workshop\Technician\Domain\TechnicianProfile;
+use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderStatus;
 use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
 use Database\Seeders\DemoTenantSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -373,12 +374,13 @@ final class DemoTenantSeederTest extends TestCase
         $tenant = $this->getDemoTenant();
 
         $woWithLines = WorkOrder::where('tenant_id', $tenant->id)
+            ->where('status', WorkOrderStatus::Completed)
             ->has('lines')
             ->first();
 
         $this->assertNotNull(
             $woWithLines,
-            'At least one seeded work order must have work_order_lines so E2E WO→Invoice flow is walkable.'
+            'The Completed seeded WO must have work_order_lines so E2E WO→Invoice flow is walkable.'
         );
 
         $this->assertGreaterThanOrEqual(

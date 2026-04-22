@@ -1044,14 +1044,14 @@ class DemoTenantSeeder extends Seeder
                 'estimated_parts_total' => $i === 4 ? '110.000' : '0.000',
                 'estimated_labor_total' => $i === 4 ? '33.750' : '0.000',
                 'estimated_other_total' => '0.000',
-                'estimated_tax_total' => $i === 4 ? '27.313' : '0.000',
-                'estimated_grand_total' => $i === 4 ? '171.063' : $estTotal,
+                'estimated_tax_total' => $i === 4 ? '27.312' : '0.000',
+                'estimated_grand_total' => $i === 4 ? '171.062' : $estTotal,
                 'actual_parts_total' => $i === 4 ? '110.000' : '0.000',
                 'actual_labor_total' => $i === 4 ? '33.750' : '0.000',
                 'actual_other_total' => '0.000',
-                'actual_tax_total' => $i === 4 ? '27.313' : '0.000',
+                'actual_tax_total' => $i === 4 ? '27.312' : '0.000',
                 'actual_grand_total' => $i === 4
-                    ? '171.063'
+                    ? '171.062'
                     : ($status === WorkOrderStatus::Completed ? $estTotal : '0.000'),
             ]);
             $wo->save();
@@ -1077,8 +1077,13 @@ class DemoTenantSeeder extends Seeder
      * Pre-computed totals:
      *   parts (excl)  = 85.000 + 25.000 = 110.000
      *   labor (excl)  = 33.750
-     *   tax           = 16.150 + 4.750 + 6.413 = 27.313
-     *   grand (incl)  = 101.150 + 29.750 + 40.163 = 171.063
+     *   tax           = 16.150 + 4.750 + 6.412 = 27.312
+     *   grand (incl)  = 101.150 + 29.750 + 40.162 = 171.062
+     *
+     * Note: the labor tax is bcmath-truncated, not rounded. The production
+     * CurrencyScale::bcformat() path uses bcadd($str, '0', $scale) which
+     * truncates, so 0.750 * 45.000 * 0.19 = 6.4125 becomes '6.412', not
+     * '6.413'. The 2 part lines hit exact arithmetic (no rounding ambiguity).
      */
     private function seedCompletedWorkOrderLines(Tenant $tenant, WorkOrder $wo): void
     {
@@ -1157,8 +1162,8 @@ class DemoTenantSeeder extends Seeder
             'tax_rate' => '19.000',
             'discount_percent' => '0.00',
             'line_total_excl_tax' => '33.750',
-            'line_total_tax' => '6.413',
-            'line_total_incl_tax' => '40.163',
+            'line_total_tax' => '6.412',
+            'line_total_incl_tax' => '40.162',
             'labor_hours_estimated' => '0.75',
             'labor_hours_actual' => '0.75',
             'is_customer_supplied' => false,
