@@ -19,7 +19,8 @@
     "assignments": "Affectations",
     "noAssignments": "Aucun technicien affecté.",
     "lead": "Responsable",
-    "history": "Historique"
+    "history": "Historique",
+    "invoice_link": "Voir la facture #{{number}}"
   },
   "complete_dialog": {
     "title": "Clôturer l'ordre de réparation",

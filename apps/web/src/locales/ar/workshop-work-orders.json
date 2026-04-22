@@ -19,7 +19,8 @@
     "assignments": "الإسناد",
     "noAssignments": "لا يوجد فنيّون مُسنَدون.",
     "lead": "المسؤول",
-    "history": "السجلّ"
+    "history": "السجلّ",
+    "invoice_link": "عرض الفاتورة #{{number}}"
   },
   "complete_dialog": {
     "title": "إتمام أمر العمل",

@@ -19,7 +19,8 @@
     "assignments": "Assignments",
     "noAssignments": "No technicians assigned.",
     "lead": "Lead",
-    "history": "History"
+    "history": "History",
+    "invoice_link": "View invoice #{{number}}"
   },
   "complete_dialog": {
     "title": "Complete work order",

@@ -133,6 +133,14 @@ export function WorkOrderDetailPage() {
                 <ApprovalBadge method={wo.approval_method} capturedAt={wo.approval_captured_at} />
               )}
             </div>
+            {wo.invoice_document_id !== null && (
+              <Link
+                to={`/sales/invoices/${wo.invoice_document_id}`}
+                className={`mt-2 inline-flex items-center gap-1 text-sm ${textColors.secondary} hover:text-slate-900`}
+              >
+                {t('detail.invoice_link', { number: wo.invoice_document_id.slice(0, 8) })}
+              </Link>
+            )}
           </div>
           <TransitionBar
             current={wo.status}
