@@ -31,7 +31,9 @@
   },
   "create": {
     "title": "New work order",
-    "subtitle": "Start a new job from intake."
+    "subtitle": "Start a new job from intake.",
+    "customer_label": "Customer",
+    "vehicle_label": "Vehicle"
   },
   "filters": {
     "status": "Status",
@@ -90,8 +92,6 @@
   },
   "fields": {
     "type": "Type",
-    "customerPartnerId": "Customer (partner UUID)",
-    "vehicleId": "Vehicle UUID",
     "currency": "Currency",
     "customerComplaint": "Customer complaint"
   },

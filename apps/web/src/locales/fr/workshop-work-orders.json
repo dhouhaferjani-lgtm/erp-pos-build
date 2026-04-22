@@ -31,7 +31,9 @@
   },
   "create": {
     "title": "Nouvel ordre",
-    "subtitle": "Démarrer un travail depuis la réception."
+    "subtitle": "Démarrer un travail depuis la réception.",
+    "customer_label": "Client",
+    "vehicle_label": "Véhicule"
   },
   "filters": {
     "status": "Statut",
@@ -90,8 +92,6 @@
   },
   "fields": {
     "type": "Type",
-    "customerPartnerId": "Client (UUID partenaire)",
-    "vehicleId": "UUID véhicule",
     "currency": "Devise",
     "customerComplaint": "Plainte client"
   },

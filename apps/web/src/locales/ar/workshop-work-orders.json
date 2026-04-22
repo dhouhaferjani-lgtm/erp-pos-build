@@ -31,7 +31,9 @@
   },
   "create": {
     "title": "أمر عمل جديد",
-    "subtitle": "ابدأ عملًا جديدًا من الاستلام."
+    "subtitle": "ابدأ عملًا جديدًا من الاستلام.",
+    "customer_label": "العميل",
+    "vehicle_label": "المركبة"
   },
   "filters": {
     "status": "الحالة",
@@ -90,8 +92,6 @@
   },
   "fields": {
     "type": "النوع",
-    "customerPartnerId": "العميل (معرّف الشريك UUID)",
-    "vehicleId": "معرّف المركبة UUID",
     "currency": "العملة",
     "customerComplaint": "شكوى العميل"
   },

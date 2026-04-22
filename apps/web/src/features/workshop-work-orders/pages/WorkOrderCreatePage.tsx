@@ -122,7 +122,7 @@ export function WorkOrderCreatePage() {
           <PartnerPicker
             value={customer}
             onChange={handleCustomerChange}
-            label={t('fields.customerPartnerId')}
+            label={t('create.customer_label')}
             partnerType="customer"
             required
             testId="work-order-customer-picker"
@@ -132,7 +132,7 @@ export function WorkOrderCreatePage() {
           <VehiclePicker
             value={vehicle}
             onChange={setVehicle}
-            label={t('fields.vehicleId')}
+            label={t('create.vehicle_label')}
             required
             disabled={customer === null}
             {...(customer !== null ? { partnerId: customer.id } : {})}
