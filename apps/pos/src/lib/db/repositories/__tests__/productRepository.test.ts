@@ -26,7 +26,7 @@ describe('productRepository.deleteProducts', () => {
 
     expect(execute).toHaveBeenCalledTimes(1);
     const [, sql, params] = vi.mocked(execute).mock.calls[0]!;
-    expect(sql).toMatch(/DELETE FROM products WHERE id IN \(\$1, \$2, \$3\)/);
+    expect(sql).toContain('DELETE FROM products WHERE id IN ($1, $2, $3)');
     expect(params).toEqual(['p1', 'p2', 'p3']);
   });
 
