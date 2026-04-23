@@ -432,6 +432,39 @@ final class MenuCrudTest extends TestCase
         $this->assertNotContains('Mocha', $names);
     }
 
+    public function test_active_menu_excludes_soft_deleted_products(): void
+    {
+        $menu = $this->createMenu(['is_default' => true]);
+        $category = $menu->categories()->create(['name' => 'Shop', 'is_active' => true]);
+        $kept = $this->createProduct(['name' => 'Water', 'sale_price' => '1.50']);
+        $deleted = $this->createProduct(['name' => 'Soda', 'sale_price' => '2.00']);
+
+        MenuCategoryItem::create([
+            'menu_category_id' => $category->id,
+            'composite_item_id' => null,
+            'product_id' => $kept->id,
+            'display_order' => 0,
+            'is_available' => true,
+        ]);
+        MenuCategoryItem::create([
+            'menu_category_id' => $category->id,
+            'composite_item_id' => null,
+            'product_id' => $deleted->id,
+            'display_order' => 1,
+            'is_available' => true,
+        ]);
+
+        $deleted->delete();
+
+        $response = $this->getJson('/api/v1/active-menu');
+
+        $response->assertOk();
+        $items = $response->json('data.categories.0.items');
+        $names = array_column($items, 'name');
+        $this->assertContains('Water', $names);
+        $this->assertNotContains('Soda', $names);
+    }
+
     /**
      * @requires extension pdo_pgsql
      */
