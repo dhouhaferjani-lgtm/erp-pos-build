@@ -33,6 +33,7 @@ vi.mock('@/lib/db/repositories/syncLogRepository', () => ({
 
 vi.mock('@/lib/db/repositories/productRepository', () => ({
   upsertProducts: vi.fn().mockResolvedValue(undefined),
+  deleteProducts: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/lib/db/repositories/paymentRepository', () => ({
@@ -73,7 +74,7 @@ import {
   incrementRetryCount,
   setServerReceiptId,
 } from '@/lib/db/repositories/offlineReceiptRepository';
-import { upsertProducts } from '@/lib/db/repositories/productRepository';
+import { upsertProducts, deleteProducts } from '@/lib/db/repositories/productRepository';
 import { upsertTerminalState } from '@/lib/db/repositories/terminalStateRepository';
 import { computeGenesisHash } from '@/lib/fiscal/hashService';
 import { makeOfflineReceipt } from '@/test/helpers';
@@ -354,6 +355,29 @@ describe('syncService', () => {
 
       expect(count).toBe(0);
       expect(upsertProducts).not.toHaveBeenCalled();
+    });
+
+    it('processes deleted_ids from the tombstone response', async () => {
+      vi.mocked(apiGet).mockResolvedValue({
+        data: [{ id: 'p1', name: 'Widget', sku: 'W-001', sale_price: '10.00', stock_quantity: 50 }],
+        deleted_ids: ['gone-1', 'gone-2'],
+      });
+
+      const count = await pullProducts(db);
+
+      expect(count).toBe(1);
+      expect(upsertProducts).toHaveBeenCalledWith(db, expect.any(Array));
+      expect(deleteProducts).toHaveBeenCalledWith(db, ['gone-1', 'gone-2']);
+    });
+
+    it('does not call deleteProducts when deleted_ids is absent', async () => {
+      vi.mocked(apiGet).mockResolvedValue({
+        data: [{ id: 'p1', name: 'Widget', sku: 'W-001', sale_price: '10.00', stock_quantity: 50 }],
+      });
+
+      await pullProducts(db);
+
+      expect(deleteProducts).not.toHaveBeenCalled();
     });
   });
 
