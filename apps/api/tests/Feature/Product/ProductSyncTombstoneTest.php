@@ -90,6 +90,37 @@ final class ProductSyncTombstoneTest extends TestCase
 
         $response->assertOk();
         $payload = $response->json();
+        $this->assertArrayHasKey('meta', $payload);
         $this->assertArrayNotHasKey('deleted_ids', $payload);
+    }
+
+    public function test_deleted_ids_does_not_leak_tombstones_from_another_tenant(): void
+    {
+        // Arrange: a separate tenant with its own company
+        $otherTenant = Tenant::factory()->create();
+        $otherCompany = Company::factory()->create(['tenant_id' => $otherTenant->id]);
+
+        $cursor = now()->subMinute()->toIso8601String();
+
+        // Soft-delete a product that belongs to otherTenant/otherCompany
+        $crossTenantDoomed = Product::create([
+            'tenant_id' => $otherTenant->id,
+            'company_id' => $otherCompany->id,
+            'name' => 'Cross-Tenant Doomed',
+            'sku' => 'CT-DOOM-001',
+            'is_physical' => true,
+            'sale_price' => '9.00',
+            'tax_rate' => 7.00,
+            'is_active' => true,
+        ]);
+        $crossTenantDoomed->delete();
+
+        // Act: authenticated as tenant A, request tombstones
+        $response = $this->getJson('/api/v1/products?updated_since='.urlencode($cursor));
+
+        $response->assertOk();
+
+        // Assert: the other tenant's deleted product UUID must NOT appear
+        $this->assertNotContains($crossTenantDoomed->id, $response->json('deleted_ids'));
     }
 }

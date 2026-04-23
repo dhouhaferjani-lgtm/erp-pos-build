@@ -104,6 +104,7 @@ class ProductController extends Controller
                 $cursor = Carbon::parse($updatedSince);
                 /** @var array<int, string> $deletedIds */
                 $deletedIds = Product::onlyTrashed()
+                    ->where('tenant_id', $company->tenant_id)
                     ->where('company_id', $companyId)
                     ->where('deleted_at', '>=', $cursor)
                     ->pluck('id')
