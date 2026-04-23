@@ -1,7 +1,34 @@
 import { test, expect } from './fixtures'
 
 // ---------------------------------------------------------------------------
-// Mock data
+// Test suite: Composite item delete (BG7 + UB3)
+//
+// HOW TESTS ARE SPLIT
+// -------------------
+//
+// Test 1 — "cancel in ConfirmDialog leaves item in the list"
+//   UI-only: does NOT require a live backend. Runs in CI with the composite-
+//   items list mocked via page.route(). The /active-menu endpoint is NOT
+//   touched by this test.
+//
+// Test 2 — "delete from list page removes item from /active-menu"
+//   LIVE-BACKEND REQUIRED. Guarded by the E2E_LIVE_BACKEND env var.
+//   Asserts that after a real DELETE request the backend's /active-menu
+//   query no longer returns the deleted item — this is the cross-surface
+//   assertion that cannot be made meaningful with a mocked response.
+//
+//   Prerequisites to run:
+//     export E2E_LIVE_BACKEND=1
+//     # API server listening at http://localhost:8080
+//     # Web dev server listening at http://localhost:5173
+//     # Tenant DB seeded with at least one composite item (e.g. via
+//     #   php artisan db:seed --class=CompositeItemSeeder)
+//     pnpm exec playwright test e2e/composite-item-delete.spec.ts
+//
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Mock data — used only by the UI-only cancel test
 // ---------------------------------------------------------------------------
 
 const ITEM_ID = 'ci-uuid-0001-0000-0000-000000000001'
@@ -32,60 +59,11 @@ const mockCompositeItems = [
   },
 ]
 
-// active-menu response that includes the item to be deleted
-const mockActiveMenuWithItem = {
-  id: 'menu-uuid-0001-0000-0000-000000000001',
-  name: 'Menu Principal',
-  description: null,
-  is_default: true,
-  categories: [
-    {
-      id: 'cat-uuid-0001-0000-0000-000000000001',
-      menu_id: 'menu-uuid-0001-0000-0000-000000000001',
-      name: 'Burgers',
-      description: null,
-      icon: null,
-      display_order: 1,
-      is_active: true,
-      items: [
-        {
-          id: 'pivot-uuid-0001',
-          sellable_id: ITEM_ID,
-          sellable_type: 'composite_item',
-          name: ITEM_NAME,
-          code: 'BURGER-01',
-          base_price: '12.5000',
-          override_price: null,
-          effective_price: '12.5000',
-          tax_rate: null,
-          display_order: 1,
-          is_available: true,
-          image_url: null,
-          modifier_groups: [],
-        },
-      ],
-      created_at: '2025-01-01T00:00:00Z',
-      updated_at: null,
-    },
-  ],
-}
-
-// active-menu response after deletion — the item is gone
-const mockActiveMenuWithoutItem = {
-  ...mockActiveMenuWithItem,
-  categories: [
-    {
-      ...mockActiveMenuWithItem.categories[0],
-      items: [],
-    },
-  ],
-}
-
 // ---------------------------------------------------------------------------
-// Tests
+// Describe block 1: UI-only tests (no live backend needed)
 // ---------------------------------------------------------------------------
 
-test.describe('Composite item delete (BG7 + UB3)', () => {
+test.describe('Composite item delete — UI-only (cancel flow)', () => {
   test.beforeEach(async ({ authenticatedPage: page }) => {
     // Mock composite-items list (paginated)
     await page.route('**/api/v1/composite-items**', (route) => {
@@ -109,78 +87,6 @@ test.describe('Composite item delete (BG7 + UB3)', () => {
     })
   })
 
-  // ---------------------------------------------------------------------------
-  // Test 1: delete row removes item from list and from /active-menu
-  // ---------------------------------------------------------------------------
-  test('delete from list page removes item from /active-menu', async ({ authenticatedPage: page }) => {
-    // Set up active-menu mock — first call returns item present, subsequent calls
-    // return the post-delete state (simulating the backend tombstone taking effect).
-    let activeMenuCallCount = 0
-    await page.route('**/api/v1/active-menu**', (route) => {
-      activeMenuCallCount++
-      const payload = activeMenuCallCount === 1 ? mockActiveMenuWithItem : mockActiveMenuWithoutItem
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: payload }),
-      })
-    })
-
-    // Mock the DELETE endpoint — returns 204 No Content on success
-    await page.route(`**/api/v1/composite-items/${ITEM_ID}`, (route) => {
-      if (route.request().method() === 'DELETE') {
-        route.fulfill({ status: 204 })
-      } else {
-        route.continue()
-      }
-    })
-
-    // Navigate to the composite-items list page
-    await page.goto('/catalog/composite-items')
-
-    // The first item's name must be visible in the table
-    const firstRow = page.locator('tbody tr').first()
-    await expect(firstRow).toBeVisible()
-    await expect(firstRow.locator('td').nth(1)).toHaveText(ITEM_NAME)
-
-    // Click the delete (trash) icon on the first row
-    await firstRow.getByRole('button', { name: /delete/i }).click()
-
-    // ConfirmDialog must appear — click the confirm button
-    const confirmDialog = page.locator('[role="dialog"], .fixed.inset-0')
-    await expect(confirmDialog).toBeVisible()
-    await page.getByRole('button', { name: /confirm/i }).click()
-
-    // After confirmation the row should disappear from the table body
-    await expect(page.locator('tbody')).not.toContainText(ITEM_NAME, { timeout: 5000 })
-
-    // -----------------------------------------------------------------------
-    // Cross-surface check: verify /active-menu no longer contains the item.
-    // We simulate a fresh active-menu fetch (the second call returns the
-    // post-delete payload) and assert the item name is absent.
-    // -----------------------------------------------------------------------
-    const activeMenuResponse = await page.request.get('/api/v1/active-menu', {
-      headers: { Accept: 'application/json' },
-    })
-    expect(activeMenuResponse.ok()).toBeTruthy()
-
-    const payload = (await activeMenuResponse.json()) as {
-      data: {
-        categories: Array<{
-          items: Array<{ name: string }>
-        }>
-      }
-    }
-
-    const itemNames = (payload.data?.categories ?? []).flatMap(
-      (c) => (c.items ?? []).map((i) => i.name),
-    )
-    expect(itemNames).not.toContain(ITEM_NAME)
-  })
-
-  // ---------------------------------------------------------------------------
-  // Test 2: cancel in ConfirmDialog leaves the row intact
-  // ---------------------------------------------------------------------------
   test('cancel in ConfirmDialog leaves item in the list', async ({ authenticatedPage: page }) => {
     await page.goto('/catalog/composite-items')
 
@@ -198,27 +104,80 @@ test.describe('Composite item delete (BG7 + UB3)', () => {
     // Dialog must close and item must still be in the table
     await expect(page.locator('tbody')).toContainText(ITEM_NAME)
   })
+})
 
-  // ---------------------------------------------------------------------------
-  // Test 3: /active-menu includes the composite item before deletion
-  // ---------------------------------------------------------------------------
-  test('/active-menu includes the composite item before any deletion', async ({ authenticatedPage: page }) => {
-    await page.route('**/api/v1/active-menu**', (route) => {
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: mockActiveMenuWithItem }),
-      })
-    })
+// ---------------------------------------------------------------------------
+// Describe block 2: live-backend tests (cross-surface assertion)
+// ---------------------------------------------------------------------------
 
-    await page.goto('/catalog/composite-items')
+test.describe('Composite item delete — live backend required (BG7 + UB3)', () => {
+  test('delete from list page removes item from /active-menu', async ({ authenticatedPage: page }) => {
+    test.skip(
+      !process.env['E2E_LIVE_BACKEND'],
+      'Requires live API (localhost:8080) + web server (localhost:5173) + seeded composite item. Set E2E_LIVE_BACKEND=1 to run.',
+    )
 
-    const activeMenuResponse = await page.request.get('/api/v1/active-menu', {
+    // -----------------------------------------------------------------------
+    // Pre-condition: /active-menu must include at least one item before delete.
+    // -----------------------------------------------------------------------
+    const beforeResponse = await page.request.get('/api/v1/active-menu', {
       headers: { Accept: 'application/json' },
     })
-    expect(activeMenuResponse.ok()).toBeTruthy()
+    expect(beforeResponse.ok(), '/active-menu must be reachable before delete').toBeTruthy()
 
-    const payload = (await activeMenuResponse.json()) as {
+    const beforePayload = (await beforeResponse.json()) as {
+      data: {
+        categories: Array<{
+          items: Array<{ name: string; sellable_id: string }>
+        }>
+      }
+    }
+
+    const allItemsBefore = (beforePayload.data?.categories ?? []).flatMap(
+      (c) => c.items ?? [],
+    )
+    expect(
+      allItemsBefore.length,
+      'Seed at least one composite item via CompositeItemSeeder before running this test',
+    ).toBeGreaterThan(0)
+
+    // Pick the first item visible in /active-menu to delete via the UI.
+    const targetItem = allItemsBefore[0]
+    const targetName = targetItem.name
+
+    // -----------------------------------------------------------------------
+    // Navigate to composite-items list and find the row for targetItem.
+    // -----------------------------------------------------------------------
+    await page.goto('/catalog/composite-items')
+
+    // Wait for the table to render
+    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 10_000 })
+
+    // Locate the row that matches the target item name
+    const targetRow = page.locator('tbody tr').filter({ hasText: targetName })
+    await expect(targetRow).toBeVisible({ timeout: 5_000 })
+
+    // Click the delete (trash) icon on that row
+    await targetRow.getByRole('button', { name: /delete/i }).click()
+
+    // ConfirmDialog must appear — click the confirm button
+    const confirmDialog = page.locator('[role="dialog"], .fixed.inset-0')
+    await expect(confirmDialog).toBeVisible()
+    await page.getByRole('button', { name: /confirm/i }).click()
+
+    // After confirmation the row should disappear from the table body
+    await expect(page.locator('tbody')).not.toContainText(targetName, { timeout: 5_000 })
+
+    // -----------------------------------------------------------------------
+    // Cross-surface check: /active-menu must no longer contain the deleted item.
+    // This hits the REAL backend — no mock — so it validates the tombstone query.
+    // -----------------------------------------------------------------------
+    const afterResponse = await page.request.get('/api/v1/active-menu', {
+      headers: { Accept: 'application/json' },
+    })
+    expect(afterResponse.ok(), '/active-menu must be reachable after delete').toBeTruthy()
+
+    const afterPayload = (await afterResponse.json()) as {
       data: {
         categories: Array<{
           items: Array<{ name: string }>
@@ -226,9 +185,9 @@ test.describe('Composite item delete (BG7 + UB3)', () => {
       }
     }
 
-    const itemNames = (payload.data?.categories ?? []).flatMap(
+    const itemNamesAfter = (afterPayload.data?.categories ?? []).flatMap(
       (c) => (c.items ?? []).map((i) => i.name),
     )
-    expect(itemNames).toContain(ITEM_NAME)
+    expect(itemNamesAfter, `"${targetName}" should have been removed from /active-menu by the tombstone`).not.toContain(targetName)
   })
 })
