@@ -6,7 +6,6 @@ namespace App\Modules\Product\Presentation\Controllers;
 
 use App\Enums\Vertical;
 use App\Modules\Company\Services\CompanyContext;
-use Carbon\Carbon;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -23,6 +22,7 @@ use App\Modules\Product\Presentation\Requests\CreateProductRequest;
 use App\Modules\Product\Presentation\Requests\UpdateProductRequest;
 use App\Support\Traits\FiltersAndSorts;
 use App\Support\Traits\PaginatesResults;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
