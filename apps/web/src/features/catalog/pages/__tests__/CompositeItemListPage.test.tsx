@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { CompositeItemListPage } from '../CompositeItemListPage'
 
 vi.mock('react-i18next', () => ({
@@ -46,6 +46,20 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
   return { ...actual, useQuery: () => mockUseQueryReturn }
 })
 
+const mockDeleteMutate = vi.fn().mockResolvedValue(undefined)
+
+vi.mock('../../hooks/useCompositeItems', () => ({
+  useCompositeItems: () => mockUseQueryReturn,
+  useDeleteCompositeItem: () => ({
+    mutateAsync: mockDeleteMutate,
+    isPending: false,
+  }),
+}))
+
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}))
+
 describe('CompositeItemListPage', () => {
   beforeEach(() => {
     mockUseQueryReturn = { data: mockPaginatedData, isLoading: false }
@@ -77,5 +91,24 @@ describe('CompositeItemListPage', () => {
     render(<CompositeItemListPage />)
     const link = screen.getByText('catalog:createCompositeItem')
     expect(link.closest('a')).toHaveAttribute('href', '/catalog/composite-items/new')
+  })
+
+  it('renders a delete button per row', () => {
+    render(<CompositeItemListPage />)
+    const deleteButtons = screen.getAllByRole('button', { name: /common:delete/i })
+    expect(deleteButtons).toHaveLength(2)
+  })
+
+  it('opens a confirm dialog when delete is clicked and calls mutate on confirm', async () => {
+    render(<CompositeItemListPage />)
+    const deleteButtons = screen.getAllByRole('button', { name: /common:delete/i })
+    fireEvent.click(deleteButtons[0]!)
+
+    const confirmButton = await screen.findByRole('button', { name: /common:confirm/i })
+    fireEvent.click(confirmButton)
+
+    await waitFor(() => {
+      expect(mockDeleteMutate).toHaveBeenCalledWith('1')
+    })
   })
 })

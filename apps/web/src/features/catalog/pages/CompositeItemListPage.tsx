@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
-import { Plus, Search, Upload } from 'lucide-react'
-import { useCompositeItems } from '../hooks/useCompositeItems'
+import { Plus, Search, Upload, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
+import { useCompositeItems, useDeleteCompositeItem } from '../hooks/useCompositeItems'
 import { useCompanyVerticalLabels } from '../hooks/useVerticalLabels'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import type { CompositeItemData } from '../types/compositeItem'
 
 export function CompositeItemListPage() {
@@ -11,10 +13,24 @@ export function CompositeItemListPage() {
   const getLabel = useCompanyVerticalLabels()
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
+  const [itemToDelete, setItemToDelete] = useState<CompositeItemData | null>(null)
 
   const { data, isLoading } = useCompositeItems({ search: search || undefined, page, per_page: 25 })
+  const deleteMutation = useDeleteCompositeItem()
   const items = data?.data ?? []
   const meta = data?.meta
+
+  const handleDeleteConfirm = async () => {
+    if (!itemToDelete) return
+    try {
+      await deleteMutation.mutateAsync(itemToDelete.id)
+      toast.success(t('catalog:deleteCompositeItemSuccess'))
+      setItemToDelete(null)
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      toast.error(t('catalog:deleteCompositeItemError', { error: errorMessage }))
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -68,6 +84,7 @@ export function CompositeItemListPage() {
                 <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:basePrice')}</th>
                 <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:productionType')}</th>
                 <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('catalog:isActive')}</th>
+                <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{t('common:table.actionsColumn')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 bg-white">
@@ -92,6 +109,16 @@ export function CompositeItemListPage() {
                     }`}>
                       {item.is_active ? t('common:active') : t('common:inactive')}
                     </span>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-4 text-sm">
+                    <button
+                      type="button"
+                      aria-label={t('common:delete')}
+                      onClick={() => { setItemToDelete(item) }}
+                      className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -124,6 +151,18 @@ export function CompositeItemListPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={itemToDelete !== null}
+        onClose={() => { setItemToDelete(null) }}
+        onConfirm={() => { void handleDeleteConfirm() }}
+        title={t('catalog:deleteCompositeItemTitle')}
+        message={t('catalog:deleteCompositeItemMessage', { name: itemToDelete?.name ?? '' })}
+        confirmText={t('common:confirm')}
+        cancelText={t('common:cancel')}
+        variant="danger"
+        isLoading={deleteMutation.isPending}
+      />
     </div>
   )
 }
