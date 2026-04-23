@@ -116,7 +116,7 @@ export function CompositeItemListPage() {
                       type="button"
                       aria-label={t('common:delete')}
                       onClick={() => { setItemToDelete(item) }}
-                      className={`rounded p-1 ${textColors.disabled} hover:${colors.error[50]} hover:${textColors.error} ${transitions.base}`}
+                      className={`rounded p-1 ${textColors.disabled} ${colors.hover.red50} ${textColors.hoverError} ${transitions.base}`}
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>

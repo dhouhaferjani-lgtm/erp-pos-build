@@ -76,6 +76,7 @@ export const colors = {
   hover: {
     gray50: 'hover:bg-gray-50',
     gray100: 'hover:bg-gray-100',
+    red50: 'hover:bg-red-50',
   },
 }
 
@@ -95,6 +96,7 @@ export const textColors = {
   brand: 'text-blue-600',
   hoverSecondary: 'hover:text-gray-600',
   hoverPrimary: 'hover:text-gray-900',
+  hoverError: 'hover:text-red-700',
 }
 
 /**

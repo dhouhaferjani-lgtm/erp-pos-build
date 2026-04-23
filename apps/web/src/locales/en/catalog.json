@@ -20,7 +20,7 @@
   "deleteCompositeItemTitle": "Delete composite item",
   "deleteCompositeItemMessage": "Are you sure you want to delete {{name}}?",
   "deleteCompositeItemSuccess": "Composite item deleted successfully",
-  "deleteCompositeItemError": "Failed to delete composite item",
+  "deleteCompositeItemError": "Failed to delete composite item: {{error}}",
   "noModifierGroups": "No modifier groups found",
   "details": "Details",
   "recipeTab": "Recipe",

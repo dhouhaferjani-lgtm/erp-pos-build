@@ -20,7 +20,7 @@
   "deleteCompositeItemTitle": "Supprimer cet article composé",
   "deleteCompositeItemMessage": "Êtes-vous sûr de vouloir supprimer {{name}} ?",
   "deleteCompositeItemSuccess": "Article composé supprimé avec succès",
-  "deleteCompositeItemError": "Échec de la suppression de l'article composé",
+  "deleteCompositeItemError": "Échec de la suppression de l'article composé : {{error}}",
   "noModifierGroups": "Aucun groupe de modificateurs trouvé",
   "details": "Détails",
   "recipeTab": "Recette",
