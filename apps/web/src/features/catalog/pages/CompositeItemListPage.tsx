@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { useCompositeItems, useDeleteCompositeItem } from '../hooks/useCompositeItems'
 import { useCompanyVerticalLabels } from '../hooks/useVerticalLabels'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { textColors, colors, transitions } from '@/lib/designTokens'
 import type { CompositeItemData } from '../types/compositeItem'
 
 export function CompositeItemListPage() {
@@ -115,7 +116,7 @@ export function CompositeItemListPage() {
                       type="button"
                       aria-label={t('common:delete')}
                       onClick={() => { setItemToDelete(item) }}
-                      className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                      className={`rounded p-1 ${textColors.disabled} hover:${colors.error[50]} hover:${textColors.error} ${transitions.base}`}
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
