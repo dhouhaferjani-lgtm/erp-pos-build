@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Input, FormField, Button, Select } from '@/components/atoms'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/molecules/Tabs/Tabs'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { tokens } from '@/lib/designTokens'
 import { useQuery } from '@tanstack/react-query'
 import { fetchLocations } from '@/features/location/api'
-import { useCompositeItem, useCreateCompositeItem, useUpdateCompositeItem, useCompositeItemAvailability } from '../hooks/useCompositeItems'
+import { useCompositeItem, useCreateCompositeItem, useUpdateCompositeItem, useDeleteCompositeItem, useCompositeItemAvailability } from '../hooks/useCompositeItems'
 import { useCreateRecipe } from '../hooks/useRecipes'
 import { RecipeLineEditor } from '../components/RecipeLineEditor'
 import { VariantEditor } from '../components/VariantEditor'
@@ -35,6 +36,21 @@ export function CompositeItemFormPage() {
   const createMutation = useCreateCompositeItem()
   const updateMutation = useUpdateCompositeItem()
   const createRecipeMutation = useCreateRecipe()
+  const deleteMutation = useDeleteCompositeItem()
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+
+  const handleDelete = async () => {
+    if (!isEdit || !id) return
+    try {
+      await deleteMutation.mutateAsync(id)
+      toast.success(t('catalog:deleteCompositeItemSuccess'))
+      setConfirmDeleteOpen(false)
+      void navigate('/catalog/composite-items')
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      toast.error(t('catalog:deleteCompositeItemError', { error: msg }))
+    }
+  }
 
   const [activeTab, setActiveTab] = useState<TabValue>('details')
   const [selectedLocationId, setSelectedLocationId] = useState('')
@@ -303,6 +319,16 @@ export function CompositeItemFormPage() {
                   {t('common:cancel')}
                 </Button>
                 <Button
+                  type="button"
+                  variant="danger"
+                  onClick={() => { setConfirmDeleteOpen(true) }}
+                  disabled={deleteMutation.isPending}
+                  aria-label={t('common:delete')}
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  {t('common:delete')}
+                </Button>
+                <Button
                   type="submit"
                   variant="primary"
                   disabled={createMutation.isPending || updateMutation.isPending}
@@ -515,6 +541,18 @@ export function CompositeItemFormPage() {
           </StickyFormFooter>
         </form>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmDeleteOpen}
+        onClose={() => { setConfirmDeleteOpen(false) }}
+        onConfirm={() => { void handleDelete() }}
+        title={t('catalog:deleteCompositeItemTitle')}
+        message={t('catalog:deleteCompositeItemMessage', { name: form.name })}
+        confirmText={t('common:confirm')}
+        cancelText={t('common:cancel')}
+        variant="danger"
+        isLoading={deleteMutation.isPending}
+      />
     </div>
   )
 }
