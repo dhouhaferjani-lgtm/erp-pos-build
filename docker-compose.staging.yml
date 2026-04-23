@@ -236,6 +236,7 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         VITE_API_URL: ${APP_URL:-https://api.erp.otospex.dev}
+        VITE_APP_PRODUCT: ${VITE_APP_PRODUCT:-izipos}
     restart: unless-stopped
     environment:
       API_URL: ${APP_URL:-https://api.erp.otospex.dev}
