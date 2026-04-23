@@ -98,4 +98,20 @@ describe('CompositeItemFormPage', () => {
       expect(mockNavigate).toHaveBeenCalledWith('/catalog/composite-items')
     })
   })
+
+  it('shows an error toast and keeps the dialog open when delete fails', async () => {
+    mockDeleteMutate.mockRejectedValueOnce(new Error('Boom'))
+    const { toast } = await import('sonner')
+
+    render(<CompositeItemFormPage />)
+    fireEvent.click(screen.getByRole('button', { name: /common:delete/i }))
+
+    const confirmButton = await screen.findByRole('button', { name: /common:confirm/i })
+    fireEvent.click(confirmButton)
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalled()
+      expect(mockNavigate).not.toHaveBeenCalled()
+    })
+  })
 })
