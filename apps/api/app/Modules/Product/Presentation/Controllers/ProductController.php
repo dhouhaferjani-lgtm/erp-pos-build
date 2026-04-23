@@ -6,6 +6,7 @@ namespace App\Modules\Product\Presentation\Controllers;
 
 use App\Enums\Vertical;
 use App\Modules\Company\Services\CompanyContext;
+use Carbon\Carbon;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -92,10 +93,28 @@ class ProductController extends Controller
         // Paginate
         $paginator = $query->paginate($perPage);
 
-        // Use the trait's formatOffsetPaginatedResponse
-        return response()->json(
-            $this->formatOffsetPaginatedResponse($paginator, ProductData::class, $aggregates)
-        );
+        // Build base response
+        $payload = $this->formatOffsetPaginatedResponse($paginator, ProductData::class, $aggregates);
+
+        // Tombstone support: include deleted_ids when an updated_since cursor is provided
+        $updatedSince = $request->input('updated_since');
+        if (is_string($updatedSince) && $updatedSince !== '') {
+            $deletedIds = [];
+            try {
+                $cursor = Carbon::parse($updatedSince);
+                /** @var array<int, string> $deletedIds */
+                $deletedIds = Product::onlyTrashed()
+                    ->where('company_id', $companyId)
+                    ->where('deleted_at', '>=', $cursor)
+                    ->pluck('id')
+                    ->all();
+            } catch (\Throwable) {
+                $deletedIds = [];
+            }
+            $payload['deleted_ids'] = $deletedIds;
+        }
+
+        return response()->json($payload);
     }
 
     /**
