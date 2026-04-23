@@ -27,13 +27,17 @@ class ActiveMenuData extends Data
         $menu->loadMissing(['categories' => function ($query): void {
             $query->where('is_active', true)->orderBy('display_order');
         }, 'categories.compositeItems' => function ($query): void {
-            $query->wherePivot('is_available', true)->orderByPivot('display_order');
+            $query->withoutTrashed()
+                ->wherePivot('is_available', true)
+                ->orderByPivot('display_order');
         }, 'categories.compositeItems.modifierGroups' => function ($query): void {
             $query->where('is_active', true)->orderByPivot('display_order');
         }, 'categories.compositeItems.modifierGroups.modifiers' => function ($query): void {
             $query->where('is_active', true)->orderBy('display_order');
         }, 'categories.products' => function ($query): void {
-            $query->wherePivot('is_available', true)->orderByPivot('display_order');
+            $query->withoutTrashed()
+                ->wherePivot('is_available', true)
+                ->orderByPivot('display_order');
         }]);
 
         return new self(
