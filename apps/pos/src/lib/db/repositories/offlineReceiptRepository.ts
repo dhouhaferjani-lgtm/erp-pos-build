@@ -3,6 +3,24 @@ import { queryAll, queryOne, execute } from '@/lib/db';
 
 export type OfflineReceiptStatus = 'pending' | 'syncing' | 'synced' | 'failed';
 
+// Module-level debounce handle — one pending sync at most.
+let pendingSyncTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleDebouncedSync(): void {
+  if (pendingSyncTimer !== null) {
+    clearTimeout(pendingSyncTimer);
+  }
+  pendingSyncTimer = setTimeout(() => {
+    pendingSyncTimer = null;
+    // Lazy import to avoid circular dep with syncScheduler (which imports repositories).
+    import('@/stores/syncStore')
+      .then((mod) => mod.useSyncStore.getState().triggerSync())
+      .catch((err: unknown) => {
+        console.warn('[fiscal] debounced sync trigger failed to load', err);
+      });
+  }, 250);
+}
+
 export interface OfflineReceipt {
   id: string;
   idempotency_key: string;
@@ -66,6 +84,10 @@ export async function insertOfflineReceipt(
       receipt.payments_json, receipt.consumption_mode, receipt.table_id,
     ]
   );
+
+  // Fire-and-forget debounced sync. Must not block caller — payment success UI
+  // depends on this function returning immediately.
+  scheduleDebouncedSync();
 }
 
 export async function getPendingReceipts(db: Database): Promise<OfflineReceipt[]> {
