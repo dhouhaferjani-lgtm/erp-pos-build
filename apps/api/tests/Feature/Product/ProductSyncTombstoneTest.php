@@ -96,6 +96,13 @@ final class ProductSyncTombstoneTest extends TestCase
         $this->assertArrayNotHasKey('deleted_ids', $payload);
     }
 
+    public function test_products_index_returns_422_on_malformed_cursor(): void
+    {
+        $response = $this->getJson('/api/v1/products?updated_since=not-a-date');
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.field', 'updated_since');
+    }
+
     public function test_deleted_ids_does_not_leak_tombstones_from_another_tenant(): void
     {
         // Arrange: a separate tenant with its own company

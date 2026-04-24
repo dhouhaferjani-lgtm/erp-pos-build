@@ -99,7 +99,6 @@ class ProductController extends Controller
         // Tombstone support: include deleted_ids when an updated_since cursor is provided
         $updatedSince = $request->input('updated_since');
         if (is_string($updatedSince) && $updatedSince !== '') {
-            $deletedIds = [];
             try {
                 $cursor = Carbon::parse($updatedSince);
                 /** @var array<int, string> $deletedIds */
@@ -110,7 +109,9 @@ class ProductController extends Controller
                     ->pluck('id')
                     ->all();
             } catch (\Throwable) {
-                $deletedIds = [];
+                return response()->json([
+                    'error' => ['message' => 'Invalid updated_since cursor', 'field' => 'updated_since'],
+                ], 422);
             }
             $payload['deleted_ids'] = $deletedIds;
         }
