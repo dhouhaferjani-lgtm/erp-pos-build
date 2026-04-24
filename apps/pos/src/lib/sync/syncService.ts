@@ -6,7 +6,12 @@ import {
   upsertPaymentRepositories,
 } from '@/lib/db/repositories/paymentRepository';
 import { upsertOperators } from '@/lib/db/repositories/operatorPinRepository';
-import { upsertTerminalState, upsertZChainState, type TerminalHashState } from '@/lib/db/repositories/terminalStateRepository';
+import {
+  upsertTerminalState,
+  upsertZChainState,
+  advanceHashChain,
+  type TerminalHashState,
+} from '@/lib/db/repositories/terminalStateRepository';
 import { computeGenesisHash } from '@/lib/fiscal/hashService';
 import {
   getPendingReceiptsForSync,
@@ -72,6 +77,10 @@ interface SyncReceiptResponseItem {
   receipt_id: string | null;
   server_fiscal_hash: string | null;
   error: string | null;
+  /** Server-authoritative hash after this receipt was sealed. Null for failed/chain_broken. */
+  terminal_last_hash: string | null;
+  /** Server-authoritative sequence number AFTER sealing this receipt. */
+  terminal_hash_sequence: number | null;
 }
 
 interface SyncReceiptBatchResponse {
@@ -173,6 +182,32 @@ export async function pushOfflineReceipts(db: Database): Promise<{
           } catch (writebackError) {
             const msg = writebackError instanceof Error ? writebackError.message : 'unknown';
             await logSyncOperation(db, 'push', 'receipt', receipt.id, 'error', `server_receipt_id writeback failed (server sync succeeded): ${msg}`);
+          }
+        }
+        if (
+          resultItem.terminal_last_hash &&
+          typeof resultItem.terminal_hash_sequence === 'number'
+        ) {
+          try {
+            await advanceHashChain(
+              db,
+              receipt.terminal_id,
+              resultItem.terminal_last_hash,
+              resultItem.terminal_hash_sequence,
+            );
+          } catch (reconcileError) {
+            // Regression guard fired — local is ahead of server. Log and carry on.
+            // This is the offline-first invariant: local counters are authoritative
+            // once seeded.
+            const msg = reconcileError instanceof Error ? reconcileError.message : 'unknown';
+            await logSyncOperation(
+              db,
+              'push',
+              'receipt',
+              receipt.id,
+              'success',
+              `reconcile skipped (local ahead): ${msg}`,
+            );
           }
         }
         await logSyncOperation(db, 'push', 'receipt', receipt.id, 'success', resultItem.status);

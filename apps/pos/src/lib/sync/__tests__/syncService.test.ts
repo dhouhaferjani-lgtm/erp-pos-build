@@ -102,6 +102,8 @@ function syncBatchResponse(items: Array<{
   status: 'synced' | 'duplicate' | 'failed' | 'chain_broken';
   receipt_id?: string | null;
   error?: string | null;
+  terminal_last_hash?: string | null;
+  terminal_hash_sequence?: number | null;
 }>) {
   const synced = items.filter((i) => i.status === 'synced').length;
   const duplicates = items.filter((i) => i.status === 'duplicate').length;
@@ -113,6 +115,8 @@ function syncBatchResponse(items: Array<{
       receipt_id: i.receipt_id ?? 'srv-' + i.idempotency_key,
       server_fiscal_hash: 'hash-' + i.idempotency_key,
       error: i.error ?? null,
+      terminal_last_hash: i.terminal_last_hash ?? null,
+      terminal_hash_sequence: i.terminal_hash_sequence ?? null,
     })),
     total: items.length,
     synced,
@@ -332,6 +336,41 @@ describe('syncService', () => {
       ]);
       expect(payload['consumption_mode']).toBe('SUR_PLACE');
       expect(payload['table_id']).toBe('table-5');
+    });
+
+    it('reconciles local hash_sequence from server terminal_last_hash after each sync', async () => {
+      const receipt = makeOfflineReceipt({
+        idempotency_key: 'key-1',
+        hash_sequence: 7,
+        fiscal_hash: 'client-hash-7',
+      });
+      vi.mocked(getPendingReceiptsForSync).mockResolvedValue([receipt]);
+      vi.mocked(apiPost).mockResolvedValue(
+        syncBatchResponse([
+          {
+            idempotency_key: 'key-1',
+            status: 'synced',
+            receipt_id: 'server-uuid-1',
+            // New fields — the POS must consume them.
+            terminal_last_hash: 'server-hash-7',
+            terminal_hash_sequence: 7,
+          },
+        ]),
+      );
+
+      // Spy on advanceHashChain — used to rewrite local last_hash to match server.
+      const { advanceHashChain } = await import(
+        '@/lib/db/repositories/terminalStateRepository'
+      );
+
+      await pushOfflineReceipts(db);
+
+      expect(advanceHashChain).toHaveBeenCalledWith(
+        expect.anything(),
+        receipt.terminal_id,
+        'server-hash-7',
+        7,
+      );
     });
   });
 
