@@ -77,12 +77,13 @@ const samplePreview = {
   opening_cash: '100.00',
   expected_cash: '130.00',
   variance: null,
+  tolerance_summary: null,
   vat_breakdown: [
     { tax_rate: 19, net_amount: '37.82', vat_amount: '7.18', gross_amount: '45.00' },
   ],
   payment_methods: [
-    { payment_type: 'CASH', total_amount: '30.00', transaction_count: 2 },
-    { payment_type: 'CARD', total_amount: '15.00', transaction_count: 1 },
+    { payment_method_id: 'pm-cash', payment_method_code: 'CASH', is_physical: true, total_amount: '30.00', transaction_count: 2 },
+    { payment_method_id: 'pm-card', payment_method_code: 'CARD', is_physical: false, total_amount: '15.00', transaction_count: 1 },
   ],
 };
 

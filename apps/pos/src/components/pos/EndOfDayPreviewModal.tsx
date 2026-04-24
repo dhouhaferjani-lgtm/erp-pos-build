@@ -217,8 +217,8 @@ export function EndOfDayPreviewModal({
                   </thead>
                   <tbody>
                     {preview.payment_methods.map((row) => (
-                      <tr key={row.payment_type} className="border-b border-gray-100">
-                        <td className="py-2">{row.payment_type}</td>
+                      <tr key={row.payment_method_code} className="border-b border-gray-100">
+                        <td className="py-2">{row.payment_method_code}</td>
                         <td className="py-2 text-right">{row.transaction_count}</td>
                         <td className="py-2 text-right">{format(row.total_amount)}</td>
                       </tr>

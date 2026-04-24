@@ -43,6 +43,10 @@ export function bccomp(a: string, b: string): number {
   return safeBig(a).cmp(safeBig(b));
 }
 
+export function bcformat(value: string | number, scale: number): string {
+  return new Big(value).toFixed(scale);
+}
+
 export function calculateDiscountAmount(
   lineTotal: string,
   discountType: 'percentage' | 'fixed',

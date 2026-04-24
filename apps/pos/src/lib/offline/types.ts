@@ -5,19 +5,21 @@
 // ─── Receipt Snapshot (per-receipt data stored inside each Z-report) ─────────
 
 export interface ReceiptSnapshotTaxLine {
+  /** Tax rate percentage — stored as number for sorting (not a monetary value) */
   rate: number;
-  net_amount: number;
-  tax_amount: number;
-  gross_amount: number;
+  net_amount: string;
+  tax_amount: string;
+  gross_amount: string;
 }
 
 export interface ReceiptSnapshotLine {
   description: string;
   quantity: number;
-  unit_price: number;
-  total: number;
+  unit_price: string;
+  total: string;
+  /** Tax rate percentage — stored as number (not a monetary value) */
   tax_rate: number;
-  discount_amount: number;
+  discount_amount: string;
 }
 
 export interface ReceiptSnapshot {
@@ -26,15 +28,15 @@ export interface ReceiptSnapshot {
   hash_sequence: number;
   created_at: string;
 
-  total_ht: number;
-  total_ttc: number;
-  total_tax: number;
+  total_ht: string;
+  total_ttc: string;
+  total_tax: string;
 
   tax_lines: ReceiptSnapshotTaxLine[];
 
   payment_type: string;
-  payment_amount: number;
-  change_given: number;
+  payment_amount: string;
+  change_given: string;
 
   lines: ReceiptSnapshotLine[];
 

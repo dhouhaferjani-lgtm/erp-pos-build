@@ -3,6 +3,7 @@ import { apiGet, apiPost } from '@/lib/api';
 import { getDatabase } from '@/lib/db';
 import { queryAll } from '@/lib/db';
 import { getCurrencyDecimals } from '@/lib/currency';
+import { bcadd, bcformat } from '@/lib/decimal';
 import { useAuthStore } from '@/stores/authStore';
 import { generateZReport as generateLocalZReport } from '@/lib/offline/zReportService';
 import { getAllPaymentMethods } from '@/lib/db/repositories/paymentRepository';
@@ -340,32 +341,32 @@ async function generateLocalXReport(terminalId: string): Promise<XReportResponse
   }
 
   // Aggregate
-  let grossSales = 0;
-  let netSales = 0;
-  let taxAmount = 0;
-  const vatByRate = new Map<string, { net: number; vat: number; gross: number }>();
-  const paymentByType = new Map<string, { amount: number; count: number }>();
+  let grossSales = '0';
+  let netSales = '0';
+  let taxAmount = '0';
+  const vatByRate = new Map<string, { net: string; vat: string; gross: string }>();
+  const paymentByType = new Map<string, { amount: string; count: number }>();
 
   for (const receipt of receipts) {
-    grossSales += parseFloat(receipt.total);
-    netSales += parseFloat(receipt.subtotal);
-    taxAmount += parseFloat(receipt.tax_amount);
+    grossSales = bcadd(grossSales, receipt.total);
+    netSales = bcadd(netSales, receipt.subtotal);
+    taxAmount = bcadd(taxAmount, receipt.tax_amount);
 
     const lines = JSON.parse(receipt.lines) as ReceiptLineJson[];
     for (const line of lines) {
       const rate = line.tax_rate ?? '0';
-      const lineVat = parseFloat(line.tax_amount ?? '0');
-      const lineNet = parseFloat(line.line_total ?? '0');
-      const existing = vatByRate.get(rate) ?? { net: 0, vat: 0, gross: 0 };
-      existing.net += lineNet;
-      existing.vat += lineVat;
-      existing.gross += lineNet + lineVat;
+      const lineVat = line.tax_amount ?? '0';
+      const lineNet = line.line_total ?? '0';
+      const existing = vatByRate.get(rate) ?? { net: '0', vat: '0', gross: '0' };
+      existing.net = bcadd(existing.net, lineNet);
+      existing.vat = bcadd(existing.vat, lineVat);
+      existing.gross = bcadd(existing.gross, bcadd(lineNet, lineVat));
       vatByRate.set(rate, existing);
     }
 
     const methodCode = methodMap.get(receipt.payment_method_id) ?? 'UNKNOWN';
-    const payExisting = paymentByType.get(methodCode) ?? { amount: 0, count: 0 };
-    payExisting.amount += parseFloat(receipt.total);
+    const payExisting = paymentByType.get(methodCode) ?? { amount: '0', count: 0 };
+    payExisting.amount = bcadd(payExisting.amount, receipt.total);
     payExisting.count += 1;
     paymentByType.set(methodCode, payExisting);
   }
@@ -377,21 +378,21 @@ async function generateLocalXReport(terminalId: string): Promise<XReportResponse
     generated_by: 'local',
     generated_at: new Date().toISOString(),
     sales_count: receipts.length,
-    gross_sales: grossSales.toFixed(decimals),
-    net_sales: netSales.toFixed(decimals),
-    tax_amount: taxAmount.toFixed(decimals),
+    gross_sales: bcformat(grossSales, decimals),
+    net_sales: bcformat(netSales, decimals),
+    tax_amount: bcformat(taxAmount, decimals),
     refunds_count: 0,
     vat_breakdown: Array.from(vatByRate.entries())
       .sort(([a], [b]) => parseFloat(a) - parseFloat(b))
       .map(([rate, totals]) => ({
         tax_rate: parseFloat(rate),
-        net_amount: totals.net.toFixed(decimals),
-        vat_amount: totals.vat.toFixed(decimals),
-        gross_amount: totals.gross.toFixed(decimals),
+        net_amount: bcformat(totals.net, decimals),
+        vat_amount: bcformat(totals.vat, decimals),
+        gross_amount: bcformat(totals.gross, decimals),
       })),
     payment_methods: Array.from(paymentByType.entries()).map(([type, data]) => ({
       payment_type: type,
-      total_amount: data.amount.toFixed(decimals),
+      total_amount: bcformat(data.amount, decimals),
       transaction_count: data.count,
     })),
   };

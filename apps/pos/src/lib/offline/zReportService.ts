@@ -10,7 +10,7 @@ import type Database from '@tauri-apps/plugin-sql';
 import Big from 'big.js';
 import { queryAll } from '@/lib/db';
 import { getCurrencyDecimals } from '@/lib/currency';
-import { bcadd, bcsub } from '@/lib/decimal';
+import { bcadd, bcsub, bcformat } from '@/lib/decimal';
 import { useAuthStore } from '@/stores/authStore';
 import { computeZReportHash } from '@/lib/fiscal/zReportHashService';
 import { insertZReport, getZReportByShift } from '@/lib/db/repositories/zReportRepository';
@@ -34,6 +34,72 @@ import type {
 
 // Cumulative fields are persisted at 3 decimals (TND max); see terminalStateRepository.
 const CUMULATIVE_SCALE = 3;
+
+// ─── Schema-version-2 hash-input types & builder ─────────────────────────────
+
+export interface CashCountForHash {
+  payment_method_id: string;
+  currency_code: string;
+  expected_amount: string;
+  actual_amount: string;
+  variance_amount: string;
+}
+
+export interface ReportTotalsForHash {
+  gross_sales: string;
+  net_sales: string;
+  tax_amount: string;
+}
+
+export interface ShiftForHash {
+  opening_cash: string;
+  opened_at: string;
+  currency_code: string;
+}
+
+/**
+ * Build a schema_version:2 report_data payload normalized to scale-4 monetary strings.
+ * Keys are inserted in a canonical order to guarantee byte-deterministic JSON serialization
+ * vs. the PHP server's ZReportHashService::normalizeForHash output.
+ *
+ * NOTE: This function is intentionally decoupled from generateZReport for PR-1.
+ * Full wiring into the hash-computation call site lands in PR-2 (Tasks 18 + 26),
+ * once per-tender cash_counts rows are persisted in SQLite (v22 schema migration).
+ * Existing generateZReport produces v1 report_data shapes and must not be modified here.
+ */
+export function buildReportDataForHash(
+  shift: ShiftForHash,
+  cashCounts: CashCountForHash[],
+  totals: ReportTotalsForHash,
+): {
+  schema_version: number;
+  opening_cash: string;
+  gross_sales: string;
+  net_sales: string;
+  tax_amount: string;
+  cash_counts: Array<{
+    payment_method_id: string;
+    currency_code: string;
+    expected_amount: string;
+    actual_amount: string;
+    variance_amount: string;
+  }>;
+} {
+  return {
+    schema_version: 2,
+    opening_cash: bcformat(shift.opening_cash, 4),
+    gross_sales: bcformat(totals.gross_sales, 4),
+    net_sales: bcformat(totals.net_sales, 4),
+    tax_amount: bcformat(totals.tax_amount, 4),
+    cash_counts: cashCounts.map((c) => ({
+      payment_method_id: c.payment_method_id,
+      currency_code: c.currency_code,
+      expected_amount: bcformat(c.expected_amount, 4),
+      actual_amount: bcformat(c.actual_amount, 4),
+      variance_amount: bcformat(c.variance_amount, 4),
+    })),
+  };
+}
 
 /**
  * Format a Date to match Carbon's toIso8601String() output.
@@ -213,50 +279,46 @@ function aggregateReportData(
   paymentMethodMap: Map<string, string>,
   decimals: number,
 ): ZReportData {
-  let grossSales = 0;
-  let netSales = 0;
-  let taxAmount = 0;
+  let grossSales = '0';
+  let netSales = '0';
+  let taxAmount = '0';
   let salesCount = 0;
   // Void/refund counters are always 0 offline — voiding and refunding
   // are server-side operations tracked after sync.
-  let refundsCount = 0;
-  let refundsAmount = 0;
-  let voidedCount = 0;
+  const refundsCount = 0;
+  let refundsAmount = '0';
+  const voidedCount = 0;
 
-  const vatByRate = new Map<string, { net: number; vat: number; gross: number }>();
-  const paymentByType = new Map<string, { amount: number; count: number }>();
+  const vatByRate = new Map<string, { net: string; vat: string; gross: string }>();
+  const paymentByType = new Map<string, { amount: string; count: number }>();
 
   for (const receipt of receipts) {
-    const total = parseFloat(receipt.total);
-    const subtotal = parseFloat(receipt.subtotal);
-    const tax = parseFloat(receipt.tax_amount);
-
     // Skip voided receipts (status === 'voided' or similar) — for now we count all
     // since offline receipts don't have a voided flag. Voided receipts are tracked server-side.
     salesCount++;
-    grossSales += total;
-    netSales += subtotal;
-    taxAmount += tax;
+    grossSales = bcadd(grossSales, receipt.total);
+    netSales = bcadd(netSales, receipt.subtotal);
+    taxAmount = bcadd(taxAmount, receipt.tax_amount);
 
     // VAT breakdown from receipt lines
     const lines = JSON.parse(receipt.lines) as ReceiptLineJson[];
     for (const line of lines) {
       const rate = line.tax_rate ?? '0';
-      const lineVat = parseFloat(line.tax_amount ?? '0');
-      const lineNet = parseFloat(line.line_total ?? '0');
-      const lineGross = lineNet + lineVat;
+      const lineVat = line.tax_amount ?? '0';
+      const lineNet = line.line_total ?? '0';
+      const lineGross = bcadd(lineNet, lineVat);
 
-      const existing = vatByRate.get(rate) ?? { net: 0, vat: 0, gross: 0 };
-      existing.net += lineNet;
-      existing.vat += lineVat;
-      existing.gross += lineGross;
+      const existing = vatByRate.get(rate) ?? { net: '0', vat: '0', gross: '0' };
+      existing.net = bcadd(existing.net, lineNet);
+      existing.vat = bcadd(existing.vat, lineVat);
+      existing.gross = bcadd(existing.gross, lineGross);
       vatByRate.set(rate, existing);
     }
 
     // Payment method breakdown
     const methodCode = paymentMethodMap.get(receipt.payment_method_id) ?? 'UNKNOWN';
-    const existing = paymentByType.get(methodCode) ?? { amount: 0, count: 0 };
-    existing.amount += total;
+    const existing = paymentByType.get(methodCode) ?? { amount: '0', count: 0 };
+    existing.amount = bcadd(existing.amount, receipt.total);
     existing.count += 1;
     paymentByType.set(methodCode, existing);
   }
@@ -265,9 +327,9 @@ function aggregateReportData(
   for (const [rate, totals] of vatByRate) {
     vatBreakdown.push({
       tax_rate: parseFloat(rate),
-      net_amount: totals.net.toFixed(decimals),
-      vat_amount: totals.vat.toFixed(decimals),
-      gross_amount: totals.gross.toFixed(decimals),
+      net_amount: bcformat(totals.net, decimals),
+      vat_amount: bcformat(totals.vat, decimals),
+      gross_amount: bcformat(totals.gross, decimals),
     });
   }
   vatBreakdown.sort((a, b) => a.tax_rate - b.tax_rate);
@@ -276,18 +338,18 @@ function aggregateReportData(
   for (const [type, data] of paymentByType) {
     paymentMethods.push({
       payment_type: type,
-      total_amount: data.amount.toFixed(decimals),
+      total_amount: bcformat(data.amount, decimals),
       transaction_count: data.count,
     });
   }
 
   return {
     sales_count: salesCount,
-    gross_sales: grossSales.toFixed(decimals),
-    net_sales: netSales.toFixed(decimals),
-    tax_amount: taxAmount.toFixed(decimals),
+    gross_sales: bcformat(grossSales, decimals),
+    net_sales: bcformat(netSales, decimals),
+    tax_amount: bcformat(taxAmount, decimals),
     refunds_count: refundsCount,
-    refunds_amount: refundsAmount.toFixed(decimals),
+    refunds_amount: bcformat(refundsAmount, decimals),
     voided_count: voidedCount,
     vat_breakdown: vatBreakdown,
     payment_methods: paymentMethods,
@@ -302,28 +364,38 @@ function buildReceiptSnapshots(
     const lines = JSON.parse(receipt.lines) as ReceiptLineJson[];
     const methodCode = paymentMethodMap.get(receipt.payment_method_id) ?? 'UNKNOWN';
 
-    // Build tax lines grouped by rate
-    const taxByRate = new Map<number, ReceiptSnapshotTaxLine>();
+    // Build tax lines grouped by rate.
+    // Map key is a numeric tax rate (percentage, not monetary) for sort stability.
+    const taxByRate = new Map<number, { rate: number; net: string; vat: string; gross: string }>();
     for (const line of lines) {
+      // tax_rate is a percentage — parseFloat is intentional and correct here
       const rate = parseFloat(line.tax_rate ?? '0');
-      const lineNet = parseFloat(line.line_total ?? '0');
-      const lineVat = parseFloat(line.tax_amount ?? '0');
-      const lineGross = lineNet + lineVat;
+      const lineNet = line.line_total ?? '0';
+      const lineVat = line.tax_amount ?? '0';
+      const lineGross = bcadd(lineNet, lineVat);
 
-      const existing = taxByRate.get(rate) ?? { rate, net_amount: 0, tax_amount: 0, gross_amount: 0 };
-      existing.net_amount += lineNet;
-      existing.tax_amount += lineVat;
-      existing.gross_amount += lineGross;
+      const existing = taxByRate.get(rate) ?? { rate, net: '0', vat: '0', gross: '0' };
+      existing.net = bcadd(existing.net, lineNet);
+      existing.vat = bcadd(existing.vat, lineVat);
+      existing.gross = bcadd(existing.gross, lineGross);
       taxByRate.set(rate, existing);
     }
+
+    const taxLines: ReceiptSnapshotTaxLine[] = Array.from(taxByRate.values()).map((t) => ({
+      rate: t.rate,
+      net_amount: t.net,
+      tax_amount: t.vat,
+      gross_amount: t.gross,
+    }));
 
     const snapshotLines: ReceiptSnapshotLine[] = lines.map((line) => ({
       description: line.name ?? '',
       quantity: line.quantity ?? 1,
-      unit_price: parseFloat(line.unit_price ?? '0'),
-      total: parseFloat(line.line_total ?? '0'),
+      unit_price: line.unit_price ?? '0',
+      total: line.line_total ?? '0',
+      // tax_rate is a percentage — parseFloat is intentional and correct here
       tax_rate: parseFloat(line.tax_rate ?? '0'),
-      discount_amount: parseFloat(line.discount_amount ?? '0'),
+      discount_amount: line.discount_amount ?? '0',
     }));
 
     return {
@@ -332,15 +404,15 @@ function buildReceiptSnapshots(
       hash_sequence: receipt.hash_sequence,
       created_at: receipt.created_at,
 
-      total_ht: parseFloat(receipt.subtotal),
-      total_ttc: parseFloat(receipt.total),
-      total_tax: parseFloat(receipt.tax_amount),
+      total_ht: receipt.subtotal,
+      total_ttc: receipt.total,
+      total_tax: receipt.tax_amount,
 
-      tax_lines: Array.from(taxByRate.values()),
+      tax_lines: taxLines,
 
       payment_type: methodCode,
-      payment_amount: parseFloat(receipt.total),
-      change_given: parseFloat(receipt.change_due ?? '0'),
+      payment_amount: receipt.total,
+      change_given: receipt.change_due ?? '0',
 
       lines: snapshotLines,
 

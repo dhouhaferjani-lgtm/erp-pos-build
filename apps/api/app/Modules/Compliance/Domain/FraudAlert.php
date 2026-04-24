@@ -32,6 +32,8 @@ use Illuminate\Support\Carbon;
  * @property string $status
  * @property string|null $assigned_to
  * @property Carbon|null $resolved_at
+ * @property string|null $description_code
+ * @property array<string, mixed>|null $description_params
  * @property string|null $resolution_notes
  * @property Carbon $created_at
  * @property Carbon $updated_at
@@ -52,6 +54,8 @@ class FraudAlert extends Model
         'alert_type',
         'severity',
         'description',
+        'description_code',
+        'description_params',
         'detected_at',
         'flagged_products',
         'metadata',
@@ -71,6 +75,7 @@ class FraudAlert extends Model
             'resolved_at' => 'datetime',
             'flagged_products' => 'array',
             'metadata' => 'array',
+            'description_params' => 'array',
         ];
     }
 
