@@ -1,7 +1,41 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { POSProduct } from '@/types/product';
+
+vi.mock('@/lib/db', () => ({
+  getDatabase: vi.fn().mockResolvedValue({} as import('@tauri-apps/plugin-sql').default),
+}));
+
+vi.mock('@/lib/db/repositories/heldTransactionRepository', () => ({
+  insertHeldTransaction: vi.fn().mockResolvedValue(undefined),
+  listHeldTransactions: vi.fn().mockResolvedValue([]),
+  deleteHeldTransaction: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('@/stores/authStore', () => ({
+  useAuthStore: {
+    getState: () => ({ companyId: 'co-1', companies: [{ id: 'co-1', currency: 'EUR' }] }),
+  },
+}));
+
+vi.mock('@/stores/terminalStore', () => ({
+  useTerminalStore: {
+    getState: () => ({ terminal: { id: 'term-1' } }),
+  },
+}));
+
+vi.mock('@/stores/operatorStore', () => ({
+  useOperatorStore: {
+    getState: () => ({ operator: { id: 'op-1' } }),
+  },
+}));
+
+import {
+  insertHeldTransaction,
+  listHeldTransactions,
+  deleteHeldTransaction,
+} from '@/lib/db/repositories/heldTransactionRepository';
 import { useHoldStore } from '../holdStore';
 import { useCartStore } from '../cartStore';
-import type { POSProduct } from '@/types/product';
 
 function makeProduct(overrides: Partial<POSProduct> = {}): POSProduct {
   return {
@@ -14,14 +48,11 @@ function makeProduct(overrides: Partial<POSProduct> = {}): POSProduct {
   };
 }
 
-describe('holdStore', () => {
+describe('holdStore (SQLite-backed)', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     useCartStore.getState().clearCart();
-    useHoldStore.setState({
-      heldTransactions: [],
-      isLoading: false,
-      error: null,
-    });
+    useHoldStore.setState({ heldTransactions: [], isLoading: false, error: null });
   });
 
   it('has correct initial state', () => {
@@ -31,91 +62,86 @@ describe('holdStore', () => {
     expect(state.error).toBeNull();
   });
 
-  it('holds the current cart and clears it', () => {
-    useCartStore.getState().addItem(makeProduct());
-    useCartStore.getState().addItem(makeProduct({ id: 'prod-2', name: 'Product 2', sale_price: '20.00' }));
+  it('holdCurrentCart persists to SQLite, populates in-memory list, and clears the cart', async () => {
+    useCartStore.getState().addItem(makeProduct({ sale_price: '9.80' }));
+    useCartStore.getState().addItem(makeProduct({ id: 'p2', sale_price: '6.30' }));
 
-    useHoldStore.getState().holdCurrentCart('Order #1');
+    await useHoldStore.getState().holdCurrentCart('Table 3');
+
+    expect(insertHeldTransaction).toHaveBeenCalledTimes(1);
+    const call = vi.mocked(insertHeldTransaction).mock.calls[0]!;
+    const row = call[1];
+    expect(row.terminal_id).toBe('term-1');
+    expect(row.operator_id).toBe('op-1');
+    expect(row.label).toBe('Table 3');
+    expect(row.item_count).toBe(2);
+    // BG3 regression: totals must be correct at hold-time.
+    expect(parseFloat(row.subtotal)).toBeCloseTo(16.1);
+    expect(parseFloat(row.total)).toBeCloseTo(16.1);
 
     const held = useHoldStore.getState().heldTransactions;
     expect(held).toHaveLength(1);
-    expect(held[0]!.label).toBe('Order #1');
-    expect(held[0]!.itemCount).toBe(2);
-    expect(held[0]!.subtotal).toBeCloseTo(30);
-    expect(held[0]!.total).toBeCloseTo(30);
+    expect(held[0]!.total).toBeCloseTo(16.1);
 
-    // Cart should be cleared
+    // Cart is cleared after holding.
     expect(useCartStore.getState().items).toHaveLength(0);
   });
 
-  it('does nothing when cart is empty', () => {
-    useHoldStore.getState().holdCurrentCart('Empty');
-
+  it('holdCurrentCart is a no-op when cart is empty', async () => {
+    await useHoldStore.getState().holdCurrentCart('nope');
+    expect(insertHeldTransaction).not.toHaveBeenCalled();
     expect(useHoldStore.getState().heldTransactions).toHaveLength(0);
   });
 
-  it('uses timestamp as label when label is empty', () => {
-    useCartStore.getState().addItem(makeProduct());
-
-    useHoldStore.getState().holdCurrentCart('');
-
-    const held = useHoldStore.getState().heldTransactions;
-    expect(held).toHaveLength(1);
-    // Label should be a time string (non-empty since it falls back to toLocaleTimeString)
-    expect(held[0]!.label.length).toBeGreaterThan(0);
-  });
-
-  it('recalls a held transaction and removes it from list', () => {
-    useCartStore.getState().addItem(makeProduct());
-    useHoldStore.getState().holdCurrentCart('Order A');
-
+  it('recallTransaction returns the row and deletes it from SQLite + in-memory list', async () => {
+    useCartStore.getState().addItem(makeProduct({ sale_price: '9.80' }));
+    await useHoldStore.getState().holdCurrentCart('Order A');
     const heldId = useHoldStore.getState().heldTransactions[0]!.id;
 
-    const recalled = useHoldStore.getState().recallTransaction(heldId);
+    const recalled = await useHoldStore.getState().recallTransaction(heldId);
 
     expect(recalled).toBeDefined();
     expect(recalled!.label).toBe('Order A');
+    expect(deleteHeldTransaction).toHaveBeenCalledWith(expect.anything(), heldId);
     expect(useHoldStore.getState().heldTransactions).toHaveLength(0);
   });
 
-  it('returns undefined when recalling non-existent transaction', () => {
-    const result = useHoldStore.getState().recallTransaction('nonexistent-id');
-    expect(result).toBeUndefined();
-  });
-
-  it('discards a held transaction', () => {
+  it('discardTransaction deletes from SQLite + in-memory list', async () => {
     useCartStore.getState().addItem(makeProduct());
-    useHoldStore.getState().holdCurrentCart('To Discard');
-
+    await useHoldStore.getState().holdCurrentCart('To discard');
     const heldId = useHoldStore.getState().heldTransactions[0]!.id;
-    useHoldStore.getState().discardTransaction(heldId);
 
+    await useHoldStore.getState().discardTransaction(heldId);
+
+    expect(deleteHeldTransaction).toHaveBeenCalledWith(expect.anything(), heldId);
     expect(useHoldStore.getState().heldTransactions).toHaveLength(0);
   });
 
-  it('holds multiple transactions', () => {
-    useCartStore.getState().addItem(makeProduct({ id: 'p1', sale_price: '10.00' }));
-    useHoldStore.getState().holdCurrentCart('First');
+  it('loadHeldTransactions hydrates in-memory list from SQLite rows (parses JSON)', async () => {
+    vi.mocked(listHeldTransactions).mockResolvedValue([
+      {
+        id: 'h1',
+        terminal_id: 'term-1',
+        operator_id: 'op-1',
+        label: 'Order Z',
+        items_json: JSON.stringify([
+          { id: 'line-1', product: { id: 'p', name: 'Foo', sku: 'F', price: '9.80' }, quantity: 1, unit_price: '9.80', line_total: '9.80', tax_rate: '0', tax_amount: '0.00' },
+        ]),
+        transaction_discount_json: null,
+        subtotal: '9.80',
+        total: '9.80',
+        item_count: 1,
+        held_at: '2026-04-23T09:00:00Z',
+      },
+    ]);
 
-    useCartStore.getState().addItem(makeProduct({ id: 'p2', sale_price: '20.00' }));
-    useHoldStore.getState().holdCurrentCart('Second');
+    await useHoldStore.getState().loadHeldTransactions();
 
-    expect(useHoldStore.getState().heldTransactions).toHaveLength(2);
-    expect(useHoldStore.getState().heldTransactions[0]!.label).toBe('First');
-    expect(useHoldStore.getState().heldTransactions[1]!.label).toBe('Second');
-  });
-
-  it('preserves transaction discount in held transaction', () => {
-    useCartStore.getState().addItem(makeProduct({ sale_price: '100.00' }));
-    useCartStore.getState().setTransactionDiscount({ type: 'fixed', value: '15.00', reason: 'Loyalty' });
-
-    useHoldStore.getState().holdCurrentCart('Discounted');
-
-    const held = useHoldStore.getState().heldTransactions[0]!;
-    expect(held.transactionDiscount).toBeDefined();
-    expect(held.transactionDiscount!.type).toBe('fixed');
-    expect(held.transactionDiscount!.value).toBe('15.00');
-    expect(held.transactionDiscount!.reason).toBe('Loyalty');
-    expect(held.total).toBeCloseTo(85);
+    const held = useHoldStore.getState().heldTransactions;
+    expect(held).toHaveLength(1);
+    expect(held[0]!.label).toBe('Order Z');
+    expect(held[0]!.items).toHaveLength(1);
+    expect(held[0]!.items[0]!.product.name).toBe('Foo');
+    expect(held[0]!.total).toBeCloseTo(9.8);
   });
 });

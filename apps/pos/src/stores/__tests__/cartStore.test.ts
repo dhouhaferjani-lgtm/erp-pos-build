@@ -202,6 +202,72 @@ describe('cartStore', () => {
     expect(useCartStore.getState().taxAmount()).toBeCloseTo(16.67);
     expect(useCartStore.getState().subtotal()).toBeCloseTo(100);
   });
+
+  describe('replaceCart', () => {
+    it('atomically replaces items and transactionDiscount', () => {
+      // seed some state
+      useCartStore.getState().addItem(makeProduct());
+      useCartStore.getState().setTransactionDiscount({ type: 'fixed', value: '1.00' });
+
+      const replacementItems = [
+        {
+          id: 'line-1',
+          product: { id: 'p-new', name: 'Foo', sku: 'FOO', price: '9.80' },
+          quantity: 1,
+          unit_price: '9.80',
+          line_total: '9.80',
+          tax_rate: '0',
+          tax_amount: '0.00',
+        },
+        {
+          id: 'line-2',
+          product: { id: 'p-new-2', name: 'Bar', sku: 'BAR', price: '6.30' },
+          quantity: 1,
+          unit_price: '6.30',
+          line_total: '6.30',
+          tax_rate: '0',
+          tax_amount: '0.00',
+        },
+      ];
+
+      useCartStore.getState().replaceCart(replacementItems, undefined);
+
+      const state = useCartStore.getState();
+      expect(state.items).toEqual(replacementItems);
+      expect(state.transactionDiscount).toBeUndefined();
+      expect(state.subtotal()).toBeCloseTo(16.1);
+      expect(state.total()).toBeCloseTo(16.1);
+    });
+
+    it('replaces items and carries a new transactionDiscount', () => {
+      useCartStore.getState().replaceCart(
+        [
+          {
+            id: 'line-1',
+            product: { id: 'p-new', name: 'Foo', sku: 'FOO', price: '100.00' },
+            quantity: 1,
+            unit_price: '100.00',
+            line_total: '100.00',
+            tax_rate: '0',
+            tax_amount: '0.00',
+          },
+        ],
+        { type: 'fixed', value: '15.00', reason: 'Loyalty' },
+      );
+
+      const state = useCartStore.getState();
+      expect(state.transactionDiscount).toEqual({ type: 'fixed', value: '15.00', reason: 'Loyalty' });
+      expect(state.total()).toBeCloseTo(85);
+    });
+
+    it('clears the cart when called with an empty array and no discount', () => {
+      useCartStore.getState().addItem(makeProduct());
+      useCartStore.getState().replaceCart([], undefined);
+      const state = useCartStore.getState();
+      expect(state.items).toHaveLength(0);
+      expect(state.transactionDiscount).toBeUndefined();
+    });
+  });
 });
 
 describe('computeTaxAmount', () => {
