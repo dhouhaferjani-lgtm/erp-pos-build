@@ -258,6 +258,28 @@ describe('authStore', () => {
     expect(state.isInitialized).toBe(true);
   });
 
+  it('refreshCompanyConfig updates productStore.companyConfig on success', async () => {
+    const { useProductStore } = await import('@/stores/productStore');
+    vi.mocked(apiGet).mockResolvedValueOnce({
+      all_enabled_modules: ['POS', 'Menu'],
+      vertical: 'fnb',
+      smart_prompts_enabled: true,
+    });
+
+    await useAuthStore.getState().refreshCompanyConfig();
+
+    expect(useProductStore.getState().companyConfig?.all_enabled_modules).toContain('Menu');
+  });
+
+  it('refreshCompanyConfig swallows errors and keeps previous config', async () => {
+    const { useProductStore } = await import('@/stores/productStore');
+    useProductStore.setState({ companyConfig: { all_enabled_modules: ['POS'] } });
+    vi.mocked(apiGet).mockRejectedValueOnce(new Error('offline'));
+
+    await expect(useAuthStore.getState().refreshCompanyConfig()).resolves.toBeUndefined();
+    expect(useProductStore.getState().companyConfig?.all_enabled_modules).toEqual(['POS']);
+  });
+
   it('logs out when checkSession returns 401 (token expired)', async () => {
     vi.mocked(getStoredValue)
       .mockResolvedValueOnce('expired-token')
