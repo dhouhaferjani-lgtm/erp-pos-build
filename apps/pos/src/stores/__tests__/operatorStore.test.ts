@@ -275,6 +275,31 @@ describe('operatorStore', () => {
     expect(useOperatorStore.getState().hasPins).toBe(false);
   });
 
+  it('flaky API does not cause user-visible failure when offline hash matches', async () => {
+    // Simulate the real-world BG8 failure: the first API call throws
+    // (network jitter, CSRF expiry), and the second would succeed.
+    vi.mocked(apiPost)
+      .mockRejectedValueOnce(new Error('TCP reset'))
+      .mockResolvedValueOnce(mockOperator);
+    vi.mocked(getAllOperators).mockResolvedValue([{
+      id: 'op-1',
+      name: 'Jane Cashier',
+      email: 'jane@example.com',
+      pin_hash: PIN_1234_HASH,
+      roles: ['cashier'],
+      permissions: ['pos.sell'],
+      can_discount: true,
+      max_discount_percent: 10,
+    }]);
+
+    // Under offline-first, the first try must succeed on the local hash
+    // and the user never sees the API failure.
+    await expect(
+      useOperatorStore.getState().verifyPin('1234'),
+    ).resolves.toBeUndefined();
+    expect(useOperatorStore.getState().operator!.id).toBe('op-1');
+  });
+
   it('lock sets isLocked to true', () => {
     useOperatorStore.getState().lock();
     expect(useOperatorStore.getState().isLocked).toBe(true);
