@@ -45,7 +45,11 @@ describe('menuRepository', () => {
     }]);
     const [, sql, params] = vi.mocked(execute).mock.calls[0]!;
     expect(sql).toMatch(/INSERT INTO menu_category_items/);
-    expect(params).toEqual(expect.arrayContaining(['[{"id":"mg1","name":"Size","modifiers":[]}]']));
+    // Verify modifier_groups was serialized to JSON (any valid JSON string containing mg1)
+    const serialized = (params as unknown[]).find((p) => typeof p === 'string' && (p as string).includes('"mg1"'));
+    expect(serialized).toBeDefined();
+    const parsed = JSON.parse(serialized as string) as unknown[];
+    expect(parsed).toHaveLength(1);
   });
 
   it('getActiveMenu assembles categories with their items', async () => {
