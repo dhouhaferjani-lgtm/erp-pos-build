@@ -16,7 +16,6 @@ import {
 } from '@/lib/printing';
 import type { PrinterInfo, PrinterConfig } from '@/lib/printing';
 import { applyFullscreen } from '@/lib/fullscreen';
-import { toast } from 'sonner';
 import { CashDrawerSettings } from '@/components/settings/CashDrawerSettings';
 import { ScannerSettings } from '@/components/settings/ScannerSettings';
 import { PrinterAdvancedSettings } from '@/components/settings/PrinterAdvancedSettings';
@@ -67,6 +66,7 @@ export function SettingsPage() {
   const [isPrintingTest, setIsPrintingTest] = useState(false);
   const [printerStatus, setPrinterStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [printerMessage, setPrinterMessage] = useState('');
+  const [forceFullscreenApplied, setForceFullscreenApplied] = useState(false);
   const isTauri = isTauriEnvironment();
 
   const handleDiscoverPrinters = useCallback(async () => {
@@ -279,7 +279,9 @@ export function SettingsPage() {
                       {t('settings.forceFullscreen')}
                     </span>
                     <p className="text-xs text-gray-500">
-                      {t('settings.forceFullscreenDesc')}
+                      {forceFullscreenApplied
+                        ? t('settings.forceFullscreenApplied')
+                        : t('settings.forceFullscreenDesc')}
                     </p>
                   </div>
                 </div>
@@ -288,7 +290,8 @@ export function SettingsPage() {
                   onClick={async () => {
                     await applyFullscreen(true);
                     useSettingsStore.getState().setFullscreen(true);
-                    toast.success(t('settings.forceFullscreenApplied'));
+                    setForceFullscreenApplied(true);
+                    setTimeout(() => { setForceFullscreenApplied(false); }, 2_000);
                   }}
                   className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
                 >
