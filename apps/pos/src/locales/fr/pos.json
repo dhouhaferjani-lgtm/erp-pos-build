@@ -145,7 +145,9 @@
     "mismatch": "Les PINs ne correspondent pas. Réessayez.",
     "clear": "Effacer",
     "verifying": "Vérification...",
-    "enter": "Valider"
+    "enter": "Valider",
+    "offlineSetupQueued": "Code PIN enregistré localement. Il sera synchronisé quand le serveur sera joignable.",
+    "offlineSetupFailed": "Impossible d'enregistrer le code PIN localement."
   },
   "header": {
     "noShift": "Aucun service ouvert",
@@ -581,5 +583,9 @@
     "thankYou": "Merci pour votre achat !",
     "taxId": "MF :",
     "tel": "Tél :"
+  },
+  "config": {
+    "refreshed": "Paramètres de l'entreprise actualisés.",
+    "refreshFailed": "Impossible d'actualiser les paramètres de l'entreprise. Utilisation des valeurs en cache."
   }
 }
