@@ -389,6 +389,12 @@ export async function pullOperatorPins(db: Database): Promise<number> {
 
 /**
  * Pull terminal state (hash chain state from server).
+ *
+ * Client-owned invariant: once the local terminal has advanced the chain past
+ * the server's known `hash_sequence` (e.g., we pushed receipts offline that
+ * haven't synced yet, or a relaunch), the client's value is authoritative.
+ * A `FiscalRegressionError` from the repo guard is therefore EXPECTED behavior
+ * and must be logged but NOT propagated to the scheduler.
  */
 export async function pullTerminalState(
   db: Database,
@@ -396,23 +402,48 @@ export async function pullTerminalState(
 ): Promise<boolean> {
   try {
     const state = await apiGet<TerminalStateResponse>(`/pos/terminals/${terminalId}`);
-    if (state.genesis_seed) {
-      // For a new terminal with no receipts, last_hash is null on the server.
-      // The genesis hash (SHA-256 of "GENESIS|<seed>") is the chain's starting point.
-      const initialHash = state.last_hash ?? await computeGenesisHash(state.genesis_seed);
-      const hashState: TerminalHashState = {
-        terminal_id: state.id,
-        terminal_code: state.code,
-        location_code: (state.location?.code ?? 'MAIN').toUpperCase(),
-        genesis_seed: state.genesis_seed,
-        last_hash: initialHash,
-        hash_sequence: state.hash_sequence,
-      };
+    if (!state.genesis_seed) {
+      return false;
+    }
+
+    // For a new terminal with no receipts, last_hash is null on the server.
+    // The genesis hash (SHA-256 of "GENESIS|<seed>") is the chain's starting point.
+    const initialHash = state.last_hash ?? await computeGenesisHash(state.genesis_seed);
+    const hashState: TerminalHashState = {
+      terminal_id: state.id,
+      terminal_code: state.code,
+      location_code: (state.location?.code ?? 'MAIN').toUpperCase(),
+      genesis_seed: state.genesis_seed,
+      last_hash: initialHash,
+      hash_sequence: state.hash_sequence,
+    };
+
+    try {
       await upsertTerminalState(db, hashState);
       await logSyncOperation(db, 'pull', 'terminal_state', terminalId, 'success');
       return true;
+    } catch (error) {
+      const { FiscalRegressionError } = await import(
+        '@/lib/db/repositories/terminalStateRepository'
+      );
+      if (error instanceof FiscalRegressionError) {
+        console.warn('[fiscal] pullTerminalState preserved local state', {
+          terminal_id: terminalId,
+          local_sequence: error.before,
+          server_sequence: error.after,
+        });
+        await logSyncOperation(
+          db,
+          'pull',
+          'terminal_state',
+          terminalId,
+          'success',
+          `preserved local state (local=${error.before}, server=${error.after})`,
+        );
+        return true;
+      }
+      throw error;
     }
-    return false;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     await logSyncOperation(db, 'pull', 'terminal_state', terminalId, 'error', message);
