@@ -151,4 +151,16 @@ describe('buildEscPosReceiptData', () => {
     const result = buildEscPosReceiptData(receipt);
     expect(result.change_due).toBe('0.00');
   });
+
+  it('sets is_reprint=true when isReprint flag is passed', () => {
+    const receipt = makeReceipt();
+    const result = buildEscPosReceiptData(receipt, undefined, true);
+    expect(result.is_reprint).toBe(true);
+  });
+
+  it('leaves is_reprint undefined by default', () => {
+    const receipt = makeReceipt();
+    const result = buildEscPosReceiptData(receipt);
+    expect(result.is_reprint).toBeUndefined();
+  });
 });

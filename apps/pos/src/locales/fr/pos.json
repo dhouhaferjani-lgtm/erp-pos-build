@@ -302,6 +302,7 @@
       "successZNumber": "Rapport Z",
       "successReused": "Ce service avait déjà un rapport Z — affichage de l'existant.",
       "printReceipt": "Imprimer le ticket",
+      "printError": "Échec de l'envoi du ticket à l'imprimante.",
       "done": "Terminer"
     },
     "zList": {

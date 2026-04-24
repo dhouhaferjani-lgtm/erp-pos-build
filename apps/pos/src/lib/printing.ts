@@ -99,6 +99,8 @@ export interface ReceiptData {
   show_fiscal_info?: boolean;
   show_payment_details?: boolean;
   show_customer?: boolean;
+  /** When true the Rust formatter prints a bold centred DUPLICATA banner */
+  is_reprint?: boolean;
 }
 
 export interface PrinterConfig {

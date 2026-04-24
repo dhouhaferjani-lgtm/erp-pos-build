@@ -23,6 +23,10 @@ import { cn } from '@/lib/utils';
 import { CashDrawerModal } from '@/components/organisms/CashDrawerModal';
 import type { EndOfDayConfirmResult } from '@/components/pos/EndOfDayPreviewModal';
 import type { EndOfDayPreview } from '@/lib/offline/endOfDayPreview';
+import { printReceipt, getPrintSettingsFromStore, isTauriEnvironment } from '@/lib/printing';
+import type { ReceiptData } from '@/lib/printing';
+import { usePrinterStore } from '@/stores/printerStore';
+import { toast } from 'sonner';
 
 export function Header() {
   const { t } = useTranslation('pos');
@@ -99,6 +103,65 @@ export function Header() {
       formattedZNumber: zReport.formatted_z_number,
       wasReused: zReport.was_reused ?? false,
     };
+  };
+
+  /**
+   * Print a minimal Z-report summary receipt.
+   * Only invoked in Tauri (thermal printer) environment.
+   * Sets is_reprint=true when wasReused so a DUPLICATA banner is printed.
+   */
+  const handlePrintZReport = (result: EndOfDayConfirmResult) => {
+    if (!isTauriEnvironment()) return;
+
+    const { printerConfig } = usePrinterStore.getState();
+    if (!printerConfig) {
+      toast.error(t('settings.noPrinterConfigured'));
+      return;
+    }
+
+    const { companies } = useAuthStore.getState();
+    const company = companies.find((c) => c.id === companyId) ?? null;
+
+    const receiptData: ReceiptData = {
+      company: {
+        name: company?.name ?? '',
+        address_line1: '',
+        address_line2: null,
+        city: '',
+        postal_code: '',
+        country: '',
+        tax_id: '',
+        phone: null,
+      },
+      receipt_number: result.formattedZNumber,
+      date_time: new Date().toISOString(),
+      terminal_name: terminal?.name ?? '',
+      operator_name: operator?.name ?? '',
+      lines: [],
+      subtotal: '0.00',
+      discount_amount: '0.00',
+      tax_amount: '0.00',
+      total: '0.00',
+      currency_symbol: '',
+      vat_breakdown: [],
+      payments: [],
+      change_due: '0.00',
+      fiscal_hash: null,
+      fiscal_signature: null,
+      customer_name: null,
+      notes: null,
+      show_vat_breakdown: false,
+      show_fiscal_info: false,
+      show_payment_details: false,
+      show_customer: false,
+      is_reprint: result.wasReused,
+    };
+
+    void printReceipt(receiptData, printerConfig, getPrintSettingsFromStore()).catch(
+      (err: unknown) => {
+        toast.error(err instanceof Error ? err.message : t('reports.endOfDay.printError', 'Failed to send receipt to printer.'));
+      },
+    );
   };
 
   const handleExitFullscreen = async () => {
@@ -251,6 +314,7 @@ export function Header() {
           shift={shift}
           terminalId={terminal?.id ?? ''}
           onConfirmAndClose={handleEndOfDayConfirm}
+          onPrintReceipt={isTauriEnvironment() ? handlePrintZReport : undefined}
         />
       )}
 

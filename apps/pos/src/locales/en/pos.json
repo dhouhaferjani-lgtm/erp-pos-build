@@ -302,6 +302,7 @@
       "successZNumber": "Z report",
       "successReused": "This shift already had a Z report — showing the existing one.",
       "printReceipt": "Print Receipt",
+      "printError": "Failed to send receipt to printer.",
       "done": "Done"
     },
     "zList": {
