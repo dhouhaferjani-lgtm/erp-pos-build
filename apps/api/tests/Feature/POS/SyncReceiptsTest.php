@@ -124,6 +124,29 @@ final class SyncReceiptsTest extends TestCase
         $this->assertSame(2, $responseB->json('data.results.0.terminal_hash_sequence'));
     }
 
+    public function test_sync_persists_change_due_from_payload(): void
+    {
+        $payload = $this->buildReceiptPayload([
+            'idempotency_key' => 'change-due-1',
+            'total' => '20.00',
+            'tendered_amount' => '25.00',
+            'change_due' => '5.00',
+            'payments' => [
+                ['payment_method_id' => $this->paymentMethod->id, 'repository_id' => $this->paymentRepo->id, 'amount' => '25.00'],
+            ],
+        ]);
+
+        $response = $this->postJson('/api/v1/pos/receipts/sync', $payload);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('data.results.0.status', 'synced');
+
+        $this->assertDatabaseHas('pos_receipts', [
+            'idempotency_key' => 'change-due-1',
+            'change_due' => '5.000',
+        ]);
+    }
+
     public function test_sync_duplicate_receipt_returns_duplicate_status(): void
     {
         $payload = $this->buildReceiptPayload();

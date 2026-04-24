@@ -311,6 +311,7 @@ final class ReceiptSyncService
                 'tax_amount' => $payload->taxAmount,
                 'discount_amount' => $payload->discountAmount,
                 'total' => $total,
+                'change_due' => $payload->changeDue,
                 'currency' => $payload->currency,
                 'consumption_mode' => $payload->consumptionMode !== null
                     ? ConsumptionMode::from($payload->consumptionMode)
