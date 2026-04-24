@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { toast } from 'sonner';
 import { TodaySalesPage } from './TodaySalesPanel';
 
 // ── Static mocks ──────────────────────────────────────────────────────────────
@@ -156,7 +157,6 @@ describe('TodaySalesPage', () => {
 
   it('surfaces a toast when fetchShiftReceipts throws', async () => {
     mockFetchShiftReceipts.mockRejectedValue(new Error('network'));
-    const { toast } = await import('sonner');
     renderPage();
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalled();
