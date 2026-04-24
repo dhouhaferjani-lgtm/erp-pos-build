@@ -45,6 +45,37 @@ vi.mock('@/lib/db/repositories/operatorPinRepository', () => ({
   upsertOperators: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('@/lib/db/repositories/queuedPinUpdateRepository', () => ({
+  getPendingPinUpdates: vi.fn().mockResolvedValue([]),
+  markPinUpdateSynced: vi.fn().mockResolvedValue(undefined),
+  markPinUpdateFailed: vi.fn().mockResolvedValue(undefined),
+  enqueuePinUpdate: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('@/lib/db/repositories/tableRepository', () => ({
+  upsertFloors: vi.fn().mockResolvedValue(undefined),
+  upsertTables: vi.fn().mockResolvedValue(undefined),
+  deleteFloors: vi.fn().mockResolvedValue(undefined),
+  deleteTables: vi.fn().mockResolvedValue(undefined),
+  getAllFloorsWithTables: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock('@/lib/db/repositories/menuRepository', () => ({
+  upsertMenuCategories: vi.fn().mockResolvedValue(undefined),
+  upsertMenuCategoryItems: vi.fn().mockResolvedValue(undefined),
+  deleteMenuCategories: vi.fn().mockResolvedValue(undefined),
+  deleteMenuCategoryItems: vi.fn().mockResolvedValue(undefined),
+  getActiveMenu: vi.fn().mockResolvedValue({ categories: [] }),
+}));
+
+vi.mock('@/stores/authStore', () => ({
+  useAuthStore: {
+    getState: vi.fn().mockReturnValue({
+      refreshCompanyConfig: vi.fn().mockResolvedValue(undefined),
+    }),
+  },
+}));
+
 vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
   upsertTerminalState: vi.fn().mockResolvedValue(undefined),
   upsertZChainState: vi.fn().mockResolvedValue(undefined),
@@ -594,5 +625,120 @@ describe('syncService', () => {
       expect(result.chainBreak).toBe(false);
       expect(result.errors).toHaveLength(0);
     });
+  });
+});
+
+describe('pushQueuedPinUpdates', () => {
+  const db = {} as import('@tauri-apps/plugin-sql').default;
+
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('no-ops when queue is empty', async () => {
+    const { pushQueuedPinUpdates } = await import('../syncService');
+    const { getPendingPinUpdates } = await import('@/lib/db/repositories/queuedPinUpdateRepository');
+    vi.mocked(getPendingPinUpdates).mockResolvedValueOnce([]);
+
+    const result = await pushQueuedPinUpdates(db);
+
+    expect(result).toBe(0);
+    expect(apiPost).not.toHaveBeenCalled();
+  });
+
+  it('batches pending updates into /pos/auth/sync-pins and marks synced', async () => {
+    const { pushQueuedPinUpdates } = await import('../syncService');
+    const { getPendingPinUpdates, markPinUpdateSynced } = await import('@/lib/db/repositories/queuedPinUpdateRepository');
+    vi.mocked(getPendingPinUpdates).mockResolvedValueOnce([
+      { id: 1, userId: 'u1', pinHash: 'h1', status: 'pending', retryCount: 0, createdAt: 'now', syncedAt: null, syncError: null },
+      { id: 2, userId: 'u2', pinHash: 'h2', status: 'pending', retryCount: 0, createdAt: 'now', syncedAt: null, syncError: null },
+    ]);
+    vi.mocked(apiPost).mockResolvedValueOnce({ synced: 2, skipped: 0 });
+
+    const count = await pushQueuedPinUpdates(db);
+
+    expect(count).toBe(2);
+    expect(apiPost).toHaveBeenCalledWith('/pos/auth/sync-pins', {
+      updates: [
+        { user_id: 'u1', pin_hash: 'h1' },
+        { user_id: 'u2', pin_hash: 'h2' },
+      ],
+    });
+    expect(markPinUpdateSynced).toHaveBeenCalledWith(db, 1);
+    expect(markPinUpdateSynced).toHaveBeenCalledWith(db, 2);
+  });
+});
+
+describe('pullTables', () => {
+  const db = {} as import('@tauri-apps/plugin-sql').default;
+
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('pulls floors + tables from the server and upserts them', async () => {
+    const { pullTables } = await import('../syncService');
+    const { upsertFloors, upsertTables } = await import('@/lib/db/repositories/tableRepository');
+
+    vi.mocked(apiGet).mockResolvedValueOnce({
+      data: [{
+        id: 'f1', name: 'Main', position: 0, is_active: true,
+        tables: [{
+          id: 't1', floor_id: 'f1', table_number: '1', label: null, seats: 4,
+          status: 'available', shape: null, position_x: null, position_y: null,
+          width: null, height: null, current_order_id: null,
+          created_at: 'x', updated_at: 'x',
+        }],
+        created_at: 'x', updated_at: 'x',
+      }],
+    });
+
+    const ok = await pullTables(db);
+
+    expect(ok).toBe(true);
+    expect(upsertFloors).toHaveBeenCalledWith(db, expect.arrayContaining([expect.objectContaining({ id: 'f1' })]));
+    expect(upsertTables).toHaveBeenCalledWith(db, expect.arrayContaining([expect.objectContaining({ id: 't1' })]));
+  });
+
+  it('returns false and logs error when the API is unreachable', async () => {
+    const { pullTables } = await import('../syncService');
+    vi.mocked(apiGet).mockRejectedValueOnce(new Error('offline'));
+
+    const ok = await pullTables(db);
+
+    expect(ok).toBe(false);
+  });
+});
+
+describe('pullActiveMenu', () => {
+  const db = {} as import('@tauri-apps/plugin-sql').default;
+
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('upserts categories and items from /active-menu', async () => {
+    const { pullActiveMenu } = await import('../syncService');
+    const { upsertMenuCategories, upsertMenuCategoryItems } = await import('@/lib/db/repositories/menuRepository');
+
+    vi.mocked(apiGet).mockResolvedValueOnce({
+      categories: [{
+        id: 'c1', name: 'Drinks', position: 0,
+        items: [{
+          id: 'i1', sellable_id: 'p1', sellable_type: 'product',
+          name: 'Latte', code: 'LAT', barcode: null,
+          base_price: '3.50', effective_price: '3.50', image_url: null,
+          tax_rate: '7.00', display_order: 0, is_available: true,
+        }],
+      }],
+      deleted_category_ids: ['c-gone'],
+      deleted_item_ids: ['i-gone'],
+    });
+
+    const ok = await pullActiveMenu(db);
+
+    expect(ok).toBe(true);
+    expect(upsertMenuCategories).toHaveBeenCalled();
+    expect(upsertMenuCategoryItems).toHaveBeenCalled();
+  });
+
+  it('returns false on API error', async () => {
+    const { pullActiveMenu } = await import('../syncService');
+    vi.mocked(apiGet).mockRejectedValueOnce(new Error('offline'));
+    expect(await pullActiveMenu(db)).toBe(false);
   });
 });
