@@ -18,6 +18,7 @@ use App\Modules\Product\Domain\Events\ProductCreated;
 use App\Modules\Product\Domain\Events\ProductDeleted;
 use App\Modules\Product\Domain\Events\ProductUpdated;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Product\Application\Services\ProductTombstoneService;
 use App\Modules\Product\Presentation\Requests\CreateProductRequest;
 use App\Modules\Product\Presentation\Requests\UpdateProductRequest;
 use App\Support\Traits\FiltersAndSorts;
@@ -34,6 +35,7 @@ class ProductController extends Controller
 
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly ProductTombstoneService $tombstoneService,
     ) {}
 
     /**
@@ -102,12 +104,11 @@ class ProductController extends Controller
             try {
                 $cursor = Carbon::parse($updatedSince);
                 /** @var array<int, string> $deletedIds */
-                $deletedIds = Product::onlyTrashed()
-                    ->where('tenant_id', $company->tenant_id)
-                    ->where('company_id', $companyId)
-                    ->where('deleted_at', '>=', $cursor)
-                    ->pluck('id')
-                    ->all();
+                $deletedIds = $this->tombstoneService->idsDeletedSince(
+                    $company->tenant_id,
+                    $companyId,
+                    $cursor,
+                );
             } catch (\Throwable) {
                 return response()->json([
                     'error' => ['message' => 'Invalid updated_since cursor', 'field' => 'updated_since'],
