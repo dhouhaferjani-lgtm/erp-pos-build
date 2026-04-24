@@ -160,9 +160,9 @@ final class PosAuthController extends Controller
         Gate::authorize('pos.operate_terminal');
 
         $validated = $request->validate([
-            'updates'              => ['required', 'array', 'min:1', 'max:50'],
-            'updates.*.user_id'   => ['required', 'uuid'],
-            'updates.*.pin_hash'  => ['required', 'string', 'min:20'],
+            'updates' => ['required', 'array', 'min:1', 'max:50'],
+            'updates.*.user_id' => ['required', 'uuid'],
+            'updates.*.pin_hash' => ['required', 'string', 'min:20'],
         ]);
 
         /** @var User $currentUser */
@@ -180,7 +180,7 @@ final class PosAuthController extends Controller
             ]);
         }
 
-        $synced  = 0;
+        $synced = 0;
         $skipped = 0;
 
         foreach ($validated['updates'] as $update) {
@@ -199,7 +199,7 @@ final class PosAuthController extends Controller
 
         return response()->json([
             'data' => [
-                'synced'  => $synced,
+                'synced' => $synced,
                 'skipped' => $skipped,
             ],
         ]);

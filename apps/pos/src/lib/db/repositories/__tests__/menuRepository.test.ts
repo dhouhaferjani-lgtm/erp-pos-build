@@ -40,7 +40,7 @@ describe('menuRepository', () => {
       tax_rate: '7.00',
       display_order: 0,
       is_available: true,
-      modifier_groups: [{ id: 'mg1', name: 'Size', modifiers: [] }],
+      modifier_groups: [{ id: 'mg1', name: 'Size', selection_type: 'single' as const, min_selections: 0, max_selections: 1, is_required: false, position: 0, modifiers: [] }],
       updated_at: '2026-04-23T00:00:00Z',
     }]);
     const [, sql, params] = vi.mocked(execute).mock.calls[0]!;
