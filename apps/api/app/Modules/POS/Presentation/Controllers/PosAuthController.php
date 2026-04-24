@@ -9,6 +9,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Presentation\Requests\VerifyPinRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -140,6 +141,68 @@ final class PosAuthController extends Controller
         })->values()->all();
 
         return response()->json(['data' => $data]);
+    }
+
+    /**
+     * Sync queued PIN updates from offline POS terminals.
+     *
+     * POST /api/v1/pos/auth/sync-pins
+     *
+     * Body: { updates: [{ user_id: uuid, pin_hash: string }, ...] }
+     *
+     * Idempotent: re-sending the same hash for a user is a no-op.
+     * Tenant-scoped: only users in the caller's tenant may be updated.
+     * Uses DB::table() to bypass the 'hashed' cast on pos_pin so the
+     * already-bcrypt-hashed value from the client is stored verbatim.
+     */
+    public function syncPins(Request $request): JsonResponse
+    {
+        Gate::authorize('pos.operate_terminal');
+
+        $validated = $request->validate([
+            'updates'              => ['required', 'array', 'min:1', 'max:50'],
+            'updates.*.user_id'   => ['required', 'uuid'],
+            'updates.*.pin_hash'  => ['required', 'string', 'min:20'],
+        ]);
+
+        /** @var User $currentUser */
+        $currentUser = $request->user();
+
+        $userIds = array_column($validated['updates'], 'user_id');
+        $usersInTenant = User::where('tenant_id', $currentUser->tenant_id)
+            ->whereIn('id', $userIds)
+            ->get()
+            ->keyBy('id');
+
+        if ($usersInTenant->count() !== count($userIds)) {
+            throw ValidationException::withMessages([
+                'updates' => ['One or more users are outside the current tenant.'],
+            ]);
+        }
+
+        $synced  = 0;
+        $skipped = 0;
+
+        foreach ($validated['updates'] as $update) {
+            /** @var User $user */
+            $user = $usersInTenant[$update['user_id']];
+
+            // Bypass the 'hashed' Eloquent cast: the client already sent a bcrypt hash.
+            // Using the cast would double-hash the value and break PIN verification.
+            // Writing the same hash again is a deliberate no-error idempotent upsert.
+            DB::table('users')
+                ->where('id', $user->id)
+                ->update(['pos_pin' => $update['pin_hash']]);
+
+            $synced++;
+        }
+
+        return response()->json([
+            'data' => [
+                'synced'  => $synced,
+                'skipped' => $skipped,
+            ],
+        ]);
     }
 
     /**
