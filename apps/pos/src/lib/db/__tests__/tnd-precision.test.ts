@@ -326,6 +326,110 @@ describe('TND precision — forbids float coercion in migrated paths', () => {
   });
 });
 
+describe('TND precision — defensive coercion against numeric server payloads', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('upsertZChainState coerces numeric grand_totals to 3-decimal strings', async () => {
+    // Simulate a future regression where the server sends numbers instead of
+    // strings. The wire contract says strings, but if a middleware or JSON
+    // serializer regresses, we must not silently store a number whose toString
+    // drops trailing zeros (JS `(100.25).toString()` === "100.25", not "100.250").
+    //
+    // Cast through unknown to bypass the string-typed contract — the test is
+    // exercising the runtime defense that kicks in when the contract is violated.
+    const numericGrandTotals = {
+      cumulative_sales: 100.25,
+      cumulative_tax: 16.705,
+      cumulative_refunds: 5.125,
+      perpetual_grand_total: 95.125,
+      receipt_count_lifetime: 10,
+    } as unknown as {
+      cumulative_sales: string;
+      cumulative_tax: string;
+      cumulative_refunds: string;
+      perpetual_grand_total: string;
+      receipt_count_lifetime: number;
+    };
+
+    await upsertZChainState(db, TERMINAL_ID, {
+      z_last_hash: 'h',
+      z_hash_sequence: 1,
+      z_number: 1,
+      grand_totals: numericGrandTotals,
+    });
+
+    const params = vi.mocked(execute).mock.calls[0]![2] as unknown[];
+    expect(params[3]).toStrictEqual('100.250');
+    expect(params[4]).toStrictEqual('16.705');
+    expect(params[5]).toStrictEqual('5.125');
+    expect(params[6]).toStrictEqual('95.125');
+    for (let i = 3; i <= 6; i++) {
+      expect(typeof params[i]).toBe('string');
+    }
+  });
+
+  it('upsertZChainState passes through string values unchanged (does not re-pad)', async () => {
+    // Trusting client-side string values as-is: if the value already carries
+    // more precision than CUMULATIVE_SCALE, we preserve it. Downstream Big.js
+    // normalizes at arithmetic time.
+    await upsertZChainState(db, TERMINAL_ID, {
+      z_last_hash: 'h',
+      z_hash_sequence: 1,
+      z_number: 1,
+      grand_totals: {
+        cumulative_sales: '100.25',          // missing trailing zero
+        cumulative_tax: '16.7050',            // extra trailing zero
+        cumulative_refunds: '0.000',
+        perpetual_grand_total: '100.25',
+        receipt_count_lifetime: 1,
+      },
+    });
+
+    const params = vi.mocked(execute).mock.calls[0]![2] as unknown[];
+    expect(params[3]).toStrictEqual('100.25');
+    expect(params[4]).toStrictEqual('16.7050');
+  });
+
+  it('updateGrandTotals accumulates 2-decimal EUR values without precision loss', async () => {
+    // Regression: the fix targeted TND (3 decimals), but must not degrade
+    // the 2-decimal path. Sums of 0.01 should still land on 0.10 after ten
+    // increments, with no trailing-zero gymnastics.
+    let currentState = {
+      z_last_hash: 'h',
+      z_hash_sequence: 0,
+      z_number: 0,
+      cumulative_sales: '0.000',
+      cumulative_tax: '0.000',
+      cumulative_refunds: '0.000',
+      perpetual_grand_total: '0.000',
+      receipt_count_lifetime: 0,
+    };
+    vi.mocked(queryOne).mockImplementation(async () => currentState);
+
+    for (let i = 0; i < 10; i++) {
+      await updateGrandTotals(db, TERMINAL_ID, '0.01', '0.00', '0.00', 1);
+
+      const params = vi.mocked(execute).mock.calls[i]![2] as unknown[];
+      currentState = {
+        ...currentState,
+        cumulative_sales: params[0] as string,
+        cumulative_tax: params[1] as string,
+        cumulative_refunds: params[2] as string,
+        perpetual_grand_total: params[3] as string,
+        receipt_count_lifetime: params[4] as number,
+      };
+    }
+
+    // Big.js keeps 3-decimal scale (CUMULATIVE_SCALE) across addition; the
+    // display layer in the EUR POS UI trims trailing zeros for rendering.
+    // The stored value must be EXACTLY "0.100", not "0.100000000000000007".
+    expect(currentState.cumulative_sales).toStrictEqual('0.100');
+    expect(currentState.perpetual_grand_total).toStrictEqual('0.100');
+  });
+});
+
 // Silence unused import lint noise — queryAll is imported so the mock factory
 // is exercised by modules under test even if this file doesn't call it directly.
 void queryAll;

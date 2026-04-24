@@ -370,4 +370,102 @@ d('Monetary precision — round-trip for multi-decimal currencies (TND)', () => 
     // 100.250 - 5.125 = 95.125
     expect(state!.perpetual_grand_total).toStrictEqual('95.125');
   });
+
+  it('EUR 2-decimal values round-trip exactly through updateGrandTotals', async () => {
+    // TND precision must not come at the cost of the EUR (2-decimal) path.
+    // Values typical of a coffee shop shift: 3.50, 1.20, 4.75 — all trivially
+    // representable in both decimal and REAL, but now stored as TEXT.
+    await upsertZChainState(adapter.asDatabase(), TERMINAL_ID, {
+      z_last_hash: 'h',
+      z_hash_sequence: 0,
+      z_number: 0,
+      grand_totals: null,
+    });
+
+    await updateGrandTotals(adapter.asDatabase(), TERMINAL_ID, '3.50', '0.58', '0.00', 1);
+    await updateGrandTotals(adapter.asDatabase(), TERMINAL_ID, '1.20', '0.20', '0.00', 1);
+    await updateGrandTotals(adapter.asDatabase(), TERMINAL_ID, '4.75', '0.79', '0.00', 1);
+
+    const state = await getZChainState(adapter.asDatabase(), TERMINAL_ID);
+    // 3.50 + 1.20 + 4.75 = 9.45 — but stored at CUMULATIVE_SCALE=3 → "9.450"
+    expect(state!.cumulative_sales).toStrictEqual('9.450');
+    // 0.58 + 0.20 + 0.79 = 1.57 → "1.570"
+    expect(state!.cumulative_tax).toStrictEqual('1.570');
+    expect(state!.perpetual_grand_total).toStrictEqual('9.450');
+    expect(state!.receipt_count_lifetime).toBe(3);
+  });
+
+  it('upsertZChainState defensively coerces numeric grand_totals (server contract drift guard)', async () => {
+    // The wire contract says string, but if the server ever ships a JSON number
+    // (Laravel casts regression, middleware strip, etc.), the local DB must not
+    // silently store "100.25" when we expect "100.250". Guards precision across
+    // version skew between server and offline client.
+    const numericGrandTotals = {
+      cumulative_sales: 100.25,
+      cumulative_tax: 16.705,
+      cumulative_refunds: 5.125,
+      perpetual_grand_total: 95.125,
+      receipt_count_lifetime: 10,
+    } as unknown as {
+      cumulative_sales: string;
+      cumulative_tax: string;
+      cumulative_refunds: string;
+      perpetual_grand_total: string;
+      receipt_count_lifetime: number;
+    };
+
+    await upsertZChainState(adapter.asDatabase(), TERMINAL_ID, {
+      z_last_hash: 'h',
+      z_hash_sequence: 1,
+      z_number: 1,
+      grand_totals: numericGrandTotals,
+    });
+
+    const state = await getZChainState(adapter.asDatabase(), TERMINAL_ID);
+    expect(state!.cumulative_sales).toStrictEqual('100.250');
+    expect(state!.cumulative_tax).toStrictEqual('16.705');
+    expect(state!.cumulative_refunds).toStrictEqual('5.125');
+    expect(state!.perpetual_grand_total).toStrictEqual('95.125');
+  });
+
+  it('migration v21 is data-preserving when re-run over already-TEXT columns', async () => {
+    // In normal operation, _migrations prevents re-running. But if _migrations
+    // is lost or out-of-sync (e.g. DB copy from another env), a re-run should
+    // not corrupt data. For v21 specifically, every step is safe on TEXT:
+    //   - ADD COLUMN col_new TEXT — no conflict, col_new doesn't exist
+    //   - UPDATE col_new = CAST(col AS TEXT) — TEXT → TEXT is a no-op cast
+    //   - DROP + RENAME — swaps col with an identical TEXT copy
+    // So a second run is effectively a no-op that preserves exact values.
+    const v21 = migrations.find((m) => m.version === 21);
+    expect(v21).toBeDefined();
+
+    await upsertZChainState(adapter.asDatabase(), TERMINAL_ID, {
+      z_last_hash: 'h',
+      z_hash_sequence: 0,
+      z_number: 0,
+      grand_totals: {
+        cumulative_sales: '123.456',
+        cumulative_tax: '0.000',
+        cumulative_refunds: '0.000',
+        perpetual_grand_total: '123.456',
+        receipt_count_lifetime: 1,
+      },
+    });
+
+    // Re-run v21 after migrations already applied
+    await v21!.run!(adapter);
+
+    const state = await getZChainState(adapter.asDatabase(), TERMINAL_ID);
+    expect(state).not.toBeNull();
+    // Byte-identical round-trip — no precision loss on re-run.
+    expect(state!.cumulative_sales).toStrictEqual('123.456');
+    expect(state!.perpetual_grand_total).toStrictEqual('123.456');
+
+    // Column types are still TEXT (a bug that reverts to REAL would be caught here).
+    const termCols = await adapter.select<{ name: string; type: string }[]>(
+      'PRAGMA table_info(terminal_state)',
+    );
+    expect(termCols.find((c) => c.name === 'cumulative_sales')?.type).toBe('TEXT');
+    expect(termCols.find((c) => c.name === 'perpetual_grand_total')?.type).toBe('TEXT');
+  });
 });

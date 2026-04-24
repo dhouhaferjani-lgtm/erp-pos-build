@@ -1,12 +1,41 @@
 import type Database from '@tauri-apps/plugin-sql';
+import Big from 'big.js';
 import { queryOne, execute } from '@/lib/db';
 import { bcadd, bcsub } from '@/lib/decimal';
 import type { ZChainState } from '@/lib/offline/types';
 
 // Max currency scale used for cumulative monetary arithmetic. TND needs 3;
-// everyone else rounds trailing zeros at the display layer.
+// everyone else rounds trailing zeros at the display layer. The three-decimal
+// cap is a deliberate constraint — supporting currencies with >3 decimals
+// (crypto, some historical minor units) would require a per-currency scale
+// flowing into every writer. Revisit only if an onboarded country demands it.
 const CUMULATIVE_SCALE = 3;
 const ZERO = '0.000';
+
+/**
+ * Defensive coercion for grand-totals fields coming over the wire.
+ *
+ * The Laravel side casts monetary columns as `decimal:3`, which serializes as
+ * a decimal string ("100.250"). Our `ZChainStateResponse` types them as string
+ * accordingly. If the server ever sends a number (silent JSON cast regression,
+ * unversioned deployment, middleware that strips type hints), a bare assignment
+ * would write "100.25" for JS number 100.25 — losing the trailing zero that
+ * makes the hash chain reproducible.
+ *
+ * This normalizes whatever came in to a CUMULATIVE_SCALE-padded decimal string,
+ * so a latent server bug cannot silently corrupt local cumulative state.
+ */
+function coerceCumulative(value: unknown): string {
+  if (typeof value === 'string') {
+    // Already a string — trust it (might be "100.250" or "100.25"; Big.js
+    // normalizes both at downstream arithmetic time).
+    return value;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return new Big(value).toFixed(CUMULATIVE_SCALE);
+  }
+  return ZERO;
+}
 
 export interface TerminalHashState {
   terminal_id: string;
@@ -230,10 +259,10 @@ export async function upsertZChainState(
       state.z_last_hash,
       state.z_hash_sequence,
       state.z_number,
-      gt?.cumulative_sales ?? ZERO,
-      gt?.cumulative_tax ?? ZERO,
-      gt?.cumulative_refunds ?? ZERO,
-      gt?.perpetual_grand_total ?? ZERO,
+      coerceCumulative(gt?.cumulative_sales),
+      coerceCumulative(gt?.cumulative_tax),
+      coerceCumulative(gt?.cumulative_refunds),
+      coerceCumulative(gt?.perpetual_grand_total),
       gt?.receipt_count_lifetime ?? 0,
       terminalId,
     ],

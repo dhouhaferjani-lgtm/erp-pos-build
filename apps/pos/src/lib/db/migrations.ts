@@ -435,6 +435,17 @@ export const migrations: Migration[] = [
     // backend decimal(15,3) widening from 2026_03_11_200000; the PostgreSQL
     // migration skipped SQLite because SQLite has no ALTER COLUMN TYPE.
     // Requires SQLite 3.35+ for DROP/RENAME COLUMN (bundled with Tauri).
+    //
+    // BACKFILL SEMANTICS: the `CAST(col AS TEXT)` step uses SQLite's shortest
+    // round-trip decimal representation. This means:
+    //   - A cleanly-stored EUR value like 100.25 emerges as "100.25" (correct).
+    //   - A TND value that had already drifted to 100.24999999998 emerges as
+    //     "100.24999999998" and is *locked in* — this migration preserves the
+    //     existing (possibly imprecise) state. It does NOT heal historical
+    //     float drift. Only writes *after* this migration runs benefit from
+    //     exact decimal persistence. For verticals that launched TND before
+    //     this fix, reconcile existing terminal_state/z_reports rows manually
+    //     against authoritative server values if needed.
     version: 21,
     name: 'widen_monetary_columns_to_text',
     sql: '',
@@ -455,9 +466,6 @@ export const migrations: Migration[] = [
           await db.execute(
             `ALTER TABLE ${table} ADD COLUMN ${tmp} TEXT NOT NULL DEFAULT '0'`,
           );
-          // CAST(REAL AS TEXT) emits SQLite's shortest round-trip decimal — good
-          // enough for back-compat since REAL values were already imprecise.
-          // New writes after this migration store exact decimal strings.
           await db.execute(
             `UPDATE ${table} SET ${tmp} = CAST(${column} AS TEXT)`,
           );
