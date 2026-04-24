@@ -80,20 +80,21 @@ describe('buildEndOfDayPreview', () => {
 
     // VAT breakdown: one rate (19%), combined from both receipts
     expect(preview.vat_breakdown).toHaveLength(1);
-    expect(preview.vat_breakdown[0].tax_rate).toBe(19);
-    expect(preview.vat_breakdown[0].net_amount).toBe('25.21');
-    expect(preview.vat_breakdown[0].vat_amount).toBe('4.79');
-    expect(preview.vat_breakdown[0].gross_amount).toBe('30.00');
+    const vatRow = preview.vat_breakdown[0]!;
+    expect(vatRow.tax_rate).toBe(19);
+    expect(vatRow.net_amount).toBe('25.21');
+    expect(vatRow.vat_amount).toBe('4.79');
+    expect(vatRow.gross_amount).toBe('30.00');
 
     // Payment methods: CASH + CARD
     expect(preview.payment_methods).toHaveLength(2);
 
-    const cashMethod = preview.payment_methods.find((p) => p.payment_type === 'CASH');
-    const cardMethod = preview.payment_methods.find((p) => p.payment_type === 'CARD');
+    const cashMethod = preview.payment_methods.find((p) => p.payment_type === 'CASH')!;
+    const cardMethod = preview.payment_methods.find((p) => p.payment_type === 'CARD')!;
     expect(cashMethod).toBeDefined();
     expect(cardMethod).toBeDefined();
-    expect(cashMethod?.total_amount).toBe('10.00');
-    expect(cardMethod?.total_amount).toBe('20.00');
+    expect(cashMethod.total_amount).toBe('10.00');
+    expect(cardMethod.total_amount).toBe('20.00');
   });
 
   it('returns a preview with sales_count=0 when there are no receipts (no throw)', async () => {

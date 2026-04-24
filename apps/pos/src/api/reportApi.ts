@@ -47,6 +47,8 @@ export interface ZReportResponse {
   generated_at: string;
   is_first_z_report: boolean;
   formatted_z_number: string;
+  /** True when this Z was already generated for the shift and returned idempotently. */
+  was_reused?: boolean;
   sales_count: number;
   gross_sales: string;
   opening_cash: string;
@@ -188,6 +190,66 @@ function localZReportToResponse(report: LocalZReport, decimals: number): ZReport
 /** Server-only Z-report generation (for admin dashboard fallback). */
 export async function generateZReportServer(terminalId: string): Promise<ZReportResponse> {
   return apiPost<ZReportResponse>('/pos/reports/z', { terminal_id: terminalId });
+}
+
+export interface ZReportListItem {
+  id: string;
+  terminal_id: string;
+  shift_id: string;
+  z_number: number;
+  formatted_z_number: string;
+  generated_at: string;
+  fiscal_hash: string;
+  gross_sales: string;
+  is_reprint: boolean;
+}
+
+/**
+ * Fetch all Z-reports for the current terminal from the local SQLite store.
+ * Falls back to the server API when online.
+ */
+export async function fetchZReports(terminalId: string, companyId: string): Promise<ZReportListItem[]> {
+  try {
+    const { useConnectivityStore } = await import('@/stores/connectivityStore');
+    if (useConnectivityStore.getState().isOnline) {
+      return await apiGet<ZReportListItem[]>(`/pos/terminals/${terminalId}/z-reports`);
+    }
+  } catch {
+    // fall through to local
+  }
+
+  // Offline: read from local SQLite
+  const db = await getDatabase(companyId);
+  const { queryAll: dbQueryAll } = await import('@/lib/db');
+  const rows = await dbQueryAll<{
+    id: string;
+    terminal_id: string;
+    shift_id: string;
+    z_number: number;
+    formatted_z_number: string;
+    generated_at: string;
+    fiscal_hash: string;
+    report_data: string;
+  }>(
+    db,
+    'SELECT id, terminal_id, shift_id, z_number, formatted_z_number, generated_at, fiscal_hash, report_data FROM z_reports WHERE terminal_id = $1 ORDER BY z_number DESC',
+    [terminalId],
+  );
+
+  return rows.map((row) => {
+    const data = JSON.parse(row.report_data) as { gross_sales?: string };
+    return {
+      id: row.id,
+      terminal_id: row.terminal_id,
+      shift_id: row.shift_id,
+      z_number: row.z_number,
+      formatted_z_number: row.formatted_z_number,
+      generated_at: row.generated_at,
+      fiscal_hash: row.fiscal_hash,
+      gross_sales: data.gross_sales ?? '0.00',
+      is_reprint: false,
+    };
+  });
 }
 
 export async function fetchShiftReceipts(shiftId: string): Promise<ShiftReceipt[]> {

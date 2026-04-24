@@ -93,7 +93,7 @@ final class ReportController extends Controller
      */
     public function generateZReport(Request $request): JsonResponse
     {
-        Gate::authorize('pos.view_reports');
+        Gate::authorize('pos.generate_z_report');
 
         $request->validate([
             'terminal_id' => ['required', 'string', 'uuid', 'exists:pos_terminals,id'],
