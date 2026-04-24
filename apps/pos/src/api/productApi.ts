@@ -50,7 +50,20 @@ interface ActiveMenuResponse {
 }
 
 export async function fetchActiveMenu(): Promise<ActiveMenuResponse> {
-  return apiGet<ActiveMenuResponse>('/active-menu');
+  try {
+    return await apiGet<ActiveMenuResponse>('/active-menu');
+  } catch (error) {
+    const { useAuthStore } = await import('@/stores/authStore');
+    const { companyId } = useAuthStore.getState();
+    if (!companyId) throw error;
+
+    const { getDatabase } = await import('@/lib/db');
+    const { getActiveMenu } = await import('@/lib/db/repositories/menuRepository');
+    const db = await getDatabase(companyId);
+    const cached = await getActiveMenu(db);
+    if (cached.categories.length === 0) throw error;
+    return cached as ActiveMenuResponse;
+  }
 }
 
 export function flattenMenuToProducts(menu: ActiveMenuResponse): POSProduct[] {
