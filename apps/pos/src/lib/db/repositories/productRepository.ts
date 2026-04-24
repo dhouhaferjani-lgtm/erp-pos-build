@@ -107,3 +107,19 @@ export async function getProductCount(db: Database): Promise<number> {
   const result = await queryOne<{ count: number }>(db, 'SELECT COUNT(*) as count FROM products');
   return result?.count ?? 0;
 }
+
+const DELETE_BATCH_SIZE = 200;
+
+export async function deleteProducts(db: Database, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+
+  for (let i = 0; i < ids.length; i += DELETE_BATCH_SIZE) {
+    const batch = ids.slice(i, i + DELETE_BATCH_SIZE);
+    const placeholders = batch.map((_, idx) => `$${idx + 1}`).join(', ');
+    await execute(
+      db,
+      `DELETE FROM products WHERE id IN (${placeholders})`,
+      batch,
+    );
+  }
+}

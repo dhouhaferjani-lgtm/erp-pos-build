@@ -1,6 +1,6 @@
 import type Database from '@tauri-apps/plugin-sql';
 import { apiGet, apiPost } from '@/lib/api';
-import { upsertProducts } from '@/lib/db/repositories/productRepository';
+import { upsertProducts, deleteProducts } from '@/lib/db/repositories/productRepository';
 import {
   upsertPaymentMethods,
   upsertPaymentRepositories,
@@ -309,6 +309,9 @@ function zReportToSyncPayload(report: LocalZReport): Record<string, unknown> {
 /**
  * Pull products delta from server with pagination.
  * Uses per_page=500 and loops until a page returns fewer than 500 items.
+ * Consumes the `deleted_ids` tombstone list returned by the server when
+ * `updated_since` is present, removing locally-cached rows for soft-deleted
+ * server-side products.
  */
 export async function pullProducts(db: Database): Promise<number> {
   try {
@@ -321,23 +324,43 @@ export async function pullProducts(db: Database): Promise<number> {
     let totalPulled = 0;
     let page = 1;
     let hasMore = true;
+    const deletedIdsAccumulator: string[] = [];
 
     while (hasMore) {
-      const result = await apiGet<POSProduct[] | { data: POSProduct[] }>('/products', { ...params, page: String(page) });
+      const result = await apiGet<
+        POSProduct[] | { data: POSProduct[]; deleted_ids?: string[] }
+      >('/products', { ...params, page: String(page) });
+
       const products = Array.isArray(result) ? result : result.data;
+      const deletedIds = Array.isArray(result) ? [] : (result.deleted_ids ?? []);
 
       if (products.length > 0) {
         await upsertProducts(db, products);
         totalPulled += products.length;
       }
 
+      if (deletedIds.length > 0) {
+        deletedIdsAccumulator.push(...deletedIds);
+      }
+
       hasMore = products.length === 500;
       page++;
     }
 
-    if (totalPulled > 0) {
+    if (deletedIdsAccumulator.length > 0) {
+      await deleteProducts(db, deletedIdsAccumulator);
+    }
+
+    if (totalPulled > 0 || deletedIdsAccumulator.length > 0) {
       await setSyncMetadata(db, 'products_last_sync', new Date().toISOString());
-      await logSyncOperation(db, 'pull', 'products', null, 'success', `${totalPulled} products`);
+      await logSyncOperation(
+        db,
+        'pull',
+        'products',
+        null,
+        'success',
+        `${totalPulled} upserted, ${deletedIdsAccumulator.length} tombstoned`,
+      );
     }
 
     return totalPulled;
