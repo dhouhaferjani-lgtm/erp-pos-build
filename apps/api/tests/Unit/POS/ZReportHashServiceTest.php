@@ -305,6 +305,7 @@ class ZReportHashServiceTest extends TestCase
 
         // Remove shift_id from overrides since we've already computed it above.
         $overrides = array_diff_key($overrides, ['shift_id' => true]);
+
         return ZReport::create(array_merge($defaults, $overrides));
     }
 }
