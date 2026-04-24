@@ -16,6 +16,7 @@ import {
 } from '@/lib/printing';
 import type { PrinterInfo, PrinterConfig } from '@/lib/printing';
 import { applyFullscreen } from '@/lib/fullscreen';
+import { toast } from 'sonner';
 import { CashDrawerSettings } from '@/components/settings/CashDrawerSettings';
 import { ScannerSettings } from '@/components/settings/ScannerSettings';
 import { PrinterAdvancedSettings } from '@/components/settings/PrinterAdvancedSettings';
@@ -266,6 +267,32 @@ export function SettingsPage() {
                       fullscreen ? 'translate-x-6' : 'translate-x-1',
                     )}
                   />
+                </button>
+              </div>
+
+              {/* Force Fullscreen — manual retry / escape hatch for BG9 */}
+              <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-3">
+                <div className="flex items-center gap-2">
+                  <Maximize className="h-4 w-4 text-gray-600" />
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">
+                      {t('settings.forceFullscreen')}
+                    </span>
+                    <p className="text-xs text-gray-500">
+                      {t('settings.forceFullscreenDesc')}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await applyFullscreen(true);
+                    useSettingsStore.getState().setFullscreen(true);
+                    toast.success(t('settings.forceFullscreenApplied'));
+                  }}
+                  className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+                >
+                  {t('settings.forceFullscreen')}
                 </button>
               </div>
             </div>
