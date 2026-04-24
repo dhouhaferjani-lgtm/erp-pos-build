@@ -49,6 +49,48 @@ export const useOperatorStore = create<OperatorStore>()((set) => ({
   ...initialState,
 
   verifyPin: async (pin: string) => {
+    // Offline-first: check cached bcrypt hashes in SQLite BEFORE the API.
+    // The POS is offline-first, so authentication should be offline-first too.
+    // If the local cache matches, accept immediately and fire the API call in
+    // the background for server-side activity tracking (telemetry).
+    let offlineMatch: Operator | null = null;
+    try {
+      const db = await getDb();
+      const operators = await getAllOperators(db);
+
+      for (const op of operators) {
+        if (bcrypt.compareSync(pin, op.pin_hash)) {
+          offlineMatch = {
+            id: op.id,
+            name: op.name,
+            email: op.email,
+            roles: op.roles,
+            permissions: op.permissions,
+            can_discount: op.can_discount,
+            max_discount_percent: op.max_discount_percent,
+          };
+          break;
+        }
+      }
+    } catch (dbError) {
+      console.warn('[POS] Offline PIN verification layer unavailable:', dbError);
+    }
+
+    if (offlineMatch !== null) {
+      set({
+        operator: offlineMatch,
+        isLocked: false,
+        lastActivity: Date.now(),
+      });
+      // Fire-and-forget telemetry: tell the server we verified a PIN.
+      // Any failure here is swallowed — it must not affect UX.
+      void apiPost<Operator>('/pos/auth/verify-pin', { pin }).catch((err: unknown) => {
+        console.debug('[POS] PIN telemetry call failed (offline-accepted):', err);
+      });
+      return;
+    }
+
+    // Offline miss — fall through to API as the source of truth.
     try {
       const operator = await apiPost<Operator>('/pos/auth/verify-pin', { pin });
       set({
@@ -57,33 +99,6 @@ export const useOperatorStore = create<OperatorStore>()((set) => ({
         lastActivity: Date.now(),
       });
     } catch {
-      // Offline fallback: verify against cached bcrypt hashes in SQLite
-      try {
-        const db = await getDb();
-        const operators = await getAllOperators(db);
-
-        for (const op of operators) {
-          if (bcrypt.compareSync(pin, op.pin_hash)) {
-            set({
-              operator: {
-                id: op.id,
-                name: op.name,
-                email: op.email,
-                roles: op.roles,
-                permissions: op.permissions,
-                can_discount: op.can_discount,
-                max_discount_percent: op.max_discount_percent,
-              },
-              isLocked: false,
-              lastActivity: Date.now(),
-            });
-            return;
-          }
-        }
-      } catch (dbError) {
-        console.error('[POS] Offline PIN verification failed:', dbError);
-      }
-
       throw new Error('Invalid PIN');
     }
   },
