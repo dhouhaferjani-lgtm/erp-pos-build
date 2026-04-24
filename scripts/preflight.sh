@@ -25,7 +25,7 @@ echo -e "\n${YELLOW}Running Pint (code style)...${NC}"
 echo -e "${GREEN}✓ Pint passed${NC}"
 
 echo -e "\n${YELLOW}Running PHPStan (static analysis)...${NC}"
-./vendor/bin/phpstan analyse --level=8 --memory-limit=512M
+./vendor/bin/phpstan analyse --level=8 --memory-limit=2G
 echo -e "${GREEN}✓ PHPStan passed${NC}"
 
 echo -e "\n${YELLOW}Running PHPUnit tests...${NC}"
