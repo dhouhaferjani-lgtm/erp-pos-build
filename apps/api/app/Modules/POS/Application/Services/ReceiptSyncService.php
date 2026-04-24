@@ -114,10 +114,18 @@ final class ReceiptSyncService
         // 1. Idempotency check: if receipt with this key already exists, return duplicate
         $existing = Receipt::where('idempotency_key', $payload->idempotencyKey)->first();
         if ($existing !== null) {
+            // Refresh the terminal so the echo reflects the current persisted state
+            // (not the idempotency-hit terminal's pre-modification state).
+            $terminalForEcho = Terminal::where('id', $existing->terminal_id)->first();
+
             return SyncReceiptResult::duplicate(
                 $payload->idempotencyKey,
                 $existing->id,
                 $existing->fiscal_hash,
+                terminalLastHash: $terminalForEcho?->last_hash,
+                terminalHashSequence: $terminalForEcho !== null
+                    ? $terminalForEcho->current_sequence - 1
+                    : null,
             );
         }
 
@@ -303,6 +311,7 @@ final class ReceiptSyncService
                 'tax_amount' => $payload->taxAmount,
                 'discount_amount' => $payload->discountAmount,
                 'total' => $total,
+                'change_due' => $payload->changeDue,
                 'currency' => $payload->currency,
                 'consumption_mode' => $payload->consumptionMode !== null
                     ? ConsumptionMode::from($payload->consumptionMode)
@@ -378,6 +387,8 @@ final class ReceiptSyncService
                 $payload->idempotencyKey,
                 $receipt->id,
                 $fiscalHash,
+                terminalLastHash: $terminal->last_hash,
+                terminalHashSequence: $terminal->current_sequence - 1,
             );
         });
     }

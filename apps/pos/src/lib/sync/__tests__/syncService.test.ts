@@ -48,6 +48,18 @@ vi.mock('@/lib/db/repositories/operatorPinRepository', () => ({
 vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
   upsertTerminalState: vi.fn().mockResolvedValue(undefined),
   upsertZChainState: vi.fn().mockResolvedValue(undefined),
+  advanceHashChain: vi.fn().mockResolvedValue(undefined),
+  FiscalRegressionError: class FiscalRegressionError extends Error {
+    constructor(
+      readonly terminalId: string,
+      readonly op: string,
+      readonly before: number,
+      readonly after: number,
+    ) {
+      super(`${op} regression: ${before} -> ${after}`);
+      this.name = 'FiscalRegressionError';
+    }
+  },
 }));
 
 vi.mock('@/lib/db/repositories/zReportRepository', () => ({
@@ -91,6 +103,8 @@ function syncBatchResponse(items: Array<{
   status: 'synced' | 'duplicate' | 'failed' | 'chain_broken';
   receipt_id?: string | null;
   error?: string | null;
+  terminal_last_hash?: string | null;
+  terminal_hash_sequence?: number | null;
 }>) {
   const synced = items.filter((i) => i.status === 'synced').length;
   const duplicates = items.filter((i) => i.status === 'duplicate').length;
@@ -102,6 +116,8 @@ function syncBatchResponse(items: Array<{
       receipt_id: i.receipt_id ?? 'srv-' + i.idempotency_key,
       server_fiscal_hash: 'hash-' + i.idempotency_key,
       error: i.error ?? null,
+      terminal_last_hash: i.terminal_last_hash ?? null,
+      terminal_hash_sequence: i.terminal_hash_sequence ?? null,
     })),
     total: items.length,
     synced,
@@ -322,6 +338,41 @@ describe('syncService', () => {
       expect(payload['consumption_mode']).toBe('SUR_PLACE');
       expect(payload['table_id']).toBe('table-5');
     });
+
+    it('reconciles local hash_sequence from server terminal_last_hash after each sync', async () => {
+      const receipt = makeOfflineReceipt({
+        idempotency_key: 'key-1',
+        hash_sequence: 7,
+        fiscal_hash: 'client-hash-7',
+      });
+      vi.mocked(getPendingReceiptsForSync).mockResolvedValue([receipt]);
+      vi.mocked(apiPost).mockResolvedValue(
+        syncBatchResponse([
+          {
+            idempotency_key: 'key-1',
+            status: 'synced',
+            receipt_id: 'server-uuid-1',
+            // New fields — the POS must consume them.
+            terminal_last_hash: 'server-hash-7',
+            terminal_hash_sequence: 7,
+          },
+        ]),
+      );
+
+      // Spy on advanceHashChain — used to rewrite local last_hash to match server.
+      const { advanceHashChain } = await import(
+        '@/lib/db/repositories/terminalStateRepository'
+      );
+
+      await pushOfflineReceipts(db);
+
+      expect(advanceHashChain).toHaveBeenCalledWith(
+        expect.anything(),
+        receipt.terminal_id,
+        'server-hash-7',
+        7,
+      );
+    });
   });
 
   describe('pullProducts', () => {
@@ -491,6 +542,35 @@ describe('syncService', () => {
       const result = await pullTerminalState(db, 'term-1');
 
       expect(result).toBe(false);
+    });
+
+    it('does NOT reset local hash_sequence when server returns a lower value', async () => {
+      // Client has advanced locally to sequence 12. Server thinks it is at 0
+      // (new-terminal genesis). The guard must preserve 12.
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'terminal-1',
+        code: 'T001',
+        location: { code: 'MAIN' },
+        genesis_seed: 'seed-abc',
+        last_hash: null,
+        hash_sequence: 0,
+      });
+
+      // Simulate the guard inside upsertTerminalState: make the mock throw
+      const { FiscalRegressionError } = await import(
+        '@/lib/db/repositories/terminalStateRepository'
+      );
+      vi.mocked(upsertTerminalState).mockRejectedValueOnce(
+        new FiscalRegressionError('terminal-1', 'upsertTerminalState', 12, 0),
+      );
+
+      const db = makeMockDb();
+      const ok = await pullTerminalState(db, 'terminal-1');
+
+      // pullTerminalState must swallow the regression (log + return true)
+      // and NEVER propagate — a partial pull must not kill the scheduler.
+      expect(ok).toBe(true);
+      expect(upsertTerminalState).toHaveBeenCalledOnce();
     });
   });
 

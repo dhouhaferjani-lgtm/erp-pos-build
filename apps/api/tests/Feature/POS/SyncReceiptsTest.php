@@ -82,6 +82,69 @@ final class SyncReceiptsTest extends TestCase
         $this->terminal->refresh();
         $this->assertNotNull($this->terminal->last_hash);
         $this->assertEquals(2, $this->terminal->current_sequence);
+
+        // Fiscal response must now echo the terminal's authoritative state so the
+        // POS client can reconcile local hash_sequence without re-pulling /pos/terminals.
+        $response->assertJsonStructure([
+            'data' => [
+                'results' => [
+                    ['idempotency_key', 'status', 'receipt_id', 'server_fiscal_hash', 'error', 'terminal_last_hash', 'terminal_hash_sequence'],
+                ],
+            ],
+        ]);
+        $resultItem = $response->json('data.results.0');
+        $this->assertSame($this->terminal->last_hash, $resultItem['terminal_last_hash']);
+        $this->assertSame($this->terminal->current_sequence - 1, $resultItem['terminal_hash_sequence']);
+    }
+
+    public function test_sync_response_exposes_terminal_last_hash_on_every_result(): void
+    {
+        $payloadA = $this->buildReceiptPayload([
+            'idempotency_key' => 'tlh-a',
+            'receipt_number' => 'POS01-2026-00000001',
+            'hash_sequence' => 1,
+        ]);
+        $responseA = $this->postJson('/api/v1/pos/receipts/sync', $payloadA);
+        $responseA->assertStatus(200);
+        $hashA = $responseA->json('data.results.0.terminal_last_hash');
+        $this->assertNotNull($hashA);
+
+        // Second receipt must echo a DIFFERENT terminal_last_hash (chain advanced).
+        $payloadB = $this->buildReceiptPayload([
+            'idempotency_key' => 'tlh-b',
+            'receipt_number' => 'POS01-2026-00000002',
+            'hash_sequence' => 2,
+            'previous_hash' => $hashA,
+        ]);
+        $responseB = $this->postJson('/api/v1/pos/receipts/sync', $payloadB);
+        $responseB->assertStatus(200);
+        $responseB->assertJsonPath('data.results.0.status', 'synced');
+        $hashB = $responseB->json('data.results.0.terminal_last_hash');
+        $this->assertNotSame($hashA, $hashB);
+        $this->assertSame(2, $responseB->json('data.results.0.terminal_hash_sequence'));
+    }
+
+    public function test_sync_persists_change_due_from_payload(): void
+    {
+        $payload = $this->buildReceiptPayload([
+            'idempotency_key' => 'change-due-1',
+            'total' => '20.00',
+            'tendered_amount' => '25.00',
+            'change_due' => '5.00',
+            'payments' => [
+                ['payment_method_id' => $this->paymentMethod->id, 'repository_id' => $this->paymentRepo->id, 'amount' => '25.00'],
+            ],
+        ]);
+
+        $response = $this->postJson('/api/v1/pos/receipts/sync', $payload);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('data.results.0.status', 'synced');
+
+        $this->assertDatabaseHas('pos_receipts', [
+            'idempotency_key' => 'change-due-1',
+            'change_due' => '5.000',
+        ]);
     }
 
     public function test_sync_duplicate_receipt_returns_duplicate_status(): void
