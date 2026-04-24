@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import type { CartItem, SelectedModifier } from '@/types/cart';
 import type { POSProduct } from '@/types/product';
 import { getCurrencyDecimals } from '@/lib/currency';
@@ -22,6 +21,10 @@ interface CartActions {
   removeItem: (itemId: string) => void;
   clearCart: () => void;
   setTransactionDiscount: (discount: { type: 'percentage' | 'fixed'; value: string; reason?: string } | undefined) => void;
+  replaceCart: (
+    items: CartItem[],
+    transactionDiscount: { type: 'percentage' | 'fixed'; value: string; reason?: string } | undefined,
+  ) => void;
 }
 
 interface CartDerived {
@@ -109,7 +112,7 @@ const initialState: CartState = {
   transactionDiscount: undefined,
 };
 
-export const useCartStore = create<CartStore>()(persist((set, get) => ({
+export const useCartStore = create<CartStore>()((set, get) => ({
   ...initialState,
 
   addItem: (product: POSProduct, selectedModifiers?: SelectedModifier[]) => {
@@ -222,6 +225,10 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
     set({ transactionDiscount: discount });
   },
 
+  replaceCart: (items, transactionDiscount) => {
+    set({ items, transactionDiscount });
+  },
+
   subtotal: () => {
     return get().items.reduce((sum, item) => sum + parseFloat(item.line_total), 0);
   },
@@ -260,10 +267,4 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
   itemCount: () => {
     return get().items.reduce((sum, item) => sum + item.quantity, 0);
   },
-}), {
-  name: 'pos-cart',
-  partialize: (state) => ({
-    items: state.items,
-    transactionDiscount: state.transactionDiscount,
-  }),
 }));
