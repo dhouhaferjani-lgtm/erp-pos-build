@@ -8,7 +8,7 @@ import { useOperatorStore } from '@/stores/operatorStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useCustomerDisplayStore } from '@/stores/customerDisplayStore';
 import { isTauriEnvironment } from '@/lib/printing';
-import { applyFullscreen, useFullscreenEscapeKey } from '@/lib/fullscreen';
+import { applyFullscreen, useFullscreenEscapeKey, useFullscreenWatchdog } from '@/lib/fullscreen';
 import { openCustomerDisplay, sendIdleScreen } from '@/lib/customerDisplay';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AppShell } from '@/components/AppShell';
@@ -150,6 +150,7 @@ function MainApp() {
 
   // Apply borderless fullscreen when the setting is enabled.
   useFullscreenEscapeKey();
+  useFullscreenWatchdog();
   useEffect(() => {
     void applyFullscreen(fullscreen);
   }, [fullscreen]);
