@@ -5,6 +5,31 @@ import type { CartItem } from '@/types/cart';
 import type { CheckoutResult } from '@/lib/offline/offlineCheckoutService';
 import { bcadd, bcsub, bccomp } from '@/lib/decimal';
 
+function formatReceiptDateTime(date: Date, locale: string): string {
+  try {
+    return new Intl.DateTimeFormat(locale, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).format(date);
+  } catch {
+    // Invalid locale — fall back to en-GB (day-month-year), safer default for EU tenants.
+    return new Intl.DateTimeFormat('en-GB', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).format(date);
+  }
+}
+
 function getCurrencySymbol(currencyCode: string): string {
   try {
     const parts = new Intl.NumberFormat('en', {
@@ -121,6 +146,7 @@ export function buildEscPosFromOfflineReceipt(
   operatorName: string,
   paymentMethodName: string,
   visibilitySettings?: ReceiptVisibilitySettings,
+  locale: string = 'en',
 ): ReceiptData {
   const currencySymbol = getCurrencySymbol(result.currency);
   const decimals = getCurrencyDecimals(result.currency);
@@ -152,7 +178,7 @@ export function buildEscPosFromOfflineReceipt(
       phone: null,
     },
     receipt_number: result.receiptNumber,
-    date_time: new Date().toISOString(),
+    date_time: formatReceiptDateTime(new Date(), locale),
     terminal_name: terminalName,
     operator_name: operatorName,
     lines: cartItems.map((item) => ({
