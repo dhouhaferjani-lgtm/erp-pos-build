@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, RotateCcw, Printer } from 'lucide-react';
+import { toast } from 'sonner';
 import { fetchShiftReceipts, type ShiftReceipt } from '@/api/reportApi';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useCurrency } from '@/lib/currency';
@@ -43,12 +44,16 @@ export function TodaySalesPage() {
     try {
       const data = await fetchShiftReceipts(shiftId);
       setReceipts(data);
-    } catch {
-      // silently fail — empty state shown
+    } catch (err) {
+      // Log and surface once. fetchShiftReceipts' offline fallback already returns [] on
+      // network failure; a rejection here means something more unusual (auth, schema).
+      console.error('[TodaySales] fetchShiftReceipts failed', err);
+      toast.error(t('reports.fetchError'));
+      setReceipts([]);
     } finally {
       setLoading(false);
     }
-  }, [shiftId]);
+  }, [shiftId, t]);
 
   useEffect(() => {
     if (shiftId) {
@@ -92,37 +97,46 @@ export function TodaySalesPage() {
         <h1 className="text-xl font-bold text-gray-900">{t('reports.todaySales')}</h1>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-4 gap-4 px-6 py-4">
-        <div className="rounded-xl bg-blue-50 p-4">
-          <p className="text-xs font-medium text-blue-600">{t('reports.totalSales')}</p>
-          <p className="mt-1 text-2xl font-bold text-gray-900">{format(totalSales)}</p>
+      {/* No-shift empty state */}
+      {!shiftId && (
+        <div className="flex flex-1 items-center justify-center">
+          <p className="text-sm text-gray-500">{t('reports.noShiftOpen')}</p>
         </div>
-        <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-          <p className="text-xs font-medium text-gray-500">{t('reports.receiptCount')}</p>
-          <p className="mt-1 text-2xl font-bold text-gray-900">{receipts.length}</p>
-        </div>
-        <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-          <p className="text-xs font-medium text-gray-500">{t('reports.avgTicket')}</p>
-          <p className="mt-1 text-2xl font-bold text-gray-900">{format(avgTicket)}</p>
-        </div>
-        <div className="rounded-xl bg-red-50 p-4">
-          <p className="text-xs font-medium text-red-600">{t('reports.returns')}</p>
-          <p className="mt-1 text-2xl font-bold text-gray-900">
-            {returnReceipts.length}
-            {totalReturns > 0 && (
-              <span className="ml-2 text-sm font-normal text-red-500">
-                −{format(totalReturns)}
-              </span>
-            )}
-            {voidedCount > 0 && (
-              <span className="ml-2 text-sm font-normal text-gray-500">
-                ({voidedCount} {t('voidReturn.void').toLowerCase()})
-              </span>
-            )}
-          </p>
-        </div>
-      </div>
+      )}
+
+      {/* Summary Cards + Receipt Table (only when shift is open) */}
+      {shiftId && (
+        <>
+          <div className="grid grid-cols-4 gap-4 px-6 py-4">
+            <div className="rounded-xl bg-blue-50 p-4">
+              <p className="text-xs font-medium text-blue-600">{t('reports.totalSales')}</p>
+              <p className="mt-1 text-2xl font-bold text-gray-900">{format(totalSales)}</p>
+            </div>
+            <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
+              <p className="text-xs font-medium text-gray-500">{t('reports.receiptCount')}</p>
+              <p className="mt-1 text-2xl font-bold text-gray-900">{receipts.length}</p>
+            </div>
+            <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
+              <p className="text-xs font-medium text-gray-500">{t('reports.avgTicket')}</p>
+              <p className="mt-1 text-2xl font-bold text-gray-900">{format(avgTicket)}</p>
+            </div>
+            <div className="rounded-xl bg-red-50 p-4">
+              <p className="text-xs font-medium text-red-600">{t('reports.returns')}</p>
+              <p className="mt-1 text-2xl font-bold text-gray-900">
+                {returnReceipts.length}
+                {totalReturns > 0 && (
+                  <span className="ml-2 text-sm font-normal text-red-500">
+                    −{format(totalReturns)}
+                  </span>
+                )}
+                {voidedCount > 0 && (
+                  <span className="ml-2 text-sm font-normal text-gray-500">
+                    ({voidedCount} {t('voidReturn.void').toLowerCase()})
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
 
       {/* Receipt Table */}
       <div className="flex-1 overflow-y-auto px-6 pb-4">
@@ -208,6 +222,8 @@ export function TodaySalesPage() {
           )}
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

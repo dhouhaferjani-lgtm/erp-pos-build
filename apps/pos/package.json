@@ -38,6 +38,7 @@
     "react-dom": "^19",
     "react-i18next": "^15.7.4",
     "react-router-dom": "^7",
+    "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
     "zustand": "^5"
   },

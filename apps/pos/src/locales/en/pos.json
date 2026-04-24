@@ -279,7 +279,46 @@
     "cashReconciliation": "Cash Reconciliation",
     "loading": "Generating report...",
     "noOpenShift": "No open shift. Open a shift to generate a report.",
-    "errorGenerating": "Error generating report"
+    "errorGenerating": "Error generating report",
+    "noShiftOpen": "Open a shift to see today's sales.",
+    "noReceiptsYet": "No receipts for this shift yet.",
+    "fetchError": "Could not load receipts. Check your connection and try again.",
+    "endOfDay": {
+      "title": "End of Day Preview",
+      "subtitle": "Review today's totals before closing the shift. This action is final.",
+      "openingCash": "Opening Cash",
+      "expectedCash": "Expected Cash",
+      "cashReconciliation": "Cash Reconciliation",
+      "salesCount": "Receipts",
+      "grossSales": "Gross Sales",
+      "netSales": "Net Sales",
+      "taxAmount": "VAT",
+      "vatBreakdown": "VAT Breakdown",
+      "payments": "Payments",
+      "cancel": "Cancel",
+      "confirmLabel": "Confirm and Close Day",
+      "confirming": "Closing shift...",
+      "successTitle": "Day Closed",
+      "successZNumber": "Z report",
+      "successReused": "This shift already had a Z report — showing the existing one.",
+      "printReceipt": "Print Receipt",
+      "done": "Done"
+    },
+    "zList": {
+      "title": "Z Reports",
+      "columns": {
+        "zNumber": "Z Number",
+        "generatedAt": "Generated At",
+        "gross": "Gross Sales",
+        "hash": "Hash"
+      },
+      "actions": {
+        "print": "Print",
+        "pdf": "Download PDF"
+      },
+      "empty": "No Z reports found.",
+      "duplicataBanner": "DUPLICATA"
+    }
   },
   "productDetail": {
     "title": "Product Details",

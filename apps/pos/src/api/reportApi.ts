@@ -193,9 +193,14 @@ export async function generateZReportServer(terminalId: string): Promise<ZReport
 export async function fetchShiftReceipts(shiftId: string): Promise<ShiftReceipt[]> {
   try {
     return await apiGet<ShiftReceipt[]>(`/pos/shifts/${shiftId}/receipts`);
-  } catch {
-    // Offline fallback: load from local SQLite
-    return await fetchLocalShiftReceipts();
+  } catch (err) {
+    const { useConnectivityStore } = await import('@/stores/connectivityStore');
+    if (!useConnectivityStore.getState().isOnline) {
+      // Offline: silent fallback to local SQLite.
+      return await fetchLocalShiftReceipts();
+    }
+    // Online error: bubble up so the UI can surface it as a toast.
+    throw err;
   }
 }
 
