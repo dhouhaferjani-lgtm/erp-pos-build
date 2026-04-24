@@ -167,7 +167,11 @@
     "pendingCount": "{{count}} receipt(s) pending",
     "syncNow": "Sync Now",
     "receiptQueued": "Receipt saved locally — will sync when online",
-    "lastSync": "Last sync: {{time}}"
+    "lastSync": "Last sync: {{time}}",
+    "debounceBlocked": "Hold on — still processing the previous sync."
+  },
+  "fiscal": {
+    "regressionBlocked": "Fiscal chain integrity preserved. Local data is newer than the server response."
   },
   "quickActions": {
     "discount": "Discount",
