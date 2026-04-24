@@ -1,3 +1,4 @@
+import Big from 'big.js';
 import { apiGet, apiPost } from '@/lib/api';
 import { getDatabase } from '@/lib/db';
 import { queryAll } from '@/lib/db';
@@ -132,7 +133,7 @@ export async function generateZReport(
   companyId: string,
   shiftId: string,
   shiftOpenedAt: string,
-  openingCash: number,
+  openingCash: string,
 ): Promise<ZReportResponse> {
   const authState = useAuthStore.getState();
   const company = authState.companies.find((c) => c.id === authState.companyId);
@@ -157,8 +158,8 @@ function localZReportToResponse(report: LocalZReport, decimals: number): ZReport
     formatted_z_number: report.formatted_z_number,
     sales_count: report.report_data.sales_count,
     gross_sales: report.report_data.gross_sales,
-    opening_cash: report.opening_cash.toFixed(decimals),
-    expected_cash: report.expected_cash.toFixed(decimals),
+    opening_cash: new Big(report.opening_cash).toFixed(decimals),
+    expected_cash: new Big(report.expected_cash).toFixed(decimals),
     actual_cash: (0).toFixed(decimals),
     variance: (0).toFixed(decimals),
     has_variance: false,
@@ -170,8 +171,8 @@ function localZReportToResponse(report: LocalZReport, decimals: number): ZReport
       refunds_count: report.report_data.refunds_count,
       refunds_amount: report.report_data.refunds_amount,
       voided_count: report.report_data.voided_count,
-      opening_cash: report.opening_cash.toFixed(decimals),
-      expected_cash: report.expected_cash.toFixed(decimals),
+      opening_cash: new Big(report.opening_cash).toFixed(decimals),
+      expected_cash: new Big(report.expected_cash).toFixed(decimals),
       vat_breakdown: report.report_data.vat_breakdown.map((v) => ({
         tax_rate: v.tax_rate,
         net_amount: v.net_amount,

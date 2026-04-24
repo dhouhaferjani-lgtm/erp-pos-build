@@ -7,8 +7,10 @@
  */
 
 import type Database from '@tauri-apps/plugin-sql';
+import Big from 'big.js';
 import { queryAll } from '@/lib/db';
 import { getCurrencyDecimals } from '@/lib/currency';
+import { bcadd, bcsub } from '@/lib/decimal';
 import { useAuthStore } from '@/stores/authStore';
 import { computeZReportHash } from '@/lib/fiscal/zReportHashService';
 import { insertZReport, getZReportByShift } from '@/lib/db/repositories/zReportRepository';
@@ -29,6 +31,9 @@ import type {
   ReceiptSnapshotLine,
   GrandTotals,
 } from '@/lib/offline/types';
+
+// Cumulative fields are persisted at 3 decimals (TND max); see terminalStateRepository.
+const CUMULATIVE_SCALE = 3;
 
 /**
  * Format a Date to match Carbon's toIso8601String() output.
@@ -65,7 +70,7 @@ export async function generateZReport(
   terminalId: string,
   shiftId: string,
   shiftOpenedAt: string,
-  openingCash: number,
+  openingCash: string,
 ): Promise<LocalZReport> {
   const authState = useAuthStore.getState();
   const company = authState.companies.find((c) => c.id === authState.companyId);
@@ -114,11 +119,11 @@ export async function generateZReport(
   // to match the server's ReportGenerationService which adds opening_cash/expected_cash
   // to report_data before hash computation.
   const cashPayments = reportData.payment_methods.find((p) => p.payment_type === 'CASH');
-  const cashSales = cashPayments ? parseFloat(cashPayments.total_amount) : 0;
-  const expectedCash = openingCash + cashSales;
+  const cashSales = cashPayments ? cashPayments.total_amount : '0';
+  const expectedCash = bcadd(openingCash, cashSales, decimals);
 
-  reportData.opening_cash = openingCash.toFixed(decimals);
-  reportData.expected_cash = expectedCash.toFixed(decimals);
+  reportData.opening_cash = new Big(openingCash).toFixed(decimals);
+  reportData.expected_cash = new Big(expectedCash).toFixed(decimals);
   reportData.variance = null;
 
   // 6. Build receipt snapshots for fiscal export
@@ -139,17 +144,18 @@ export async function generateZReport(
     reportData,
   });
 
-  // 9. Compute updated grand totals
-  const grossSalesNum = parseFloat(reportData.gross_sales);
-  const taxNum = parseFloat(reportData.tax_amount);
-  const refundsNum = parseFloat(reportData.refunds_amount);
+  // 9. Compute updated grand totals using Big.js (no IEEE 754 coercion).
+  const grossSalesStr = reportData.gross_sales;
+  const taxStr = reportData.tax_amount;
+  const refundsStr = reportData.refunds_amount;
   const salesCount = reportData.sales_count;
 
+  const netDeltaStr = bcsub(grossSalesStr, refundsStr, CUMULATIVE_SCALE);
   const grandTotals: GrandTotals = {
-    cumulative_sales: zChainState.cumulative_sales + grossSalesNum,
-    cumulative_tax: zChainState.cumulative_tax + taxNum,
-    cumulative_refunds: zChainState.cumulative_refunds + refundsNum,
-    perpetual_grand_total: zChainState.perpetual_grand_total + (grossSalesNum - refundsNum),
+    cumulative_sales: bcadd(zChainState.cumulative_sales, grossSalesStr, CUMULATIVE_SCALE),
+    cumulative_tax: bcadd(zChainState.cumulative_tax, taxStr, CUMULATIVE_SCALE),
+    cumulative_refunds: bcadd(zChainState.cumulative_refunds, refundsStr, CUMULATIVE_SCALE),
+    perpetual_grand_total: bcadd(zChainState.perpetual_grand_total, netDeltaStr, CUMULATIVE_SCALE),
     receipt_count_lifetime: zChainState.receipt_count_lifetime + salesCount,
   };
 
@@ -165,8 +171,8 @@ export async function generateZReport(
     previous_hash: zChainState.z_last_hash,
     hash_sequence: newHashSequence,
     report_data: reportData,
-    opening_cash: openingCash,
-    expected_cash: expectedCash,
+    opening_cash: reportData.opening_cash ?? new Big(openingCash).toFixed(decimals),
+    expected_cash: reportData.expected_cash ?? new Big(expectedCash).toFixed(decimals),
     receipt_snapshots: receiptSnapshots,
     grand_totals: grandTotals,
     synced: false,
@@ -178,7 +184,7 @@ export async function generateZReport(
   try {
     await insertZReport(db, zReport);
     await advanceZChain(db, terminalId, fiscalHash, newHashSequence, newZNumber);
-    await updateGrandTotals(db, terminalId, grossSalesNum, taxNum, refundsNum, salesCount);
+    await updateGrandTotals(db, terminalId, grossSalesStr, taxStr, refundsStr, salesCount);
     await db.execute('COMMIT');
   } catch (error) {
     await db.execute('ROLLBACK');

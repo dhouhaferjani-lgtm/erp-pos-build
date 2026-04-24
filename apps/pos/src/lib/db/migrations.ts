@@ -429,4 +429,46 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_menu_items_order ON menu_category_items(menu_category_id, display_order);
     `,
   },
+  {
+    // Widen REAL monetary columns to TEXT so multi-decimal currencies (TND
+    // uses 3 decimals) survive storage without IEEE 754 coercion. Mirrors the
+    // backend decimal(15,3) widening from 2026_03_11_200000; the PostgreSQL
+    // migration skipped SQLite because SQLite has no ALTER COLUMN TYPE.
+    // Requires SQLite 3.35+ for DROP/RENAME COLUMN (bundled with Tauri).
+    version: 21,
+    name: 'widen_monetary_columns_to_text',
+    sql: '',
+    async run(db) {
+      const columnMigrations: Array<{ table: string; column: string }> = [
+        { table: 'z_reports', column: 'opening_cash' },
+        { table: 'z_reports', column: 'expected_cash' },
+        { table: 'terminal_state', column: 'cumulative_sales' },
+        { table: 'terminal_state', column: 'cumulative_tax' },
+        { table: 'terminal_state', column: 'cumulative_refunds' },
+        { table: 'terminal_state', column: 'perpetual_grand_total' },
+      ];
+
+      await db.execute('BEGIN TRANSACTION');
+      try {
+        for (const { table, column } of columnMigrations) {
+          const tmp = `${column}_new`;
+          await db.execute(
+            `ALTER TABLE ${table} ADD COLUMN ${tmp} TEXT NOT NULL DEFAULT '0'`,
+          );
+          // CAST(REAL AS TEXT) emits SQLite's shortest round-trip decimal — good
+          // enough for back-compat since REAL values were already imprecise.
+          // New writes after this migration store exact decimal strings.
+          await db.execute(
+            `UPDATE ${table} SET ${tmp} = CAST(${column} AS TEXT)`,
+          );
+          await db.execute(`ALTER TABLE ${table} DROP COLUMN ${column}`);
+          await db.execute(`ALTER TABLE ${table} RENAME COLUMN ${tmp} TO ${column}`);
+        }
+        await db.execute('COMMIT');
+      } catch (error) {
+        await db.execute('ROLLBACK');
+        throw error;
+      }
+    },
+  },
 ];

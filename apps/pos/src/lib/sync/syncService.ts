@@ -530,11 +530,13 @@ interface ZChainStateResponse {
   z_last_hash: string;
   z_hash_sequence: number;
   z_number: number;
+  // Laravel serializes decimal(15,3) columns as JSON strings, so these come
+  // over the wire as decimal strings — mirroring the SQLite TEXT storage.
   grand_totals: {
-    cumulative_sales: number;
-    cumulative_tax: number;
-    cumulative_refunds: number;
-    perpetual_grand_total: number;
+    cumulative_sales: string;
+    cumulative_tax: string;
+    cumulative_refunds: string;
+    perpetual_grand_total: string;
     receipt_count_lifetime: number;
   } | null;
 }

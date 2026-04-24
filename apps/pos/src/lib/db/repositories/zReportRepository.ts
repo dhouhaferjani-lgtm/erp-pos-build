@@ -2,7 +2,7 @@ import type Database from '@tauri-apps/plugin-sql';
 import { queryAll, queryOne, execute } from '@/lib/db';
 import type { LocalZReport } from '@/lib/offline/types';
 
-/** Raw SQLite row shape (JSON fields are strings) */
+/** Raw SQLite row shape (JSON fields are strings; monetary fields are TEXT since v21) */
 interface ZReportRow {
   id: string;
   terminal_id: string;
@@ -14,8 +14,8 @@ interface ZReportRow {
   previous_hash: string;
   hash_sequence: number;
   report_data: string;
-  opening_cash: number;
-  expected_cash: number;
+  opening_cash: string;
+  expected_cash: string;
   receipt_snapshots: string;
   grand_totals: string;
   synced: number;

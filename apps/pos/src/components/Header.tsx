@@ -93,7 +93,7 @@ export function Header() {
       companyId,
       shift.id,
       shift.opened_at,
-      parseFloat(shift.opening_cash),
+      shift.opening_cash,
     );
 
     // 2. Close the shift. In Option B, variance = 0: pass expected_cash as actualCash.

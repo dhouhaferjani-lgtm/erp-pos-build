@@ -78,11 +78,13 @@ export interface ZReportData {
 
 // ─── Grand Totals (perpetual counters) ───────────────────────────────────────
 
+// Monetary cumulative fields are decimal strings to preserve multi-decimal
+// precision (TND uses 3 decimals). Stored as TEXT in SQLite since v21.
 export interface GrandTotals {
-  cumulative_sales: number;
-  cumulative_tax: number;
-  cumulative_refunds: number;
-  perpetual_grand_total: number;
+  cumulative_sales: string;
+  cumulative_tax: string;
+  cumulative_refunds: string;
+  perpetual_grand_total: string;
   receipt_count_lifetime: number;
 }
 
@@ -99,8 +101,8 @@ export interface LocalZReport {
   previous_hash: string;
   hash_sequence: number;
   report_data: ZReportData;
-  opening_cash: number;
-  expected_cash: number;
+  opening_cash: string;
+  expected_cash: string;
   receipt_snapshots: ReceiptSnapshot[];
   grand_totals: GrandTotals;
   synced: boolean;
@@ -113,9 +115,9 @@ export interface ZChainState {
   z_last_hash: string;
   z_hash_sequence: number;
   z_number: number;
-  cumulative_sales: number;
-  cumulative_tax: number;
-  cumulative_refunds: number;
-  perpetual_grand_total: number;
+  cumulative_sales: string;
+  cumulative_tax: string;
+  cumulative_refunds: string;
+  perpetual_grand_total: string;
   receipt_count_lifetime: number;
 }

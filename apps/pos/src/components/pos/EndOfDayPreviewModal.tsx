@@ -73,7 +73,7 @@ export function EndOfDayPreviewModal({
           db,
           terminalId,
           shift.opened_at,
-          parseFloat(shift.opening_cash),
+          shift.opening_cash,
         );
         if (!cancelled) {
           setPreview(data);

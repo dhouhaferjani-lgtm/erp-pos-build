@@ -67,7 +67,7 @@ describe('buildEndOfDayPreview', () => {
       return [];
     });
 
-    const preview = await buildEndOfDayPreview(mockDb, 'term-1', '2026-04-23T08:00:00Z', 100);
+    const preview = await buildEndOfDayPreview(mockDb, 'term-1', '2026-04-23T08:00:00Z', '100');
 
     expect(preview.sales_count).toBe(2);
     expect(preview.gross_sales).toBe('30.00');
@@ -100,7 +100,7 @@ describe('buildEndOfDayPreview', () => {
   it('returns a preview with sales_count=0 when there are no receipts (no throw)', async () => {
     vi.mocked(queryAll).mockResolvedValue([]);
 
-    const preview = await buildEndOfDayPreview(mockDb, 'term-1', '2026-04-23T08:00:00Z', 100);
+    const preview = await buildEndOfDayPreview(mockDb, 'term-1', '2026-04-23T08:00:00Z', '100');
 
     expect(preview.sales_count).toBe(0);
     expect(preview.gross_sales).toBe('0.00');

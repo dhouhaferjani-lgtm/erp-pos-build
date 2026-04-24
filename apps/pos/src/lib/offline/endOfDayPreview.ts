@@ -7,8 +7,10 @@
  */
 
 import type Database from '@tauri-apps/plugin-sql';
+import Big from 'big.js';
 import { queryAll } from '@/lib/db';
 import { getCurrencyDecimals } from '@/lib/currency';
+import { bcadd } from '@/lib/decimal';
 import { useAuthStore } from '@/stores/authStore';
 import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 
@@ -56,7 +58,7 @@ export async function buildEndOfDayPreview(
   db: Database,
   terminalId: string,
   shiftOpenedAt: string,
-  openingCash: number,
+  openingCash: string,
 ): Promise<EndOfDayPreview> {
   const authState = useAuthStore.getState();
   const company = authState.companies.find((c) => c.id === authState.companyId);
@@ -116,10 +118,10 @@ export async function buildEndOfDayPreview(
     paymentByType.set(methodCode, payExisting);
   }
 
-  // 4. Compute expected cash = opening + all CASH sales
+  // 4. Compute expected cash = opening + all CASH sales (Big.js — no IEEE 754 drift)
   const cashEntry = paymentByType.get('CASH');
-  const cashSales = cashEntry ? cashEntry.amount : 0;
-  const expectedCash = openingCash + cashSales;
+  const cashSales = cashEntry ? cashEntry.amount.toFixed(decimals) : new Big(0).toFixed(decimals);
+  const expectedCash = bcadd(openingCash, cashSales, decimals);
 
   // 5. Build VAT breakdown sorted by rate
   const vatBreakdown: VatBreakdownItem[] = Array.from(vatByRate.entries())
@@ -145,8 +147,8 @@ export async function buildEndOfDayPreview(
     gross_sales: grossSales.toFixed(decimals),
     net_sales: netSales.toFixed(decimals),
     tax_amount: taxAmount.toFixed(decimals),
-    opening_cash: openingCash.toFixed(decimals),
-    expected_cash: expectedCash.toFixed(decimals),
+    opening_cash: new Big(openingCash).toFixed(decimals),
+    expected_cash: new Big(expectedCash).toFixed(decimals),
     variance: null,
     vat_breakdown: vatBreakdown,
     payment_methods: paymentMethods,
