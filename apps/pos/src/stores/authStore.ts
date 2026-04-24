@@ -52,6 +52,7 @@ interface AuthActions {
   checkSession: () => Promise<void>;
   setCompany: (companyId: string) => void;
   initialize: () => Promise<void>;
+  refreshCompanyConfig: () => Promise<void>;
 }
 
 type AuthStore = AuthState & AuthActions;
@@ -193,6 +194,17 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   setCompany: (companyId: string) => {
     set({ companyId });
     void setStoredValue(StorageKeys.COMPANY_ID, companyId);
+  },
+
+  refreshCompanyConfig: async () => {
+    try {
+      const config = await apiGet<import('@/types/companyConfig').CompanyConfig>('/company/config');
+      const { useProductStore } = await import('@/stores/productStore');
+      useProductStore.setState({ companyConfig: config });
+    } catch (error) {
+      // Graceful: keep existing cached config; log at debug level only.
+      console.debug('[auth] refreshCompanyConfig failed (keeping cached config):', error);
+    }
   },
 
   logout: () => {

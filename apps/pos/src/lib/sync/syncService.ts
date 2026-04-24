@@ -12,6 +12,20 @@ import {
   advanceHashChain,
   type TerminalHashState,
 } from '@/lib/db/repositories/terminalStateRepository';
+import {
+  getPendingPinUpdates,
+  markPinUpdateSynced,
+  markPinUpdateFailed,
+} from '@/lib/db/repositories/queuedPinUpdateRepository';
+import { upsertFloors, upsertTables } from '@/lib/db/repositories/tableRepository';
+import {
+  upsertMenuCategories,
+  upsertMenuCategoryItems,
+  deleteMenuCategories,
+  deleteMenuCategoryItems,
+} from '@/lib/db/repositories/menuRepository';
+import type { FloorData } from '@/api/tableApi';
+import type { ModifierGroup } from '@/types/modifier';
 import { computeGenesisHash } from '@/lib/fiscal/hashService';
 import {
   getPendingReceiptsForSync,
@@ -117,10 +131,13 @@ export interface SyncResult {
   zReportsPushed: number;
   zReportsFailed: number;
   cashDrawerOpsPushed: number;
+  pinUpdatesPushed: number;
   productsPulled: number;
   paymentConfigPulled: boolean;
   operatorsPulled: number;
   terminalStatePulled: boolean;
+  tablesPulled: boolean;
+  activeMenuPulled: boolean;
   chainBreak: boolean;
   errors: string[];
 }
@@ -543,6 +560,156 @@ export async function pullZChainState(
 }
 
 /**
+ * Push queued PIN updates (from offline PIN setup) to the server.
+ * Idempotent on both sides: duplicate sends are a no-op.
+ */
+export async function pushQueuedPinUpdates(db: Database): Promise<number> {
+  const pending = await getPendingPinUpdates(db);
+  if (pending.length === 0) return 0;
+
+  try {
+    await apiPost<{ synced: number; skipped: number }>('/pos/auth/sync-pins', {
+      updates: pending.map((p) => ({ user_id: p.userId, pin_hash: p.pinHash })),
+    });
+    for (const row of pending) {
+      await markPinUpdateSynced(db, row.id);
+    }
+    await logSyncOperation(db, 'push', 'pin_update', null, 'success', `${pending.length} pin updates`);
+    return pending.length;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    for (const row of pending) {
+      await markPinUpdateFailed(db, row.id, message);
+    }
+    await logSyncOperation(db, 'push', 'pin_update', null, 'error', message);
+    return 0;
+  }
+}
+
+interface PulledActiveMenuItem {
+  id: string;
+  sellable_id: string;
+  sellable_type: string;
+  name: string;
+  code: string;
+  barcode?: string | null;
+  base_price: string;
+  effective_price: string;
+  image_url?: string | null;
+  tax_rate?: string | null;
+  display_order: number;
+  is_available: boolean;
+  modifier_groups?: unknown;
+}
+
+interface PulledActiveMenuCategory {
+  id: string;
+  name: string;
+  position: number;
+  items: PulledActiveMenuItem[];
+}
+
+interface PulledActiveMenuResponse {
+  categories: PulledActiveMenuCategory[];
+  deleted_category_ids?: string[];
+  deleted_item_ids?: string[];
+}
+
+/**
+ * Pull floor/table layout from server into SQLite cache.
+ * The cached layout is consulted by tableApi.getFloors() when the API is unreachable.
+ */
+export async function pullTables(db: Database): Promise<boolean> {
+  try {
+    const response = await apiGet<FloorData[] | { data: FloorData[] }>('/pos/floors');
+    const floors = Array.isArray(response) ? response : response.data;
+
+    await upsertFloors(db, floors.map((f) => ({
+      id: f.id,
+      name: f.name,
+      position: f.position,
+      is_active: f.is_active,
+      updated_at: f.updated_at,
+    })));
+
+    const tableInputs = floors.flatMap((f) => (f.tables ?? []).map((t) => ({
+      id: t.id,
+      floor_id: t.floor_id,
+      table_number: t.table_number,
+      label: t.label,
+      seats: t.seats,
+      status: t.status,
+      shape: t.shape,
+      position_x: t.position_x,
+      position_y: t.position_y,
+      width: t.width,
+      height: t.height,
+      current_order_id: t.current_order_id,
+      updated_at: t.updated_at,
+    })));
+
+    await upsertTables(db, tableInputs);
+    await setSyncMetadata(db, 'tables_last_sync', new Date().toISOString());
+    await logSyncOperation(db, 'pull', 'tables', null, 'success', `${floors.length} floors / ${tableInputs.length} tables`);
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    await logSyncOperation(db, 'pull', 'tables', null, 'error', message);
+    return false;
+  }
+}
+
+/**
+ * Pull the active menu (categories + items) into SQLite cache.
+ * The cached menu is consulted by fetchActiveMenu() when the API is unreachable.
+ * Honours deleted_category_ids / deleted_item_ids tombstones when the server sends them.
+ */
+export async function pullActiveMenu(db: Database): Promise<boolean> {
+  try {
+    const response = await apiGet<PulledActiveMenuResponse>('/active-menu');
+    const now = new Date().toISOString();
+
+    await upsertMenuCategories(db, response.categories.map((c) => ({
+      id: c.id, name: c.name, position: c.position, updated_at: now,
+    })));
+
+    const items = response.categories.flatMap((c) => c.items.map((i) => ({
+      id: i.id,
+      menu_category_id: c.id,
+      sellable_id: i.sellable_id,
+      sellable_type: i.sellable_type,
+      name: i.name,
+      code: i.code,
+      barcode: i.barcode ?? null,
+      base_price: i.base_price,
+      effective_price: i.effective_price,
+      image_url: i.image_url ?? null,
+      tax_rate: i.tax_rate ?? null,
+      display_order: i.display_order,
+      is_available: i.is_available,
+      modifier_groups: Array.isArray(i.modifier_groups) ? (i.modifier_groups as ModifierGroup[]) : null,
+      updated_at: now,
+    })));
+    await upsertMenuCategoryItems(db, items);
+
+    if (response.deleted_category_ids && response.deleted_category_ids.length > 0) {
+      await deleteMenuCategories(db, response.deleted_category_ids);
+    }
+    if (response.deleted_item_ids && response.deleted_item_ids.length > 0) {
+      await deleteMenuCategoryItems(db, response.deleted_item_ids);
+    }
+
+    await setSyncMetadata(db, 'active_menu_last_sync', new Date().toISOString());
+    await logSyncOperation(db, 'pull', 'active_menu', null, 'success', `${response.categories.length} categories / ${items.length} items`);
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    await logSyncOperation(db, 'pull', 'active_menu', null, 'error', message);
+    return false;
+  }
+}
+
+/**
  * Full sync: push then pull.
  */
 export async function runFullSync(
@@ -556,6 +723,9 @@ export async function runFullSync(
   try { await cleanupSyncedReceipts(db); } catch { /* non-critical */ }
   try { await cleanupStuckReceipts(db); } catch { /* non-critical */ }
   try { await cleanupSyncedCashDrawerOps(db); } catch { /* non-critical */ }
+
+  // Push offline PIN updates queued during offline PIN setup
+  const pinUpdatesPushed = await pushQueuedPinUpdates(db);
 
   // Push receipts first (order matters for chain)
   const { pushed, failed, errors: pushErrors, chainBreak } = await pushOfflineReceipts(db);
@@ -575,6 +745,14 @@ export async function runFullSync(
   const operatorsPulled = await pullOperatorPins(db);
   const terminalStatePulled = await pullTerminalState(db, terminalId);
   await pullZChainState(db, terminalId);
+  const tablesPulled = await pullTables(db);
+  const activeMenuPulled = await pullActiveMenu(db);
+
+  // Refresh company config (locale, modules) — graceful on failure.
+  try {
+    const { useAuthStore } = await import('@/stores/authStore');
+    await useAuthStore.getState().refreshCompanyConfig();
+  } catch { /* non-critical */ }
 
   // Process pending image downloads (non-critical)
   try {
@@ -588,10 +766,13 @@ export async function runFullSync(
     zReportsPushed: zPushed,
     zReportsFailed: zFailed,
     cashDrawerOpsPushed: cashDrawerPushed,
+    pinUpdatesPushed,
     productsPulled,
     paymentConfigPulled,
     operatorsPulled,
     terminalStatePulled,
+    tablesPulled,
+    activeMenuPulled,
     chainBreak,
     errors,
   };

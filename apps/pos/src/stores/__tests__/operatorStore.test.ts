@@ -12,13 +12,36 @@ vi.mock('@/lib/db', () => ({
 }));
 
 vi.mock('@/lib/db/repositories/operatorPinRepository', () => ({
-  getAllOperators: vi.fn(),
-  hasOperatorPins: vi.fn(),
+  getAllOperators: vi.fn().mockResolvedValue([]),
+  hasOperatorPins: vi.fn().mockResolvedValue(false),
+  upsertOperators: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('@/lib/db/repositories/queuedPinUpdateRepository', () => ({
+  enqueuePinUpdate: vi.fn().mockResolvedValue(undefined),
+  getPendingPinUpdates: vi.fn().mockResolvedValue([]),
+  markPinUpdateSynced: vi.fn().mockResolvedValue(undefined),
+  markPinUpdateFailed: vi.fn().mockResolvedValue(undefined),
+}));
+
+const defaultUser = {
+  id: 'op-1',
+  name: 'Jane Cashier',
+  email: 'jane@example.com',
+  tenantId: 'tenant-1',
+  phone: null,
+  status: 'active',
+  locale: null,
+  timezone: null,
+  roles: ['cashier'],
+  permissions: ['pos.sell'],
+  emailVerified: true,
+};
+let _authState: Record<string, unknown> = { companyId: 'company-1', user: defaultUser };
 vi.mock('@/stores/authStore', () => ({
   useAuthStore: {
-    getState: vi.fn().mockReturnValue({ companyId: 'company-1' }),
+    getState: vi.fn(() => _authState),
+    setState: vi.fn((patch: Record<string, unknown>) => { _authState = { ..._authState, ...patch }; }),
   },
 }));
 
@@ -49,6 +72,7 @@ const PIN_1234_HASH = bcrypt.hashSync('1234', 10);
 
 describe('operatorStore', () => {
   beforeEach(() => {
+    _authState = { companyId: 'company-1', user: defaultUser };
     useOperatorStore.setState({
       operator: null,
       isLocked: false,
@@ -235,6 +259,75 @@ describe('operatorStore', () => {
     expect(state.operator).toEqual(mockOperator);
     expect(state.hasPins).toBe(true);
     expect(state.isLocked).toBe(false);
+  });
+
+  it('setupPin writes to SQLite and queues sync when backend unreachable', async () => {
+    vi.mocked(apiPost).mockRejectedValueOnce(new Error('network unavailable'));
+    const { enqueuePinUpdate } = await import('@/lib/db/repositories/queuedPinUpdateRepository');
+    const { upsertOperators } = await import('@/lib/db/repositories/operatorPinRepository');
+
+    _authState = {
+      companyId: 'co-1',
+      user: {
+        id: 'user-1',
+        name: 'Admin',
+        email: 'admin@example.com',
+        tenantId: 't1',
+        phone: null,
+        status: 'active',
+        locale: null,
+        timezone: null,
+        roles: ['admin'],
+        permissions: [],
+        emailVerified: true,
+      },
+    };
+
+    await useOperatorStore.getState().setupPin('4321');
+
+    expect(upsertOperators).toHaveBeenCalled();
+    expect(enqueuePinUpdate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ userId: 'user-1', pinHash: expect.any(String) }),
+    );
+    expect(useOperatorStore.getState().hasPins).toBe(true);
+    expect(useOperatorStore.getState().operator?.id).toBe('user-1');
+  });
+
+  it('setupPin fires backend sync immediately when reachable', async () => {
+    vi.mocked(apiPost).mockResolvedValueOnce({
+      id: 'user-1',
+      name: 'Admin',
+      email: 'admin@example.com',
+      roles: ['admin'],
+      permissions: [],
+      can_discount: true,
+      max_discount_percent: 100,
+    });
+    const { enqueuePinUpdate } = await import('@/lib/db/repositories/queuedPinUpdateRepository');
+
+    _authState = {
+      companyId: 'co-1',
+      user: {
+        id: 'user-1',
+        name: 'Admin',
+        email: 'admin@example.com',
+        tenantId: 't1',
+        phone: null,
+        status: 'active',
+        locale: null,
+        timezone: null,
+        roles: ['admin'],
+        permissions: [],
+        emailVerified: true,
+      },
+    };
+
+    await useOperatorStore.getState().setupPin('5678');
+
+    expect(apiPost).toHaveBeenCalledWith('/pos/auth/setup-pin', expect.any(Object));
+    expect(enqueuePinUpdate).not.toHaveBeenCalled();
+    expect(useOperatorStore.getState().hasPins).toBe(true);
   });
 
   it('checkHasPins returns and stores result from API', async () => {

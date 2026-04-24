@@ -343,4 +343,90 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_held_transactions_held_at ON held_transactions(held_at);
     `,
   },
+  {
+    version: 18,
+    name: 'create_queued_pin_updates',
+    sql: `
+      CREATE TABLE IF NOT EXISTS queued_pin_updates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        pin_hash TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'syncing', 'synced', 'failed')),
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        synced_at TEXT,
+        sync_error TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_queued_pin_updates_status ON queued_pin_updates(status);
+    `,
+  },
+  {
+    version: 19,
+    name: 'create_floors_and_tables',
+    sql: `
+      CREATE TABLE IF NOT EXISTS floors (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        synced_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_floors_position ON floors(position);
+
+      CREATE TABLE IF NOT EXISTS tables (
+        id TEXT PRIMARY KEY,
+        floor_id TEXT,
+        table_number TEXT NOT NULL,
+        label TEXT,
+        seats INTEGER NOT NULL DEFAULT 4,
+        status TEXT NOT NULL DEFAULT 'available',
+        shape TEXT,
+        position_x TEXT,
+        position_y TEXT,
+        width TEXT,
+        height TEXT,
+        current_order_id TEXT,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        synced_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_tables_floor ON tables(floor_id);
+      CREATE INDEX IF NOT EXISTS idx_tables_status ON tables(status);
+    `,
+  },
+  {
+    version: 20,
+    name: 'create_menu_categories_and_items',
+    sql: `
+      CREATE TABLE IF NOT EXISTS menu_categories (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        synced_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_menu_categories_position ON menu_categories(position);
+
+      CREATE TABLE IF NOT EXISTS menu_category_items (
+        id TEXT PRIMARY KEY,
+        menu_category_id TEXT NOT NULL,
+        sellable_id TEXT NOT NULL,
+        sellable_type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        code TEXT NOT NULL,
+        barcode TEXT,
+        base_price TEXT NOT NULL,
+        effective_price TEXT NOT NULL,
+        image_url TEXT,
+        tax_rate TEXT,
+        display_order INTEGER NOT NULL DEFAULT 0,
+        is_available INTEGER NOT NULL DEFAULT 1,
+        modifier_groups TEXT,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        synced_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_menu_items_category ON menu_category_items(menu_category_id);
+      CREATE INDEX IF NOT EXISTS idx_menu_items_order ON menu_category_items(menu_category_id, display_order);
+    `,
+  },
 ];
