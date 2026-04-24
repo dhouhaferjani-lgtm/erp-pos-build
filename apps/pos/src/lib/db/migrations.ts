@@ -323,4 +323,24 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 17,
+    name: 'create_held_transactions_table',
+    sql: `
+      CREATE TABLE IF NOT EXISTS held_transactions (
+        id TEXT PRIMARY KEY,
+        terminal_id TEXT NOT NULL,
+        operator_id TEXT NOT NULL,
+        label TEXT NOT NULL,
+        items_json TEXT NOT NULL,
+        transaction_discount_json TEXT,
+        subtotal TEXT NOT NULL,
+        total TEXT NOT NULL,
+        item_count INTEGER NOT NULL,
+        held_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_held_transactions_terminal ON held_transactions(terminal_id);
+      CREATE INDEX IF NOT EXISTS idx_held_transactions_held_at ON held_transactions(held_at);
+    `,
+  },
 ];
