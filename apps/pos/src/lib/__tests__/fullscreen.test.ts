@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { renderHook } from '@testing-library/react';
 
 // Mock the Tauri environment detection to claim we ARE in Tauri.
 vi.mock('@/lib/printing', () => ({
@@ -32,7 +33,16 @@ vi.mock('@tauri-apps/api/dpi', () => ({
   },
 }));
 
-import { applyFullscreen, verifyFullscreenState } from '../fullscreen';
+vi.mock('@/stores/settingsStore', () => ({
+  useSettingsStore: Object.assign(
+    (selector: (s: { fullscreen: boolean }) => unknown) => selector({ fullscreen: true }),
+    {
+      getState: () => ({ fullscreen: true, setFullscreen: vi.fn() }),
+    },
+  ),
+}));
+
+import { applyFullscreen, verifyFullscreenState, useFullscreenWatchdog } from '../fullscreen';
 
 describe('applyFullscreen — per-API resilience', () => {
   beforeEach(() => {
@@ -111,5 +121,43 @@ describe('applyFullscreen — per-API resilience', () => {
 
     // setFullscreen was called twice: the initial pass + the post-readback retry.
     expect(mockSetFullscreen).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('useFullscreenWatchdog', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    mockIsFullscreen.mockReset();
+    mockSetFullscreen.mockReset().mockResolvedValue(undefined);
+    mockSetDecorations.mockReset().mockResolvedValue(undefined);
+    mockSetSkipTaskbar.mockReset().mockResolvedValue(undefined);
+    mockSetAlwaysOnTop.mockReset().mockResolvedValue(undefined);
+    mockSetSize.mockReset().mockResolvedValue(undefined);
+    mockCenter.mockReset().mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('re-applies fullscreen when readback reports desync', async () => {
+    // First tick (2s after mount): actual = false, desired = true → desync → re-apply.
+    mockIsFullscreen.mockResolvedValue(false);
+
+    renderHook(() => useFullscreenWatchdog());
+
+    // Advance past the initial 2s timer.
+    await vi.advanceTimersByTimeAsync(2_500);
+
+    expect(mockSetFullscreen).toHaveBeenCalledWith(true);
+  });
+
+  it('does nothing when readback matches desired state', async () => {
+    mockIsFullscreen.mockResolvedValue(true);
+
+    renderHook(() => useFullscreenWatchdog());
+    await vi.advanceTimersByTimeAsync(2_500);
+
+    expect(mockSetFullscreen).not.toHaveBeenCalled();
   });
 });
