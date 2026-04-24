@@ -39,6 +39,9 @@ pub struct ReceiptData {
     pub show_fiscal_info: Option<bool>,
     pub show_payment_details: Option<bool>,
     pub show_customer: Option<bool>,
+    /// When true, a bold centred DUPLICATA banner is printed after the receipt
+    /// metadata block to indicate this is a copy of an already-issued document.
+    pub is_reprint: Option<bool>,
 }
 
 /// Localized receipt labels. All fields optional with English defaults.
@@ -217,6 +220,17 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
         if let Some(ref customer) = data.customer_name {
             b.two_column(&data.label(|l| &l.customer, "Customer:"), customer);
         }
+    }
+
+    // ── DUPLICATA banner (reprint indicator) ──
+    if data.is_reprint == Some(true) {
+        b.align(Alignment::Center);
+        b.font_size(FontSize::DoubleWidthHeight);
+        b.bold(true);
+        b.text_line("DUPLICATA");
+        b.bold(false);
+        b.font_size(FontSize::Normal);
+        b.align(Alignment::Left);
     }
 
     b.separator('=');

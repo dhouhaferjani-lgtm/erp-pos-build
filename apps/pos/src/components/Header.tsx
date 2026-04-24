@@ -13,15 +13,20 @@ import { useProductStore } from '@/stores/productStore';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { SyncButton } from '@/components/atoms/SyncButton/SyncButton';
-import { CloseShiftModal } from '@/components/organisms/CloseShiftModal';
+import { EndOfDayPreviewModal } from '@/components/pos/EndOfDayPreviewModal';
 import { ReportsMenu } from '@/components/pos/ReportsMenu';
 import { XReportModal } from '@/components/pos/XReportModal';
-import { ZReportModal } from '@/components/pos/ZReportModal';
 import { generateXReport, generateZReport } from '@/api/reportApi';
-import type { XReportResponse, ZReportResponse } from '@/api/reportApi';
+import type { XReportResponse } from '@/api/reportApi';
 import { getErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { CashDrawerModal } from '@/components/organisms/CashDrawerModal';
+import type { EndOfDayConfirmResult } from '@/components/pos/EndOfDayPreviewModal';
+import type { EndOfDayPreview } from '@/lib/offline/endOfDayPreview';
+import { printReceipt, getPrintSettingsFromStore, isTauriEnvironment } from '@/lib/printing';
+import type { ReceiptData } from '@/lib/printing';
+import { usePrinterStore } from '@/stores/printerStore';
+import { toast } from 'sonner';
 
 export function Header() {
   const { t } = useTranslation('pos');
@@ -29,6 +34,7 @@ export function Header() {
   const logout = useAuthStore((s) => s.logout);
   const terminal = useTerminalStore((s) => s.terminal);
   const shift = useTerminalStore((s) => s.shift);
+  const closeShift = useTerminalStore((s) => s.closeShift);
 
   const operator = useOperatorStore((s) => s.operator);
   const lockScreen = useOperatorStore((s) => s.lock);
@@ -41,14 +47,12 @@ export function Header() {
   const pendingReceiptCount = useSyncStore((s) => s.pendingReceiptCount);
   const isSyncing = useSyncStore((s) => s.isSyncing);
 
-  const [showCloseShift, setShowCloseShift] = useState(false);
+  const [showEndOfDay, setShowEndOfDay] = useState(false);
 
   // Reports state
   const [showReportsMenu, setShowReportsMenu] = useState(false);
   const [showXReportModal, setShowXReportModal] = useState(false);
-  const [showZReportModal, setShowZReportModal] = useState(false);
   const [xReport, setXReport] = useState<XReportResponse | null>(null);
-  const [zReport, setZReport] = useState<ZReportResponse | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
   const [showCashDrawerModal, setShowCashDrawerModal] = useState(false);
@@ -74,30 +78,90 @@ export function Header() {
     }
   };
 
-  const handleZReportOpen = () => {
-    setZReport(null);
-    setReportError(null);
-    setShowZReportModal(true);
+  /**
+   * Called by EndOfDayPreviewModal when the operator confirms.
+   * Atomically: generates Z (offline-first) → closes shift → returns result.
+   */
+  const handleEndOfDayConfirm = async (preview: EndOfDayPreview): Promise<EndOfDayConfirmResult> => {
+    if (!terminal || !shift || !companyId) {
+      throw new Error('Missing terminal, shift, or company context');
+    }
+
+    // 1. Generate Z report (offline-first, idempotent)
+    const zReport = await generateZReport(
+      terminal.id,
+      companyId,
+      shift.id,
+      shift.opened_at,
+      parseFloat(shift.opening_cash),
+    );
+
+    // 2. Close the shift. In Option B, variance = 0: pass expected_cash as actualCash.
+    await closeShift(preview.expected_cash);
+
+    return {
+      formattedZNumber: zReport.formatted_z_number,
+      wasReused: zReport.was_reused ?? false,
+    };
   };
 
-  const handleZReportConfirm = async () => {
-    if (!terminal || !shift || !companyId) return;
-    setReportLoading(true);
-    setReportError(null);
-    try {
-      const report = await generateZReport(
-        terminal.id,
-        companyId,
-        shift.id,
-        shift.opened_at,
-        parseFloat(shift.opening_cash),
-      );
-      setZReport(report);
-    } catch (err) {
-      setReportError(getErrorMessage(err));
-    } finally {
-      setReportLoading(false);
+  /**
+   * Print a minimal Z-report summary receipt.
+   * Only invoked in Tauri (thermal printer) environment.
+   * Sets is_reprint=true when wasReused so a DUPLICATA banner is printed.
+   */
+  const handlePrintZReport = (result: EndOfDayConfirmResult) => {
+    if (!isTauriEnvironment()) return;
+
+    const { printerConfig } = usePrinterStore.getState();
+    if (!printerConfig) {
+      toast.error(t('settings.noPrinterConfigured'));
+      return;
     }
+
+    const { companies } = useAuthStore.getState();
+    const company = companies.find((c) => c.id === companyId) ?? null;
+
+    const receiptData: ReceiptData = {
+      company: {
+        name: company?.name ?? '',
+        address_line1: '',
+        address_line2: null,
+        city: '',
+        postal_code: '',
+        country: '',
+        tax_id: '',
+        phone: null,
+      },
+      receipt_number: result.formattedZNumber,
+      date_time: new Date().toISOString(),
+      terminal_name: terminal?.name ?? '',
+      operator_name: operator?.name ?? '',
+      lines: [],
+      subtotal: '0.00',
+      discount_amount: '0.00',
+      tax_amount: '0.00',
+      total: '0.00',
+      currency_symbol: '',
+      vat_breakdown: [],
+      payments: [],
+      change_due: '0.00',
+      fiscal_hash: null,
+      fiscal_signature: null,
+      customer_name: null,
+      notes: null,
+      show_vat_breakdown: false,
+      show_fiscal_info: false,
+      show_payment_details: false,
+      show_customer: false,
+      is_reprint: result.wasReused,
+    };
+
+    void printReceipt(receiptData, printerConfig, getPrintSettingsFromStore()).catch(
+      (err: unknown) => {
+        toast.error(err instanceof Error ? err.message : t('reports.endOfDay.printError', 'Failed to send receipt to printer.'));
+      },
+    );
   };
 
   const handleExitFullscreen = async () => {
@@ -158,10 +222,10 @@ export function Header() {
           {/* Manual sync button */}
           <SyncButton />
 
-          {/* Shift badge */}
+          {/* Shift badge — opens End of Day preview */}
           {shift ? (
             <button
-              onClick={() => setShowCloseShift(true)}
+              onClick={() => setShowEndOfDay(true)}
               className="flex items-center gap-2 rounded-md bg-green-50 px-2.5 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"
             >
               <span>{t('shift.number', { number: shift.shift_number })}</span>
@@ -242,12 +306,15 @@ export function Header() {
         </div>
       </header>
 
-      {/* Close Shift Modal */}
+      {/* End of Day Preview Modal (replaces CloseShiftModal) */}
       {shift && (
-        <CloseShiftModal
-          isOpen={showCloseShift}
-          onClose={() => setShowCloseShift(false)}
+        <EndOfDayPreviewModal
+          isOpen={showEndOfDay}
+          onClose={() => setShowEndOfDay(false)}
           shift={shift}
+          terminalId={terminal?.id ?? ''}
+          onConfirmAndClose={handleEndOfDayConfirm}
+          onPrintReceipt={isTauriEnvironment() ? handlePrintZReport : undefined}
         />
       )}
 
@@ -256,10 +323,10 @@ export function Header() {
         isOpen={showReportsMenu}
         onClose={() => setShowReportsMenu(false)}
         onXReport={() => void handleXReport()}
-        onZReport={handleZReportOpen}
         onTransactionHistory={() => { setShowReportsMenu(false); navigate('/sales'); }}
         onCashDrawerOps={() => { setShowReportsMenu(false); setShowCashDrawerModal(true); }}
         onTodaySales={() => { setShowReportsMenu(false); navigate('/sales'); }}
+        onZReportHistory={() => { setShowReportsMenu(false); navigate('/reports/z'); }}
       />
 
       {/* X Report Modal */}
@@ -267,16 +334,6 @@ export function Header() {
         isOpen={showXReportModal}
         onClose={() => setShowXReportModal(false)}
         report={xReport}
-        isLoading={reportLoading}
-        error={reportError}
-      />
-
-      {/* Z Report Modal */}
-      <ZReportModal
-        isOpen={showZReportModal}
-        onClose={() => setShowZReportModal(false)}
-        onConfirmGenerate={() => handleZReportConfirm()}
-        report={zReport}
         isLoading={reportLoading}
         error={reportError}
       />

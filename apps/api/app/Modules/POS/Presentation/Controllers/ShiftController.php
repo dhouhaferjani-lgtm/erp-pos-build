@@ -13,6 +13,7 @@ use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Services\ShiftManagementService;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\POS\Domain\ZReport;
 use App\Modules\POS\Presentation\Requests\CloseShiftRequest;
 use App\Modules\POS\Presentation\Requests\OpenShiftRequest;
 use App\Modules\POS\Presentation\Resources\ShiftResource;
@@ -96,6 +97,17 @@ final class ShiftController extends Controller
                     'message' => 'Shift does not belong to your company',
                 ],
             ], 403);
+        }
+
+        // Require a Z report before the shift can be closed (BG10)
+        $zReport = ZReport::query()->where('shift_id', $shift->id)->first();
+        if ($zReport === null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'Z_REPORT_REQUIRED',
+                    'message' => 'A Z report must be generated before the shift can be closed.',
+                ],
+            ], 422);
         }
 
         try {

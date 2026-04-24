@@ -72,6 +72,7 @@ export interface ReceiptVisibilitySettings {
 export function buildEscPosReceiptData(
   receipt: FullReceiptResponse,
   visibilitySettings?: ReceiptVisibilitySettings,
+  isReprint?: boolean,
 ): ReceiptData {
   const currencySymbol = getCurrencySymbol(receipt.currency);
   const decimals = getCurrencyDecimals(receipt.currency);
@@ -131,6 +132,7 @@ export function buildEscPosReceiptData(
     show_fiscal_info: visibilitySettings?.show_fiscal_info,
     show_payment_details: visibilitySettings?.show_payment_details,
     show_customer: visibilitySettings?.show_customer,
+    is_reprint: isReprint ?? undefined,
   };
 }
 

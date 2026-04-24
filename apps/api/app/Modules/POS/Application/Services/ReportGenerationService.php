@@ -121,6 +121,14 @@ final class ReportGenerationService
                 throw ShiftNotOpenException::noOpenShift($terminal->id);
             }
 
+            // Idempotency guard: if a Z report already exists for this shift, return it.
+            $existing = ZReport::query()->where('shift_id', $shift->id)->first();
+            if ($existing !== null) {
+                $existing->setAttribute('was_reused', true);
+
+                return $existing;
+            }
+
             // Calculate shift totals
             $reportData = $this->calculateShiftTotals($terminal, $shift->opened_at, now());
 
@@ -165,6 +173,7 @@ final class ReportGenerationService
 
             /** @var ZReport $freshReport */
             $freshReport = $zReport->fresh();
+            $freshReport->setAttribute('was_reused', false);
 
             DB::afterCommit(function () use ($freshReport, $terminal): void {
                 event(new ZReportGenerated(

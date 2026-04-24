@@ -33,6 +33,7 @@ final class ZReportResource extends JsonResource
             // Helper methods
             'is_first_z_report' => $this->isFirstZReport(),
             'formatted_z_number' => $this->getFormattedZNumber(),
+            'was_reused' => (bool) ($this->getAttribute('was_reused') ?? false),
 
             // Report data (parsed from JSONB)
             'sales_count' => $this->getSalesCount(),

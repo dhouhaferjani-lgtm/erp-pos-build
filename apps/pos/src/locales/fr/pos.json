@@ -283,7 +283,47 @@
     "cashReconciliation": "Réconciliation de caisse",
     "loading": "Génération du rapport...",
     "noOpenShift": "Aucun service ouvert. Ouvrez un service pour générer un rapport.",
-    "errorGenerating": "Erreur lors de la génération du rapport"
+    "errorGenerating": "Erreur lors de la génération du rapport",
+    "noShiftOpen": "Ouvrez un service pour voir les ventes du jour.",
+    "noReceiptsYet": "Aucun ticket pour ce service pour l'instant.",
+    "fetchError": "Impossible de charger les tickets. Vérifiez votre connexion et réessayez.",
+    "endOfDay": {
+      "title": "Clôture de caisse",
+      "subtitle": "Vérifiez les totaux avant de clôturer le service. Cette action est définitive.",
+      "openingCash": "Fond de caisse",
+      "expectedCash": "Espèces attendues",
+      "cashReconciliation": "Réconciliation de caisse",
+      "salesCount": "Tickets",
+      "grossSales": "Ventes brutes",
+      "netSales": "Ventes nettes",
+      "taxAmount": "TVA",
+      "vatBreakdown": "Ventilation TVA",
+      "payments": "Paiements",
+      "cancel": "Annuler",
+      "confirmLabel": "Confirmer et clôturer",
+      "confirming": "Clôture en cours...",
+      "successTitle": "Caisse clôturée",
+      "successZNumber": "Rapport Z",
+      "successReused": "Ce service avait déjà un rapport Z — affichage de l'existant.",
+      "printReceipt": "Imprimer le ticket",
+      "printError": "Échec de l'envoi du ticket à l'imprimante.",
+      "done": "Terminer"
+    },
+    "zList": {
+      "title": "Rapports Z",
+      "columns": {
+        "zNumber": "Numéro Z",
+        "generatedAt": "Généré le",
+        "gross": "Ventes brutes",
+        "hash": "Empreinte"
+      },
+      "actions": {
+        "print": "Imprimer",
+        "pdf": "Télécharger PDF"
+      },
+      "empty": "Aucun rapport Z trouvé.",
+      "duplicataBanner": "DUPLICATA"
+    }
   },
   "productDetail": {
     "title": "Détails du produit",
