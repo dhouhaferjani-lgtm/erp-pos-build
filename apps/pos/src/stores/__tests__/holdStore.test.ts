@@ -19,7 +19,7 @@ vi.mock('@/stores/authStore', () => ({
 
 vi.mock('@/stores/terminalStore', () => ({
   useTerminalStore: {
-    getState: () => ({ terminal: { terminal_id: 'term-1' } }),
+    getState: () => ({ terminal: { id: 'term-1' } }),
   },
 }));
 

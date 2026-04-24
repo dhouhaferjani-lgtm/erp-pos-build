@@ -100,6 +100,7 @@ export function HomePage() {
   const holdCurrentCart = useHoldStore((s) => s.holdCurrentCart);
   const recallTransaction = useHoldStore((s) => s.recallTransaction);
   const discardTransaction = useHoldStore((s) => s.discardTransaction);
+  const loadHeldTransactions = useHoldStore((s) => s.loadHeldTransactions);
 
   // Modal state
   const [showCashModal, setShowCashModal] = useState(false);
@@ -167,6 +168,11 @@ export function HomePage() {
       void fetchPaymentConfig();
     }
   }, [shift, fetchProducts, fetchPaymentConfig]);
+
+  // Hydrate held transactions from SQLite on mount
+  useEffect(() => {
+    void loadHeldTransactions();
+  }, [loadHeldTransactions]);
 
   // Clear payment error when cash modal opens
   useEffect(() => {
@@ -400,34 +406,26 @@ export function HomePage() {
     [terminal, cartItems, transactionDiscount, processAdvancedCheckout, isFnB, consumptionMode, selectedTableId],
   );
 
-  const handleHold = useCallback(() => {
+  const handleHold = useCallback(async () => {
     if (cartItems.length === 0) return;
-    holdCurrentCart('');
+    await holdCurrentCart('');
   }, [cartItems.length, holdCurrentCart]);
 
   const handleRecall = useCallback(
-    (id: string) => {
-      const tx = recallTransaction(id);
+    async (id: string) => {
+      const tx = await recallTransaction(id);
       if (!tx) return;
 
-      // Load held items into the cart
-      clearCart();
-      for (const item of tx.items) {
-        useCartStore.setState((state) => ({
-          items: [...state.items, item],
-        }));
-      }
-      if (tx.transactionDiscount) {
-        useCartStore.getState().setTransactionDiscount(tx.transactionDiscount);
-      }
+      // Atomic replace — avoids the per-item setState loop that amplified BG3.
+      useCartStore.getState().replaceCart(tx.items, tx.transactionDiscount);
       setShowHeldModal(false);
     },
-    [recallTransaction, clearCart],
+    [recallTransaction],
   );
 
   const handleDiscard = useCallback(
-    (id: string) => {
-      discardTransaction(id);
+    async (id: string) => {
+      await discardTransaction(id);
     },
     [discardTransaction],
   );
@@ -631,7 +629,7 @@ export function HomePage() {
           onAdvancedPayments={handleAdvancedPayments}
           onQuantityTap={handleQuantityTap}
           onDiscount={() => setShowDiscountModal(true)}
-          onHold={handleHold}
+          onHold={() => void handleHold()}
           onRecall={() => setShowHeldModal(true)}
           onLineDiscount={handleLineDiscount}
           onRemoveLineDiscount={handleRemoveLineDiscount}
@@ -691,7 +689,6 @@ export function HomePage() {
           receiptNumber={lastReceipt.receipt_number}
           total={lastReceipt.total}
           changeDue={changeDue}
-          receiptId={lastReceipt.id}
           receiptData={escPosData ?? undefined}
         />
       )}
@@ -713,8 +710,8 @@ export function HomePage() {
         isOpen={showHeldModal}
         onClose={() => setShowHeldModal(false)}
         heldTransactions={heldTransactions}
-        onRecall={handleRecall}
-        onDiscard={handleDiscard}
+        onRecall={(id) => void handleRecall(id)}
+        onDiscard={(id) => void handleDiscard(id)}
       />
 
       {/* Discount modal (transaction-only) */}

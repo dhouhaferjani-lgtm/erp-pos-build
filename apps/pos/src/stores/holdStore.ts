@@ -69,7 +69,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
   loadHeldTransactions: async () => {
     set({ isLoading: true, error: null });
     try {
-      const terminalId = useTerminalStore.getState().terminal?.terminal_id;
+      const terminalId = useTerminalStore.getState().terminal?.id;
       if (!terminalId) {
         set({ heldTransactions: [], isLoading: false });
         return;
@@ -91,7 +91,7 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
     const items = cartState.items;
     if (items.length === 0) return;
 
-    const terminalId = useTerminalStore.getState().terminal?.terminal_id;
+    const terminalId = useTerminalStore.getState().terminal?.id;
     const operatorId = useOperatorStore.getState().operator?.id;
     if (!terminalId || !operatorId) {
       set({ error: 'Terminal or operator not ready' });
