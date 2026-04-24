@@ -5,9 +5,9 @@ import { Plus, Search, Upload, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCompositeItems, useDeleteCompositeItem } from '../hooks/useCompositeItems'
 import { useCompanyVerticalLabels } from '../hooks/useVerticalLabels'
+import { Button } from '@/components/atoms'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { usePermissions } from '@/hooks/usePermissions'
-import { textColors, colors, transitions } from '@/lib/designTokens'
 import type { CompositeItemData } from '../types/compositeItem'
 
 export function CompositeItemListPage() {
@@ -117,14 +117,17 @@ export function CompositeItemListPage() {
                   </td>
                   <td className="whitespace-nowrap px-3 py-4 text-sm">
                     {canDelete && (
-                      <button
+                      <Button
                         type="button"
-                        aria-label={t('common:delete')}
+                        variant="danger"
+                        size="sm"
                         onClick={() => { setItemToDelete(item) }}
-                        className={`rounded p-1 ${textColors.disabled} ${colors.hover.red50} ${textColors.hoverError} ${transitions.base}`}
+                        aria-label={t('common:delete')}
+                        className="!px-2 !py-1"
                       >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        {t('common:delete')}
+                      </Button>
                     )}
                   </td>
                 </tr>
