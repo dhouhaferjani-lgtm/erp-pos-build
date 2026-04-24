@@ -60,9 +60,15 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 
+let mockHasPermission = vi.fn().mockReturnValue(true)
+vi.mock('@/hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasPermission: mockHasPermission }),
+}))
+
 describe('CompositeItemListPage', () => {
   beforeEach(() => {
     mockUseQueryReturn = { data: mockPaginatedData, isLoading: false }
+    mockHasPermission = vi.fn().mockReturnValue(true)
   })
 
   it('renders composite items table with data', () => {
@@ -110,5 +116,11 @@ describe('CompositeItemListPage', () => {
     await waitFor(() => {
       expect(mockDeleteMutate).toHaveBeenCalledWith('1')
     })
+  })
+
+  it('hides the delete button when user lacks composite-items.delete permission', () => {
+    mockHasPermission = vi.fn().mockReturnValue(false)
+    render(<CompositeItemListPage />)
+    expect(screen.queryByRole('button', { name: /common:delete/i })).not.toBeInTheDocument()
   })
 })

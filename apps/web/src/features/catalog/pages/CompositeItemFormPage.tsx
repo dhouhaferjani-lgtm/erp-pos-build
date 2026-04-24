@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { usePermissions } from '@/hooks/usePermissions'
 import { Input, FormField, Button, Select } from '@/components/atoms'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/molecules/Tabs/Tabs'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
@@ -27,6 +28,9 @@ export function CompositeItemFormPage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const isEdit = !!id && id !== 'new'
+  const { hasPermission } = usePermissions()
+  const canDelete = hasPermission('composite-items.delete')
+
   const { config, hasModule } = useCompanyConfig()
   const hasInventory = hasModule('Inventory')
   const companyVerticalType = companyVerticalToCatalog(config?.vertical)
@@ -318,16 +322,18 @@ export function CompositeItemFormPage() {
                 >
                   {t('common:cancel')}
                 </Button>
-                <Button
-                  type="button"
-                  variant="danger"
-                  onClick={() => { setConfirmDeleteOpen(true) }}
-                  disabled={deleteMutation.isPending}
-                  aria-label={t('common:delete')}
-                >
-                  <Trash2 className="h-4 w-4 mr-1" />
-                  {t('common:delete')}
-                </Button>
+                {canDelete && (
+                  <Button
+                    type="button"
+                    variant="danger"
+                    onClick={() => { setConfirmDeleteOpen(true) }}
+                    disabled={deleteMutation.isPending}
+                    aria-label={t('common:delete')}
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    {t('common:delete')}
+                  </Button>
+                )}
                 <Button
                   type="submit"
                   variant="primary"

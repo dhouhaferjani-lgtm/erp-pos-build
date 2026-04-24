@@ -16,6 +16,11 @@ vi.mock('react-router-dom', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
+let mockHasPermission = vi.fn().mockReturnValue(true)
+vi.mock('@/hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasPermission: mockHasPermission }),
+}))
+
 const mockItem = {
   id: 'composite-1',
   code: 'ESP',
@@ -73,6 +78,7 @@ describe('CompositeItemFormPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockParams = { id: 'composite-1' }
+    mockHasPermission = vi.fn().mockReturnValue(true)
   })
 
   it('shows the delete button when editing an existing item', () => {
@@ -113,5 +119,11 @@ describe('CompositeItemFormPage', () => {
       expect(toast.error).toHaveBeenCalled()
       expect(mockNavigate).not.toHaveBeenCalled()
     })
+  })
+
+  it('hides the delete button when user lacks composite-items.delete permission', () => {
+    mockHasPermission = vi.fn().mockReturnValue(false)
+    render(<CompositeItemFormPage />)
+    expect(screen.queryByRole('button', { name: /common:delete/i })).not.toBeInTheDocument()
   })
 })

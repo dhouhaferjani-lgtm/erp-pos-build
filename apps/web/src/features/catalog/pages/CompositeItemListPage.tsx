@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { useCompositeItems, useDeleteCompositeItem } from '../hooks/useCompositeItems'
 import { useCompanyVerticalLabels } from '../hooks/useVerticalLabels'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { usePermissions } from '@/hooks/usePermissions'
 import { textColors, colors, transitions } from '@/lib/designTokens'
 import type { CompositeItemData } from '../types/compositeItem'
 
@@ -15,6 +16,9 @@ export function CompositeItemListPage() {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [itemToDelete, setItemToDelete] = useState<CompositeItemData | null>(null)
+
+  const { hasPermission } = usePermissions()
+  const canDelete = hasPermission('composite-items.delete')
 
   const { data, isLoading } = useCompositeItems({ search: search || undefined, page, per_page: 25 })
   const deleteMutation = useDeleteCompositeItem()
@@ -112,14 +116,16 @@ export function CompositeItemListPage() {
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-3 py-4 text-sm">
-                    <button
-                      type="button"
-                      aria-label={t('common:delete')}
-                      onClick={() => { setItemToDelete(item) }}
-                      className={`rounded p-1 ${textColors.disabled} ${colors.hover.red50} ${textColors.hoverError} ${transitions.base}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    {canDelete && (
+                      <button
+                        type="button"
+                        aria-label={t('common:delete')}
+                        onClick={() => { setItemToDelete(item) }}
+                        className={`rounded p-1 ${textColors.disabled} ${colors.hover.red50} ${textColors.hoverError} ${transitions.base}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
