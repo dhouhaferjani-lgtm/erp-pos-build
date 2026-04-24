@@ -276,9 +276,20 @@ class ZReportHashServiceTest extends TestCase
     {
         $this->zReportSequence++;
 
+        // Each Z report must belong to a unique shift (unique constraint on shift_id).
+        // Create a fresh shift for every Z report unless an explicit shift_id is provided.
+        $shiftId = $overrides['shift_id'] ?? Shift::create([
+            'terminal_id' => $this->terminal->id,
+            'cashier_id' => $this->user->id,
+            'shift_number' => $this->zReportSequence,
+            'opening_cash' => '100.00',
+            'status' => ShiftStatus::Open,
+            'opened_at' => now(),
+        ])->id;
+
         $defaults = [
             'terminal_id' => $this->terminal->id,
-            'shift_id' => $this->shift->id,
+            'shift_id' => $shiftId,
             'z_number' => $this->zReportSequence,
             'fiscal_hash' => hash('sha256', "z-report-{$this->zReportSequence}"),
             'previous_z_hash' => null,
@@ -292,6 +303,8 @@ class ZReportHashServiceTest extends TestCase
             'generated_at' => now(),
         ];
 
+        // Remove shift_id from overrides since we've already computed it above.
+        $overrides = array_diff_key($overrides, ['shift_id' => true]);
         return ZReport::create(array_merge($defaults, $overrides));
     }
 }
