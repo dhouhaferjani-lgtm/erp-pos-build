@@ -54,6 +54,8 @@ use Illuminate\Support\Carbon;
  * @property numeric-string $discount_amount Transaction-level discount
  * @property string|null $discount_reason Reason for transaction discount
  * @property numeric-string $total Gross total ((subtotal - discount) + tax)
+ * @property numeric-string|null $change_due Cash change returned to customer; NULL on legacy rows
+ * @property numeric-string|null $tolerance_writeoff Amount written off to GL 658 for cash-sale tolerance; NULL when no tolerance applied
  * @property string $currency
  * @property ConsumptionMode|null $consumption_mode SUR_PLACE, A_EMPORTER
  * @property string|null $customer_name
@@ -142,6 +144,7 @@ class Receipt extends Model
         'discount_authorized_by',
         'total',
         'change_due',
+        'tolerance_writeoff',
         'currency',
         'consumption_mode',
         'table_id',
@@ -179,6 +182,7 @@ class Receipt extends Model
             'discount_amount' => 'decimal:3',
             'total' => 'decimal:3',
             'change_due' => 'decimal:3',
+            'tolerance_writeoff' => 'decimal:3',
             'consumption_mode' => ConsumptionMode::class,
             'is_voided' => 'boolean',
             'is_training' => 'boolean',

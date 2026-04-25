@@ -100,6 +100,7 @@ class PaymentAllocationService
                     'payment_id' => $payment->id,
                     'document_id' => $allocation['document_id'],
                     'amount' => $allocation['amount'],
+                    'tolerance_writeoff' => $allocation['tolerance_writeoff'] ?? null,
                 ]);
 
                 $createdAllocations[] = [

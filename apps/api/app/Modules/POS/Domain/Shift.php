@@ -26,6 +26,8 @@ use Illuminate\Support\Carbon;
  * @property numeric-string|null $expected_cash Calculated expected cash at close
  * @property numeric-string|null $actual_cash Counted cash at close
  * @property numeric-string|null $variance Difference: actual - expected
+ * @property numeric-string $tolerance_writeoff_total Running sum of cash-tolerance write-offs (GL 658) for the shift
+ * @property int $tolerance_writeoff_count Number of receipts in the shift with a non-zero tolerance write-off
  * @property ShiftStatus $status OPEN or CLOSED
  * @property Carbon $opened_at
  * @property Carbon|null $closed_at
@@ -66,6 +68,8 @@ class Shift extends Model
         'expected_cash',
         'actual_cash',
         'variance',
+        'tolerance_writeoff_total',
+        'tolerance_writeoff_count',
         'status',
         'opened_at',
         'closed_at',
@@ -87,6 +91,8 @@ class Shift extends Model
             'expected_cash' => 'decimal:4',
             'actual_cash' => 'decimal:4',
             'variance' => 'decimal:4',
+            'tolerance_writeoff_total' => 'decimal:3',
+            'tolerance_writeoff_count' => 'integer',
             'status' => ShiftStatus::class,
             'opened_at' => 'datetime',
             'closed_at' => 'datetime',
@@ -140,6 +146,27 @@ class Shift extends Model
     public function isClosed(): bool
     {
         return $this->status === ShiftStatus::Closed;
+    }
+
+    /**
+     * Atomically increment tolerance write-off aggregates for the shift.
+     *
+     * Intended to be called inside a transaction that already holds a
+     * pessimistic lock on this row (see ReceiptPaymentService — Phase 4).
+     * The lock guarantees no concurrent writers; this method just bcadds
+     * the new write-off to the running total and increments the count.
+     *
+     * @param  numeric-string  $amount
+     */
+    public function applyToleranceWriteoff(string $amount): void
+    {
+        $this->tolerance_writeoff_total = bcadd(
+            $this->tolerance_writeoff_total ?? '0.000',
+            $amount,
+            3,
+        );
+        $this->tolerance_writeoff_count = ($this->tolerance_writeoff_count ?? 0) + 1;
+        $this->save();
     }
 
     /**

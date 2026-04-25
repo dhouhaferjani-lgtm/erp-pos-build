@@ -1413,6 +1413,28 @@ export type OnboardingStep = 'company_info' | 'tax_config' | 'payment_methods' |
 export type SubscriptionPlan = 'trial' | 'starter' | 'professional' | 'enterprise';
 export type TenantStatus = 'active' | 'suspended' | 'pending' | 'archived';
 }
+declare namespace App.Modules.Treasury.Application.DTOs {
+export type TolerancePaymentBreakdownDTO = {
+userId: string;
+userName: string;
+totalAmount: string;
+currencyCode: string;
+writeoffCount: number;
+};
+export type TolerancePaymentReceiptDTO = {
+receiptNumber: string;
+userId: string;
+userName: string;
+writeoffAmount: string;
+currencyCode: string;
+occurredAt: string;
+};
+export type TolerancePaymentTotalsDTO = {
+totalAmount: string;
+currencyCode: string;
+writeoffCount: number;
+};
+}
 declare namespace App.Modules.Treasury.Domain.Enums {
 export type AllocationMethod = 'fifo' | 'due_date' | 'manual';
 export type AllocationType = 'invoice_payment' | 'credit_application' | 'credit_note_application' | 'tolerance_writeoff';

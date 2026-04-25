@@ -17,6 +17,7 @@ use Illuminate\Support\Carbon;
  * @property string $payment_id
  * @property string $document_id
  * @property numeric-string $amount
+ * @property numeric-string|null $tolerance_writeoff
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Payment $payment
@@ -32,6 +33,7 @@ class PaymentAllocation extends Model
         'payment_id',
         'document_id',
         'amount',
+        'tolerance_writeoff',
     ];
 
     /**
@@ -41,6 +43,7 @@ class PaymentAllocation extends Model
     {
         return [
             'amount' => 'decimal:4',
+            'tolerance_writeoff' => 'decimal:4',
         ];
     }
 
