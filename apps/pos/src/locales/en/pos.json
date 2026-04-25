@@ -215,7 +215,8 @@
     "verifyingPin": "Verifying...",
     "managerDenied": "Manager does not have sufficient discount permission",
     "invalidPin": "Invalid PIN",
-    "authorize": "Authorize"
+    "authorize": "Authorize",
+    "cancel": "Cancel"
   },
   "modifiers": {
     "basePrice": "Base price",

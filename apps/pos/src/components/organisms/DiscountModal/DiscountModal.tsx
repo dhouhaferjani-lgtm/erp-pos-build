@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ArrowLeft } from 'lucide-react';
 import { apiPost } from '@/lib/api';
-import { Modal } from '@/components/pos/Modal';
 import { cn } from '@/lib/utils';
 import type { Operator } from '@/stores/operatorStore';
 
@@ -53,6 +53,17 @@ export function DiscountModal({
       setManagerError(null);
     }
   }, [isOpen]);
+
+  // Escape closes the view, but not while the manager PIN entry is active
+  // (pressing Escape mid-PIN would silently discard the approval attempt)
+  useEffect(() => {
+    if (!isOpen || needsApproval) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [isOpen, needsApproval, onClose]);
 
   const handleNumpadPress = useCallback((key: string) => {
     if (key === 'C') {
@@ -142,9 +153,26 @@ export function DiscountModal({
     }
   }, [managerPin, discountType, value, reason, onApplyTransactionDiscount, onClose, t]);
 
+  if (!isOpen) return null;
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={t('discount.transactionDiscount')} size="full">
-      <div className="flex h-full gap-4">
+    <div className="fixed inset-0 z-50 flex flex-col bg-gray-50 text-gray-900">
+      {/* Header */}
+      <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
+        <button
+          onClick={onClose}
+          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          {t('discount.cancel')}
+        </button>
+        <span className="text-lg font-bold text-gray-900">
+          {t('discount.transactionDiscount')}
+        </span>
+        <div className="w-20" />
+      </div>
+
+      <div className="flex min-h-0 flex-1 gap-4 p-4">
         {/* Left: Toggle + Value + Numpad OR Manager PIN */}
         <div className="flex flex-[2] flex-col">
           {needsApproval ? (
@@ -323,6 +351,6 @@ export function DiscountModal({
           )}
         </div>
       </div>
-    </Modal>
+    </div>
   );
 }

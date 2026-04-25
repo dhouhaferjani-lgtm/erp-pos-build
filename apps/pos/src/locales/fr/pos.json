@@ -215,7 +215,8 @@
     "verifyingPin": "Vérification...",
     "managerDenied": "Le responsable n'a pas une autorisation de remise suffisante",
     "invalidPin": "PIN invalide",
-    "authorize": "Autoriser"
+    "authorize": "Autoriser",
+    "cancel": "Annuler"
   },
   "modifiers": {
     "basePrice": "Prix de base",
