@@ -19,6 +19,7 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Domain\ZReport;
 use App\Modules\POS\Infrastructure\Repositories\ZReportCountRepository;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\Services\PaymentToleranceQueryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Tests\Traits\WithCurrencyScale;
@@ -50,6 +51,7 @@ final class ReportGenerationIdempotencyTest extends TestCase
             $this->app->make(CashCountValidationService::class),
             $this->app->make(FraudSettingsResolver::class),
             $this->app->make(ZReportCountRepository::class),
+            $this->app->make(PaymentToleranceQueryService::class),
         );
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);

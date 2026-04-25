@@ -578,6 +578,7 @@
     "total": "TOTAL:",
     "payments": "Payments:",
     "changeDue": "Change Due:",
+    "rounding": "Rounding",
     "vatRate": "VAT %",
     "taxable": "Taxable",
     "taxCol": "Tax",

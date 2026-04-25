@@ -88,6 +88,7 @@ export async function getOfflineReceiptForPrint(
     tax_amount: receipt.tax_amount,
     discount_amount: receipt.discount_amount,
     total: receipt.total,
+    tolerance_writeoff: null,
     currency: receipt.currency,
     fiscal_hash: receipt.fiscal_hash,
     customer_name: null,

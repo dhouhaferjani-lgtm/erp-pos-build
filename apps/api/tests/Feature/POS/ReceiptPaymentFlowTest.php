@@ -361,10 +361,15 @@ final class ReceiptPaymentFlowTest extends TestCase
             'role' => 'admin',
         ]);
 
-        // Create and assign POS permission
+        // Create and assign POS permissions. Note: short-pay flows separately require
+        // `pos.tolerance.apply` (added in Phase 2 / Task 8); we grant it here so the
+        // pre-A1 reject/validation tests below still exercise the service-layer paths
+        // they were written for, rather than getting blocked at the new auth gate.
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
         Permission::findOrCreate('pos.operate_terminal', 'sanctum');
+        Permission::findOrCreate('pos.tolerance.apply', 'sanctum');
         $this->user->givePermissionTo('pos.operate_terminal');
+        $this->user->givePermissionTo('pos.tolerance.apply');
 
         $this->cashAccount = Account::factory()->create([
             'tenant_id' => $this->tenant->id,

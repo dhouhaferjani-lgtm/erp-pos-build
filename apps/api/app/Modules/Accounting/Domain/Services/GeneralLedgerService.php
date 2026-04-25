@@ -906,6 +906,75 @@ final class GeneralLedgerService
     }
 
     /**
+     * Create journal entry for a POS cash-sale tolerance write-off.
+     *
+     * POS receipts are direct-to-revenue (no AR, no partner — walk-in sales).
+     * The B2B createPaymentToleranceJournalEntry is partner/AR-shaped and not
+     * usable here. This method posts a partner-less mirror:
+     *   Dr 658 PaymentToleranceExpense   amount
+     *   Cr ProductRevenue                amount
+     *
+     * VAT is NOT touched — tolerance is a non-VAT accounting loss
+     * (see docs/superpowers/specs/2026-04-24-payment-tolerance-design.md §4).
+     *
+     * @param  numeric-string  $amount
+     */
+    public function createPOSPaymentToleranceEntry(
+        string $companyId,
+        string $receiptId,
+        string $amount,
+        \DateTimeInterface $date,
+    ): JournalEntry {
+        $toleranceAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::PaymentToleranceExpense);
+        $revenueAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::ProductRevenue);
+
+        return DB::transaction(function () use (
+            $companyId,
+            $receiptId,
+            $amount,
+            $date,
+            $toleranceAccount,
+            $revenueAccount,
+        ): JournalEntry {
+            $company = Company::findOrFail($companyId);
+            $entryNumber = $this->generateEntryNumber($companyId);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $company->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => $date,
+                'description' => "POS tolerance write-off / Receipt {$receiptId}",
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'pos_payment_tolerance',
+                'source_id' => $receiptId,
+            ]);
+
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $toleranceAccount->id,
+                'partner_id' => null,
+                'debit' => $amount,
+                'credit' => '0',
+                'description' => 'POS cash-sale tolerance write-off',
+                'line_order' => 0,
+            ]);
+
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $revenueAccount->id,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $amount,
+                'description' => 'POS sales revenue (tolerance offset)',
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+    }
+
+    /**
      * Create journal entry for POS payment.
      *
      * POS payments are DIRECT TO REVENUE (no AR account).

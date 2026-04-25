@@ -36,6 +36,11 @@ pub struct ReceiptData {
     /// Payment methods used
     pub payments: Vec<PaymentLine>,
     pub change_due: String,
+    /// Cash-sale tolerance write-off (GL 658). When `Some` and parses to > 0,
+    /// a "Rounding -X.XX" line is printed in the totals/payments block.
+    /// Absent on legacy receipts and on receipts without applied tolerance.
+    #[serde(default)]
+    pub tolerance_writeoff: Option<String>,
     /// Fiscal compliance
     pub fiscal_hash: Option<String>,
     pub fiscal_signature: Option<String>,
@@ -78,6 +83,7 @@ pub struct ReceiptLabels {
     pub total: Option<String>,
     pub payments: Option<String>,
     pub change_due: Option<String>,
+    pub rounding: Option<String>,
     pub vat_rate: Option<String>,
     pub taxable: Option<String>,
     pub tax_col: Option<String>,
@@ -367,6 +373,19 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
                 &format!("{}{}", data.currency_symbol, data.change_due),
             );
             b.bold(false);
+        }
+
+        // ── Tolerance write-off (Rounding line) ──
+        // Printed only when a non-zero tolerance write-off is present on the receipt.
+        if let Some(ref tolerance) = data.tolerance_writeoff {
+            if let Ok(amount) = tolerance.parse::<f64>() {
+                if amount > 0.0 {
+                    b.two_column(
+                        &data.label(|l| &l.rounding, "Rounding"),
+                        &format!("-{}{}", data.currency_symbol, tolerance),
+                    );
+                }
+            }
         }
     }
 

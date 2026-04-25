@@ -226,6 +226,11 @@ export async function generateZReport(
     reportData.schema_version = 2;
     reportData.cash_counts = countEntries;
     // Tolerance zero-shape (3dp amount, integer count) — byte-matches server ZReportHashService
+    // TODO(payment-tolerance-v3): when offline A1 short-pay ships, this
+    // tolerance_summary must aggregate `tolerance_writeoff` over the
+    // shift's local receipts (the data is already in
+    // endOfDayPreview.ts:184-192). Hash chain stability across
+    // offline-generated → server-synced Zs depends on this.
     reportData.tolerance_summary = {
       totalAmount: '0.000',
       currencyCode: companyCurrency,

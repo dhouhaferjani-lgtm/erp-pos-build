@@ -227,6 +227,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'pos.process_returns',
             'pos.close_shift_with_variance',
             'pos.configure_cash_count',
+            'pos.tolerance.apply',
 
             // POS Orders
             'pos_orders.view',
@@ -350,7 +351,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'users.view',
             'pos.manage_terminals', 'pos.operate_terminal', 'pos.manage_shifts', 'pos.manage_tables',
             'pos.view_reports', 'pos.generate_z_report', 'pos.void_receipts', 'pos.view_receipts', 'pos.process_returns',
-            'pos.close_shift_with_variance', 'pos.configure_cash_count',
+            'pos.close_shift_with_variance', 'pos.configure_cash_count', 'pos.tolerance.apply',
             'pos_orders.view', 'pos_orders.create', 'pos_orders.update', 'pos_orders.delete',
             'pos_held_orders.view', 'pos_held_orders.create', 'pos_held_orders.delete',
             'batches.view', 'batches.create', 'batches.update', 'batches.delete',
@@ -390,6 +391,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'instruments.view', 'instruments.create',
             'work-orders.view',
             'pos.operate_terminal', 'pos.manage_shifts', 'pos.generate_z_report', 'pos.view_receipts',
+            'pos.tolerance.apply',
             'pos_orders.view', 'pos_orders.create', 'pos_orders.update',
             'pos_held_orders.view', 'pos_held_orders.create', 'pos_held_orders.delete',
             'batches.view',

@@ -4,17 +4,23 @@ declare(strict_types=1);
 
 namespace Tests\Unit\POS;
 
+use App\Models\Country;
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\ReceiptPaymentService;
+use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptPayment;
+use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\Services\PaymentToleranceService;
+use App\Modules\Treasury\Domain\CountryPaymentSettings;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
@@ -44,7 +50,8 @@ final class ReceiptPaymentServiceTest extends TestCase
         $this->glService = $this->app->make(GeneralLedgerService::class);
         $this->service = new ReceiptPaymentService(
             $this->companyContext,
-            $this->glService
+            $this->glService,
+            $this->app->make(PaymentToleranceService::class),
         );
     }
 
@@ -198,9 +205,13 @@ final class ReceiptPaymentServiceTest extends TestCase
         $this->assertEquals('4.500', $result['change_due']);
     }
 
-    public function test_underpayment_throws_exception(): void
+    public function test_underpayment_throws_when_no_tolerance_settings_configured(): void
     {
-        // Arrange
+        // Arrange — no CountryPaymentSettings row, so checkTolerance qualifies=false
+        // and the request takes the existing reject branch. Renamed from
+        // test_underpayment_throws_exception (Phase 2 audit follow-up): the original
+        // name claimed to test the reject behaviour, but the absence of seeded
+        // settings was actually what made the test pass — important to be explicit.
         $this->setupTestData();
 
         $receipt = $this->createReceipt([
@@ -232,6 +243,101 @@ final class ReceiptPaymentServiceTest extends TestCase
             payments: $payments,
             customerId: null
         );
+    }
+
+    public function test_underpayment_within_tolerance_takes_writeoff_path(): void
+    {
+        // Arrange — sibling to the reject test above. Seeds country payment
+        // settings with thresholds that comfortably admit a €0.30 shortfall on
+        // a €100 receipt (FR: 0.5% AND €0.50 caps), and asserts the A1 happy
+        // path: writeoff persisted, shift incremented, GL 658 entry created.
+        $this->setupTestData();
+        $this->seedFranceWithToleranceEnabled();
+        $this->seedToleranceExpenseAccount();
+        $shift = $this->seedOpenShiftForTerminal();
+
+        $receipt = $this->createReceipt([
+            'total' => '100.00',
+            'currency' => 'EUR',
+        ]);
+
+        $repository = PaymentRepository::factory()->create([
+            'company_id' => $this->company->id,
+            'tenant_id' => $this->tenant->id,
+            'gl_account_id' => $this->cashAccount->id,
+        ]);
+
+        $this->companyContext->setCompanyId($this->company->id);
+
+        $payments = [[
+            'payment_method_id' => $this->paymentMethod->id,
+            'amount' => '99.700',
+            'repository_id' => $repository->id,
+        ]];
+
+        $result = $this->service->processReceiptPayments(
+            receiptId: $receipt->id,
+            payments: $payments,
+            customerId: null,
+        );
+
+        $this->assertSame('0.000', $result['change_due']);
+        $this->assertSame('0.300', $result['tolerance_writeoff']);
+
+        $receipt->refresh();
+        $this->assertSame('0.300', $receipt->tolerance_writeoff);
+
+        $shift->refresh();
+        $this->assertSame('0.300', $shift->tolerance_writeoff_total);
+        $this->assertSame(1, $shift->tolerance_writeoff_count);
+
+        $this->assertSame(
+            1,
+            JournalEntry::where('source_type', 'pos_payment_tolerance')
+                ->where('source_id', $receipt->id)
+                ->count(),
+        );
+    }
+
+    private function seedFranceWithToleranceEnabled(): void
+    {
+        // Country may already exist if a parallel test seeded it; firstOrCreate keeps the seeder idempotent.
+        Country::firstOrCreate(
+            ['code' => 'FR'],
+            ['name' => 'France', 'currency_code' => 'EUR', 'currency_symbol' => '€'],
+        );
+        CountryPaymentSettings::firstOrCreate(
+            ['country_code' => 'FR'],
+            [
+                'payment_tolerance_enabled' => true,
+                'payment_tolerance_percentage' => '0.0050',
+                'max_payment_tolerance_amount' => '0.500',
+            ],
+        );
+        $this->company->update(['country_code' => 'FR', 'currency' => 'EUR']);
+    }
+
+    private function seedToleranceExpenseAccount(): void
+    {
+        Account::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '658',
+            'name' => 'Payment Tolerance Expense',
+            'system_purpose' => 'payment_tolerance_expense',
+        ]);
+    }
+
+    private function seedOpenShiftForTerminal(): Shift
+    {
+        return Shift::create([
+            'terminal_id' => $this->terminal->id,
+            'cashier_id' => $this->user->id,
+            'shift_number' => 1,
+            'status' => ShiftStatus::Open,
+            'opened_at' => now()->subHour(),
+            'opening_cash' => '100.000',
+        ]);
     }
 
     public function test_receipt_already_paid_throws_exception(): void

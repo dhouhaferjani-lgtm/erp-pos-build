@@ -81,6 +81,8 @@ export interface FullReceiptResponse {
   tax_amount: string;
   discount_amount: string;
   total: string;
+  /** Cash-sale tolerance write-off (GL 658). Null when no tolerance was applied. */
+  tolerance_writeoff: string | null;
   currency: string;
   fiscal_hash: string | null;
   customer_name: string | null;

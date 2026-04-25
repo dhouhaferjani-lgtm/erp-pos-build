@@ -66,6 +66,7 @@ export interface ReceiptLabels {
   total?: string;
   payments?: string;
   change_due?: string;
+  rounding?: string;
   vat_rate?: string;
   taxable?: string;
   tax_col?: string;
@@ -106,6 +107,8 @@ export interface ReceiptData {
   vat_breakdown: VatBreakdownLine[];
   payments: PaymentLine[];
   change_due: string;
+  /** Cash-sale tolerance write-off in customer-facing currency. Null when not applied. */
+  tolerance_writeoff?: string | null;
   fiscal_hash: string | null;
   fiscal_signature: string | null;
   customer_name: string | null;
@@ -167,6 +170,7 @@ export function buildZReceiptData(input: BuildZReceiptDataInput): ReceiptData {
     vat_breakdown: [],
     payments: [],
     change_due: '0.00',
+    tolerance_writeoff: null,
     fiscal_hash: null,
     fiscal_signature: null,
     customer_name: null,

@@ -28,6 +28,7 @@ use App\Modules\POS\Domain\ZReport;
 use App\Modules\POS\Domain\ZReportCount;
 use App\Modules\POS\Infrastructure\Repositories\ZReportCountRepository;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\Services\PaymentToleranceQueryService;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
@@ -89,6 +90,7 @@ final class GenerateZReportWithCountsTest extends TestCase
             $this->app->make(CashCountValidationService::class),
             $this->app->make(FraudSettingsResolver::class),
             $this->app->make(ZReportCountRepository::class),
+            $this->app->make(PaymentToleranceQueryService::class),
         );
 
         $this->tenant = Tenant::factory()->create();

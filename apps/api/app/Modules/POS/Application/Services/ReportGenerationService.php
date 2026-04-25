@@ -24,6 +24,7 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Domain\XReport;
 use App\Modules\POS\Domain\ZReport;
 use App\Modules\POS\Infrastructure\Repositories\ZReportCountRepository;
+use App\Modules\Treasury\Application\Services\PaymentToleranceQueryService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Barryvdh\DomPDF\PDF as DomPdf;
@@ -50,6 +51,7 @@ final class ReportGenerationService
         private readonly CashCountValidationService $cashCountValidationService,
         private readonly FraudSettingsResolver $fraudSettingsResolver,
         private readonly ZReportCountRepository $zReportCountRepository,
+        private readonly PaymentToleranceQueryService $paymentToleranceQueryService,
     ) {}
 
     private function scale(): int
@@ -247,14 +249,20 @@ final class ReportGenerationService
                     'severity' => $validation->severity->value,
                     'currency_code' => $currencyCode,
                 ];
-                // Zero-shape — stable placeholder matching TolerancePaymentTotalsDTO contract (v1.1).
-                // The parallel payment-tolerance v2 session will replace this with live data once
-                // PaymentToleranceQueryService and the pos_shifts.tolerance_writeoff_* columns ship.
-                // Emitting a deterministic shape (not null) keeps the Z-report hash chain stable.
+                // Live tolerance summary from the public Treasury query service (Phase 2 / Task 12).
+                // Key shape MUST match the TolerancePaymentTotalsDTO contract (v1.1) exactly:
+                // camelCase totalAmount/currencyCode/writeoffCount, with totalAmount as a scale-3
+                // decimal STRING. Adding/renaming keys would break every existing Z-report hash.
+                // For shifts with zero writeoffs the DTO emits totalAmount='0.000' and
+                // writeoffCount=0 — bit-for-bit identical to the Phase-1 placeholder, so the
+                // pre-wiring hash is preserved (forward-compat verified by hash-replay test).
+                $toleranceTotals = $this->paymentToleranceQueryService->totalForShift($shift->id);
                 $reportData['tolerance_summary'] = [
-                    'totalAmount' => '0.000',
-                    'currencyCode' => $currencyCode,
-                    'writeoffCount' => 0,
+                    'totalAmount' => $toleranceTotals->totalAmount,
+                    'currencyCode' => $toleranceTotals->currencyCode === ''
+                        ? $currencyCode
+                        : $toleranceTotals->currencyCode,
+                    'writeoffCount' => $toleranceTotals->writeoffCount,
                 ];
             }
 

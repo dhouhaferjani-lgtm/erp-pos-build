@@ -578,6 +578,7 @@
     "total": "TOTAL :",
     "payments": "Paiements :",
     "changeDue": "Monnaie Rendue :",
+    "rounding": "Arrondi",
     "vatRate": "TVA %",
     "taxable": "Base HT",
     "taxCol": "TVA",

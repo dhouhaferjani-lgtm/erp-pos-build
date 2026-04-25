@@ -28,6 +28,7 @@ function makeReceipt(overrides: Partial<FullReceiptResponse> = {}): FullReceiptR
     tax_amount: '0.00',
     discount_amount: '0.00',
     total: '10.00',
+    tolerance_writeoff: null,
     currency: 'EUR',
     fiscal_hash: null,
     customer_name: null,
@@ -71,6 +72,35 @@ function makeReceipt(overrides: Partial<FullReceiptResponse> = {}): FullReceiptR
     ...overrides,
   };
 }
+
+describe('buildEscPosReceiptData — tolerance write-off (Phase 2 / Task 10)', () => {
+  it('passes tolerance_writeoff through unchanged when set on the receipt', () => {
+    const receipt = makeReceipt({
+      tolerance_writeoff: '0.020',
+    });
+
+    const result = buildEscPosReceiptData(receipt);
+
+    expect(result.tolerance_writeoff).toBe('0.020');
+  });
+
+  it('passes tolerance_writeoff = null when receipt has no tolerance applied', () => {
+    const receipt = makeReceipt({ tolerance_writeoff: null });
+
+    const result = buildEscPosReceiptData(receipt);
+
+    expect(result.tolerance_writeoff).toBeNull();
+  });
+
+  it('exposes the rounding label via labels.rounding (i18n key, not hardcoded)', () => {
+    const receipt = makeReceipt({ tolerance_writeoff: '0.020' });
+
+    const result = buildEscPosReceiptData(receipt);
+
+    // The mocked i18next.t returns its key — we expect the receiptLabel.rounding key.
+    expect(result.labels?.rounding).toBe('pos:receiptLabel.rounding');
+  });
+});
 
 describe('buildEscPosReceiptData', () => {
   it('returns change_due as a plain decimal string when payment equals total', () => {

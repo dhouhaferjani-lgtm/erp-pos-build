@@ -18,6 +18,7 @@ use App\Modules\POS\Domain\Services\ZReportHashService;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Infrastructure\Repositories\ZReportCountRepository;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\Services\PaymentToleranceQueryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Tests\Traits\WithCurrencyScale;
@@ -59,6 +60,7 @@ class ReportGenerationServiceTest extends TestCase
             $this->app->make(CashCountValidationService::class),
             $this->app->make(FraudSettingsResolver::class),
             $this->app->make(ZReportCountRepository::class),
+            $this->app->make(PaymentToleranceQueryService::class),
         );
 
         $this->tenant = Tenant::factory()->create();
