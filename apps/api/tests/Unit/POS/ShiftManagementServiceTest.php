@@ -59,7 +59,7 @@ final class ShiftManagementServiceTest extends TestCase
         $this->assertEquals($this->terminal->id, $shift->terminal_id);
         $this->assertEquals($this->cashier->id, $shift->cashier_id);
         $this->assertEquals(1, $shift->shift_number);
-        $this->assertEquals('100.000', $shift->opening_cash);
+        $this->assertEquals('100.0000', $shift->opening_cash);
         $this->assertEquals(ShiftStatus::Open, $shift->status);
         $this->assertNotNull($shift->opened_at);
     }
@@ -102,9 +102,9 @@ final class ShiftManagementServiceTest extends TestCase
         $closedShift = $this->service->closeShift($shift, '95.00', $this->cashier);
 
         $this->assertEquals(ShiftStatus::Closed, $closedShift->status);
-        $this->assertEquals('100.000', $closedShift->expected_cash);
-        $this->assertEquals('95.000', $closedShift->actual_cash);
-        $this->assertEquals('-5.000', $closedShift->variance);
+        $this->assertEquals('100.0000', $closedShift->expected_cash);
+        $this->assertEquals('95.0000', $closedShift->actual_cash);
+        $this->assertEquals('-5.0000', $closedShift->variance);
         $this->assertNotNull($closedShift->closed_at);
         $this->assertEquals($this->cashier->id, $closedShift->closed_by);
     }

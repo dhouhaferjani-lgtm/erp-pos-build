@@ -53,7 +53,7 @@ final class ZReportHashService
      */
     private function serializeForHashing(ZReport $zReport): string
     {
-        // Normalize monetary fields to scale 4 for schema_version >= 2 before hashing.
+        // Normalize monetary fields to scale 3 for schema_version >= 2 before hashing.
         // v1-shape payloads (no schema_version) pass through unchanged.
         $reportData = $this->normalizeForHash($zReport->report_data);
 
@@ -71,8 +71,10 @@ final class ZReportHashService
     }
 
     /**
-     * Normalize all monetary fields in report_data to scale 4 for hash input.
+     * Normalize all monetary fields in report_data to scale 3 for hash input.
      * Applies only when report_data.schema_version >= 2. v1-shape payloads pass through unchanged.
+     *
+     * Contract v1.1: all monetary normalizations use scale 3.
      *
      * @param  array<string, mixed>  $reportData
      * @return array<string, mixed>
@@ -87,16 +89,16 @@ final class ZReportHashService
         $monetaryKeys = ['opening_cash', 'expected_cash', 'actual_cash', 'variance', 'gross_sales', 'net_sales', 'tax_amount'];
         foreach ($monetaryKeys as $key) {
             if (isset($reportData[$key]) && is_string($reportData[$key])) {
-                $reportData[$key] = CurrencyScale::bcformat($reportData[$key], 4);
+                $reportData[$key] = CurrencyScale::bcformat($reportData[$key], 3);
             }
         }
 
         if (isset($reportData['cash_counts']) && is_array($reportData['cash_counts'])) {
             $reportData['cash_counts'] = array_map(
                 fn (array $row): array => array_merge($row, [
-                    'expected_amount' => CurrencyScale::bcformat((string) $row['expected_amount'], 4),
-                    'actual_amount' => CurrencyScale::bcformat((string) $row['actual_amount'], 4),
-                    'variance_amount' => CurrencyScale::bcformat((string) $row['variance_amount'], 4),
+                    'expected_amount' => CurrencyScale::bcformat((string) $row['expected_amount'], 3),
+                    'actual_amount' => CurrencyScale::bcformat((string) $row['actual_amount'], 3),
+                    'variance_amount' => CurrencyScale::bcformat((string) $row['variance_amount'], 3),
                 ]),
                 $reportData['cash_counts'],
             );
@@ -105,21 +107,21 @@ final class ZReportHashService
         if (isset($reportData['variance_summary']) && is_array($reportData['variance_summary'])
             && isset($reportData['variance_summary']['aggregate_amount'])) {
             $reportData['variance_summary']['aggregate_amount'] = CurrencyScale::bcformat(
-                (string) $reportData['variance_summary']['aggregate_amount'], 4
+                (string) $reportData['variance_summary']['aggregate_amount'], 3
             );
         }
 
         if (isset($reportData['tolerance_summary']) && is_array($reportData['tolerance_summary'])
-            && isset($reportData['tolerance_summary']['total_amount'])) {
-            $reportData['tolerance_summary']['total_amount'] = CurrencyScale::bcformat(
-                (string) $reportData['tolerance_summary']['total_amount'], 4
+            && isset($reportData['tolerance_summary']['totalAmount'])) {
+            $reportData['tolerance_summary']['totalAmount'] = CurrencyScale::bcformat(
+                (string) $reportData['tolerance_summary']['totalAmount'], 3
             );
         }
 
         if (isset($reportData['payment_methods']) && is_array($reportData['payment_methods'])) {
             $reportData['payment_methods'] = array_map(
                 fn (array $row): array => isset($row['total_amount']) && is_string($row['total_amount'])
-                    ? array_merge($row, ['total_amount' => CurrencyScale::bcformat($row['total_amount'], 4)])
+                    ? array_merge($row, ['total_amount' => CurrencyScale::bcformat($row['total_amount'], 3)])
                     : $row,
                 $reportData['payment_methods'],
             );

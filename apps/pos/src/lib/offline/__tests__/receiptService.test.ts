@@ -37,6 +37,8 @@ const terminalState = {
   genesis_seed: 'seed-abc',
   last_hash: 'previous-hash-xyz',
   hash_sequence: 5,
+  manager_pin_throttle_until: null,
+  manager_pin_failed_attempts: 0,
 };
 
 describe('receiptService - createOfflineReceipt', () => {

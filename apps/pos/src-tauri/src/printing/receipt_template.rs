@@ -2,6 +2,17 @@ use serde::{Deserialize, Serialize};
 
 use super::escpos::{Alignment, CutMode, EscPosBuilder, FontSize, QrErrorCorrection};
 
+/// Per-tender cash count row for Z-report printing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ZReceiptCashCountRow {
+    pub code: String,
+    pub name: String,
+    pub expected: String,
+    pub actual: String,
+    pub variance: String,
+    pub direction: String,
+}
+
 /// Receipt data structure passed from the frontend via JSON.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReceiptData {
@@ -42,6 +53,12 @@ pub struct ReceiptData {
     /// When true, a bold centred DUPLICATA banner is printed after the receipt
     /// metadata block to indicate this is a copy of an already-issued document.
     pub is_reprint: Option<bool>,
+    /// Z-report cash-count block (optional — only set when closing a shift with cash counts).
+    pub cash_counts: Option<Vec<ZReceiptCashCountRow>>,
+    pub manager_name: Option<String>,
+    pub variance_reason: Option<String>,
+    pub variance_severity: Option<String>,
+    pub aggregate_variance: Option<String>,
 }
 
 /// Localized receipt labels. All fields optional with English defaults.
@@ -67,6 +84,14 @@ pub struct ReceiptLabels {
     pub thank_you: Option<String>,
     pub tax_id: Option<String>,
     pub tel: Option<String>,
+    pub cash_count_section_title: Option<String>,
+    pub cash_count_total_variance: Option<String>,
+    pub cash_count_approved_by: Option<String>,
+    pub cash_count_reason: Option<String>,
+    pub cash_count_col_tender: Option<String>,
+    pub cash_count_col_expected: Option<String>,
+    pub cash_count_col_actual: Option<String>,
+    pub cash_count_col_variance: Option<String>,
 }
 
 impl ReceiptData {
@@ -393,6 +418,52 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
     b.text_line(&footer);
     b.empty_line();
 
+    // ── Cash-Count block (Z-report only) ──
+    if let Some(counts) = &data.cash_counts {
+        if !counts.is_empty() {
+            b.separator('-');
+            b.align(Alignment::Center);
+            b.bold(true);
+            b.text_line(&data.label(|l| &l.cash_count_section_title, "CASH COUNT"));
+            b.bold(false);
+            b.align(Alignment::Left);
+            let cols = columns as usize;
+            let header = format_cash_count_header(data, cols);
+            b.text_line(&header);
+            b.separator('-');
+            for row in counts {
+                let line = format_cash_count_row(row, cols);
+                b.text_line(&line);
+            }
+            b.separator('-');
+            if let Some(agg) = &data.aggregate_variance {
+                let has_over = counts.iter().any(|r| r.direction == "over");
+                let has_under = counts.iter().any(|r| r.direction == "under");
+                let dir = if has_over { "+" } else if has_under { "-" } else { " " };
+                b.text_line(&format!(
+                    "{} {} {}",
+                    data.label(|l| &l.cash_count_total_variance, "Total variance:"),
+                    agg,
+                    dir,
+                ));
+            }
+            if let Some(mgr) = &data.manager_name {
+                b.text_line(&format!(
+                    "{} {}",
+                    data.label(|l| &l.cash_count_approved_by, "Approved by:"),
+                    mgr,
+                ));
+            }
+            if let Some(reason) = &data.variance_reason {
+                b.text_line(&format!(
+                    "{} {}",
+                    data.label(|l| &l.cash_count_reason, "Reason:"),
+                    reason,
+                ));
+            }
+        }
+    }
+
     // Feed and cut
     b.feed_lines(4);
     let cut = settings.and_then(|s| s.cut_mode_enum());
@@ -403,6 +474,42 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
     }
 
     b.build()
+}
+
+fn format_cash_count_header(data: &ReceiptData, cols: usize) -> String {
+    let tender_w = (cols / 4).min(10);
+    let tender_label = data.label(|l| &l.cash_count_col_tender, "Tender");
+    let expected_label = data.label(|l| &l.cash_count_col_expected, "Expected");
+    let actual_label = data.label(|l| &l.cash_count_col_actual, "Actual");
+    let variance_label = data.label(|l| &l.cash_count_col_variance, "Variance");
+    let tender_truncated: String = tender_label.chars().take(tender_w).collect();
+    format!(
+        "{:<tender_w$} {:>9} {:>9} {:>9}",
+        tender_truncated,
+        &expected_label[..expected_label.len().min(9)],
+        &actual_label[..actual_label.len().min(9)],
+        &variance_label[..variance_label.len().min(9)],
+        tender_w = tender_w,
+    )
+}
+
+fn format_cash_count_row(row: &ZReceiptCashCountRow, cols: usize) -> String {
+    let tender_w = (cols / 4).min(10);
+    let dir_char = match row.direction.as_str() {
+        "over" => "+",
+        "under" => "-",
+        _ => " ",
+    };
+    let name_truncated: String = row.name.chars().take(tender_w).collect();
+    format!(
+        "{:<tender_w$} {:>9} {:>9} {:>8}{}",
+        &name_truncated,
+        row.expected,
+        row.actual,
+        row.variance,
+        dir_char,
+        tender_w = tender_w,
+    )
 }
 
 /// Format a test page for printer alignment verification.
@@ -498,6 +605,71 @@ pub fn format_test_page_with_columns(columns: Option<u8>) -> Vec<u8> {
     b.cut(CutMode::Partial);
 
     b.build()
+}
+
+#[cfg(test)]
+mod tests_z_cash_counts {
+    use super::*;
+
+    fn make_company() -> CompanyInfo {
+        CompanyInfo {
+            name: "Test Shop".to_string(),
+            address_line1: "".to_string(),
+            address_line2: None,
+            city: "".to_string(),
+            postal_code: "".to_string(),
+            country: "".to_string(),
+            tax_id: "".to_string(),
+            phone: None,
+        }
+    }
+
+    #[test]
+    fn z_receipt_includes_cash_count_block_when_present() {
+        let data = ReceiptData {
+            company: make_company(),
+            receipt_number: "Z0042".to_string(),
+            date_time: "2026-04-25T10:00:00Z".to_string(),
+            terminal_name: "T1".to_string(),
+            operator_name: "Alice".to_string(),
+            lines: vec![],
+            subtotal: "0.00".to_string(),
+            discount_amount: "0.00".to_string(),
+            tax_amount: "0.00".to_string(),
+            total: "0.00".to_string(),
+            currency_symbol: "€".to_string(),
+            vat_breakdown: vec![],
+            payments: vec![],
+            change_due: "0.00".to_string(),
+            fiscal_hash: None,
+            fiscal_signature: None,
+            customer_name: None,
+            notes: None,
+            labels: None,
+            show_vat_breakdown: Some(false),
+            show_fiscal_info: Some(false),
+            show_payment_details: Some(false),
+            show_customer: Some(false),
+            is_reprint: Some(false),
+            cash_counts: Some(vec![ZReceiptCashCountRow {
+                code: "CASH".to_string(),
+                name: "Cash".to_string(),
+                expected: "150.00".to_string(),
+                actual: "155.00".to_string(),
+                variance: "5.00".to_string(),
+                direction: "over".to_string(),
+            }]),
+            manager_name: Some("Jean".to_string()),
+            variance_reason: Some("till miscount".to_string()),
+            variance_severity: Some("warning".to_string()),
+            aggregate_variance: Some("5.00".to_string()),
+        };
+        let bytes = format_receipt_with_settings(&data, None);
+        let text = String::from_utf8_lossy(&bytes);
+        assert!(text.contains("CASH"), "should contain tender code CASH");
+        assert!(text.contains("Jean"), "should contain manager name");
+        assert!(text.contains("till miscount"), "should contain variance reason");
+    }
 }
 
 /// Generate a cash drawer kick command only.

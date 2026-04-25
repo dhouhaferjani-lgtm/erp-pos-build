@@ -7,6 +7,7 @@ namespace App\Providers;
 use App\Modules\Accounting\Listeners\InvoicePostedListener;
 use App\Modules\Company\Domain\Events\CompanyCreated;
 use App\Modules\Company\Listeners\CreateFiscalYearsForNewCompany;
+use App\Modules\Compliance\Listeners\EnsureFraudSettingsOnCompanyCreated;
 use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Import\Infrastructure\Listeners\BroadcastImportEventsListener;
 use App\Modules\Loyalty\Application\Listeners\EarnPointsOnReceiptCompleted;
@@ -49,6 +50,7 @@ class EventServiceProvider extends ServiceProvider
         CompanyCreated::class => [
             CreateFiscalYearsForNewCompany::class,
             RegisterCompanyWithGrowthAdvisor::class,
+            EnsureFraudSettingsOnCompanyCreated::class,
         ],
         InvoicePosted::class => [
             InvoicePostedListener::class,

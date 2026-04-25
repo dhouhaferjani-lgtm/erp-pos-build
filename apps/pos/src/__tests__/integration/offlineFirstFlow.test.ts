@@ -183,6 +183,8 @@ const seededTerminalState = {
   genesis_seed: 'seed-abc',
   last_hash: 'prev-hash',
   hash_sequence: 0,
+  manager_pin_throttle_until: null,
+  manager_pin_failed_attempts: 0,
 };
 
 // ─── Tests ──────────────────────────────────────────────────────────────────────

@@ -17,6 +17,13 @@ export const getFraudSettings = async (): Promise<{ data: FraudSettings }> => {
   return apiGet('/fraud-settings')
 }
 
+// The payload type is Partial<FraudSettings>, which includes all 7 cash-control
+// fields added in the cash-counting remediation:
+//   cash_variance_over_soft, cash_variance_over_hard,
+//   cash_variance_under_soft, cash_variance_under_hard,
+//   require_blind_cash_count, require_manager_pin_above_hard,
+//   cash_variance_email_severity
+// Any subset of these fields is sent as-is; no narrowing is needed here.
 export const updateFraudSettings = async (
   settings: Partial<FraudSettings>
 ): Promise<{ data: FraudSettings; message: string }> => {

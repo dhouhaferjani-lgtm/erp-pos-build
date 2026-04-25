@@ -17,7 +17,7 @@ final class HashInputScale4EquivalenceTest extends TestCase
         $this->service = $this->app->make(ZReportHashService::class);
     }
 
-    public function test_hash_input_normalizes_all_monetary_fields_to_scale_4_for_schema_v2(): void
+    public function test_hash_input_normalizes_all_monetary_fields_to_scale_3_for_schema_v2(): void
     {
         $reportData = [
             'schema_version' => 2,
@@ -33,10 +33,10 @@ final class HashInputScale4EquivalenceTest extends TestCase
 
         $normalized = $this->service->normalizeForHash($reportData);
 
-        $this->assertSame('10.0000', $normalized['opening_cash']);
-        $this->assertSame('830.0000', $normalized['cash_counts'][0]['expected_amount']);
-        $this->assertSame('830.0000', $normalized['cash_counts'][0]['actual_amount']);
-        $this->assertSame('0.0000', $normalized['cash_counts'][0]['variance_amount']);
+        $this->assertSame('10.000', $normalized['opening_cash']);
+        $this->assertSame('830.000', $normalized['cash_counts'][0]['expected_amount']);
+        $this->assertSame('830.000', $normalized['cash_counts'][0]['actual_amount']);
+        $this->assertSame('0.000', $normalized['cash_counts'][0]['variance_amount']);
     }
 
     public function test_hash_input_leaves_v1_reports_at_original_scale(): void

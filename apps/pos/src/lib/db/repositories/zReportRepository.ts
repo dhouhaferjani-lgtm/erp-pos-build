@@ -20,9 +20,20 @@ interface ZReportRow {
   grand_totals: string;
   synced: number;
   synced_at: string | null;
+  /** v22 extended columns — may be absent on rows inserted before the migration */
+  blind_count_used: number | null;
+  manager_override_by: string | null;
+  variance_severity: string | null;
+  variance_reason: string | null;
 }
 
 function rowToLocalZReport(row: ZReportRow): LocalZReport {
+  const hasShiftFields =
+    row.blind_count_used !== null ||
+    row.manager_override_by !== null ||
+    row.variance_severity !== null ||
+    row.variance_reason !== null;
+
   return {
     id: row.id,
     terminal_id: row.terminal_id,
@@ -40,6 +51,15 @@ function rowToLocalZReport(row: ZReportRow): LocalZReport {
     grand_totals: JSON.parse(row.grand_totals),
     synced: row.synced === 1,
     synced_at: row.synced_at,
+    shift_fields: hasShiftFields
+      ? {
+          blind_count_used: row.blind_count_used === 1,
+          variance_severity: row.variance_severity,
+          variance_reason: row.variance_reason,
+          manager_override_by: row.manager_override_by,
+        }
+      : null,
+    manager_user_id: row.manager_override_by ?? null,
   };
 }
 
@@ -47,14 +67,16 @@ export async function insertZReport(
   db: Database,
   report: LocalZReport,
 ): Promise<void> {
+  const shiftFields = report.shift_fields;
   await execute(
     db,
     `INSERT INTO z_reports (
       id, terminal_id, shift_id, z_number, formatted_z_number, generated_at,
       fiscal_hash, previous_hash, hash_sequence,
       report_data, opening_cash, expected_cash,
-      receipt_snapshots, grand_totals, synced
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+      receipt_snapshots, grand_totals, synced,
+      blind_count_used, manager_override_by, variance_severity, variance_reason
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
     [
       report.id,
       report.terminal_id,
@@ -71,6 +93,10 @@ export async function insertZReport(
       JSON.stringify(report.receipt_snapshots),
       JSON.stringify(report.grand_totals),
       report.synced ? 1 : 0,
+      shiftFields?.blind_count_used ? 1 : 0,
+      shiftFields?.manager_override_by ?? null,
+      shiftFields?.variance_severity ?? null,
+      shiftFields?.variance_reason ?? null,
     ]
   );
 }

@@ -96,6 +96,24 @@
       "timeWindowRange": "Time window must be between 1 and 365 days",
       "invalidEmail": "Please enter a valid email address",
       "duplicateEmail": "This email is already in the list"
+    },
+    "cashControls": {
+      "sectionTitle": "Cash Drawer Controls",
+      "softLabel": "Soft threshold (log only)",
+      "hardLabel": "Hard threshold (manager PIN required)",
+      "useSameToggle": "Use same threshold for over and under",
+      "overSoftLabel": "Over soft",
+      "overHardLabel": "Over hard",
+      "underSoftLabel": "Under soft",
+      "underHardLabel": "Under hard",
+      "blindCountLabel": "Require blind count (cashiers don't see expected)",
+      "managerPinAboveHardLabel": "Require manager PIN above hard threshold",
+      "emailSeverityLabel": "Email me when shift variance is at least…",
+      "emailSeverityNever": "Never email — dashboard only",
+      "emailSeverityCritical": "Critical only",
+      "emailSeverityWarning": "Warning and above",
+      "emailSeverityInfo": "All severities (high noise)",
+      "softGteHard": "Soft threshold must be less than hard threshold."
     }
   },
   "fraudAlerts": {

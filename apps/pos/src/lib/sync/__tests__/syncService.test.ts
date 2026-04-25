@@ -524,6 +524,8 @@ describe('syncService', () => {
         genesis_seed: 'abcd1234',
         last_hash: 'hash-xyz',
         hash_sequence: 10,
+        manager_pin_throttle_until: null,
+        manager_pin_failed_attempts: 0,
       });
       expect(computeGenesisHash).not.toHaveBeenCalled();
     });
@@ -549,6 +551,8 @@ describe('syncService', () => {
         genesis_seed: 'abcd1234',
         last_hash: 'genesis-hash-abc123',
         hash_sequence: 0,
+        manager_pin_throttle_until: null,
+        manager_pin_failed_attempts: 0,
       });
     });
 
@@ -740,5 +744,143 @@ describe('pullActiveMenu', () => {
     const { pullActiveMenu } = await import('../syncService');
     vi.mocked(apiGet).mockRejectedValueOnce(new Error('offline'));
     expect(await pullActiveMenu(db)).toBe(false);
+  });
+});
+
+// ─── zReportToSyncPayload ─────────────────────────────────────────────────────
+
+describe('zReportToSyncPayload', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('includes cash_counts array in sync payload when LocalZReport has cash_counts', async () => {
+    const { zReportToSyncPayload } = await import('../syncService');
+
+    const cashCounts = [
+      {
+        payment_method_id: 'pm-cash',
+        currency_code: 'EUR',
+        expected_amount: '150.00',
+        actual_amount: '148.00',
+        variance_amount: '-2.00',
+        variance_direction: 'under' as const,
+        transaction_count: 1,
+      },
+    ];
+
+    const report: import('@/lib/offline/types').LocalZReport = {
+      id: 'zr-1',
+      terminal_id: 'term-1',
+      shift_id: 'shift-1',
+      z_number: 1,
+      formatted_z_number: 'Z0001',
+      generated_at: '2026-04-23T10:00:00+00:00',
+      fiscal_hash: 'fiscal-hash-1',
+      previous_hash: 'prev-hash',
+      hash_sequence: 3,
+      report_data: {
+        sales_count: 1,
+        gross_sales: '50.00',
+        net_sales: '42.00',
+        tax_amount: '8.00',
+        refunds_count: 0,
+        refunds_amount: '0.00',
+        voided_count: 0,
+        vat_breakdown: [],
+        payment_methods: [],
+        schema_version: 2,
+        cash_counts: cashCounts,
+        tolerance_summary: { totalAmount: '0.000', currencyCode: 'EUR', writeoffCount: 0 },
+      } as import('@/lib/offline/types').ZReportData,
+      opening_cash: '100.00',
+      expected_cash: '150.00',
+      receipt_snapshots: [],
+      grand_totals: {
+        cumulative_sales: '550.00',
+        cumulative_tax: '88.00',
+        cumulative_refunds: '0.00',
+        perpetual_grand_total: '550.00',
+        receipt_count_lifetime: 11,
+      },
+      synced: false,
+      synced_at: null,
+      cash_counts: cashCounts,
+      shift_fields: {
+        blind_count_used: true,
+        variance_severity: 'warning',
+        variance_reason: 'Operator error',
+        manager_override_by: 'mgr-uuid-1',
+      },
+      manager_user_id: 'mgr-uuid-1',
+      tolerance_summary: { totalAmount: '0.000', currencyCode: 'EUR', writeoffCount: 0 },
+      currency_code: 'EUR',
+    };
+
+    const payload = zReportToSyncPayload(report);
+
+    expect(Array.isArray(payload['cash_counts'])).toBe(true);
+    expect((payload['cash_counts'] as unknown[]).length).toBe(1);
+    expect(payload['shift_fields']).toEqual({
+      blind_count_used: true,
+      variance_severity: 'warning',
+      variance_reason: 'Operator error',
+      manager_override_by: 'mgr-uuid-1',
+    });
+    expect(payload['manager_user_id']).toBe('mgr-uuid-1');
+    expect(payload['tolerance_summary']).toEqual({
+      totalAmount: '0.000',
+      currencyCode: 'EUR',
+      writeoffCount: 0,
+    });
+  });
+
+  it('fills zero-shape tolerance_summary when LocalZReport has none', async () => {
+    const { zReportToSyncPayload } = await import('../syncService');
+
+    const report: import('@/lib/offline/types').LocalZReport = {
+      id: 'zr-2',
+      terminal_id: 'term-1',
+      shift_id: 'shift-2',
+      z_number: 2,
+      formatted_z_number: 'Z0002',
+      generated_at: '2026-04-23T11:00:00+00:00',
+      fiscal_hash: 'fiscal-hash-2',
+      previous_hash: 'prev-hash-2',
+      hash_sequence: 4,
+      report_data: {
+        sales_count: 0,
+        gross_sales: '0.00',
+        net_sales: '0.00',
+        tax_amount: '0.00',
+        refunds_count: 0,
+        refunds_amount: '0.00',
+        voided_count: 0,
+        vat_breakdown: [],
+        payment_methods: [],
+      },
+      opening_cash: '0.00',
+      expected_cash: '0.00',
+      receipt_snapshots: [],
+      grand_totals: {
+        cumulative_sales: '0.00',
+        cumulative_tax: '0.00',
+        cumulative_refunds: '0.00',
+        perpetual_grand_total: '0.00',
+        receipt_count_lifetime: 0,
+      },
+      synced: false,
+      synced_at: null,
+      // No cash_counts, shift_fields, manager_user_id, tolerance_summary, currency_code
+    };
+
+    const payload = zReportToSyncPayload(report);
+
+    expect(payload['cash_counts']).toEqual([]);
+    expect(payload['shift_fields']).toBeNull();
+    expect(payload['manager_user_id']).toBeNull();
+    // When no currency_code, tolerance_summary should fall back to EUR with 0.000
+    const ts = payload['tolerance_summary'] as Record<string, unknown>;
+    expect(ts['totalAmount']).toBe('0.000');
+    expect(typeof ts['currencyCode']).toBe('string');
+    expect(ts['writeoffCount']).toBe(0);
   });
 });

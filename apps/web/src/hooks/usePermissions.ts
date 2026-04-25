@@ -79,6 +79,7 @@ export const PERMISSIONS = {
   'pos.void_receipts': ['admin', 'manager'],
   'pos.view_receipts': ['admin', 'manager', 'cashier'],
   'pos.manage_tables': ['admin', 'manager'],
+  'pos.configure_cash_count': ['admin', 'manager'],
 
   // Catalog (Composite Items & Modifiers)
   'composite-items.view': ['admin', 'manager'],

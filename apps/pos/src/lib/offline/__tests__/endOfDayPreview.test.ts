@@ -111,4 +111,118 @@ describe('buildEndOfDayPreview', () => {
     expect(preview.payment_methods).toHaveLength(0);
     expect(preview.tolerance_summary).toBeNull();
   });
+
+  it('exposes payment_method_name on methods touched by transactions', async () => {
+    vi.mocked(queryAll).mockImplementation(async (_db, sql) => {
+      if ((sql as string).includes('FROM offline_receipts')) {
+        return [
+          {
+            id: 'r1',
+            total: '10.00',
+            subtotal: '8.40',
+            tax_amount: '1.60',
+            payments_json: JSON.stringify([
+              { payment_method_code: 'CASH', amount: '10.00', change_due: '0.00', tolerance_writeoff: '0.00' },
+            ]),
+            lines: JSON.stringify([{ tax_rate: '19', tax_amount: '1.60', line_total: '8.40' }]),
+            created_at: '2026-04-24T10:00:00Z',
+          },
+        ];
+      }
+      if ((sql as string).includes('FROM payment_methods')) {
+        return [
+          { id: 'pm-cash', code: 'CASH', name: 'Cash', is_physical: 1 },
+          { id: 'pm-card', code: 'CARD', name: 'Card', is_physical: 0 },
+        ];
+      }
+      return [];
+    });
+
+    const preview = await buildEndOfDayPreview(mockDb, 'term-1', '2026-04-24T08:00:00Z', '50', 'EUR');
+
+    const cash = preview.payment_methods.find((p) => p.payment_method_code === 'CASH')!;
+    expect(cash).toBeDefined();
+    expect(cash.payment_method_name).toBe('Cash');
+  });
+});
+
+describe('buildEndOfDayPreview — physical-method seeding (D2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('includes enabled physical methods with zero rows when no transactions touched them', async () => {
+    vi.mocked(queryAll).mockImplementation(async (_db, sql) => {
+      if ((sql as string).includes('FROM offline_receipts')) return [];
+      if ((sql as string).includes('FROM payment_methods')) {
+        return [
+          { id: 'pm-cash', code: 'CASH', name: 'Cash', is_physical: 1 },
+          { id: 'pm-cheque', code: 'CHEQUE', name: 'Cheques', is_physical: 1 },
+          { id: 'pm-card', code: 'CARD', name: 'Card', is_physical: 0 },
+        ];
+      }
+      return [];
+    });
+
+    const preview = await buildEndOfDayPreview(
+      mockDb,
+      'term-1',
+      '2026-04-24T08:00:00Z',
+      '100.000',
+      'EUR',
+    );
+
+    const codes = preview.payment_methods.map((p) => p.payment_method_code).sort();
+    expect(codes).toEqual(['CASH', 'CHEQUE']); // physical only, both present
+    const cash = preview.payment_methods.find((p) => p.payment_method_code === 'CASH')!;
+    expect(cash.transaction_count).toBe(0);
+    expect(cash.payment_method_name).toBe('Cash');
+  });
+
+  it('seeds zero-transaction physical methods alongside methods that did have transactions', async () => {
+    vi.mocked(queryAll).mockImplementation(async (_db, sql) => {
+      if ((sql as string).includes('FROM offline_receipts')) {
+        return [
+          {
+            id: 'r1',
+            total: '30.00',
+            subtotal: '25.21',
+            tax_amount: '4.79',
+            payments_json: JSON.stringify([
+              { payment_method_code: 'CARD', amount: '30.00', change_due: '0.00', tolerance_writeoff: '0.00' },
+            ]),
+            lines: JSON.stringify([{ tax_rate: '19', tax_amount: '4.79', line_total: '25.21' }]),
+            created_at: '2026-04-24T10:00:00Z',
+          },
+        ];
+      }
+      if ((sql as string).includes('FROM payment_methods')) {
+        return [
+          { id: 'pm-cash', code: 'CASH', name: 'Cash', is_physical: 1 },
+          { id: 'pm-card', code: 'CARD', name: 'Card Terminal', is_physical: 1 },
+          { id: 'pm-online', code: 'ONLINE', name: 'Online', is_physical: 0 },
+        ];
+      }
+      return [];
+    });
+
+    const preview = await buildEndOfDayPreview(
+      mockDb,
+      'term-1',
+      '2026-04-24T08:00:00Z',
+      '0',
+      'EUR',
+    );
+
+    const codes = preview.payment_methods.map((p) => p.payment_method_code).sort();
+    expect(codes).toEqual(['CARD', 'CASH']); // both physical; ONLINE excluded
+    const cash = preview.payment_methods.find((p) => p.payment_method_code === 'CASH')!;
+    expect(cash.transaction_count).toBe(0);
+    expect(cash.total_amount).toBe('0.00');
+    expect(cash.payment_method_name).toBe('Cash');
+    const card = preview.payment_methods.find((p) => p.payment_method_code === 'CARD')!;
+    expect(card.transaction_count).toBe(1);
+    expect(card.total_amount).toBe('30.00');
+    expect(card.payment_method_name).toBe('Card Terminal');
+  });
 });

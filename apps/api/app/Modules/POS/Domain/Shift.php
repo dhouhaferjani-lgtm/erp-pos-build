@@ -31,11 +31,15 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $closed_at
  * @property string|null $closed_by User who closed the shift
  * @property string|null $notes
+ * @property bool $blind_count_used Whether cashier counted without seeing expected total
+ * @property string|null $manager_override_by UUID of manager who approved variance override
+ * @property string|null $variance_severity Severity level: info, warning, or critical
  * @property Carbon $created_at
  * @property Carbon $updated_at
  * @property-read Terminal $terminal
  * @property-read User $cashier
  * @property-read User|null $closedBy
+ * @property-read User|null $managerOverride
  *
  * @method static Builder<static> open()
  * @method static Builder<static> closed()
@@ -67,6 +71,9 @@ class Shift extends Model
         'closed_at',
         'closed_by',
         'notes',
+        'blind_count_used',
+        'manager_override_by',
+        'variance_severity',
     ];
 
     /**
@@ -76,13 +83,14 @@ class Shift extends Model
     {
         return [
             'shift_number' => 'integer',
-            'opening_cash' => 'decimal:3',
-            'expected_cash' => 'decimal:3',
-            'actual_cash' => 'decimal:3',
-            'variance' => 'decimal:3',
+            'opening_cash' => 'decimal:4',
+            'expected_cash' => 'decimal:4',
+            'actual_cash' => 'decimal:4',
+            'variance' => 'decimal:4',
             'status' => ShiftStatus::class,
             'opened_at' => 'datetime',
             'closed_at' => 'datetime',
+            'blind_count_used' => 'boolean',
         ];
     }
 
@@ -108,6 +116,14 @@ class Shift extends Model
     public function closedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'closed_by');
+    }
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function managerOverride(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'manager_override_by');
     }
 
     /**

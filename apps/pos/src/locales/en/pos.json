@@ -588,5 +588,53 @@
   "config": {
     "refreshed": "Company settings refreshed.",
     "refreshFailed": "Could not refresh company settings. Using cached values."
+  },
+  "cash_count": {
+    "section_title": "Cash Reconciliation",
+    "commit_counts": "Commit Counts",
+    "reason_label": "Variance Reason (required)",
+    "tender": "Tender",
+    "transactions": "Txns",
+    "expected": "Expected",
+    "actual": "Actual",
+    "variance": "Variance",
+    "electronic_marker": "✓ elec.",
+    "entering_actual_for": "Entering: {{name}}",
+    "numpad_label": "Cash count keypad",
+    "manager_pin": {
+      "section_title": "Manager Authorization Required",
+      "verified": "Authorized by: {{name}}",
+      "select_manager": "Select manager",
+      "enter_pin": "Enter PIN",
+      "verify": "Verify",
+      "verifying": "Verifying…",
+      "throttle": "Too many failed attempts. Try again in {{seconds}}s.",
+      "no_managers": "No authorized manager available offline — contact your administrator.",
+      "manager_label": "Manager",
+      "pin_label": "PIN",
+      "no_manager_selected": "Please select a manager.",
+      "pin_too_short": "PIN must be at least 4 digits.",
+      "throttled": "Too many failed attempts. Please wait.",
+      "invalid": "Invalid PIN.",
+      "error": "Verification failed.",
+      "numpad_label": "PIN keypad",
+      "wait": "Please wait {{seconds}}s before retry."
+    },
+    "table": {
+      "tender": "Tender",
+      "expected": "Expected",
+      "actual": "Actual",
+      "variance": "Variance",
+      "status": "Status",
+      "electronic": "elec."
+    },
+    "tolerance": {
+      "row_label": "Tolerance write-offs",
+      "empty": "No write-offs recorded.",
+      "col_receipt": "Receipt",
+      "col_cashier": "Cashier",
+      "col_time": "Time",
+      "col_writeoff": "Write-off"
+    }
   }
 }

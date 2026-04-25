@@ -846,6 +846,14 @@ modifier_groups: Array<App.Modules.Catalog.Application.DTOs.ModifierGroupData> |
 };
 }
 declare namespace App.Modules.POS.Application.DTOs {
+export type CashCountValidationResultDTO = {
+aggregateVariance: any;
+severity: App.Shared.Domain.Enums.VarianceSeverity;
+needsReason: boolean;
+needsManagerPin: boolean;
+perTender: Array<App.Modules.POS.Domain.DTOs.CashCountBreakdownDTO>;
+errors: Array<any>;
+};
 export type CustomerAnalyticsData = {
 unique_customers: number;
 returning_count: number;
@@ -863,6 +871,16 @@ avg_table_time_minutes: string;
 avg_items_per_order: string;
 peak_hours: Array<any>;
 orders_by_mode: Array<any>;
+};
+export type FraudSettingsDTO = {
+companyId: string;
+cashVarianceOverSoft: string;
+cashVarianceOverHard: string;
+cashVarianceUnderSoft: string;
+cashVarianceUnderHard: string;
+requireBlindCashCount: boolean;
+requireManagerPinAboveHard: boolean;
+cashVarianceEmailSeverity: string;
 };
 export type HeldOrderData = {
 id: string;
@@ -936,6 +954,22 @@ refund_count: number;
 refund_total: string;
 voided_count: number;
 payment_breakdown: Array<any>;
+};
+}
+declare namespace App.Modules.POS.Domain.DTOs {
+export type CashCountBreakdownDTO = {
+paymentMethodId: string;
+currencyCode: string;
+expectedAmount: string;
+actualAmount: string;
+varianceAmount: string;
+varianceDirection: App.Shared.Domain.Enums.VarianceDirection;
+transactionCount: number;
+};
+export type CashCountInputDTO = {
+paymentMethodId: string;
+currencyCode: string;
+actualAmount: string;
 };
 }
 declare namespace App.Modules.POS.Domain.Enums {
@@ -1843,6 +1877,10 @@ totalPages: number;
 hasNextPage: boolean;
 hasPreviousPage: boolean;
 };
+}
+declare namespace App.Shared.Domain.Enums {
+export type VarianceDirection = 'over' | 'under' | 'balanced';
+export type VarianceSeverity = 'info' | 'warning' | 'critical';
 }
 declare namespace App.Shared.Enums {
 export type EnrichmentStatus = 'pending' | 'enriching' | 'completed' | 'failed' | 'rejected' | 'not_enrichable';

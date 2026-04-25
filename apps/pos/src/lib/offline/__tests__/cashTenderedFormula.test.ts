@@ -53,9 +53,9 @@ describe('buildEndOfDayPreview — cash-tendered formula (TND multi-receipt with
     expect(preview.gross_sales).toBe('150.120');
     expect(preview.net_sales).toBe('127.110');
     expect(preview.tax_amount).toBe('23.010');
-    expect(preview.tolerance_summary?.total_amount).toBe('0.020');
-    expect(preview.tolerance_summary?.writeoff_count).toBe(1);
-    expect(preview.tolerance_summary?.currency_code).toBe('TND');
+    expect(preview.tolerance_summary?.totalAmount).toBe('0.020');
+    expect(preview.tolerance_summary?.writeoffCount).toBe(1);
+    expect(preview.tolerance_summary?.currencyCode).toBe('TND');
   });
 
   it('returns empty preview when there are no receipts', async () => {

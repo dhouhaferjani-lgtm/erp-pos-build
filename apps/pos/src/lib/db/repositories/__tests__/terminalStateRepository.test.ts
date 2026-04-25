@@ -9,6 +9,9 @@ vi.mock('@/lib/db', () => ({
 import {
   upsertTerminalState,
   advanceHashChain,
+  setManagerPinThrottle,
+  setManagerPinFailedAttempts,
+  getTerminalState,
   FiscalRegressionError,
   type TerminalHashState,
 } from '../terminalStateRepository';
@@ -23,6 +26,8 @@ const baseState: TerminalHashState = {
   genesis_seed: 'seed-abc',
   last_hash: 'hash-at-5',
   hash_sequence: 5,
+  manager_pin_throttle_until: null,
+  manager_pin_failed_attempts: 0,
 };
 
 describe('terminalStateRepository — regression guards', () => {
@@ -95,5 +100,28 @@ describe('terminalStateRepository — regression guards', () => {
       }),
     );
     spy.mockRestore();
+  });
+
+  it('setManagerPinThrottle persists throttle_until on the terminal row', async () => {
+    const until = '2026-04-25T10:00:00Z';
+    vi.mocked(queryOne).mockResolvedValue({ ...baseState, manager_pin_throttle_until: until });
+
+    await setManagerPinThrottle(db, 'terminal-1', until);
+
+    expect(execute).toHaveBeenCalledOnce();
+
+    const state = await getTerminalState(db, 'terminal-1');
+    expect(state?.manager_pin_throttle_until).toBe(until);
+  });
+
+  it('setManagerPinFailedAttempts persists failed_attempts count on the terminal row', async () => {
+    vi.mocked(queryOne).mockResolvedValue({ ...baseState, manager_pin_failed_attempts: 3 });
+
+    await setManagerPinFailedAttempts(db, 'terminal-1', 3);
+
+    expect(execute).toHaveBeenCalledOnce();
+
+    const state = await getTerminalState(db, 'terminal-1');
+    expect(state?.manager_pin_failed_attempts).toBe(3);
   });
 });

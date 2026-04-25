@@ -72,6 +72,23 @@ export interface ReceiptLabels {
   thank_you?: string;
   tax_id?: string;
   tel?: string;
+  cash_count_section_title?: string;
+  cash_count_total_variance?: string;
+  cash_count_approved_by?: string;
+  cash_count_reason?: string;
+  cash_count_col_tender?: string;
+  cash_count_col_expected?: string;
+  cash_count_col_actual?: string;
+  cash_count_col_variance?: string;
+}
+
+export interface ZReceiptCashCountRow {
+  code: string;
+  name: string;
+  expected: string;
+  actual: string;
+  variance: string;
+  direction: 'over' | 'under' | 'balanced';
 }
 
 export interface ReceiptData {
@@ -101,6 +118,71 @@ export interface ReceiptData {
   show_customer?: boolean;
   /** When true the Rust formatter prints a bold centred DUPLICATA banner */
   is_reprint?: boolean;
+  /** Z-report cash-count block (optional — only set when closing a shift with cash counts) */
+  cash_counts?: ZReceiptCashCountRow[];
+  manager_name?: string | null;
+  variance_reason?: string | null;
+  variance_severity?: string | null;
+  aggregate_variance?: string | null;
+}
+
+export interface BuildZReceiptDataInput {
+  companyName: string;
+  formattedZNumber: string;
+  dateTime: string;
+  terminalName: string;
+  operatorName: string;
+  currencySymbol: string;
+  wasReused: boolean;
+  cashCounts?: ZReceiptCashCountRow[];
+  managerName?: string | null;
+  varianceReason?: string | null;
+  varianceSeverity?: string | null;
+  aggregateVariance?: string | null;
+  labels?: ReceiptLabels;
+}
+
+export function buildZReceiptData(input: BuildZReceiptDataInput): ReceiptData {
+  return {
+    company: {
+      name: input.companyName,
+      address_line1: '',
+      address_line2: null,
+      city: '',
+      postal_code: '',
+      country: '',
+      tax_id: '',
+      phone: null,
+    },
+    receipt_number: input.formattedZNumber,
+    date_time: input.dateTime,
+    terminal_name: input.terminalName,
+    operator_name: input.operatorName,
+    lines: [],
+    subtotal: '0.00',
+    discount_amount: '0.00',
+    tax_amount: '0.00',
+    total: '0.00',
+    currency_symbol: input.currencySymbol,
+    vat_breakdown: [],
+    payments: [],
+    change_due: '0.00',
+    fiscal_hash: null,
+    fiscal_signature: null,
+    customer_name: null,
+    notes: null,
+    labels: input.labels,
+    show_vat_breakdown: false,
+    show_fiscal_info: false,
+    show_payment_details: false,
+    show_customer: false,
+    is_reprint: input.wasReused,
+    cash_counts: input.cashCounts,
+    manager_name: input.managerName ?? null,
+    variance_reason: input.varianceReason ?? null,
+    variance_severity: input.varianceSeverity ?? null,
+    aggregate_variance: input.aggregateVariance ?? null,
+  };
 }
 
 export interface PrinterConfig {

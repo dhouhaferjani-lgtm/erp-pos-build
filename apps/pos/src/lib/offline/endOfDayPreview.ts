@@ -52,6 +52,7 @@ export interface VatBreakdownItem {
 export interface PaymentMethodItem {
   payment_method_id: string;
   payment_method_code: string;
+  payment_method_name: string;
   is_physical: boolean;
   total_amount: string;
   transaction_count: number;
@@ -68,9 +69,9 @@ export interface EndOfDayPreview {
   vat_breakdown: VatBreakdownItem[];
   payment_methods: PaymentMethodItem[];
   tolerance_summary: {
-    total_amount: string;
-    writeoff_count: number;
-    currency_code: string;
+    totalAmount: string;
+    writeoffCount: number;
+    currencyCode: string;
   } | null;
 }
 
@@ -112,10 +113,10 @@ export async function buildEndOfDayPreview(
     [terminalId, shiftOpenedAt],
   );
 
-  // 2. Fetch payment method lookup (id, code, is_physical)
-  const paymentMethods = await queryAll<{ id: string; code: string; is_physical: number }>(
+  // 2. Fetch payment method lookup (id, code, name, is_physical)
+  const paymentMethods = await queryAll<{ id: string; code: string; name: string; is_physical: number }>(
     db,
-    `SELECT id, code, is_physical FROM payment_methods`,
+    `SELECT id, code, COALESCE(name, code) AS name, is_physical FROM payment_methods`,
   );
   const methodByCode = new Map(paymentMethods.map((m) => [m.code, m]));
 
@@ -134,6 +135,7 @@ export async function buildEndOfDayPreview(
     {
       payment_method_id: string;
       payment_method_code: string;
+      payment_method_name: string;
       is_physical: boolean;
       total_amount: string;
       transaction_count: number;
@@ -170,6 +172,7 @@ export async function buildEndOfDayPreview(
       const existing = perMethod.get(key) ?? {
         payment_method_id: method.id,
         payment_method_code: method.code,
+        payment_method_name: method.name,
         is_physical: method.is_physical === 1,
         total_amount: '0',
         transaction_count: 0,
@@ -187,6 +190,21 @@ export async function buildEndOfDayPreview(
           toleranceCount += 1;
         }
       }
+    }
+  }
+
+  // 3b. Seed all enabled physical methods that had no transactions
+  for (const method of paymentMethods) {
+    if (method.is_physical !== 1) continue;
+    if (!perMethod.has(method.code)) {
+      perMethod.set(method.code, {
+        payment_method_id: method.id,
+        payment_method_code: method.code,
+        payment_method_name: method.name,
+        is_physical: true,
+        total_amount: '0',
+        transaction_count: 0,
+      });
     }
   }
 
@@ -222,9 +240,9 @@ export async function buildEndOfDayPreview(
     tolerance_summary:
       toleranceCount > 0
         ? {
-            total_amount: bcformat(toleranceTotal, scale),
-            writeoff_count: toleranceCount,
-            currency_code: resolvedCurrency,
+            totalAmount: bcformat(toleranceTotal, scale),
+            writeoffCount: toleranceCount,
+            currencyCode: resolvedCurrency,
           }
         : null,
   };

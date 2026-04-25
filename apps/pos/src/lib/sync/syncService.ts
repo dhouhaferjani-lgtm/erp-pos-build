@@ -341,7 +341,7 @@ export async function pushCashDrawerOps(db: Database): Promise<{
   return { pushed, errors };
 }
 
-function zReportToSyncPayload(report: LocalZReport): Record<string, unknown> {
+export function zReportToSyncPayload(report: LocalZReport): Record<string, unknown> {
   return {
     id: report.id,
     terminal_id: report.terminal_id,
@@ -357,6 +357,14 @@ function zReportToSyncPayload(report: LocalZReport): Record<string, unknown> {
     expected_cash: report.expected_cash,
     receipt_snapshots: report.receipt_snapshots,
     grand_totals: report.grand_totals,
+    cash_counts: report.cash_counts ?? [],
+    shift_fields: report.shift_fields ?? null,
+    manager_user_id: report.manager_user_id ?? null,
+    tolerance_summary: report.tolerance_summary ?? {
+      totalAmount: '0.000',
+      currencyCode: report.currency_code ?? 'EUR',
+      writeoffCount: 0,
+    },
   };
 }
 
@@ -493,6 +501,8 @@ export async function pullTerminalState(
       genesis_seed: state.genesis_seed,
       last_hash: initialHash,
       hash_sequence: state.hash_sequence,
+      manager_pin_throttle_until: null,
+      manager_pin_failed_attempts: 0,
     };
 
     try {

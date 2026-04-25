@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\POS\Presentation\Controllers\AnalyticsController;
+use App\Modules\POS\Presentation\Controllers\AuthorizedManagersController;
 use App\Modules\POS\Presentation\Controllers\CashDrawerController;
 use App\Modules\POS\Presentation\Controllers\DiscountController;
+use App\Modules\POS\Presentation\Controllers\FraudSettingsPosController;
+use App\Modules\POS\Presentation\Controllers\ManagerPinController;
 use App\Modules\POS\Presentation\Controllers\PosAuthController;
 use App\Modules\POS\Presentation\Controllers\ReceiptController;
 use App\Modules\POS\Presentation\Controllers\ReportController;
@@ -90,6 +93,15 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // Discount Permissions & Preview
     Route::get('/pos/discount-permissions', [DiscountController::class, 'getPermissions']);
     Route::post('/pos/cart/preview-discounts', [DiscountController::class, 'previewDiscounts']);
+
+    // Manager PIN verification (for shift close with variance override)
+    Route::post('/pos/verify-manager-pin', [ManagerPinController::class, 'verify']);
+
+    // Fraud settings cache (POS fetches these to populate local SQLite cache)
+    Route::get('/pos/fraud-settings', [FraudSettingsPosController::class, 'show']);
+
+    // Authorized managers for variance-close PIN approval
+    Route::get('/pos/authorized-managers', [AuthorizedManagersController::class, 'index']);
 
     // Analytics
     Route::get('/pos/analytics/summary', [AnalyticsController::class, 'summary']);

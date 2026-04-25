@@ -588,5 +588,53 @@
   "config": {
     "refreshed": "Paramètres de l'entreprise actualisés.",
     "refreshFailed": "Impossible d'actualiser les paramètres de l'entreprise. Utilisation des valeurs en cache."
+  },
+  "cash_count": {
+    "section_title": "Réconciliation de caisse",
+    "commit_counts": "Valider les comptages",
+    "reason_label": "Motif de l'écart (requis)",
+    "tender": "Mode de paiement",
+    "transactions": "Txns",
+    "expected": "Attendu",
+    "actual": "Compté",
+    "variance": "Écart",
+    "electronic_marker": "✓ élec.",
+    "entering_actual_for": "Saisie : {{name}}",
+    "numpad_label": "Pavé de comptage",
+    "manager_pin": {
+      "section_title": "Autorisation responsable requise",
+      "verified": "Autorisé par : {{name}}",
+      "select_manager": "Sélectionner un responsable",
+      "enter_pin": "Saisir le PIN",
+      "verify": "Vérifier",
+      "verifying": "Vérification…",
+      "throttle": "Trop de tentatives échouées. Réessayez dans {{seconds}}s.",
+      "no_managers": "Aucun responsable autorisé disponible hors ligne — contactez votre administrateur.",
+      "manager_label": "Responsable",
+      "pin_label": "PIN",
+      "no_manager_selected": "Veuillez sélectionner un responsable.",
+      "pin_too_short": "Le PIN doit comporter au moins 4 chiffres.",
+      "throttled": "Trop de tentatives échouées. Veuillez patienter.",
+      "invalid": "PIN invalide.",
+      "error": "Échec de la vérification.",
+      "numpad_label": "Pavé PIN",
+      "wait": "Veuillez patienter {{seconds}}s avant de réessayer."
+    },
+    "table": {
+      "tender": "Mode de paiement",
+      "expected": "Attendu",
+      "actual": "Compté",
+      "variance": "Écart",
+      "status": "Statut",
+      "electronic": "élec."
+    },
+    "tolerance": {
+      "row_label": "Remises de tolérance",
+      "empty": "Aucune remise enregistrée.",
+      "col_receipt": "Reçu",
+      "col_cashier": "Caissier",
+      "col_time": "Heure",
+      "col_writeoff": "Remise"
+    }
   }
 }

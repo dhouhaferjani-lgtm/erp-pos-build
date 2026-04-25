@@ -7,6 +7,8 @@ namespace Tests\Unit\POS;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Application\Services\CashCountValidationService;
+use App\Modules\POS\Application\Services\FraudSettingsResolver;
 use App\Modules\POS\Application\Services\ReportGenerationService;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Services\CashDrawerService;
@@ -14,6 +16,7 @@ use App\Modules\POS\Domain\Services\GrandtotalService;
 use App\Modules\POS\Domain\Services\ShiftManagementService;
 use App\Modules\POS\Domain\Services\ZReportHashService;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\POS\Infrastructure\Repositories\ZReportCountRepository;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -53,6 +56,9 @@ class ReportGenerationServiceTest extends TestCase
             $this->app->make(ZReportHashService::class),
             $this->app->make(GrandtotalService::class),
             $this->mockCurrencyScale(3),
+            $this->app->make(CashCountValidationService::class),
+            $this->app->make(FraudSettingsResolver::class),
+            $this->app->make(ZReportCountRepository::class),
         );
 
         $this->tenant = Tenant::factory()->create();

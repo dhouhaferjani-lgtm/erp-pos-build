@@ -10,7 +10,7 @@ import type Database from '@tauri-apps/plugin-sql';
 import Big from 'big.js';
 import { queryAll } from '@/lib/db';
 import { getCurrencyDecimals } from '@/lib/currency';
-import { bcadd, bcsub, bcformat } from '@/lib/decimal';
+import { bcadd, bcsub, bcformat, bccomp } from '@/lib/decimal';
 import { useAuthStore } from '@/stores/authStore';
 import { computeZReportHash } from '@/lib/fiscal/zReportHashService';
 import { insertZReport, getZReportByShift } from '@/lib/db/repositories/zReportRepository';
@@ -20,85 +20,44 @@ import {
   advanceZChain,
   updateGrandTotals,
 } from '@/lib/db/repositories/terminalStateRepository';
+import { insertZReportCounts } from '@/lib/db/repositories/zReportCountRepository';
+import type { ZReportCountRow } from '@/lib/db/repositories/zReportCountRepository';
 import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 import type {
   LocalZReport,
   ZReportData,
   ZReportVatBreakdown,
   ZReportPaymentMethod,
+  ZReportCountEntry,
   ReceiptSnapshot,
   ReceiptSnapshotTaxLine,
   ReceiptSnapshotLine,
   GrandTotals,
 } from '@/lib/offline/types';
+import {
+  computeCashCountSeverity,
+  type CashCountThresholds,
+} from '@/lib/offline/cashCountValidation';
 
 // Cumulative fields are persisted at 3 decimals (TND max); see terminalStateRepository.
 const CUMULATIVE_SCALE = 3;
 
-// ─── Schema-version-2 hash-input types & builder ─────────────────────────────
+// ─── Cash count input / opts types ───────────────────────────────────────────
 
-export interface CashCountForHash {
+export interface CashCountInputForGeneration {
   payment_method_id: string;
   currency_code: string;
-  expected_amount: string;
   actual_amount: string;
-  variance_amount: string;
 }
 
-export interface ReportTotalsForHash {
-  gross_sales: string;
-  net_sales: string;
-  tax_amount: string;
-}
-
-export interface ShiftForHash {
-  opening_cash: string;
-  opened_at: string;
-  currency_code: string;
-}
-
-/**
- * Build a schema_version:2 report_data payload normalized to scale-4 monetary strings.
- * Keys are inserted in a canonical order to guarantee byte-deterministic JSON serialization
- * vs. the PHP server's ZReportHashService::normalizeForHash output.
- *
- * NOTE: This function is intentionally decoupled from generateZReport for PR-1.
- * Full wiring into the hash-computation call site lands in PR-2 (Tasks 18 + 26),
- * once per-tender cash_counts rows are persisted in SQLite (v22 schema migration).
- * Existing generateZReport produces v1 report_data shapes and must not be modified here.
- */
-export function buildReportDataForHash(
-  shift: ShiftForHash,
-  cashCounts: CashCountForHash[],
-  totals: ReportTotalsForHash,
-): {
-  schema_version: number;
-  opening_cash: string;
-  gross_sales: string;
-  net_sales: string;
-  tax_amount: string;
-  cash_counts: Array<{
-    payment_method_id: string;
-    currency_code: string;
-    expected_amount: string;
-    actual_amount: string;
-    variance_amount: string;
-  }>;
-} {
-  return {
-    schema_version: 2,
-    opening_cash: bcformat(shift.opening_cash, 4),
-    gross_sales: bcformat(totals.gross_sales, 4),
-    net_sales: bcformat(totals.net_sales, 4),
-    tax_amount: bcformat(totals.tax_amount, 4),
-    cash_counts: cashCounts.map((c) => ({
-      payment_method_id: c.payment_method_id,
-      currency_code: c.currency_code,
-      expected_amount: bcformat(c.expected_amount, 4),
-      actual_amount: bcformat(c.actual_amount, 4),
-      variance_amount: bcformat(c.variance_amount, 4),
-    })),
-  };
+export interface GenerateZReportOpts {
+  cashCounts?: CashCountInputForGeneration[];
+  varianceReason?: string | null;
+  managerUserId?: string | null;
+  blindCountUsed?: boolean;
+  /** Fraud-settings thresholds. When provided, variance_severity is computed
+   *  from the aggregated per-tender variances and stamped into shift_fields. */
+  fraudSettings?: CashCountThresholds | null;
 }
 
 /**
@@ -130,6 +89,7 @@ interface ReceiptLineJson {
  * @param shiftId - Current shift UUID
  * @param shiftOpenedAt - ISO 8601 timestamp of when the shift was opened
  * @param openingCash - Opening cash amount for the shift
+ * @param opts - Optional cash count inputs and shift metadata (closes G2/G3)
  */
 export async function generateZReport(
   db: Database,
@@ -137,6 +97,7 @@ export async function generateZReport(
   shiftId: string,
   shiftOpenedAt: string,
   openingCash: string,
+  opts: GenerateZReportOpts = {},
 ): Promise<LocalZReport> {
   const authState = useAuthStore.getState();
   const company = authState.companies.find((c) => c.id === authState.companyId);
@@ -192,6 +153,86 @@ export async function generateZReport(
   reportData.expected_cash = new Big(expectedCash).toFixed(decimals);
   reportData.variance = null;
 
+  // 5b. Compute cash count rows when opts.cashCounts is provided.
+  //     Adds schema_version=2, cash_counts[], and tolerance_summary to report_data.
+  const companyCurrency = company?.currency ?? 'EUR';
+  let zReportCountRows: ZReportCountRow[] | null = null;
+  let cashCountEntries: ZReportCountEntry[] | null = null;
+
+  if (opts.cashCounts && opts.cashCounts.length > 0) {
+    // Build a map of payment_method_id → expected_amount for the entries provided.
+    // For CASH, expected = opening_cash + Σ(cash_sales from receipts).
+    // For other physical methods, expected = Σ(sales for that method from receipts).
+    const pmIdToSales = new Map<string, string>();
+    for (const pm of reportData.payment_methods) {
+      // Look up the payment_method_id from the code
+      const pmId = [...paymentMethodMap.entries()].find(([, code]) => code === pm.payment_type)?.[0];
+      if (pmId) {
+        pmIdToSales.set(pmId, pm.total_amount);
+      }
+    }
+
+    const countEntries: ZReportCountEntry[] = [];
+    const countRows: ZReportCountRow[] = [];
+
+    for (const input of opts.cashCounts) {
+      // Compute expected_amount for this payment method
+      const methodSales = pmIdToSales.get(input.payment_method_id) ?? '0';
+      const methodCode = paymentMethodMap.get(input.payment_method_id) ?? '';
+
+      // For CASH: expected = opening_float + cash_receipts_amount
+      // For others: expected = sales_amount for that method
+      const expectedAmount =
+        methodCode === 'CASH'
+          ? bcformat(expectedCash, decimals)
+          : bcformat(methodSales, decimals);
+
+      // variance = actual - expected (positive = over, negative = under)
+      const variance = bcsub(input.actual_amount, expectedAmount, decimals);
+      const varianceCmp = bccomp(variance, '0');
+      const varianceDirection: 'over' | 'under' | 'balanced' =
+        varianceCmp > 0 ? 'over' : varianceCmp < 0 ? 'under' : 'balanced';
+
+      const entry: ZReportCountEntry = {
+        payment_method_id: input.payment_method_id,
+        currency_code: input.currency_code,
+        expected_amount: expectedAmount,
+        actual_amount: bcformat(input.actual_amount, decimals),
+        variance_amount: variance,
+        variance_direction: varianceDirection,
+        transaction_count: receipts.filter(
+          (r) => r.payment_method_id === input.payment_method_id,
+        ).length,
+      };
+
+      countEntries.push(entry);
+      countRows.push({
+        id: crypto.randomUUID(),
+        z_report_id: '', // filled in after we know the Z-report id below
+        payment_method_id: entry.payment_method_id,
+        currency_code: entry.currency_code,
+        expected_amount: entry.expected_amount,
+        actual_amount: entry.actual_amount,
+        variance_amount: entry.variance_amount,
+        variance_direction: entry.variance_direction,
+        transaction_count: entry.transaction_count,
+      });
+    }
+
+    cashCountEntries = countEntries;
+    zReportCountRows = countRows;
+
+    // Stamp schema_version = 2 and cash_counts into report_data
+    reportData.schema_version = 2;
+    reportData.cash_counts = countEntries;
+    // Tolerance zero-shape (3dp amount, integer count) — byte-matches server ZReportHashService
+    reportData.tolerance_summary = {
+      totalAmount: '0.000',
+      currencyCode: companyCurrency,
+      writeoffCount: 0,
+    };
+  }
+
   // 6. Build receipt snapshots for fiscal export
   const receiptSnapshots = buildReceiptSnapshots(receipts, paymentMethodMap);
 
@@ -225,9 +266,34 @@ export async function generateZReport(
     receipt_count_lifetime: zChainState.receipt_count_lifetime + salesCount,
   };
 
-  // 10. Build the Z-report record
+  // 10. Build shift_fields when cash count opts are provided.
+  //     Compute variance_severity from the aggregated per-tender variances when
+  //     fraud settings thresholds are available; otherwise leave null.
+  const zReportId = crypto.randomUUID();
+
+  let varianceSeverity: string | null = null;
+  if (cashCountEntries !== null && opts.fraudSettings != null) {
+    const severityResult = computeCashCountSeverity(
+      cashCountEntries,
+      opts.fraudSettings,
+      decimals,
+    );
+    varianceSeverity = severityResult.severity;
+  }
+
+  const shiftFields =
+    cashCountEntries !== null
+      ? {
+          blind_count_used: opts.blindCountUsed ?? false,
+          variance_severity: varianceSeverity,
+          variance_reason: opts.varianceReason ?? null,
+          manager_override_by: opts.managerUserId ?? null,
+        }
+      : null;
+
+  // 11. Build the Z-report record
   const zReport: LocalZReport = {
-    id: crypto.randomUUID(),
+    id: zReportId,
     terminal_id: terminalId,
     shift_id: shiftId,
     z_number: newZNumber,
@@ -243,12 +309,29 @@ export async function generateZReport(
     grand_totals: grandTotals,
     synced: false,
     synced_at: null,
+    cash_counts: cashCountEntries ?? undefined,
+    shift_fields: shiftFields,
+    manager_user_id: opts.managerUserId ?? null,
+    tolerance_summary: cashCountEntries !== null
+      ? { totalAmount: '0.000', currencyCode: companyCurrency, writeoffCount: 0 }
+      : undefined,
+    currency_code: companyCurrency,
   };
 
-  // 11. Persist atomically: insert Z-report + advance Z-chain + update grand totals
+  // Fix z_report_id on count rows now that we have the report id
+  if (zReportCountRows !== null) {
+    for (const row of zReportCountRows) {
+      row.z_report_id = zReportId;
+    }
+  }
+
+  // 12. Persist atomically: insert Z-report + (optionally) cash count rows + advance Z-chain + update grand totals
   await db.execute('BEGIN TRANSACTION');
   try {
     await insertZReport(db, zReport);
+    if (zReportCountRows !== null && zReportCountRows.length > 0) {
+      await insertZReportCounts(db, zReportCountRows);
+    }
     await advanceZChain(db, terminalId, fiscalHash, newHashSequence, newZNumber);
     await updateGrandTotals(db, terminalId, grossSalesStr, taxStr, refundsStr, salesCount);
     await db.execute('COMMIT');

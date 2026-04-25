@@ -3,24 +3,48 @@ import { useTranslation } from 'react-i18next';
 import { CheckCircle, Loader2, AlertCircle, Printer } from 'lucide-react';
 import { Modal } from './Modal';
 import { useCurrency } from '@/lib/currency';
+import {
+  CashReconciliationSection,
+  type CashCountCommitPayload,
+  type CompanyFraudSettings,
+  type AuthorizedManager,
+} from './CashReconciliationSection';
 import type { Shift } from '@/stores/terminalStore';
 import type { EndOfDayPreview } from '@/lib/offline/endOfDayPreview';
+import { ToleranceDrillDown } from '@/components/pos/molecules/ToleranceDrillDown';
 
 export interface EndOfDayConfirmResult {
   formattedZNumber: string;
   wasReused: boolean;
 }
 
+export type { CashCountCommitPayload, CompanyFraudSettings, AuthorizedManager };
+
 export interface EndOfDayPreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
   shift: Shift;
   terminalId: string;
-  onConfirmAndClose: (preview: EndOfDayPreview) => Promise<EndOfDayConfirmResult>;
+  onConfirmAndClose: (
+    preview: EndOfDayPreview,
+    cashCountPayload: CashCountCommitPayload | null,
+  ) => Promise<EndOfDayConfirmResult>;
   onPrintReceipt?: (result: EndOfDayConfirmResult) => void;
+  /** When provided, the cash-reconciliation section is rendered. */
+  fraudSettings?: CompanyFraudSettings | null;
+  authorizedManagers?: AuthorizedManager[];
+  cashierUserId?: string;
+  onVerifyManagerPin?: (userId: string, pin: string) => Promise<{ valid: boolean }>;
+  managerPinThrottle?: { until: string | null; failedAttempts: number };
+  onManagerPinThrottleUpdate?: (next: {
+    until: string | null;
+    failedAttempts: number;
+  }) => void;
 }
 
 type ModalPhase = 'loading' | 'preview' | 'confirming' | 'success' | 'error';
+
+const NOOP_THROTTLE = { until: null, failedAttempts: 0 } as const;
 
 export function EndOfDayPreviewModal({
   isOpen,
@@ -29,14 +53,24 @@ export function EndOfDayPreviewModal({
   terminalId,
   onConfirmAndClose,
   onPrintReceipt,
+  fraudSettings,
+  authorizedManagers,
+  cashierUserId,
+  onVerifyManagerPin,
+  managerPinThrottle,
+  onManagerPinThrottleUpdate,
 }: EndOfDayPreviewModalProps) {
   const { t } = useTranslation('pos');
-  const { format } = useCurrency();
+  const { format, currency } = useCurrency();
 
   const [phase, setPhase] = useState<ModalPhase>('loading');
   const [preview, setPreview] = useState<EndOfDayPreview | null>(null);
   const [result, setResult] = useState<EndOfDayConfirmResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Cash-count flow state
+  const [cashCountPayload, setCashCountPayload] = useState<CashCountCommitPayload | null>(null);
+  const [cashCountReady, setCashCountReady] = useState<boolean>(false);
 
   // Guard: once confirmation begins, block backdrop dismiss
   const isConfirmingRef = useRef(false);
@@ -46,6 +80,18 @@ export function EndOfDayPreviewModal({
     onClose();
   }, [onClose]);
 
+  // Decide whether the cash-reconciliation section should render. All of the
+  // optional props must be provided to enable it; otherwise we fall back to
+  // legacy preview-only mode for backward compatibility with any caller that
+  // hasn't been migrated yet.
+  const cashCountEnabled =
+    fraudSettings != null &&
+    authorizedManagers !== undefined &&
+    cashierUserId !== undefined &&
+    onVerifyManagerPin !== undefined &&
+    managerPinThrottle !== undefined &&
+    onManagerPinThrottleUpdate !== undefined;
+
   // Load preview data when modal opens
   useEffect(() => {
     if (!isOpen) {
@@ -54,6 +100,8 @@ export function EndOfDayPreviewModal({
       setPreview(null);
       setResult(null);
       setErrorMessage(null);
+      setCashCountPayload(null);
+      setCashCountReady(false);
       isConfirmingRef.current = false;
       return;
     }
@@ -97,7 +145,10 @@ export function EndOfDayPreviewModal({
     isConfirmingRef.current = true;
     setPhase('confirming');
     try {
-      const confirmResult = await onConfirmAndClose(preview);
+      const confirmResult = await onConfirmAndClose(
+        preview,
+        cashCountEnabled ? cashCountPayload : null,
+      );
       setResult(confirmResult);
       setPhase('success');
     } catch (err) {
@@ -106,14 +157,20 @@ export function EndOfDayPreviewModal({
       setPhase('error');
       isConfirmingRef.current = false;
     }
-  }, [preview, onConfirmAndClose]);
+  }, [preview, onConfirmAndClose, cashCountEnabled, cashCountPayload]);
 
   const title = phase === 'success'
     ? t('reports.endOfDay.successTitle')
     : t('reports.endOfDay.title');
 
+  // Confirm gating:
+  //   - legacy (cashCountEnabled = false): always enabled when not confirming.
+  //   - cash-count (cashCountEnabled = true): requires `cashCountReady`.
+  const confirmDisabled =
+    phase === 'confirming' || (cashCountEnabled && !cashCountReady);
+
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title={title} size="xl">
+    <Modal isOpen={isOpen} onClose={handleClose} title={title} size="full">
       {phase === 'loading' && (
         <div className="flex flex-col items-center gap-3 py-12">
           <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
@@ -136,6 +193,24 @@ export function EndOfDayPreviewModal({
 
       {(phase === 'preview' || phase === 'confirming') && preview !== null && (
         <div className="space-y-5">
+          {/* Cash Reconciliation (new) — appears at the top when enabled */}
+          {cashCountEnabled && (
+            <CashReconciliationSection
+              preview={preview}
+              fraudSettings={fraudSettings}
+              authorizedManagers={authorizedManagers}
+              cashierUserId={cashierUserId}
+              currencyCode={currency}
+              onVerifyManagerPin={onVerifyManagerPin}
+              managerPinThrottle={managerPinThrottle ?? NOOP_THROTTLE}
+              onManagerPinThrottleUpdate={onManagerPinThrottleUpdate}
+              onChange={(payload, ready) => {
+                setCashCountPayload(payload);
+                setCashCountReady(ready);
+              }}
+            />
+          )}
+
           {/* Subtitle */}
           <p className="text-sm text-gray-500">{t('reports.endOfDay.subtitle')}</p>
 
@@ -155,7 +230,7 @@ export function EndOfDayPreviewModal({
             <SummaryCard label={t('reports.endOfDay.taxAmount')} value={format(preview.tax_amount)} />
           </div>
 
-          {/* Cash reconciliation */}
+          {/* Cash reconciliation summary card (existing, kept for legacy parity) */}
           <div className="rounded-xl border border-blue-200 bg-blue-50 p-5">
             <h4 className="mb-3 text-sm font-semibold text-blue-800">
               {t('reports.endOfDay.cashReconciliation')}
@@ -229,6 +304,19 @@ export function EndOfDayPreviewModal({
             )}
           </div>
 
+          {/* Tolerance write-off row — renders only when v2 session ships live data (writeoffCount > 0).
+              Task 1 emits zero-shape (writeoffCount = 0), so this is intentionally hidden until
+              payment-tolerance v2 goes live per coordination contract v1.1. */}
+          {preview.tolerance_summary !== null &&
+            preview.tolerance_summary.writeoffCount > 0 && (
+              <ToleranceDrillDown
+                shiftId={shift.id}
+                totalAmount={preview.tolerance_summary.totalAmount}
+                writeoffCount={preview.tolerance_summary.writeoffCount}
+                currencyCode={preview.tolerance_summary.currencyCode}
+              />
+            )}
+
           {/* Bottom bar */}
           <div className="flex gap-3 pt-2">
             <button
@@ -240,8 +328,9 @@ export function EndOfDayPreviewModal({
             </button>
             <button
               onClick={() => void handleConfirm()}
-              disabled={phase === 'confirming'}
+              disabled={confirmDisabled}
               aria-label={t('reports.endOfDay.confirmLabel')}
+              data-testid="end-of-day-confirm-button"
               className="flex-1 rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-75"
             >
               {phase === 'confirming' ? (

@@ -7,13 +7,17 @@ namespace App\Modules\POS\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Application\Exceptions\CashCountValidationException;
+use App\Modules\POS\Application\Exceptions\UnauthorizedManagerException;
 use App\Modules\POS\Application\Services\ReportGenerationService;
+use App\Modules\POS\Domain\DTOs\CashCountInputDTO;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Services\ZReportHashService;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Domain\ZReport;
+use App\Modules\POS\Presentation\Requests\GenerateZReportRequest;
 use App\Modules\POS\Presentation\Resources\XReportResource;
 use App\Modules\POS\Presentation\Resources\ZReportResource;
 use Illuminate\Database\Eloquent\Builder;
@@ -90,17 +94,16 @@ final class ReportController extends Controller
      * Generate Z report (end-of-day closing)
      *
      * POST /api/v1/pos/reports/z
+     *
+     * Accepts an optional cash_counts array. When omitted the legacy path is used
+     * (backwards compatible with Cluster D callers).
      */
-    public function generateZReport(Request $request): JsonResponse
+    public function generateZReport(GenerateZReportRequest $request): JsonResponse
     {
         Gate::authorize('pos.generate_z_report');
 
-        $request->validate([
-            'terminal_id' => ['required', 'string', 'uuid', 'exists:pos_terminals,id'],
-        ]);
-
         /** @var Terminal $terminal */
-        $terminal = Terminal::findOrFail($request->input('terminal_id'));
+        $terminal = Terminal::findOrFail($request->getTerminalId());
 
         // Verify terminal belongs to current company
         if ($terminal->company_id !== $this->companyContext->getCompanyId()) {
@@ -115,10 +118,32 @@ final class ReportController extends Controller
         try {
             /** @var User $user */
             $user = $request->user();
+
+            // Build cash-count input DTOs when cash_counts is present (non-empty array).
+            $cashCountInputs = null;
+            $rawCounts = $request->getCashCountsInput();
+            if ($rawCounts !== []) {
+                $cashCountInputs = array_map(
+                    static fn (array $row): CashCountInputDTO => new CashCountInputDTO(
+                        paymentMethodId: $row['payment_method_id'],
+                        currencyCode: $row['currency_code'],
+                        actualAmount: $row['actual_amount'],
+                    ),
+                    $rawCounts,
+                );
+            }
+
             $zReport = $this->reportGenerationService->generateZReport(
-                $terminal,
-                $user
+                terminal: $terminal,
+                generatedBy: $user,
+                cashCountInputs: $cashCountInputs,
+                varianceReason: $request->getVarianceReason(),
+                managerOverrideBy: $request->getManagerUserId(),
+                blindCountUsed: $request->getBlindCountUsed(),
             );
+
+            // Eager-load relations so ZReportResource can render cash-count data.
+            $zReport->load('counts.paymentMethod', 'shift.managerOverride');
 
             return response()->json([
                 'data' => ZReportResource::make($zReport),
@@ -130,6 +155,28 @@ final class ReportController extends Controller
                     'message' => $e->getMessage(),
                 ],
             ], 409);
+        } catch (CashCountValidationException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => $e->firstCode() ?? 'CASH_COUNT_VALIDATION_FAILED',
+                    'message' => $e->getMessage(),
+                    'errors' => array_map(
+                        static fn (object $err): array => [
+                            'code' => $err->code,
+                            'field' => $err->field,
+                            'message' => $err->message,
+                        ],
+                        $e->errors(),
+                    ),
+                ],
+            ], 422);
+        } catch (UnauthorizedManagerException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'UNAUTHORIZED_MANAGER',
+                    'message' => $e->getMessage(),
+                ],
+            ], 403);
         }
     }
 

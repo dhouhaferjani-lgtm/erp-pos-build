@@ -6,9 +6,12 @@ import { getCurrencyDecimals } from '@/lib/currency';
 import { bcadd, bcformat } from '@/lib/decimal';
 import { useAuthStore } from '@/stores/authStore';
 import { generateZReport as generateLocalZReport } from '@/lib/offline/zReportService';
+import type { GenerateZReportOpts } from '@/lib/offline/zReportService';
 import { getAllPaymentMethods } from '@/lib/db/repositories/paymentRepository';
 import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 import type { LocalZReport } from '@/lib/offline/types';
+
+export type { GenerateZReportOpts };
 
 export interface VatBreakdownItem {
   tax_rate: number;
@@ -51,6 +54,8 @@ export interface ZReportResponse {
   formatted_z_number: string;
   /** True when this Z was already generated for the shift and returned idempotently. */
   was_reused?: boolean;
+  /** Per-tender cash count rows — only present when cash counts were captured at shift close. */
+  cash_counts?: import('@/lib/offline/types').ZReportCountEntry[];
   sales_count: number;
   gross_sales: string;
   opening_cash: string;
@@ -135,12 +140,13 @@ export async function generateZReport(
   shiftId: string,
   shiftOpenedAt: string,
   openingCash: string,
+  opts: GenerateZReportOpts = {},
 ): Promise<ZReportResponse> {
   const authState = useAuthStore.getState();
   const company = authState.companies.find((c) => c.id === authState.companyId);
   const decimals = getCurrencyDecimals(company?.currency ?? 'EUR');
   const db = await getDatabase(companyId);
-  const localReport = await generateLocalZReport(db, terminalId, shiftId, shiftOpenedAt, openingCash);
+  const localReport = await generateLocalZReport(db, terminalId, shiftId, shiftOpenedAt, openingCash, opts);
   return localZReportToResponse(localReport, decimals);
 }
 
@@ -157,6 +163,7 @@ function localZReportToResponse(report: LocalZReport, decimals: number): ZReport
     generated_at: report.generated_at,
     is_first_z_report: report.z_number === 1,
     formatted_z_number: report.formatted_z_number,
+    cash_counts: report.cash_counts,
     sales_count: report.report_data.sales_count,
     gross_sales: report.report_data.gross_sales,
     opening_cash: new Big(report.opening_cash).toFixed(decimals),

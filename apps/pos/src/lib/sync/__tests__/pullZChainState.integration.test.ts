@@ -83,6 +83,8 @@ async function seedTerminalWithCumulative(
     genesis_seed: 'seed',
     last_hash: 'GENESIS',
     hash_sequence: 0,
+    manager_pin_throttle_until: null,
+    manager_pin_failed_attempts: 0,
   });
   await upsertZChainState(adapter.asDatabase(), TERMINAL_ID, {
     z_last_hash,

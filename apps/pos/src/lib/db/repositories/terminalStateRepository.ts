@@ -44,6 +44,8 @@ export interface TerminalHashState {
   genesis_seed: string;
   last_hash: string;
   hash_sequence: number;
+  manager_pin_throttle_until: string | null;
+  manager_pin_failed_attempts: number;
 }
 
 /**
@@ -78,8 +80,34 @@ export async function getTerminalState(
 ): Promise<TerminalHashState | null> {
   return queryOne<TerminalHashState>(
     db,
-    'SELECT * FROM terminal_state WHERE terminal_id = $1',
+    `SELECT terminal_id, terminal_code, location_code, genesis_seed, last_hash, hash_sequence,
+            manager_pin_throttle_until, manager_pin_failed_attempts
+     FROM terminal_state WHERE terminal_id = $1`,
     [terminalId],
+  );
+}
+
+export async function setManagerPinThrottle(
+  db: Database,
+  terminalId: string,
+  until: string | null,
+): Promise<void> {
+  await execute(
+    db,
+    `UPDATE terminal_state SET manager_pin_throttle_until = $1 WHERE terminal_id = $2`,
+    [until, terminalId],
+  );
+}
+
+export async function setManagerPinFailedAttempts(
+  db: Database,
+  terminalId: string,
+  count: number,
+): Promise<void> {
+  await execute(
+    db,
+    `UPDATE terminal_state SET manager_pin_failed_attempts = $1 WHERE terminal_id = $2`,
+    [count, terminalId],
   );
 }
 

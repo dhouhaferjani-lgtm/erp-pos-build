@@ -226,8 +226,9 @@ export function buildEscPosFromOfflineReceipt(
 }
 
 /** Build localized receipt labels from i18n. */
-function buildReceiptLabels(): ReceiptLabels {
+export function buildReceiptLabels(): ReceiptLabels {
   const t = (key: string) => i18next.t(`pos:receiptLabel.${key}`);
+  const cc = (key: string) => i18next.t(`pos:cash_count.${key}`);
   return {
     receipt: t('receipt'),
     date: t('date'),
@@ -249,5 +250,13 @@ function buildReceiptLabels(): ReceiptLabels {
     thank_you: t('thankYou'),
     tax_id: t('taxId'),
     tel: t('tel'),
+    cash_count_section_title: cc('section_title'),
+    cash_count_total_variance: cc('table.variance'),
+    cash_count_approved_by: i18next.t('pos:cash_count.manager_pin.verified', { name: '' }).trimEnd(),
+    cash_count_reason: cc('reason_label'),
+    cash_count_col_tender: cc('table.tender'),
+    cash_count_col_expected: cc('table.expected'),
+    cash_count_col_actual: cc('table.actual'),
+    cash_count_col_variance: cc('table.variance'),
   };
 }

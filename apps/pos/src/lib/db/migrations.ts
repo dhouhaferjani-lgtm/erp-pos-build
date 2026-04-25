@@ -479,4 +479,44 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 22,
+    name: 'cash_counting_feature',
+    sql: `
+      CREATE TABLE z_report_counts (
+        id                  TEXT PRIMARY KEY,
+        z_report_id         TEXT NOT NULL,
+        payment_method_id   TEXT NOT NULL,
+        currency_code       TEXT NOT NULL,
+        expected_amount     TEXT NOT NULL,
+        actual_amount       TEXT NOT NULL,
+        variance_amount     TEXT NOT NULL,
+        variance_direction  TEXT NOT NULL,
+        transaction_count   INTEGER NOT NULL DEFAULT 0,
+        created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE UNIQUE INDEX idx_z_report_counts_unique ON z_report_counts(z_report_id, payment_method_id);
+      CREATE INDEX idx_z_report_counts_method ON z_report_counts(payment_method_id);
+
+      ALTER TABLE z_reports ADD COLUMN blind_count_used    INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE z_reports ADD COLUMN manager_override_by TEXT;
+      ALTER TABLE z_reports ADD COLUMN variance_severity   TEXT;
+      ALTER TABLE z_reports ADD COLUMN variance_reason     TEXT;
+
+      CREATE TABLE company_fraud_settings_cache (
+        company_id                          TEXT PRIMARY KEY,
+        cash_variance_over_soft             TEXT NOT NULL,
+        cash_variance_over_hard             TEXT NOT NULL,
+        cash_variance_under_soft            TEXT NOT NULL,
+        cash_variance_under_hard            TEXT NOT NULL,
+        require_blind_cash_count            INTEGER NOT NULL DEFAULT 0,
+        require_manager_pin_above_hard      INTEGER NOT NULL DEFAULT 1,
+        cash_variance_email_severity        TEXT NOT NULL DEFAULT 'none',
+        refreshed_at                        TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      ALTER TABLE terminal_state ADD COLUMN manager_pin_throttle_until   TEXT;
+      ALTER TABLE terminal_state ADD COLUMN manager_pin_failed_attempts  INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ];
