@@ -207,6 +207,7 @@ final class DeliveryNoteToInvoiceConverter implements DocumentConverterInterface
                         'tax_rate' => $dnLine->tax_rate,
                         'line_total' => $dnLine->line_total ?? '0.00',
                         'notes' => $dnLine->notes,
+                        'designation_default_snapshot' => $dnLine->designation_default_snapshot,
                         'source_line_id' => $dnLine->id,
                     ]);
                 }

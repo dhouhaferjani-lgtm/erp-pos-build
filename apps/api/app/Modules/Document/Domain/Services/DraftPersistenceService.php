@@ -10,9 +10,12 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\DraftDocumentCreated;
 use App\Modules\Document\Domain\Events\DraftLineAdded;
+use App\Modules\Document\Domain\Events\DraftLineAddedV2;
 use App\Modules\Document\Domain\Events\DraftLineModified;
+use App\Modules\Document\Domain\Events\DraftLineModifiedV2;
 use App\Modules\Document\Domain\Events\DraftLineRemoved;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Service\Domain\Service;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -193,34 +196,70 @@ final class DraftPersistenceService
         array $lineData
     ): DocumentLine {
         /** @var Product|null $product */
-        $product = Product::find($lineData['product_id']);
+        $product = isset($lineData['product_id']) ? Product::find($lineData['product_id']) : null;
+
+        /** @var Service|null $service */
+        $service = isset($lineData['service_id']) ? Service::find($lineData['service_id']) : null;
+
+        $defaultName = $service !== null
+            ? (string) $service->name
+            : ($product !== null ? (string) $product->name : '');
+
+        $designationSnapshot = $defaultName !== '' ? mb_substr($defaultName, 0, 500) : null;
+
+        $overriddenDescription = mb_substr(
+            isset($lineData['description']) && is_string($lineData['description']) && $lineData['description'] !== ''
+                ? (string) $lineData['description']
+                : $defaultName,
+            0, 500
+        );
 
         $quantity = (float) ($lineData['quantity'] ?? 1);
         $unitPrice = (float) ($lineData['unit_price'] ?? 0);
         $lineTotal = (string) ($quantity * $unitPrice);
-        $productName = $product !== null ? $product->name : '';
 
         $line = $document->lines()->create([
-            'product_id' => $lineData['product_id'] ?? '',
+            'product_id' => $lineData['product_id'] ?? null,
+            'service_id' => $lineData['service_id'] ?? null,
             'line_number' => $document->lines()->count() + 1,
-            'description' => $productName,
+            'description' => $overriddenDescription,
+            'designation_default_snapshot' => $designationSnapshot,
+            'notes' => isset($lineData['notes']) ? mb_substr((string) $lineData['notes'], 0, 1000) : null,
             'quantity' => $quantity,
             'unit_price' => $unitPrice,
             'tax_rate' => $lineData['tax_rate'] ?? 0,
             'line_total' => $lineTotal,
         ]);
 
-        // Fire event
+        // Fire event (V1 — backward compatible)
         event(new DraftLineAdded(
             documentId: $document->id,
             tenantId: $document->tenant_id,
             companyId: $companyId,
             userId: $userId,
             productId: $line->product_id ?? '',
-            productName: $productName,
+            productName: $defaultName,
             quantity: (float) $line->quantity,
             unitPrice: (float) $line->unit_price,
             lineTotal: (float) $line->line_total,
+            lineId: $line->id,
+            addedAt: now()->toIso8601String(),
+        ));
+
+        // Fire V2 event — includes description, notes, and designation snapshot
+        event(new DraftLineAddedV2(
+            documentId: $document->id,
+            tenantId: $document->tenant_id,
+            companyId: $companyId,
+            userId: $userId,
+            productId: $line->product_id ?? '',
+            productName: $defaultName,
+            quantity: (float) $line->quantity,
+            unitPrice: (float) $line->unit_price,
+            lineTotal: (float) $line->line_total,
+            description: (string) $line->description,
+            notes: $line->notes,
+            designationDefaultSnapshot: $line->designation_default_snapshot,
             lineId: $line->id,
             addedAt: now()->toIso8601String(),
         ));
@@ -258,6 +297,24 @@ final class DraftPersistenceService
             $hasChanges = true;
         }
 
+        $trimmedDescription = isset($newData['description']) && is_string($newData['description'])
+            ? trim($newData['description'])
+            : null;
+
+        if ($trimmedDescription !== null && $trimmedDescription !== '' && $trimmedDescription !== (string) $line->description) {
+            $line->description = mb_substr($trimmedDescription, 0, 500);
+            $hasChanges = true;
+        }
+
+        if (array_key_exists('notes', $newData)) {
+            $trimmed = $newData['notes'] !== null ? trim((string) $newData['notes']) : null;
+            $normalised = ($trimmed !== null && $trimmed !== '') ? mb_substr($trimmed, 0, 1000) : null;
+            if ($normalised !== $line->notes) {
+                $line->notes = $normalised;
+                $hasChanges = true;
+            }
+        }
+
         if ($hasChanges) {
             $line->line_total = (string) ((float) $line->quantity * (float) $line->unit_price);
             $line->save();
@@ -268,7 +325,7 @@ final class DraftPersistenceService
                 'line_total' => (float) $line->line_total,
             ];
 
-            // Fire event
+            // Fire event (V1 — backward compatible)
             event(new DraftLineModified(
                 documentId: $document->id,
                 tenantId: $document->tenant_id,
@@ -278,6 +335,21 @@ final class DraftPersistenceService
                 productId: $line->product_id ?? '',
                 oldValues: $oldValues,
                 newValues: $newValues,
+                modifiedAt: now()->toIso8601String(),
+            ));
+
+            // Fire V2 event — includes description and notes
+            event(new DraftLineModifiedV2(
+                documentId: $document->id,
+                tenantId: $document->tenant_id,
+                companyId: $companyId,
+                userId: $userId,
+                lineId: $line->id,
+                productId: $line->product_id ?? '',
+                oldValues: $oldValues,
+                newValues: $newValues,
+                description: $line->description !== '' ? $line->description : null,
+                notes: $line->notes,
                 modifiedAt: now()->toIso8601String(),
             ));
         }
@@ -327,9 +399,12 @@ final class DraftPersistenceService
         string $userId,
         array $linesData
     ): void {
-        // 1. Batch fetch all products (1 query instead of N)
+        // 1. Batch fetch all products and services (1 query each instead of N)
         $productIds = collect($linesData)->pluck('product_id')->filter()->unique()->toArray();
         $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
+
+        $serviceIds = collect($linesData)->pluck('service_id')->filter()->unique()->toArray();
+        $services = Service::whereIn('id', $serviceIds)->get()->keyBy('id');
 
         // 2. Prepare line data for batch insert
         $currentLineNumber = $document->lines()->count();
@@ -339,18 +414,34 @@ final class DraftPersistenceService
         foreach ($linesData as $lineData) {
             $currentLineNumber++;
             $product = $products->get($lineData['product_id'] ?? '');
+            $service = $services->get($lineData['service_id'] ?? '');
 
             $quantity = (float) ($lineData['quantity'] ?? 1);
             $unitPrice = (float) ($lineData['unit_price'] ?? 0);
             $lineTotal = $quantity * $unitPrice;
-            $batchProductName = $product !== null ? $product->name : '';
+
+            $batchDefaultName = $service !== null
+                ? (string) $service->name
+                : ($product !== null ? (string) $product->name : '');
+
+            $batchDescription = mb_substr(
+                isset($lineData['description']) && is_string($lineData['description']) && $lineData['description'] !== ''
+                    ? (string) $lineData['description']
+                    : $batchDefaultName,
+                0, 500
+            );
+
+            $batchSnapshot = $batchDefaultName !== '' ? mb_substr($batchDefaultName, 0, 500) : null;
 
             $insertData = [
                 'id' => (string) \Str::uuid(),
                 'document_id' => $document->id,
-                'product_id' => $lineData['product_id'] ?? '',
+                'product_id' => $lineData['product_id'] ?? null,
+                'service_id' => $lineData['service_id'] ?? null,
                 'line_number' => $currentLineNumber,
-                'description' => $batchProductName,
+                'description' => $batchDescription,
+                'designation_default_snapshot' => $batchSnapshot,
+                'notes' => isset($lineData['notes']) ? mb_substr((string) $lineData['notes'], 0, 1000) : null,
                 'quantity' => $quantity,
                 'unit_price' => $unitPrice,
                 'tax_rate' => $lineData['tax_rate'] ?? 0,
@@ -362,11 +453,14 @@ final class DraftPersistenceService
             $linesToInsert[] = $insertData;
             $lineInsertData[] = [
                 'id' => $insertData['id'],
-                'product_id' => $insertData['product_id'],
-                'product_name' => $batchProductName,
+                'product_id' => $insertData['product_id'] ?? '',
+                'product_name' => $batchDefaultName,
                 'quantity' => $quantity,
                 'unit_price' => $unitPrice,
                 'line_total' => $lineTotal,
+                'description' => $batchDescription,
+                'notes' => $insertData['notes'],
+                'designation_default_snapshot' => $batchSnapshot,
             ];
         }
 
@@ -377,6 +471,7 @@ final class DraftPersistenceService
 
         // 4. Fire events (still individual for audit trail)
         foreach ($lineInsertData as $eventData) {
+            // V1 event — backward compatible
             event(new DraftLineAdded(
                 documentId: $document->id,
                 tenantId: $document->tenant_id,
@@ -387,6 +482,24 @@ final class DraftPersistenceService
                 quantity: $eventData['quantity'],
                 unitPrice: $eventData['unit_price'],
                 lineTotal: $eventData['line_total'],
+                lineId: $eventData['id'],
+                addedAt: now()->toIso8601String(),
+            ));
+
+            // V2 event — includes description, notes, and designation snapshot
+            event(new DraftLineAddedV2(
+                documentId: $document->id,
+                tenantId: $document->tenant_id,
+                companyId: $companyId,
+                userId: $userId,
+                productId: $eventData['product_id'],
+                productName: $eventData['product_name'],
+                quantity: $eventData['quantity'],
+                unitPrice: $eventData['unit_price'],
+                lineTotal: $eventData['line_total'],
+                description: $eventData['description'],
+                notes: $eventData['notes'],
+                designationDefaultSnapshot: $eventData['designation_default_snapshot'],
                 lineId: $eventData['id'],
                 addedAt: now()->toIso8601String(),
             ));

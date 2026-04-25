@@ -88,7 +88,7 @@ class CreateDocumentRequest extends FormRequest
                     ->where('tenant_id', $tenantId)
                     ->where('is_active', true),
             ],
-            'lines.*.description' => ['required', 'string', 'max:1000'],
+            'lines.*.description' => ['required', 'string', 'min:1', 'max:500'],
             'lines.*.quantity' => ['required', 'numeric', 'gt:0'],
             'lines.*.unit_price' => ['required', 'numeric', 'min:0'],
             'lines.*.discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
@@ -96,5 +96,24 @@ class CreateDocumentRequest extends FormRequest
             'lines.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'lines.*.notes' => ['nullable', 'string', 'max:1000'],
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('lines') && is_array($this->input('lines'))) {
+            $lines = array_map(function (array $line): array {
+                if (isset($line['description']) && is_string($line['description'])) {
+                    $line['description'] = trim($line['description']);
+                }
+                if (isset($line['notes']) && is_string($line['notes'])) {
+                    $line['notes'] = trim($line['notes']);
+                }
+                // Strip client-supplied snapshot — server sets it
+                unset($line['designation_default_snapshot']);
+
+                return $line;
+            }, $this->input('lines'));
+            $this->merge(['lines' => $lines]);
+        }
     }
 }

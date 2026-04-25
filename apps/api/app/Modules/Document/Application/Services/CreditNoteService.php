@@ -14,6 +14,8 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Product\Domain\Product;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class CreditNoteService
@@ -243,6 +245,7 @@ class CreditNoteService
                     'tax_rate' => $invoiceLine->tax_rate,
                     'line_total' => $lineTotal,
                     'notes' => $invoiceLine->notes,
+                    'designation_default_snapshot' => $invoiceLine->designation_default_snapshot,
                 ]);
 
                 $lineNumber++;
@@ -334,6 +337,11 @@ class CreditNoteService
                 'notes' => $notes,
             ]);
 
+            // Batch-fetch products for snapshot capture (1 query)
+            $standaloneProdIds = collect($lines)->pluck('product_id')->filter()->unique()->values()->toArray();
+            /** @var Collection<int, Product> $standaloneProducts */
+            $standaloneProducts = Product::whereIn('id', $standaloneProdIds)->get()->keyBy('id');
+
             // Create credit note lines from provided data
             $lineNumber = 1;
             foreach ($lines as $line) {
@@ -342,11 +350,16 @@ class CreditNoteService
                 $taxRate = (string) $line['tax_rate'];
                 $lineTotal = bcmul($quantity, $unitPrice, 4);
 
+                /** @var Product|null $standaloneProduct */
+                $standaloneProduct = isset($line['product_id']) ? $standaloneProducts->get($line['product_id']) : null;
+                $standaloneDefaultName = $standaloneProduct !== null ? (string) $standaloneProduct->name : '';
+
                 DocumentLine::create([
                     'document_id' => $creditNote->id,
                     'product_id' => $line['product_id'] ?? null,
                     'line_number' => $lineNumber,
                     'description' => $line['description'],
+                    'designation_default_snapshot' => $standaloneDefaultName !== '' ? mb_substr($standaloneDefaultName, 0, 500) : null,
                     'quantity' => $quantity,
                     'unit_price' => $unitPrice,
                     'discount_percent' => '0.00',

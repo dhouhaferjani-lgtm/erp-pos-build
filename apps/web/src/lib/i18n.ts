@@ -40,6 +40,7 @@ import enScheduling from '../locales/en/scheduling.json'
 import enVehicles from '../locales/en/vehicles.json'
 import enVehicleOwnership from '../locales/en/vehicle-ownership.json'
 import enPickers from '../locales/en/pickers.json'
+import enDocuments from '../locales/en/documents.json'
 
 import frCommon from '../locales/fr/common.json'
 import frAuth from '../locales/fr/auth.json'
@@ -78,6 +79,7 @@ import frScheduling from '../locales/fr/scheduling.json'
 import frVehicles from '../locales/fr/vehicles.json'
 import frVehicleOwnership from '../locales/fr/vehicle-ownership.json'
 import frPickers from '../locales/fr/pickers.json'
+import frDocuments from '../locales/fr/documents.json'
 
 // Arabic: fully translated AutoSpecs + shared foundations (🟠-4 Tunisia Go-Live).
 // Other namespaces still fall back to the EN bundle below.
@@ -92,6 +94,7 @@ import arScheduling from '../locales/ar/scheduling.json'
 import arPickers from '../locales/ar/pickers.json'
 import arMenu from '../locales/ar/menu.json'
 import arPartsCatalog from '../locales/ar/parts-catalog.json'
+import arDocuments from '../locales/ar/documents.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -140,6 +143,7 @@ const resources = {
     vehicles: enVehicles,
     'vehicle-ownership': enVehicleOwnership,
     pickers: enPickers,
+    documents: enDocuments,
   },
   fr: {
     common: frCommon,
@@ -179,6 +183,7 @@ const resources = {
     vehicles: frVehicles,
     'vehicle-ownership': frVehicleOwnership,
     pickers: frPickers,
+    documents: frDocuments,
   },
   ar: {
     // 🟠-4 Tunisia Go-Live: AutoSpecs namespaces + shared foundations are now
@@ -221,6 +226,7 @@ const resources = {
     vehicles: arVehicles,
     'vehicle-ownership': arVehicleOwnership,
     pickers: arPickers,
+    documents: arDocuments,
   },
 }
 
@@ -231,7 +237,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

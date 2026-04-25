@@ -29,6 +29,7 @@ export interface DocumentLineData {
   tax_rate: string | null  // Formatted number string from backend
   line_total: string  // Formatted number string from backend
   notes: string | null
+  designation_default_snapshot: string | null
   // Extended fields for delivery/receipt tracking (may be in payload)
   quantity_delivered?: string
   quantity_received?: string

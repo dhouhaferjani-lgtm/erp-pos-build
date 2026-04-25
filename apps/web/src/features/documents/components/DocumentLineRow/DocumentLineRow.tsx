@@ -2,12 +2,18 @@ import { GripVertical, Trash2 } from 'lucide-react'
 import { MarginIndicator, type MarginLevel } from '../../../../components/molecules/MarginIndicator'
 import { TaxConfigurationSelect } from '../../../../components/atoms/TaxConfigurationSelect'
 import { useTaxConfigName } from '../../../../hooks/useTaxConfigName'
+import { DesignationCell } from '../DesignationCell'
+import { NotesCell } from '../NotesCell'
+import { useLineDesignationFeature } from '../../hooks/useLineDesignationFeature'
+import { textColors } from '../../../../lib/designTokens'
 
 export interface DocumentLineData {
   id: string
   product_id: string
   product_name: string
   description: string
+  designation_default_snapshot?: string | null
+  notes?: string | null
   quantity: number
   unit_price: number
   tax_rate: number
@@ -23,13 +29,10 @@ export interface DocumentLineRowProps {
   showMargin: boolean
   targetMargin?: number
   minimumMargin?: number
-  isEditing: boolean
   isDragging: boolean
   documentType?: string
-  onEdit: () => void
   onUpdate: (updates: Partial<DocumentLineData>) => void
   onRemove: () => void
-  onEditComplete: () => void
   onDragStart: () => void
   onDragOver: (e: React.DragEvent) => void
   onDragEnd: () => void
@@ -59,13 +62,10 @@ export function DocumentLineRow({
   showMargin,
   targetMargin = 25,
   minimumMargin = 15,
-  isEditing,
   isDragging,
   documentType,
-  onEdit,
   onUpdate,
   onRemove,
-  onEditComplete,
   onDragStart,
   onDragOver,
   onDragEnd,
@@ -74,6 +74,7 @@ export function DocumentLineRow({
   const margin = line.cost_price ? calculateMargin(line.unit_price, line.cost_price) : null
   const taxConfigName = useTaxConfigName(line.tax_configuration_id)
   const level = margin !== null ? getMarginLevel(margin, targetMargin, minimumMargin) : null
+  const designationFeatureEnabled = useLineDesignationFeature()
 
   return (
     <tr
@@ -95,26 +96,25 @@ export function DocumentLineRow({
         </td>
       )}
 
-      {/* Item Description */}
+      {/* Item Description + Notes */}
       <td className="px-4 py-3">
-        {isEditing && !readonly ? (
-          <input
-            type="text"
-            value={line.description}
-            onChange={(e) => { onUpdate({ description: e.target.value }) }}
-            onBlur={onEditComplete}
-            className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            autoFocus
+        {designationFeatureEnabled ? (
+          <DesignationCell
+            value={line.description || line.product_name}
+            originalSnapshot={line.designation_default_snapshot ?? null}
+            productDeleted={false /* TODO: derive from line.product_deleted once exposed in DocumentLineData DTO */}
+            readOnly={readonly}
+            onCommit={(next) => { onUpdate({ description: next }) }}
           />
         ) : (
-          <button
-            type="button"
-            onClick={() => { if (!readonly) onEdit() }}
-            className="text-start text-sm font-medium text-gray-900 hover:text-blue-600"
-            disabled={readonly}
-          >
-            {line.description || line.product_name || 'Click to edit'}
-          </button>
+          <span className={`text-sm ${textColors.primary}`}>{line.description || line.product_name}</span>
+        )}
+        {designationFeatureEnabled && (
+          <NotesCell
+            value={line.notes ?? null}
+            readOnly={readonly}
+            onCommit={(next) => { onUpdate({ notes: next === undefined ? null : next }) }}
+          />
         )}
       </td>
 

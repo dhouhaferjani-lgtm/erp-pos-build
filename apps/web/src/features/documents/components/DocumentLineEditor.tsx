@@ -7,6 +7,10 @@ import { formatCurrency } from '../../../lib/format'
 import { useCompanyStore } from '../../../stores/companyStore'
 import { AddQuickProductModal } from '../../../components/organisms'
 import { TaxConfigurationSelect } from '../../../components/atoms/TaxConfigurationSelect'
+import { DesignationCell } from './DesignationCell'
+import { NotesCell } from './NotesCell'
+import { useLineDesignationFeature } from '../hooks/useLineDesignationFeature'
+import { textColors } from '../../../lib/designTokens'
 
 // Map frontend document type strings to backend applicable_document_types format
 const DOCUMENT_TYPE_MAP: Record<string, string> = {
@@ -51,6 +55,8 @@ export interface DocumentLine {
   product_code?: string
   product_name: string
   description: string
+  designation_default_snapshot?: string | null
+  notes?: string | null
   quantity: number
   unit_price: number
   tax_rate: number
@@ -72,11 +78,11 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   const { t } = useTranslation(['sales', 'common'])
   const queryClient = useQueryClient()
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+  const designationFeatureEnabled = useLineDesignationFeature()
   const [searchQuery, setSearchQuery] = useState('')
   const [searchTab, setSearchTab] = useState<SearchTab>('product')
   const [showProductSearch, setShowProductSearch] = useState(false)
   const [showProductModal, setShowProductModal] = useState(false)
-  const [editingLineId, setEditingLineId] = useState<string | null>(null)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
 
   // Get company currency with fallback
@@ -155,6 +161,8 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
         product_code: product.sku,
         product_name: product.name,
         description: product.name,
+        designation_default_snapshot: product.name,
+        notes: null,
         quantity: 1,
         unit_price: product.sale_price,
         tax_rate: product.tax_rate,
@@ -178,6 +186,8 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
         product_code: service.code,
         product_name: service.name,
         description: service.name,
+        designation_default_snapshot: service.name,
+        notes: null,
         quantity: 1,
         unit_price: service.base_price,
         tax_rate: service.tax_rate,
@@ -205,7 +215,6 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
       line_total: 0,
     }
     onChange([...lines, newLine])
-    setEditingLineId(newLine.id)
   }, [lines, onChange])
 
   // Update line
@@ -358,30 +367,26 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    {editingLineId === line.id && !readonly ? (
-                      <input
-                        type="text"
-                        value={line.description}
-                        onChange={(e) => {
-                          handleUpdateLine(line.id, { description: e.target.value })
+                    {designationFeatureEnabled ? (
+                      <DesignationCell
+                        value={line.description || line.product_name}
+                        originalSnapshot={line.designation_default_snapshot ?? null}
+                        readOnly={readonly}
+                        onCommit={(next) => {
+                          handleUpdateLine(line.id, { description: next })
                         }}
-                        onBlur={() => {
-                          setEditingLineId(null)
-                        }}
-                        className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        autoFocus
                       />
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!readonly) setEditingLineId(line.id)
+                      <span className={`text-sm ${textColors.primary}`}>{line.description || line.product_name}</span>
+                    )}
+                    {designationFeatureEnabled && (
+                      <NotesCell
+                        value={line.notes ?? null}
+                        readOnly={readonly}
+                        onCommit={(next) => {
+                          handleUpdateLine(line.id, { notes: next })
                         }}
-                        className="text-start text-sm font-medium text-gray-900 hover:text-blue-600"
-                        disabled={readonly}
-                      >
-                        {line.description || line.product_name || t('sales:lineItems.actions.clickToEdit')}
-                      </button>
+                      />
                     )}
                   </td>
                   <td className="px-4 py-3 text-end">

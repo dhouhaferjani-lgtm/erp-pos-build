@@ -34,6 +34,7 @@ use Illuminate\Support\Carbon;
  * @property numeric-string $allocated_costs
  * @property numeric-string|null $landed_unit_cost
  * @property string|null $notes
+ * @property string|null $designation_default_snapshot
  * @property string|null $source_line_id
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -76,6 +77,7 @@ class DocumentLine extends Model
         'allocated_costs',
         'landed_unit_cost',
         'notes',
+        'designation_default_snapshot',
         'source_line_id',
     ];
 

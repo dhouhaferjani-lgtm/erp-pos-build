@@ -444,10 +444,25 @@ fully_invoiced: boolean;
 goods_received: boolean;
 delivery_note_ids: Array<any>;
 invoice_ids: Array<any>;
-lines: Array<any>;
+lines: Array<App.Modules.Document.Application.DTOs.DocumentLineData>;
 payments: Array<any>;
 created_at: string;
 updated_at: string;
+};
+export type DocumentLineData = {
+id: string;
+document_id: string;
+product_id: string | null;
+line_number: number;
+description: string;
+quantity: string;
+unit_price: string;
+discount_percent: string | null;
+discount_amount: string | null;
+tax_rate: string | null;
+line_total: string;
+notes: string | null;
+designation_default_snapshot: string | null;
 };
 export type VehicleContextData = {
 vehicle_id: string;

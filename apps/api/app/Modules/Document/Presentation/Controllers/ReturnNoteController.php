@@ -19,7 +19,9 @@ use App\Modules\Document\Domain\Services\ReturnNoteService;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
+use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -215,6 +217,13 @@ class ReturnNoteController extends Controller
                 $subtotal = '0.00';
                 $taxAmount = '0.00';
 
+                // Batch-fetch products for snapshot capture (1 query)
+                /** @var array<int, array{product_id?: string, description: string, quantity: string, unit_price: string, tax_rate?: string, location_id?: string, notes?: string}> $storeLines */
+                $storeLines = $data['lines'];
+                $storeProductIds = collect($storeLines)->pluck('product_id')->filter()->unique()->values()->toArray();
+                /** @var Collection<int, Product> $storeProducts */
+                $storeProducts = Product::whereIn('id', $storeProductIds)->get()->keyBy('id');
+
                 foreach ($data['lines'] as $index => $lineData) {
                     $lineTotal = bcmul(
                         $lineData['quantity'],
@@ -228,12 +237,17 @@ class ReturnNoteController extends Controller
                         $this->scale()
                     );
 
+                    /** @var Product|null $storeLineProduct */
+                    $storeLineProduct = isset($lineData['product_id']) ? $storeProducts->get($lineData['product_id']) : null;
+                    $storeDefaultName = $storeLineProduct !== null ? (string) $storeLineProduct->name : '';
+
                     DocumentLine::create([
                         'document_id' => $returnNote->id,
                         'product_id' => $lineData['product_id'] ?? null,
                         'location_id' => $lineData['location_id'] ?? null, // Optional per-line location
                         'line_number' => $index + 1,
                         'description' => $lineData['description'],
+                        'designation_default_snapshot' => $storeDefaultName !== '' ? mb_substr($storeDefaultName, 0, 500) : null,
                         'quantity' => $lineData['quantity'],
                         'unit_price' => $lineData['unit_price'],
                         'tax_rate' => $lineData['tax_rate'] ?? '0.00',
@@ -332,6 +346,13 @@ class ReturnNoteController extends Controller
                 // Delete existing lines
                 $returnNote->lines()->delete();
 
+                // Batch-fetch products for snapshot capture (1 query)
+                /** @var array<int, array{product_id?: string, description: string, quantity: string, unit_price: string, tax_rate?: string, location_id?: string, notes?: string}> $updateLines */
+                $updateLines = $data['lines'];
+                $updateProductIds = collect($updateLines)->pluck('product_id')->filter()->unique()->values()->toArray();
+                /** @var Collection<int, Product> $updateProducts */
+                $updateProducts = Product::whereIn('id', $updateProductIds)->get()->keyBy('id');
+
                 // Create new lines
                 $subtotal = '0.00';
                 $taxAmount = '0.00';
@@ -349,12 +370,17 @@ class ReturnNoteController extends Controller
                         $this->scale()
                     );
 
+                    /** @var Product|null $updateLineProduct */
+                    $updateLineProduct = isset($lineData['product_id']) ? $updateProducts->get($lineData['product_id']) : null;
+                    $updateDefaultName = $updateLineProduct !== null ? (string) $updateLineProduct->name : '';
+
                     DocumentLine::create([
                         'document_id' => $returnNote->id,
                         'product_id' => $lineData['product_id'] ?? null,
                         'location_id' => $lineData['location_id'] ?? null, // Optional per-line location
                         'line_number' => $index + 1,
                         'description' => $lineData['description'],
+                        'designation_default_snapshot' => $updateDefaultName !== '' ? mb_substr($updateDefaultName, 0, 500) : null,
                         'quantity' => $lineData['quantity'],
                         'unit_price' => $lineData['unit_price'],
                         'tax_rate' => $lineData['tax_rate'] ?? '0.00',

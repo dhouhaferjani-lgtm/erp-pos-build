@@ -1,0 +1,18 @@
+{
+  "lines": {
+    "designation": {
+      "editAriaLabel": "Edit designation",
+      "overriddenTooltip": "Designation overridden — original: {{originalName}}",
+      "resetLink": "Reset to product name",
+      "resetAriaLabel": "Reset designation to product name",
+      "resetDisabledTooltip": "Product no longer exists",
+      "emptyHint": "Designation cannot be empty"
+    },
+    "additionalDescription": {
+      "addLink": "Add description",
+      "addAriaLabel": "Add additional description",
+      "editAriaLabel": "Additional description",
+      "placeholder": "e.g. 2.5h × 60/hr by mechanic John"
+    }
+  }
+}

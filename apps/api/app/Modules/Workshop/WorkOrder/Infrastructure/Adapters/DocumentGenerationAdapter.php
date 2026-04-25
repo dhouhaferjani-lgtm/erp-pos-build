@@ -133,9 +133,9 @@ final readonly class DocumentGenerationAdapter
             'product_id' => $wol->product_id,
             'service_id' => $wol->service_id,
             'line_number' => $lineNumber,
-            'description' => $wol->display_name.(
-                $wol->description !== null ? ' — '.$wol->description : ''
-            ),
+            'description' => (string) $wol->display_name,
+            'notes' => $wol->description,
+            'designation_default_snapshot' => mb_substr((string) $wol->display_name, 0, 500),
             'quantity' => $wol->quantity,
             'quantity_delivered' => '0',
             'quantity_received' => '0',

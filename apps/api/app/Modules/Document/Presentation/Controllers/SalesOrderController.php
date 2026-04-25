@@ -20,9 +20,12 @@ use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Product\Domain\Product;
+use App\Modules\Service\Domain\Service;
 use App\Modules\Vehicle\Application\Services\VehicleContextBuilder;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Support\Traits\PaginatesResults;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -144,7 +147,7 @@ class SalesOrderController extends Controller
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
 
-        /** @var array<int, array{description: string, quantity: string, unit_price: string, product_id?: string, tax_rate?: string, discount_percent?: string, discount_amount?: string, notes?: string}> $lines */
+        /** @var array<int, array{description: string, quantity: string, unit_price: string, product_id?: string, service_id?: string, tax_rate?: string, discount_percent?: string, discount_amount?: string, notes?: string}> $lines */
         $lines = $validated['lines'] ?? [];
         unset($validated['lines']);
 
@@ -211,6 +214,14 @@ class SalesOrderController extends Controller
                 'total' => $total,
             ]);
 
+            // Batch-fetch products and services for snapshot capture (1 query each)
+            $productIds = collect($lines)->pluck('product_id')->filter()->unique()->values()->toArray();
+            $serviceIds = collect($lines)->pluck('service_id')->filter()->unique()->values()->toArray();
+            /** @var Collection<int, Product> $products */
+            $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
+            /** @var Collection<int, Service> $services */
+            $services = Service::whereIn('id', $serviceIds)->get()->keyBy('id');
+
             // Create lines
             foreach ($lines as $index => $lineData) {
                 /** @var numeric-string $quantity */
@@ -219,11 +230,22 @@ class SalesOrderController extends Controller
                 $unitPrice = (string) $lineData['unit_price'];
                 $lineTotal = bcmul($quantity, $unitPrice, $this->scale());
 
+                /** @var Service|null $lineService */
+                $lineService = isset($lineData['service_id']) ? $services->get($lineData['service_id']) : null;
+                /** @var Product|null $lineProduct */
+                $lineProduct = isset($lineData['product_id']) ? $products->get($lineData['product_id']) : null;
+
+                $defaultName = $lineService !== null
+                    ? (string) $lineService->name
+                    : ($lineProduct !== null ? (string) $lineProduct->name : '');
+
                 DocumentLine::create([
                     'document_id' => $document->id,
                     'product_id' => $lineData['product_id'] ?? null,
+                    'service_id' => $lineData['service_id'] ?? null,
                     'line_number' => $index + 1,
                     'description' => $lineData['description'],
+                    'designation_default_snapshot' => $defaultName !== '' ? mb_substr($defaultName, 0, 500) : null,
                     'quantity' => $quantity,
                     'unit_price' => $unitPrice,
                     'discount_percent' => isset($lineData['discount_percent']) ? (string) $lineData['discount_percent'] : null,
@@ -275,7 +297,7 @@ class SalesOrderController extends Controller
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
 
-        /** @var array<int, array{description: string, quantity: string, unit_price: string, product_id?: string, tax_rate?: string, discount_percent?: string, discount_amount?: string, notes?: string}>|null $lines */
+        /** @var array<int, array{description: string, quantity: string, unit_price: string, product_id?: string, service_id?: string, tax_rate?: string, discount_percent?: string, discount_amount?: string, notes?: string}>|null $lines */
         $lines = $validated['lines'] ?? null;
         unset($validated['lines']);
 
@@ -300,6 +322,14 @@ class SalesOrderController extends Controller
                 // Delete existing lines
                 $documentModel->lines()->delete();
 
+                // Batch-fetch products and services for snapshot capture (1 query each)
+                $updateProductIds = collect($lines)->pluck('product_id')->filter()->unique()->values()->toArray();
+                $updateServiceIds = collect($lines)->pluck('service_id')->filter()->unique()->values()->toArray();
+                /** @var Collection<int, Product> $updateProducts */
+                $updateProducts = Product::whereIn('id', $updateProductIds)->get()->keyBy('id');
+                /** @var Collection<int, Service> $updateServices */
+                $updateServices = Service::whereIn('id', $updateServiceIds)->get()->keyBy('id');
+
                 // Calculate totals from new lines
                 $subtotal = '0.00';
                 $taxAmount = '0.00';
@@ -318,11 +348,22 @@ class SalesOrderController extends Controller
                     $subtotal = bcadd($subtotal, $lineSubtotal, $this->scale());
                     $taxAmount = bcadd($taxAmount, $lineTax, $this->scale());
 
+                    /** @var Service|null $updateLineService */
+                    $updateLineService = isset($lineData['service_id']) ? $updateServices->get($lineData['service_id']) : null;
+                    /** @var Product|null $updateLineProduct */
+                    $updateLineProduct = isset($lineData['product_id']) ? $updateProducts->get($lineData['product_id']) : null;
+
+                    $updateDefaultName = $updateLineService !== null
+                        ? (string) $updateLineService->name
+                        : ($updateLineProduct !== null ? (string) $updateLineProduct->name : '');
+
                     DocumentLine::create([
                         'document_id' => $documentModel->id,
                         'product_id' => $lineData['product_id'] ?? null,
+                        'service_id' => $lineData['service_id'] ?? null,
                         'line_number' => $index + 1,
                         'description' => $lineData['description'],
+                        'designation_default_snapshot' => $updateDefaultName !== '' ? mb_substr($updateDefaultName, 0, 500) : null,
                         'quantity' => $quantity,
                         'unit_price' => $unitPrice,
                         'discount_percent' => isset($lineData['discount_percent']) ? (string) $lineData['discount_percent'] : null,

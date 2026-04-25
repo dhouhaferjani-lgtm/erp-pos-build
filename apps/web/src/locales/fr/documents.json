@@ -1,4 +1,20 @@
 {
+  "lines": {
+    "designation": {
+      "editAriaLabel": "Modifier la désignation",
+      "overriddenTooltip": "Désignation modifiée — originale : {{originalName}}",
+      "resetLink": "Rétablir le nom du produit",
+      "resetAriaLabel": "Rétablir la désignation au nom du produit",
+      "resetDisabledTooltip": "Le produit n'existe plus",
+      "emptyHint": "La désignation ne peut pas être vide"
+    },
+    "additionalDescription": {
+      "addLink": "Ajouter une description",
+      "addAriaLabel": "Ajouter une description supplémentaire",
+      "editAriaLabel": "Description supplémentaire",
+      "placeholder": "ex. 2.5h × 60/h par le mécanicien Jean"
+    }
+  },
   "taxMention": {
     "label": "Mention fiscale",
     "placeholder": "ex: Exonéré TVA - Certificat #123",

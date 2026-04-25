@@ -538,6 +538,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
                             'tax_rate' => $line->tax_rate,
                             'line_total' => $lineTotal,
                             'notes' => $line->notes,
+                            'designation_default_snapshot' => $line->designation_default_snapshot,
                             'source_line_id' => $line->id,
                             'batch_id' => $suggestion->batch->id,
                         ]);
@@ -559,6 +560,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
                         'tax_rate' => $line->tax_rate,
                         'line_total' => $line->line_total ?? '0.00',
                         'notes' => $line->notes,
+                        'designation_default_snapshot' => $line->designation_default_snapshot,
                         'source_line_id' => $line->id,
                     ]);
 
@@ -584,6 +586,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
                     'tax_rate' => $line->tax_rate,
                     'line_total' => $line->line_total ?? '0.00',
                     'notes' => $line->notes,
+                    'designation_default_snapshot' => $line->designation_default_snapshot,
                     'source_line_id' => $line->id,
                 ]);
             }

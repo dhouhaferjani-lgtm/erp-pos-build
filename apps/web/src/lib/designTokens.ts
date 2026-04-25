@@ -372,6 +372,14 @@ export const tokens = {
     rowHover: 'hover:bg-gray-50',
     cellMonoBadge: 'inline-flex rounded-md bg-gray-100 px-2 py-1 text-sm font-mono font-medium',
   },
+
+  /**
+   * Designation override indicator dot — shown when a line's description
+   * has been manually overridden from its original product name snapshot.
+   */
+  designationOverride: {
+    dot: 'inline-block h-2 w-2 rounded-full bg-amber-400 shrink-0',
+  },
 }
 
 /**

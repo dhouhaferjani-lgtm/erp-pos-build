@@ -25,6 +25,7 @@ export const defaultCompanyConfig: TestCompanyConfig = {
   country_code: null,
   smart_prompts_enabled: false,
   smart_prompts_variant: 'off',
+  line_designation_override_enabled: false,
 }
 
 export const pharmacyCompanyConfig: TestCompanyConfig = {
@@ -37,6 +38,7 @@ export const pharmacyCompanyConfig: TestCompanyConfig = {
   country_code: null,
   smart_prompts_enabled: false,
   smart_prompts_variant: 'off',
+  line_designation_override_enabled: false,
 }
 
 /**
@@ -53,6 +55,7 @@ export const mechanicCompanyConfig: TestCompanyConfig = {
   country_code: 'TN',
   smart_prompts_enabled: false,
   smart_prompts_variant: 'off',
+  line_designation_override_enabled: false,
 }
 
 /**
@@ -69,4 +72,5 @@ export const mechanicWithExtrasCompanyConfig: TestCompanyConfig = {
   country_code: 'TN',
   smart_prompts_enabled: false,
   smart_prompts_variant: 'off',
+  line_designation_override_enabled: false,
 }

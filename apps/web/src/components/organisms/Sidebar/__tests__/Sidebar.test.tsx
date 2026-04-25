@@ -134,6 +134,7 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       country_code: 'TN',
       smart_prompts_enabled: false,
       smart_prompts_variant: 'off',
+      line_designation_override_enabled: false,
     }
 
     it('hides Vehicle module for pharmacy vertical', async () => {
@@ -178,6 +179,7 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       country_code: 'FR',
       smart_prompts_enabled: false,
       smart_prompts_variant: 'off',
+      line_designation_override_enabled: false,
     }
 
     it('hides Vehicle module for restaurant vertical', async () => {
@@ -282,6 +284,7 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       country_code: 'FR',
       smart_prompts_enabled: false,
       smart_prompts_variant: 'off',
+      line_designation_override_enabled: false,
     }
 
     it('hides Vehicles entry for retail vertical', async () => {
@@ -376,6 +379,7 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       country_code: 'US',
       smart_prompts_enabled: false,
       smart_prompts_variant: 'off',
+      line_designation_override_enabled: false,
     }
 
     it('always shows Dashboard regardless of vertical', async () => {
