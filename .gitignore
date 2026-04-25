@@ -58,3 +58,6 @@ docs/sessions/
 !docs/sessions/.gitkeep
 .worktrees/
 .superpowers/
+
+# Agent worktrees created inside .claude/
+.claude/worktrees/
