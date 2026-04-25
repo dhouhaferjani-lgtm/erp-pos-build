@@ -6,10 +6,12 @@ import {
   upsertPaymentRepositories,
 } from '@/lib/db/repositories/paymentRepository';
 import { upsertOperators } from '@/lib/db/repositories/operatorPinRepository';
+import Big from 'big.js';
 import {
   upsertTerminalState,
   upsertZChainState,
   advanceHashChain,
+  getZChainState,
   type TerminalHashState,
 } from '@/lib/db/repositories/terminalStateRepository';
 import {
@@ -544,6 +546,19 @@ interface ZChainStateResponse {
 /**
  * Pull Z-chain state from server (for recovery after local DB loss).
  * Updates only Z-chain columns in terminal_state without affecting receipt chain.
+ *
+ * Defensive invariant: the cumulative_* counters are append-only over the
+ * lifetime of a terminal. A server response that would zero or rewind them
+ * is either a stale snapshot (online-only tenant whose grand_totals were
+ * never populated server-side, pre-fix) or a genuine data corruption. In
+ * neither case should the local, post-activation-accurate state be overwritten.
+ *
+ * Rules:
+ *   - Null or all-zero server grand_totals AND local has non-zero counters:
+ *     preserve local, log, skip upsert.
+ *   - Any counter moves backwards vs. local: preserve local, log as regression,
+ *     skip upsert (mirrors upsertTerminalState's FiscalRegressionError pattern).
+ *   - All counters move forward (or local is zero): apply server values.
  */
 export async function pullZChainState(
   db: Database,
@@ -551,6 +566,27 @@ export async function pullZChainState(
 ): Promise<boolean> {
   try {
     const state = await apiGet<ZChainStateResponse>(`/pos/terminals/${terminalId}/z-chain-state`);
+    const local = await getZChainState(db, terminalId);
+    const decision = decideZChainUpsert(local, state);
+
+    if (decision.action === 'skip') {
+      console.warn('[fiscal] pullZChainState preserved local state', {
+        terminal_id: terminalId,
+        reason: decision.reason,
+        local_cumulative_sales: local?.cumulative_sales ?? '0.000',
+        server_grand_totals: state.grand_totals,
+      });
+      await logSyncOperation(
+        db,
+        'pull',
+        'z_chain_state',
+        terminalId,
+        'success',
+        `preserved local state (${decision.reason})`,
+      );
+      return true;
+    }
+
     await upsertZChainState(db, terminalId, state);
     await logSyncOperation(db, 'pull', 'z_chain_state', terminalId, 'success');
     return true;
@@ -559,6 +595,66 @@ export async function pullZChainState(
     await logSyncOperation(db, 'pull', 'z_chain_state', terminalId, 'error', message);
     return false;
   }
+}
+
+type ZChainDecision =
+  | { action: 'apply' }
+  | { action: 'skip'; reason: 'server_null_or_zero' | 'server_regresses_local' };
+
+function decideZChainUpsert(
+  local: {
+    cumulative_sales: string;
+    cumulative_tax: string;
+    cumulative_refunds: string;
+    perpetual_grand_total: string;
+    receipt_count_lifetime: number;
+  } | null,
+  server: ZChainStateResponse,
+): ZChainDecision {
+  const serverTotals = server.grand_totals;
+
+  // `localSum` mixes monetary values (decimal strings) with `receipt_count_lifetime`
+  // (an integer). Dimensionally odd, but only used as a `.gt(0)` "has any local data"
+  // gate — so a terminal with voided-only receipts (zero revenue, non-zero count) is
+  // correctly protected against null-clobber. Don't "fix" by dropping the count.
+  const localSum = local
+    ? Big(local.cumulative_sales || '0')
+        .plus(local.cumulative_tax || '0')
+        .plus(local.cumulative_refunds || '0')
+        .plus(local.perpetual_grand_total || '0')
+        .plus(local.receipt_count_lifetime)
+    : Big(0);
+  const localHasData = localSum.gt(0);
+
+  if (serverTotals === null) {
+    return localHasData
+      ? { action: 'skip', reason: 'server_null_or_zero' }
+      : { action: 'apply' };
+  }
+
+  const serverSum = Big(serverTotals.cumulative_sales || '0')
+    .plus(serverTotals.cumulative_tax || '0')
+    .plus(serverTotals.cumulative_refunds || '0')
+    .plus(serverTotals.perpetual_grand_total || '0')
+    .plus(serverTotals.receipt_count_lifetime);
+
+  if (serverSum.eq(0) && localHasData) {
+    return { action: 'skip', reason: 'server_null_or_zero' };
+  }
+
+  if (local !== null && localHasData) {
+    const regresses =
+      Big(serverTotals.cumulative_sales || '0').lt(local.cumulative_sales || '0') ||
+      Big(serverTotals.cumulative_tax || '0').lt(local.cumulative_tax || '0') ||
+      Big(serverTotals.cumulative_refunds || '0').lt(local.cumulative_refunds || '0') ||
+      Big(serverTotals.perpetual_grand_total || '0').lt(local.perpetual_grand_total || '0') ||
+      serverTotals.receipt_count_lifetime < local.receipt_count_lifetime;
+    if (regresses) {
+      return { action: 'skip', reason: 'server_regresses_local' };
+    }
+  }
+
+  return { action: 'apply' };
 }
 
 /**

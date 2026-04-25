@@ -141,6 +141,12 @@ final class ReportGenerationService
             $zNumber = $this->zReportHashService->getNextZNumber($terminal);
             $previousZHash = $this->zReportHashService->getPreviousZHash($terminal);
 
+            // Extend the prior Z's grand_totals with this shift's numbers so that
+            // `pullZChainState` has a non-null payload for online-only tenants.
+            // Without this, offline POS clients pulling Z-chain state would clobber
+            // their locally-accumulated cumulative counters with zeros.
+            $grandTotals = $this->computeGrandTotals($terminal, $reportData);
+
             // Create Z report (without hash initially)
             $zReport = new ZReport([
                 'terminal_id' => $terminal->id,
@@ -148,6 +154,7 @@ final class ReportGenerationService
                 'z_number' => $zNumber,
                 'previous_z_hash' => $previousZHash,
                 'report_data' => $reportData,
+                'grand_totals' => $grandTotals,
                 'generated_by' => $generatedBy->id,
                 'generated_at' => now(),
             ]);
@@ -313,6 +320,75 @@ final class ReportGenerationService
         $result = $formatter->format($number);
 
         return $result !== false ? $result : number_format($number, $decimals);
+    }
+
+    /**
+     * Compute cumulative grand totals by extending the previous Z-report's
+     * grand_totals with this shift's numbers.
+     *
+     * Shape must match the `ZChainStateResponse` contract consumed by the
+     * POS client (apps/pos/src/lib/sync/syncService.ts → pullZChainState).
+     *
+     * @param  array<string, mixed>  $reportData  Output of calculateShiftTotals()
+     * @return array{
+     *     cumulative_sales: string,
+     *     cumulative_tax: string,
+     *     cumulative_refunds: string,
+     *     perpetual_grand_total: string,
+     *     receipt_count_lifetime: int,
+     * }
+     */
+    private function computeGrandTotals(Terminal $terminal, array $reportData): array
+    {
+        $previous = ZReport::where('terminal_id', $terminal->id)
+            ->orderByDesc('z_number')
+            ->first();
+
+        // Defensive numeric coercion — if a prior Z's grand_totals entry is ever
+        // written with a non-numeric value (external sync, manual DB fix), bcadd
+        // would emit a warning and silently return '0', zeroing the cumulative
+        // chain. Reject explicitly instead.
+        $priorSales = $this->priorNumeric($previous?->grand_totals['cumulative_sales'] ?? null);
+        $priorTax = $this->priorNumeric($previous?->grand_totals['cumulative_tax'] ?? null);
+        $priorRefunds = $this->priorNumeric($previous?->grand_totals['cumulative_refunds'] ?? null);
+        $priorPerpetual = $this->priorNumeric($previous?->grand_totals['perpetual_grand_total'] ?? null);
+        $priorCount = (int) ($previous?->grand_totals['receipt_count_lifetime'] ?? 0);
+
+        /** @var numeric-string $shiftSales */
+        $shiftSales = (string) ($reportData['gross_sales'] ?? '0');
+        /** @var numeric-string $shiftTax */
+        $shiftTax = (string) ($reportData['tax_amount'] ?? '0');
+        /** @var numeric-string $shiftRefunds */
+        $shiftRefunds = (string) ($reportData['refunds_amount'] ?? '0');
+        $shiftCount = (int) ($reportData['sales_count'] ?? 0);
+
+        $scale = $this->scale();
+        $netDelta = bcsub($shiftSales, $shiftRefunds, $scale);
+
+        return [
+            'cumulative_sales' => bcadd($priorSales, $shiftSales, $scale),
+            'cumulative_tax' => bcadd($priorTax, $shiftTax, $scale),
+            'cumulative_refunds' => bcadd($priorRefunds, $shiftRefunds, $scale),
+            'perpetual_grand_total' => bcadd($priorPerpetual, $netDelta, $scale),
+            'receipt_count_lifetime' => $priorCount + $shiftCount,
+        ];
+    }
+
+    /**
+     * Coerce a prior Z's grand_totals field to a numeric-string, treating null
+     * and non-numeric as zero rather than silently feeding bad data into bcadd.
+     *
+     * @return numeric-string
+     */
+    private function priorNumeric(mixed $value): string
+    {
+        if ($value === null || $value === '') {
+            return '0';
+        }
+
+        $stringified = is_scalar($value) ? (string) $value : '';
+
+        return is_numeric($stringified) ? $stringified : '0';
     }
 
     /**

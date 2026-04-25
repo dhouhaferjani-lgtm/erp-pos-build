@@ -25,6 +25,8 @@ use Illuminate\Support\Carbon;
  * @property string $fiscal_hash SHA-256 hash of this Z report
  * @property string|null $previous_z_hash Hash of previous Z report
  * @property array<string, mixed> $report_data JSONB: Complete Z report content
+ * @property array<string, mixed>|null $receipt_snapshots JSONB: Receipt snapshots at Z time
+ * @property array<string, mixed>|null $grand_totals JSONB: Cumulative lifetime counters
  * @property string $generated_by User who generated the report
  * @property Carbon $generated_at
  * @property-read Terminal $terminal
