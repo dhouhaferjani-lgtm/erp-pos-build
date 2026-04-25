@@ -1,3 +1,4 @@
+declare global {
 declare namespace App.Enums {
 export type Product = 'izipos' | 'otospex';
 export type Vertical = 'mechanic' | 'pharmacy' | 'restaurant' | 'coffee_shop' | 'retail' | 'fashion' | 'body_shop' | 'parts_retailer' | 'car_glass' | 'tire_shop' | 'service_station' | 'parapharmacy';
@@ -43,7 +44,7 @@ lineOrder: number;
 declare namespace App.Modules.Accounting.Application.DTOs.Reports {
 export type AgedPayablesData = {
 as_of_date: string;
-lines: any | Array<any>;
+lines: Array<App.Modules.Accounting.Application.DTOs.Reports.AgedPayablesLineData>;
 total_current: string;
 total_days_30: string;
 total_days_60: string;
@@ -63,7 +64,7 @@ total: string;
 };
 export type AgedReceivablesData = {
 as_of_date: string;
-lines: any | Array<any>;
+lines: Array<App.Modules.Accounting.Application.DTOs.Reports.AgedReceivablesLineData>;
 total_current: string;
 total_days_30: string;
 total_days_60: string;
@@ -82,9 +83,9 @@ over_90: string;
 total: string;
 };
 export type BalanceSheetData = {
-assets: any;
-liabilities: any;
-equity: any;
+assets: Array<App.Modules.Accounting.Application.DTOs.Reports.BalanceSheetLineData>;
+liabilities: Array<App.Modules.Accounting.Application.DTOs.Reports.BalanceSheetLineData>;
+equity: Array<App.Modules.Accounting.Application.DTOs.Reports.BalanceSheetLineData>;
 total_assets: string;
 total_liabilities: string;
 total_equity: string;
@@ -105,7 +106,7 @@ opening_balance: string;
 closing_balance: string;
 total_debits: string;
 total_credits: string;
-lines: any;
+lines: Array<App.Modules.Accounting.Application.DTOs.Reports.LedgerLineData>;
 date_from: string | null;
 date_to: string | null;
 account_filter: string | null;
@@ -126,8 +127,8 @@ source_type: string | null;
 source_id: string | null;
 };
 export type ProfitLossData = {
-revenue: any;
-expenses: any;
+revenue: Array<App.Modules.Accounting.Application.DTOs.Reports.ProfitLossLineData>;
+expenses: Array<App.Modules.Accounting.Application.DTOs.Reports.ProfitLossLineData>;
 total_revenue: string;
 total_expenses: string;
 net_income: string;
@@ -143,7 +144,7 @@ level: number;
 is_parent: boolean;
 };
 export type TrialBalanceData = {
-lines: any;
+lines: Array<App.Modules.Accounting.Application.DTOs.Reports.TrialBalanceLineData>;
 total_debit: string;
 total_credit: string;
 is_balanced: boolean;
@@ -183,7 +184,7 @@ name: string | null;
 vehicle_id: string | null;
 status: App.Modules.Cart.Domain.Enums.CartStatus;
 is_shared: boolean;
-items: Array<any>;
+items: Array<App.Modules.Cart.Application.DTOs.CatalogCartItemData>;
 notes: string | null;
 created_at: string;
 updated_at: string | null;
@@ -231,8 +232,8 @@ category_name: string | null;
 image_url: string | null;
 display_order: number;
 active_recipe: App.Modules.Catalog.Application.DTOs.RecipeData | null;
-variants: Array<any> | null;
-modifier_groups: Array<any> | null;
+variants: Array<App.Modules.Catalog.Application.DTOs.CompositeItemVariantData> | null;
+modifier_groups: Array<App.Modules.Catalog.Application.DTOs.ModifierGroupData> | null;
 created_at: string;
 updated_at: string | null;
 };
@@ -273,7 +274,7 @@ max_selections: number;
 is_required: boolean;
 is_active: boolean;
 display_order: number;
-modifiers: Array<any> | null;
+modifiers: Array<App.Modules.Catalog.Application.DTOs.ModifierData> | null;
 created_at: string;
 updated_at: string | null;
 };
@@ -294,7 +295,7 @@ prep_time_minutes: number | null;
 cook_time_minutes: number | null;
 total_time_minutes: number | null;
 instructions: string | null;
-lines: Array<any> | null;
+lines: Array<App.Modules.Catalog.Application.DTOs.RecipeLineData> | null;
 created_at: string;
 updated_at: string | null;
 };
@@ -356,7 +357,7 @@ notes: string | null;
 is_active: boolean;
 created_at: string;
 updated_at: string | null;
-parties: Array<any>;
+parties: Array<App.Modules.Contact.Application.DTOs.ContactPartyData>;
 };
 export type ContactPartyData = {
 id: string;
@@ -527,8 +528,10 @@ export type ImportType = 'partners' | 'products' | 'stock_levels' | 'opening_bal
 declare namespace App.Modules.Inventory.Application.DTOs {
 export type StockLevelData = {
 id: string;
+product_id: string;
+product_name: string | null;
 location_id: string;
-location_name: string;
+location_name: string | null;
 quantity: string;
 reserved: string;
 available: string;
@@ -779,7 +782,7 @@ id: string;
 name: string;
 description: string | null;
 is_default: boolean;
-categories: Array<any>;
+categories: Array<App.Modules.Menu.Application.DTOs.MenuCategoryData>;
 };
 export type MenuCategoryData = {
 id: string;
@@ -789,7 +792,7 @@ description: string | null;
 icon: string | null;
 display_order: number;
 is_active: boolean;
-items: Array<any> | null;
+items: Array<App.Modules.Menu.Application.DTOs.MenuItemData> | null;
 created_at: string;
 updated_at: string | null;
 };
@@ -805,7 +808,7 @@ start_date: string | null;
 end_date: string | null;
 available_days: Array<number> | null;
 display_order: number;
-categories: Array<any> | null;
+categories: Array<App.Modules.Menu.Application.DTOs.MenuCategoryData> | null;
 categories_count: number;
 items_count: number;
 created_at: string;
@@ -824,7 +827,7 @@ tax_rate: string | null;
 display_order: number;
 is_available: boolean;
 image_url: string | null;
-modifier_groups: Array<any> | null;
+modifier_groups: Array<App.Modules.Catalog.Application.DTOs.ModifierGroupData> | null;
 };
 }
 declare namespace App.Modules.POS.Application.DTOs {
@@ -885,7 +888,7 @@ sent_at: string | null;
 closed_at: string | null;
 cancelled_at: string | null;
 receipt_id: string | null;
-lines: Array<any>;
+lines: Array<App.Modules.POS.Application.DTOs.OrderLineData>;
 };
 export type OrderLineData = {
 id: string;
@@ -1055,9 +1058,9 @@ tire_load_index: number | null;
 tire_season: string | null;
 glass_type: string | null;
 glass_tinting: string | null;
-cross_references: Array<any> | null;
-vehicles: Array<any> | null;
-criteria: Array<any> | null;
+cross_references: Array<App.Modules.Product.Application.DTOs.AutomotiveCrossReferenceData> | null;
+vehicles: Array<App.Modules.Product.Application.DTOs.AutomotiveVehicleData> | null;
+criteria: Array<App.Modules.Product.Application.DTOs.AutomotiveCriterionData> | null;
 created_at: string;
 updated_at: string | null;
 };
@@ -1087,7 +1090,7 @@ sort_order: number;
 is_active: boolean;
 products_count: number | null;
 breadcrumb: Array<any> | null;
-children: Array<any> | null;
+children: Array<App.Modules.Product.Application.DTOs.CategoryData> | null;
 };
 export type CertificationData = {
 id: string;
@@ -1175,8 +1178,8 @@ id: string;
 product_id: string;
 category: App.Modules.Product.Domain.Enums.ParapharmacyCategory;
 dosage_form: App.Modules.Product.Domain.Enums.DosageForm | null;
-ingredients: Array<any> | null;
-key_components: Array<any> | null;
+ingredients: Array<App.Modules.Product.Application.DTOs.ProductIngredientData> | null;
+key_components: Array<App.Modules.Product.Application.DTOs.ProductKeyComponentData> | null;
 usage_instructions: string | null;
 warnings: string | null;
 contraindications: string | null;
@@ -1184,8 +1187,8 @@ minimum_age: number | null;
 age_restriction: App.Modules.Product.Domain.Enums.AgeRestriction | null;
 requires_consultation: boolean;
 regulatory_code: string | null;
-health_claims: Array<any> | null;
-certifications: Array<any> | null;
+health_claims: Array<App.Modules.Product.Application.DTOs.ProductHealthClaimData> | null;
+certifications: Array<App.Modules.Product.Application.DTOs.ProductCertificationData> | null;
 storage_requirements: string | null;
 created_at: string;
 updated_at: string | null;
@@ -1387,7 +1390,7 @@ description: string | null;
 baseUnitId: string | null;
 isSystem: boolean;
 isActive: boolean;
-units: Array<any>;
+units: Array<App.Modules.Uom.Application.DTOs.UnitData>;
 };
 export type UnitData = {
 id: string;
@@ -1473,7 +1476,7 @@ partner_id: string | null;
 created_at: string;
 updated_at: string | null;
 current_ownership: App.Modules.Vehicle.Application.DTOs.VehicleOwnershipData | null;
-recent_mileage_readings: any;
+recent_mileage_readings: Array<App.Modules.Vehicle.Application.DTOs.VehicleMileageReadingData>;
 };
 }
 declare namespace App.Modules.Vehicle.Domain.Enums {
@@ -1536,8 +1539,8 @@ estimated_labor_hours: string | null;
 service_interval_km: number | null;
 service_interval_months: number | null;
 is_active: boolean;
-components: any;
-vehicle_applicabilities: any;
+components: Array<App.Modules.Workshop.Bundle.Application.DTOs.ServiceBundleComponentData>;
+vehicle_applicabilities: Array<App.Modules.Workshop.Bundle.Application.DTOs.ServiceBundleVehicleApplicabilityData>;
 created_at: string;
 updated_at: string | null;
 };
@@ -1641,20 +1644,20 @@ technician_profile_id: string;
 week_starts_at: string;
 total_minutes: number;
 minutes_by_entry_type: Array<any>;
-work_order_breakdown: any;
+work_order_breakdown: Array<App.Modules.Workshop.Technician.Application.DTOs.WorkOrderHoursBreakdownData>;
 estimated_billable_amount: string | null;
 estimated_cost_amount: string | null;
 overtime_minutes: number;
 currency: string;
 };
 export type WeeklyScheduleData = {
-mon: any;
-tue: any;
-wed: any;
-thu: any;
-fri: any;
-sat: any;
-sun: any;
+mon: Array<App.Modules.Workshop.Technician.Application.DTOs.ScheduleWindowData>;
+tue: Array<App.Modules.Workshop.Technician.Application.DTOs.ScheduleWindowData>;
+wed: Array<App.Modules.Workshop.Technician.Application.DTOs.ScheduleWindowData>;
+thu: Array<App.Modules.Workshop.Technician.Application.DTOs.ScheduleWindowData>;
+fri: Array<App.Modules.Workshop.Technician.Application.DTOs.ScheduleWindowData>;
+sat: Array<App.Modules.Workshop.Technician.Application.DTOs.ScheduleWindowData>;
+sun: Array<App.Modules.Workshop.Technician.Application.DTOs.ScheduleWindowData>;
 };
 export type WorkOrderHoursBreakdownData = {
 work_order_id: string;
@@ -1737,9 +1740,9 @@ estimated_totals: App.Modules.Workshop.WorkOrder.Application.DTOs.WorkOrderTotal
 actual_totals: App.Modules.Workshop.WorkOrder.Application.DTOs.WorkOrderTotalsData;
 quote_document_id: string | null;
 invoice_document_id: string | null;
-lines: { [key: number]: App.Modules.Workshop.WorkOrder.Application.DTOs.WorkOrderLineData };
-assignments: { [key: number]: App.Modules.Workshop.WorkOrder.Application.DTOs.WorkOrderAssignmentData };
-status_history: { [key: number]: App.Modules.Workshop.WorkOrder.Application.DTOs.WorkOrderStatusTransitionData };
+lines: Array<App.Modules.Workshop.WorkOrder.Application.DTOs.WorkOrderLineData>;
+assignments: Array<App.Modules.Workshop.WorkOrder.Application.DTOs.WorkOrderAssignmentData>;
+status_history: Array<App.Modules.Workshop.WorkOrder.Application.DTOs.WorkOrderStatusTransitionData>;
 created_at: string;
 updated_at: string | null;
 };
@@ -1829,3 +1832,7 @@ hasPreviousPage: boolean;
 declare namespace App.Shared.Enums {
 export type EnrichmentStatus = 'pending' | 'enriching' | 'completed' | 'failed' | 'rejected' | 'not_enrichable';
 }
+
+}
+
+export {};

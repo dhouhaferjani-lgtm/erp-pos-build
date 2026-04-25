@@ -1,187 +1,268 @@
 # Frontend Type Generation Conventions
 
-> **Purpose:** How TypeScript types are generated from PHP DTOs
-> **Last Updated:** 2025-12-30
+> **Purpose:** How TypeScript types flow from PHP DTOs into `apps/web`.
+> **Last updated:** 2026-04-19 (pipeline overhaul — see [ADR](../adr/2026-04-19-typescript-types-pipeline.md))
 
-## Type Flow
+## Type flow
 
 ```
-Backend: app/Modules/*/Application/DTOs/*.php
-         (with #[TypeScript] attribute)
+Backend: apps/api/app/Modules/*/Application/DTOs/*.php
+         (tagged with #[TypeScript])
     ↓
 php artisan typescript:transform
     ↓
-packages/shared/types/generated.ts
+packages/shared/types/generated.d.ts
+    (declare global { declare namespace App.Modules.*.… } export {};)
     ↓
-Frontend: apps/web/src/**/*.tsx
-         (imports from @autoerp/shared/types/generated)
+Frontend: apps/web/src/features/<module>/types.ts
+         (re-exports from ambient App.Modules.*.… globals)
+    ↓
+Frontend code imports from './types'
 ```
 
-## Backend DTO Definition
+## Five rules for every new DTO
 
-**File:** `apps/api/app/Modules/Product/Application/DTOs/ProductData.php`
+### 1. Tag with `#[TypeScript]`
 
 ```php
-<?php
-namespace App\Modules\Product\Application\DTOs;
-
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
-#[TypeScript]  // ← REQUIRED for transformation
-class ProductData extends Data
+#[TypeScript]
+final class WorkOrderData extends Data
 {
     public function __construct(
-        public string $id,
-        public string $name,
-        public string $sku,
-        public ProductType $type,        // Enum → union type
-        public ?string $description,     // Nullable → string | null
-        public bool $is_active,
+        public string $work_order_number,
+        // …
     ) {}
-
-    public static function fromModel(Product $product): self
-    {
-        return new self(
-            id: $product->id,
-            name: $product->name,
-            sku: $product->sku,
-            type: $product->type,
-        );
-    }
 }
 ```
 
-## Enum Definition
+CLAUDE.md rule #7. Untagged DTOs do not flow to the frontend.
+
+### 2. snake_case public properties
 
 ```php
-<?php
-namespace App\Modules\Product\Domain\Enums;
+// ✅ good
+public string $work_order_number,
+public string $opened_at,
+public ?string $assigned_technician_id,
 
-enum ProductType: string
-{
-    case Part = 'part';
-    case Service = 'service';
-    case Consumable = 'consumable';
-}
+// ❌ bad — camelCase drift
+public string $workOrderNumber,
 ```
 
-## Generate Types
+69 of 73 existing tagged DTOs already do this. The four exceptions
+(Identity module: `UserData`, `AuthUserData`, `LoginData`,
+`LoginResponseData`) are in scope for the separate Phase C migration
+and will be fixed with a compat-shim release.
 
-```bash
-# From apps/api directory
-php artisan typescript:transform
+### 3. `#[DataCollectionOf]` for every collection property
 
-# Output: packages/shared/types/generated.ts
+```php
+use Spatie\LaravelData\Attributes\DataCollectionOf;
+use Spatie\LaravelData\DataCollection;
+
+public function __construct(
+    public string $document_number,
+    #[DataCollectionOf(DocumentLineData::class)]
+    public DataCollection|array $lines,
+) {}
 ```
 
-## Generated TypeScript Output
+Without the attribute, the transformer can't resolve element types
+and emits `Array<any>`. If the element class is itself a `Data` DTO,
+**it MUST ALSO be tagged with `#[TypeScript]`** — otherwise
+`ReplaceSymbolsInTypeAction` substitutes `any` for the missing
+symbol and you're back to `Array<any>`.
 
-**File:** `packages/shared/types/generated.ts`
+### 4. PHPDoc generics for scalar arrays
+
+```php
+/** @var string[] */
+public array $oem_numbers,
+
+/** @var int[] */
+public array $bay_ids,
+```
+
+### 5. Re-export from `features/<module>/types.ts` — never hand-roll a shadow
 
 ```typescript
-declare namespace App.Modules.Product.Domain.Enums {
-  export type ProductType = 'part' | 'service' | 'consumable';
-}
+// apps/web/src/features/inventory/types.ts
+export type StockLevel = App.Modules.Inventory.Application.DTOs.StockLevelData
 
-declare namespace App.Modules.Product.Application.DTOs {
-  export type ProductData = {
-    id: string;
-    name: string;
-    sku: string;
-    type: App.Modules.Product.Domain.Enums.ProductType;
-    description: string | null;
-    is_active: boolean;
-    created_at: string;  // DateTime → string (ISO 8601)
-  };
-}
-```
-
-## Frontend Usage Patterns
-
-### Pattern 1: Direct Import
-
-```typescript
-import type { Invoice } from '@autoerp/shared/types/generated'
-
-const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
-```
-
-### Pattern 2: Re-export with Extensions
-
-```typescript
-// apps/web/src/types/document.ts
-import type { App } from '@autoerp/shared/types/generated'
-
-export type Document = App.Modules.Document.Application.DTOs.DocumentData & {
-  issue_date?: string  // Add computed properties
-}
-```
-
-### Pattern 3: Enum Aliases
-
-```typescript
-import type {
-  App_Modules_Document_Domain_Enums_DocumentStatus as DocumentStatus,
-  App_Modules_Document_Domain_Enums_DocumentType as DocumentType,
-} from '@autoerp/shared/types/generated'
-
-export interface Expense {
-  type: DocumentType
-  status: DocumentStatus
-}
-```
-
-## tsconfig.json Path Alias
-
-**File:** `apps/web/tsconfig.json`
-
-```json
-{
-  "compilerOptions": {
-    "paths": {
-      "@/*": ["src/*"],
-      "@autoerp/shared/*": ["../../packages/shared/*"]
-    }
+export interface StockLevelsResponse {
+  data: StockLevel[]
+  meta?: {
+    total: number
+    current_page: number
+    per_page: number
+    last_page: number
   }
 }
 ```
 
-## Workflow: Adding New Field to DTO
+Frontend-only shapes (request payloads, form state, display-only
+view models) ARE allowed in the same file — just keep them clearly
+separated from the re-exports. Do NOT re-declare any field that
+exists on a backend DTO.
 
-1. **Add field to PHP DTO:**
+## Generated output shape
+
+`packages/shared/types/generated.d.ts` is an ambient declaration
+file:
+
+```typescript
+declare global {
+  declare namespace App.Enums {
+    export type Vertical = 'mechanic' | 'pharmacy' | 'restaurant' | …
+  }
+
+  declare namespace App.Modules.Inventory.Application.DTOs {
+    export type StockLevelData = {
+      id: string
+      product_id: string
+      product_name: string | null
+      location_id: string
+      location_name: string | null
+      quantity: string
+      reserved: string
+      available: string
+      incoming: string
+      projected_available: string
+      min_quantity: string | null
+      max_quantity: string | null
+      is_below_minimum: boolean
+    }
+  }
+
+  // … every other tagged DTO under its module path
+}
+
+export {}
+```
+
+Every `App.Modules.*.…` namespace is globally accessible from every
+file compiled under `apps/web/tsconfig.json`. No `import` is needed
+at the consumption site — only at the re-export site in
+`features/<module>/types.ts`.
+
+## Field type mappings
+
+| PHP type | Emitted TypeScript |
+|---|---|
+| `string`, `int`, `float`, `bool` | `string`, `number`, `number`, `boolean` |
+| `?T` (nullable) | `T \| null` |
+| `Carbon`, `DateTime`, `DateTimeImmutable` | `string` (ISO 8601 on the wire) |
+| `BackedEnum` | Union literal (`'asset' \| 'liability' \| …`) |
+| `DataCollection<int, Foo>` + `#[DataCollectionOf(Foo::class)]` | `Array<App.Modules.….Foo>` |
+| `array` (no annotation) | `Array<any>` — flag this |
+| `array` with `@var Foo[]` PHPDoc | `Array<Foo>` |
+
+**Important: monetary and quantity fields emit `string`, not `number`.**
+Postgres DECIMAL columns serialize as strings to preserve precision.
+Use `lib/decimal.ts` (`bccomp`, `bcsub`, `bcadd`, `bcmul`,
+`formatCurrency`) for every operation. Native JavaScript comparison
+on these fields is lexical and will give wrong answers
+(`"10" <= "9"` is `true`).
+
+## Workflow — adding a new field
+
+1. **Add the field to the PHP DTO:**
    ```php
-   public ?string $new_field,
+   public ?string $technician_note,
    ```
-
-2. **Run transformation:**
+2. **Regenerate types:**
    ```bash
-   php artisan typescript:transform
+   cd apps/api && php artisan typescript:transform
    ```
+3. **Use it immediately in frontend code** — `App.Modules.*.…` is
+   already updated. If you re-exported the parent type in
+   `features/<module>/types.ts`, the consumer just picks it up.
+4. **Commit both the PHP change AND the regenerated `.d.ts`** as a
+   single commit. CI blocks merges where these disagree (see next
+   section).
 
-3. **Use in frontend immediately:**
-   ```typescript
-   const product: Product = {
-     new_field: null,  // ✅ Now available
-   }
-   ```
+## CI enforcement
 
-## Key Rules
+Two guards prevent stale `generated.d.ts`:
 
-1. **Single Source of Truth** - PHP DTOs are authoritative
-2. **No Manual Type Files** - Never duplicate `generated.ts`
-3. **Enums → Unions** - PHP enums become TypeScript union types
-4. **DateTime → string** - All dates serialized as ISO 8601 strings
-5. **Nullable → `| null`** - PHP `?string` becomes `string | null`
-6. **Run After DTO Changes** - Always regenerate after modifying DTOs
+1. **`scripts/preflight.sh`** — run locally before pushing. It
+   regenerates the types and fails on any diff, with an inline
+   summary + three-command fix recipe.
+2. **`.github/workflows/ci.yml → types-drift` job** — runs in every
+   PR. Fails the build with a `::error::` annotation + diff summary
+   if the committed `generated.d.ts` disagrees with a fresh regen.
+   The job is in `all-checks-pass`'s `needs` list, so merge is
+   blocked.
+
+Both surfaces emit the same fix:
+
+```bash
+(cd apps/api && php artisan typescript:transform)
+git add packages/shared/types/generated.d.ts
+git commit -m 'chore(types): regenerate TypeScript types'
+```
+
+## Contract-lock tests (advanced)
+
+For features where type drift would be especially dangerous (fiscal
+flows, monetary calculations), write a type-level contract test:
+
+```typescript
+// apps/web/src/features/inventory/__tests__/types.test.ts
+import { describe, it, expectTypeOf } from 'vitest'
+import type { StockLevel } from '../types'
+
+describe('StockLevel type contract', () => {
+  it('monetary and quantity fields are strings, not numbers', () => {
+    expectTypeOf<StockLevel['quantity']>().toEqualTypeOf<string>()
+    expectTypeOf<StockLevel['available']>().toEqualTypeOf<string>()
+  })
+})
+```
+
+**IMPORTANT:** `expectTypeOf` is a zero-runtime proxy — `vitest run`
+reports these tests green regardless of truth. The actual guard is
+`tsc --noEmit` (part of preflight + CI). Add a comment at the top of
+every such test file noting this so future contributors aren't
+misled by a green vitest run.
+
+## Key rules
+
+1. **Single source of truth** — the PHP DTO is authoritative.
+2. **No hand-written shadow interfaces** — every backend-derived
+   type is a re-export from the ambient namespace.
+3. **Monetary/quantity are strings, not numbers.** Route all
+   comparisons through `lib/decimal.ts`.
+4. **Regenerate + commit in the same change.** CI enforces this.
+5. **Enums stay in sync automatically.** PHP `BackedEnum` → TS
+   union literal.
+
+## Reference migration
+
+`apps/web/src/features/inventory/` demonstrates the whole pattern
+end-to-end:
+- `types.ts` — re-export from `App.Modules.Inventory.Application.DTOs.StockLevelData`
+- `__tests__/types.test.ts` — type-level contract lock
+- `StockLevelsPage.tsx` — consumer, routes every numeric comparison
+  through `bccomp`
+
+Use it as the template when migrating another module's shadow.
 
 ## Checklist
 
-- [ ] DTO class has `#[TypeScript]` attribute
+- [ ] DTO class has `#[TypeScript]`
 - [ ] DTO extends `Spatie\LaravelData\Data`
-- [ ] Run `php artisan typescript:transform` after changes
-- [ ] Import from `@autoerp/shared/types/generated`
-- [ ] Never manually edit `generated.ts`
+- [ ] All public properties are snake_case
+- [ ] Collections use `#[DataCollectionOf(ElementData::class)]`
+- [ ] Scalar-array properties have `@var` PHPDoc
+- [ ] Element DTOs for collections are ALSO tagged with `#[TypeScript]`
+- [ ] Ran `php artisan typescript:transform` after any DTO change
+- [ ] `generated.d.ts` is committed alongside the PHP change
+- [ ] `features/<module>/types.ts` re-exports — no hand-rolled shadows
+- [ ] Monetary/quantity operations use `lib/decimal.ts` helpers
 
 ## Fixture factories for tests
 
@@ -259,12 +340,12 @@ mockApiGet.mockResolvedValue(
 ### When a DTO changes
 
 1. Add/rename/remove the field in the backend DTO.
-2. Run `php artisan typescript:transform` (regenerates `packages/shared/types/generated.ts`).
-3. Update the hand-written interface in `features/<module>/types.ts` (until the types pipeline is restored — see investigation prompt above).
+2. Run `php artisan typescript:transform` (regenerates `packages/shared/types/generated.d.ts`).
+3. The re-export in `features/<module>/types.ts` updates automatically — the ambient `App.Modules.*` namespace flows through.
 4. Update the factory default in `__fixtures__/<name>.ts`.
 5. TypeScript will fail-compile every consumer until step 4 is done. This is the property we want.
 
 ### Related
 
 - `renderWithProviders` (at `apps/web/src/test/renderWithProviders.tsx`) — the shared test wrapper that mounts `ProductConfigProvider` + `CompanyConfigProvider` and accepts seed overrides. Required for tests that render components consuming those contexts.
-- `scripts/preflight.sh` — runs `php artisan typescript:transform` and fails on drift between DTOs and the committed `packages/shared/types/generated.ts`.
+- `scripts/preflight.sh` — runs `php artisan typescript:transform` and fails on drift between DTOs and the committed `packages/shared/types/generated.d.ts`.

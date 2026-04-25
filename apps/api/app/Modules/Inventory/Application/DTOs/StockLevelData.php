@@ -13,8 +13,10 @@ class StockLevelData extends Data
 {
     public function __construct(
         public string $id,
+        public string $product_id,
+        public ?string $product_name,
         public string $location_id,
-        public string $location_name,
+        public ?string $location_name,
         public string $quantity,
         public string $reserved,
         public string $available,
@@ -34,8 +36,10 @@ class StockLevelData extends Data
 
         return new self(
             id: $stockLevel->id,
+            product_id: $stockLevel->product_id,
+            product_name: $stockLevel->product->name ?? null,
             location_id: $stockLevel->location_id,
-            location_name: $stockLevel->location->name,
+            location_name: $stockLevel->location->name ?? null,
             quantity: (string) $stockLevel->quantity,
             reserved: (string) $stockLevel->reserved,
             available: $available,

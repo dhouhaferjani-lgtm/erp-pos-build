@@ -290,10 +290,67 @@ jobs:
           path: apps/web/dist
           retention-days: 7
 
+  types-drift:
+    name: Generated Types Drift Guard
+    runs-on: ubuntu-latest
+    # Intentionally lean: no .env, no APP_KEY, no Postgres, no Redis.
+    # `php artisan typescript:transform` is pure reflection — it loads the
+    # service-provider graph but never opens a DB/Redis connection. If this
+    # job ever fails with a connection error, audit recent service-provider
+    # changes for lazy-boot paths that hit infrastructure.
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, pdo_pgsql, redis
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('apps/api/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Regenerate TypeScript types
+        run: php artisan typescript:transform
+
+      - name: Fail if generated.d.ts is out of sync
+        working-directory: ${{ github.workspace }}
+        run: |
+          if ! git diff --quiet -- packages/shared/types/generated.d.ts; then
+            echo "::error::packages/shared/types/generated.d.ts is out of date. A #[TypeScript]-tagged PHP DTO changed without a matching regen."
+            echo ""
+            echo "To fix:"
+            echo "  (cd apps/api && php artisan typescript:transform)"
+            echo "  git add packages/shared/types/generated.d.ts"
+            echo "  git commit -m 'chore(types): regenerate TypeScript types'"
+            echo ""
+            echo "Diff summary:"
+            git --no-pager diff --stat -- packages/shared/types/generated.d.ts
+            echo ""
+            echo "First 200 lines of the diff:"
+            git --no-pager diff -- packages/shared/types/generated.d.ts | head -200
+            exit 1
+          fi
+
   all-checks-pass:
     name: All Checks Pass
     runs-on: ubuntu-latest
-    needs: [backend-lint, backend-analyse, backend-test, frontend-lint, frontend-typecheck, frontend-test, frontend-build]
+    needs: [backend-lint, backend-analyse, backend-test, frontend-lint, frontend-typecheck, frontend-test, frontend-build, types-drift]
     steps:
       - name: All checks passed
         run: echo "All CI checks have passed!"

@@ -5,35 +5,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Package, AlertTriangle, MapPin, Plus, Minus, RefreshCw, X, ArrowRightLeft } from 'lucide-react'
 import { api, apiPost } from '../../lib/api'
+import { bccomp, bcsub } from '../../lib/decimal'
+import { tokens } from '../../lib/designTokens'
 import { SearchInput } from '../../components/ui/SearchInput'
 import { FilterTabs } from '../../components/ui/FilterTabs'
 import { LocationSelector } from '../location/LocationSelector'
 import { useLocation } from '../../hooks/useLocation'
 import { useCurrency } from '../../hooks/useCurrency'
 import { getLocations } from '../locations/api/locations'
-
-interface StockLevel {
-  id: string
-  product_id: string
-  product_name: string | null
-  location_id: string
-  location_name: string | null
-  quantity: number
-  reserved: number
-  available: number
-  min_quantity: number | null
-  max_quantity: number | null
-}
-
-interface StockLevelsResponse {
-  data: StockLevel[]
-  meta?: {
-    total: number
-    current_page: number
-    per_page: number
-    last_page: number
-  }
-}
+import type { StockLevel, StockLevelsResponse } from './types'
 
 interface StockMovement {
   id: string
@@ -133,10 +113,14 @@ export function StockLevelsPage() {
   const filteredStockLevels = useMemo(() => {
     return stockLevels.filter((stock) => {
       if (stockFilter === 'low') {
-        return stock.min_quantity != null && stock.available <= stock.min_quantity && stock.available > 0
+        return (
+          stock.min_quantity != null &&
+          bccomp(stock.available, stock.min_quantity) <= 0 &&
+          bccomp(stock.available, '0') > 0
+        )
       }
       if (stockFilter === 'out') {
-        return stock.available <= 0
+        return bccomp(stock.available, '0') <= 0
       }
       return true
     })
@@ -144,9 +128,12 @@ export function StockLevelsPage() {
 
   const filterTabs = useMemo(() => {
     const lowStockCount = stockLevels.filter(
-      (s) => s.min_quantity != null && s.available <= s.min_quantity && s.available > 0
+      (s) =>
+        s.min_quantity != null &&
+        bccomp(s.available, s.min_quantity) <= 0 &&
+        bccomp(s.available, '0') > 0
     ).length
-    const outOfStockCount = stockLevels.filter((s) => s.available <= 0).length
+    const outOfStockCount = stockLevels.filter((s) => bccomp(s.available, '0') <= 0).length
 
     return [
       { value: 'all' as StockFilter, label: t('common:filters.all'), count: total },
@@ -156,19 +143,19 @@ export function StockLevelsPage() {
   }, [t, total, stockLevels])
 
   const getStockStatus = (stock: StockLevel): { label: string; color: string } => {
-    if (stock.available <= 0) {
-      return { label: t('inventory:stock.status.outOfStock'), color: 'bg-red-100 text-red-800' }
+    if (bccomp(stock.available, '0') <= 0) {
+      return { label: t('inventory:stock.status.outOfStock'), color: tokens.badge.red }
     }
-    if (stock.min_quantity != null && stock.available <= stock.min_quantity) {
-      return { label: t('inventory:stock.status.lowStock'), color: 'bg-yellow-100 text-yellow-800' }
+    if (stock.min_quantity != null && bccomp(stock.available, stock.min_quantity) <= 0) {
+      return { label: t('inventory:stock.status.lowStock'), color: tokens.badge.yellow }
     }
-    return { label: t('inventory:stock.status.inStock'), color: 'bg-green-100 text-green-800' }
+    return { label: t('inventory:stock.status.inStock'), color: tokens.badge.green }
   }
 
   const openAdjustModal = (stock: StockLevel, type: AdjustmentType) => {
     setSelectedStock(stock)
     setAdjustmentType(type)
-    setAdjustmentQuantity(type === 'adjust' ? String(stock.quantity) : '')
+    setAdjustmentQuantity(type === 'adjust' ? stock.quantity : '')
     setAdjustmentReason('inventory_count')
     setAdjustmentNotes('')
   }
@@ -330,7 +317,9 @@ export function StockLevelsPage() {
             <tbody className="divide-y divide-gray-200 bg-white">
               {filteredStockLevels.map((stock) => {
                 const status = getStockStatus(stock)
-                const isLowOrOut = stock.available <= 0 || (stock.min_quantity != null && stock.available <= stock.min_quantity)
+                const isLowOrOut =
+                  bccomp(stock.available, '0') <= 0 ||
+                  (stock.min_quantity != null && bccomp(stock.available, stock.min_quantity) <= 0)
 
                 return (
                   <tr key={stock.id} className={`hover:bg-gray-50 ${isLowOrOut ? 'bg-red-50/30' : ''}`}>
@@ -426,13 +415,20 @@ export function StockLevelsPage() {
           <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
             <div className="text-sm font-medium text-yellow-700">{t('inventory:stock.summary.lowStock')}</div>
             <div className="mt-1 text-2xl font-bold text-yellow-900">
-              {stockLevels.filter((s) => s.min_quantity != null && s.available <= s.min_quantity && s.available > 0).length}
+              {
+                stockLevels.filter(
+                  (s) =>
+                    s.min_quantity != null &&
+                    bccomp(s.available, s.min_quantity) <= 0 &&
+                    bccomp(s.available, '0') > 0
+                ).length
+              }
             </div>
           </div>
           <div className="rounded-lg border border-red-200 bg-red-50 p-4">
             <div className="text-sm font-medium text-red-700">{t('inventory:stock.summary.outOfStock')}</div>
             <div className="mt-1 text-2xl font-bold text-red-900">
-              {stockLevels.filter((s) => s.available <= 0).length}
+              {stockLevels.filter((s) => bccomp(s.available, '0') <= 0).length}
             </div>
           </div>
         </div>
@@ -510,12 +506,17 @@ export function StockLevelsPage() {
                   className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   placeholder={adjustmentType === 'adjust' ? t('inventory:stock.modal.enterNewQuantity') : t('inventory:stock.modal.enterQuantity')}
                 />
-                {adjustmentType === 'adjust' && adjustmentQuantity && (
-                  <p className="mt-1 text-sm text-gray-500">
-                    {t('inventory:stock.modal.change')}: {Number(adjustmentQuantity) - selectedStock.quantity >= 0 ? '+' : ''}
-                    {(Number(adjustmentQuantity) - selectedStock.quantity).toFixed(decimals)}
-                  </p>
-                )}
+                {adjustmentType === 'adjust' && adjustmentQuantity && (() => {
+                  // safeBig in lib/decimal.ts treats unparseable input as 0,
+                  // so this runs safely even on programmatic paste of garbage.
+                  const delta = bcsub(adjustmentQuantity, selectedStock.quantity, decimals)
+                  const sign = bccomp(delta, '0') >= 0 ? '+' : ''
+                  return (
+                    <p className="mt-1 text-sm text-gray-500">
+                      {t('inventory:stock.modal.change')}: {sign}{delta}
+                    </p>
+                  )
+                })()}
               </div>
 
               {adjustmentType !== 'transfer' && (
