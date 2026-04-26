@@ -20,6 +20,7 @@ use App\Modules\POS\Infrastructure\Repositories\ZReportCountRepository;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\Services\PaymentToleranceQueryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 use Tests\Traits\WithCurrencyScale;
 
@@ -198,6 +199,70 @@ class ReportGenerationServiceTest extends TestCase
         $this->assertEquals('0.00', $result['gross_sales']);
         $this->assertEquals('0.00', $result['net_sales']);
         $this->assertEquals('0.00', $result['tax_amount']);
+    }
+
+    /**
+     * Boundary-receipt regression: a receipt whose created_at falls inside shift A's window
+     * but whose posted_at falls inside shift B's window must be attributed to shift B by
+     * calculateShiftTotals.
+     *
+     * Before this fix, calculateShiftTotals used created_at, so the receipt would land in
+     * shift A for that aggregator and shift B for PaymentToleranceQueryService (posted_at).
+     * After the fix, both aggregators use posted_at and agree about shift B.
+     *
+     * Mechanism: the receipt is created normally (posted_at = shift B), then created_at is
+     * back-dated into shift A via a raw DB update (created_at is not protected by the
+     * NF525 immutability trigger).
+     *
+     * REALIGNMENT-LOG 2026-04-26: shift-window canonical field is pos_receipts.posted_at.
+     */
+    public function test_boundary_receipt_is_attributed_by_posted_at_not_created_at(): void
+    {
+        $terminal = $this->createPersistedTerminal();
+
+        // Shift A window: 2 hours ago → 1 hour ago.
+        $shiftAOpen = now()->subHours(2);
+        $shiftAClose = now()->subHour();
+
+        // Shift B window: 1 hour ago → now (open).
+        $shiftBOpen = $shiftAClose;
+        $shiftBClose = now()->addHour();
+
+        // Create receipt with posted_at inside shift B.
+        $boundaryReceipt = $this->createReceipt($terminal, [
+            'subtotal' => '80.00',
+            'tax_amount' => '8.00',
+            'total' => '88.00',
+            'is_voided' => false,
+            'posted_at' => $shiftBOpen->clone()->addMinutes(5),
+        ]);
+
+        // Back-date created_at into shift A via raw update.
+        // created_at is NOT protected by the NF525 immutability trigger (which guards
+        // fiscal_hash, receipt_number, totals, chain_sequence, posted_at only).
+        DB::table('pos_receipts')
+            ->where('id', $boundaryReceipt->id)
+            ->update(['created_at' => $shiftAOpen->clone()->addMinutes(5)]);
+
+        $method = new \ReflectionMethod(ReportGenerationService::class, 'calculateShiftTotals');
+        $method->setAccessible(true);
+
+        // Shift A query — receipt must NOT appear (posted_at is outside shift A).
+        $shiftAResult = $method->invoke($this->service, $terminal, $shiftAOpen, $shiftAClose);
+        $this->assertSame(
+            0,
+            $shiftAResult['sales_count'],
+            'Boundary receipt must NOT appear in shift A: posted_at is in shift B, only created_at is in shift A',
+        );
+
+        // Shift B query — receipt MUST appear (posted_at is inside shift B).
+        $shiftBResult = $method->invoke($this->service, $terminal, $shiftBOpen, $shiftBClose);
+        $this->assertSame(
+            1,
+            $shiftBResult['sales_count'],
+            'Boundary receipt MUST appear in shift B: posted_at is inside shift B window',
+        );
+        $this->assertSame('88.000', $shiftBResult['gross_sales']);
     }
 
     private function createPersistedTerminal(): Terminal

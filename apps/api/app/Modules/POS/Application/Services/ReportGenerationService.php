@@ -456,6 +456,8 @@ final class ReportGenerationService
      * Sum receipt_payments.amount for the shift, grouped by payment_method_id.
      * Always includes a row for every payment_method_id in $inputs (defaulting to '0.0000').
      *
+     * Shift window driven by pos_receipts.posted_at — see REALIGNMENT-LOG 2026-04-26.
+     *
      * @param  array<int, CashCountInputDTO>  $inputs
      * @return array<string, string> payment_method_id → scale-4 numeric-string
      */
@@ -471,7 +473,7 @@ final class ReportGenerationService
             ->where('pos_receipts.terminal_id', $shift->terminal_id)
             ->where('pos_receipts.is_voided', false)
             ->where('pos_receipts.is_training', false)
-            ->whereBetween('pos_receipts.created_at', [$shift->opened_at, now()])
+            ->whereBetween('pos_receipts.posted_at', [$shift->opened_at, now()])
             ->selectRaw('pos_receipt_payments.payment_method_id as payment_method_id, SUM(pos_receipt_payments.amount) as total')
             ->groupBy('pos_receipt_payments.payment_method_id')
             ->get();
@@ -500,6 +502,8 @@ final class ReportGenerationService
      * Count receipt_payments rows for the shift, grouped by payment_method_id.
      * Used to populate CashCountBreakdownDTO::transactionCount, which validation seeds with 0.
      *
+     * Shift window driven by pos_receipts.posted_at — see REALIGNMENT-LOG 2026-04-26.
+     *
      * @param  array<int, CashCountInputDTO>  $inputs
      * @return array<string, int>
      */
@@ -513,7 +517,7 @@ final class ReportGenerationService
             ->where('pos_receipts.terminal_id', $shift->terminal_id)
             ->where('pos_receipts.is_voided', false)
             ->where('pos_receipts.is_training', false)
-            ->whereBetween('pos_receipts.created_at', [$shift->opened_at, now()])
+            ->whereBetween('pos_receipts.posted_at', [$shift->opened_at, now()])
             ->selectRaw('pos_receipt_payments.payment_method_id as payment_method_id, COUNT(*) as cnt')
             ->groupBy('pos_receipt_payments.payment_method_id')
             ->get();
@@ -797,6 +801,8 @@ final class ReportGenerationService
      *
      * Aggregates all receipts in the time period.
      *
+     * Shift window driven by pos_receipts.posted_at — see REALIGNMENT-LOG 2026-04-26.
+     *
      * @param  Terminal  $terminal  The terminal to calculate for
      * @param  \Illuminate\Support\Carbon  $startTime  Period start
      * @param  \Illuminate\Support\Carbon  $endTime  Period end
@@ -804,10 +810,12 @@ final class ReportGenerationService
      */
     private function calculateShiftTotals(Terminal $terminal, $startTime, $endTime): array
     {
-        // Get all production receipts in period (exclude training)
+        // Get all production receipts in period (exclude training).
+        // Uses posted_at (the fiscal timestamp) as the canonical shift-window column
+        // to match PaymentToleranceQueryService::shiftReceiptsQuery.
         $receipts = Receipt::where('terminal_id', $terminal->id)
             ->where('is_training', false)
-            ->whereBetween('created_at', [$startTime, $endTime])
+            ->whereBetween('posted_at', [$startTime, $endTime])
             ->get();
 
         $grossSales = '0.00';

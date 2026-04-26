@@ -114,6 +114,8 @@ final class PaymentToleranceQueryService
      * Receipt-level drill-down: one DTO per receipt that has a non-zero
      * tolerance write-off, ordered by `posted_at` ascending.
      *
+     * Shift window driven by pos_receipts.posted_at — see REALIGNMENT-LOG 2026-04-26.
+     *
      * Time-window: posted_at BETWEEN shift.opened_at AND (closed_at OR now()).
      * When the shift is still open, the upper bound is wall-clock now — callers
      * needing a stable cutoff (Z-report consumers) should call only after the
@@ -165,9 +167,9 @@ final class PaymentToleranceQueryService
      * derivation is by terminal + time-window.
      *
      * Time-window derivation: posted_at BETWEEN shift.opened_at AND closed_at.
-     * Uses posted_at (the fiscal timestamp per Receipt model line 49). Note that
-     * ReportGenerationService::calculateShiftTotals currently uses created_at —
-     * tracked as a follow-up inconsistency to resolve via a single canonical field.
+     * Uses posted_at (the fiscal timestamp per Receipt model line 49), which is
+     * the canonical shift-window column across all shift aggregators.
+     * See REALIGNMENT-LOG 2026-04-26.
      *
      * Training filter: `is_training = false` matches every other receipt
      * aggregator in the codebase (ReportGenerationService::calculateShiftTotals,
