@@ -1,3 +1,8 @@
+// TODO(auth): this hook reads from a hardcoded ROLE_PERMISSIONS map. The proper fix is to consume
+// the user's actual permission list from the auth payload (passport/sanctum response). Until that
+// ships, custom roles with granted permissions will be silently denied. See follow-up ticket.
+// Tracked in: memory/feedback_usePermissions_hardcoded_map.md
+
 import { useAuthStore } from '../stores/authStore'
 
 // Permission keys mapped to modules

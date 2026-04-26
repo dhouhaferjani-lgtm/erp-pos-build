@@ -63,4 +63,58 @@ describe('CashDrawerControlsSection', () => {
     await userEvent.type(inputs[0], '50')
     expect(screen.getByTestId('cash-controls-error')).toBeInTheDocument()
   })
+
+  // Item 2 — currency-aware step
+  it('renders numeric inputs with step="0.001" for TND (3 decimals)', () => {
+    render(
+      <I18nextProvider i18n={i18n}>
+        <CashDrawerControlsSection value={initial} currencyCode="TND" onChange={vi.fn()} canEdit={true} />
+      </I18nextProvider>,
+    )
+    const inputs = screen.getAllByRole('spinbutton')
+    inputs.forEach((input) => {
+      expect(input).toHaveAttribute('step', '0.001')
+    })
+  })
+
+  it('renders numeric inputs with step="0.01" for EUR (2 decimals)', () => {
+    render(
+      <I18nextProvider i18n={i18n}>
+        <CashDrawerControlsSection value={initial} currencyCode="EUR" onChange={vi.fn()} canEdit={true} />
+      </I18nextProvider>,
+    )
+    const inputs = screen.getAllByRole('spinbutton')
+    inputs.forEach((input) => {
+      expect(input).toHaveAttribute('step', '0.01')
+    })
+  })
+
+  // Item 3 — bccomp boundary validation
+  it('shows validation error when overSoft === overHard (boundary: equal values must fail)', async () => {
+    const equalThresholds = {
+      ...initial,
+      cash_variance_over_soft: '5.00',
+      cash_variance_over_hard: '5.00',
+    }
+    render(
+      <I18nextProvider i18n={i18n}>
+        <CashDrawerControlsSection value={equalThresholds} currencyCode="EUR" onChange={vi.fn()} canEdit={true} />
+      </I18nextProvider>,
+    )
+    expect(screen.getByTestId('cash-controls-error')).toBeInTheDocument()
+  })
+
+  it('does not show validation error when overSoft < overHard (boundary: strict less-than must pass)', () => {
+    const validThresholds = {
+      ...initial,
+      cash_variance_over_soft: '4.99',
+      cash_variance_over_hard: '5.00',
+    }
+    render(
+      <I18nextProvider i18n={i18n}>
+        <CashDrawerControlsSection value={validThresholds} currencyCode="EUR" onChange={vi.fn()} canEdit={true} />
+      </I18nextProvider>,
+    )
+    expect(screen.queryByTestId('cash-controls-error')).not.toBeInTheDocument()
+  })
 })

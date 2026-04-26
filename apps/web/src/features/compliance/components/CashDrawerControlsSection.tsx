@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { tokens, textColors } from '@/lib/designTokens'
+import { bccomp } from '@/lib/decimal'
+import { getDecimals } from '@/hooks/useCurrency'
 
 export interface CashDrawerControlsValue {
   cash_variance_over_soft: string
@@ -20,15 +22,13 @@ export interface CashDrawerControlsSectionProps {
 }
 
 function isOverSoftGteHard(overSoft: string, overHard: string): boolean {
-  const soft = parseFloat(overSoft)
-  const hard = parseFloat(overHard)
-  return !isNaN(soft) && !isNaN(hard) && soft >= hard
+  // Use bccomp (Big.js) to avoid IEEE 754 float imprecision on monetary comparisons.
+  // bccomp returns 0 when equal and 1 when a > b — both are invalid (soft must be < hard).
+  return overSoft !== '' && overHard !== '' && bccomp(overSoft, overHard) >= 0
 }
 
 function isUnderSoftGteHard(underSoft: string, underHard: string): boolean {
-  const soft = parseFloat(underSoft)
-  const hard = parseFloat(underHard)
-  return !isNaN(soft) && !isNaN(hard) && soft >= hard
+  return underSoft !== '' && underHard !== '' && bccomp(underSoft, underHard) >= 0
 }
 
 type EmailSeverity = 'none' | 'critical' | 'warning' | 'info'
@@ -160,6 +160,11 @@ export function CashDrawerControlsSection({
 
   const inputBase = `${tokens.input.base} text-right`
 
+  // Currency-aware step: TND → 0.001, EUR/USD → 0.01, etc.
+  // Avoids hardcoding step="0.01" which prevents managers from entering sub-cent
+  // thresholds for 3-decimal currencies like TND.
+  const currencyStep = String(1 / Math.pow(10, getDecimals(currencyCode)))
+
   return (
     <section
       data-testid="cash-controls-section"
@@ -195,7 +200,7 @@ export function CashDrawerControlsSection({
               id="cash-over-soft"
               type="number"
               min="0"
-              step="0.01"
+              step={currencyStep}
               value={overSoft}
               disabled={!canEdit}
               onChange={(e) => { handleOverSoftChange(e.target.value) }}
@@ -210,7 +215,7 @@ export function CashDrawerControlsSection({
               id="cash-over-hard"
               type="number"
               min="0"
-              step="0.01"
+              step={currencyStep}
               value={overHard}
               disabled={!canEdit}
               onChange={(e) => { handleOverHardChange(e.target.value) }}
@@ -228,7 +233,7 @@ export function CashDrawerControlsSection({
               id="cash-over-soft"
               type="number"
               min="0"
-              step="0.01"
+              step={currencyStep}
               value={overSoft}
               disabled={!canEdit}
               onChange={(e) => { handleOverSoftChange(e.target.value) }}
@@ -243,7 +248,7 @@ export function CashDrawerControlsSection({
               id="cash-over-hard"
               type="number"
               min="0"
-              step="0.01"
+              step={currencyStep}
               value={overHard}
               disabled={!canEdit}
               onChange={(e) => { handleOverHardChange(e.target.value) }}
@@ -258,7 +263,7 @@ export function CashDrawerControlsSection({
               id="cash-under-soft"
               type="number"
               min="0"
-              step="0.01"
+              step={currencyStep}
               value={underSoft}
               disabled={!canEdit}
               onChange={(e) => { handleUnderSoftChange(e.target.value) }}
@@ -273,7 +278,7 @@ export function CashDrawerControlsSection({
               id="cash-under-hard"
               type="number"
               min="0"
-              step="0.01"
+              step={currencyStep}
               value={underHard}
               disabled={!canEdit}
               onChange={(e) => { handleUnderHardChange(e.target.value) }}
