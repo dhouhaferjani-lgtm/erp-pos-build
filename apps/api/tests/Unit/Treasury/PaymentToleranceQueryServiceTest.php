@@ -146,6 +146,10 @@ final class PaymentToleranceQueryServiceTest extends TestCase
 
         $this->assertSame('0.000', $totals->totalAmount);
         $this->assertSame(0, $totals->writeoffCount);
+        // Invariant: an empty-shift result always carries a non-empty currency code
+        // (defaulted to EUR), so consumers like ReportGenerationService can read
+        // currencyCode directly without falling back to a sibling field.
+        $this->assertSame('EUR', $totals->currencyCode);
     }
 
     public function test_training_receipts_are_excluded_from_totals_breakdown_and_drilldown(): void

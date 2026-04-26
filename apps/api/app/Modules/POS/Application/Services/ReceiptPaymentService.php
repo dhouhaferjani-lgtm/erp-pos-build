@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Events\ReceiptCompleted;
+use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptPayment;
 use App\Modules\POS\Domain\Shift;
@@ -18,6 +19,7 @@ use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Domain\CurrencyScale;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -206,12 +208,19 @@ final class ReceiptPaymentService
                 $receipt->change_due = $changeDue;
                 $receipt->save();
 
-                /** @var Shift $shift */
-                $shift = Shift::query()
-                    ->where('terminal_id', $receipt->terminal_id)
-                    ->where('status', ShiftStatus::Open)
-                    ->lockForUpdate()
-                    ->firstOrFail();
+                try {
+                    /** @var Shift $shift */
+                    $shift = Shift::query()
+                        ->where('terminal_id', $receipt->terminal_id)
+                        ->where('status', ShiftStatus::Open)
+                        ->lockForUpdate()
+                        ->firstOrFail();
+                } catch (ModelNotFoundException) {
+                    // Operational gap (prior shift closed, new one not yet opened)
+                    // surfaces here as a generic Eloquent miss. Re-wrap so the cashier
+                    // sees a domain-level error and not "Model [Shift] not found".
+                    throw ShiftNotOpenException::noOpenShift($receipt->terminal_id);
+                }
                 $shift->applyToleranceWriteoff($toleranceAmount);
             } else {
                 $receipt->change_due = $changeDue;

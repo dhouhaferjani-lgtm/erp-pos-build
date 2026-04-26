@@ -109,6 +109,12 @@ export interface ReceiptData {
   change_due: string;
   /** Cash-sale tolerance write-off in customer-facing currency. Null when not applied. */
   tolerance_writeoff?: string | null;
+  /**
+   * Precomputed flag for the Rust formatter. True when tolerance_writeoff is a
+   * positive amount; false otherwise. Computed on the TS boundary using
+   * arbitrary-precision decimal so the Rust side never parses monetary strings.
+   */
+  has_tolerance?: boolean;
   fiscal_hash: string | null;
   fiscal_signature: string | null;
   customer_name: string | null;
@@ -171,6 +177,7 @@ export function buildZReceiptData(input: BuildZReceiptDataInput): ReceiptData {
     payments: [],
     change_due: '0.00',
     tolerance_writeoff: null,
+    has_tolerance: false,
     fiscal_hash: null,
     fiscal_signature: null,
     customer_name: null,

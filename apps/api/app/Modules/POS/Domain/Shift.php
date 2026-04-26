@@ -152,7 +152,7 @@ class Shift extends Model
      * Atomically increment tolerance write-off aggregates for the shift.
      *
      * Intended to be called inside a transaction that already holds a
-     * pessimistic lock on this row (see ReceiptPaymentService — Phase 4).
+     * pessimistic lock on this row (see ReceiptPaymentService — Phase 2).
      * The lock guarantees no concurrent writers; this method just bcadds
      * the new write-off to the running total and increments the count.
      *

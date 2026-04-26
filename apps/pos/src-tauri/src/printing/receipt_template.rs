@@ -36,11 +36,17 @@ pub struct ReceiptData {
     /// Payment methods used
     pub payments: Vec<PaymentLine>,
     pub change_due: String,
-    /// Cash-sale tolerance write-off (GL 658). When `Some` and parses to > 0,
-    /// a "Rounding -X.XX" line is printed in the totals/payments block.
+    /// Cash-sale tolerance write-off (GL 658). When `has_tolerance` is true,
+    /// the formatter prints a "Rounding -X.XX" line using this string verbatim.
     /// Absent on legacy receipts and on receipts without applied tolerance.
     #[serde(default)]
     pub tolerance_writeoff: Option<String>,
+    /// Precomputed flag from the TS boundary: true iff `tolerance_writeoff`
+    /// represents a positive monetary value. Computing this on the Rust side
+    /// would require parsing a monetary string into f64, which is a precision
+    /// smell even when the parsed value is only compared to zero.
+    #[serde(default)]
+    pub has_tolerance: bool,
     /// Fiscal compliance
     pub fiscal_hash: Option<String>,
     pub fiscal_signature: Option<String>,
@@ -377,14 +383,15 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
 
         // ── Tolerance write-off (Rounding line) ──
         // Printed only when a non-zero tolerance write-off is present on the receipt.
-        if let Some(ref tolerance) = data.tolerance_writeoff {
-            if let Ok(amount) = tolerance.parse::<f64>() {
-                if amount > 0.0 {
-                    b.two_column(
-                        &data.label(|l| &l.rounding, "Rounding"),
-                        &format!("-{}{}", data.currency_symbol, tolerance),
-                    );
-                }
+        // The TS layer (buildReceiptData) precomputes `has_tolerance` from the
+        // monetary string using arbitrary-precision decimal — Rust does not parse
+        // the monetary value here.
+        if data.has_tolerance {
+            if let Some(ref tolerance) = data.tolerance_writeoff {
+                b.two_column(
+                    &data.label(|l| &l.rounding, "Rounding"),
+                    &format!("-{}{}", data.currency_symbol, tolerance),
+                );
             }
         }
     }

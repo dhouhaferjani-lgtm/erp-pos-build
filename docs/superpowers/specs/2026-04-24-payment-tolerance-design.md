@@ -467,6 +467,15 @@ No code, no migration, no permission, no UX. Strictly a direction doc for the ne
 Per Rule #11 (no hardcoded frontend strings), all new user-facing text uses `t()` keys:
 
 - `pos.receipt.rounding` — "Rounding" (FR: "Arrondi", AR: "تقريب", IT: "Arrotondamento", etc.)
+
+  > **Implementation note (Phase 2):** the receipt label shipped under the
+  > `pos.receiptLabel.rounding` namespace, alongside every other receipt
+  > label (`receiptLabel.changeDue`, `receiptLabel.payments`, …). The
+  > `receiptLabel.*` grouping is the established pattern for ESC/POS thermal
+  > receipt labels and is internally consistent. This spec entry is kept as
+  > the canonical key name for documentation purposes; treat the
+  > `receiptLabel.*` placement as the de-facto convention for any future
+  > thermal-receipt label additions.
 - `pos.tolerance.short_pay_accepted` — optional toast-style feedback (used if a cashier-visible acknowledgement is wanted — per §4 the primary UX is silent accept; deferred to implementation whether a toast is included)
 - `pos.discount.below_tolerance` — discount boundary error at till
 - `documents.discount.below_tolerance` — discount boundary error in B2B

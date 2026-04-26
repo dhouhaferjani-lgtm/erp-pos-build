@@ -100,6 +100,36 @@ describe('buildEscPosReceiptData — tolerance write-off (Phase 2 / Task 10)', (
     // The mocked i18next.t returns its key — we expect the receiptLabel.rounding key.
     expect(result.labels?.rounding).toBe('pos:receiptLabel.rounding');
   });
+
+  it.each([
+    ['0.020', true, 'positive write-off'],
+    ['0.001', true, 'sub-cent positive write-off'],
+  ])(
+    'sets has_tolerance=true for %s (%s)',
+    (writeoff, expected, _label) => {
+      const receipt = makeReceipt({ tolerance_writeoff: writeoff });
+
+      const result = buildEscPosReceiptData(receipt);
+
+      expect(result.has_tolerance).toBe(expected);
+    },
+  );
+
+  it.each([
+    ['0', 'literal zero'],
+    ['0.000', 'zero at scale 3'],
+    ['', 'empty string'],
+    [null, 'null'],
+  ])(
+    'sets has_tolerance=false for %s (%s)',
+    (writeoff, _label) => {
+      const receipt = makeReceipt({ tolerance_writeoff: writeoff });
+
+      const result = buildEscPosReceiptData(receipt);
+
+      expect(result.has_tolerance).toBe(false);
+    },
+  );
 });
 
 describe('buildEscPosReceiptData', () => {

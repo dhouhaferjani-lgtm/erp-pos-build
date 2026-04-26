@@ -18,6 +18,7 @@ use App\Modules\POS\Domain\Enums\PrintMethod;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Exceptions\DiscountExceedsLimitException;
 use App\Modules\POS\Domain\Exceptions\DiscountNotAllowedException;
+use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Presentation\Requests\StoreReceiptPaymentsRequest;
 use App\Modules\POS\Presentation\Requests\StoreReceiptRequest;
@@ -471,11 +472,24 @@ final class ReceiptController extends Controller
     {
         Gate::authorize('pos.operate_terminal');
 
-        $result = $this->receiptPaymentService->processReceiptPayments(
-            receiptId: $id,
-            payments: $request->validated('payments'),
-            customerId: $request->validated('customer_id'),
-        );
+        try {
+            $result = $this->receiptPaymentService->processReceiptPayments(
+                receiptId: $id,
+                payments: $request->validated('payments'),
+                customerId: $request->validated('customer_id'),
+            );
+        } catch (ShiftNotOpenException $e) {
+            // Cashier is paying a receipt while no shift is open on the terminal —
+            // typically the prior shift just closed. Surface a 409 with a domain
+            // code that the POS UI can map to a "open a shift first" toast,
+            // matching the convention already established in Shift/ReportController.
+            return response()->json([
+                'error' => [
+                    'code' => 'NO_OPEN_SHIFT',
+                    'message' => $e->getMessage(),
+                ],
+            ], 409);
+        }
 
         return response()->json([
             'data' => $result,

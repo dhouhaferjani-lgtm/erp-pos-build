@@ -83,6 +83,15 @@ export function buildEscPosReceiptData(
   const changeDue = bccomp(totalPayments, receipt.total) > 0
     ? bcsub(totalPayments, receipt.total, decimals)
     : (0).toFixed(decimals);
+  // Compute has_tolerance on the TS side using arbitrary-precision decimal.
+  // The Rust receipt formatter reads this flag directly and never parses
+  // monetary strings (recurring lesson: parseFloat on monetary values is a
+  // smell, even when the parsed value is only compared to zero today).
+  const toleranceWriteoff = receipt.tolerance_writeoff;
+  const hasTolerance =
+    toleranceWriteoff !== null
+    && toleranceWriteoff !== ''
+    && bccomp(toleranceWriteoff, '0') > 0;
 
   return {
     company: {
@@ -124,6 +133,7 @@ export function buildEscPosReceiptData(
     })),
     change_due: changeDue,
     tolerance_writeoff: receipt.tolerance_writeoff ?? null,
+    has_tolerance: hasTolerance,
     fiscal_hash: receipt.fiscal_hash,
     fiscal_signature: null,
     customer_name: receipt.customer_name,
@@ -214,6 +224,8 @@ export function buildEscPosFromOfflineReceipt(
       amount: result.total,
     }],
     change_due: result.changeDue.toFixed(decimals),
+    tolerance_writeoff: null,
+    has_tolerance: false,
     fiscal_hash: result.fiscalHash ?? null,
     fiscal_signature: null,
     customer_name: null,

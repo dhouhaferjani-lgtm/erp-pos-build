@@ -40,6 +40,8 @@ final class StoreReceiptPaymentsToleranceAuthorizationTest extends TestCase
 {
     use RefreshDatabase;
 
+    private static int $receiptCounter = 0;
+
     private Tenant $tenant;
 
     private Company $company;
@@ -189,6 +191,36 @@ final class StoreReceiptPaymentsToleranceAuthorizationTest extends TestCase
         $this->assertNotSame(403, $response->status());
     }
 
+    public function test_short_pay_returns_409_when_no_open_shift_on_terminal(): void
+    {
+        // Operational gap: a cashier tries to short-pay a receipt while the
+        // terminal has no open shift. Without the ShiftNotOpenException guard
+        // this previously surfaced an opaque 5xx via ModelNotFoundException.
+        // Receipt total €100 + €0.30 shortfall fits FR tolerance (0.5% = €0.50,
+        // max €0.50) so the service reaches the shift firstOrFail before
+        // failing.
+        $cashier = $this->makeCashier(withApplyTolerance: true);
+        $receipt = $this->seedReceipt('100.00', $cashier);
+
+        Shift::query()
+            ->where('terminal_id', $this->terminal->id)
+            ->update(['status' => ShiftStatus::Closed, 'closed_at' => now()]);
+
+        Sanctum::actingAs($cashier);
+
+        $response = $this->postJson("/api/v1/pos/receipts/{$receipt->id}/payments", [
+            'payments' => [[
+                'amount' => '99.700',
+                'payment_method_id' => $this->cashMethod->id,
+                'repository_id' => $this->cashRepo->id,
+            ]],
+        ]);
+
+        $response->assertStatus(409);
+        $response->assertJsonPath('error.code', 'NO_OPEN_SHIFT');
+        $response->assertJsonFragment(['message' => "No open shift found for terminal {$this->terminal->id}."]);
+    }
+
     public function test_seeder_grants_apply_tolerance_to_cashier_role(): void
     {
         $this->seed(RolesAndPermissionsSeeder::class);
@@ -238,7 +270,7 @@ final class StoreReceiptPaymentsToleranceAuthorizationTest extends TestCase
             'company_id' => $this->company->id,
             'location_id' => $this->location->id,
             'terminal_id' => $this->terminal->id,
-            'receipt_number' => sprintf('T001-C001-L01-POS01-2026-%08d', mt_rand(1, 99999999)),
+            'receipt_number' => sprintf('T001-C001-L01-POS01-2026-%08d', ++self::$receiptCounter),
             'chain_sequence' => 1,
             'receipt_year' => 2026,
             'fiscal_hash' => hash('sha256', 'fiscal-'.uniqid()),

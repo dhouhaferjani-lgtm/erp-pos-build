@@ -14,6 +14,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\ReceiptPaymentService;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
+use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
@@ -45,6 +46,8 @@ use Tests\TestCase;
 final class ReceiptPaymentServiceToleranceTest extends TestCase
 {
     use RefreshDatabase;
+
+    private static int $receiptCounter = 0;
 
     private Tenant $tenant;
 
@@ -278,6 +281,52 @@ final class ReceiptPaymentServiceToleranceTest extends TestCase
         $this->assertSame('0.000', $this->shift->tolerance_writeoff_total);
     }
 
+    public function test_short_pay_with_no_open_shift_throws_shift_not_open_exception(): void
+    {
+        // Operational gap: prior shift just closed but a new one isn't yet open.
+        // Without this guard the firstOrFail() in the tolerance branch surfaces a
+        // generic ModelNotFoundException — opaque to the cashier. Re-wrapping it
+        // as ShiftNotOpenException gives a domain-meaningful message that the
+        // global handler maps to a 4xx with explicit hint to open a shift.
+        $this->shift->status = ShiftStatus::Closed;
+        $this->shift->closed_at = now();
+        $this->shift->save();
+
+        $receipt = $this->seedReceipt('100.00');
+
+        /** @var ReceiptPaymentService $service */
+        $service = $this->app->make(ReceiptPaymentService::class);
+
+        try {
+            $service->processReceiptPayments(
+                receiptId: $receipt->id,
+                payments: [[
+                    'amount' => '99.700',
+                    'payment_method_id' => $this->cashMethod->id,
+                    'repository_id' => $this->cashRepo->id,
+                ]],
+            );
+            $this->fail('Expected ShiftNotOpenException when applying tolerance with no open shift');
+        } catch (ShiftNotOpenException $e) {
+            $this->assertStringContainsString('No open shift', $e->getMessage());
+            $this->assertStringContainsString($this->terminal->id, $e->getMessage());
+        }
+
+        // Atomicity: the entire transaction must roll back so no payment / GL
+        // entries / receipt mutations leak when the shift guard fires.
+        $receipt->refresh();
+        $this->assertNull($receipt->tolerance_writeoff);
+        $this->assertSame(
+            0,
+            DB::table('payments')->where('reference', 'like', "POS Receipt {$receipt->receipt_number}%")->count(),
+        );
+        $this->assertSame(
+            0,
+            JournalEntry::where('source_id', $receipt->id)->count(),
+            'No journal entries should leak when the shift guard fails the transaction.',
+        );
+    }
+
     public function test_atomicity_gl_failure_rolls_back_receipt_and_shift_writes(): void
     {
         $receipt = $this->seedReceipt('100.00');
@@ -327,7 +376,7 @@ final class ReceiptPaymentServiceToleranceTest extends TestCase
             'company_id' => $this->company->id,
             'location_id' => $this->location->id,
             'terminal_id' => $this->terminal->id,
-            'receipt_number' => sprintf('T001-C001-L01-POS01-2026-%08d', mt_rand(1, 99999999)),
+            'receipt_number' => sprintf('T001-C001-L01-POS01-2026-%08d', ++self::$receiptCounter),
             'chain_sequence' => 1,
             'receipt_year' => 2026,
             'fiscal_hash' => hash('sha256', 'fiscal-'.uniqid()),

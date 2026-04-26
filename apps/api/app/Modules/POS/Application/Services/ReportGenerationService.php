@@ -259,9 +259,7 @@ final class ReportGenerationService
                 $toleranceTotals = $this->paymentToleranceQueryService->totalForShift($shift->id);
                 $reportData['tolerance_summary'] = [
                     'totalAmount' => $toleranceTotals->totalAmount,
-                    'currencyCode' => $toleranceTotals->currencyCode === ''
-                        ? $currencyCode
-                        : $toleranceTotals->currencyCode,
+                    'currencyCode' => $toleranceTotals->currencyCode,
                     'writeoffCount' => $toleranceTotals->writeoffCount,
                 ];
             }
