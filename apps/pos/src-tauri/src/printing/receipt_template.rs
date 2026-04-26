@@ -667,6 +667,8 @@ mod tests_z_cash_counts {
             vat_breakdown: vec![],
             payments: vec![],
             change_due: "0.00".to_string(),
+            tolerance_writeoff: None,
+            has_tolerance: false,
             fiscal_hash: None,
             fiscal_signature: None,
             customer_name: None,

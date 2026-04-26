@@ -3,7 +3,8 @@ import type { FullReceiptResponse } from '@/types/receipt';
 import type { ReceiptData, ReceiptLabels } from '@/lib/printing';
 import type { CartItem } from '@/types/cart';
 import type { CheckoutResult } from '@/lib/offline/offlineCheckoutService';
-import { bcadd, bcsub, bccomp } from '@/lib/decimal';
+import { bcadd, bcsub, bccomp, bcformat } from '@/lib/decimal';
+import { getCurrencyDecimals } from '@/lib/currency';
 
 function formatReceiptDateTime(date: Date, locale: string): string {
   try {
@@ -39,18 +40,6 @@ function getCurrencySymbol(currencyCode: string): string {
     return parts.find((p) => p.type === 'currency')?.value ?? currencyCode;
   } catch {
     return currencyCode;
-  }
-}
-
-function getCurrencyDecimals(currencyCode: string): number {
-  try {
-    const opts = new Intl.NumberFormat('en', {
-      style: 'currency',
-      currency: currencyCode,
-    }).resolvedOptions();
-    return opts.maximumFractionDigits ?? 2;
-  } catch {
-    return 2;
   }
 }
 
@@ -111,28 +100,32 @@ export function buildEscPosReceiptData(
     lines: receipt.lines.map((line) => ({
       name: line.product_name,
       quantity: line.quantity,
-      unit_price: line.unit_price,
-      line_total: line.line_total,
+      unit_price: bcformat(line.unit_price, decimals),
+      line_total: bcformat(line.line_total, decimals),
       modifiers: line.modifiers,
       discount:
-        parseFloat(line.discount_amount) > 0 ? line.discount_amount : null,
+        bccomp(line.discount_amount, '0') > 0
+          ? bcformat(line.discount_amount, decimals)
+          : null,
     })),
-    subtotal: receipt.subtotal,
-    discount_amount: receipt.discount_amount,
-    tax_amount: receipt.tax_amount,
-    total: receipt.total,
+    subtotal: bcformat(receipt.subtotal, decimals),
+    discount_amount: bcformat(receipt.discount_amount, decimals),
+    tax_amount: bcformat(receipt.tax_amount, decimals),
+    total: bcformat(receipt.total, decimals),
     currency_symbol: currencySymbol,
     vat_breakdown: receipt.vat_details.map((vat) => ({
       rate: vat.tax_rate,
-      taxable: vat.net_amount,
-      tax: vat.vat_amount,
+      taxable: bcformat(vat.net_amount, decimals),
+      tax: bcformat(vat.vat_amount, decimals),
     })),
     payments: receipt.payments.map((p) => ({
       method: p.payment_method.name,
-      amount: p.amount,
+      amount: bcformat(p.amount, decimals),
     })),
     change_due: changeDue,
-    tolerance_writeoff: receipt.tolerance_writeoff ?? null,
+    tolerance_writeoff: toleranceWriteoff !== null && toleranceWriteoff !== ''
+      ? bcformat(toleranceWriteoff, decimals)
+      : null,
     has_tolerance: hasTolerance,
     fiscal_hash: receipt.fiscal_hash,
     fiscal_signature: null,
@@ -197,33 +190,33 @@ export function buildEscPosFromOfflineReceipt(
     lines: cartItems.map((item) => ({
       name: item.product.name,
       quantity: String(item.quantity),
-      unit_price: item.unit_price,
-      line_total: item.line_total,
+      unit_price: bcformat(item.unit_price, decimals),
+      line_total: bcformat(item.line_total, decimals),
       modifiers: item.product.selectedModifiers?.map((m) => ({
         name: m.name,
-        price: m.price_adjustment,
+        price: bcformat(m.price_adjustment, decimals),
       })) ?? null,
-      discount: item.discount_amount && parseFloat(item.discount_amount) > 0
-        ? item.discount_amount
+      discount: item.discount_amount && bccomp(item.discount_amount, '0') > 0
+        ? bcformat(item.discount_amount, decimals)
         : null,
     })),
-    subtotal: result.subtotal,
-    discount_amount: result.discountAmount,
-    tax_amount: result.taxAmount,
-    total: result.total,
+    subtotal: bcformat(result.subtotal, decimals),
+    discount_amount: bcformat(result.discountAmount, decimals),
+    tax_amount: bcformat(result.taxAmount, decimals),
+    total: bcformat(result.total, decimals),
     currency_symbol: currencySymbol,
     vat_breakdown: Array.from(vatByRate.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([rate, { taxable, tax }]) => ({
         rate,
-        taxable: taxable.toFixed(decimals),
-        tax: tax.toFixed(decimals),
+        taxable: bcformat(taxable, decimals),
+        tax: bcformat(tax, decimals),
       })),
     payments: [{
       method: paymentMethodName,
-      amount: result.total,
+      amount: bcformat(result.total, decimals),
     }],
-    change_due: result.changeDue.toFixed(decimals),
+    change_due: bcformat(result.changeDue, decimals),
     tolerance_writeoff: null,
     has_tolerance: false,
     fiscal_hash: result.fiscalHash ?? null,
