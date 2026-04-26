@@ -48,14 +48,24 @@ class PaymentToleranceService
     }
 
     /**
-     * Check if a payment difference qualifies for auto-write-off
+     * Check if a payment difference qualifies for auto-write-off.
+     *
+     * Boundary semantics:
+     * - $strict = false (default, A1 / SmartPayment): inclusive `<=` against both
+     *   percentage and absolute thresholds. A difference exactly at the limit qualifies.
+     * - $strict = true (A2 close-with-tolerance, per spec §15): exclusive `<`.
+     *   A difference exactly at the limit rejects, closing a sub-tolerance abuse vector
+     *   (auditor would otherwise see "balance == threshold" written off without scrutiny).
+     *
+     * Single source of truth for tolerance qualification across A1 and A2.
      *
      * @return array{qualifies: bool, difference: string, type: string|null, reason: string|null}
      */
     public function checkTolerance(
         string $invoiceAmount,
         string $paymentAmount,
-        string $companyId
+        string $companyId,
+        bool $strict = false,
     ): array {
         $settings = $this->getToleranceSettings($companyId);
 
@@ -78,10 +88,16 @@ class PaymentToleranceService
         /** @phpstan-ignore-next-line argument.type */
         $percentageThreshold = bcmul($invoiceAmount, $settings['percentage'], 4);
 
-        // Must be within BOTH percentage AND max amount
-        $withinPercentage = bccomp($absDifference, $percentageThreshold, 4) <= 0;
-        /** @phpstan-ignore-next-line argument.type */
-        $withinMaxAmount = bccomp($absDifference, $settings['max_amount'], 4) <= 0;
+        // Must be within BOTH percentage AND max amount.
+        // Strict mode flips inclusive `<=` to exclusive `<` on both gates.
+        $withinPercentage = $strict
+            ? bccomp($absDifference, $percentageThreshold, 4) < 0
+            : bccomp($absDifference, $percentageThreshold, 4) <= 0;
+        $withinMaxAmount = $strict
+            /** @phpstan-ignore-next-line argument.type */
+            ? bccomp($absDifference, $settings['max_amount'], 4) < 0
+            /** @phpstan-ignore-next-line argument.type */
+            : bccomp($absDifference, $settings['max_amount'], 4) <= 0;
 
         if ($withinPercentage && $withinMaxAmount && bccomp($absDifference, '0', 4) > 0) {
             $type = bccomp($difference, '0', 4) < 0 ? 'underpayment' : 'overpayment';

@@ -40,5 +40,24 @@
       "uploadFailed": "Failed to upload file",
       "deleteFailed": "Failed to delete file"
     }
+  },
+  "invoice": {
+    "closeWithWriteoff": {
+      "calloutTitle": "Residual balance within tolerance",
+      "calloutMessage": "{{amount}} remains on this invoice and is within the configured payment-tolerance margin. You can close it by writing off the residual to GL 658.",
+      "button": "Close with write-off ({{amount}})",
+      "dialog": {
+        "title": "Close invoice with write-off",
+        "message": "{{amount}} will be written off to GL 658 (Payment Tolerance Expense) and the invoice will be marked as paid. This action cannot be undone.",
+        "confirm": "Close invoice",
+        "cancel": "Cancel"
+      },
+      "success": "Invoice closed — {{amount}} written off to GL 658.",
+      "error": {
+        "toleranceExceeded": "The remaining balance exceeds the payment-tolerance threshold for this company.",
+        "alreadyPaid": "This invoice is already settled.",
+        "generic": "Could not close the invoice. Please try again."
+      }
+    }
   }
 }

@@ -34,13 +34,18 @@ export const AllocationMethodLabels: Record<AllocationMethod, string> = {
 // ============================================================================
 
 /**
- * Payment tolerance settings for a company
+ * Payment tolerance settings for a company.
+ *
+ * `source` matches PaymentToleranceService::determineSettingsSource which
+ * returns 'system_default' (not 'system') when neither company nor country
+ * settings are present. The legacy 'system' value is kept here so older
+ * stored cache snapshots still parse if any are encountered.
  */
 export interface ToleranceSettings {
   enabled: boolean;
   percentage: string; // Decimal string (e.g., "0.0050" for 0.5%)
   max_amount: string; // Decimal string (e.g., "5.0000")
-  source: 'company' | 'country' | 'system';
+  source: 'company' | 'country' | 'system' | 'system_default';
 }
 
 /**
@@ -148,7 +153,10 @@ export function isToleranceSettings(value: unknown): value is ToleranceSettings 
     typeof obj['enabled'] === 'boolean' &&
     typeof obj['percentage'] === 'string' &&
     typeof obj['max_amount'] === 'string' &&
-    (obj['source'] === 'company' || obj['source'] === 'country' || obj['source'] === 'system')
+    (obj['source'] === 'company'
+      || obj['source'] === 'country'
+      || obj['source'] === 'system'
+      || obj['source'] === 'system_default')
   );
 }
 

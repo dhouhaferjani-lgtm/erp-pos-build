@@ -1,0 +1,126 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\Treasury\Application\Services;
+
+use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Treasury\Application\Results\CloseInvoiceWithToleranceResult;
+use App\Modules\Treasury\Domain\Events\InvoiceClosedWithTolerance;
+use App\Modules\Treasury\Domain\Exceptions\InvoiceAlreadyPaidException;
+use App\Modules\Treasury\Domain\Exceptions\ToleranceExceededException;
+use App\Modules\Treasury\Domain\PaymentAllocation;
+use DateTimeImmutable;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Closes a B2B invoice whose remaining balance is within the configured
+ * payment-tolerance threshold by:
+ *   1. Booking the residual to GL 658 (PaymentToleranceExpense / Cr AR) via
+ *      the existing GeneralLedgerService::createPaymentToleranceJournalEntry.
+ *   2. Persisting a tolerance-only PaymentAllocation row (payment_id = NULL)
+ *      so the balance_due cache trigger stays consistent against any future
+ *      credit-note allocation that fires the trigger.
+ *   3. Marking the invoice as Paid + balance_due = 0 explicitly. The explicit
+ *      set is defensive: under PostgreSQL the trigger now also computes 0
+ *      (total - allocation.amount), and under SQLite (test driver) there is
+ *      no trigger, so the explicit assignment is the source of truth in tests.
+ *   4. Dispatching the immutable InvoiceClosedWithTolerance event for audit.
+ *
+ * Boundary semantics: strict inequality. A balance equal to the configured
+ * max_amount or percentage threshold rejects — closes a sub-tolerance abuse
+ * vector (per spec §15).
+ */
+final class CloseInvoiceWithToleranceService
+{
+    private const SCALE = 4;
+
+    public function __construct(
+        private readonly PaymentToleranceService $toleranceService,
+        private readonly GeneralLedgerService $glService,
+    ) {}
+
+    public function close(string $invoiceId, string $closedBy): CloseInvoiceWithToleranceResult
+    {
+        return DB::transaction(function () use ($invoiceId, $closedBy): CloseInvoiceWithToleranceResult {
+            /** @var Document $invoice */
+            $invoice = Document::query()
+                ->where('id', $invoiceId)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $balance = (string) ($invoice->balance_due ?? '0');
+            if ($invoice->status === DocumentStatus::Paid || bccomp($balance, '0', self::SCALE) <= 0) {
+                throw new InvoiceAlreadyPaidException($invoiceId);
+            }
+
+            $companyId = (string) $invoice->company_id;
+            $total = (string) ($invoice->total ?? '0');
+            $paid = bcsub($total, $balance, self::SCALE);
+
+            // Single source of truth for tolerance qualification (PaymentToleranceService),
+            // strict mode for A2 per spec §15.
+            $check = $this->toleranceService->checkTolerance(
+                invoiceAmount: $total,
+                paymentAmount: $paid,
+                companyId: $companyId,
+                strict: true,
+            );
+
+            if (! $check['qualifies']) {
+                $settings = $this->toleranceService->getToleranceSettings($companyId);
+
+                throw new ToleranceExceededException(
+                    remainingBalance: $balance,
+                    maxAmount: (string) $settings['max_amount'],
+                    percentage: (string) $settings['percentage'],
+                );
+            }
+
+            $partnerId = (string) $invoice->partner_id;
+            $entry = $this->glService->createPaymentToleranceJournalEntry(
+                companyId: $companyId,
+                partnerId: $partnerId,
+                documentId: $invoiceId,
+                amount: $balance,
+                type: 'underpayment',
+                date: new DateTimeImmutable('now'),
+                description: 'Close with write-off (tolerance)',
+            );
+
+            // Tolerance-only allocation row (payment_id = NULL).
+            // amount = the residual being cleared, tolerance_writeoff = same value.
+            // This makes the balance_due cache trigger return total - amount = 0
+            // and stay correct under any subsequent credit-note allocation.
+            PaymentAllocation::create([
+                'payment_id' => null,
+                'document_id' => $invoiceId,
+                'amount' => $balance,
+                'tolerance_writeoff' => $balance,
+            ]);
+
+            $invoice->balance_due = '0.000';
+            $invoice->status = DocumentStatus::Paid;
+            $invoice->save();
+
+            event(new InvoiceClosedWithTolerance(
+                invoiceId: $invoiceId,
+                companyId: $companyId,
+                partnerId: $partnerId,
+                amountWrittenOff: $balance,
+                currency: (string) $invoice->currency,
+                glEntryId: (string) $entry->id,
+                closedBy: $closedBy,
+                occurredAtTimestamp: new DateTimeImmutable('now'),
+            ));
+
+            return new CloseInvoiceWithToleranceResult(
+                invoiceId: $invoiceId,
+                amountWrittenOff: $balance,
+                glEntryId: (string) $entry->id,
+            );
+        });
+    }
+}

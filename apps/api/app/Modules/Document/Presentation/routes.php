@@ -146,6 +146,11 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:invoices.post')
         ->name('invoices.confirmDeliveriesAndPost');
 
+    // Close invoice with payment-tolerance write-off (Phase 3 / A2)
+    Route::post('/invoices/{invoice}/close-with-tolerance', [InvoiceController::class, 'closeWithTolerance'])
+        ->middleware('can:payments.allocate')
+        ->name('invoices.close-with-tolerance');
+
     // Credit note creation from invoice
     Route::post('/invoices/{id}/create-credit-note', [DocumentConversionController::class, 'convertInvoiceToCreditNote'])
         ->middleware('can:credit-notes.create')

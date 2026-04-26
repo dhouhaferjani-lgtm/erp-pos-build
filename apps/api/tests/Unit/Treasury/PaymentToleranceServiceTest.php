@@ -232,4 +232,71 @@ class PaymentToleranceServiceTest extends TestCase
         $this->assertFalse($result['qualifies']);
         $this->assertEquals('0.0000', $result['difference']);
     }
+
+    // -------------------------------------------------------------------------
+    // Strict mode (A2 close-with-tolerance per spec §15) — exclusive `<` on
+    // both percentage and absolute thresholds. A difference equal to either
+    // limit must reject.
+    // -------------------------------------------------------------------------
+
+    /** @test */
+    public function strict_mode_rejects_difference_equal_to_max_amount(): void
+    {
+        // TN max_amount = 0.100. 0.5% of 1000 = 5.00 (passes); the binding
+        // gate at 0.100 is the absolute one. Inclusive mode qualifies; strict rejects.
+        $inclusive = $this->service->checkTolerance(
+            invoiceAmount: '1000.0000',
+            paymentAmount: '999.9000',
+            companyId: $this->company->id,
+        );
+        $this->assertTrue($inclusive['qualifies'], 'Inclusive (default) mode qualifies at boundary.');
+
+        $strict = $this->service->checkTolerance(
+            invoiceAmount: '1000.0000',
+            paymentAmount: '999.9000',
+            companyId: $this->company->id,
+            strict: true,
+        );
+        $this->assertFalse($strict['qualifies'], 'Strict mode rejects at exact max_amount boundary.');
+        $this->assertNotNull($strict['reason']);
+        $this->assertStringContainsString('max amount', (string) $strict['reason']);
+    }
+
+    /** @test */
+    public function strict_mode_rejects_difference_equal_to_percentage_threshold(): void
+    {
+        // 0.5% of 20.0000 = 0.10 — equal to max_amount too, but the percentage gate is what
+        // we want to flex here. Use a smaller invoice so percentage binds first under both modes.
+        // 0.5% of 12.0000 = 0.0600 — strictly less than max_amount 0.1000.
+        $inclusive = $this->service->checkTolerance(
+            invoiceAmount: '12.0000',
+            paymentAmount: '11.9400',
+            companyId: $this->company->id,
+        );
+        $this->assertTrue($inclusive['qualifies']);
+
+        $strict = $this->service->checkTolerance(
+            invoiceAmount: '12.0000',
+            paymentAmount: '11.9400',
+            companyId: $this->company->id,
+            strict: true,
+        );
+        $this->assertFalse($strict['qualifies'], 'Strict mode rejects at exact percentage boundary.');
+        $this->assertNotNull($strict['reason']);
+        $this->assertStringContainsString('percentage', (string) $strict['reason']);
+    }
+
+    /** @test */
+    public function strict_mode_qualifies_just_below_threshold(): void
+    {
+        // 0.05 < both gates; both modes qualify.
+        $strict = $this->service->checkTolerance(
+            invoiceAmount: '100.0000',
+            paymentAmount: '99.9500',
+            companyId: $this->company->id,
+            strict: true,
+        );
+        $this->assertTrue($strict['qualifies']);
+        $this->assertEquals('0.0500', $strict['difference']);
+    }
 }

@@ -32,6 +32,7 @@ use App\Modules\POS\Domain\Events\TerminalDeactivated;
 use App\Modules\POS\Domain\Events\TerminalSoftwareUpdated;
 use App\Modules\POS\Domain\Events\TerminalTrainingModeChanged;
 use App\Modules\POS\Domain\Events\ZReportGenerated;
+use App\Modules\Treasury\Domain\Events\InvoiceClosedWithTolerance;
 use App\Modules\Treasury\Domain\Events\PaymentRecorded;
 use App\Shared\Domain\Events\DomainEvent;
 use Illuminate\Events\Dispatcher;
@@ -696,6 +697,33 @@ final class DomainEventSubscriber
     }
 
     /**
+     * Handle InvoiceClosedWithTolerance — A2 B2B close-with-writeoff audit trail.
+     *
+     * The journal entry alone records what changed in the GL, but does not
+     * link it back to the user action. The audit row gives us actor + invoice
+     * + writeoff amount in one place for compliance review.
+     */
+    public function handleInvoiceClosedWithTolerance(InvoiceClosedWithTolerance $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Document',
+            aggregateId: $event->invoiceId,
+            eventType: $event->getEventName(),
+            payload: [
+                'invoice_id' => $event->invoiceId,
+                'partner_id' => $event->partnerId,
+                'amount_written_off' => $event->amountWrittenOff,
+                'currency' => $event->currency,
+                'gl_entry_id' => $event->glEntryId,
+                'closed_by' => $event->closedBy,
+                'occurred_at' => $event->occurredAtTimestamp->format(DATE_ATOM),
+            ]
+        );
+    }
+
+    /**
      * Persist an event to the audit log.
      *
      * @param  array<string, mixed>  $payload
@@ -764,6 +792,9 @@ final class DomainEventSubscriber
             // Sales order events (fraud detection)
             SalesOrderConfirmed::class => 'handleSalesOrderConfirmed',
             SalesOrderCancelled::class => 'handleSalesOrderCancelled',
+
+            // Treasury events (audit trail for B2B close-with-writeoff)
+            InvoiceClosedWithTolerance::class => 'handleInvoiceClosedWithTolerance',
 
             // Stock reservation events (fraud detection)
             ReservationCreated::class => 'handleReservationCreated',

@@ -20,6 +20,7 @@ import { PaymentHistorySection, OutstandingAmountSection } from '../components'
 import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail, useCreditNotes } from '../hooks'
 import { DocumentActionBar } from '../components/DocumentActionBar'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
+import { CloseWithWriteoffSection } from './components/CloseWithWriteoffSection'
 import { useCompany } from '../../../hooks/useCompany'
 import type { Document } from '../../../types/document'
 import type { PaymentStatus } from '../components/PaymentStatusBadge'
@@ -269,6 +270,13 @@ export function InvoiceDetailPage() {
             </span>
           )}
         </DocumentHeader>
+        <CloseWithWriteoffSection
+          invoiceId={invoice.id}
+          invoiceTotal={invoice.total ?? '0'}
+          balanceDue={invoice.balance_due ?? invoice.outstanding_amount ?? '0'}
+          currency={invoice.currency ?? currentCompany?.currency ?? 'EUR'}
+          invoiceStatus={invoice.status ?? ''}
+        />
       </div>
 
       {/* Main Content */}

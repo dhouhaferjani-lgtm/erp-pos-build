@@ -24,6 +24,9 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
+use App\Modules\Treasury\Application\Services\CloseInvoiceWithToleranceService;
+use App\Modules\Treasury\Domain\Exceptions\InvoiceAlreadyPaidException;
+use App\Modules\Treasury\Domain\Exceptions\ToleranceExceededException;
 use App\Modules\Vehicle\Application\Services\VehicleContextBuilder;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Support\Traits\PaginatesResults;
@@ -65,6 +68,7 @@ class InvoiceController extends Controller
         private readonly TaxCalculationService $taxCalculationService,
         private readonly VehicleContextBuilder $vehicleContextBuilder,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly CloseInvoiceWithToleranceService $closeInvoiceWithToleranceService,
     ) {}
 
     private function scale(): int
@@ -682,6 +686,94 @@ class InvoiceController extends Controller
         } catch (\DomainException $e) {
             return $this->validationErrorResponse('OPERATION_FAILED', $e->getMessage());
         }
+    }
+
+    /**
+     * Close a partially-paid invoice by writing off the residual balance to GL 658.
+     *
+     * Eligibility (enforced by CloseInvoiceWithToleranceService):
+     *   - balance_due > 0 (not already settled)
+     *   - balance_due strictly less than both the absolute and percentage
+     *     payment-tolerance thresholds for the company.
+     *
+     * Successful close: posts Dr 658 / Cr AR via existing
+     * GeneralLedgerService::createPaymentToleranceJournalEntry, sets the
+     * invoice status to Paid + balance_due to 0, and dispatches
+     * InvoiceClosedWithTolerance.
+     *
+     * Permission: payments.allocate (gated on the route).
+     *
+     * POST /api/v1/invoices/{invoice}/close-with-tolerance
+     */
+    public function closeWithTolerance(Request $request, string $invoice): JsonResponse
+    {
+        $documentModel = $this->baseQuery()
+            ->ofType(DocumentType::Invoice)
+            ->find($invoice);
+
+        if ($documentModel === null) {
+            return $this->notFoundResponse('Invoice');
+        }
+
+        // Block premature close attempts at workflow boundary: only Posted invoices
+        // can be closed-with-tolerance. Paid is allowed to fall through so the
+        // service surfaces the more specific ALREADY_PAID idempotency error.
+        if (
+            $documentModel->status !== DocumentStatus::Posted
+            && $documentModel->status !== DocumentStatus::Paid
+        ) {
+            return response()->json([
+                'error' => [
+                    'code' => 'INVALID_STATUS',
+                    'message' => 'Invoice must be Posted to close with tolerance.',
+                    'details' => ['status' => $documentModel->status->value],
+                ],
+            ], 422);
+        }
+
+        /** @var User $user */
+        $user = $request->user();
+
+        try {
+            $result = $this->closeInvoiceWithToleranceService->close(
+                invoiceId: $documentModel->id,
+                closedBy: (string) $user->id,
+            );
+        } catch (ToleranceExceededException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'TOLERANCE_EXCEEDED',
+                    'message' => 'Invoice balance exceeds payment tolerance threshold.',
+                    'details' => [
+                        'remaining_balance' => $e->remainingBalance,
+                        'max_amount' => $e->maxAmount,
+                        'percentage' => $e->percentage,
+                    ],
+                ],
+            ], 422);
+        } catch (InvoiceAlreadyPaidException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'ALREADY_PAID',
+                    'message' => 'Invoice is already settled; close-with-tolerance is a no-op.',
+                    'details' => ['invoice_id' => $e->invoiceId],
+                ],
+            ], 422);
+        }
+
+        /** @var Document $fresh */
+        $fresh = $documentModel->fresh($this->detailRelations());
+
+        return response()->json([
+            'data' => DocumentData::fromModel($fresh, true, $this->scale()),
+            'meta' => [
+                'tolerance_writeoff' => [
+                    'amount' => $result->amountWrittenOff,
+                    'gl_entry_id' => $result->glEntryId,
+                ],
+                'timestamp' => now()->toIso8601String(),
+            ],
+        ]);
     }
 
     /**
