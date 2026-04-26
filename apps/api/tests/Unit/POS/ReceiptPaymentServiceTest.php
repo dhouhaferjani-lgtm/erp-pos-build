@@ -19,11 +19,13 @@ use App\Modules\POS\Domain\ReceiptPayment;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
-use App\Modules\Treasury\Application\Services\PaymentToleranceService;
 use App\Modules\Treasury\Domain\CountryPaymentSettings;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Contracts\Treasury\DTOs\ToleranceCheckResult;
+use App\Shared\Contracts\Treasury\Enums\ToleranceType;
+use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -51,7 +53,7 @@ final class ReceiptPaymentServiceTest extends TestCase
         $this->service = new ReceiptPaymentService(
             $this->companyContext,
             $this->glService,
-            $this->app->make(PaymentToleranceService::class),
+            $this->app->make(PaymentToleranceCheckerContract::class),
         );
     }
 
@@ -297,6 +299,61 @@ final class ReceiptPaymentServiceTest extends TestCase
                 ->where('source_id', $receipt->id)
                 ->count(),
         );
+    }
+
+    public function test_calls_tolerance_checker_with_strict_false_for_underpayment(): void
+    {
+        // A1 must invoke PaymentToleranceCheckerContract::check with strict=false
+        // so an exact-boundary shortfall is admitted (the inclusive `<=` semantics).
+        $this->setupTestData();
+        $this->seedFranceWithToleranceEnabled();
+        $this->seedToleranceExpenseAccount();
+        $this->seedOpenShiftForTerminal();
+
+        $receipt = $this->createReceipt([
+            'total' => '100.00',
+            'currency' => 'EUR',
+        ]);
+
+        $repository = PaymentRepository::factory()->create([
+            'company_id' => $this->company->id,
+            'tenant_id' => $this->tenant->id,
+            'gl_account_id' => $this->cashAccount->id,
+        ]);
+
+        $this->companyContext->setCompanyId($this->company->id);
+
+        $spy = new ToleranceCheckerSpy(
+            new ToleranceCheckResult(
+                qualifies: true,
+                difference: '0.3000',
+                type: ToleranceType::Underpayment,
+                reason: null,
+            ),
+        );
+
+        $service = new ReceiptPaymentService(
+            $this->companyContext,
+            $this->glService,
+            $spy,
+        );
+
+        $service->processReceiptPayments(
+            receiptId: $receipt->id,
+            payments: [[
+                'payment_method_id' => $this->paymentMethod->id,
+                'amount' => '99.700',
+                'repository_id' => $repository->id,
+            ]],
+        );
+
+        $this->assertCount(1, $spy->calls, 'A1 must invoke the contract exactly once.');
+        $call = $spy->calls[0];
+        $this->assertFalse($call['strict'], 'POS A1 must use strict=false (inclusive `<=`).');
+        $this->assertSame('FR', $call['countryCode']);
+        $this->assertSame('EUR', $call['currencyCode']);
+        $this->assertSame('100.000', $call['invoiceTotal']);
+        $this->assertSame('0.3000', $call['shortfall']);
     }
 
     private function seedFranceWithToleranceEnabled(): void
@@ -627,5 +684,36 @@ final class ReceiptPaymentServiceTest extends TestCase
             'terminal_id' => $this->terminal->id,
             'cashier_id' => $this->user->id,
         ], $overrides));
+    }
+}
+
+/**
+ * Inline spy for PaymentToleranceCheckerContract — captures invocation args
+ * so we can assert ReceiptPaymentService passes strict=false (the A1 path)
+ * without dragging Mockery into a unit test that already exercises real DB.
+ */
+final class ToleranceCheckerSpy implements PaymentToleranceCheckerContract
+{
+    /** @var list<array{shortfall:string,invoiceTotal:string,currencyCode:string,countryCode:string,strict:bool}> */
+    public array $calls = [];
+
+    public function __construct(private readonly ToleranceCheckResult $result) {}
+
+    public function check(
+        string $shortfall,
+        string $invoiceTotal,
+        string $currencyCode,
+        string $countryCode,
+        bool $strict = false,
+    ): ToleranceCheckResult {
+        $this->calls[] = [
+            'shortfall' => $shortfall,
+            'invoiceTotal' => $invoiceTotal,
+            'currencyCode' => $currencyCode,
+            'countryCode' => $countryCode,
+            'strict' => $strict,
+        ];
+
+        return $this->result;
     }
 }

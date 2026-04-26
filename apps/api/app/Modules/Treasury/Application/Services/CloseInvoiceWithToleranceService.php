@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Application\Services;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Treasury\Application\Results\CloseInvoiceWithToleranceResult;
@@ -12,6 +13,7 @@ use App\Modules\Treasury\Domain\Events\InvoiceClosedWithTolerance;
 use App\Modules\Treasury\Domain\Exceptions\InvoiceAlreadyPaidException;
 use App\Modules\Treasury\Domain\Exceptions\ToleranceExceededException;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use DateTimeImmutable;
 use Illuminate\Support\Facades\DB;
 
@@ -38,6 +40,7 @@ final class CloseInvoiceWithToleranceService
     private const SCALE = 4;
 
     public function __construct(
+        private readonly PaymentToleranceCheckerContract $toleranceChecker,
         private readonly PaymentToleranceService $toleranceService,
         private readonly GeneralLedgerService $glService,
     ) {}
@@ -58,18 +61,26 @@ final class CloseInvoiceWithToleranceService
 
             $companyId = (string) $invoice->company_id;
             $total = (string) ($invoice->total ?? '0');
-            $paid = bcsub($total, $balance, self::SCALE);
 
-            // Single source of truth for tolerance qualification (PaymentToleranceService),
-            // strict mode for A2 per spec §15.
-            $check = $this->toleranceService->checkTolerance(
-                invoiceAmount: $total,
-                paymentAmount: $paid,
-                companyId: $companyId,
+            // Single source of truth for tolerance qualification (PaymentToleranceCheckerContract),
+            // strict mode for A2 per spec §15. Country/currency keyed: resolve those from the
+            // invoice's company before delegating.
+            /** @var Company $company */
+            $company = Company::query()->findOrFail($companyId);
+
+            $check = $this->toleranceChecker->check(
+                shortfall: $balance,
+                invoiceTotal: $total,
+                currencyCode: (string) $invoice->currency,
+                countryCode: (string) $company->country_code,
                 strict: true,
             );
 
-            if (! $check['qualifies']) {
+            if (! $check->qualifies) {
+                // Settings are still pulled from PaymentToleranceService directly so the
+                // exception message reports the company-effective thresholds (which may
+                // include a per-company override the contract surface intentionally
+                // ignores). The qualifier itself runs against country defaults.
                 $settings = $this->toleranceService->getToleranceSettings($companyId);
 
                 throw new ToleranceExceededException(

@@ -1900,6 +1900,17 @@ hasNextPage: boolean;
 hasPreviousPage: boolean;
 };
 }
+declare namespace App.Shared.Contracts.Treasury.DTOs {
+export type ToleranceCheckResult = {
+qualifies: boolean;
+difference: string;
+type: App.Shared.Contracts.Treasury.Enums.ToleranceType;
+reason: string | null;
+};
+}
+declare namespace App.Shared.Contracts.Treasury.Enums {
+export type ToleranceType = 'underpayment' | 'overpayment' | 'none';
+}
 declare namespace App.Shared.Domain.Enums {
 export type VarianceDirection = 'over' | 'under' | 'balanced';
 export type VarianceSeverity = 'info' | 'warning' | 'critical';

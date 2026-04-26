@@ -8,6 +8,7 @@ use App\Models\Country;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -18,11 +19,15 @@ use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\Services\CloseInvoiceWithToleranceService;
+use App\Modules\Treasury\Application\Services\PaymentToleranceService;
 use App\Modules\Treasury\Domain\CountryPaymentSettings;
 use App\Modules\Treasury\Domain\Events\InvoiceClosedWithTolerance;
 use App\Modules\Treasury\Domain\Exceptions\InvoiceAlreadyPaidException;
 use App\Modules\Treasury\Domain\Exceptions\ToleranceExceededException;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Shared\Contracts\Treasury\DTOs\ToleranceCheckResult;
+use App\Shared\Contracts\Treasury\Enums\ToleranceType;
+use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
@@ -321,6 +326,39 @@ final class CloseInvoiceWithToleranceServiceTest extends TestCase
         );
     }
 
+    public function test_calls_tolerance_checker_with_strict_true_for_a2_close(): void
+    {
+        // A2 must invoke PaymentToleranceCheckerContract::check with strict=true
+        // (spec §15 — exclusive `<` to close the boundary abuse vector).
+        $this->seedToleranceGlAccounts();
+        $invoice = $this->seedPostedInvoice(total: '100.300', balance: '0.300');
+
+        $spy = new ToleranceCheckerCloseSpy(
+            new ToleranceCheckResult(
+                qualifies: true,
+                difference: '0.3000',
+                type: ToleranceType::Underpayment,
+                reason: null,
+            ),
+        );
+
+        $service = new CloseInvoiceWithToleranceService(
+            $spy,
+            $this->app->make(PaymentToleranceService::class),
+            $this->app->make(GeneralLedgerService::class),
+        );
+
+        $service->close($invoice->id, $this->closedBy);
+
+        $this->assertCount(1, $spy->calls, 'A2 must invoke the contract exactly once.');
+        $call = $spy->calls[0];
+        $this->assertTrue($call['strict'], 'B2B A2 must use strict=true (exclusive `<`, spec §15).');
+        $this->assertSame('FR', $call['countryCode']);
+        $this->assertSame('EUR', $call['currencyCode']);
+        $this->assertSame('100.300', $call['invoiceTotal']);
+        $this->assertSame('0.300', $call['shortfall']);
+    }
+
     private function seedToleranceGlAccounts(): void
     {
         Account::create([
@@ -364,5 +402,36 @@ final class CloseInvoiceWithToleranceServiceTest extends TestCase
             'total' => $total,
             'balance_due' => $balance,
         ]);
+    }
+}
+
+/**
+ * Inline spy for PaymentToleranceCheckerContract — captures invocation args
+ * so we can assert CloseInvoiceWithToleranceService passes strict=true (the
+ * A2 / spec §15 path) without dragging Mockery in.
+ */
+final class ToleranceCheckerCloseSpy implements PaymentToleranceCheckerContract
+{
+    /** @var list<array{shortfall:string,invoiceTotal:string,currencyCode:string,countryCode:string,strict:bool}> */
+    public array $calls = [];
+
+    public function __construct(private readonly ToleranceCheckResult $result) {}
+
+    public function check(
+        string $shortfall,
+        string $invoiceTotal,
+        string $currencyCode,
+        string $countryCode,
+        bool $strict = false,
+    ): ToleranceCheckResult {
+        $this->calls[] = [
+            'shortfall' => $shortfall,
+            'invoiceTotal' => $invoiceTotal,
+            'currencyCode' => $currencyCode,
+            'countryCode' => $countryCode,
+            'strict' => $strict,
+        ];
+
+        return $this->result;
     }
 }

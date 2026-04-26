@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\POS\Application\Services;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Events\ReceiptCompleted;
@@ -12,12 +13,13 @@ use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptPayment;
 use App\Modules\POS\Domain\Shift;
-use App\Modules\Treasury\Application\Services\PaymentToleranceService;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Contracts\Treasury\Enums\ToleranceType;
+use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
@@ -40,7 +42,7 @@ final class ReceiptPaymentService
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly GeneralLedgerService $generalLedgerService,
-        private readonly PaymentToleranceService $paymentToleranceService,
+        private readonly PaymentToleranceCheckerContract $toleranceChecker,
     ) {}
 
     /**
@@ -92,31 +94,41 @@ final class ReceiptPaymentService
             if ($totalsCompare > 0) {
                 $changeDue = bcsub($totalPaid, $receipt->total, self::SCALE);
             } elseif ($totalsCompare < 0) {
-                $check = $this->paymentToleranceService->checkTolerance(
-                    invoiceAmount: (string) $receipt->total,
-                    paymentAmount: $totalPaid,
-                    companyId: $companyId,
+                // Resolve country code for the typed contract surface — A1 lives behind
+                // PaymentToleranceCheckerContract, which is country/currency-keyed.
+                /** @var Company $company */
+                $company = Company::query()->findOrFail($companyId);
+
+                // Shortfall is the absolute gap, rebased at scale 4 to match the contract.
+                $shortfall = bcsub((string) $receipt->total, $totalPaid, 4);
+
+                $check = $this->toleranceChecker->check(
+                    shortfall: $shortfall,
+                    invoiceTotal: (string) $receipt->total,
+                    currencyCode: (string) $receipt->currency,
+                    countryCode: (string) $company->country_code,
+                    strict: false,
                 );
 
-                if ($check['qualifies'] !== true || $check['type'] !== 'underpayment') {
+                if (! $check->qualifies || $check->type !== ToleranceType::Underpayment) {
                     throw new \InvalidArgumentException(
                         "Total paid ({$totalPaid}) is less than receipt total ({$receipt->total}) "
                         .'and exceeds the configured payment-tolerance threshold.'
                     );
                 }
 
-                $toleranceAmount = CurrencyScale::bcformat($check['difference'], self::SCALE);
+                $toleranceAmount = CurrencyScale::bcformat($check->difference, self::SCALE);
 
-                // Fiscal silent-loss guard: checkTolerance computes at scale 4, but we
+                // Fiscal silent-loss guard: the contract computes at scale 4, but we
                 // persist GL entries and shift aggregates at scale 3. If the qualifier
                 // says yes but the scale-3 result rounds to 0.000 (e.g. 0.5% of 0.05
                 // = 0.00025), the writeoff is real but unrepresentable. Refuse to
                 // silently drop it — fail loud so the caller can see a real number.
                 if (bccomp($toleranceAmount, '0', self::SCALE) === 0) {
                     throw new \RuntimeException(
-                        'checkTolerance qualified the shortfall but it rounds to zero at scale 3. '
+                        'Tolerance qualifier accepted the shortfall but it rounds to zero at scale 3. '
                         .'This is a fiscal precision edge case (e.g., 0.5% of 0.05 = 0.00025). '
-                        ."Refusing to silently drop the writeoff. receipt={$receipt->id} difference={$check['difference']}"
+                        ."Refusing to silently drop the writeoff. receipt={$receipt->id} difference={$check->difference}"
                     );
                 }
             }
