@@ -6,7 +6,6 @@ namespace Tests\Feature\Compliance;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
-use App\Modules\Compliance\Domain\CompanyFraudSettings;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -120,7 +119,13 @@ final class FraudSettingsControllerCashControlsTest extends TestCase
     }
 
     /**
-     * Test 1: GET /fraud-settings returns new cash-control defaults when no row exists.
+     * Test 1: GET /fraud-settings returns vertical-aware defaults for a fresh company.
+     *
+     * Since PR #37 the EnsureFraudSettingsOnCompanyCreated listener auto-provisions
+     * a CompanyFraudSettings row whenever a Company is created. This test's tenant
+     * has no `vertical` set, so the listener picks non-automotive defaults
+     * (require_blind_cash_count=false). `is_configured` therefore reflects "a row
+     * exists" — which is now true for every newly-created company.
      */
     public function test_show_returns_cash_control_defaults_for_fresh_company(): void
     {
@@ -136,7 +141,7 @@ final class FraudSettingsControllerCashControlsTest extends TestCase
         $this->assertFalse($data['require_blind_cash_count']);
         $this->assertTrue($data['require_manager_pin_above_hard']);
         $this->assertSame('none', $data['cash_variance_email_severity']);
-        $this->assertFalse($data['is_configured']);
+        $this->assertTrue($data['is_configured']);
     }
 
     /**
@@ -227,15 +232,14 @@ final class FraudSettingsControllerCashControlsTest extends TestCase
      * This guards against the 500→422 gap: without loading persisted values the
      * cross-field check would short-circuit (both halves not in $validated), and
      * the DB CHECK constraint would fire instead → 500 QueryException.
+     *
+     * The persisted row is provisioned automatically by the
+     * EnsureFraudSettingsOnCompanyCreated listener (PR #37), with over_hard=20
+     * from the non-automotive vertical defaults — no explicit seed is needed.
      */
     public function test_partial_update_over_soft_above_persisted_hard_returns_422(): void
     {
-        // Seed a row where over_hard = 20.0000 (default).
-        CompanyFraudSettings::create(array_merge(
-            CompanyFraudSettings::getDefaults(),
-            ['company_id' => $this->company->id],
-        ));
-
+        // Listener-provisioned row already has over_hard = 20.0000.
         // Send only over_soft = 25 — above the persisted over_hard of 20.
         $response = $this->actingAs($this->adminUser, 'sanctum')
             ->withHeader('X-Company-Id', $this->company->id)
@@ -248,15 +252,14 @@ final class FraudSettingsControllerCashControlsTest extends TestCase
 
     /**
      * Test 8: Partial update — only under_soft sent; persisted under_hard is lower → 422.
+     *
+     * The persisted row is provisioned automatically by the
+     * EnsureFraudSettingsOnCompanyCreated listener (PR #37), with under_hard=20
+     * from the non-automotive vertical defaults — no explicit seed is needed.
      */
     public function test_partial_update_under_soft_above_persisted_hard_returns_422(): void
     {
-        // Seed a row where under_hard = 20.0000 (default).
-        CompanyFraudSettings::create(array_merge(
-            CompanyFraudSettings::getDefaults(),
-            ['company_id' => $this->company->id],
-        ));
-
+        // Listener-provisioned row already has under_hard = 20.0000.
         // Send only under_soft = 25 — above the persisted under_hard of 20.
         $response = $this->actingAs($this->adminUser, 'sanctum')
             ->withHeader('X-Company-Id', $this->company->id)
