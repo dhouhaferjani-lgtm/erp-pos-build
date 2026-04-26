@@ -2,9 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main, develop, dev]
+    branches: [main]              # post-merge confirmation only
   pull_request:
-    branches: [main, develop, dev]
+    branches: [main, dev]         # cheap checks on PR→dev; full pipeline on PR→main
+  workflow_dispatch:              # manual full run from the Actions tab
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -85,6 +86,9 @@ jobs:
   backend-test:
     name: Backend Tests (PHPUnit)
     runs-on: ubuntu-latest
+    # Heavy job: only on PR→main, push→main, or manual workflow_dispatch.
+    # Skipped on PR→dev — local preflight is the gate during dev iteration.
+    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     defaults:
       run:
         working-directory: apps/api
@@ -235,6 +239,8 @@ jobs:
   frontend-test:
     name: Frontend Tests (Vitest)
     runs-on: ubuntu-latest
+    # Heavy job: only on PR→main, push→main, or manual workflow_dispatch.
+    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     defaults:
       run:
         working-directory: apps/web
@@ -260,6 +266,8 @@ jobs:
   frontend-build:
     name: Frontend Build
     runs-on: ubuntu-latest
+    # Heavy job: only on PR→main, push→main, or manual workflow_dispatch.
+    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     needs: [frontend-lint, frontend-typecheck, frontend-test]
     defaults:
       run:
@@ -350,6 +358,8 @@ jobs:
   all-checks-pass:
     name: All Checks Pass
     runs-on: ubuntu-latest
+    # Only meaningful when the heavy jobs ran. Skipped on PR→dev.
+    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     needs: [backend-lint, backend-analyse, backend-test, frontend-lint, frontend-typecheck, frontend-test, frontend-build, types-drift]
     steps:
       - name: All checks passed
