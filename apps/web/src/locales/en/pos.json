@@ -685,5 +685,8 @@
         "description": "Search and reprint transaction receipts"
       }
     }
+  },
+  "discount": {
+    "below_tolerance": "This discount is too small — use payment tolerance at the till instead."
   }
 }

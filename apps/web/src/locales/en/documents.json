@@ -59,5 +59,8 @@
         "generic": "Could not close the invoice. Please try again."
       }
     }
+  },
+  "discount": {
+    "below_tolerance": "Discount must exceed the tolerance margin ({{margin}}). For smaller residuals, use payment-tolerance write-off at settlement."
   }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Presentation\Requests;
 
+use App\Modules\Document\Presentation\Requests\Concerns\AppliesDiscountToleranceRule;
 use App\Modules\Identity\Domain\User;
 use App\Services\CompanyConfigService;
 use Illuminate\Foundation\Http\FormRequest;
@@ -11,6 +12,8 @@ use Illuminate\Validation\Rule;
 
 class CreateDocumentRequest extends FormRequest
 {
+    use AppliesDiscountToleranceRule;
+
     public function authorize(): bool
     {
         return true;
@@ -33,7 +36,7 @@ class CreateDocumentRequest extends FormRequest
         $hasVehicleModule = $user->tenant !== null
             && $configService->getConfigForTenant($user->tenant)->hasModule('Vehicle');
 
-        return [
+        $rules = [
             'partner_id' => [
                 'required',
                 'uuid',
@@ -96,6 +99,8 @@ class CreateDocumentRequest extends FormRequest
             'lines.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'lines.*.notes' => ['nullable', 'string', 'max:1000'],
         ];
+
+        return $this->withDiscountToleranceRules($rules);
     }
 
     protected function prepareForValidation(): void

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Providers;
 
 use App\Modules\Treasury\Application\Services\PaymentToleranceService;
+use App\Modules\Treasury\Presentation\Console\AuditDiscountsCommand;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use Illuminate\Support\ServiceProvider;
 
@@ -25,5 +26,11 @@ class TreasuryServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadRoutesFrom(__DIR__.'/../Presentation/routes.php');
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                AuditDiscountsCommand::class,
+            ]);
+        }
     }
 }

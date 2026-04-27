@@ -685,5 +685,8 @@
         "description": "Rechercher et réimprimer les reçus de transaction"
       }
     }
+  },
+  "discount": {
+    "below_tolerance": "Cette remise est trop petite — utilisez la tolérance de paiement à la caisse."
   }
 }

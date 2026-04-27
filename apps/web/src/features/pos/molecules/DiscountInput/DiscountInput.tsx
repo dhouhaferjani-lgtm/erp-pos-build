@@ -5,6 +5,11 @@ import { POSButton } from '../../atoms'
 import { applyDiscount, formatCurrency, bccomp } from '@/lib/decimal'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { useCurrency } from '@/hooks/useCurrency'
+import {
+  computeDiscountAmount,
+  isDiscountAboveTolerance,
+} from '../../lib/discountValidation'
+import type { ToleranceSettings } from '@/types/treasury'
 
 export interface DiscountData {
   type: 'percentage' | 'fixed'
@@ -26,6 +31,13 @@ export interface DiscountInputProps {
   effectiveLimit: number
   requiresReason: boolean
   touchOptimized?: boolean | undefined
+  /**
+   * When supplied, the input renders an inline below-tolerance error and
+   * disables preset buttons whose computed amount would fall sub-threshold.
+   * The server is authoritative — this is purely a UX assist (spec §7
+   * frontend mirror). Omitting the prop preserves the legacy behavior.
+   */
+  toleranceSettings?: ToleranceSettings | undefined
 }
 
 /**
@@ -61,6 +73,7 @@ export function DiscountInput({
   effectiveLimit,
   requiresReason,
   touchOptimized = false,
+  toleranceSettings,
 }: DiscountInputProps) {
   const { t } = useTranslation('pos')
   const { currency } = useCurrency()
@@ -143,6 +156,20 @@ export function DiscountInput({
 
   const preview = calculatePreview()
 
+  // Resolve the absolute discount amount the user is currently entering so we
+  // can mirror the server-side boundary check inline. For fixed discounts the
+  // amount is the entered value; for percentages we project onto lineTotal.
+  // Both branches stay on decimal-string math via @/lib/decimal — never
+  // parseFloat on monetary input (memory rule from PR #37 audits).
+  const enteredAmount =
+    discountType === 'percentage' && discountValue
+      ? computeDiscountAmount(lineTotal, discountValue)
+      : discountValue
+  const belowTolerance =
+    !!toleranceSettings &&
+    !!discountValue &&
+    !isDiscountAboveTolerance(enteredAmount, lineTotal, toleranceSettings)
+
   // Handlers
   const handleApply = () => {
     if (!validate()) {
@@ -207,18 +234,24 @@ export function DiscountInput({
         <div>
           <label className={tokens.label.base}>{t('cart.presets')}</label>
           <div className="mt-2 grid grid-cols-4 gap-2">
-            {presets.map((percent) => (
-              <POSButton
-                key={percent}
-                variant="secondary"
-                size={touchOptimized ? 'md' : 'sm'}
-                touchOptimized={touchOptimized}
-                onClick={() => { handlePresetClick(percent); }}
-                disabled={percent > effectiveLimit}
-              >
-                {percent}%
-              </POSButton>
-            ))}
+            {presets.map((percent) => {
+              const presetAmount = computeDiscountAmount(lineTotal, String(percent))
+              const presetBelow =
+                !!toleranceSettings &&
+                !isDiscountAboveTolerance(presetAmount, lineTotal, toleranceSettings)
+              return (
+                <POSButton
+                  key={percent}
+                  variant="secondary"
+                  size={touchOptimized ? 'md' : 'sm'}
+                  touchOptimized={touchOptimized}
+                  onClick={() => { handlePresetClick(percent); }}
+                  disabled={percent > effectiveLimit || presetBelow}
+                >
+                  {percent}%
+                </POSButton>
+              )
+            })}
           </div>
         </div>
       )}
@@ -293,9 +326,17 @@ export function DiscountInput({
         </div>
       )}
 
+      {/* Sub-tolerance discount inline warning — anti-abuse boundary
+          (spec §7). Authoritative check is server-side; this is UX assist. */}
+      {belowTolerance && !error && (
+        <div className={tokens.alert.error}>
+          {t('discount.below_tolerance')}
+        </div>
+      )}
+
       {/* Preview */}
       {preview && !error && (
-        <div className={cn('p-3 rounded-lg', 'bg-blue-50', borderColors.primary)}>
+        <div className={cn('p-3 rounded-lg', tokens.alert.info, borderColors.primary)}>
           <p className={cn(textColors.secondary, 'text-sm mb-1')}>
             {t('cart.preview')}:
           </p>
@@ -327,7 +368,11 @@ export function DiscountInput({
           size={touchOptimized ? 'md' : 'sm'}
           touchOptimized={touchOptimized}
           onClick={handleApply}
-          disabled={!discountValue || parseFloat(discountValue) === 0}
+          disabled={
+            !discountValue ||
+            parseFloat(discountValue) === 0 ||
+            belowTolerance
+          }
         >
           {t('cart.applyDiscount')}
         </POSButton>

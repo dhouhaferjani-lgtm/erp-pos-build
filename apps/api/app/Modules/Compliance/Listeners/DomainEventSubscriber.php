@@ -9,6 +9,7 @@ use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Document\Domain\Events\DeliveryNoteConfirmed;
 use App\Modules\Document\Domain\Events\DocumentConverted;
 use App\Modules\Document\Domain\Events\DocumentFullyPaid;
+use App\Modules\Document\Domain\Events\DocumentLineDiscountStrippedAtConversion;
 use App\Modules\Document\Domain\Events\DraftDocumentCreated;
 use App\Modules\Document\Domain\Events\DraftLineAdded;
 use App\Modules\Document\Domain\Events\DraftLineModified;
@@ -724,6 +725,42 @@ final class DomainEventSubscriber
     }
 
     /**
+     * Handle DocumentLineDiscountStrippedAtConversion — Phase 4 / Task 14
+     * audit trail for the auto-strip of sub-tolerance discounts at document
+     * conversion. Mirrors the InvoiceClosedWithTolerance pattern: the
+     * line/document mutation is observable in the data, but only this audit
+     * row carries actor + original-discount + tolerance-margin + occurred-at
+     * in one place for compliance review.
+     */
+    public function handleDocumentLineDiscountStrippedAtConversion(
+        DocumentLineDiscountStrippedAtConversion $event,
+    ): void {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Document',
+            aggregateId: $event->targetDocumentId,
+            eventType: $event->getEventName(),
+            payload: [
+                'line_id' => $event->lineId,
+                'source_line_id' => $event->sourceLineId,
+                'source_document_id' => $event->sourceDocumentId,
+                'target_document_id' => $event->targetDocumentId,
+                'source_document_number' => $event->sourceDocumentNumber,
+                'target_document_number' => $event->targetDocumentNumber,
+                'source_type' => $event->sourceType,
+                'target_type' => $event->targetType,
+                'original_discount_amount' => $event->originalDiscountAmount,
+                'tolerance_margin' => $event->toleranceMargin,
+                'subtotal' => $event->subtotal,
+                'currency_code' => $event->currencyCode,
+                'user_id' => $event->userId,
+                'stripped_at' => $event->strippedAt,
+            ]
+        );
+    }
+
+    /**
      * Persist an event to the audit log.
      *
      * @param  array<string, mixed>  $payload
@@ -795,6 +832,9 @@ final class DomainEventSubscriber
 
             // Treasury events (audit trail for B2B close-with-writeoff)
             InvoiceClosedWithTolerance::class => 'handleInvoiceClosedWithTolerance',
+
+            // Document events (audit trail for Phase-4 conversion auto-strip)
+            DocumentLineDiscountStrippedAtConversion::class => 'handleDocumentLineDiscountStrippedAtConversion',
 
             // Stock reservation events (fraud detection)
             ReservationCreated::class => 'handleReservationCreated',
