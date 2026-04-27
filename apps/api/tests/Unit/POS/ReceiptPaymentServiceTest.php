@@ -209,7 +209,7 @@ final class ReceiptPaymentServiceTest extends TestCase
 
     public function test_underpayment_throws_when_no_tolerance_settings_configured(): void
     {
-        // Arrange — no CountryPaymentSettings row, so checkTolerance qualifies=false
+        // Arrange — no CountryPaymentSettings row, so the tolerance checker qualifies=false
         // and the request takes the existing reject branch. Renamed from
         // test_underpayment_throws_exception (Phase 2 audit follow-up): the original
         // name claimed to test the reject behaviour, but the absence of seeded

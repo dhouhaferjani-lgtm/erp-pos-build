@@ -11,10 +11,8 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 /**
  * Typed result of a payment-tolerance qualifier evaluation.
  *
- * Replaces the array{qualifies, difference, type, reason} shape historically
- * returned by PaymentToleranceService::checkTolerance(). All decimal strings
- * are emitted at scale 4 (matches Payment Tolerance contract v1.1's
- * "scale 4 internally" rule).
+ * All decimal strings are emitted at scale 4 (matches Payment Tolerance
+ * contract v1.1's "scale 4 internally" rule).
  *
  * @see App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract
  */

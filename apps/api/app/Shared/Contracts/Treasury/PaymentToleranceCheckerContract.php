@@ -8,8 +8,7 @@ use App\Shared\Contracts\Treasury\DTOs\ToleranceCheckResult;
 
 /**
  * Cross-module contract for evaluating whether a payment-tolerance gap
- * qualifies for an automatic write-off, replacing the untyped array shape
- * previously leaked from PaymentToleranceService::checkTolerance().
+ * qualifies for an automatic write-off.
  *
  * Consumers (POS A1, B2B A2 close-with-tolerance, future close paths)
  * depend on this interface, not on the concrete service. Module
@@ -26,9 +25,10 @@ use App\Shared\Contracts\Treasury\DTOs\ToleranceCheckResult;
  *
  * The contract surface is country+currency-keyed by design — the
  * orchestrator's tolerance configuration model lives at the country level
- * (with system defaults below it). Company-level overrides remain
- * accessible via the deprecated PaymentToleranceService::checkTolerance(...)
- * method until all consumers migrate.
+ * (with system defaults below it). Company-level overrides are exposed
+ * separately via PaymentToleranceService::getToleranceSettings() for the
+ * UI / threshold-display path; the qualifier surface itself stays
+ * country-keyed to keep cross-module callers off the company boundary.
  *
  * @see docs/superpowers/coordination/2026-04-24-payment-tolerance-shift-interface.md §15
  */
