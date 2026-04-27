@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Document\Types;
 
+use App\Enums\Vertical;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -48,11 +49,14 @@ class QuoteControllerTest extends TestCase
     {
         parent::setUp();
 
+        // Mechanic vertical enables the Vehicle module so vehicle_context is
+        // accepted by CreateDocumentRequest's module-gated validation rules.
         $this->tenant = Tenant::create([
             'name' => 'Test Tenant',
             'slug' => 'test-tenant-'.uniqid(),
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
+            'vertical' => Vertical::Mechanic,
         ]);
 
         $this->company = Company::create([
