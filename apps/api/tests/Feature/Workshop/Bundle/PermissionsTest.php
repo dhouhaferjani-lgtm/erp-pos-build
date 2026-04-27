@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Workshop\Bundle;
 
+use App\Enums\Vertical;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
@@ -27,7 +28,7 @@ final class PermissionsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->tenant = Tenant::factory()->create();
+        $this->tenant = Tenant::factory()->create(['vertical' => Vertical::Mechanic]);
         $this->company = Company::factory()->for($this->tenant)->create();
 
         $this->app->make(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);

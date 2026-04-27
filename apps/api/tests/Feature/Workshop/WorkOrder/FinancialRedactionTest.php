@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Workshop\WorkOrder;
 
+use App\Enums\Vertical;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
@@ -34,7 +35,7 @@ final class FinancialRedactionTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->tenant = Tenant::factory()->create();
+        $this->tenant = Tenant::factory()->create(['vertical' => Vertical::Mechanic]);
         $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
 
         foreach ([

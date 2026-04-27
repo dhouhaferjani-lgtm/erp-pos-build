@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Scheduling;
 
+use App\Enums\Vertical;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
@@ -58,7 +59,7 @@ final class StaffEndpointsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->tenant = Tenant::factory()->create();
+        $this->tenant = Tenant::factory()->create(['vertical' => Vertical::Mechanic]);
         $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
         $this->location = Location::factory()->create(['company_id' => $this->company->id]);
 

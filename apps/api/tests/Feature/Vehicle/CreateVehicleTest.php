@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Vehicle;
 
+use App\Enums\Vertical;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -43,6 +44,7 @@ class CreateVehicleTest extends TestCase
             'slug' => 'test-tenant',
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
+            'vertical' => Vertical::Mechanic,
         ]);
 
         $this->company = Company::create([
