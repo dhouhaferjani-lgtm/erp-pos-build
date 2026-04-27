@@ -11,6 +11,7 @@ use App\Modules\Uom\Application\DTOs\UnitCategoryData;
 use App\Modules\Uom\Application\DTOs\UnitData;
 use App\Modules\Uom\Domain\Entities\Unit;
 use App\Modules\Uom\Domain\Entities\UnitCategory;
+use App\Modules\Uom\Domain\Exceptions\IncompatibleUnitsException;
 use App\Modules\Uom\Domain\Services\UnitConversionService;
 use App\Modules\Uom\Presentation\Requests\CreateUnitRequest;
 use App\Modules\Uom\Presentation\Requests\UpdateUnitRequest;
@@ -31,6 +32,8 @@ class UomController extends Controller
      */
     public function indexCategories(Request $request): JsonResponse
     {
+        Gate::authorize('uom.view');
+
         $tenantId = $this->companyContext->requireCompany()->tenant_id;
 
         $categories = UnitCategory::query()
@@ -61,6 +64,8 @@ class UomController extends Controller
      */
     public function indexUnits(Request $request): JsonResponse
     {
+        Gate::authorize('uom.view');
+
         $tenantId = $this->companyContext->requireCompany()->tenant_id;
         $categoryId = $request->query('category_id');
 
@@ -93,6 +98,8 @@ class UomController extends Controller
      */
     public function showUnit(Request $request, string $id): JsonResponse
     {
+        Gate::authorize('uom.view');
+
         /** @var Unit $unit */
         $unit = Unit::with('category')->findOrFail($id);
 
@@ -238,13 +245,32 @@ class UomController extends Controller
         /** @var Unit $toUnit */
         $toUnit = Unit::with('category')->findOrFail($validated['to_unit_id']);
 
-        $convertedQty = $this->conversionService->convert(
-            (string) $validated['quantity'],
-            $fromUnit,
-            $toUnit
-        );
-
-        $factor = $this->conversionService->getConversionFactor($fromUnit, $toUnit);
+        try {
+            $convertedQty = $this->conversionService->convert(
+                (string) $validated['quantity'],
+                $fromUnit,
+                $toUnit
+            );
+            $factor = $this->conversionService->getConversionFactor($fromUnit, $toUnit);
+        } catch (IncompatibleUnitsException $e) {
+            // The from/to units belong to different categories — the user
+            // submitted an invalid combination. Surface it as a 422 with
+            // the same envelope used by FormRequest validation rather than
+            // letting the domain exception bubble up to a 500.
+            return response()->json([
+                'error' => [
+                    'code' => 'INCOMPATIBLE_UNITS',
+                    'message' => $e->getMessage(),
+                    'errors' => [
+                        'to_unit_id' => [$e->getMessage()],
+                    ],
+                ],
+                'meta' => [
+                    'timestamp' => now()->toIso8601String(),
+                    'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
+                ],
+            ], 422);
+        }
 
         $result = new ConversionResultData(
             originalQuantity: (string) $validated['quantity'],
