@@ -83,6 +83,7 @@ class RolesAndPermissionsSeeder extends Seeder
 
             // Sales Documents (Quotes, Orders, Invoices)
             'documents.view',  // Unified document view
+            'documents.update',  // Document attachments (Media module)
             'quotes.view',
             'quotes.create',
             'quotes.update',
@@ -123,6 +124,8 @@ class RolesAndPermissionsSeeder extends Seeder
 
             'deliveries.view',
             'deliveries.create',
+            'deliveries.edit',
+            'deliveries.delete',
             'deliveries.confirm',
 
             // Expenses
@@ -284,6 +287,12 @@ class RolesAndPermissionsSeeder extends Seeder
             'compliance.verify_chains',
             'compliance.view_reprint_log',
 
+            // Compliance / Fraud Detection
+            'fraud-settings.view',
+            'fraud-settings.update',
+            'fraud-alerts.view',
+            'fraud-alerts.manage',
+
             // System
             'settings.view',
             'settings.update',
@@ -317,14 +326,14 @@ class RolesAndPermissionsSeeder extends Seeder
             'enrichment.view', 'enrichment.review', 'enrichment.submit',
             'vehicles.view', 'vehicles.create', 'vehicles.update',
             'vehicles.manage_ownership', 'vehicles.log_mileage',
-            'documents.view',
+            'documents.view', 'documents.update',
             'quotes.view', 'quotes.create', 'quotes.update', 'quotes.convert',
             'orders.view', 'orders.create', 'orders.update', 'orders.confirm',
             'purchase-orders.view', 'purchase-orders.create', 'purchase-orders.update', 'purchase-orders.confirm', 'purchase-orders.receive',
             'invoices.view', 'invoices.create', 'invoices.update', 'invoices.post', 'invoices.print',
             'credit-notes.view', 'credit-notes.create', 'credit-notes.post',
             'inventory.view', 'inventory.adjust', 'inventory.transfer', 'inventory.receive',
-            'deliveries.view', 'deliveries.create', 'deliveries.confirm',
+            'deliveries.view', 'deliveries.create', 'deliveries.edit', 'deliveries.delete', 'deliveries.confirm',
             'expenses.view', 'expenses.create', 'expenses.update', 'expenses.post',
             'expense-categories.view', 'expense-categories.create', 'expense-categories.update', 'expense-categories.delete',
             'payments.view', 'payments.create', 'payments.allocate',
@@ -370,6 +379,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'catalog_cart.view', 'catalog_cart.create', 'catalog_cart.convert_po', 'catalog_cart.convert_so',
             'catalog_cart.marketplace_checkout',
             'compliance.export_jet', 'compliance.verify_chains', 'compliance.view_reprint_log',
+            'fraud-settings.view', 'fraud-settings.update',
+            'fraud-alerts.view', 'fraud-alerts.manage',
         ]);
         $this->command->info('Created role: manager');
 
@@ -379,7 +390,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'partners.view', 'partners.create',
             'products.view',
             'vehicles.view',
-            'documents.view',
+            'documents.view', 'documents.update',
             'quotes.view', 'quotes.create',
             'orders.view',
             'invoices.view', 'invoices.create', 'invoices.print',
@@ -472,7 +483,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'products.view',
             'vehicles.view', 'vehicles.create', 'vehicles.update',
             'vehicles.manage_ownership', 'vehicles.log_mileage',
-            'documents.view',
+            'documents.view', 'documents.update',
             'quotes.view', 'quotes.create', 'quotes.update',
             'orders.view', 'orders.create', 'orders.update',
             'purchase-orders.view', 'purchase-orders.create', 'purchase-orders.update',
@@ -480,7 +491,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'expenses.view', 'expenses.create', 'expenses.update',
             'expense-categories.view',
             'inventory.view',
-            'deliveries.view', 'deliveries.create',
+            'deliveries.view', 'deliveries.create', 'deliveries.edit',
             'payments.view', 'payments.create',
             'work-orders.view', 'work-orders.create', 'work-orders.update',
             'work-orders.transition', 'work-orders.complete',
@@ -500,7 +511,7 @@ class RolesAndPermissionsSeeder extends Seeder
         $accountant = Role::firstOrCreate(['name' => 'accountant', 'guard_name' => 'sanctum']);
         $accountant->syncPermissions([
             'partners.view',
-            'documents.view',
+            'documents.view', 'documents.update',
             'invoices.view', 'invoices.post',
             'credit-notes.view', 'credit-notes.post',
             'expenses.view', 'expenses.create', 'expenses.update', 'expenses.delete', 'expenses.post',
@@ -515,6 +526,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'withholding.view', 'withholding.create', 'withholding.update',
             'audit.view',
             'compliance.export_jet', 'compliance.verify_chains', 'compliance.view_reprint_log',
+            // Accountant has read-only audit access to fraud detection.
+            'fraud-settings.view', 'fraud-alerts.view',
             'work-orders.view', 'work-orders.view_financials',
             // Accountant can view scheduling for audit / cancellation reporting.
             'scheduling.bays.view', 'scheduling.appointments.view',
