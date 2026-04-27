@@ -129,7 +129,7 @@ final class AuditDiscountsCommandTest extends TestCase
         $cmd->expectsOutputToContain('LINE')->assertExitCode(0);
     }
 
-    public function test_command_flags_header_discount_violation(): void
+    public function test_command_flags_header_only_discount_violation(): void
     {
         $invoice = $this->seedInvoice();
         $invoice->update(['discount_amount' => '0.20']);

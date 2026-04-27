@@ -71,6 +71,7 @@ final class AuditDiscountsCommand extends Command
                 'dl.quantity',
                 'dl.unit_price',
                 'd.company_id',
+                'd.currency',
                 'd.document_number',
             ])
             ->orderBy('dl.id')
@@ -87,6 +88,7 @@ final class AuditDiscountsCommand extends Command
                             discountAmount: (string) $row->discount_amount,
                             subtotal: $subtotal,
                             companyId: (string) $row->company_id,
+                            currencyCode: (string) ($row->currency ?? ''),
                         );
                     } catch (DiscountBelowToleranceException $e) {
                         $violations++;
@@ -113,7 +115,7 @@ final class AuditDiscountsCommand extends Command
             ->whereNotNull('discount_amount')
             ->where('discount_amount', '>', 0)
             ->whereIn('type', ['sales_order', 'invoice'])
-            ->select(['id', 'document_number', 'discount_amount', 'subtotal', 'company_id'])
+            ->select(['id', 'document_number', 'discount_amount', 'subtotal', 'company_id', 'currency'])
             ->orderBy('id')
             ->chunk(500, function ($rows) use ($boundary, &$violations): void {
                 foreach ($rows as $row) {
@@ -124,6 +126,7 @@ final class AuditDiscountsCommand extends Command
                             discountAmount: (string) $row->discount_amount,
                             subtotal: $subtotal,
                             companyId: (string) $row->company_id,
+                            currencyCode: (string) ($row->currency ?? ''),
                         );
                     } catch (DiscountBelowToleranceException $e) {
                         $violations++;

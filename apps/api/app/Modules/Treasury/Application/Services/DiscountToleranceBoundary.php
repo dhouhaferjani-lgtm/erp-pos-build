@@ -34,15 +34,28 @@ final class DiscountToleranceBoundary
     ) {}
 
     /**
+     * @param  string|null  $currencyCode  ISO 4217 code of the document /
+     *                                     receipt being checked. Used solely
+     *                                     to render the exception message at
+     *                                     the currency's native scale; null
+     *                                     falls back to the system default.
+     *
      * @throws DiscountBelowToleranceException when the discount fails the boundary.
      */
     public function assertDiscountAboveTolerance(
         string $discountAmount,
         string $subtotal,
         string $companyId,
+        ?string $currencyCode = null,
     ): void {
-        /** @phpstan-ignore-next-line argument.type */
-        $discount = bcadd($discountAmount, '0', self::SCALE);
+        // Inputs come from validated form data (`numeric` rule) or from
+        // internal bc-formatted services. Coerce non-numeric input to 0 so a
+        // bad caller short-circuits to the no-discount branch rather than
+        // raising a TypeError on bcadd.
+        $normalisedDiscount = is_numeric($discountAmount) ? $discountAmount : '0';
+        $normalisedSubtotal = is_numeric($subtotal) ? $subtotal : '0';
+
+        $discount = bcadd($normalisedDiscount, '0', self::SCALE);
 
         // A zero (or absent) discount is "no discount applied" — never a violation.
         if (bccomp($discount, '0', self::SCALE) === 0) {
@@ -59,16 +72,8 @@ final class DiscountToleranceBoundary
             return;
         }
 
-        // Normalise both threshold inputs to numeric-string at SCALE so the
-        // comparison stays untyped-cast-free. The upstream service's array
-        // typehint is plain `string`, but the values are bcmath-formatted.
-        /** @phpstan-ignore-next-line argument.type */
-        $percentage = bcadd($settings['percentage'], '0', self::SCALE);
-        /** @phpstan-ignore-next-line argument.type */
-        $absoluteMargin = bcadd($settings['max_amount'], '0', self::SCALE);
-
-        /** @phpstan-ignore-next-line argument.type */
-        $percentageMargin = bcmul($subtotal, $percentage, self::SCALE);
+        $percentageMargin = bcmul($normalisedSubtotal, $settings['percentage'], self::SCALE);
+        $absoluteMargin = $settings['max_amount'];
 
         $margin = bccomp($percentageMargin, $absoluteMargin, self::SCALE) > 0
             ? $percentageMargin
@@ -80,6 +85,7 @@ final class DiscountToleranceBoundary
                 discountAmount: $discount,
                 toleranceMargin: $margin,
                 subtotal: $subtotal,
+                currencyCode: $currencyCode,
             );
         }
     }

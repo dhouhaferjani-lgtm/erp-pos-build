@@ -46,7 +46,17 @@ final class StripSubToleranceDiscountsService
     {
         $companyId = (string) $target->company_id;
         $tenantId = (string) $target->tenant_id;
-        $currency = (string) ($target->currency ?? 'EUR');
+
+        // Documents are NOT NULL on currency at the schema layer (and the
+        // model types it as `string`), but assert explicitly so a
+        // misconfigured factory or migration mishap doesn't silently
+        // mis-render the strip event with a hardcoded fallback.
+        $currency = $target->currency;
+        if ($currency === '') {
+            throw new \RuntimeException(
+                "Cannot strip sub-tolerance discount: target document {$target->id} has no currency set."
+            );
+        }
 
         $userId = Auth::id();
         $userIdString = $userId !== null ? (string) $userId : null;
@@ -73,6 +83,7 @@ final class StripSubToleranceDiscountsService
                     discountAmount: $discountAmount,
                     subtotal: $lineSubtotal,
                     companyId: $companyId,
+                    currencyCode: $currency,
                 );
             } catch (DiscountBelowToleranceException $e) {
                 // Per spec §7: zero (not null) so downstream consumers that
@@ -130,6 +141,7 @@ final class StripSubToleranceDiscountsService
                 discountAmount: $headerDiscount,
                 subtotal: $headerSubtotal,
                 companyId: $companyId,
+                currencyCode: $currency,
             );
         } catch (DiscountBelowToleranceException $e) {
             // Spec §7: zero (not null) — downstream code paths that check

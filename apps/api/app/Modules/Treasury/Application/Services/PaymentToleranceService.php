@@ -31,7 +31,12 @@ class PaymentToleranceService implements PaymentToleranceCheckerContract
      * Get effective tolerance settings for a company
      * Priority: Company override → Country default → System default
      *
-     * @return array{enabled: bool, percentage: string, max_amount: string, source: string}
+     * The percentage / max_amount strings are always bcmath-formatted at
+     * scale 4 (see the bcadd($value, '0', 4) calls below) — `numeric-string`
+     * is the truthful type, and tightening it lets downstream callers do
+     * bccomp / bcmul without static-analysis noise.
+     *
+     * @return array{enabled: bool, percentage: numeric-string, max_amount: numeric-string, source: string}
      */
     public function getToleranceSettings(string $companyId): array
     {

@@ -74,6 +74,11 @@ trait AppliesDiscountToleranceRule
             /** @phpstan-ignore-next-line argument.type */
             $documentSubtotal = bcadd($documentSubtotal, $lineSubtotal, 4);
 
+            // Per-line evaluation: a 5-line invoice with 5 sub-tolerance
+            // discounts rejects all 5 lines independently. Aggregate
+            // semantics (e.g. sum of line discounts vs threshold) was
+            // considered and rejected per spec §7 ambiguity — see PR #49
+            // audit Low #1.
             $rules["lines.{$idx}.discount_amount"] = [
                 'nullable',
                 'numeric',
@@ -118,7 +123,15 @@ trait AppliesDiscountToleranceRule
 
         $name = $route->getName() ?? '';
 
-        return str_starts_with($name, 'invoices.')
-            || str_starts_with($name, 'orders.');
+        // Whitelist exact create/update endpoints rather than prefix-matching
+        // `invoices.*` / `orders.*`, so future read-only or action routes
+        // (e.g. invoices.email, invoices.pdf, orders.confirm) don't
+        // unintentionally trigger the boundary validator.
+        return in_array($name, [
+            'invoices.store',
+            'invoices.update',
+            'orders.store',
+            'orders.update',
+        ], true);
     }
 }
