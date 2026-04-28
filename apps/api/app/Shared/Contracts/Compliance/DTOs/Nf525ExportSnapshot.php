@@ -19,9 +19,9 @@ namespace App\Shared\Contracts\Compliance\DTOs;
 final readonly class Nf525ExportSnapshot
 {
     /**
-     * @param  list<Nf525ReceiptData>  $sales         Sale receipts in the period
-     * @param  list<Nf525ReceiptData>  $voidedReceipts Void events keyed by voided_at in the period
-     * @param  list<Nf525ReceiptData>  $returnReceipts Return receipts in the period
+     * @param  list<Nf525ReceiptData>  $sales  Sale receipts in the period
+     * @param  list<Nf525ReceiptData>  $voidedReceipts  Void events keyed by voided_at in the period
+     * @param  list<Nf525ReceiptData>  $returnReceipts  Return receipts in the period
      * @param  list<Nf525ReceiptPrintData>  $reprints
      * @param  list<Nf525ZReportData>  $zReports
      * @param  list<Nf525GrandTotalData>  $grandTotals
@@ -29,7 +29,7 @@ final readonly class Nf525ExportSnapshot
      * @param  list<Nf525ShiftData>  $shifts
      * @param  list<Nf525TerminalLifecycleEventData>  $terminalLifecycleEvents
      * @param  list<Nf525TrainingModeCount>  $trainingCounts
-     * @param  list<Nf525TerminalData>  $terminals     Hash-chain summary per terminal
+     * @param  list<Nf525TerminalData>  $terminals  Hash-chain summary per terminal
      */
     public function __construct(
         public Nf525CompanyHeaderData $company,

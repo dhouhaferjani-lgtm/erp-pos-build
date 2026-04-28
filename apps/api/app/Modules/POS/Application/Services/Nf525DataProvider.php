@@ -36,8 +36,10 @@ use App\Shared\Contracts\Compliance\DTOs\Nf525TerminalChainSummary;
 use App\Shared\Contracts\Compliance\DTOs\Nf525TerminalData;
 use App\Shared\Contracts\Compliance\DTOs\Nf525TerminalLifecycleEventData;
 use App\Shared\Contracts\Compliance\DTOs\Nf525TrainingModeCount;
+use App\Shared\Contracts\Compliance\DTOs\Nf525ZReportData;
 use App\Shared\Contracts\Compliance\Nf525DataProviderContract;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * POS-side implementation of Nf525DataProviderContract.
@@ -137,7 +139,7 @@ final class Nf525DataProvider implements Nf525DataProviderContract
         }
 
         // Training mode counts per terminal
-        /** @var \Illuminate\Support\Collection<int|string, mixed> $trainingRows */
+        /** @var Collection<int|string, mixed> $trainingRows */
         $trainingRows = Receipt::where('company_id', $companyId)
             ->where('is_training', true)
             ->whereBetween('posted_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
@@ -612,9 +614,9 @@ final class Nf525DataProvider implements Nf525DataProviderContract
         );
     }
 
-    private function mapZReport(ZReport $zReport): \App\Shared\Contracts\Compliance\DTOs\Nf525ZReportData
+    private function mapZReport(ZReport $zReport): Nf525ZReportData
     {
-        return new \App\Shared\Contracts\Compliance\DTOs\Nf525ZReportData(
+        return new Nf525ZReportData(
             id: (string) $zReport->id,
             terminalId: (string) $zReport->terminal_id,
             zNumber: (int) $zReport->z_number,

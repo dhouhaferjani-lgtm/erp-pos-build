@@ -9,6 +9,7 @@ use App\Shared\Contracts\Compliance\DTOs\Nf525ExportSnapshot;
 use App\Shared\Contracts\Compliance\DTOs\Nf525ReprintLogFilter;
 use App\Shared\Contracts\Compliance\DTOs\Nf525ReprintLogPage;
 use App\Shared\Contracts\Compliance\DTOs\Nf525TerminalChainSummary;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Carbon;
 
 /**
@@ -34,7 +35,7 @@ interface Nf525DataProviderContract
     /**
      * Build the full POS-side snapshot for a NF525 JET XML export.
      *
-     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException If $companyId is unknown.
+     * @throws ModelNotFoundException If $companyId is unknown.
      */
     public function buildExportSnapshot(string $companyId, Carbon $from, Carbon $to): Nf525ExportSnapshot;
 
