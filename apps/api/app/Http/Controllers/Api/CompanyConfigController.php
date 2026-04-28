@@ -88,7 +88,7 @@ class CompanyConfigController
                 'line_designation_override_enabled' => config('features.documents.line_designation_override.enabled', false),
                 'smart_prompts_variant' => $company?->getAttribute('smart_prompts_variant') instanceof SmartPromptsVariant
                     ? $company->getAttribute('smart_prompts_variant')->value
-                    : 'inline',
+                    : 'off',
             ],
         ]);
     }

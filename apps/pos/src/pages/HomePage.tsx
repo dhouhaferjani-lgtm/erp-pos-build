@@ -255,23 +255,6 @@ export function HomePage() {
     }
   }, [spSkinType]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Smart Prompts: fetch recommendations when cart changes
-  useEffect(() => {
-    const productIds = cartItems.map((item) => item.product.id);
-    if (productIds.length > 0) {
-      spFetchForCart(productIds);
-    } else {
-      spClear();
-    }
-  }, [cartItems, spFetchForCart, spClear]);
-
-  useEffect(() => {
-    const productIds = cartItems.map((item) => item.product.id);
-    if (productIds.length > 0 && spSkinType !== null) {
-      spFetchForCart(productIds);
-    }
-  }, [spSkinType]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // Cart product IDs for highlighting in grid
   const cartProductIds = useMemo(
     () => cartItems.map((item) => item.product.id),
@@ -613,7 +596,7 @@ export function HomePage() {
       )}
 
       {/* Cart - left panel (first in DOM) */}
-      <div className="flex-[4] min-w-[340px] border-r border-gray-200">
+      <div className="flex min-h-0 min-w-[340px] flex-[4] overflow-hidden border-r border-gray-200">
         <TransactionCart
           items={cartItems}
           subtotal={subtotal()}
