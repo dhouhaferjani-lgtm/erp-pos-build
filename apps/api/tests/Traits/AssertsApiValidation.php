@@ -99,4 +99,28 @@ trait AssertsApiValidation
     {
         return $this->assertApiValidationErrors($response, $keys);
     }
+
+    /**
+     * Project-specific drop-in for Laravel's TestResponse::assertJsonValidationErrors.
+     *
+     * The application wraps validation failures inside `{ error: { code, errors } }`,
+     * so the stock helper (which defaults to the top-level `errors` key) silently
+     * passes on the wrong envelope. This helper reads from `error.errors` by
+     * default and is the recommended call site for new tests.
+     *
+     * Naming intentionally shadows the stock TestResponse method so that imports
+     * of this trait at the TestCase level provide a safe-by-default helper:
+     *
+     *   $this->assertJsonValidationErrors($response, ['email']);
+     *
+     * If a caller really needs a different response key (e.g. for a non-API
+     * endpoint that emits the legacy shape), use the stock TestResponse helper
+     * directly: `$response->assertJsonValidationErrors([...], 'errors')`.
+     *
+     * @param  array<int|string, string|array<int, string>>  $errors
+     */
+    protected function assertJsonValidationErrors(TestResponse $response, array $errors): TestResponse
+    {
+        return $response->assertJsonValidationErrors($errors, 'error.errors');
+    }
 }

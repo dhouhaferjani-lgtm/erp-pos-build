@@ -252,11 +252,12 @@ When picking up an item, change its `Status` field to `In progress` and assign a
 | M3 — Stamp duty draft guard | To-do | — | — | Needs accounting input |
 | M4 — `unit_categories` partial unique | Done | session3 | PR #61 | Migration `2026_04_28_120000_fix_unit_categories_partial_unique` + 2 partial unique indexes; test in `tests/Feature/Uom/UnitCategorySystemRowUniquenessTest.php` |
 | M5 — FraudSettings shape decision | Done | session5 | — | Closed by d8c1addc on session5-types-m2-m5; canonical CompanyFraudSettingsData DTO + 5-consumer FE migration; latent is_configured gap on update/reset closed in passing |
-| H1 — JsonValidationErrors envelope | To-do | — | — | Sweep needed |
+| H1 — JsonValidationErrors envelope | Done | session6 | TBD | Helper added to `tests/Traits/AssertsApiValidation`; 8 call sites migrated; safe-by-default for `error.errors` |
 | H2 — `work_order_line_id` whitelist | Done | session4 | dev `de4533e2` | `DocumentLine::$fillable` + `CopiesDocumentData::copyLine()` whitelist + property docblock; backfill migration `2026_04_28_120000_*` committed unstaged pending owner approval |
 | H3 — Compliance Rule #6 cleanup | In progress | session-h3 | (PR pending) | Contract `App\Shared\Contracts\Compliance\Nf525DataProviderContract` + 17 DTOs + POS provider; byte-stable JET XML snapshot; refund flow blocked on this |
 | H4 — preflight.sh PHPStan memory | Done | session1 | dev `8bb3cca3` | `--memory-limit` restored to `2G` in `scripts/preflight.sh` (commit `4751b648`) |
-| L1–L3, L6, L7, L9 | To-do | — | — | Bundle when convenient |
+| L1–L2, L6, L7, L9 | To-do | — | — | Bundle when convenient |
+| L3 — Coupon/Promotion date-dependent exclusions | Done | session6 | PR #63 | `CarbonImmutable::setTestNow()` pin in `setUp`; phpunit.xml exclusions removed; suite green |
 | L4 — Skipped Taxation test triage | Done | session3 | PR #61 | Triage in [`2026-04-28-taxation-test-triage.md`](2026-04-28-taxation-test-triage.md): 18 re-enable, 5 still blocked (purchase-invoice domain), 1 owned by refund-flow / M3 session |
 | L5 — PHPStan in TechnicianTimeEntryControllerTest | Done | session4 | dev `de4533e2` | All 11 errors across `tests/Feature/Workshop/` swept (Mockery typing + missing array param types + redundant assertIsString); `phpstan analyse tests/Feature/Workshop/` returns zero errors |
 | L8 — TN backfill `Company::all()` chunking | Done | session1 | dev `8bb3cca3` | `Company::query()->chunk(50, ...)` + `backfillCompany()` extraction (commit `539045bb`) |
