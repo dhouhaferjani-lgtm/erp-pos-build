@@ -261,12 +261,4 @@ class User extends Authenticatable
             ->where('status', 'active')
             ->exists();
     }
-
-    /**
-     * @deprecated Use canAccessCompanyChannel() instead
-     */
-    public function canAccessImportChannel(string $tenantId, string $companyId): bool
-    {
-        return $this->canAccessCompanyChannel($tenantId, $companyId);
-    }
 }

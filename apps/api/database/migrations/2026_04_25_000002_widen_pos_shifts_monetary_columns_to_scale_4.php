@@ -13,10 +13,14 @@ return new class extends Migration
             return;
         }
 
-        DB::statement('ALTER TABLE pos_shifts ALTER COLUMN opening_cash    TYPE DECIMAL(16, 4)');
-        DB::statement('ALTER TABLE pos_shifts ALTER COLUMN expected_cash   TYPE DECIMAL(16, 4)');
-        DB::statement('ALTER TABLE pos_shifts ALTER COLUMN actual_cash     TYPE DECIMAL(16, 4)');
-        DB::statement('ALTER TABLE pos_shifts ALTER COLUMN variance        TYPE DECIMAL(16, 4)');
+        // Single multi-clause ALTER TABLE -> one ACCESS EXCLUSIVE lock + one table rewrite.
+        DB::statement('
+            ALTER TABLE pos_shifts
+                ALTER COLUMN opening_cash  TYPE DECIMAL(16, 4),
+                ALTER COLUMN expected_cash TYPE DECIMAL(16, 4),
+                ALTER COLUMN actual_cash   TYPE DECIMAL(16, 4),
+                ALTER COLUMN variance      TYPE DECIMAL(16, 4)
+        ');
 
         // Existing CHECK pos_shifts_variance_calc stays — arithmetic is exact at scale 4.
     }
