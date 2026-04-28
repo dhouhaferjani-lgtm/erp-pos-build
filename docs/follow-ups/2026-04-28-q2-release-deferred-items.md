@@ -220,7 +220,22 @@ Pre-existing skips + 1 new (stamp duty draft — see M3). Worth a triage to deci
 
 ### L10. Node.js 20 → Node.js 24 actions migration
 
-CI workflow uses `actions/checkout@v4`, `actions/cache@v4`, `actions/setup-node@v4`, `pnpm/action-setup@v4`, `codecov/codecov-action@v4` which run on Node.js 20. **GitHub deadline: 2026-06-02.** After that, actions may break. Monitor for v5+ releases or set `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` once safe.
+**Status:** Done — PR #59 (merged 2026-04-28 to `dev`, merge SHA `905106f5`).
+
+| Action | Old | New | Path |
+|---|---|---|---|
+| `actions/checkout` | v4 | **v5** | bumped (Node 24) |
+| `actions/cache` | v4 | **v5** | bumped (Node 24) |
+| `actions/setup-node` | v4 | **v5** | bumped (Node 24) |
+| `pnpm/action-setup` | v4 | **v5** | bumped (Node 24) |
+| `codecov/codecov-action` | v4 | **v5** | bumped (composite, OS binary) |
+| `actions/upload-artifact` | v4 | v4 | env-var fallback — v5 still on Node 20; v6 introduces artifact-immutability semantics not bundled here |
+| `shivammathur/setup-php` | v2 | v2 | already Node 24 native (verified action.yml head) |
+| `SonarSource/sonarcloud-github-action` | master | master | composite (Sonar scanner CLI), not a Node JS action |
+
+Workflow-level `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'` added to all three workflows (`ci.yml`, `smoke-test.yml`, `sonarcloud.yml`) as the in-repo, reviewable belt-and-braces fallback for the residual `actions/upload-artifact@v4` and any future addition we might forget to bump.
+
+**Follow-up to schedule before 2026-06-02:** bump `actions/upload-artifact@v4` to `@v6` (first Node 24 major). v6 changes artifact naming + adds immutability — small contract test recommended on the smoke-test workflow's `playwright-report/` and `test-results/` upload.
 
 ---
 
@@ -239,7 +254,8 @@ When picking up an item, change its `Status` field to `In progress` and assign a
 | H2 — `work_order_line_id` whitelist | To-do | — | — | + retroactive backfill |
 | H3 — Compliance Rule #6 cleanup | To-do | — | — | Architectural |
 | H4 — preflight.sh PHPStan memory | To-do | — | — | One line |
-| L1–L10 | To-do | — | — | Bundle when convenient |
+| L1–L9 | To-do | — | — | Bundle when convenient |
+| L10 — Node 24 actions migration | Done | session7 | #59 | All 5 listed actions bumped to v5; `actions/upload-artifact@v4` covered by `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` env var pending v6 follow-up |
 
 ---
 
