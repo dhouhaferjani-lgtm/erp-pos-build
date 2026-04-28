@@ -127,6 +127,11 @@ trait CopiesDocumentData
             'notes' => $line->notes,
             'designation_default_snapshot' => $line->designation_default_snapshot,
             'source_line_id' => $linkSource ? $line->id : null,
+            // Carry the WO back-reference across conversions so WO ↔ DocumentLine
+            // traceability survives Quote → SalesOrder → Invoice chains. The
+            // column is a bare nullable UUID (not FK-constrained per Spec §5.1),
+            // so propagating null when the source line has no WO origin is safe.
+            'work_order_line_id' => $line->getAttribute('work_order_line_id'),
         ]);
     }
 
