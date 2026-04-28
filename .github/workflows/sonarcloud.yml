@@ -7,6 +7,12 @@ on:
     branches: [main, develop]
     types: [opened, synchronize, reopened]
 
+env:
+  # Belt-and-braces for the 2026-06-02 GitHub Node 20 deprecation. Future-
+  # proofs this workflow against any new JS action added later that might
+  # still target Node 20. Current actions are all Node 24 native. See L10.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   sonarcloud:
     name: SonarCloud
