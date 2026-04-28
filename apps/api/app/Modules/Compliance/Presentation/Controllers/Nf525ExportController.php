@@ -6,12 +6,8 @@ namespace App\Modules\Compliance\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Compliance\Services\Nf525\Nf525JetExportService;
-use App\Modules\POS\Domain\Receipt;
-use App\Modules\POS\Domain\ReceiptPrint;
-use App\Modules\POS\Domain\Services\ReceiptHashService;
-use App\Modules\POS\Domain\Services\ZReportHashService;
-use App\Modules\POS\Domain\Terminal;
-use App\Modules\POS\Domain\ZReport;
+use App\Shared\Contracts\Compliance\DTOs\Nf525ReprintLogFilter;
+use App\Shared\Contracts\Compliance\Nf525DataProviderContract;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -24,13 +20,15 @@ use Illuminate\Support\Carbon;
  * - JET XML export for fiscal audits
  * - Hash chain verification per terminal
  * - Reprint audit log viewing
+ *
+ * After H3: depends only on the Nf525DataProviderContract published by POS
+ * (via App\Shared\Contracts\Compliance\). No POS Domain imports remain.
  */
 final class Nf525ExportController extends Controller
 {
     public function __construct(
         private readonly Nf525JetExportService $exportService,
-        private readonly ReceiptHashService $receiptHashService,
-        private readonly ZReportHashService $zReportHashService,
+        private readonly Nf525DataProviderContract $dataProvider,
     ) {}
 
     /**
@@ -77,25 +75,42 @@ final class Nf525ExportController extends Controller
 
         $companyId = (string) $request->input('company_id');
 
-        $terminals = Terminal::where('company_id', $companyId)->get();
+        $terminals = $this->dataProvider->listTerminalsForCompany($companyId);
 
         $results = [];
-
         foreach ($terminals as $terminal) {
-            $receiptResult = $this->verifyReceiptChain($terminal);
-            $zReportResult = $this->verifyZReportChain($terminal);
+            $receiptResult = $this->dataProvider->verifyReceiptChain($terminal->terminalId);
+            $zReportResult = $this->dataProvider->verifyZReportChain($terminal->terminalId);
 
             $results[] = [
-                'terminal_id' => $terminal->id,
-                'terminal_code' => $terminal->code,
-                'terminal_name' => $terminal->name,
-                'receipt_chain' => $receiptResult,
-                'z_report_chain' => $zReportResult,
-                'is_valid' => $receiptResult['is_valid'] && $zReportResult['is_valid'],
+                'terminal_id' => $terminal->terminalId,
+                'terminal_code' => $terminal->terminalCode,
+                'terminal_name' => $terminal->terminalName,
+                'receipt_chain' => [
+                    'is_valid' => $receiptResult->isValid,
+                    'total_receipts' => $receiptResult->totalRows,
+                    'verified' => $receiptResult->verifiedRows,
+                    'failed_at_sequence' => $receiptResult->failedAtSequence,
+                    'error' => $receiptResult->error,
+                ],
+                'z_report_chain' => [
+                    'is_valid' => $zReportResult->isValid,
+                    'total_reports' => $zReportResult->totalRows,
+                    'verified' => $zReportResult->verifiedRows,
+                    'failed_at_z_number' => $zReportResult->failedAtSequence,
+                    'error' => $zReportResult->error,
+                ],
+                'is_valid' => $receiptResult->isValid && $zReportResult->isValid,
             ];
         }
 
-        $allValid = collect($results)->every(fn (array $r): bool => $r['is_valid']);
+        $allValid = true;
+        foreach ($results as $row) {
+            if ($row['is_valid'] !== true) {
+                $allValid = false;
+                break;
+            }
+        }
 
         return response()->json([
             'data' => [
@@ -124,162 +139,31 @@ final class Nf525ExportController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
-        $companyId = (string) $request->input('company_id');
-        $perPage = (int) ($request->input('per_page', 20));
+        $rawTerminalId = $request->input('terminal_id');
+        $terminalId = is_string($rawTerminalId) ? $rawTerminalId : null;
+        $rawFrom = $request->input('from');
+        $fromDate = is_string($rawFrom) ? $rawFrom : null;
+        $rawTo = $request->input('to');
+        $toDate = is_string($rawTo) ? $rawTo : null;
 
-        // Get terminal IDs for the company
-        $terminalIds = Terminal::where('company_id', $companyId)->pluck('id')->toArray();
+        $filter = new Nf525ReprintLogFilter(
+            companyId: (string) $request->input('company_id'),
+            terminalId: $terminalId,
+            fromDate: $fromDate,
+            toDate: $toDate,
+            perPage: (int) ($request->input('per_page', 20)),
+        );
 
-        $query = ReceiptPrint::with(['receipt', 'terminal', 'user'])
-            ->whereIn('terminal_id', $terminalIds);
-
-        $terminalId = $request->input('terminal_id');
-        if ($terminalId !== null && is_string($terminalId)) {
-            $query->where('terminal_id', $terminalId);
-        }
-
-        $from = $request->input('from');
-        if ($from !== null && is_string($from)) {
-            $query->where('printed_at', '>=', Carbon::parse($from)->startOfDay());
-        }
-
-        $to = $request->input('to');
-        if ($to !== null && is_string($to)) {
-            $query->where('printed_at', '<=', Carbon::parse($to)->endOfDay());
-        }
-
-        $paginated = $query->orderByDesc('printed_at')->paginate($perPage);
+        $page = $this->dataProvider->fetchReprintLog($filter);
 
         return response()->json([
-            'data' => $paginated->items(),
+            'data' => $page->rows,
             'meta' => [
-                'current_page' => $paginated->currentPage(),
-                'last_page' => $paginated->lastPage(),
-                'per_page' => $paginated->perPage(),
-                'total' => $paginated->total(),
+                'current_page' => $page->currentPage,
+                'last_page' => $page->lastPage,
+                'per_page' => $page->perPage,
+                'total' => $page->total,
             ],
         ]);
-    }
-
-    /**
-     * Verify receipt hash chain integrity for a terminal.
-     *
-     * @return array{is_valid: bool, total_receipts: int, verified: int, failed_at_sequence: int|null, error: string|null}
-     */
-    private function verifyReceiptChain(Terminal $terminal): array
-    {
-        $receipts = Receipt::where('terminal_id', $terminal->id)
-            ->orderBy('chain_sequence')
-            ->get();
-
-        if ($receipts->isEmpty()) {
-            return [
-                'is_valid' => true,
-                'total_receipts' => 0,
-                'verified' => 0,
-                'failed_at_sequence' => null,
-                'error' => null,
-            ];
-        }
-
-        $verified = 0;
-        $previousHash = null;
-
-        foreach ($receipts as $receipt) {
-            // Verify chain linkage
-            if ($receipt->previous_hash !== $previousHash) {
-                return [
-                    'is_valid' => false,
-                    'total_receipts' => $receipts->count(),
-                    'verified' => $verified,
-                    'failed_at_sequence' => $receipt->chain_sequence,
-                    'error' => 'Chain linkage broken: previous_hash mismatch',
-                ];
-            }
-
-            // Verify hash computation
-            $expectedHash = $this->receiptHashService->calculateHash($receipt, $previousHash);
-            if ($expectedHash !== $receipt->fiscal_hash) {
-                return [
-                    'is_valid' => false,
-                    'total_receipts' => $receipts->count(),
-                    'verified' => $verified,
-                    'failed_at_sequence' => $receipt->chain_sequence,
-                    'error' => 'Fiscal hash mismatch: receipt data may have been tampered with',
-                ];
-            }
-
-            $previousHash = $receipt->fiscal_hash;
-            $verified++;
-        }
-
-        return [
-            'is_valid' => true,
-            'total_receipts' => $receipts->count(),
-            'verified' => $verified,
-            'failed_at_sequence' => null,
-            'error' => null,
-        ];
-    }
-
-    /**
-     * Verify Z-report hash chain integrity for a terminal.
-     *
-     * @return array{is_valid: bool, total_reports: int, verified: int, failed_at_z_number: int|null, error: string|null}
-     */
-    private function verifyZReportChain(Terminal $terminal): array
-    {
-        $zReports = ZReport::where('terminal_id', $terminal->id)
-            ->orderBy('z_number')
-            ->get();
-
-        if ($zReports->isEmpty()) {
-            return [
-                'is_valid' => true,
-                'total_reports' => 0,
-                'verified' => 0,
-                'failed_at_z_number' => null,
-                'error' => null,
-            ];
-        }
-
-        $verified = 0;
-        $previousHash = null;
-
-        foreach ($zReports as $zReport) {
-            // Verify chain linkage
-            if ($zReport->previous_z_hash !== $previousHash) {
-                return [
-                    'is_valid' => false,
-                    'total_reports' => $zReports->count(),
-                    'verified' => $verified,
-                    'failed_at_z_number' => $zReport->z_number,
-                    'error' => 'Chain linkage broken: previous_z_hash mismatch',
-                ];
-            }
-
-            // Verify hash computation
-            $expectedHash = $this->zReportHashService->calculateHash($zReport, $previousHash);
-            if ($expectedHash !== $zReport->fiscal_hash) {
-                return [
-                    'is_valid' => false,
-                    'total_reports' => $zReports->count(),
-                    'verified' => $verified,
-                    'failed_at_z_number' => $zReport->z_number,
-                    'error' => 'Fiscal hash mismatch: Z-report data may have been tampered with',
-                ];
-            }
-
-            $previousHash = $zReport->fiscal_hash;
-            $verified++;
-        }
-
-        return [
-            'is_valid' => true,
-            'total_reports' => $zReports->count(),
-            'verified' => $verified,
-            'failed_at_z_number' => null,
-            'error' => null,
-        ];
     }
 }
