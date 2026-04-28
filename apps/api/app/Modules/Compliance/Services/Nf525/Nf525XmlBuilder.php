@@ -4,24 +4,29 @@ declare(strict_types=1);
 
 namespace App\Modules\Compliance\Services\Nf525;
 
-use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Compliance\Domain\Enums\Nf525EventType;
-use App\Modules\POS\Domain\CashDrawerOperation;
-use App\Modules\POS\Domain\GrandtotalEvent;
-use App\Modules\POS\Domain\Receipt;
-use App\Modules\POS\Domain\ReceiptPrint;
-use App\Modules\POS\Domain\Shift;
-use App\Modules\POS\Domain\Terminal;
-use App\Modules\POS\Domain\ZReport;
+use App\Shared\Contracts\Compliance\DTOs\Nf525CashDrawerOperationData;
+use App\Shared\Contracts\Compliance\DTOs\Nf525GrandTotalData;
+use App\Shared\Contracts\Compliance\DTOs\Nf525ReceiptData;
+use App\Shared\Contracts\Compliance\DTOs\Nf525ReceiptPrintData;
+use App\Shared\Contracts\Compliance\DTOs\Nf525ShiftData;
+use App\Shared\Contracts\Compliance\DTOs\Nf525TerminalData;
+use App\Shared\Contracts\Compliance\DTOs\Nf525TerminalLifecycleEventData;
+use App\Shared\Contracts\Compliance\DTOs\Nf525TrainingModeCount;
+use App\Shared\Contracts\Compliance\DTOs\Nf525ZReportData;
 use DOMDocument;
 use DOMElement;
-use Illuminate\Support\Collection;
 
 /**
  * Builder for NF525 JET (Journal des Evenements Techniques) XML documents.
  *
  * Constructs the XML structure required for French fiscal authority audits.
  * Each section maps to a specific NF525 requirement for POS system certification.
+ *
+ * After H3: this builder consumes only DTOs from
+ * `App\Shared\Contracts\Compliance\DTOs\` — it has zero direct knowledge of
+ * POS Eloquent models. The byte-stable JET XML it produces is locked by
+ * `tests/Feature/Compliance/Nf525ExportSnapshotTest.php`.
  */
 final class Nf525XmlBuilder
 {
@@ -48,7 +53,7 @@ final class Nf525XmlBuilder
     /**
      * Add header section with company and export metadata.
      *
-     * @param  array{company_name: string, company_id: string, siret?: string, address?: string, software_name: string, software_version: string, certification_number?: string, period_start: string, period_end: string, export_date: string}  $data
+     * @param  array{company_name: string, company_id: string, siret?: string|null, address?: string|null, software_name: string, software_version: string, certification_number?: string, period_start: string, period_end: string, export_date: string}  $data
      */
     public function addHeader(array $data): self
     {
@@ -67,10 +72,10 @@ final class Nf525XmlBuilder
         $this->addElement($company, 'Identifiant', $data['company_id']);
         $this->addElement($company, 'RaisonSociale', $data['company_name']);
 
-        if (isset($data['siret'])) {
+        if (array_key_exists('siret', $data) && $data['siret'] !== null) {
             $this->addElement($company, 'SIRET', $data['siret']);
         }
-        if (isset($data['address'])) {
+        if (array_key_exists('address', $data) && $data['address'] !== null) {
             $this->addElement($company, 'Adresse', $data['address']);
         }
 
@@ -89,78 +94,69 @@ final class Nf525XmlBuilder
     /**
      * Add receipts section (TICKET events).
      *
-     * @param  Collection<int, Receipt>  $receipts
+     * @param  list<Nf525ReceiptData>  $receipts
      */
-    public function addReceipts(Collection $receipts): self
+    public function addReceipts(array $receipts): self
     {
         $section = $this->doc->createElement('Tickets');
         $section->setAttribute('type', Nf525EventType::ReceiptCreated->value);
-        $section->setAttribute('count', (string) $receipts->count());
+        $section->setAttribute('count', (string) count($receipts));
 
         foreach ($receipts as $receipt) {
             $ticket = $this->doc->createElement('Ticket');
             $this->addElement($ticket, 'Identifiant', $receipt->id);
-            $this->addElement($ticket, 'Numero', $receipt->receipt_number);
-            $this->addElement($ticket, 'TerminalId', $receipt->terminal_id);
-            $this->addElement($ticket, 'Date', $receipt->posted_at->toIso8601String());
-            $this->addElement($ticket, 'SequenceChaine', (string) $receipt->chain_sequence);
-            $this->addElement($ticket, 'HashFiscal', $receipt->fiscal_hash);
-            $this->addElement($ticket, 'HashPrecedent', $receipt->previous_hash ?? '');
-            $this->addElement($ticket, 'SousTotal', (string) $receipt->subtotal);
-            $this->addElement($ticket, 'Taxe', (string) $receipt->tax_amount);
-            $this->addElement($ticket, 'Remise', (string) $receipt->discount_amount);
-            $this->addElement($ticket, 'Total', (string) $receipt->total);
+            $this->addElement($ticket, 'Numero', $receipt->receiptNumber);
+            $this->addElement($ticket, 'TerminalId', $receipt->terminalId);
+            $this->addElement($ticket, 'Date', $receipt->postedAtIso8601);
+            $this->addElement($ticket, 'SequenceChaine', (string) $receipt->chainSequence);
+            $this->addElement($ticket, 'HashFiscal', $receipt->fiscalHash);
+            $this->addElement($ticket, 'HashPrecedent', $receipt->previousHash ?? '');
+            $this->addElement($ticket, 'SousTotal', $receipt->subtotal);
+            $this->addElement($ticket, 'Taxe', $receipt->taxAmount);
+            $this->addElement($ticket, 'Remise', $receipt->discountAmount);
+            $this->addElement($ticket, 'Total', $receipt->total);
             $this->addElement($ticket, 'Devise', $receipt->currency);
-            $this->addElement($ticket, 'Caissier', $receipt->cashier_name);
+            $this->addElement($ticket, 'Caissier', $receipt->cashierName);
 
-            if ($receipt->customer_name !== null) {
-                $this->addElement($ticket, 'Client', $receipt->customer_name);
+            if ($receipt->customerName !== null) {
+                $this->addElement($ticket, 'Client', $receipt->customerName);
             }
 
-            // Lines
-            if ($receipt->relationLoaded('lines')) {
-                $lines = $this->doc->createElement('Lignes');
-                foreach ($receipt->lines as $line) {
-                    $lineEl = $this->doc->createElement('Ligne');
-                    $this->addElement($lineEl, 'Numero', (string) $line->line_number);
-                    $this->addElement($lineEl, 'CodeProduit', $line->product_code ?? '');
-                    $this->addElement($lineEl, 'NomProduit', $line->product_name);
-                    $this->addElement($lineEl, 'Quantite', (string) $line->quantity);
-                    $this->addElement($lineEl, 'PrixUnitaire', (string) $line->unit_price);
-                    $this->addElement($lineEl, 'TotalLigne', (string) $line->line_total);
-                    $this->addElement($lineEl, 'TauxTVA', (string) $line->tax_rate);
-                    $this->addElement($lineEl, 'MontantTVA', (string) $line->tax_amount);
-                    $this->addElement($lineEl, 'Remise', (string) ($line->discount_amount ?? '0.00'));
-                    $lines->appendChild($lineEl);
-                }
-                $ticket->appendChild($lines);
+            $lines = $this->doc->createElement('Lignes');
+            foreach ($receipt->lines as $line) {
+                $lineEl = $this->doc->createElement('Ligne');
+                $this->addElement($lineEl, 'Numero', (string) $line->lineNumber);
+                $this->addElement($lineEl, 'CodeProduit', $line->productCode ?? '');
+                $this->addElement($lineEl, 'NomProduit', $line->productName);
+                $this->addElement($lineEl, 'Quantite', $line->quantity);
+                $this->addElement($lineEl, 'PrixUnitaire', $line->unitPrice);
+                $this->addElement($lineEl, 'TotalLigne', $line->lineTotal);
+                $this->addElement($lineEl, 'TauxTVA', $line->taxRate);
+                $this->addElement($lineEl, 'MontantTVA', $line->taxAmount);
+                $this->addElement($lineEl, 'Remise', $line->discountAmount);
+                $lines->appendChild($lineEl);
             }
+            $ticket->appendChild($lines);
 
-            // VAT details
-            if ($receipt->relationLoaded('vatDetails')) {
-                $vatSection = $this->doc->createElement('VentilationTVA');
-                foreach ($receipt->vatDetails as $vat) {
-                    $vatEl = $this->doc->createElement('TVA');
-                    $this->addElement($vatEl, 'Taux', (string) $vat->tax_rate);
-                    $this->addElement($vatEl, 'BaseHT', (string) $vat->net_amount);
-                    $this->addElement($vatEl, 'MontantTVA', (string) $vat->vat_amount);
-                    $this->addElement($vatEl, 'TotalTTC', (string) $vat->gross_amount);
-                    $vatSection->appendChild($vatEl);
-                }
-                $ticket->appendChild($vatSection);
+            $vatSection = $this->doc->createElement('VentilationTVA');
+            foreach ($receipt->vatDetails as $vat) {
+                $vatEl = $this->doc->createElement('TVA');
+                $this->addElement($vatEl, 'Taux', $vat->taxRate);
+                $this->addElement($vatEl, 'BaseHT', $vat->netAmount);
+                $this->addElement($vatEl, 'MontantTVA', $vat->vatAmount);
+                $this->addElement($vatEl, 'TotalTTC', $vat->grossAmount);
+                $vatSection->appendChild($vatEl);
             }
+            $ticket->appendChild($vatSection);
 
-            // Payments
-            if ($receipt->relationLoaded('payments')) {
-                $paymentsSection = $this->doc->createElement('Paiements');
-                foreach ($receipt->payments as $payment) {
-                    $payEl = $this->doc->createElement('Paiement');
-                    $this->addElement($payEl, 'Type', $payment->payment_type);
-                    $this->addElement($payEl, 'Montant', (string) $payment->amount);
-                    $paymentsSection->appendChild($payEl);
-                }
-                $ticket->appendChild($paymentsSection);
+            $paymentsSection = $this->doc->createElement('Paiements');
+            foreach ($receipt->payments as $payment) {
+                $payEl = $this->doc->createElement('Paiement');
+                $this->addElement($payEl, 'Type', $payment->paymentType);
+                $this->addElement($payEl, 'Montant', $payment->amount);
+                $paymentsSection->appendChild($payEl);
             }
+            $ticket->appendChild($paymentsSection);
 
             $section->appendChild($ticket);
         }
@@ -173,24 +169,24 @@ final class Nf525XmlBuilder
     /**
      * Add voided receipts section (ANNULATION events).
      *
-     * @param  Collection<int, Receipt>  $voidedReceipts
+     * @param  list<Nf525ReceiptData>  $voidedReceipts
      */
-    public function addVoids(Collection $voidedReceipts): self
+    public function addVoids(array $voidedReceipts): self
     {
         $section = $this->doc->createElement('Annulations');
         $section->setAttribute('type', Nf525EventType::ReceiptVoided->value);
-        $section->setAttribute('count', (string) $voidedReceipts->count());
+        $section->setAttribute('count', (string) count($voidedReceipts));
 
         foreach ($voidedReceipts as $receipt) {
             $annulation = $this->doc->createElement('Annulation');
             $this->addElement($annulation, 'Identifiant', $receipt->id);
-            $this->addElement($annulation, 'Numero', $receipt->receipt_number);
-            $this->addElement($annulation, 'TerminalId', $receipt->terminal_id);
-            $this->addElement($annulation, 'Total', (string) $receipt->total);
-            $this->addElement($annulation, 'Motif', $receipt->void_reason ?? '');
-            $this->addElement($annulation, 'AnnulePar', $receipt->voided_by ?? '');
-            $this->addElement($annulation, 'DateAnnulation', $receipt->voided_at?->toIso8601String() ?? '');
-            $this->addElement($annulation, 'HashFiscalOriginal', $receipt->fiscal_hash);
+            $this->addElement($annulation, 'Numero', $receipt->receiptNumber);
+            $this->addElement($annulation, 'TerminalId', $receipt->terminalId);
+            $this->addElement($annulation, 'Total', $receipt->total);
+            $this->addElement($annulation, 'Motif', $receipt->voidReason ?? '');
+            $this->addElement($annulation, 'AnnulePar', $receipt->voidedBy ?? '');
+            $this->addElement($annulation, 'DateAnnulation', $receipt->voidedAtIso8601 ?? '');
+            $this->addElement($annulation, 'HashFiscalOriginal', $receipt->fiscalHash);
             $section->appendChild($annulation);
         }
 
@@ -202,24 +198,24 @@ final class Nf525XmlBuilder
     /**
      * Add return receipts section (RETOUR events).
      *
-     * @param  Collection<int, Receipt>  $returnReceipts
+     * @param  list<Nf525ReceiptData>  $returnReceipts
      */
-    public function addReturns(Collection $returnReceipts): self
+    public function addReturns(array $returnReceipts): self
     {
         $section = $this->doc->createElement('Retours');
         $section->setAttribute('type', Nf525EventType::ReceiptReturn->value);
-        $section->setAttribute('count', (string) $returnReceipts->count());
+        $section->setAttribute('count', (string) count($returnReceipts));
 
         foreach ($returnReceipts as $receipt) {
             $retour = $this->doc->createElement('Retour');
             $this->addElement($retour, 'Identifiant', $receipt->id);
-            $this->addElement($retour, 'Numero', $receipt->receipt_number);
-            $this->addElement($retour, 'TerminalId', $receipt->terminal_id);
-            $this->addElement($retour, 'Total', (string) $receipt->total);
-            $this->addElement($retour, 'HashFiscal', $receipt->fiscal_hash);
-            $this->addElement($retour, 'TicketOriginal', $receipt->original_receipt_id ?? '');
-            $this->addElement($retour, 'MotifRetour', $receipt->return_reason !== null ? $receipt->return_reason->value : '');
-            $this->addElement($retour, 'Date', $receipt->posted_at->toIso8601String());
+            $this->addElement($retour, 'Numero', $receipt->receiptNumber);
+            $this->addElement($retour, 'TerminalId', $receipt->terminalId);
+            $this->addElement($retour, 'Total', $receipt->total);
+            $this->addElement($retour, 'HashFiscal', $receipt->fiscalHash);
+            $this->addElement($retour, 'TicketOriginal', $receipt->originalReceiptId ?? '');
+            $this->addElement($retour, 'MotifRetour', $receipt->returnReasonValue ?? '');
+            $this->addElement($retour, 'Date', $receipt->postedAtIso8601);
             $section->appendChild($retour);
         }
 
@@ -231,24 +227,24 @@ final class Nf525XmlBuilder
     /**
      * Add reprint log section (DUPLICATA events).
      *
-     * @param  Collection<int, ReceiptPrint>  $receiptPrints
+     * @param  list<Nf525ReceiptPrintData>  $receiptPrints
      */
-    public function addReprints(Collection $receiptPrints): self
+    public function addReprints(array $receiptPrints): self
     {
         $section = $this->doc->createElement('Duplicatas');
         $section->setAttribute('type', Nf525EventType::ReceiptReprinted->value);
-        $section->setAttribute('count', (string) $receiptPrints->count());
+        $section->setAttribute('count', (string) count($receiptPrints));
 
         foreach ($receiptPrints as $print) {
             $duplicata = $this->doc->createElement('Duplicata');
             $this->addElement($duplicata, 'Identifiant', $print->id);
-            $this->addElement($duplicata, 'TicketId', $print->receipt_id);
-            $this->addElement($duplicata, 'TerminalId', $print->terminal_id);
-            $this->addElement($duplicata, 'UtilisateurId', $print->user_id);
-            $this->addElement($duplicata, 'TypeImpression', $print->print_type->value);
-            $this->addElement($duplicata, 'NumeroCopie', (string) $print->copy_number);
-            $this->addElement($duplicata, 'MethodeImpression', $print->print_method->value);
-            $this->addElement($duplicata, 'DateImpression', $print->printed_at->toIso8601String());
+            $this->addElement($duplicata, 'TicketId', $print->receiptId);
+            $this->addElement($duplicata, 'TerminalId', $print->terminalId);
+            $this->addElement($duplicata, 'UtilisateurId', $print->userId);
+            $this->addElement($duplicata, 'TypeImpression', $print->printType);
+            $this->addElement($duplicata, 'NumeroCopie', (string) $print->copyNumber);
+            $this->addElement($duplicata, 'MethodeImpression', $print->printMethod);
+            $this->addElement($duplicata, 'DateImpression', $print->printedAtIso8601);
             $section->appendChild($duplicata);
         }
 
@@ -260,25 +256,24 @@ final class Nf525XmlBuilder
     /**
      * Add Z reports section (RAPPORT_Z events).
      *
-     * @param  Collection<int, ZReport>  $zReports
+     * @param  list<Nf525ZReportData>  $zReports
      */
-    public function addZReports(Collection $zReports): self
+    public function addZReports(array $zReports): self
     {
         $section = $this->doc->createElement('RapportsZ');
         $section->setAttribute('type', Nf525EventType::ZReportGenerated->value);
-        $section->setAttribute('count', (string) $zReports->count());
+        $section->setAttribute('count', (string) count($zReports));
 
         foreach ($zReports as $zReport) {
             $rapport = $this->doc->createElement('RapportZ');
             $this->addElement($rapport, 'Identifiant', $zReport->id);
-            $this->addElement($rapport, 'TerminalId', $zReport->terminal_id);
-            $this->addElement($rapport, 'NumeroZ', (string) $zReport->z_number);
-            $this->addElement($rapport, 'HashFiscal', $zReport->fiscal_hash);
-            $this->addElement($rapport, 'HashPrecedent', $zReport->previous_z_hash ?? '');
-            $this->addElement($rapport, 'DateGeneration', $zReport->generated_at->toIso8601String());
+            $this->addElement($rapport, 'TerminalId', $zReport->terminalId);
+            $this->addElement($rapport, 'NumeroZ', (string) $zReport->zNumber);
+            $this->addElement($rapport, 'HashFiscal', $zReport->fiscalHash);
+            $this->addElement($rapport, 'HashPrecedent', $zReport->previousZHash ?? '');
+            $this->addElement($rapport, 'DateGeneration', $zReport->generatedAtIso8601);
 
-            // Report data summary
-            $reportData = $zReport->report_data ?? [];
+            $reportData = $zReport->reportData;
             $donnees = $this->doc->createElement('Donnees');
             $this->addElement($donnees, 'NombreVentes', (string) ($reportData['sales_count'] ?? 0));
             $this->addElement($donnees, 'VentesBrutes', (string) ($reportData['gross_sales'] ?? '0.00'));
@@ -298,35 +293,33 @@ final class Nf525XmlBuilder
     /**
      * Add grand totals section (perpetual counters).
      *
-     * @param  Collection<int, GrandtotalEvent>  $grandtotals
+     * @param  list<Nf525GrandTotalData>  $grandtotals
      */
-    public function addGrandTotals(Collection $grandtotals): self
+    public function addGrandTotals(array $grandtotals): self
     {
         $section = $this->doc->createElement('GrandsTotaux');
-        $section->setAttribute('count', (string) $grandtotals->count());
+        $section->setAttribute('count', (string) count($grandtotals));
 
         foreach ($grandtotals as $grandtotal) {
             $gt = $this->doc->createElement('GrandTotal');
             $this->addElement($gt, 'Identifiant', $grandtotal->id);
-            $this->addElement($gt, 'TerminalId', $grandtotal->terminal_id);
-            $this->addElement($gt, 'TypeEvenement', $grandtotal->event_type);
-            $this->addElement($gt, 'NumeroSequence', (string) $grandtotal->sequence_number);
-            $this->addElement($gt, 'HashFiscal', $grandtotal->fiscal_hash);
-            $this->addElement($gt, 'HashPrecedent', $grandtotal->previous_hash ?? '');
-            $this->addElement($gt, 'DebutPeriode', $grandtotal->period_start->toIso8601String());
-            $this->addElement($gt, 'FinPeriode', $grandtotal->period_end->toIso8601String());
-            $this->addElement($gt, 'DateGeneration', $grandtotal->generated_at->toIso8601String());
+            $this->addElement($gt, 'TerminalId', $grandtotal->terminalId);
+            $this->addElement($gt, 'TypeEvenement', $grandtotal->eventType);
+            $this->addElement($gt, 'NumeroSequence', (string) $grandtotal->sequenceNumber);
+            $this->addElement($gt, 'HashFiscal', $grandtotal->fiscalHash);
+            $this->addElement($gt, 'HashPrecedent', $grandtotal->previousHash ?? '');
+            $this->addElement($gt, 'DebutPeriode', $grandtotal->periodStartIso8601);
+            $this->addElement($gt, 'FinPeriode', $grandtotal->periodEndIso8601);
+            $this->addElement($gt, 'DateGeneration', $grandtotal->generatedAtIso8601);
 
-            $periodTotals = $grandtotal->period_totals ?? [];
             $periodEl = $this->doc->createElement('TotauxPeriode');
-            $this->addElement($periodEl, 'VentesBrutes', (string) ($periodTotals['gross_sales'] ?? '0.00'));
-            $this->addElement($periodEl, 'Taxe', (string) ($periodTotals['tax_amount'] ?? '0.00'));
+            $this->addElement($periodEl, 'VentesBrutes', (string) ($grandtotal->periodTotals['gross_sales'] ?? '0.00'));
+            $this->addElement($periodEl, 'Taxe', (string) ($grandtotal->periodTotals['tax_amount'] ?? '0.00'));
             $gt->appendChild($periodEl);
 
-            $perpetualTotals = $grandtotal->perpetual_totals ?? [];
             $perpetualEl = $this->doc->createElement('TotauxPerpetuels');
-            $this->addElement($perpetualEl, 'VentesCumulees', (string) ($perpetualTotals['lifetime_sales'] ?? '0.00'));
-            $this->addElement($perpetualEl, 'TaxeCumulee', (string) ($perpetualTotals['lifetime_tax'] ?? '0.00'));
+            $this->addElement($perpetualEl, 'VentesCumulees', (string) ($grandtotal->perpetualTotals['lifetime_sales'] ?? '0.00'));
+            $this->addElement($perpetualEl, 'TaxeCumulee', (string) ($grandtotal->perpetualTotals['lifetime_tax'] ?? '0.00'));
             $gt->appendChild($perpetualEl);
 
             $section->appendChild($gt);
@@ -340,29 +333,28 @@ final class Nf525XmlBuilder
     /**
      * Add cash drawer operations section.
      *
-     * @param  Collection<int, CashDrawerOperation>  $operations
+     * @param  list<Nf525CashDrawerOperationData>  $operations
      */
-    public function addCashDrawer(Collection $operations): self
+    public function addCashDrawer(array $operations): self
     {
         $section = $this->doc->createElement('MouvementsCaisse');
-        $section->setAttribute('count', (string) $operations->count());
+        $section->setAttribute('count', (string) count($operations));
 
         foreach ($operations as $operation) {
             $mouvement = $this->doc->createElement('Mouvement');
             $this->addElement($mouvement, 'Identifiant', $operation->id);
-            $this->addElement($mouvement, 'ShiftId', $operation->shift_id);
-            $this->addElement($mouvement, 'TypeOperation', $operation->operation_type);
-            $this->addElement($mouvement, 'Montant', (string) $operation->amount);
-            $this->addElement($mouvement, 'UtilisateurId', $operation->user_id);
+            $this->addElement($mouvement, 'ShiftId', $operation->shiftId);
+            $this->addElement($mouvement, 'TypeOperation', $operation->operationType);
+            $this->addElement($mouvement, 'Montant', $operation->amount);
+            $this->addElement($mouvement, 'UtilisateurId', $operation->userId);
             $this->addElement($mouvement, 'Motif', $operation->reason ?? '');
-            $this->addElement($mouvement, 'Date', $operation->created_at->toIso8601String());
+            $this->addElement($mouvement, 'Date', $operation->createdAtIso8601);
 
-            // Map operation type to NF525 event type
-            $nf525Type = match ($operation->operation_type) {
+            $nf525Type = match ($operation->operationType) {
                 'DEPOSIT' => Nf525EventType::CashDrawerDeposit->value,
                 'PAYOUT' => Nf525EventType::CashDrawerPayout->value,
                 'REFUND' => Nf525EventType::CashDrawerRefund->value,
-                default => $operation->operation_type,
+                default => $operation->operationType,
             };
             $mouvement->setAttribute('nf525Type', $nf525Type);
 
@@ -377,37 +369,36 @@ final class Nf525XmlBuilder
     /**
      * Add technical events section (shift open/close).
      *
-     * @param  Collection<int, Shift>  $shifts
+     * @param  list<Nf525ShiftData>  $shifts
      */
-    public function addTechnicalEvents(Collection $shifts): self
+    public function addTechnicalEvents(array $shifts): self
     {
         $section = $this->doc->createElement('EvenementsTechniques');
-        $section->setAttribute('count', (string) $shifts->count());
+        $section->setAttribute('count', (string) count($shifts));
 
         foreach ($shifts as $shift) {
             // Opening event
             $ouverture = $this->doc->createElement('Evenement');
             $ouverture->setAttribute('type', Nf525EventType::ShiftOpened->value);
             $this->addElement($ouverture, 'ShiftId', $shift->id);
-            $this->addElement($ouverture, 'TerminalId', $shift->terminal_id);
-            $this->addElement($ouverture, 'CaissierId', $shift->cashier_id);
-            $this->addElement($ouverture, 'NumeroShift', (string) $shift->shift_number);
-            $this->addElement($ouverture, 'SoldeOuverture', (string) $shift->opening_cash);
-            $this->addElement($ouverture, 'DateOuverture', $shift->opened_at->toIso8601String());
+            $this->addElement($ouverture, 'TerminalId', $shift->terminalId);
+            $this->addElement($ouverture, 'CaissierId', $shift->cashierId);
+            $this->addElement($ouverture, 'NumeroShift', (string) $shift->shiftNumber);
+            $this->addElement($ouverture, 'SoldeOuverture', $shift->openingCash);
+            $this->addElement($ouverture, 'DateOuverture', $shift->openedAtIso8601);
             $section->appendChild($ouverture);
 
-            // Closing event (if shift is closed)
-            if ($shift->closed_at !== null) {
+            if ($shift->closedAtIso8601 !== null) {
                 $fermeture = $this->doc->createElement('Evenement');
                 $fermeture->setAttribute('type', Nf525EventType::ShiftClosed->value);
                 $this->addElement($fermeture, 'ShiftId', $shift->id);
-                $this->addElement($fermeture, 'TerminalId', $shift->terminal_id);
-                $this->addElement($fermeture, 'CaissierId', $shift->cashier_id);
-                $this->addElement($fermeture, 'NumeroShift', (string) $shift->shift_number);
-                $this->addElement($fermeture, 'EspecesAttendues', (string) ($shift->expected_cash ?? '0.00'));
-                $this->addElement($fermeture, 'EspecesReelles', (string) ($shift->actual_cash ?? '0.00'));
-                $this->addElement($fermeture, 'Ecart', (string) ($shift->variance ?? '0.00'));
-                $this->addElement($fermeture, 'DateFermeture', $shift->closed_at->toIso8601String());
+                $this->addElement($fermeture, 'TerminalId', $shift->terminalId);
+                $this->addElement($fermeture, 'CaissierId', $shift->cashierId);
+                $this->addElement($fermeture, 'NumeroShift', (string) $shift->shiftNumber);
+                $this->addElement($fermeture, 'EspecesAttendues', $shift->expectedCash ?? '0.00');
+                $this->addElement($fermeture, 'EspecesReelles', $shift->actualCash ?? '0.00');
+                $this->addElement($fermeture, 'Ecart', $shift->variance ?? '0.00');
+                $this->addElement($fermeture, 'DateFermeture', $shift->closedAtIso8601);
                 $section->appendChild($fermeture);
             }
         }
@@ -420,16 +411,16 @@ final class Nf525XmlBuilder
     /**
      * Add terminal lifecycle events section (ACTIVATION_TERMINAL, DESACTIVATION_TERMINAL, MAJ_LOGICIEL).
      *
-     * @param  Collection<int, AuditEvent>  $events
+     * @param  list<Nf525TerminalLifecycleEventData>  $events
      */
-    public function addTerminalEvents(Collection $events): self
+    public function addTerminalEvents(array $events): self
     {
         $section = $this->doc->createElement('EvenementsTerminal');
-        $section->setAttribute('count', (string) $events->count());
+        $section->setAttribute('count', (string) count($events));
 
         foreach ($events as $auditEvent) {
-            $eventType = $auditEvent->event_type;
-            $payload = $auditEvent->payload ?? [];
+            $eventType = $auditEvent->eventType;
+            $payload = $auditEvent->payload;
 
             $nf525Type = match ($eventType) {
                 'terminal.activated' => Nf525EventType::TerminalActivated->value,
@@ -441,10 +432,10 @@ final class Nf525XmlBuilder
             $eventEl = $this->doc->createElement('EvenementTerminal');
             $eventEl->setAttribute('type', $nf525Type);
             $this->addElement($eventEl, 'Identifiant', $auditEvent->id);
-            $this->addElement($eventEl, 'TerminalId', $auditEvent->aggregate_id);
+            $this->addElement($eventEl, 'TerminalId', $auditEvent->terminalId);
             $this->addElement($eventEl, 'CodeTerminal', (string) ($payload['terminal_code'] ?? ''));
             $this->addElement($eventEl, 'TypeEvenement', $nf525Type);
-            $this->addElement($eventEl, 'Date', $auditEvent->occurred_at->toIso8601String());
+            $this->addElement($eventEl, 'Date', $auditEvent->occurredAtIso8601);
 
             if ($eventType === 'terminal.activated') {
                 $this->addElement($eventEl, 'ActivePar', (string) ($payload['activated_by'] ?? ''));
@@ -471,18 +462,21 @@ final class Nf525XmlBuilder
     /**
      * Add training mode section listing training receipt counts per terminal.
      *
-     * @param  Collection<string, int>  $trainingCounts  Keyed by terminal_id
+     * @param  list<Nf525TrainingModeCount>  $trainingCounts
      */
-    public function addTrainingMode(Collection $trainingCounts): self
+    public function addTrainingMode(array $trainingCounts): self
     {
         $section = $this->doc->createElement('ModeFormation');
-        $totalCount = $trainingCounts->sum();
+        $totalCount = 0;
+        foreach ($trainingCounts as $row) {
+            $totalCount += $row->count;
+        }
         $section->setAttribute('count', (string) $totalCount);
 
-        foreach ($trainingCounts as $terminalId => $count) {
+        foreach ($trainingCounts as $row) {
             $terminal = $this->doc->createElement('TerminalFormation');
-            $this->addElement($terminal, 'TerminalId', (string) $terminalId);
-            $this->addElement($terminal, 'NombreTicketsFormation', (string) $count);
+            $this->addElement($terminal, 'TerminalId', $row->terminalId);
+            $this->addElement($terminal, 'NombreTicketsFormation', (string) $row->count);
             $section->appendChild($terminal);
         }
 
@@ -494,22 +488,22 @@ final class Nf525XmlBuilder
     /**
      * Add hash chain summaries per terminal.
      *
-     * @param  Collection<int, Terminal>  $terminals
+     * @param  list<Nf525TerminalData>  $terminals
      */
-    public function addHashChains(Collection $terminals): self
+    public function addHashChains(array $terminals): self
     {
         $section = $this->doc->createElement('ChainesHash');
-        $section->setAttribute('count', (string) $terminals->count());
+        $section->setAttribute('count', (string) count($terminals));
 
         foreach ($terminals as $terminal) {
             $chain = $this->doc->createElement('ChaineTerminal');
             $this->addElement($chain, 'TerminalId', $terminal->id);
             $this->addElement($chain, 'CodeTerminal', $terminal->code);
             $this->addElement($chain, 'NomTerminal', $terminal->name);
-            $this->addElement($chain, 'GraineSeed', $terminal->genesis_seed);
-            $this->addElement($chain, 'SequenceActuelle', (string) $terminal->current_sequence);
-            $this->addElement($chain, 'AnneeActuelle', (string) $terminal->current_year);
-            $this->addElement($chain, 'DernierHash', $terminal->last_hash ?? '');
+            $this->addElement($chain, 'GraineSeed', $terminal->genesisSeed);
+            $this->addElement($chain, 'SequenceActuelle', (string) $terminal->currentSequence);
+            $this->addElement($chain, 'AnneeActuelle', (string) $terminal->currentYear);
+            $this->addElement($chain, 'DernierHash', $terminal->lastHash ?? '');
             $section->appendChild($chain);
         }
 

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Providers;
 
+use App\Modules\POS\Application\Services\Nf525DataProvider;
 use App\Modules\POS\Commands\VerifyPosChainCommand;
+use App\Shared\Contracts\Compliance\Nf525DataProviderContract;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -23,8 +25,12 @@ final class POSServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // Services are auto-resolved via constructor injection
-        // No explicit bindings needed for domain services
+        // Services are auto-resolved via constructor injection.
+        // Cross-module contracts published by POS are bound explicitly:
+        $this->app->bind(
+            Nf525DataProviderContract::class,
+            Nf525DataProvider::class,
+        );
     }
 
     /**
