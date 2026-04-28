@@ -21,9 +21,11 @@ use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\Test;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 class PurchaseHubOrderTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -118,8 +120,8 @@ class PurchaseHubOrderTest extends TestCase
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/purchase-hub/orders', []);
 
-        $response->assertStatus(422)
-            ->assertJsonValidationErrors(['campaign_id', 'items'], 'error.errors');
+        $response->assertStatus(422);
+        $this->assertJsonValidationErrors($response, ['campaign_id', 'items']);
     }
 
     #[Test]

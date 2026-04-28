@@ -22,6 +22,7 @@ use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 /**
  * Integration test for receipt payment flow.
@@ -30,6 +31,7 @@ use Tests\TestCase;
  */
 final class ReceiptPaymentFlowTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -298,7 +300,7 @@ final class ReceiptPaymentFlowTest extends TestCase
 
         // Assert
         $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['payments.0.payment_method_id'], 'error.errors');
+        $this->assertJsonValidationErrors($response, ['payments.0.payment_method_id']);
     }
 
     public function test_payment_without_payments_array_returns_validation_error(): void
@@ -315,7 +317,7 @@ final class ReceiptPaymentFlowTest extends TestCase
 
         // Assert
         $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['payments'], 'error.errors');
+        $this->assertJsonValidationErrors($response, ['payments']);
     }
 
     public function test_payment_with_zero_amount_returns_validation_error(): void
@@ -340,7 +342,7 @@ final class ReceiptPaymentFlowTest extends TestCase
 
         // Assert
         $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['payments.0.amount'], 'error.errors');
+        $this->assertJsonValidationErrors($response, ['payments.0.amount']);
     }
 
     private function setupTestData(): void
