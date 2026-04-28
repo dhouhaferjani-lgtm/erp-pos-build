@@ -13,6 +13,7 @@ use App\Modules\Workshop\Technician\Domain\TechnicianProfile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Testing\PendingCommand;
 use Tests\TestCase;
 
 final class ExpiringCertificationsScheduledTest extends TestCase
@@ -63,7 +64,7 @@ final class ExpiringCertificationsScheduledTest extends TestCase
             'expires_at' => Carbon::today()->subDays(5),
         ]);
 
-        $this->artisan('workshop:check-expiring-certifications')->assertExitCode(0);
+        $this->runArtisan('workshop:check-expiring-certifications');
 
         Event::assertDispatchedTimes(TechnicianCertificationExpiring::class, 1);
         Event::assertDispatched(
@@ -82,7 +83,7 @@ final class ExpiringCertificationsScheduledTest extends TestCase
             'expires_at' => Carbon::today()->addYear(),
         ]);
 
-        $this->artisan('workshop:check-expiring-certifications')->assertExitCode(0);
+        $this->runArtisan('workshop:check-expiring-certifications');
 
         Event::assertNotDispatched(TechnicianCertificationExpiring::class);
     }
@@ -98,9 +99,24 @@ final class ExpiringCertificationsScheduledTest extends TestCase
             'expires_at' => Carbon::today()->addDays(50),
         ]);
 
-        $this->artisan('workshop:check-expiring-certifications', ['--days' => '60'])
-            ->assertExitCode(0);
+        $this->runArtisan('workshop:check-expiring-certifications', ['--days' => '60']);
 
         Event::assertDispatchedTimes(TechnicianCertificationExpiring::class, 1);
+    }
+
+    /**
+     * Wrap the parent's `artisan()` helper so PHPStan sees a guaranteed
+     * `PendingCommand` (not the `PendingCommand|int` union the parent
+     * declares). The Laravel testing helper only ever returns `int` when
+     * tests are configured to swallow command output — none of these
+     * scenarios apply, so the runtime type here is always PendingCommand.
+     *
+     * @param  array<string, mixed>  $parameters
+     */
+    private function runArtisan(string $command, array $parameters = []): void
+    {
+        $pending = $this->artisan($command, $parameters);
+        $this->assertInstanceOf(PendingCommand::class, $pending);
+        $pending->assertExitCode(0);
     }
 }

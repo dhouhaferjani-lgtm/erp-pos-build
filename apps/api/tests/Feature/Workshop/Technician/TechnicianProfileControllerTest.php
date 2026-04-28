@@ -62,6 +62,9 @@ final class TechnicianProfileControllerTest extends TestCase
         Sanctum::actingAs($this->manager);
     }
 
+    /**
+     * @param  array<string, mixed>|null  $overrides
+     */
     private function makeProfile(?array $overrides = null): TechnicianProfile
     {
         $user = User::factory()->create(['tenant_id' => $this->tenant->id]);
