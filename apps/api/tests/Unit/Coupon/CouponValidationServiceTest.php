@@ -13,19 +13,43 @@ use App\Modules\Promotion\Domain\Enums\DiscountAppliesTo;
 use App\Modules\Promotion\Domain\ValueObjects\CartContext;
 use App\Modules\Promotion\Domain\ValueObjects\CartItemContext;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Carbon;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 class CouponValidationServiceTest extends TestCase
 {
+    /**
+     * Frozen wall-clock used by every test in this file. Pinning this prevents
+     * "now-relative" fixtures (Carbon::now()->subDay() etc.) from drifting into
+     * coupon start/expiry boundaries on certain calendar days. The exact value
+     * is arbitrary as long as it's stable.
+     */
+    private const FROZEN_NOW = '2026-04-15 12:00:00';
+
     private CouponValidationService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Pin the global Carbon clock so any code path reading `Carbon::now()`
+        // (Coupon::isValid(), CartContext::appliedAt, etc.) sees a deterministic
+        // instant regardless of when the suite runs.
+        CarbonImmutable::setTestNow(self::FROZEN_NOW);
+        Carbon::setTestNow(self::FROZEN_NOW);
+
         $scaleResolver = $this->createMock(CurrencyScaleResolverInterface::class);
         $scaleResolver->method('getScale')->willReturn(2);
         $this->service = new CouponValidationService($scaleResolver);
+    }
+
+    protected function tearDown(): void
+    {
+        CarbonImmutable::setTestNow();
+        Carbon::setTestNow();
+
+        parent::tearDown();
     }
 
     private function makeCart(array $items = [], string $subtotal = '100.00'): CartContext

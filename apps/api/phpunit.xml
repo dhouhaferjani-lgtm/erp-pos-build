@@ -7,10 +7,6 @@
     <testsuites>
         <testsuite name="Unit">
             <directory>tests/Unit</directory>
-            <!-- Pre-existing date-dependent failures in Coupon/Promotion. Tracked separately;
-                 excluded from CI so the infrastructure gate can go green. -->
-            <exclude>tests/Unit/Coupon/CouponValidationServiceTest.php</exclude>
-            <exclude>tests/Unit/Promotion/PromotionEvaluationServiceTest.php</exclude>
         </testsuite>
         <testsuite name="Feature">
             <directory>tests/Feature</directory>

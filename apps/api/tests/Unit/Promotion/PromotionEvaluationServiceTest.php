@@ -13,19 +13,42 @@ use App\Modules\Promotion\Domain\Services\PromotionEvaluationService;
 use App\Modules\Promotion\Domain\ValueObjects\CartContext;
 use App\Modules\Promotion\Domain\ValueObjects\CartItemContext;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Carbon;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 class PromotionEvaluationServiceTest extends TestCase
 {
+    /**
+     * Frozen wall-clock used by every test in this file. Pinning this prevents
+     * `Promotion::isCurrentlyActive()` (which falls back to `Carbon::now()`)
+     * from flipping verdicts based on the actual calendar day-of-week or hour.
+     * The exact value is arbitrary as long as it's stable.
+     */
+    private const FROZEN_NOW = '2026-04-15 12:00:00';
+
     private PromotionEvaluationService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Pin the global Carbon clock so every test sees the same wall-clock
+        // regardless of when the suite runs.
+        CarbonImmutable::setTestNow(self::FROZEN_NOW);
+        Carbon::setTestNow(self::FROZEN_NOW);
+
         $scaleResolver = $this->createMock(CurrencyScaleResolverInterface::class);
         $scaleResolver->method('getScale')->willReturn(2);
         $this->service = new PromotionEvaluationService($scaleResolver);
+    }
+
+    protected function tearDown(): void
+    {
+        CarbonImmutable::setTestNow();
+        Carbon::setTestNow();
+
+        parent::tearDown();
     }
 
     private function makeCart(array $items = [], string $subtotal = '100.00'): CartContext
