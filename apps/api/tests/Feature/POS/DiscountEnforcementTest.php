@@ -35,11 +35,17 @@ final class DiscountEnforcementTest extends TestCase
     use RefreshDatabase;
 
     private Tenant $tenant;
+
     private Company $company;
+
     private User $cashier;
+
     private Location $location;
+
     private Terminal $terminal;
+
     private Product $product;
+
     private Shift $shift;
 
     protected function setUp(): void

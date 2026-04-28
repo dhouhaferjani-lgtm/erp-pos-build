@@ -154,8 +154,8 @@ class CatalogBrowseTest extends TestCase
             ->getJson('/api/v1/platform/catalog/vehicles/pc/v-001/articles');
 
         $response->assertStatus(200)
-            ->assertJsonCount(2, 'data.articles')
-            ->assertJsonPath('data.articles.0.article_number', '0986494123');
+            ->assertJsonCount(2, 'data.data')
+            ->assertJsonPath('data.data.0.article_number', '0986494123');
     }
 
     /** @test */
@@ -225,7 +225,7 @@ class CatalogBrowseTest extends TestCase
 
         $response->assertStatus(200);
 
-        $articles = $response->json('data.articles');
+        $articles = $response->json('data.data');
         $this->assertCount(2, $articles);
 
         // First article should be enriched with local inventory

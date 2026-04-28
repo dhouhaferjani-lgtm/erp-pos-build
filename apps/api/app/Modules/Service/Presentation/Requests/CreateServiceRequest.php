@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Service\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Service\Domain\Enums\PricingType;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -21,7 +22,7 @@ class CreateServiceRequest extends FormRequest
      */
     public function rules(): array
     {
-        $companyId = app(\App\Modules\Company\Services\CompanyContext::class)->getCompanyId();
+        $companyId = app(CompanyContext::class)->getCompanyId();
 
         return [
             'code' => [

@@ -48,8 +48,6 @@
     "transactionRef": "Reference",
     "morePaymentMethods": "More...",
     "processingQuickCheckout": "Processing cash payment...",
-    "offlineSaved": "Sale saved locally",
-    "offlineWillSync": "Will sync automatically when connection resumes",
     "pendingSyncCount": "{{count}} sale(s) pending sync"
   },
   "cashPayment": {
@@ -147,7 +145,9 @@
     "mismatch": "PINs do not match. Try again.",
     "clear": "Clear",
     "verifying": "Verifying...",
-    "enter": "Enter"
+    "enter": "Enter",
+    "offlineSetupQueued": "PIN saved locally. It will sync when the backend is reachable.",
+    "offlineSetupFailed": "Could not save PIN locally."
   },
   "header": {
     "noShift": "No shift open",
@@ -169,7 +169,11 @@
     "pendingCount": "{{count}} receipt(s) pending",
     "syncNow": "Sync Now",
     "receiptQueued": "Receipt saved locally — will sync when online",
-    "lastSync": "Last sync: {{time}}"
+    "lastSync": "Last sync: {{time}}",
+    "debounceBlocked": "Hold on — still processing the previous sync."
+  },
+  "fiscal": {
+    "regressionBlocked": "Fiscal chain integrity preserved. Local data is newer than the server response."
   },
   "quickActions": {
     "discount": "Discount",
@@ -211,7 +215,8 @@
     "verifyingPin": "Verifying...",
     "managerDenied": "Manager does not have sufficient discount permission",
     "invalidPin": "Invalid PIN",
-    "authorize": "Authorize"
+    "authorize": "Authorize",
+    "cancel": "Cancel"
   },
   "modifiers": {
     "basePrice": "Base price",
@@ -281,7 +286,47 @@
     "cashReconciliation": "Cash Reconciliation",
     "loading": "Generating report...",
     "noOpenShift": "No open shift. Open a shift to generate a report.",
-    "errorGenerating": "Error generating report"
+    "errorGenerating": "Error generating report",
+    "noShiftOpen": "Open a shift to see today's sales.",
+    "noReceiptsYet": "No receipts for this shift yet.",
+    "fetchError": "Could not load receipts. Check your connection and try again.",
+    "endOfDay": {
+      "title": "End of Day Preview",
+      "subtitle": "Review today's totals before closing the shift. This action is final.",
+      "openingCash": "Opening Cash",
+      "expectedCash": "Expected Cash",
+      "cashReconciliation": "Cash Reconciliation",
+      "salesCount": "Receipts",
+      "grossSales": "Gross Sales",
+      "netSales": "Net Sales",
+      "taxAmount": "VAT",
+      "vatBreakdown": "VAT Breakdown",
+      "payments": "Payments",
+      "cancel": "Cancel",
+      "confirmLabel": "Confirm and Close Day",
+      "confirming": "Closing shift...",
+      "successTitle": "Day Closed",
+      "successZNumber": "Z report",
+      "successReused": "This shift already had a Z report — showing the existing one.",
+      "printReceipt": "Print Receipt",
+      "printError": "Failed to send receipt to printer.",
+      "done": "Done"
+    },
+    "zList": {
+      "title": "Z Reports",
+      "columns": {
+        "zNumber": "Z Number",
+        "generatedAt": "Generated At",
+        "gross": "Gross Sales",
+        "hash": "Hash"
+      },
+      "actions": {
+        "print": "Print",
+        "pdf": "Download PDF"
+      },
+      "empty": "No Z reports found.",
+      "duplicataBanner": "DUPLICATA"
+    }
   },
   "productDetail": {
     "title": "Product Details",
@@ -357,6 +402,9 @@
     "fullscreen": "Fullscreen",
     "fullscreenDesc": "Launch the app in fullscreen mode",
     "exitFullscreen": "Exit fullscreen",
+    "forceFullscreen": "Force Fullscreen",
+    "forceFullscreenDesc": "Re-apply fullscreen if the window has fallen out of sync",
+    "forceFullscreenApplied": "Fullscreen re-applied",
     "drawerRequiresPrinter": "Cash drawer requires a configured receipt printer.",
     "drawerConnectionInfo": "Connected via receipt printer (RJ45 cable). Ensure your cash drawer is connected to the printer's DK port.",
     "drawerPin": "Kick Connector Pin",
@@ -494,7 +542,26 @@
     "unexpected": "An unexpected error occurred",
     "noCashMethod": "No cash payment method configured. Please set up a cash payment method in Settings → Payment Methods.",
     "noCashRegister": "No cash register configured. Please set up a cash register in Settings → Payment Repositories.",
-    "checkoutFailed": "Checkout failed"
+    "checkoutFailed": "Checkout failed",
+    "noCompanySelected": "No company selected. Please select a company before taking payment.",
+    "noOperatorIdentified": "No operator identified. Please log in with your PIN before taking payment.",
+    "noPaymentProvided": "At least one payment method is required.",
+    "unknownPaymentMethod": "Unknown payment method in split payment.",
+    "noCardMethod": "No card payment method is configured for this terminal.",
+    "noCardRepository": "No card repository (virtual or bank account) is configured for this terminal."
+  },
+  "terminalNotReady": {
+    "title": "Terminal not activated",
+    "description": "This terminal needs to connect to the internet once to activate its fiscal hash chain. Checkout is disabled until activation completes.",
+    "syncNow": "Try activation now"
+  },
+  "chainBreak": {
+    "title": "Fiscal receipt chain broken",
+    "description": "The receipt hash chain has a break after receipt {{receiptNumber}}. Subsequent receipts will be rejected by the server. Stop taking payments and contact support immediately.",
+    "contactSupport": "Reference this alert when contacting support. Do not delete or modify any receipts.",
+    "acknowledge": "I understand",
+    "unknownReceipt": "(unknown)",
+    "acknowledgedAt": "Acknowledged at {{time}} — alert remains until resolved by support."
   },
   "receiptLabel": {
     "receipt": "Receipt:",
@@ -511,11 +578,64 @@
     "total": "TOTAL:",
     "payments": "Payments:",
     "changeDue": "Change Due:",
+    "rounding": "Rounding",
     "vatRate": "VAT %",
     "taxable": "Taxable",
     "taxCol": "Tax",
     "thankYou": "Thank you for your purchase!",
     "taxId": "Tax ID:",
     "tel": "Tel:"
+  },
+  "config": {
+    "refreshed": "Company settings refreshed.",
+    "refreshFailed": "Could not refresh company settings. Using cached values."
+  },
+  "cash_count": {
+    "section_title": "Cash Reconciliation",
+    "commit_counts": "Commit Counts",
+    "reason_label": "Variance Reason (required)",
+    "tender": "Tender",
+    "transactions": "Txns",
+    "expected": "Expected",
+    "actual": "Actual",
+    "variance": "Variance",
+    "electronic_marker": "✓ elec.",
+    "entering_actual_for": "Entering: {{name}}",
+    "numpad_label": "Cash count keypad",
+    "manager_pin": {
+      "section_title": "Manager Authorization Required",
+      "verified": "Authorized by: {{name}}",
+      "select_manager": "Select manager",
+      "enter_pin": "Enter PIN",
+      "verify": "Verify",
+      "verifying": "Verifying…",
+      "throttle": "Too many failed attempts. Try again in {{seconds}}s.",
+      "no_managers": "No authorized manager available offline — contact your administrator.",
+      "manager_label": "Manager",
+      "pin_label": "PIN",
+      "no_manager_selected": "Please select a manager.",
+      "pin_too_short": "PIN must be at least 4 digits.",
+      "throttled": "Too many failed attempts. Please wait.",
+      "invalid": "Invalid PIN.",
+      "error": "Verification failed.",
+      "numpad_label": "PIN keypad",
+      "wait": "Please wait {{seconds}}s before retry."
+    },
+    "table": {
+      "tender": "Tender",
+      "expected": "Expected",
+      "actual": "Actual",
+      "variance": "Variance",
+      "status": "Status",
+      "electronic": "elec."
+    },
+    "tolerance": {
+      "row_label": "Tolerance write-offs",
+      "empty": "No write-offs recorded.",
+      "col_receipt": "Receipt",
+      "col_cashier": "Cashier",
+      "col_time": "Time",
+      "col_writeoff": "Write-off"
+    }
   }
 }

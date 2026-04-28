@@ -33,6 +33,7 @@ final class ZReportResource extends JsonResource
             // Helper methods
             'is_first_z_report' => $this->isFirstZReport(),
             'formatted_z_number' => $this->getFormattedZNumber(),
+            'was_reused' => (bool) ($this->getAttribute('was_reused') ?? false),
 
             // Report data (parsed from JSONB)
             'sales_count' => $this->getSalesCount(),
@@ -45,6 +46,21 @@ final class ZReportResource extends JsonResource
 
             // Full report data for detailed view
             'report_data' => $this->report_data,
+
+            // Per-tender cash count rows (only when relation is eager-loaded)
+            'counts' => $this->whenLoaded('counts', fn () => CashCountResource::collection($this->counts)),
+
+            // Cash-count metadata from shift (whenLoaded to avoid N+1)
+            'variance_severity' => $this->whenLoaded('shift', fn () => $this->shift->variance_severity),
+            'variance_reason' => $this->whenLoaded('shift', fn () => $this->shift->notes),
+            'blind_count_used' => $this->whenLoaded('shift', fn () => (bool) $this->shift->blind_count_used),
+            'manager_override_by_name' => $this->whenLoaded('shift', function () {
+                return $this->shift->managerOverride?->name;
+            }),
+
+            // Variance and tolerance summaries stamped into report_data by ReportGenerationService
+            'variance_summary' => $this->report_data['variance_summary'] ?? null,
+            'tolerance_summary' => $this->report_data['tolerance_summary'] ?? null,
 
             // Relationships (when loaded)
             'terminal' => $this->whenLoaded('terminal'),

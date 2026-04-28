@@ -17,6 +17,7 @@ use App\Shared\Contracts\PartnerServiceInterface;
 use App\Shared\Contracts\ProductServiceInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 final class ImportService
@@ -91,7 +92,7 @@ final class ImportService
             $insertData = [];
             foreach ($batch as $rowNumber => $data) {
                 $insertData[] = [
-                    'id' => (string) \Illuminate\Support\Str::uuid(),
+                    'id' => (string) Str::uuid(),
                     'import_job_id' => $job->id,
                     'row_number' => $rowNumber,
                     'data' => json_encode($data),
@@ -244,7 +245,7 @@ final class ImportService
     public function executeImport(ImportJob $job): array
     {
         if (! $job->canStart()) {
-            throw new \RuntimeException('Import cannot be started. No valid rows to import.');
+            throw new RuntimeException('Import cannot be started. No valid rows to import.');
         }
 
         $job->update([

@@ -11,6 +11,7 @@ use App\Modules\Promotion\Domain\Enums\PromotionStatus;
 use App\Modules\Promotion\Domain\Enums\PromotionType;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -47,7 +48,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $deleted_at
  * @property-read Tenant $tenant
  * @property-read Company|null $company
- * @property-read \Illuminate\Database\Eloquent\Collection<int, PromotionUsage> $usages
+ * @property-read Collection<int, PromotionUsage> $usages
  */
 class Promotion extends Model
 {

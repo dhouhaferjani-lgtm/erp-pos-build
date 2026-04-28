@@ -1,4 +1,20 @@
 {
+  "barcodeLookup": {
+    "placeholder": "Scanner ou saisir le code-barres...",
+    "searching": "Recherche en cours...",
+    "catalogFound": "Donn\u00e9es du catalogue Syneriva",
+    "confidence": "Confiance : {{tier}}",
+    "notInCatalog": "Absent du catalogue \u2014 saisissez les d\u00e9tails manuellement",
+    "catalogUnavailable": "Catalogue indisponible \u2014 saisissez les d\u00e9tails manuellement",
+    "invalidBarcode": "Format de code-barres invalide",
+    "enrichmentCheckbox": "Soumettre pour enrichissement catalogue",
+    "enrichmentDescription": "Les donn\u00e9es produit seront enrichies par Syneriva apr\u00e8s l'enregistrement",
+    "toastSavedWithCatalog": "Produit enregistr\u00e9 avec les donn\u00e9es du catalogue.",
+    "toastSavedWithEnrichment": "Produit enregistr\u00e9. Soumis pour enrichissement catalogue.",
+    "toastEnrichmentFailed": "Produit enregistr\u00e9 mais la soumission d'enrichissement a \u00e9chou\u00e9.",
+    "clearBarcode": "Effacer le code-barres",
+    "toastProductSaved": "Produit enregistr\u00e9 avec succ\u00e8s."
+  },
   "goodsReceipt": {
     "title": "Bons de reception",
     "description": "Réceptionner les marchandises des commandes fournisseurs confirmées",

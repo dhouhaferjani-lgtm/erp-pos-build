@@ -43,6 +43,7 @@ vi.mock('react-i18next', () => ({
         'pos:errors.discountExceedsSubtotal': 'Discount cannot exceed subtotal',
         'pos:errors.discountExceedsLimit': `Discount exceeds maximum allowed (${params?.['limit']}%)`,
         'pos:errors.reasonRequired': 'Reason is required for discounts above 10%',
+        'pos:discount.below_tolerance': 'This discount is too small — use payment tolerance at the till instead.',
       }
       return translations[key] || key
     },
@@ -233,5 +234,58 @@ describe('TransactionDiscountInput', () => {
 
     // Error should be gone
     expect(screen.queryByText('Discount cannot exceed subtotal')).not.toBeInTheDocument()
+  })
+
+  describe('tolerance boundary mirror (spec §7)', () => {
+    const FR_TOLERANCE = {
+      enabled: true,
+      percentage: '0.0050',
+      max_amount: '0.5000',
+      source: 'country' as const,
+    }
+
+    it('shows below-tolerance warning for sub-threshold fixed discount', () => {
+      render(
+        <TransactionDiscountInput
+          {...defaultProps}
+          subtotal="100.00"
+          toleranceSettings={FR_TOLERANCE}
+        />,
+      )
+
+      const input = screen.getByRole('spinbutton')
+      fireEvent.change(input, { target: { value: '0.20' } })
+
+      expect(
+        screen.getByText(/use payment tolerance at the till/i),
+      ).toBeInTheDocument()
+    })
+
+    it('disables apply button when discount is below tolerance', () => {
+      render(
+        <TransactionDiscountInput
+          {...defaultProps}
+          subtotal="100.00"
+          toleranceSettings={FR_TOLERANCE}
+        />,
+      )
+
+      const input = screen.getByRole('spinbutton')
+      fireEvent.change(input, { target: { value: '0.20' } })
+
+      const applyButton = screen.getByRole('button', { name: /Apply Discount/i })
+      expect(applyButton).toBeDisabled()
+    })
+
+    it('does not render the warning when toleranceSettings is omitted', () => {
+      render(<TransactionDiscountInput {...defaultProps} subtotal="100.00" />)
+
+      const input = screen.getByRole('spinbutton')
+      fireEvent.change(input, { target: { value: '0.20' } })
+
+      expect(
+        screen.queryByText(/use payment tolerance at the till/i),
+      ).not.toBeInTheDocument()
+    })
   })
 })

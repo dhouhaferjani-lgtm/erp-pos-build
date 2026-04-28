@@ -1,0 +1,123 @@
+{
+  "list": {
+    "title": "Work orders",
+    "subtitle": "Jobs on the floor, from intake to invoice.",
+    "loading": "Loading work orders…",
+    "errorLoading": "Could not load work orders",
+    "paginationSummary": "Showing {{shown}} of {{total}}",
+    "empty": {
+      "title": "No work orders yet",
+      "body": "Open a new work order from intake to start a job."
+    }
+  },
+  "detail": {
+    "loading": "Loading work order…",
+    "notFound": "Work order not found",
+    "backToList": "Back to work orders",
+    "lines": "Lines",
+    "noLines": "No lines yet.",
+    "assignments": "Assignments",
+    "noAssignments": "No technicians assigned.",
+    "lead": "Lead",
+    "history": "History",
+    "invoice_link": "View invoice #{{number}}"
+  },
+  "complete_dialog": {
+    "title": "Complete work order",
+    "mileage_label": "Vehicle mileage at completion",
+    "mileage_hint": "Leave empty to skip mileage logging",
+    "confirm": "Complete",
+    "cancel": "Cancel"
+  },
+  "create": {
+    "title": "New work order",
+    "subtitle": "Start a new job from intake.",
+    "customer_label": "Customer",
+    "vehicle_label": "Vehicle"
+  },
+  "filters": {
+    "status": "Status",
+    "anyStatus": "Any status"
+  },
+  "status": {
+    "received": "Received",
+    "diagnosed": "Diagnosed",
+    "quoted": "Quoted",
+    "approved": "Approved",
+    "in_progress": "In progress",
+    "paused": "Paused",
+    "waiting_parts": "Waiting parts",
+    "completed": "Completed",
+    "invoiced": "Invoiced",
+    "closed": "Closed",
+    "cancelled": "Cancelled"
+  },
+  "workOrderType": {
+    "repair": "Repair",
+    "maintenance": "Maintenance",
+    "inspection": "Inspection",
+    "bodywork": "Body work",
+    "tire_service": "Tire service",
+    "electrical": "Electrical",
+    "diagnostic": "Diagnostic",
+    "other": "Other"
+  },
+  "approvalMethod": {
+    "in_person": "In person",
+    "phone": "Phone",
+    "email": "Email",
+    "sms": "SMS",
+    "signed_document": "Signed document"
+  },
+  "actions": {
+    "newWorkOrder": "New work order",
+    "approve": "Capture approval",
+    "complete": "Complete job",
+    "cancel": "Cancel",
+    "create": "Create",
+    "creating": "Creating…",
+    "transitionTo": {
+      "received": "Mark received",
+      "diagnosed": "Record diagnosis",
+      "quoted": "Generate quote",
+      "approved": "Mark approved",
+      "in_progress": "Start work",
+      "paused": "Pause",
+      "waiting_parts": "Waiting for parts",
+      "completed": "Complete",
+      "invoiced": "Generate invoice",
+      "closed": "Close",
+      "cancelled": "Cancel"
+    }
+  },
+  "fields": {
+    "type": "Type",
+    "currency": "Currency",
+    "customerComplaint": "Customer complaint"
+  },
+  "totals": {
+    "title": "Totals",
+    "estimated": "Estimated",
+    "actual": "Actual",
+    "parts": "Parts",
+    "labor": "Labor",
+    "other": "Other",
+    "tax": "Tax",
+    "grand": "Total",
+    "redacted": "Financial totals are restricted. Contact a manager if you need access."
+  },
+  "labels": {
+    "notSet": "—",
+    "unassigned": "Unassigned",
+    "done": "Done",
+    "mileageKm": "{{value}} km"
+  },
+  "transitions": {
+    "errors": {
+      "work_order_no_lines": "Cannot invoice: add at least one line item first.",
+      "invalid_transition": "This transition isn't allowed from the current status.",
+      "work_order_stale": "This work order was updated by someone else. Please refresh and try again.",
+      "generic": "Could not update work order. Please try again."
+    }
+  }
+}

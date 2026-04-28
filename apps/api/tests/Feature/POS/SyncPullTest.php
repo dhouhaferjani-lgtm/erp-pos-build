@@ -6,6 +6,7 @@ namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
@@ -28,9 +29,13 @@ final class SyncPullTest extends TestCase
     use RefreshDatabase;
 
     private Tenant $tenant;
+
     private Company $company;
+
     private User $user;
+
     private Location $location;
+
     private Terminal $terminal;
 
     protected function setUp(): void
@@ -146,7 +151,7 @@ final class SyncPullTest extends TestCase
             'tenant_id' => $this->tenant->id,
         ]);
 
-        \App\Modules\Company\Domain\UserCompanyMembership::create([
+        UserCompanyMembership::create([
             'user_id' => $this->user->id,
             'company_id' => $this->company->id,
             'role' => 'admin',

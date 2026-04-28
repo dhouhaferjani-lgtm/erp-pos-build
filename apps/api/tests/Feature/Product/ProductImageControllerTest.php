@@ -12,7 +12,6 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
-use App\Modules\Product\Application\Services\ProductImageService;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Product\Domain\ProductImage;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -91,8 +90,7 @@ class ProductImageControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function it_can_upload_image_to_product(): void
+    public function test_upload_image_to_product(): void
     {
         $file = UploadedFile::fake()->image('product-photo.jpg', 800, 600)->size(1024);
 
@@ -122,8 +120,7 @@ class ProductImageControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function it_can_list_product_images(): void
+    public function test_list_product_images(): void
     {
         $image1 = ProductImage::create([
             'tenant_id' => $this->tenant->id,
@@ -160,8 +157,7 @@ class ProductImageControllerTest extends TestCase
             ->assertJsonPath('data.1.id', $image2->id);
     }
 
-    /** @test */
-    public function it_can_set_primary_image(): void
+    public function test_set_primary_image(): void
     {
         $image1 = ProductImage::create([
             'tenant_id' => $this->tenant->id,
@@ -209,8 +205,7 @@ class ProductImageControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function it_can_delete_image(): void
+    public function test_delete_image(): void
     {
         Storage::fake('url');
 
@@ -238,8 +233,7 @@ class ProductImageControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function it_can_reorder_images(): void
+    public function test_reorder_images(): void
     {
         $image1 = ProductImage::create([
             'tenant_id' => $this->tenant->id,
@@ -287,16 +281,14 @@ class ProductImageControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function unauthenticated_user_cannot_access_product_images(): void
+    public function test_unauthenticated_user_cannot_access_product_images(): void
     {
         $response = $this->getJson("/api/v1/products/{$this->product->id}/images");
 
         $response->assertStatus(401);
     }
 
-    /** @test */
-    public function user_without_permission_cannot_upload_image(): void
+    public function test_user_without_permission_cannot_upload_image(): void
     {
         // Create user with no permissions
         $limitedUser = User::create([
@@ -325,8 +317,7 @@ class ProductImageControllerTest extends TestCase
         $response->assertStatus(403);
     }
 
-    /** @test */
-    public function cross_tenant_user_cannot_see_other_tenant_product_images(): void
+    public function test_cross_tenant_user_cannot_see_other_tenant_product_images(): void
     {
         // Create images on first tenant's product
         $image = ProductImage::create([
@@ -402,8 +393,7 @@ class ProductImageControllerTest extends TestCase
         $this->assertNotContains($image->id, $imageIds);
     }
 
-    /** @test */
-    public function upload_rejects_non_image_file(): void
+    public function test_upload_rejects_non_image_file(): void
     {
         $file = UploadedFile::fake()->create('document.pdf', 1024, 'application/pdf');
 

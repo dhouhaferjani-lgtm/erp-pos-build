@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Location;
@@ -19,10 +20,17 @@ use App\Modules\Document\Domain\Enums\RefundMethod;
 use App\Modules\Document\Domain\Enums\ReturnCondition;
 use App\Modules\Document\Domain\Enums\ReturnReason;
 use App\Modules\Document\Domain\ReturnNoteMetadata;
+use App\Modules\Document\Domain\Services\DeliveryNoteService;
+use App\Modules\Document\Domain\Services\DocumentPostingService;
+use App\Modules\Document\Domain\Services\ReturnNoteService;
+use App\Modules\Document\Domain\Services\SalesOrderService;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Inventory\Domain\StockReservation;
+use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Factories\CompanyFactory;
@@ -57,17 +65,17 @@ class CompleteSalesCycleWithReturnTest extends TestCase
     private Account $vatAccount;
 
     // Services needed for direct calls
-    private \App\Modules\Document\Domain\Services\SalesOrderService $salesOrderService;
+    private SalesOrderService $salesOrderService;
 
-    private \App\Modules\Document\Domain\Services\DeliveryNoteService $deliveryNoteService;
+    private DeliveryNoteService $deliveryNoteService;
 
-    private \App\Modules\Document\Domain\Services\ReturnNoteService $returnNoteService;
+    private ReturnNoteService $returnNoteService;
 
-    private \App\Modules\Document\Domain\Services\DocumentPostingService $postingService;
+    private DocumentPostingService $postingService;
 
-    private \App\Modules\Accounting\Domain\Services\GeneralLedgerService $glService;
+    private GeneralLedgerService $glService;
 
-    private \App\Modules\Identity\Domain\User $user;
+    private User $user;
 
     protected function setUp(): void
     {
@@ -83,7 +91,7 @@ class CompleteSalesCycleWithReturnTest extends TestCase
         ]);
 
         // Create and authenticate a test user
-        $this->user = \App\Modules\Identity\Domain\User::create([
+        $this->user = User::create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $this->tenant->id,
             'name' => 'Test User',
@@ -114,7 +122,7 @@ class CompleteSalesCycleWithReturnTest extends TestCase
             'id' => Str::uuid()->toString(),
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
-            'type' => \App\Modules\Partner\Domain\Enums\PartnerType::Customer,
+            'type' => PartnerType::Customer,
             'name' => 'Test Customer Inc',
             'code' => 'CUST001',
             'email' => 'customer@test.com',
@@ -129,7 +137,7 @@ class CompleteSalesCycleWithReturnTest extends TestCase
             'company_id' => $this->company->id,
             'sku' => 'PROD001',
             'name' => 'Test Product',
-            'type' => \App\Modules\Product\Domain\Enums\ProductType::Part,
+            'type' => ProductType::Part,
             'unit' => 'piece',
             'cost_price' => 50.00,
             'sale_price' => 100.00,
@@ -230,11 +238,11 @@ class CompleteSalesCycleWithReturnTest extends TestCase
         ]);
 
         // Initialize services
-        $this->salesOrderService = app(\App\Modules\Document\Domain\Services\SalesOrderService::class);
-        $this->deliveryNoteService = app(\App\Modules\Document\Domain\Services\DeliveryNoteService::class);
-        $this->returnNoteService = app(\App\Modules\Document\Domain\Services\ReturnNoteService::class);
-        $this->postingService = app(\App\Modules\Document\Domain\Services\DocumentPostingService::class);
-        $this->glService = app(\App\Modules\Accounting\Domain\Services\GeneralLedgerService::class);
+        $this->salesOrderService = app(SalesOrderService::class);
+        $this->deliveryNoteService = app(DeliveryNoteService::class);
+        $this->returnNoteService = app(ReturnNoteService::class);
+        $this->postingService = app(DocumentPostingService::class);
+        $this->glService = app(GeneralLedgerService::class);
     }
 
     public function test_complete_sales_cycle_with_return_updates_stock_and_gl_correctly(): void

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\Loyalty\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
-use App\Modules\Loyalty\Application\DTOs\LoyaltyProgramData;
 use App\Modules\Loyalty\Application\Services\ProgramManagementService;
 use App\Modules\Loyalty\Presentation\Requests\CreateProgramRequest;
 use App\Modules\Loyalty\Presentation\Requests\UpdateProgramRequest;

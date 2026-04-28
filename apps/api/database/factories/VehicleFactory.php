@@ -4,12 +4,17 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
+use App\Modules\Company\Domain\Company;
+use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Vehicle\Domain\Enums\BodyType;
+use App\Modules\Vehicle\Domain\Enums\FuelType;
+use App\Modules\Vehicle\Domain\Enums\TransmissionType;
 use App\Modules\Vehicle\Domain\Vehicle;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Modules\Vehicle\Domain\Vehicle>
+ * @extends Factory<Vehicle>
  */
 class VehicleFactory extends Factory
 {
@@ -46,8 +51,16 @@ class VehicleFactory extends Factory
             'Green', 'Beige', 'Brown', 'Yellow', 'Orange',
         ];
 
+        // Auto-provide tenant/company so plain `Vehicle::factory()->create()` works
+        // in tests that don't care about multi-tenancy (Task 6 et seq.).
+        $tenant = Tenant::first() ?? Tenant::factory()->create();
+        $company = Company::where('tenant_id', $tenant->id)->first()
+            ?? Company::factory()->create(['tenant_id' => $tenant->id]);
+
         return [
             'id' => Str::uuid()->toString(),
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
             'partner_id' => null, // Will be set by seeder
             'license_plate' => $this->generateFrenchLicensePlate(),
             'brand' => $brand,
@@ -57,8 +70,9 @@ class VehicleFactory extends Factory
             'vin' => $this->faker->optional(0.8)->bothify('VF?##########????'),
             'engine_code' => $this->faker->optional(0.5)->bothify('??####??'),
             'mileage' => $this->faker->numberBetween(5000, 250000),
-            'fuel_type' => $this->faker->randomElement(['Gasoline', 'Diesel', 'Electric', 'Hybrid', 'LPG']),
-            'transmission' => $this->faker->randomElement(['Manual', 'Automatic']),
+            'fuel_type' => FuelType::Gasoline->value,
+            'transmission' => TransmissionType::Manual->value,
+            'body_type' => BodyType::Sedan->value,
             'notes' => $this->faker->optional(0.3)->sentence(),
         ];
     }
@@ -94,7 +108,7 @@ class VehicleFactory extends Factory
     public function electric(): static
     {
         return $this->state(fn (array $attributes) => [
-            'fuel_type' => 'Electric',
+            'fuel_type' => FuelType::Electric->value,
         ]);
     }
 
@@ -104,7 +118,7 @@ class VehicleFactory extends Factory
     public function hybrid(): static
     {
         return $this->state(fn (array $attributes) => [
-            'fuel_type' => 'Hybrid',
+            'fuel_type' => FuelType::Hybrid->value,
         ]);
     }
 

@@ -76,14 +76,21 @@ final class DocumentData extends Data
             }
         }
 
-        // Build payments array from allocations
+        // Build payments array from allocations.
+        // Skip tolerance-only writeoff allocations (payment_id IS NULL) — they are not
+        // real money movements and do not belong in the payment-history view; the audit
+        // log + journal entry are the authoritative trail for those.
         $payments = [];
         if ($document->relationLoaded('allocations')) {
             foreach ($document->allocations as $allocation) {
                 $payment = $allocation->payment;
+                if ($payment === null) {
+                    continue;
+                }
                 $payments[] = [
                     'id' => $allocation->id,
-                    'payment_id' => $allocation->payment_id,
+                    // Narrowed: $payment !== null implies payment_id is set; cast for PHPStan.
+                    'payment_id' => (string) $allocation->payment_id,
                     'amount' => CurrencyScale::bcformat($allocation->amount, $scale),
                     'payment_date' => $payment->payment_date->toDateString(),
                     'payment_reference' => $payment->reference,

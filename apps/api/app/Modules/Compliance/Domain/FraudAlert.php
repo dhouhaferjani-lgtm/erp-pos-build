@@ -9,6 +9,7 @@ use App\Modules\Identity\Domain\User;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * Fraud alert representing a detected suspicious pattern.
@@ -25,15 +26,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $alert_type
  * @property string $severity
  * @property string $description
- * @property \Illuminate\Support\Carbon $detected_at
+ * @property Carbon $detected_at
  * @property array<array{product_id: string, product_name: string, count: int}>|null $flagged_products
  * @property array<string, mixed>|null $metadata
  * @property string $status
  * @property string|null $assigned_to
- * @property \Illuminate\Support\Carbon|null $resolved_at
+ * @property Carbon|null $resolved_at
+ * @property string|null $description_code
+ * @property array<string, mixed>|null $description_params
  * @property string|null $resolution_notes
- * @property \Illuminate\Support\Carbon $created_at
- * @property \Illuminate\Support\Carbon $updated_at
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
  * @property-read Company $company
  * @property-read User $user
  * @property-read User|null $assignedUser
@@ -51,6 +54,8 @@ class FraudAlert extends Model
         'alert_type',
         'severity',
         'description',
+        'description_code',
+        'description_params',
         'detected_at',
         'flagged_products',
         'metadata',
@@ -70,6 +75,7 @@ class FraudAlert extends Model
             'resolved_at' => 'datetime',
             'flagged_products' => 'array',
             'metadata' => 'array',
+            'description_params' => 'array',
         ];
     }
 

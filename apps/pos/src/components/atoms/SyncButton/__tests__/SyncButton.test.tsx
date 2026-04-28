@@ -67,4 +67,23 @@ describe('SyncButton', () => {
     render(<SyncButton />);
     expect(screen.getByText(/Last sync:/)).toBeInTheDocument();
   });
+
+  it('debounces rapid double-clicks (second click within 500 ms is ignored)', async () => {
+    vi.useFakeTimers();
+    render(<SyncButton />);
+    const button = screen.getByRole('button');
+
+    fireEvent.click(button);
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(mockTriggerSync).toHaveBeenCalledOnce();
+
+    // After the debounce window elapses, clicks fire again.
+    await vi.advanceTimersByTimeAsync(501);
+    fireEvent.click(button);
+    expect(mockTriggerSync).toHaveBeenCalledTimes(2);
+
+    vi.useRealTimers();
+  });
 });

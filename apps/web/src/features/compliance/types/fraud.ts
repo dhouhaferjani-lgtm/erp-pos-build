@@ -7,6 +7,14 @@ export interface FraudSettings {
   alert_enabled: boolean
   auto_trigger_counting: boolean
   auto_restrict_access: boolean
+  // Cash drawer variance thresholds
+  cash_variance_over_soft: string
+  cash_variance_over_hard: string
+  cash_variance_under_soft: string
+  cash_variance_under_hard: string
+  require_blind_cash_count: boolean
+  require_manager_pin_above_hard: boolean
+  cash_variance_email_severity: 'none' | 'critical' | 'warning' | 'info'
   created_at?: string
   updated_at?: string
   is_configured?: boolean

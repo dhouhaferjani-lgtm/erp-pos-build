@@ -123,7 +123,7 @@ class CertificationController extends Controller
             return $certification;
         });
 
-        /** @var \App\Modules\Product\Domain\Certification $freshCertification */
+        /** @var Certification $freshCertification */
         $freshCertification = $certification->fresh();
 
         return response()->json([
@@ -209,7 +209,7 @@ class CertificationController extends Controller
             }
         });
 
-        /** @var \App\Modules\Product\Domain\Certification $freshCertification */
+        /** @var Certification $freshCertification */
         $freshCertification = $certification->fresh();
 
         return response()->json([

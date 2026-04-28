@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Domain\Services;
 
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
+use App\Modules\Treasury\Domain\Events\PaymentRefunded;
+use App\Modules\Treasury\Domain\Events\PaymentReversed;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -83,6 +85,19 @@ class PaymentRefundService
                 'notes' => ($payment->notes ?? '')."\n\nRefunded: {$reason}",
             ]);
 
+            DB::afterCommit(function () use ($refund, $payment, $reason): void {
+                event(new PaymentRefunded(
+                    paymentId: $refund->id,
+                    tenantId: $refund->tenant_id,
+                    companyId: $refund->company_id,
+                    originalPaymentId: $payment->id,
+                    amount: $refund->amount,
+                    currency: $refund->currency,
+                    reason: $reason,
+                    refundedAt: ($refund->created_at ?? now())->toIso8601String(),
+                ));
+            });
+
             return $refund;
         });
     }
@@ -135,6 +150,19 @@ class PaymentRefundService
             $payment->update([
                 'notes' => ($payment->notes ?? '')."\n\nPartial refund of {$amount}: {$reason}",
             ]);
+
+            DB::afterCommit(function () use ($refund, $payment, $reason): void {
+                event(new PaymentRefunded(
+                    paymentId: $refund->id,
+                    tenantId: $refund->tenant_id,
+                    companyId: $refund->company_id,
+                    originalPaymentId: $payment->id,
+                    amount: $refund->amount,
+                    currency: $refund->currency,
+                    reason: $reason,
+                    refundedAt: ($refund->created_at ?? now())->toIso8601String(),
+                ));
+            });
 
             return $refund;
         });
@@ -215,6 +243,17 @@ class PaymentRefundService
                 'status' => PaymentStatus::Reversed,
                 'notes' => ($payment->notes ?? '')."\n\nReversed: {$reason}",
             ]);
+
+            DB::afterCommit(function () use ($payment): void {
+                event(new PaymentReversed(
+                    paymentId: $payment->id,
+                    tenantId: $payment->tenant_id,
+                    companyId: $payment->company_id,
+                    amount: $payment->amount,
+                    currency: $payment->currency,
+                    reversedAt: now()->toIso8601String(),
+                ));
+            });
         });
     }
 

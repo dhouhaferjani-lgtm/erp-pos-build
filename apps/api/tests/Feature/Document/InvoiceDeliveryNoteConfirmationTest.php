@@ -5,12 +5,17 @@ declare(strict_types=1);
 namespace Tests\Feature\Document;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Enums\LocationType;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Enums\ProductType;
@@ -67,7 +72,7 @@ class InvoiceDeliveryNoteConfirmationTest extends TestCase
             'locale' => 'fr_TN',
             'timezone' => 'Africa/Tunis',
             'currency' => 'TND',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
@@ -92,16 +97,16 @@ class InvoiceDeliveryNoteConfirmationTest extends TestCase
             'role' => 'admin',
         ]);
 
-        app(\App\Modules\Company\Services\CompanyContext::class)->setCompanyId($this->company->id);
+        app(CompanyContext::class)->setCompanyId($this->company->id);
 
         // Seed chart of accounts
         $seeder = new FranceChartOfAccountsSeeder;
         $seeder->run($this->company->id, $this->tenant->id);
 
-        $location = \App\Modules\Company\Domain\Location::create([
+        $location = Location::create([
             'company_id' => $this->company->id,
             'name' => 'Main Warehouse',
-            'type' => \App\Modules\Company\Domain\Enums\LocationType::Warehouse,
+            'type' => LocationType::Warehouse,
             'is_default' => true,
             'is_active' => true,
         ]);
@@ -126,7 +131,7 @@ class InvoiceDeliveryNoteConfirmationTest extends TestCase
         ]);
 
         // Create stock level so delivery note confirmation can issue stock
-        \App\Modules\Inventory\Domain\StockLevel::create([
+        StockLevel::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'product_id' => $this->product->id,
@@ -388,7 +393,7 @@ class InvoiceDeliveryNoteConfirmationTest extends TestCase
 
         // Manually create a second draft DN linked to the same order
         // (simulating partial delivery scenario)
-        $defaultLocation = \App\Modules\Company\Domain\Location::where('company_id', $this->company->id)
+        $defaultLocation = Location::where('company_id', $this->company->id)
             ->where('is_default', true)
             ->first();
 

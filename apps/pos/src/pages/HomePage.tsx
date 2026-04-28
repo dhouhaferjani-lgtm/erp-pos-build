@@ -5,17 +5,18 @@ import { useOperatorStore } from '@/stores/operatorStore';
 import { useProductStore } from '@/stores/productStore';
 import { useCartStore, computeTaxAmount } from '@/stores/cartStore';
 import { usePaymentStore } from '@/stores/paymentStore';
-import { useAuthStore } from '@/stores/authStore';
 import { useHoldStore } from '@/stores/holdStore';
 import { useScannerStore } from '@/stores/scannerStore';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { getErrorMessage } from '@/lib/api';
 import { useCurrency } from '@/lib/currency';
 import { fetchReceipt } from '@/api/receiptApi';
-import { buildEscPosReceiptData, buildEscPosFromOfflineReceipt } from '@/lib/buildReceiptData';
+import { buildEscPosReceiptData } from '@/lib/buildReceiptData';
 import type { ReceiptVisibilitySettings } from '@/lib/buildReceiptData';
 import type { ReceiptData } from '@/lib/printing';
 import { hasModule } from '@/stores/productStore';
+import { ChainBreakAlert } from '@/components/atoms/ChainBreakAlert';
+import { TerminalNotReadyBanner } from '@/components/atoms/TerminalNotReadyBanner';
 import { ConsumptionModeToggle } from '@/components/atoms/ConsumptionModeToggle';
 import { TableSelector } from '@/components/atoms/TableSelector';
 import { ProductGrid } from '@/components/organisms/ProductGrid';
@@ -29,6 +30,10 @@ import { LineDiscountModal } from '@/components/organisms/LineDiscountModal';
 import { ModifierSelectionModal } from '@/components/organisms/ModifierSelectionModal';
 import { VoidReturnModal } from '@/components/organisms/VoidReturnModal';
 import { QuantityNumpad } from '@/components/organisms/QuantityNumpad';
+import { useSmartPromptsStore } from '@/stores/smartPromptsStore';
+import { InlineSmartPrompts } from '@/components/organisms/InlineSmartPrompts';
+import { ToastSmartPrompts } from '@/components/organisms/ToastSmartPrompts';
+import { apiGet } from '@/lib/api';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { ConsumptionMode } from '@/components/atoms/ConsumptionModeToggle';
 import type { POSProduct } from '@/types/product';
@@ -38,6 +43,7 @@ export function HomePage() {
   const { t } = useTranslation();
   const { decimals: currencyDecimals } = useCurrency();
   const { shift, terminal, openShift, isLoading: terminalLoading } = useTerminalStore();
+  const hashChainReady = useTerminalStore((s) => s.hashChainReady);
   const operator = useOperatorStore((s) => s.operator);
   const [openingCash, setOpeningCash] = useState('0.00');
   const [shiftError, setShiftError] = useState<string | null>(null);
@@ -65,6 +71,16 @@ export function HomePage() {
   const total = useCartStore((s) => s.total);
   const itemCount = useCartStore((s) => s.itemCount);
 
+  // Smart Prompts
+  const spRecommendations = useSmartPromptsStore((s) => s.recommendations);
+  const spIsLoading = useSmartPromptsStore((s) => s.isLoading);
+  const spContextFields = useSmartPromptsStore((s) => s.contextFields);
+  const spSkinType = useSmartPromptsStore((s) => s.skinType);
+  const spFetchForCart = useSmartPromptsStore((s) => s.fetchForCart);
+  const spSetSkinType = useSmartPromptsStore((s) => s.setSkinType);
+  const spClear = useSmartPromptsStore((s) => s.clear);
+  const smartPromptsVariant = companyConfig?.smart_prompts_variant ?? 'off';
+
   // Payment store
   const fetchPaymentConfig = usePaymentStore((s) => s.fetchPaymentConfig);
   const paymentMethods = usePaymentStore((s) => s.paymentMethods);
@@ -74,8 +90,9 @@ export function HomePage() {
   const isProcessing = usePaymentStore((s) => s.isProcessing);
   const lastReceipt = usePaymentStore((s) => s.lastReceipt);
   const changeDue = usePaymentStore((s) => s.changeDue);
-  const isOfflineReceipt = usePaymentStore((s) => s.isOfflineReceipt);
   const clearLastReceipt = usePaymentStore((s) => s.clearLastReceipt);
+  const lastReceiptIdempotencyKey = usePaymentStore((s) => s.lastReceiptIdempotencyKey);
+  const lastReceiptServerId = usePaymentStore((s) => s.lastReceiptServerId);
   const paymentError = usePaymentStore((s) => s.error);
 
   // Hold store
@@ -83,6 +100,7 @@ export function HomePage() {
   const holdCurrentCart = useHoldStore((s) => s.holdCurrentCart);
   const recallTransaction = useHoldStore((s) => s.recallTransaction);
   const discardTransaction = useHoldStore((s) => s.discardTransaction);
+  const loadHeldTransactions = useHoldStore((s) => s.loadHeldTransactions);
 
   // Modal state
   const [showCashModal, setShowCashModal] = useState(false);
@@ -95,6 +113,7 @@ export function HomePage() {
 
   // ESC/POS receipt data for thermal printing
   const [escPosData, setEscPosData] = useState<ReceiptData | null>(null);
+  const [escPosSource, setEscPosSource] = useState<'local' | 'server' | null>(null);
 
   // Modifier selection state
   const [modifierProduct, setModifierProduct] = useState<POSProduct | null>(null);
@@ -150,6 +169,11 @@ export function HomePage() {
     }
   }, [shift, fetchProducts, fetchPaymentConfig]);
 
+  // Hydrate held transactions from SQLite on mount
+  useEffect(() => {
+    void loadHeldTransactions();
+  }, [loadHeldTransactions]);
+
   // Clear payment error when cash modal opens
   useEffect(() => {
     if (showCashModal) {
@@ -169,59 +193,84 @@ export function HomePage() {
     };
   }, [companyConfig?.receipt_visibility]);
 
-  // Fetch full receipt for ESC/POS thermal printing when success modal opens
+  // Fetch full receipt for ESC/POS thermal printing when success modal opens.
+  // Prefer API when server ID is known (post-sync); fall back to local SQLite for pending receipts.
+  // escPosSource tracks whether we already have 'server' data (no upgrade needed) or only 'local'
+  // data (upgrade when lastReceiptServerId becomes available mid-modal).
   useEffect(() => {
     if (!showSuccessModal) {
       setEscPosData(null);
+      setEscPosSource(null);
       return;
     }
-    if (!lastReceipt || escPosData) return;
+    if (!lastReceipt) return;
+    // Already have the best-available data
+    if (escPosSource === 'server') return;
+    if (escPosSource === 'local' && !lastReceiptServerId) return;
 
-    // Offline receipts: build ESC/POS data from local cart data
-    if (isOfflineReceipt) {
-      const authState = useAuthStore.getState();
-      const company = authState.companies.find((c) => c.id === authState.companyId);
-      const cashMethod = paymentMethods.find((m) => m.is_physical && !m.has_maturity && m.is_active);
-      setEscPosData(buildEscPosFromOfflineReceipt(
-        {
-          isOffline: true,
-          receiptId: lastReceipt.id,
-          receiptNumber: lastReceipt.receipt_number,
-          total: lastReceipt.total,
-          subtotal: lastReceipt.subtotal,
-          taxAmount: lastReceipt.tax_amount,
-          discountAmount: lastReceipt.discount_amount,
-          changeDue,
-          currency: lastReceipt.currency ?? company?.currency ?? 'EUR',
-          onlineReceipt: null,
-          onlinePayment: null,
-        },
-        cartItems,
-        company?.name ?? '',
-        terminal?.name ?? '',
-        operator?.name ?? '',
-        cashMethod?.name ?? 'Cash',
-        receiptVisibility,
-      ));
-      return;
-    }
-
-    // Online receipts: fetch full receipt from API
     let cancelled = false;
-    fetchReceipt(lastReceipt.id)
-      .then((fullReceipt) => {
-        if (!cancelled) {
-          setEscPosData(buildEscPosReceiptData(fullReceipt, receiptVisibility));
+
+    const loader = async () => {
+      try {
+        if (lastReceiptServerId) {
+          const fullReceipt = await fetchReceipt(lastReceiptServerId);
+          if (!cancelled) {
+            setEscPosData(buildEscPosReceiptData(fullReceipt, receiptVisibility));
+            setEscPosSource('server');
+          }
+          return;
         }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          console.error('[POS] Failed to fetch receipt for thermal print:', err);
+        if (lastReceiptIdempotencyKey) {
+          const { getOfflineReceiptForPrint } = await import('@/lib/offline/getOfflineReceiptForPrint');
+          const localReceipt = await getOfflineReceiptForPrint(lastReceiptIdempotencyKey);
+          if (!cancelled) {
+            setEscPosData(buildEscPosReceiptData(localReceipt, receiptVisibility));
+            setEscPosSource('local');
+          }
         }
-      });
+      } catch (err) {
+        if (!cancelled) console.error('[POS] Failed to assemble receipt for thermal print:', err);
+      }
+    };
+
+    void loader();
 
     return () => { cancelled = true; };
-  }, [showSuccessModal, lastReceipt, escPosData, receiptVisibility, isOfflineReceipt, cartItems, terminal, operator, paymentMethods, changeDue]);
+  }, [showSuccessModal, lastReceipt, lastReceiptIdempotencyKey, lastReceiptServerId, escPosSource, receiptVisibility]);
+
+  // Smart Prompts: fetch recommendations when cart changes
+  useEffect(() => {
+    const productIds = cartItems.map((item) => item.product.id);
+    if (productIds.length > 0) {
+      spFetchForCart(productIds);
+    } else {
+      spClear();
+    }
+  }, [cartItems, spFetchForCart, spClear]);
+
+  useEffect(() => {
+    const productIds = cartItems.map((item) => item.product.id);
+    if (productIds.length > 0 && spSkinType !== null) {
+      spFetchForCart(productIds);
+    }
+  }, [spSkinType]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Smart Prompts: fetch recommendations when cart changes
+  useEffect(() => {
+    const productIds = cartItems.map((item) => item.product.id);
+    if (productIds.length > 0) {
+      spFetchForCart(productIds);
+    } else {
+      spClear();
+    }
+  }, [cartItems, spFetchForCart, spClear]);
+
+  useEffect(() => {
+    const productIds = cartItems.map((item) => item.product.id);
+    if (productIds.length > 0 && spSkinType !== null) {
+      spFetchForCart(productIds);
+    }
+  }, [spSkinType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cart product IDs for highlighting in grid
   const cartProductIds = useMemo(
@@ -255,6 +304,20 @@ export function HomePage() {
       }
     },
     [addItem, addItemWithDefaults],
+  );
+
+  const handleAddRecommendation = useCallback(
+    async (productId: string) => {
+      try {
+        const productData = await apiGet<POSProduct>(`/products/${productId}`);
+        if (productData) {
+          addItem(productData);
+        }
+      } catch {
+        // Silently fail — recommendation add is best-effort
+      }
+    },
+    [addItem],
   );
 
   const handleCustomize = useCallback(
@@ -343,34 +406,26 @@ export function HomePage() {
     [terminal, cartItems, transactionDiscount, processAdvancedCheckout, isFnB, consumptionMode, selectedTableId],
   );
 
-  const handleHold = useCallback(() => {
+  const handleHold = useCallback(async () => {
     if (cartItems.length === 0) return;
-    holdCurrentCart('');
+    await holdCurrentCart('');
   }, [cartItems.length, holdCurrentCart]);
 
   const handleRecall = useCallback(
-    (id: string) => {
-      const tx = recallTransaction(id);
+    async (id: string) => {
+      const tx = await recallTransaction(id);
       if (!tx) return;
 
-      // Load held items into the cart
-      clearCart();
-      for (const item of tx.items) {
-        useCartStore.setState((state) => ({
-          items: [...state.items, item],
-        }));
-      }
-      if (tx.transactionDiscount) {
-        useCartStore.getState().setTransactionDiscount(tx.transactionDiscount);
-      }
+      // Atomic replace — avoids the per-item setState loop that amplified BG3.
+      useCartStore.getState().replaceCart(tx.items, tx.transactionDiscount);
       setShowHeldModal(false);
     },
-    [recallTransaction, clearCart],
+    [recallTransaction],
   );
 
   const handleDiscard = useCallback(
-    (id: string) => {
-      discardTransaction(id);
+    async (id: string) => {
+      await discardTransaction(id);
     },
     [discardTransaction],
   );
@@ -478,10 +533,27 @@ export function HomePage() {
     }
   }, [clearCart, clearLastReceipt]);
 
+  const smartPromptsSharedProps = {
+    recommendations: spRecommendations,
+    contextFields: spContextFields,
+    skinType: spSkinType,
+    onSkinTypeChange: spSetSkinType,
+    onAdd: handleAddRecommendation,
+    isLoading: spIsLoading,
+  };
+
+  const smartPromptsInline =
+    smartPromptsVariant === 'inline' || smartPromptsVariant === 'both' ? (
+      <InlineSmartPrompts {...smartPromptsSharedProps} />
+    ) : undefined;
+
   // Open shift screen
   if (!shift) {
     return (
-      <div className="flex h-full items-center justify-center">
+      <div className="flex h-full flex-col">
+        <TerminalNotReadyBanner />
+        <ChainBreakAlert />
+        <div className="flex flex-1 items-center justify-center">
         <div className="w-full max-w-sm text-center">
           <h2 className="text-xl font-bold text-gray-900">{t('shift.openTitle')}</h2>
           <p className="mt-1 text-sm text-gray-500">
@@ -517,12 +589,16 @@ export function HomePage() {
             {terminalLoading ? t('shift.openingLoading') : t('shift.openingButton')}
           </button>
         </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className={`flex h-full relative ${cartPosition === 'end' ? 'flex-row-reverse' : 'flex-row'}`}>
+    <div className="flex h-full flex-col">
+      <TerminalNotReadyBanner />
+      <ChainBreakAlert />
+      <div className={`flex flex-1 relative ${cartPosition === 'end' ? 'flex-row-reverse' : 'flex-row'}`}>
       {/* Barcode scan feedback */}
       {scanMessage && (
         <div
@@ -553,13 +629,15 @@ export function HomePage() {
           onAdvancedPayments={handleAdvancedPayments}
           onQuantityTap={handleQuantityTap}
           onDiscount={() => setShowDiscountModal(true)}
-          onHold={handleHold}
+          onHold={() => void handleHold()}
           onRecall={() => setShowHeldModal(true)}
           onLineDiscount={handleLineDiscount}
           onRemoveLineDiscount={handleRemoveLineDiscount}
           onEditModifiers={handleEditModifiers}
           onRemoveDiscount={handleRemoveDiscount}
           paymentMethods={paymentMethods}
+          smartPromptsSlot={smartPromptsInline}
+          checkoutDisabled={!hashChainReady || isProcessing}
         />
       </div>
 
@@ -587,6 +665,9 @@ export function HomePage() {
             />
           ) : undefined}
         />
+        {(smartPromptsVariant === 'toast' || smartPromptsVariant === 'both') && (
+          <ToastSmartPrompts {...smartPromptsSharedProps} />
+        )}
       </div>
 
       {/* Cash payment screen */}
@@ -608,9 +689,7 @@ export function HomePage() {
           receiptNumber={lastReceipt.receipt_number}
           total={lastReceipt.total}
           changeDue={changeDue}
-          receiptId={lastReceipt.id}
           receiptData={escPosData ?? undefined}
-          isOfflineReceipt={isOfflineReceipt}
         />
       )}
 
@@ -631,8 +710,8 @@ export function HomePage() {
         isOpen={showHeldModal}
         onClose={() => setShowHeldModal(false)}
         heldTransactions={heldTransactions}
-        onRecall={handleRecall}
-        onDiscard={handleDiscard}
+        onRecall={(id) => void handleRecall(id)}
+        onDiscard={(id) => void handleDiscard(id)}
       />
 
       {/* Discount modal (transaction-only) */}
@@ -676,6 +755,7 @@ export function HomePage() {
         currentQuantity={quantityEditItem?.quantity ?? 1}
         onConfirm={handleQuantityConfirm}
       />
+      </div>
     </div>
   );
 }

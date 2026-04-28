@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Modules\Accounting\Application\DTOs;
 
 use App\Modules\Accounting\Domain\JournalLine;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
+#[TypeScript]
 final readonly class JournalLineData
 {
     public function __construct(

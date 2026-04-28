@@ -22,6 +22,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -80,8 +81,7 @@ class KeyComponentControllerTest extends TestCase
         app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
-    /** @test */
-    public function it_can_list_key_components(): void
+    public function test_list_key_components(): void
     {
         $component = KeyComponent::create([
             'slug' => 'omega-3-fatty-acids',
@@ -108,8 +108,7 @@ class KeyComponentControllerTest extends TestCase
         $this->assertNotEmpty($data);
     }
 
-    /** @test */
-    public function it_can_create_key_component(): void
+    public function test_create_key_component(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/parapharmacy/key-components', [
@@ -148,8 +147,7 @@ class KeyComponentControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function it_can_update_key_component(): void
+    public function test_update_key_component(): void
     {
         $component = KeyComponent::create([
             'slug' => 'probiotics',
@@ -189,8 +187,7 @@ class KeyComponentControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function it_can_delete_key_component(): void
+    public function test_delete_key_component(): void
     {
         $component = KeyComponent::create([
             'slug' => 'coenzyme-q10',
@@ -213,8 +210,7 @@ class KeyComponentControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function it_prevents_deletion_of_in_use_key_component(): void
+    public function test_prevents_deletion_of_in_use_key_component(): void
     {
         $component = KeyComponent::create([
             'slug' => 'zinc',
@@ -237,7 +233,7 @@ class KeyComponentControllerTest extends TestCase
         ]);
 
         DB::table('key_component_product')->insert([
-            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'id' => (string) Str::uuid(),
             'product_id' => $product->id,
             'component_id' => $component->id,
             'created_at' => now(),
@@ -255,16 +251,14 @@ class KeyComponentControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function unauthenticated_user_cannot_access_key_components(): void
+    public function test_unauthenticated_user_cannot_access_key_components(): void
     {
         $response = $this->getJson('/api/v1/parapharmacy/key-components');
 
         $response->assertStatus(401);
     }
 
-    /** @test */
-    public function user_without_settings_manage_permission_cannot_create_key_component(): void
+    public function test_user_without_settings_manage_permission_cannot_create_key_component(): void
     {
         $limitedUser = User::create([
             'tenant_id' => $this->tenant->id,

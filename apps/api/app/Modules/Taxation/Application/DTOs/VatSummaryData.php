@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\Taxation\Application\DTOs;
 
-use App\Modules\Taxation\Domain\DTOs\VatAggregation;
 use App\Modules\Taxation\Domain\DTOs\VatDeclarationData;
 use App\Modules\Taxation\Domain\DTOs\VatSummary;
 

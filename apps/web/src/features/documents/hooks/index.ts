@@ -1,4 +1,5 @@
 export * from './useAdditionalCosts'
+export * from './useLineDesignationFeature'
 export * from './useAttachments'
 export * from './useCreditNotes'
 export * from './useDeliveryNotes'

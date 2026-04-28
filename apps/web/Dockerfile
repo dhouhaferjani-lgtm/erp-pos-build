@@ -43,6 +43,7 @@ WORKDIR /app/apps/web
 # Build arguments for Vite environment variables
 ARG VITE_REVERB_APP_KEY
 ARG VITE_API_URL
+ARG VITE_APP_PRODUCT=izipos
 
 RUN pnpm build
 

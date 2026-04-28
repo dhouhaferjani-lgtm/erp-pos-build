@@ -7,6 +7,7 @@ namespace App\Modules\BatchExpiry\Domain\Entities;
 use App\Modules\Inventory\Domain\StockMovement;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * Inventory batch movement entity.
@@ -19,7 +20,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $batch_id Foreign key to product_batches
  * @property string $movement_id UUID Foreign key to stock_movements
  * @property numeric-string $quantity Quantity moved (positive or negative)
- * @property \Illuminate\Support\Carbon $created_at
+ * @property Carbon $created_at
  * @property-read Batch $batch
  * @property-read StockMovement $movement
  */

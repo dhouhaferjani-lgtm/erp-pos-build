@@ -121,7 +121,7 @@ final readonly class AgedReceivablesService
         return $invoices
             ->groupBy('partner_id')
             ->map(function (Collection $customerInvoices, string $partnerId) use ($asOfDate) {
-                /** @var \App\Modules\Document\Domain\Document $firstInvoice */
+                /** @var Document $firstInvoice */
                 $firstInvoice = $customerInvoices->first();
                 $customer = $firstInvoice->partner;
 

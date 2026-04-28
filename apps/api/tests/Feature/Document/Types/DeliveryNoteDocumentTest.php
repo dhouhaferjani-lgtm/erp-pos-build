@@ -5,7 +5,11 @@ declare(strict_types=1);
 namespace Tests\Feature\Document\Types;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Enums\LocationType;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -33,6 +37,8 @@ class DeliveryNoteDocumentTest extends TestCase
 
     private Partner $partner;
 
+    private Location $location;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -53,7 +59,7 @@ class DeliveryNoteDocumentTest extends TestCase
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
@@ -75,7 +81,7 @@ class DeliveryNoteDocumentTest extends TestCase
         ]);
 
         // Set company context for the test
-        app(\App\Modules\Company\Services\CompanyContext::class)->setCompanyId($this->company->id);
+        app(CompanyContext::class)->setCompanyId($this->company->id);
 
         $this->partner = Partner::create([
             'tenant_id' => $this->tenant->id,
@@ -83,6 +89,15 @@ class DeliveryNoteDocumentTest extends TestCase
             'name' => 'Test Partner',
             'type' => PartnerType::Customer,
             'email' => 'partner@example.com',
+        ]);
+
+        $this->location = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'Main Warehouse',
+            'code' => 'WH-MAIN',
+            'type' => LocationType::Warehouse,
+            'is_default' => true,
+            'is_active' => true,
         ]);
     }
 
@@ -140,6 +155,7 @@ class DeliveryNoteDocumentTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'partner_id' => $this->partner->id,
+            'location_id' => $this->location->id,
             'type' => DocumentType::DeliveryNote,
             'status' => DocumentStatus::Draft,
             'document_number' => 'DN-2025-0001',

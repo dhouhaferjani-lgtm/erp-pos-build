@@ -73,6 +73,9 @@ importers:
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
+      big.js:
+        specifier: ^7.0.1
+        version: 7.0.1
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -100,6 +103,9 @@ importers:
       react-router-dom:
         specifier: ^7
         version: 7.9.6(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+      sonner:
+        specifier: ^2.0.7
+        version: 2.0.7(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       tailwind-merge:
         specifier: ^3.4.0
         version: 3.4.0
@@ -122,6 +128,9 @@ importers:
       '@types/bcryptjs':
         specifier: ^3.0.0
         version: 3.0.0
+      '@types/big.js':
+        specifier: ^6.2.2
+        version: 6.2.2
       '@types/react':
         specifier: ^19
         version: 19.2.7

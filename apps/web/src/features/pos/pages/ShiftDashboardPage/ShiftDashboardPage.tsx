@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { POSButton, MoneyInput } from '../../atoms'
+
+import { bcsub } from '@/lib/decimal'
 import { useCurrency } from '@/hooks/useCurrency'
 import type { XReportResponse } from '../../api/shiftApi'
 import {
@@ -67,7 +69,8 @@ export function ShiftDashboardPage({
   className,
 }: ShiftDashboardPageProps) {
   const { t } = useTranslation(['pos', 'common'])
-  const { toFixed: toFixedCurrency } = useCurrency()
+  const { decimals } = useCurrency()
+
   const [activeModal, setActiveModal] = useState<ModalType>(null)
   const [openingBalance, setOpeningBalance] = useState('')
   const [actualCash, setActualCash] = useState('')
@@ -82,13 +85,19 @@ export function ShiftDashboardPage({
     })
   }, [currentShift])
 
-  // Calculate variance for close shift
+  // Calculate variance for close shift.
+  // Uses bcsub (big.js) instead of parseFloat to avoid IEEE 754 float drift
+  // (e.g. TND: parseFloat('250.103') − parseFloat('250.100') === 0.0030000000000001355).
+  // The result is a precise decimal string rendered directly in JSX.
   const cashVariance = useMemo(() => {
     if (!currentShift || !actualCash) return null
-    const expected = parseFloat(currentShift.expected_cash)
-    const actual = parseFloat(actualCash)
-    return toFixedCurrency(actual - expected)
-  }, [currentShift, actualCash, toFixedCurrency])
+    try {
+      return bcsub(actualCash, currentShift.expected_cash, decimals)
+    } catch {
+      // Invalid numeric input — suppress variance display.
+      return null
+    }
+  }, [currentShift, actualCash, decimals])
 
   const handleOpenShift = () => {
     onOpenShift(openingBalance)

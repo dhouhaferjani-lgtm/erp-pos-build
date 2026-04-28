@@ -7,8 +7,10 @@
  */
 
 import type Database from '@tauri-apps/plugin-sql';
+import Big from 'big.js';
 import { queryAll } from '@/lib/db';
 import { getCurrencyDecimals } from '@/lib/currency';
+import { bcadd, bcsub, bcformat, bccomp } from '@/lib/decimal';
 import { useAuthStore } from '@/stores/authStore';
 import { computeZReportHash } from '@/lib/fiscal/zReportHashService';
 import { insertZReport, getZReportByShift } from '@/lib/db/repositories/zReportRepository';
@@ -18,17 +20,45 @@ import {
   advanceZChain,
   updateGrandTotals,
 } from '@/lib/db/repositories/terminalStateRepository';
+import { insertZReportCounts } from '@/lib/db/repositories/zReportCountRepository';
+import type { ZReportCountRow } from '@/lib/db/repositories/zReportCountRepository';
 import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 import type {
   LocalZReport,
   ZReportData,
   ZReportVatBreakdown,
   ZReportPaymentMethod,
+  ZReportCountEntry,
   ReceiptSnapshot,
   ReceiptSnapshotTaxLine,
   ReceiptSnapshotLine,
   GrandTotals,
 } from '@/lib/offline/types';
+import {
+  computeCashCountSeverity,
+  type CashCountThresholds,
+} from '@/lib/offline/cashCountValidation';
+
+// Cumulative fields are persisted at 3 decimals (TND max); see terminalStateRepository.
+const CUMULATIVE_SCALE = 3;
+
+// ─── Cash count input / opts types ───────────────────────────────────────────
+
+export interface CashCountInputForGeneration {
+  payment_method_id: string;
+  currency_code: string;
+  actual_amount: string;
+}
+
+export interface GenerateZReportOpts {
+  cashCounts?: CashCountInputForGeneration[];
+  varianceReason?: string | null;
+  managerUserId?: string | null;
+  blindCountUsed?: boolean;
+  /** Fraud-settings thresholds. When provided, variance_severity is computed
+   *  from the aggregated per-tender variances and stamped into shift_fields. */
+  fraudSettings?: CashCountThresholds | null;
+}
 
 /**
  * Format a Date to match Carbon's toIso8601String() output.
@@ -59,13 +89,15 @@ interface ReceiptLineJson {
  * @param shiftId - Current shift UUID
  * @param shiftOpenedAt - ISO 8601 timestamp of when the shift was opened
  * @param openingCash - Opening cash amount for the shift
+ * @param opts - Optional cash count inputs and shift metadata (closes G2/G3)
  */
 export async function generateZReport(
   db: Database,
   terminalId: string,
   shiftId: string,
   shiftOpenedAt: string,
-  openingCash: number,
+  openingCash: string,
+  opts: GenerateZReportOpts = {},
 ): Promise<LocalZReport> {
   const authState = useAuthStore.getState();
   const company = authState.companies.find((c) => c.id === authState.companyId);
@@ -114,12 +146,97 @@ export async function generateZReport(
   // to match the server's ReportGenerationService which adds opening_cash/expected_cash
   // to report_data before hash computation.
   const cashPayments = reportData.payment_methods.find((p) => p.payment_type === 'CASH');
-  const cashSales = cashPayments ? parseFloat(cashPayments.total_amount) : 0;
-  const expectedCash = openingCash + cashSales;
+  const cashSales = cashPayments ? cashPayments.total_amount : '0';
+  const expectedCash = bcadd(openingCash, cashSales, decimals);
 
-  reportData.opening_cash = openingCash.toFixed(decimals);
-  reportData.expected_cash = expectedCash.toFixed(decimals);
+  reportData.opening_cash = new Big(openingCash).toFixed(decimals);
+  reportData.expected_cash = new Big(expectedCash).toFixed(decimals);
   reportData.variance = null;
+
+  // 5b. Compute cash count rows when opts.cashCounts is provided.
+  //     Adds schema_version=2, cash_counts[], and tolerance_summary to report_data.
+  const companyCurrency = company?.currency ?? 'EUR';
+  let zReportCountRows: ZReportCountRow[] | null = null;
+  let cashCountEntries: ZReportCountEntry[] | null = null;
+
+  if (opts.cashCounts && opts.cashCounts.length > 0) {
+    // Build a map of payment_method_id → expected_amount for the entries provided.
+    // For CASH, expected = opening_cash + Σ(cash_sales from receipts).
+    // For other physical methods, expected = Σ(sales for that method from receipts).
+    const pmIdToSales = new Map<string, string>();
+    for (const pm of reportData.payment_methods) {
+      // Look up the payment_method_id from the code
+      const pmId = [...paymentMethodMap.entries()].find(([, code]) => code === pm.payment_type)?.[0];
+      if (pmId) {
+        pmIdToSales.set(pmId, pm.total_amount);
+      }
+    }
+
+    const countEntries: ZReportCountEntry[] = [];
+    const countRows: ZReportCountRow[] = [];
+
+    for (const input of opts.cashCounts) {
+      // Compute expected_amount for this payment method
+      const methodSales = pmIdToSales.get(input.payment_method_id) ?? '0';
+      const methodCode = paymentMethodMap.get(input.payment_method_id) ?? '';
+
+      // For CASH: expected = opening_float + cash_receipts_amount
+      // For others: expected = sales_amount for that method
+      const expectedAmount =
+        methodCode === 'CASH'
+          ? bcformat(expectedCash, decimals)
+          : bcformat(methodSales, decimals);
+
+      // variance = actual - expected (positive = over, negative = under)
+      const variance = bcsub(input.actual_amount, expectedAmount, decimals);
+      const varianceCmp = bccomp(variance, '0');
+      const varianceDirection: 'over' | 'under' | 'balanced' =
+        varianceCmp > 0 ? 'over' : varianceCmp < 0 ? 'under' : 'balanced';
+
+      const entry: ZReportCountEntry = {
+        payment_method_id: input.payment_method_id,
+        currency_code: input.currency_code,
+        expected_amount: expectedAmount,
+        actual_amount: bcformat(input.actual_amount, decimals),
+        variance_amount: variance,
+        variance_direction: varianceDirection,
+        transaction_count: receipts.filter(
+          (r) => r.payment_method_id === input.payment_method_id,
+        ).length,
+      };
+
+      countEntries.push(entry);
+      countRows.push({
+        id: crypto.randomUUID(),
+        z_report_id: '', // filled in after we know the Z-report id below
+        payment_method_id: entry.payment_method_id,
+        currency_code: entry.currency_code,
+        expected_amount: entry.expected_amount,
+        actual_amount: entry.actual_amount,
+        variance_amount: entry.variance_amount,
+        variance_direction: entry.variance_direction,
+        transaction_count: entry.transaction_count,
+      });
+    }
+
+    cashCountEntries = countEntries;
+    zReportCountRows = countRows;
+
+    // Stamp schema_version = 2 and cash_counts into report_data
+    reportData.schema_version = 2;
+    reportData.cash_counts = countEntries;
+    // Tolerance zero-shape (3dp amount, integer count) — byte-matches server ZReportHashService
+    // TODO(payment-tolerance-v3): when offline A1 short-pay ships, this
+    // tolerance_summary must aggregate `tolerance_writeoff` over the
+    // shift's local receipts (the data is already in
+    // endOfDayPreview.ts:184-192). Hash chain stability across
+    // offline-generated → server-synced Zs depends on this.
+    reportData.tolerance_summary = {
+      totalAmount: '0.000',
+      currencyCode: companyCurrency,
+      writeoffCount: 0,
+    };
+  }
 
   // 6. Build receipt snapshots for fiscal export
   const receiptSnapshots = buildReceiptSnapshots(receipts, paymentMethodMap);
@@ -139,23 +256,49 @@ export async function generateZReport(
     reportData,
   });
 
-  // 9. Compute updated grand totals
-  const grossSalesNum = parseFloat(reportData.gross_sales);
-  const taxNum = parseFloat(reportData.tax_amount);
-  const refundsNum = parseFloat(reportData.refunds_amount);
+  // 9. Compute updated grand totals using Big.js (no IEEE 754 coercion).
+  const grossSalesStr = reportData.gross_sales;
+  const taxStr = reportData.tax_amount;
+  const refundsStr = reportData.refunds_amount;
   const salesCount = reportData.sales_count;
 
+  const netDeltaStr = bcsub(grossSalesStr, refundsStr, CUMULATIVE_SCALE);
   const grandTotals: GrandTotals = {
-    cumulative_sales: zChainState.cumulative_sales + grossSalesNum,
-    cumulative_tax: zChainState.cumulative_tax + taxNum,
-    cumulative_refunds: zChainState.cumulative_refunds + refundsNum,
-    perpetual_grand_total: zChainState.perpetual_grand_total + (grossSalesNum - refundsNum),
+    cumulative_sales: bcadd(zChainState.cumulative_sales, grossSalesStr, CUMULATIVE_SCALE),
+    cumulative_tax: bcadd(zChainState.cumulative_tax, taxStr, CUMULATIVE_SCALE),
+    cumulative_refunds: bcadd(zChainState.cumulative_refunds, refundsStr, CUMULATIVE_SCALE),
+    perpetual_grand_total: bcadd(zChainState.perpetual_grand_total, netDeltaStr, CUMULATIVE_SCALE),
     receipt_count_lifetime: zChainState.receipt_count_lifetime + salesCount,
   };
 
-  // 10. Build the Z-report record
+  // 10. Build shift_fields when cash count opts are provided.
+  //     Compute variance_severity from the aggregated per-tender variances when
+  //     fraud settings thresholds are available; otherwise leave null.
+  const zReportId = crypto.randomUUID();
+
+  let varianceSeverity: string | null = null;
+  if (cashCountEntries !== null && opts.fraudSettings != null) {
+    const severityResult = computeCashCountSeverity(
+      cashCountEntries,
+      opts.fraudSettings,
+      decimals,
+    );
+    varianceSeverity = severityResult.severity;
+  }
+
+  const shiftFields =
+    cashCountEntries !== null
+      ? {
+          blind_count_used: opts.blindCountUsed ?? false,
+          variance_severity: varianceSeverity,
+          variance_reason: opts.varianceReason ?? null,
+          manager_override_by: opts.managerUserId ?? null,
+        }
+      : null;
+
+  // 11. Build the Z-report record
   const zReport: LocalZReport = {
-    id: crypto.randomUUID(),
+    id: zReportId,
     terminal_id: terminalId,
     shift_id: shiftId,
     z_number: newZNumber,
@@ -165,20 +308,37 @@ export async function generateZReport(
     previous_hash: zChainState.z_last_hash,
     hash_sequence: newHashSequence,
     report_data: reportData,
-    opening_cash: openingCash,
-    expected_cash: expectedCash,
+    opening_cash: reportData.opening_cash ?? new Big(openingCash).toFixed(decimals),
+    expected_cash: reportData.expected_cash ?? new Big(expectedCash).toFixed(decimals),
     receipt_snapshots: receiptSnapshots,
     grand_totals: grandTotals,
     synced: false,
     synced_at: null,
+    cash_counts: cashCountEntries ?? undefined,
+    shift_fields: shiftFields,
+    manager_user_id: opts.managerUserId ?? null,
+    tolerance_summary: cashCountEntries !== null
+      ? { totalAmount: '0.000', currencyCode: companyCurrency, writeoffCount: 0 }
+      : undefined,
+    currency_code: companyCurrency,
   };
 
-  // 11. Persist atomically: insert Z-report + advance Z-chain + update grand totals
+  // Fix z_report_id on count rows now that we have the report id
+  if (zReportCountRows !== null) {
+    for (const row of zReportCountRows) {
+      row.z_report_id = zReportId;
+    }
+  }
+
+  // 12. Persist atomically: insert Z-report + (optionally) cash count rows + advance Z-chain + update grand totals
   await db.execute('BEGIN TRANSACTION');
   try {
     await insertZReport(db, zReport);
+    if (zReportCountRows !== null && zReportCountRows.length > 0) {
+      await insertZReportCounts(db, zReportCountRows);
+    }
     await advanceZChain(db, terminalId, fiscalHash, newHashSequence, newZNumber);
-    await updateGrandTotals(db, terminalId, grossSalesNum, taxNum, refundsNum, salesCount);
+    await updateGrandTotals(db, terminalId, grossSalesStr, taxStr, refundsStr, salesCount);
     await db.execute('COMMIT');
   } catch (error) {
     await db.execute('ROLLBACK');
@@ -207,50 +367,46 @@ function aggregateReportData(
   paymentMethodMap: Map<string, string>,
   decimals: number,
 ): ZReportData {
-  let grossSales = 0;
-  let netSales = 0;
-  let taxAmount = 0;
+  let grossSales = '0';
+  let netSales = '0';
+  let taxAmount = '0';
   let salesCount = 0;
   // Void/refund counters are always 0 offline — voiding and refunding
   // are server-side operations tracked after sync.
-  let refundsCount = 0;
-  let refundsAmount = 0;
-  let voidedCount = 0;
+  const refundsCount = 0;
+  let refundsAmount = '0';
+  const voidedCount = 0;
 
-  const vatByRate = new Map<string, { net: number; vat: number; gross: number }>();
-  const paymentByType = new Map<string, { amount: number; count: number }>();
+  const vatByRate = new Map<string, { net: string; vat: string; gross: string }>();
+  const paymentByType = new Map<string, { amount: string; count: number }>();
 
   for (const receipt of receipts) {
-    const total = parseFloat(receipt.total);
-    const subtotal = parseFloat(receipt.subtotal);
-    const tax = parseFloat(receipt.tax_amount);
-
     // Skip voided receipts (status === 'voided' or similar) — for now we count all
     // since offline receipts don't have a voided flag. Voided receipts are tracked server-side.
     salesCount++;
-    grossSales += total;
-    netSales += subtotal;
-    taxAmount += tax;
+    grossSales = bcadd(grossSales, receipt.total);
+    netSales = bcadd(netSales, receipt.subtotal);
+    taxAmount = bcadd(taxAmount, receipt.tax_amount);
 
     // VAT breakdown from receipt lines
     const lines = JSON.parse(receipt.lines) as ReceiptLineJson[];
     for (const line of lines) {
       const rate = line.tax_rate ?? '0';
-      const lineVat = parseFloat(line.tax_amount ?? '0');
-      const lineNet = parseFloat(line.line_total ?? '0');
-      const lineGross = lineNet + lineVat;
+      const lineVat = line.tax_amount ?? '0';
+      const lineNet = line.line_total ?? '0';
+      const lineGross = bcadd(lineNet, lineVat);
 
-      const existing = vatByRate.get(rate) ?? { net: 0, vat: 0, gross: 0 };
-      existing.net += lineNet;
-      existing.vat += lineVat;
-      existing.gross += lineGross;
+      const existing = vatByRate.get(rate) ?? { net: '0', vat: '0', gross: '0' };
+      existing.net = bcadd(existing.net, lineNet);
+      existing.vat = bcadd(existing.vat, lineVat);
+      existing.gross = bcadd(existing.gross, lineGross);
       vatByRate.set(rate, existing);
     }
 
     // Payment method breakdown
     const methodCode = paymentMethodMap.get(receipt.payment_method_id) ?? 'UNKNOWN';
-    const existing = paymentByType.get(methodCode) ?? { amount: 0, count: 0 };
-    existing.amount += total;
+    const existing = paymentByType.get(methodCode) ?? { amount: '0', count: 0 };
+    existing.amount = bcadd(existing.amount, receipt.total);
     existing.count += 1;
     paymentByType.set(methodCode, existing);
   }
@@ -259,9 +415,9 @@ function aggregateReportData(
   for (const [rate, totals] of vatByRate) {
     vatBreakdown.push({
       tax_rate: parseFloat(rate),
-      net_amount: totals.net.toFixed(decimals),
-      vat_amount: totals.vat.toFixed(decimals),
-      gross_amount: totals.gross.toFixed(decimals),
+      net_amount: bcformat(totals.net, decimals),
+      vat_amount: bcformat(totals.vat, decimals),
+      gross_amount: bcformat(totals.gross, decimals),
     });
   }
   vatBreakdown.sort((a, b) => a.tax_rate - b.tax_rate);
@@ -270,18 +426,18 @@ function aggregateReportData(
   for (const [type, data] of paymentByType) {
     paymentMethods.push({
       payment_type: type,
-      total_amount: data.amount.toFixed(decimals),
+      total_amount: bcformat(data.amount, decimals),
       transaction_count: data.count,
     });
   }
 
   return {
     sales_count: salesCount,
-    gross_sales: grossSales.toFixed(decimals),
-    net_sales: netSales.toFixed(decimals),
-    tax_amount: taxAmount.toFixed(decimals),
+    gross_sales: bcformat(grossSales, decimals),
+    net_sales: bcformat(netSales, decimals),
+    tax_amount: bcformat(taxAmount, decimals),
     refunds_count: refundsCount,
-    refunds_amount: refundsAmount.toFixed(decimals),
+    refunds_amount: bcformat(refundsAmount, decimals),
     voided_count: voidedCount,
     vat_breakdown: vatBreakdown,
     payment_methods: paymentMethods,
@@ -296,28 +452,38 @@ function buildReceiptSnapshots(
     const lines = JSON.parse(receipt.lines) as ReceiptLineJson[];
     const methodCode = paymentMethodMap.get(receipt.payment_method_id) ?? 'UNKNOWN';
 
-    // Build tax lines grouped by rate
-    const taxByRate = new Map<number, ReceiptSnapshotTaxLine>();
+    // Build tax lines grouped by rate.
+    // Map key is a numeric tax rate (percentage, not monetary) for sort stability.
+    const taxByRate = new Map<number, { rate: number; net: string; vat: string; gross: string }>();
     for (const line of lines) {
+      // tax_rate is a percentage — parseFloat is intentional and correct here
       const rate = parseFloat(line.tax_rate ?? '0');
-      const lineNet = parseFloat(line.line_total ?? '0');
-      const lineVat = parseFloat(line.tax_amount ?? '0');
-      const lineGross = lineNet + lineVat;
+      const lineNet = line.line_total ?? '0';
+      const lineVat = line.tax_amount ?? '0';
+      const lineGross = bcadd(lineNet, lineVat);
 
-      const existing = taxByRate.get(rate) ?? { rate, net_amount: 0, tax_amount: 0, gross_amount: 0 };
-      existing.net_amount += lineNet;
-      existing.tax_amount += lineVat;
-      existing.gross_amount += lineGross;
+      const existing = taxByRate.get(rate) ?? { rate, net: '0', vat: '0', gross: '0' };
+      existing.net = bcadd(existing.net, lineNet);
+      existing.vat = bcadd(existing.vat, lineVat);
+      existing.gross = bcadd(existing.gross, lineGross);
       taxByRate.set(rate, existing);
     }
+
+    const taxLines: ReceiptSnapshotTaxLine[] = Array.from(taxByRate.values()).map((t) => ({
+      rate: t.rate,
+      net_amount: t.net,
+      tax_amount: t.vat,
+      gross_amount: t.gross,
+    }));
 
     const snapshotLines: ReceiptSnapshotLine[] = lines.map((line) => ({
       description: line.name ?? '',
       quantity: line.quantity ?? 1,
-      unit_price: parseFloat(line.unit_price ?? '0'),
-      total: parseFloat(line.line_total ?? '0'),
+      unit_price: line.unit_price ?? '0',
+      total: line.line_total ?? '0',
+      // tax_rate is a percentage — parseFloat is intentional and correct here
       tax_rate: parseFloat(line.tax_rate ?? '0'),
-      discount_amount: parseFloat(line.discount_amount ?? '0'),
+      discount_amount: line.discount_amount ?? '0',
     }));
 
     return {
@@ -326,15 +492,15 @@ function buildReceiptSnapshots(
       hash_sequence: receipt.hash_sequence,
       created_at: receipt.created_at,
 
-      total_ht: parseFloat(receipt.subtotal),
-      total_ttc: parseFloat(receipt.total),
-      total_tax: parseFloat(receipt.tax_amount),
+      total_ht: receipt.subtotal,
+      total_ttc: receipt.total,
+      total_tax: receipt.tax_amount,
 
-      tax_lines: Array.from(taxByRate.values()),
+      tax_lines: taxLines,
 
       payment_type: methodCode,
-      payment_amount: parseFloat(receipt.total),
-      change_given: parseFloat(receipt.change_due ?? '0'),
+      payment_amount: receipt.total,
+      change_given: receipt.change_due ?? '0',
 
       lines: snapshotLines,
 

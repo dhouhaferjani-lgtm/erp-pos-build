@@ -6,6 +6,7 @@ namespace App\Modules\POS\Application\Services;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Enums\OrderLineStatus;
 use App\Modules\POS\Domain\Enums\OrderStatus;
@@ -23,7 +24,6 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -88,13 +88,13 @@ final class OrderManagementService
                 ->max(DB::raw("CAST(REPLACE(order_number, '#', '') AS INTEGER)"));
 
             $nextNum = ($maxNumber ?? 0) + 1;
-            $orderNumber = '#' . str_pad((string) $nextNum, 3, '0', STR_PAD_LEFT);
+            $orderNumber = '#'.str_pad((string) $nextNum, 3, '0', STR_PAD_LEFT);
 
             // Resolve customer info
             $customerIdentifier = null;
             $resolvedPartnerId = null;
             if ($partnerId !== null) {
-                $partner = \App\Modules\Partner\Domain\Partner::find($partnerId);
+                $partner = Partner::find($partnerId);
                 if ($partner !== null) {
                     $customerName = $customerName ?? $partner->name;
                     $customerIdentifier = $partner->phone ?? $partner->email ?? null;
@@ -156,6 +156,7 @@ final class OrderManagementService
      * Add a line item to an order.
      *
      * @param  array<string, mixed>|null  $modifiers
+     *
      * @throws \RuntimeException If order is not open
      * @throws \InvalidArgumentException If product not found
      */
@@ -215,6 +216,7 @@ final class OrderManagementService
      * Modify an existing order line.
      *
      * @param  array<string, mixed>|null  $modifiers
+     *
      * @throws \RuntimeException If order is not open
      */
     public function modifyLine(
@@ -401,8 +403,8 @@ final class OrderManagementService
 
             if ($reason !== null) {
                 $updateData['notes'] = $order->notes
-                    ? $order->notes . "\nCancellation reason: " . $reason
-                    : 'Cancellation reason: ' . $reason;
+                    ? $order->notes."\nCancellation reason: ".$reason
+                    : 'Cancellation reason: '.$reason;
             }
 
             $order->update($updateData);

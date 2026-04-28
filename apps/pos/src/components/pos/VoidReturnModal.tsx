@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from './Modal';
-import { Search, AlertTriangle, WifiOff } from 'lucide-react';
+import { Search, AlertTriangle } from 'lucide-react';
 import { apiGet, apiPost, getErrorMessage } from '@/lib/api';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useAuthStore } from '@/stores/authStore';

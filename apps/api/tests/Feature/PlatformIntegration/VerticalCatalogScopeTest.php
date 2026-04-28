@@ -17,6 +17,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -51,7 +52,7 @@ class VerticalCatalogScopeTest extends TestCase
 
         $response->assertStatus(200);
 
-        Http::assertSent(function (\Illuminate\Http\Client\Request $request): bool {
+        Http::assertSent(function (Request $request): bool {
             return str_contains($request->url(), 'vertical=tire_shop');
         });
     }
@@ -74,7 +75,7 @@ class VerticalCatalogScopeTest extends TestCase
 
         $response->assertStatus(200);
 
-        Http::assertSent(function (\Illuminate\Http\Client\Request $request): bool {
+        Http::assertSent(function (Request $request): bool {
             return str_contains($request->url(), 'vertical=car_glass');
         });
     }
@@ -97,7 +98,7 @@ class VerticalCatalogScopeTest extends TestCase
 
         $response->assertStatus(200);
 
-        Http::assertSent(function (\Illuminate\Http\Client\Request $request): bool {
+        Http::assertSent(function (Request $request): bool {
             return ! str_contains($request->url(), 'vertical=');
         });
     }

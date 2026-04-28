@@ -7,12 +7,20 @@ namespace App\Modules\Vehicle\Domain;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Vehicle\Domain\Enums\BodyType;
+use App\Modules\Vehicle\Domain\Enums\FuelType;
+use App\Modules\Vehicle\Domain\Enums\TransmissionType;
+use Database\Factories\VehicleFactory;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -27,22 +35,27 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property int|null $mileage
  * @property string|null $vin
  * @property string|null $engine_code
- * @property string|null $fuel_type
- * @property string|null $transmission
+ * @property FuelType|null $fuel_type
+ * @property TransmissionType|null $transmission
+ * @property BodyType|null $body_type
  * @property string|null $notes
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
  * @property-read Tenant $tenant
  * @property-read Company $company
  * @property-read Partner|null $partner
+ * @property-read VehicleOwnership|null $currentOwnership
+ * @property-read Collection<int, VehicleOwnership> $ownershipHistory
+ * @property-read Collection<int, VehicleMileageReading> $mileageReadings
  *
  * @method static Builder<static> forTenant(string $tenantId)
+ * @method static Builder<static> forCompany(string $companyId)
  * @method static Builder<static> forPartner(string $partnerId)
  */
 class Vehicle extends Model
 {
-    /** @use HasFactory<\Database\Factories\VehicleFactory> */
+    /** @use HasFactory<VehicleFactory> */
     use HasFactory;
 
     use HasUuids;
@@ -70,6 +83,7 @@ class Vehicle extends Model
         'engine_code',
         'fuel_type',
         'transmission',
+        'body_type',
         'notes',
     ];
 
@@ -81,15 +95,18 @@ class Vehicle extends Model
         return [
             'year' => 'integer',
             'mileage' => 'integer',
+            'fuel_type' => FuelType::class,
+            'transmission' => TransmissionType::class,
+            'body_type' => BodyType::class,
         ];
     }
 
     /**
      * Create a new factory instance for the model.
      */
-    protected static function newFactory(): \Database\Factories\VehicleFactory
+    protected static function newFactory(): VehicleFactory
     {
-        return \Database\Factories\VehicleFactory::new();
+        return VehicleFactory::new();
     }
 
     /**
@@ -110,10 +127,38 @@ class Vehicle extends Model
 
     /**
      * @return BelongsTo<Partner, $this>
+     *
+     * @deprecated Use vehicle_ownership_history via currentOwnership() for current owner.
+     *             Legacy partner_id will be dropped in a fast-follow migration once all
+     *             callers switch to the ownership repository.
      */
     public function partner(): BelongsTo
     {
         return $this->belongsTo(Partner::class);
+    }
+
+    /**
+     * @return HasOne<VehicleOwnership, $this>
+     */
+    public function currentOwnership(): HasOne
+    {
+        return $this->hasOne(VehicleOwnership::class)->whereNull('released_at');
+    }
+
+    /**
+     * @return HasMany<VehicleOwnership, $this>
+     */
+    public function ownershipHistory(): HasMany
+    {
+        return $this->hasMany(VehicleOwnership::class)->orderByDesc('acquired_at');
+    }
+
+    /**
+     * @return HasMany<VehicleMileageReading, $this>
+     */
+    public function mileageReadings(): HasMany
+    {
+        return $this->hasMany(VehicleMileageReading::class)->orderByDesc('recorded_at');
     }
 
     /**
@@ -142,10 +187,13 @@ class Vehicle extends Model
     }
 
     /**
-     * Scope to filter vehicles by partner
+     * Scope to filter vehicles by partner (legacy).
      *
      * @param  Builder<static>  $query
      * @return Builder<static>
+     *
+     * @deprecated Use VehicleRepositoryInterface::paginateForOwner() which queries the
+     *             vehicle_ownership_history table for the current owner.
      */
     public function scopeForPartner(Builder $query, string $partnerId): Builder
     {

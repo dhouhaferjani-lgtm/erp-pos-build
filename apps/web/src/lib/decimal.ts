@@ -13,10 +13,26 @@ import { getDecimals } from '../hooks/useCurrency'
 // Round half-up (matches PHP round() and PostgreSQL behavior)
 Big.RM = 1
 
-/** Safely construct a Big from potentially empty/falsy input */
+/**
+ * Safely construct a Big from potentially empty/falsy/malformed input.
+ *
+ * Empty, whitespace-only, or unparseable input all resolve to `new Big(0)`
+ * rather than throwing. This is the single choke point for every decimal
+ * operation in the app — hardening it here protects all ~100 call sites
+ * across POS, Inventory, Treasury etc. from crashing when user-pasted
+ * garbage (e.g. "1.2.3", "5abc", "  5  ") reaches an arithmetic helper.
+ *
+ * Callers that need stricter validation should validate BEFORE calling
+ * into this module; the silent-zero fallback is a safety net, not a
+ * preferred input path.
+ */
 function safeBig(value: string): Big {
   if (!value || value.trim() === '') return new Big(0)
-  return new Big(value)
+  try {
+    return new Big(value)
+  } catch {
+    return new Big(0)
+  }
 }
 
 /**

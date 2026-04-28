@@ -6,10 +6,12 @@ namespace App\Modules\Catalog\Domain\Entities;
 
 use App\Modules\Uom\Domain\Entities\Unit;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -24,11 +26,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int|null $cook_time_minutes
  * @property int|null $total_time_minutes
  * @property string|null $instructions
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read CompositeItem $compositeItem
  * @property-read Unit|null $yieldUnit
- * @property-read \Illuminate\Database\Eloquent\Collection<int, RecipeLine> $lines
+ * @property-read Collection<int, RecipeLine> $lines
  */
 class Recipe extends Model
 {

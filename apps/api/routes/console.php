@@ -1,5 +1,9 @@
 <?php
 
+use App\Modules\BatchExpiry\Jobs\DailyExpiryCheck;
+use App\Modules\Inventory\Application\Jobs\ExpireReservationsJob;
+use App\Modules\Scheduling\Infrastructure\Commands\ScheduleAppointmentReminders;
+use App\Modules\Workshop\Technician\Infrastructure\Commands\CheckExpiringCertifications;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -21,11 +25,26 @@ Schedule::command('fraud:detect')
     ->runInBackground();
 
 // Schedule: Expire old stock reservations every 15 minutes
-Schedule::job(\App\Modules\Inventory\Application\Jobs\ExpireReservationsJob::class)
+Schedule::job(ExpireReservationsJob::class)
     ->everyFifteenMinutes()
     ->withoutOverlapping();
 
 // Schedule: Check for expired batches daily at 1:30 AM
-Schedule::job(\App\Modules\BatchExpiry\Jobs\DailyExpiryCheck::class)
+Schedule::job(DailyExpiryCheck::class)
     ->dailyAt('01:30')
+    ->withoutOverlapping();
+
+// Schedule: Poll platform for pending enrichment status updates
+Schedule::command('enrichment:check-pending')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping();
+
+// Schedule: Dispatch TechnicianCertificationExpiring events daily at 3:00 AM
+Schedule::command(CheckExpiringCertifications::class)
+    ->dailyAt('03:00')
+    ->withoutOverlapping();
+
+// Schedule: Appointment reminder scheduling + dispatch every hour
+Schedule::command(ScheduleAppointmentReminders::class)
+    ->hourly()
     ->withoutOverlapping();

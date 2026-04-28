@@ -104,7 +104,7 @@ class CompanyRelationshipTest extends TestCase
             'license_plate' => 'ABC-123',
             'brand' => 'Toyota',
             'model' => 'Camry',
-            'fuel_type' => 'petrol',
+            'fuel_type' => 'gasoline',
         ]);
 
         $this->assertNotNull($vehicle->company);

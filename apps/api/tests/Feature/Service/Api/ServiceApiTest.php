@@ -280,7 +280,7 @@ class ServiceApiTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('data.name', 'Premium Oil Change')
-            ->assertJsonPath('data.base_price', '65.00');
+            ->assertJsonPath('data.base_price', '65.000');
 
         $this->assertDatabaseHas('services', [
             'id' => $service->id,

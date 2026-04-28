@@ -16,8 +16,8 @@ x-api-env: &api-env
   APP_ENV: production
   APP_DEBUG: "false"
   APP_KEY: ${APP_KEY}
-  APP_URL: https://api.erp.otospex.dev
-  FRONTEND_URL: https://erp.otospex.dev
+  APP_URL: https://api.riserpos.app
+  FRONTEND_URL: https://riserpos.app
   DB_CONNECTION: pgsql
   DB_HOST: postgres
   DB_PORT: "5432"
@@ -230,10 +230,10 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
-        VITE_API_URL: https://api.erp.otospex.dev
+        VITE_API_URL: https://api.riserpos.app
     restart: unless-stopped
     environment:
-      API_URL: https://api.erp.otospex.dev
+      API_URL: https://api.riserpos.app
     depends_on:
       - api
     healthcheck:

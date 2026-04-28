@@ -196,14 +196,14 @@ class SanctumSpaAuthTest extends TestCase
         $loginRoute = $routes->getByName('auth.login');
         $this->assertNotNull($loginRoute, 'Login route should exist');
 
-        // The api middleware group should be applied
-        // This ensures EnsureFrontendRequestsAreStateful is in the middleware stack
+        // The login route uses 'web' middleware for session/CSRF support
+        // (token-based auth does not require EnsureFrontendRequestsAreStateful)
         $middleware = $loginRoute->middleware();
-        $hasApiMiddleware = collect($middleware)->contains(function ($m) {
-            return $m === 'api' || str_contains((string) $m, 'EnsureFrontendRequestsAreStateful');
+        $hasWebMiddleware = collect($middleware)->contains(function ($m) {
+            return $m === 'web';
         });
 
-        $this->assertTrue($hasApiMiddleware, 'Login route must have api middleware for Sanctum SPA auth');
+        $this->assertTrue($hasWebMiddleware, 'Login route must have web middleware for session/CSRF support');
     }
 
     /**

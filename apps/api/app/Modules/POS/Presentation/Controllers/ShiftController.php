@@ -13,9 +13,11 @@ use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Services\ShiftManagementService;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\POS\Domain\ZReport;
 use App\Modules\POS\Presentation\Requests\CloseShiftRequest;
 use App\Modules\POS\Presentation\Requests\OpenShiftRequest;
 use App\Modules\POS\Presentation\Resources\ShiftResource;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -51,7 +53,7 @@ final class ShiftController extends Controller
 
         try {
             $cashierId = $request->validated('cashier_id');
-            /** @var \App\Modules\Identity\Domain\User $currentUser */
+            /** @var User $currentUser */
             $currentUser = $request->user();
             $cashier = $cashierId
                 ? User::findOrFail($cashierId)
@@ -97,8 +99,19 @@ final class ShiftController extends Controller
             ], 403);
         }
 
+        // Require a Z report before the shift can be closed (BG10)
+        $zReport = ZReport::query()->where('shift_id', $shift->id)->first();
+        if ($zReport === null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'Z_REPORT_REQUIRED',
+                    'message' => 'A Z report must be generated before the shift can be closed.',
+                ],
+            ], 422);
+        }
+
         try {
-            /** @var \App\Modules\Identity\Domain\User $user */
+            /** @var User $user */
             $user = $request->user();
             $closedShift = $this->shiftManagementService->closeShift(
                 $shift,
@@ -182,7 +195,7 @@ final class ShiftController extends Controller
         Gate::authorize('pos.operate_terminal');
 
         $query = Shift::query()
-            ->whereHas('terminal', function (\Illuminate\Database\Eloquent\Builder $q) {
+            ->whereHas('terminal', function (Builder $q) {
                 $q->whereRaw('company_id = ?', [$this->companyContext->requireCompanyId()]);
             })
             ->with(['terminal', 'cashier', 'closedBy']);

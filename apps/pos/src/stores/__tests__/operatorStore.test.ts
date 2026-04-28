@@ -12,13 +12,36 @@ vi.mock('@/lib/db', () => ({
 }));
 
 vi.mock('@/lib/db/repositories/operatorPinRepository', () => ({
-  getAllOperators: vi.fn(),
-  hasOperatorPins: vi.fn(),
+  getAllOperators: vi.fn().mockResolvedValue([]),
+  hasOperatorPins: vi.fn().mockResolvedValue(false),
+  upsertOperators: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('@/lib/db/repositories/queuedPinUpdateRepository', () => ({
+  enqueuePinUpdate: vi.fn().mockResolvedValue(undefined),
+  getPendingPinUpdates: vi.fn().mockResolvedValue([]),
+  markPinUpdateSynced: vi.fn().mockResolvedValue(undefined),
+  markPinUpdateFailed: vi.fn().mockResolvedValue(undefined),
+}));
+
+const defaultUser = {
+  id: 'op-1',
+  name: 'Jane Cashier',
+  email: 'jane@example.com',
+  tenantId: 'tenant-1',
+  phone: null,
+  status: 'active',
+  locale: null,
+  timezone: null,
+  roles: ['cashier'],
+  permissions: ['pos.sell'],
+  emailVerified: true,
+};
+let _authState: Record<string, unknown> = { companyId: 'company-1', user: defaultUser };
 vi.mock('@/stores/authStore', () => ({
   useAuthStore: {
-    getState: vi.fn().mockReturnValue({ companyId: 'company-1' }),
+    getState: vi.fn(() => _authState),
+    setState: vi.fn((patch: Record<string, unknown>) => { _authState = { ..._authState, ...patch }; }),
   },
 }));
 
@@ -49,6 +72,7 @@ const PIN_1234_HASH = bcrypt.hashSync('1234', 10);
 
 describe('operatorStore', () => {
   beforeEach(() => {
+    _authState = { companyId: 'company-1', user: defaultUser };
     useOperatorStore.setState({
       operator: null,
       isLocked: false,
@@ -66,14 +90,28 @@ describe('operatorStore', () => {
     expect(state.hasPins).toBeNull();
   });
 
-  it('verifyPin sets operator and unlocks', async () => {
-    vi.mocked(apiPost).mockResolvedValue(mockOperator);
+  it('verifyPin succeeds via offline bcrypt FIRST without waiting for API', async () => {
+    // Make the API call hang forever to prove we don't block on it.
+    vi.mocked(apiPost).mockImplementation(() => new Promise(() => {}));
+    vi.mocked(getAllOperators).mockResolvedValue([{
+      id: 'op-1',
+      name: 'Jane Cashier',
+      email: 'jane@example.com',
+      pin_hash: PIN_1234_HASH,
+      roles: ['cashier'],
+      permissions: ['pos.sell'],
+      can_discount: true,
+      max_discount_percent: 10,
+    }]);
 
     await useOperatorStore.getState().verifyPin('1234');
 
     const state = useOperatorStore.getState();
-    expect(state.operator).toEqual(mockOperator);
+    expect(state.operator).not.toBeNull();
+    expect(state.operator!.id).toBe('op-1');
     expect(state.isLocked).toBe(false);
+    // API should have been fire-and-forget invoked (for telemetry), but
+    // verifyPin did not await it.
     expect(apiPost).toHaveBeenCalledWith('/pos/auth/verify-pin', { pin: '1234' });
   });
 
@@ -97,6 +135,68 @@ describe('operatorStore', () => {
     expect(state.operator!.id).toBe('op-1');
     expect(state.operator!.name).toBe('Jane Cashier');
     expect(state.isLocked).toBe(false);
+  });
+
+  it('verifyPin falls through to API when offline bcrypt has no match', async () => {
+    vi.mocked(getAllOperators).mockResolvedValue([{
+      id: 'op-1',
+      name: 'Jane Cashier',
+      email: 'jane@example.com',
+      pin_hash: PIN_1234_HASH,
+      roles: ['cashier'],
+      permissions: ['pos.sell'],
+      can_discount: true,
+      max_discount_percent: 10,
+    }]);
+    vi.mocked(apiPost).mockResolvedValue(mockOperator);
+
+    await useOperatorStore.getState().verifyPin('9999');
+
+    const state = useOperatorStore.getState();
+    // API matched on a different operator (mockOperator).
+    expect(state.operator).toEqual(mockOperator);
+    expect(state.isLocked).toBe(false);
+  });
+
+  it('verifyPin rejects when offline miss AND API miss', async () => {
+    vi.mocked(getAllOperators).mockResolvedValue([{
+      id: 'op-1',
+      name: 'Jane Cashier',
+      email: 'jane@example.com',
+      pin_hash: PIN_1234_HASH,
+      roles: ['cashier'],
+      permissions: ['pos.sell'],
+      can_discount: true,
+      max_discount_percent: 10,
+    }]);
+    vi.mocked(apiPost).mockRejectedValue(new Error('Network error'));
+
+    await expect(
+      useOperatorStore.getState().verifyPin('9999'),
+    ).rejects.toThrow('Invalid PIN');
+    expect(useOperatorStore.getState().operator).toBeNull();
+  });
+
+  it('verifyPin does not throw if fire-and-forget telemetry API call rejects', async () => {
+    vi.mocked(getAllOperators).mockResolvedValue([{
+      id: 'op-1',
+      name: 'Jane Cashier',
+      email: 'jane@example.com',
+      pin_hash: PIN_1234_HASH,
+      roles: ['cashier'],
+      permissions: ['pos.sell'],
+      can_discount: true,
+      max_discount_percent: 10,
+    }]);
+    vi.mocked(apiPost).mockRejectedValue(new Error('500 server error'));
+
+    // Offline matches — user-visible result is success — the telemetry
+    // rejection must NOT propagate.
+    await expect(
+      useOperatorStore.getState().verifyPin('1234'),
+    ).resolves.toBeUndefined();
+
+    expect(useOperatorStore.getState().operator!.id).toBe('op-1');
   });
 
   it('rejects wrong PIN in offline mode', async () => {
@@ -161,6 +261,75 @@ describe('operatorStore', () => {
     expect(state.isLocked).toBe(false);
   });
 
+  it('setupPin writes to SQLite and queues sync when backend unreachable', async () => {
+    vi.mocked(apiPost).mockRejectedValueOnce(new Error('network unavailable'));
+    const { enqueuePinUpdate } = await import('@/lib/db/repositories/queuedPinUpdateRepository');
+    const { upsertOperators } = await import('@/lib/db/repositories/operatorPinRepository');
+
+    _authState = {
+      companyId: 'co-1',
+      user: {
+        id: 'user-1',
+        name: 'Admin',
+        email: 'admin@example.com',
+        tenantId: 't1',
+        phone: null,
+        status: 'active',
+        locale: null,
+        timezone: null,
+        roles: ['admin'],
+        permissions: [],
+        emailVerified: true,
+      },
+    };
+
+    await useOperatorStore.getState().setupPin('4321');
+
+    expect(upsertOperators).toHaveBeenCalled();
+    expect(enqueuePinUpdate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ userId: 'user-1', pinHash: expect.any(String) }),
+    );
+    expect(useOperatorStore.getState().hasPins).toBe(true);
+    expect(useOperatorStore.getState().operator?.id).toBe('user-1');
+  });
+
+  it('setupPin fires backend sync immediately when reachable', async () => {
+    vi.mocked(apiPost).mockResolvedValueOnce({
+      id: 'user-1',
+      name: 'Admin',
+      email: 'admin@example.com',
+      roles: ['admin'],
+      permissions: [],
+      can_discount: true,
+      max_discount_percent: 100,
+    });
+    const { enqueuePinUpdate } = await import('@/lib/db/repositories/queuedPinUpdateRepository');
+
+    _authState = {
+      companyId: 'co-1',
+      user: {
+        id: 'user-1',
+        name: 'Admin',
+        email: 'admin@example.com',
+        tenantId: 't1',
+        phone: null,
+        status: 'active',
+        locale: null,
+        timezone: null,
+        roles: ['admin'],
+        permissions: [],
+        emailVerified: true,
+      },
+    };
+
+    await useOperatorStore.getState().setupPin('5678');
+
+    expect(apiPost).toHaveBeenCalledWith('/pos/auth/setup-pin', expect.any(Object));
+    expect(enqueuePinUpdate).not.toHaveBeenCalled();
+    expect(useOperatorStore.getState().hasPins).toBe(true);
+  });
+
   it('checkHasPins returns and stores result from API', async () => {
     vi.mocked(apiGet).mockResolvedValue({ has_pins: true });
 
@@ -197,6 +366,31 @@ describe('operatorStore', () => {
 
     expect(result).toBe(false);
     expect(useOperatorStore.getState().hasPins).toBe(false);
+  });
+
+  it('flaky API does not cause user-visible failure when offline hash matches', async () => {
+    // Simulate the real-world BG8 failure: the first API call throws
+    // (network jitter, CSRF expiry), and the second would succeed.
+    vi.mocked(apiPost)
+      .mockRejectedValueOnce(new Error('TCP reset'))
+      .mockResolvedValueOnce(mockOperator);
+    vi.mocked(getAllOperators).mockResolvedValue([{
+      id: 'op-1',
+      name: 'Jane Cashier',
+      email: 'jane@example.com',
+      pin_hash: PIN_1234_HASH,
+      roles: ['cashier'],
+      permissions: ['pos.sell'],
+      can_discount: true,
+      max_discount_percent: 10,
+    }]);
+
+    // Under offline-first, the first try must succeed on the local hash
+    // and the user never sees the API failure.
+    await expect(
+      useOperatorStore.getState().verifyPin('1234'),
+    ).resolves.toBeUndefined();
+    expect(useOperatorStore.getState().operator!.id).toBe('op-1');
   });
 
   it('lock sets isLocked to true', () => {

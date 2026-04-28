@@ -9,6 +9,9 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { FileText } from 'lucide-react'
 import type { DocumentLine } from '../../../types/document'
+import { DesignationCell } from './DesignationCell'
+import { textColors } from '../../../lib/designTokens'
+import { useLineDesignationFeature } from '../hooks/useLineDesignationFeature'
 
 export interface DocumentLinesProps {
   /** Array of document lines to display */
@@ -31,6 +34,7 @@ export function DocumentLines({
   className = '',
 }: DocumentLinesProps) {
   const { t } = useTranslation(['sales'])
+  const designationFeatureEnabled = useLineDesignationFeature()
 
   return (
     <div className={`rounded-lg border border-gray-200 bg-white ${className}`}>
@@ -89,8 +93,20 @@ export function DocumentLines({
                       <span className="text-gray-900">{line.product_name}</span>
                     )}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
-                    {line.description}
+                  <td className="px-6 py-4 text-sm">
+                    {designationFeatureEnabled ? (
+                      <DesignationCell
+                        value={line.description}
+                        originalSnapshot={line.designation_default_snapshot ?? null}
+                        readOnly={true}
+                        onCommit={() => { /* read-only: no-op */ }}
+                      />
+                    ) : (
+                      <span className={`text-sm ${textColors.primary}`}>{line.description}</span>
+                    )}
+                    {designationFeatureEnabled && line.notes && (
+                      <p className={`mt-0.5 text-xs ${textColors.tertiary}`}>{line.notes}</p>
+                    )}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900">
                     {line.quantity}

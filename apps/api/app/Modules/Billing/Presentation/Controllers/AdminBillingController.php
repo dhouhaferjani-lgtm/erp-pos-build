@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Billing\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\SuperAdmin;
 use App\Modules\Billing\Application\Services\InvoiceService;
 use App\Modules\Billing\Application\Services\PaymentProviderManager;
 use App\Modules\Billing\Domain\Enums\PaymentStatus;
@@ -12,6 +13,7 @@ use App\Modules\Billing\Domain\Invoice;
 use App\Modules\Billing\Domain\Payment;
 use App\Modules\Billing\Domain\Plan;
 use App\Modules\Billing\Domain\TenantSubscription;
+use App\Modules\Billing\Domain\ValueObjects\Money;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -166,7 +168,7 @@ final class AdminBillingController extends Controller
             'due_date' => 'nullable|date|after:today',
         ]);
 
-        /** @var \App\Modules\Tenant\Domain\Tenant $tenant */
+        /** @var Tenant $tenant */
         $tenant = Tenant::findOrFail($validated['tenant_id']);
 
         $invoice = $this->invoiceService->createManualInvoice(
@@ -221,7 +223,7 @@ final class AdminBillingController extends Controller
      */
     public function recordPayment(Request $request): JsonResponse
     {
-        /** @var \App\Models\SuperAdmin $admin */
+        /** @var SuperAdmin $admin */
         $admin = $request->user();
 
         $validated = $request->validate([
@@ -271,7 +273,7 @@ final class AdminBillingController extends Controller
      */
     public function refundPayment(Request $request, string $id): JsonResponse
     {
-        /** @var \App\Models\SuperAdmin $admin */
+        /** @var SuperAdmin $admin */
         $admin = $request->user();
 
         $payment = Payment::findOrFail($id);
@@ -297,7 +299,7 @@ final class AdminBillingController extends Controller
             $provider = $this->providerManager->provider($payment->provider);
             $result = $provider->refund(
                 $payment->provider_payment_id ?? '',
-                new \App\Modules\Billing\Domain\ValueObjects\Money($amount, $payment->currency)
+                new Money($amount, $payment->currency)
             );
 
             if (! $result->success) {

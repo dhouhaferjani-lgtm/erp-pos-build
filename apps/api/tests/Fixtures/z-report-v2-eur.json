@@ -1,0 +1,21 @@
+{
+  "shift": {
+    "opening_cash": "10.00",
+    "opened_at": "2026-04-24T08:00:00Z",
+    "currency_code": "EUR"
+  },
+  "cash_counts": [
+    {
+      "payment_method_id": "11111111-1111-1111-1111-111111111111",
+      "currency_code": "EUR",
+      "expected_amount": "830.00",
+      "actual_amount": "830.00",
+      "variance_amount": "0.00"
+    }
+  ],
+  "totals": {
+    "gross_sales": "1432.50",
+    "net_sales": "1203.78",
+    "tax_amount": "228.72"
+  }
+}

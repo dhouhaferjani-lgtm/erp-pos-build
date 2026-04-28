@@ -9,9 +9,7 @@ use App\Modules\POS\Application\Services\ReceiptCreationService;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Order;
 use App\Modules\POS\Domain\OrderLine;
-use App\Modules\POS\Domain\Receipt;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Str;
 use PHPUnit\Framework\TestCase;
 
 /**

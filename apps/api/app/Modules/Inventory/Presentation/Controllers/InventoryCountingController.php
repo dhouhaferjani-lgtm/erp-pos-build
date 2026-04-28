@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\InventoryCountingService;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\InventoryCounting;
@@ -13,9 +14,13 @@ use App\Modules\Inventory\Presentation\Requests\AddProductToCountingRequest;
 use App\Modules\Inventory\Presentation\Requests\CreateCountingRequest;
 use App\Modules\Inventory\Presentation\Requests\CreateDraftCountingRequest;
 use App\Modules\Inventory\Presentation\Requests\UpdateDraftCountingRequest;
+use App\Modules\Product\Domain\Product;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 class InventoryCountingController extends Controller
 {
@@ -141,7 +146,7 @@ class InventoryCountingController extends Controller
     public function counterView(Request $request, string $countingId): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
 
         $counting = InventoryCounting::forCompany($companyId)->findOrFail($countingId);
@@ -204,7 +209,7 @@ class InventoryCountingController extends Controller
     public function store(CreateCountingRequest $request): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
 
         $counting = $this->countingService->create(
@@ -224,7 +229,7 @@ class InventoryCountingController extends Controller
     public function activate(Request $request, string $countingId): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
 
         $counting = InventoryCounting::forCompany($companyId)->findOrFail($countingId);
@@ -243,7 +248,7 @@ class InventoryCountingController extends Controller
     public function cancel(Request $request, string $countingId): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
 
         $request->validate([
@@ -269,7 +274,7 @@ class InventoryCountingController extends Controller
     public function finalize(Request $request, string $countingId): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
 
         $counting = InventoryCounting::forCompany($companyId)->findOrFail($countingId);
@@ -288,7 +293,7 @@ class InventoryCountingController extends Controller
     public function myTasks(Request $request): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
         $userId = (string) $user->id;
 
@@ -321,7 +326,7 @@ class InventoryCountingController extends Controller
     /**
      * Transform a collection of countings for response.
      *
-     * @param  \Illuminate\Support\Collection<int, InventoryCounting>  $countings
+     * @param  Collection<int, InventoryCounting>  $countings
      * @return array<int, array<string, mixed>>
      */
     private function transformCountings($countings): array
@@ -410,12 +415,12 @@ class InventoryCountingController extends Controller
     public function createDraft(CreateDraftCountingRequest $request): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
         $userId = (string) $user->id;
 
         $counting = new InventoryCounting;
-        $counting->id = (string) \Illuminate\Support\Str::uuid();
+        $counting->id = (string) Str::uuid();
         $counting->company_id = $companyId;
         $counting->created_by_user_id = $userId;
         $counting->created_on_mobile = $request->input('created_on_mobile', true);
@@ -449,7 +454,7 @@ class InventoryCountingController extends Controller
     public function myDrafts(Request $request): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
         $userId = (string) $user->id;
 
@@ -492,7 +497,7 @@ class InventoryCountingController extends Controller
         }
 
         // Check authorization - must be creator or admin
-        /** @var \App\Modules\Identity\Domain\User $authUser */
+        /** @var User $authUser */
         $authUser = $request->user();
         if ($counting->created_by_user_id !== (string) $authUser->id && ! $authUser->hasRole('admin')) {
             return response()->json([
@@ -504,7 +509,7 @@ class InventoryCountingController extends Controller
         $productId = $request->input('product_id');
 
         if (! $productId && $request->has('barcode')) {
-            $product = \App\Modules\Product\Domain\Product::where('barcode', $request->input('barcode'))
+            $product = Product::where('barcode', $request->input('barcode'))
                 ->where('company_id', $companyId)
                 ->first();
 
@@ -536,8 +541,8 @@ class InventoryCountingController extends Controller
         $counting->save();
 
         // Load product details for response
-        /** @var \App\Modules\Product\Domain\Product $product */
-        $product = \App\Modules\Product\Domain\Product::findOrFail($productId);
+        /** @var Product $product */
+        $product = Product::findOrFail($productId);
 
         return response()->json([
             'data' => [
@@ -571,7 +576,7 @@ class InventoryCountingController extends Controller
         }
 
         // Check authorization
-        /** @var \App\Modules\Identity\Domain\User $authUser */
+        /** @var User $authUser */
         $authUser = $request->user();
         if ($counting->created_by_user_id !== (string) $authUser->id && ! $authUser->hasRole('admin')) {
             return response()->json([
@@ -610,7 +615,7 @@ class InventoryCountingController extends Controller
         }
 
         // Check authorization
-        /** @var \App\Modules\Identity\Domain\User $authUser */
+        /** @var User $authUser */
         $authUser = $request->user();
         if ($counting->created_by_user_id !== (string) $authUser->id && ! $authUser->hasRole('admin')) {
             return response()->json([
@@ -680,7 +685,7 @@ class InventoryCountingController extends Controller
         }
 
         // Check authorization
-        /** @var \App\Modules\Identity\Domain\User $authUser */
+        /** @var User $authUser */
         $authUser = $request->user();
         if ($counting->created_by_user_id !== (string) $authUser->id && ! $authUser->hasRole('admin')) {
             return response()->json([
@@ -702,7 +707,7 @@ class InventoryCountingController extends Controller
             ], 422);
         }
 
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
         $activateImmediately = (bool) $request->input('activate_immediately', true);
 
@@ -727,7 +732,7 @@ class InventoryCountingController extends Controller
     public function batchCreateDrafts(Request $request): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
         $userId = (string) $user->id;
 
@@ -756,7 +761,7 @@ class InventoryCountingController extends Controller
             foreach ($request->input('drafts') as $draftData) {
                 try {
                     $counting = new InventoryCounting;
-                    $counting->id = (string) \Illuminate\Support\Str::uuid();
+                    $counting->id = (string) Str::uuid();
                     $counting->company_id = $companyId;
                     $counting->created_by_user_id = $userId;
                     $counting->created_on_mobile = true;
@@ -772,8 +777,8 @@ class InventoryCountingController extends Controller
                     $counting->count_1_user_id = $draftData['count1UserId'] ?? null;
                     $counting->count_2_user_id = $draftData['count2UserId'] ?? null;
                     $counting->count_3_user_id = $draftData['count3UserId'] ?? null;
-                    $counting->scheduled_start = isset($draftData['scheduledStart']) ? \Illuminate\Support\Carbon::parse($draftData['scheduledStart']) : null;
-                    $counting->scheduled_end = isset($draftData['scheduledEnd']) ? \Illuminate\Support\Carbon::parse($draftData['scheduledEnd']) : null;
+                    $counting->scheduled_start = isset($draftData['scheduledStart']) ? Carbon::parse($draftData['scheduledStart']) : null;
+                    $counting->scheduled_end = isset($draftData['scheduledEnd']) ? Carbon::parse($draftData['scheduledEnd']) : null;
                     $counting->last_modified_at = now()->toDateTimeString();
                     $counting->last_modified_by_user_id = $userId;
 
@@ -810,7 +815,7 @@ class InventoryCountingController extends Controller
     public function batchAddProducts(string $id, Request $request): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
         $userId = (string) $user->id;
 
@@ -848,7 +853,7 @@ class InventoryCountingController extends Controller
 
                 // Lookup by barcode if product_id not provided
                 if (! $productId && isset($productData['barcode'])) {
-                    $product = \App\Modules\Product\Domain\Product::where('barcode', $productData['barcode'])
+                    $product = Product::where('barcode', $productData['barcode'])
                         ->where('company_id', $companyId)
                         ->first();
 
@@ -914,7 +919,7 @@ class InventoryCountingController extends Controller
     public function batchUpdateDrafts(Request $request): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $request->user();
         $userId = (string) $user->id;
 
@@ -998,10 +1003,10 @@ class InventoryCountingController extends Controller
                         $counting->count_3_user_id = $data['count3UserId'];
                     }
                     if (isset($data['scheduledStart'])) {
-                        $counting->scheduled_start = \Illuminate\Support\Carbon::parse($data['scheduledStart']);
+                        $counting->scheduled_start = Carbon::parse($data['scheduledStart']);
                     }
                     if (isset($data['scheduledEnd'])) {
-                        $counting->scheduled_end = \Illuminate\Support\Carbon::parse($data['scheduledEnd']);
+                        $counting->scheduled_end = Carbon::parse($data['scheduledEnd']);
                     }
 
                     $counting->last_modified_at = now()->toDateTimeString();

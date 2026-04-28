@@ -16,6 +16,10 @@ const TodaySalesPage = lazy(() =>
   import('@/components/pos/TodaySalesPanel').then((m) => ({ default: m.TodaySalesPage })),
 );
 
+const ZReportListPage = lazy(() =>
+  import('@/pages/ZReportListPage').then((m) => ({ default: m.ZReportListPage })),
+);
+
 export function AppShell() {
   const resetActivityTimer = useOperatorStore((s) => s.resetActivityTimer);
   const lock = useOperatorStore((s) => s.lock);
@@ -88,6 +92,7 @@ export function AppShell() {
             <Route path="/" element={<HomePage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/sales" element={<TodaySalesPage />} />
+            <Route path="/reports/z" element={<ZReportListPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

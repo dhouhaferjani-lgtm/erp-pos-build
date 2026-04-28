@@ -55,12 +55,13 @@ Learn about:
 
 Learn about:
 - Type generation flow (PHP → TypeScript)
-- DTO definition with `#[TypeScript]` attribute
-- Running `php artisan typescript:transform`
-- Three patterns for using generated types
-- Workflow for adding new fields
+- DTO definition with `#[TypeScript]` attribute + snake_case convention
+- `#[DataCollectionOf]` for collection element typing
+- Ambient `App.Modules.*.…` global namespace and re-export pattern
+- CI drift guard + preflight enforcement
+- Monetary-precision gotcha (string fields, `lib/decimal.ts` helpers)
 
-**Key Takeaway:** PHP DTOs are the source of truth; never manually edit `generated.ts`
+**Key Takeaway:** PHP DTOs are the source of truth; never manually edit `generated.d.ts`. See the [pipeline ADR](../adr/2026-04-19-typescript-types-pipeline.md) for the full architectural decisions.
 
 ---
 

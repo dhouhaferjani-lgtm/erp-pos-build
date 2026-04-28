@@ -30,6 +30,17 @@ import enCompliance from '../locales/en/compliance.json'
 import enWithholding from '../locales/en/withholding.json'
 import enMarketing from '../locales/en/marketing.json'
 import enCountries from '../locales/en/countries.json'
+import enProgression from '../locales/en/progression.json'
+import enSmartPrompts from '../locales/en/smart-prompts.json'
+import enEnrichment from '../locales/en/enrichment.json'
+import enWorkshopTechnicians from '../locales/en/workshop-technicians.json'
+import enWorkshopBundles from '../locales/en/workshop-bundles.json'
+import enWorkshopWorkOrders from '../locales/en/workshop-work-orders.json'
+import enScheduling from '../locales/en/scheduling.json'
+import enVehicles from '../locales/en/vehicles.json'
+import enVehicleOwnership from '../locales/en/vehicle-ownership.json'
+import enPickers from '../locales/en/pickers.json'
+import enDocuments from '../locales/en/documents.json'
 
 import frCommon from '../locales/fr/common.json'
 import frAuth from '../locales/fr/auth.json'
@@ -58,6 +69,32 @@ import frCompliance from '../locales/fr/compliance.json'
 import frWithholding from '../locales/fr/withholding.json'
 import frMarketing from '../locales/fr/marketing.json'
 import frCountries from '../locales/fr/countries.json'
+import frProgression from '../locales/fr/progression.json'
+import frSmartPrompts from '../locales/fr/smart-prompts.json'
+import frEnrichment from '../locales/fr/enrichment.json'
+import frWorkshopTechnicians from '../locales/fr/workshop-technicians.json'
+import frWorkshopBundles from '../locales/fr/workshop-bundles.json'
+import frWorkshopWorkOrders from '../locales/fr/workshop-work-orders.json'
+import frScheduling from '../locales/fr/scheduling.json'
+import frVehicles from '../locales/fr/vehicles.json'
+import frVehicleOwnership from '../locales/fr/vehicle-ownership.json'
+import frPickers from '../locales/fr/pickers.json'
+import frDocuments from '../locales/fr/documents.json'
+
+// Arabic: fully translated AutoSpecs + shared foundations (🟠-4 Tunisia Go-Live).
+// Other namespaces still fall back to the EN bundle below.
+import arCommon from '../locales/ar/common.json'
+import arValidation from '../locales/ar/validation.json'
+import arWorkshopBundles from '../locales/ar/workshop-bundles.json'
+import arWorkshopTechnicians from '../locales/ar/workshop-technicians.json'
+import arWorkshopWorkOrders from '../locales/ar/workshop-work-orders.json'
+import arVehicles from '../locales/ar/vehicles.json'
+import arVehicleOwnership from '../locales/ar/vehicle-ownership.json'
+import arScheduling from '../locales/ar/scheduling.json'
+import arPickers from '../locales/ar/pickers.json'
+import arMenu from '../locales/ar/menu.json'
+import arPartsCatalog from '../locales/ar/parts-catalog.json'
+import arDocuments from '../locales/ar/documents.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -96,6 +133,17 @@ const resources = {
     withholding: enWithholding,
     marketing: enMarketing,
     countries: enCountries,
+    progression: enProgression,
+    'smart-prompts': enSmartPrompts,
+    enrichment: enEnrichment,
+    'workshop-technicians': enWorkshopTechnicians,
+    'workshop-bundles': enWorkshopBundles,
+    'workshop-work-orders': enWorkshopWorkOrders,
+    scheduling: enScheduling,
+    vehicles: enVehicles,
+    'vehicle-ownership': enVehicleOwnership,
+    pickers: enPickers,
+    documents: enDocuments,
   },
   fr: {
     common: frCommon,
@@ -125,36 +173,60 @@ const resources = {
     withholding: frWithholding,
     marketing: frMarketing,
     countries: frCountries,
+    progression: frProgression,
+    'smart-prompts': frSmartPrompts,
+    enrichment: frEnrichment,
+    'workshop-technicians': frWorkshopTechnicians,
+    'workshop-bundles': frWorkshopBundles,
+    'workshop-work-orders': frWorkshopWorkOrders,
+    scheduling: frScheduling,
+    vehicles: frVehicles,
+    'vehicle-ownership': frVehicleOwnership,
+    pickers: frPickers,
+    documents: frDocuments,
   },
   ar: {
-    // Arabic falls back to English - translations to be added later
-    common: enCommon,
+    // 🟠-4 Tunisia Go-Live: AutoSpecs namespaces + shared foundations are now
+    // fully translated. Non-AutoSpecs namespaces still fall back to EN until
+    // IziPOS localization closes those gaps (tracked separately).
+    common: arCommon,
     auth: enAuth,
     sales: enSales,
     inventory: enInventory,
     treasury: enTreasury,
-    validation: enValidation,
+    validation: arValidation,
     pricing: enPricing,
     finance: enFinance,
     import: enImport,
-    settings: enSettings, // Fallback to English
+    settings: enSettings,
     uom: enUom,
     products: enProducts,
     parapharmacy: enParapharmacy,
     batches: enBatches,
     pos: enPos,
     catalog: enCatalog,
-    menu: enMenu,
+    menu: arMenu,
     promotions: enPromotions,
     coupons: enCoupons,
     categories: enCategories,
     crm: enCrm,
-    'parts-catalog': enPartsCatalog,
+    'parts-catalog': arPartsCatalog,
     loyalty: enLoyalty,
     compliance: enCompliance,
     withholding: enWithholding,
     marketing: enMarketing,
     countries: enCountries,
+    progression: enProgression,
+    'smart-prompts': enSmartPrompts,
+    enrichment: enEnrichment,
+    'workshop-technicians': arWorkshopTechnicians,
+    'workshop-bundles': arWorkshopBundles,
+    'workshop-work-orders': arWorkshopWorkOrders,
+    scheduling: arScheduling,
+    vehicles: arVehicles,
+    'vehicle-ownership': arVehicleOwnership,
+    pickers: arPickers,
+    documents: arDocuments,
   },
 }
 
@@ -165,7 +237,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

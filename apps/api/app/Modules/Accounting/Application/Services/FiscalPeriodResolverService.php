@@ -7,6 +7,7 @@ namespace App\Modules\Accounting\Application\Services;
 use App\Modules\Company\Domain\FiscalPeriod;
 use App\Modules\Company\Domain\FiscalYear;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 /**
@@ -259,9 +260,9 @@ class FiscalPeriodResolverService
      * Useful for UI dropdowns showing available periods for transaction posting.
      *
      * @param  string  $fiscalYearId  UUID of the fiscal year
-     * @return \Illuminate\Database\Eloquent\Collection<int, FiscalPeriod>
+     * @return Collection<int, FiscalPeriod>
      */
-    public function getOpenPeriodsForYear(string $fiscalYearId): \Illuminate\Database\Eloquent\Collection
+    public function getOpenPeriodsForYear(string $fiscalYearId): Collection
     {
         return FiscalPeriod::query()
             ->where('fiscal_year_id', $fiscalYearId)

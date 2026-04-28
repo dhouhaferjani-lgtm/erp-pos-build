@@ -14,6 +14,8 @@ use App\Modules\Loyalty\Domain\Entities\Enrollment;
 use App\Modules\Loyalty\Domain\Entities\LoyaltyMember;
 use App\Modules\Loyalty\Domain\Entities\Reward;
 use App\Modules\Loyalty\Domain\Enums\EnrollmentStatus;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -120,11 +122,11 @@ class LoyaltyPOSController extends Controller
 
         $company = $this->companyContext->requireCompany();
         $enrollment = Enrollment::where('id', $enrollmentId)
-            ->whereHas('member', fn (\Illuminate\Database\Eloquent\Builder $q) => $q->whereRaw('tenant_id = ?', [$company->tenant_id]))
+            ->whereHas('member', fn (Builder $q) => $q->whereRaw('tenant_id = ?', [$company->tenant_id]))
             ->with('program.rewards')
             ->firstOrFail();
 
-        /** @var \Illuminate\Database\Eloquent\Collection<int, Reward> $availableRewards */
+        /** @var Collection<int, Reward> $availableRewards */
         $availableRewards = $enrollment->program->rewards
             ->filter(function (Reward $reward) use ($enrollment) {
                 return $reward->is_active

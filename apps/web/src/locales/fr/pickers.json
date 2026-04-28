@@ -1,0 +1,47 @@
+{
+  "common": {
+    "searchPlaceholder": "Rechercher…",
+    "loading": "Chargement…",
+    "error": "Impossible de charger les résultats.",
+    "clear": "Effacer la sélection",
+    "close": "Fermer",
+    "minCharacters": "Saisissez au moins 2 caractères pour rechercher."
+  },
+  "partner": {
+    "label": "Client",
+    "searchPlaceholder": "Rechercher un client par nom, e-mail ou matricule fiscal…",
+    "empty": "Aucun partenaire correspondant.",
+    "addNew": "Ajouter un nouveau client",
+    "selectedChip": "Client sélectionné",
+    "typeChip": {
+      "customer": "Client",
+      "supplier": "Fournisseur",
+      "both": "Client et fournisseur"
+    }
+  },
+  "vehicle": {
+    "label": "Véhicule",
+    "searchPlaceholder": "Rechercher un véhicule par plaque, VIN, marque ou modèle…",
+    "empty": "Aucun véhicule correspondant.",
+    "emptyForPartner": "Ce client n'a pas encore de véhicule.",
+    "addNew": "Ajouter un nouveau véhicule",
+    "selectedChip": "Véhicule sélectionné",
+    "disabledHint": "Sélectionnez d'abord un client."
+  },
+  "bundle": {
+    "label": "Forfait",
+    "triggerPlaceholder": "Choisir un forfait…",
+    "changeBundle": "Changer de forfait",
+    "noBundleSelected": "Aucun forfait sélectionné"
+  },
+  "product": {
+    "label": "Pièce",
+    "searchPlaceholder": "Rechercher une pièce par nom ou SKU…",
+    "empty": "Aucune pièce correspondante."
+  },
+  "service": {
+    "label": "Prestation",
+    "searchPlaceholder": "Rechercher une prestation par nom ou code…",
+    "empty": "Aucune prestation correspondante."
+  }
+}

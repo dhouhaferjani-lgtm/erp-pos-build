@@ -17,13 +17,15 @@ final class MenuResolutionServiceTest extends TestCase
     use RefreshDatabase;
 
     private MenuResolutionService $service;
+
     private Tenant $tenant;
+
     private Company $company;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new MenuResolutionService();
+        $this->service = new MenuResolutionService;
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
     }

@@ -6,6 +6,7 @@ namespace App\Modules\Taxation\Domain\Services;
 
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\Entities\WithholdingTaxRule;
+use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Taxation\Domain\Enums\TransactionType;
 use App\Modules\Taxation\Domain\ValueObjects\WithholdingCalculation;
 use Carbon\Carbon;
@@ -138,7 +139,7 @@ class WithholdingCalculationService
      * @param  numeric-string  $amount
      */
     private function findApplicableRule(
-        \App\Modules\Taxation\Domain\Enums\PartnerTaxStatus $partnerStatus,
+        PartnerTaxStatus $partnerStatus,
         string $amount,
         string $countryCode,
         ?string $companyId,

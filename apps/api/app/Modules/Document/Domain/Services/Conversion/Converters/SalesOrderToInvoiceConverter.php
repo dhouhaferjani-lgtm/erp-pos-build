@@ -15,6 +15,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\Conversion\Concerns\CopiesDocumentData;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterInterface;
+use App\Modules\Document\Domain\Services\Conversion\StripSubToleranceDiscountsService;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Treasury\Domain\PaymentAllocation;
@@ -63,6 +64,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
         private readonly FEFOInventoryService $fefoService,
         private readonly LocationContext $locationContext,
         protected readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly StripSubToleranceDiscountsService $discountStripper,
     ) {}
 
     public function sourceType(): DocumentType
@@ -171,6 +173,13 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
             } else {
                 $this->copyLines($source, $invoice);
             }
+
+            // Strip sub-tolerance discounts BEFORE recalculateTotals so the
+            // resulting invoice's subtotal/tax/total correctly reflect the
+            // post-strip state. Defense-in-depth at the conversion stage
+            // catches anything the request validator missed (e.g. a sales
+            // order created before Phase 4 was deployed).
+            $this->discountStripper->stripFromConvertedDocument($source, $invoice);
 
             // Recalculate totals
             $this->recalculateTotals($invoice);
@@ -538,6 +547,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
                             'tax_rate' => $line->tax_rate,
                             'line_total' => $lineTotal,
                             'notes' => $line->notes,
+                            'designation_default_snapshot' => $line->designation_default_snapshot,
                             'source_line_id' => $line->id,
                             'batch_id' => $suggestion->batch->id,
                         ]);
@@ -559,6 +569,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
                         'tax_rate' => $line->tax_rate,
                         'line_total' => $line->line_total ?? '0.00',
                         'notes' => $line->notes,
+                        'designation_default_snapshot' => $line->designation_default_snapshot,
                         'source_line_id' => $line->id,
                     ]);
 
@@ -584,6 +595,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
                     'tax_rate' => $line->tax_rate,
                     'line_total' => $line->line_total ?? '0.00',
                     'notes' => $line->notes,
+                    'designation_default_snapshot' => $line->designation_default_snapshot,
                     'source_line_id' => $line->id,
                 ]);
             }

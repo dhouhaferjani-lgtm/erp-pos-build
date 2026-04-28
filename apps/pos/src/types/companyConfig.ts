@@ -8,4 +8,7 @@ export interface ReceiptVisibility {
 export interface CompanyConfig {
   all_enabled_modules: string[];
   receipt_visibility?: ReceiptVisibility;
+  vertical?: string;
+  smart_prompts_enabled?: boolean;
+  smart_prompts_variant?: 'inline' | 'toast' | 'both' | 'off';
 }

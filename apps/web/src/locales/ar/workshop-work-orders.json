@@ -1,0 +1,123 @@
+{
+  "list": {
+    "title": "أوامر العمل",
+    "subtitle": "الأعمال في الورشة، من الاستلام إلى الفوترة.",
+    "loading": "جارٍ تحميل أوامر العمل…",
+    "errorLoading": "تعذّر تحميل أوامر العمل",
+    "paginationSummary": "عرض {{shown}} من {{total}}",
+    "empty": {
+      "title": "لا توجد أوامر عمل بعد",
+      "body": "افتح أمر عمل جديدًا من شاشة الاستلام لبدء عمل."
+    }
+  },
+  "detail": {
+    "loading": "جارٍ تحميل أمر العمل…",
+    "notFound": "لم يتم العثور على أمر العمل",
+    "backToList": "العودة إلى أوامر العمل",
+    "lines": "البنود",
+    "noLines": "لا توجد بنود بعد.",
+    "assignments": "الإسناد",
+    "noAssignments": "لا يوجد فنيّون مُسنَدون.",
+    "lead": "المسؤول",
+    "history": "السجلّ",
+    "invoice_link": "عرض الفاتورة #{{number}}"
+  },
+  "complete_dialog": {
+    "title": "إتمام أمر العمل",
+    "mileage_label": "قراءة عدّاد المسافات عند الإتمام",
+    "mileage_hint": "اتركه فارغًا لتخطّي تسجيل المسافة",
+    "confirm": "إتمام",
+    "cancel": "إلغاء"
+  },
+  "create": {
+    "title": "أمر عمل جديد",
+    "subtitle": "ابدأ عملًا جديدًا من الاستلام.",
+    "customer_label": "العميل",
+    "vehicle_label": "المركبة"
+  },
+  "filters": {
+    "status": "الحالة",
+    "anyStatus": "أي حالة"
+  },
+  "status": {
+    "received": "مُستَلم",
+    "diagnosed": "تمّ التشخيص",
+    "quoted": "تمّ تقديم عرض",
+    "approved": "موافَق عليه",
+    "in_progress": "قيد التنفيذ",
+    "paused": "موقوف مؤقّتًا",
+    "waiting_parts": "بانتظار القطع",
+    "completed": "مكتمل",
+    "invoiced": "مفوتر",
+    "closed": "مُغلَق",
+    "cancelled": "مُلغى"
+  },
+  "workOrderType": {
+    "repair": "إصلاح",
+    "maintenance": "صيانة",
+    "inspection": "فحص",
+    "bodywork": "هيكل وصفائح",
+    "tire_service": "خدمة الإطارات",
+    "electrical": "كهرباء",
+    "diagnostic": "تشخيص",
+    "other": "أخرى"
+  },
+  "approvalMethod": {
+    "in_person": "حضوريًا",
+    "phone": "عبر الهاتف",
+    "email": "عبر البريد الإلكتروني",
+    "sms": "رسالة نصّية",
+    "signed_document": "وثيقة موقّعة"
+  },
+  "actions": {
+    "newWorkOrder": "أمر عمل جديد",
+    "approve": "تسجيل الموافقة",
+    "complete": "إنهاء العمل",
+    "cancel": "إلغاء",
+    "create": "إنشاء",
+    "creating": "جارٍ الإنشاء…",
+    "transitionTo": {
+      "received": "تأشير كمُستَلم",
+      "diagnosed": "تسجيل التشخيص",
+      "quoted": "إصدار عرض سعر",
+      "approved": "تأشير كموافَق عليه",
+      "in_progress": "بدء العمل",
+      "paused": "إيقاف مؤقّت",
+      "waiting_parts": "بانتظار القطع",
+      "completed": "إتمام",
+      "invoiced": "إصدار فاتورة",
+      "closed": "إغلاق",
+      "cancelled": "إلغاء"
+    }
+  },
+  "fields": {
+    "type": "النوع",
+    "currency": "العملة",
+    "customerComplaint": "شكوى العميل"
+  },
+  "totals": {
+    "title": "المجاميع",
+    "estimated": "التقديري",
+    "actual": "الفعلي",
+    "parts": "القطع",
+    "labor": "اليد العاملة",
+    "other": "أخرى",
+    "tax": "الضريبة",
+    "grand": "المجموع الكلّي",
+    "redacted": "المجاميع المالية مقيّدة. تواصل مع المدير إذا احتجت إلى الاطّلاع عليها."
+  },
+  "labels": {
+    "notSet": "—",
+    "unassigned": "غير مُسنَد",
+    "done": "منجز",
+    "mileageKm": "{{value}} كم"
+  },
+  "transitions": {
+    "errors": {
+      "work_order_no_lines": "تعذّرت الفوترة: أضف بندًا واحدًا على الأقل أولًا.",
+      "invalid_transition": "هذا الانتقال غير مسموح به من الحالة الحالية.",
+      "work_order_stale": "تم تحديث طلب العمل من قِبَل مستخدم آخر. يُرجى التحديث وإعادة المحاولة.",
+      "generic": "تعذّر تحديث طلب العمل. يُرجى المحاولة مرة أخرى."
+    }
+  }
+}

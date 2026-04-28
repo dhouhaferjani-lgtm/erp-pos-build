@@ -9,6 +9,7 @@ use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Document\Domain\Events\DeliveryNoteConfirmed;
 use App\Modules\Document\Domain\Events\DocumentConverted;
 use App\Modules\Document\Domain\Events\DocumentFullyPaid;
+use App\Modules\Document\Domain\Events\DocumentLineDiscountStrippedAtConversion;
 use App\Modules\Document\Domain\Events\DraftDocumentCreated;
 use App\Modules\Document\Domain\Events\DraftLineAdded;
 use App\Modules\Document\Domain\Events\DraftLineModified;
@@ -32,6 +33,7 @@ use App\Modules\POS\Domain\Events\TerminalDeactivated;
 use App\Modules\POS\Domain\Events\TerminalSoftwareUpdated;
 use App\Modules\POS\Domain\Events\TerminalTrainingModeChanged;
 use App\Modules\POS\Domain\Events\ZReportGenerated;
+use App\Modules\Treasury\Domain\Events\InvoiceClosedWithTolerance;
 use App\Modules\Treasury\Domain\Events\PaymentRecorded;
 use App\Shared\Domain\Events\DomainEvent;
 use Illuminate\Events\Dispatcher;
@@ -696,6 +698,69 @@ final class DomainEventSubscriber
     }
 
     /**
+     * Handle InvoiceClosedWithTolerance — A2 B2B close-with-writeoff audit trail.
+     *
+     * The journal entry alone records what changed in the GL, but does not
+     * link it back to the user action. The audit row gives us actor + invoice
+     * + writeoff amount in one place for compliance review.
+     */
+    public function handleInvoiceClosedWithTolerance(InvoiceClosedWithTolerance $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Document',
+            aggregateId: $event->invoiceId,
+            eventType: $event->getEventName(),
+            payload: [
+                'invoice_id' => $event->invoiceId,
+                'partner_id' => $event->partnerId,
+                'amount_written_off' => $event->amountWrittenOff,
+                'currency' => $event->currency,
+                'gl_entry_id' => $event->glEntryId,
+                'closed_by' => $event->closedBy,
+                'occurred_at' => $event->occurredAtTimestamp->format(DATE_ATOM),
+            ]
+        );
+    }
+
+    /**
+     * Handle DocumentLineDiscountStrippedAtConversion — Phase 4 / Task 14
+     * audit trail for the auto-strip of sub-tolerance discounts at document
+     * conversion. Mirrors the InvoiceClosedWithTolerance pattern: the
+     * line/document mutation is observable in the data, but only this audit
+     * row carries actor + original-discount + tolerance-margin + occurred-at
+     * in one place for compliance review.
+     */
+    public function handleDocumentLineDiscountStrippedAtConversion(
+        DocumentLineDiscountStrippedAtConversion $event,
+    ): void {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Document',
+            aggregateId: $event->targetDocumentId,
+            eventType: $event->getEventName(),
+            payload: [
+                'line_id' => $event->lineId,
+                'source_line_id' => $event->sourceLineId,
+                'source_document_id' => $event->sourceDocumentId,
+                'target_document_id' => $event->targetDocumentId,
+                'source_document_number' => $event->sourceDocumentNumber,
+                'target_document_number' => $event->targetDocumentNumber,
+                'source_type' => $event->sourceType,
+                'target_type' => $event->targetType,
+                'original_discount_amount' => $event->originalDiscountAmount,
+                'tolerance_margin' => $event->toleranceMargin,
+                'subtotal' => $event->subtotal,
+                'currency_code' => $event->currencyCode,
+                'user_id' => $event->userId,
+                'stripped_at' => $event->strippedAt,
+            ]
+        );
+    }
+
+    /**
      * Persist an event to the audit log.
      *
      * @param  array<string, mixed>  $payload
@@ -764,6 +829,12 @@ final class DomainEventSubscriber
             // Sales order events (fraud detection)
             SalesOrderConfirmed::class => 'handleSalesOrderConfirmed',
             SalesOrderCancelled::class => 'handleSalesOrderCancelled',
+
+            // Treasury events (audit trail for B2B close-with-writeoff)
+            InvoiceClosedWithTolerance::class => 'handleInvoiceClosedWithTolerance',
+
+            // Document events (audit trail for Phase-4 conversion auto-strip)
+            DocumentLineDiscountStrippedAtConversion::class => 'handleDocumentLineDiscountStrippedAtConversion',
 
             // Stock reservation events (fraud detection)
             ReservationCreated::class => 'handleReservationCreated',

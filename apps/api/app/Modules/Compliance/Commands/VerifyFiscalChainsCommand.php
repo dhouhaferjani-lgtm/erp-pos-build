@@ -10,6 +10,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Collection;
 
 class VerifyFiscalChainsCommand extends Command
 {
@@ -40,7 +41,7 @@ class VerifyFiscalChainsCommand extends Command
         $companyId = $this->option('company');
         $documentType = $this->option('type');
 
-        /** @var \Illuminate\Database\Eloquent\Collection<int, Company> $companies */
+        /** @var Collection<int, Company> $companies */
         $companies = $companyId
             ? Company::where('id', $companyId)->get()
             : Company::all();
@@ -66,7 +67,7 @@ class VerifyFiscalChainsCommand extends Command
                 : [DocumentType::Invoice, DocumentType::CreditNote];
 
             foreach ($types as $type) {
-                $result = $this->verifyChainForCompanyAndType($company->id, $type);
+                $result = $this->verifyChainForCompanyAndType($company->id, $type, $company->fiscal_chain_seed);
 
                 $totalDocuments += $result['count'];
 
@@ -104,7 +105,7 @@ class VerifyFiscalChainsCommand extends Command
     /**
      * @return array{valid: bool, count: int, failed_at: int|null, details: string|null}
      */
-    private function verifyChainForCompanyAndType(string $companyId, DocumentType $type): array
+    private function verifyChainForCompanyAndType(string $companyId, DocumentType $type, ?string $genesisSeed): array
     {
         $documents = Document::where('company_id', $companyId)
             ->where('type', $type)
@@ -143,8 +144,11 @@ class VerifyFiscalChainsCommand extends Command
                 'currency' => $document->currency,
             ]);
 
+            // Pass the company's genesis seed so the genesis document (previousHash === null)
+            // recomputes to the same hash that was written by DocumentPostingService.
             $storedHash = $document->fiscal_hash ?? '';
-            if (! $this->hashService->verifyHash($input, $previousHash, $storedHash)) {
+            $seedForThisDoc = $previousHash === null ? $genesisSeed : null;
+            if (! $this->hashService->verifyHash($input, $previousHash, $storedHash, $seedForThisDoc)) {
                 return [
                     'valid' => false,
                     'count' => $documents->count(),

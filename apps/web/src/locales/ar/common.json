@@ -1,0 +1,1234 @@
+{
+  "appName": "AutoERP",
+  "by": "بواسطة",
+  "select": "اختر…",
+  "selectCountry": "اختر الدولة",
+  "actions": {
+    "save": "حفظ",
+    "cancel": "إلغاء",
+    "delete": "حذف",
+    "edit": "تعديل",
+    "create": "إنشاء",
+    "update": "تحديث",
+    "add": "إضافة",
+    "search": "بحث",
+    "filter": "تصفية",
+    "view": "عرض",
+    "back": "عودة",
+    "next": "التالي",
+    "previous": "السابق",
+    "close": "إغلاق",
+    "open": "فتح",
+    "confirm": "تأكيد",
+    "submit": "إرسال",
+    "reset": "إعادة ضبط",
+    "clear": "مسح",
+    "viewAll": "عرض الكل",
+    "enable": "تفعيل",
+    "disable": "تعطيل",
+    "expand": "توسيع",
+    "collapse": "طيّ",
+    "newQuote": "عرض سعر جديد",
+    "newInvoice": "فاتورة جديدة",
+    "addVehicle": "إضافة مركبة",
+    "select": "اختر…",
+    "downloadPdf": "تحميل PDF",
+    "previewPdf": "معاينة PDF",
+    "printPdf": "طباعة",
+    "downloading": "جارٍ التحميل…",
+    "generating": "جارٍ الإنشاء…",
+    "sendEmail": "إرسال بريد إلكتروني",
+    "sending": "جارٍ الإرسال…",
+    "tryAgain": "حاول مرة أخرى",
+    "refreshPage": "تحديث الصفحة",
+    "goHome": "الذهاب إلى الرئيسية",
+    "retry": "إعادة المحاولة",
+    "import": "استيراد",
+    "export": "تصدير"
+  },
+  "common": {
+    "create": "إنشاء",
+    "update": "تحديث",
+    "saving": "جارٍ الحفظ…",
+    "error": "حدث خطأ",
+    "loading": "جارٍ التحميل…",
+    "noData": "لا توجد بيانات متاحة",
+    "confirmDelete": "هل أنت متأكد من حذف {{resource}}؟",
+    "confirmDeleteTitle": "تأكيد الحذف",
+    "errorCreating": "خطأ في إنشاء {{resource}}",
+    "errorUpdating": "خطأ في تحديث {{resource}}",
+    "errorDeleting": "خطأ في حذف {{resource}}",
+    "selectOption": "اختر خيارًا…",
+    "leaveBlankForAutoGenerate": "اتركه فارغًا للتوليد التلقائي",
+    "status": "الحالة",
+    "custom": "مخصّص"
+  },
+  "validation": {
+    "required": "هذا الحقل مطلوب",
+    "invalidEmail": "عنوان البريد الإلكتروني غير صالح",
+    "invalidPhone": "رقم الهاتف غير صالح",
+    "invalidNumber": "الرقم غير صالح",
+    "minLength": "يجب ألّا يقلّ الطول عن {{min}} أحرف",
+    "maxLength": "يجب ألّا يتجاوز الطول {{max}} حرفًا",
+    "minAmount": "الحدّ الأدنى للمبلغ هو {{amount}}",
+    "terminalCodeFormat": "يجب أن يحتوي رمز الطرفية على حروف كبيرة وأرقام فقط"
+  },
+  "errorMessages": {
+    "generic": "حدث خطأ. يرجى المحاولة مرة أخرى."
+  },
+  "status": {
+    "loading": "جارٍ التحميل…",
+    "saving": "جارٍ الحفظ…",
+    "creating": "جارٍ الإنشاء…",
+    "processing": "جارٍ المعالجة…",
+    "noResults": "لا توجد نتائج",
+    "error": "حدث خطأ",
+    "success": "تمّت العملية بنجاح",
+    "active": "نشط",
+    "overdue": "متأخّر",
+    "current": "حالي",
+    "unknown": "غير معروف",
+    "inactive": "غير نشط",
+    "draft": "مسوّدة",
+    "confirmed": "مؤكَّد",
+    "posted": "مُرحَّل",
+    "cancelled": "مُلغى",
+    "pending": "قيد الانتظار",
+    "completed": "مكتمل",
+    "failed": "فشل",
+    "refunded": "مُستردّ",
+    "tryDifferentSearch": "جرّب كلمة بحث مختلفة.",
+    "noDocuments": "لا توجد وثائق",
+    "noDocumentsDescription": "لم يتمّ إنشاء أي وثيقة لهذا العميل بعد.",
+    "noPayments": "لا توجد مدفوعات",
+    "noPaymentsDescription": "لم تُسجَّل أي دفعة لهذا العميل بعد.",
+    "noVehicles": "لا توجد مركبات",
+    "noVehiclesDescription": "لم تُربَط أي مركبة بهذا العميل بعد."
+  },
+  "filtersLabel": "عوامل التصفية",
+  "filters": {
+    "all": "الكل",
+    "active": "نشط",
+    "inactive": "غير نشط"
+  },
+  "fields": {
+    "name": "الاسم",
+    "type": "النوع",
+    "status": "الحالة",
+    "contact": "جهة الاتصال",
+    "email": "البريد الإلكتروني",
+    "phone": "الهاتف",
+    "address": "العنوان",
+    "taxId": "الرقم الضريبي",
+    "notes": "ملاحظات",
+    "created": "تاريخ الإنشاء",
+    "documentNumber": "رقم الوثيقة",
+    "amount": "المبلغ",
+    "date": "التاريخ",
+    "paymentNumber": "رقم الدفعة",
+    "method": "الطريقة",
+    "licensePlate": "رقم اللوحة",
+    "vehicle": "المركبة",
+    "year": "السنة",
+    "vin": "رقم الهيكل (VIN)",
+    "totalReceivable": "إجمالي المقبوضات",
+    "totalPayable": "إجمالي المدفوعات",
+    "description": "الوصف"
+  },
+  "partner": {
+    "unallocatedBalance": "رصيد غير مخصّص",
+    "unallocatedBalanceHint": "من {{count}} دفعة غير مخصّصة",
+    "creditAvailable": "رصيد دائن متاح للتطبيق على الفواتير",
+    "noBalance": "لا يوجد رصيد"
+  },
+  "tabs": {
+    "overview": "نظرة عامة",
+    "documents": "الوثائق",
+    "payments": "المدفوعات",
+    "vehicles": "المركبات"
+  },
+  "sections": {
+    "balance": "الرصيد",
+    "contactInfo": "معلومات الاتصال",
+    "businessInfo": "معلومات النشاط التجاري"
+  },
+  "errors": {
+    "realtimeConnectionFailed": "التحديثات الفورية غير متاحة. قد لا تظهر التغييرات تلقائيًا.",
+    "locationsFetchFailed": "تعذّر تحميل المواقع.",
+    "operationFailed": "فشلت العملية. يرجى المحاولة مرة أخرى."
+  },
+  "dashboard": {
+    "title": "لوحة التحكم",
+    "welcome": "مرحبًا بعودتك! هذه آخر التحديثات.",
+    "newQuote": "عرض سعر جديد",
+    "newInvoice": "فاتورة جديدة",
+    "revenue": "الإيرادات",
+    "overdueCount": "{{count}} متأخّر",
+    "invoices": "الفواتير",
+    "pendingCount": "{{count}} قيد الانتظار",
+    "newCount": "+{{count}} جديد",
+    "partners": "الشركاء",
+    "paymentsReceived": "المدفوعات المستلمة",
+    "pendingAmount": "{{amount}} قيد الانتظار",
+    "recentDocuments": "الوثائق الأخيرة",
+    "noRecentDocuments": "لا توجد وثائق حديثة",
+    "recentPayments": "المدفوعات الأخيرة",
+    "noRecentPayments": "لا توجد مدفوعات حديثة"
+  },
+  "navigation": {
+    "dashboard": "لوحة التحكم",
+    "sales": "المبيعات",
+    "customers": "العملاء",
+    "quotes": "عروض الأسعار",
+    "salesOrders": "طلبات البيع",
+    "invoices": "الفواتير",
+    "creditNotes": "إشعارات الدائن",
+    "deliveryNotes": "بيانات التسليم",
+    "purchases": "المشتريات",
+    "suppliers": "المورّدون",
+    "purchaseOrders": "أوامر الشراء",
+    "goodsReceipts": "استلام البضائع",
+    "returnNotes": "بيانات الإرجاع",
+    "inventoryAndCatalog": "المخزون والكتالوج",
+    "inventory": "المخزون",
+    "products": "المنتجات",
+    "categories": "الفئات",
+    "batches": "الدفعات",
+    "stockLevels": "مستويات المخزون",
+    "stockMovements": "حركات المخزون",
+    "counting": "جرد المخزون",
+    "enrichmentQueue": "قائمة الإثراء",
+    "inventoryCounting": "جرد المخزون",
+    "priceLists": "قوائم الأسعار",
+    "compositeItems": "العناصر المركّبة",
+    "modifierGroups": "مجموعات الإضافات",
+    "menus": "القوائم",
+    "pointOfSale": "نقطة البيع",
+    "openPos": "فتح نقطة البيع",
+    "posOrders": "الطلبات",
+    "tables": "إدارة الطاولات",
+    "kitchen": "شاشة المطبخ",
+    "terminals": "الطرفيات",
+    "transactions": "المعاملات",
+    "shifts": "الورديات",
+    "shiftHistory": "سجلّ الورديات",
+    "receipts": "الإيصالات",
+    "marketing": "التسويق",
+    "promotions": "العروض الترويجية",
+    "coupons": "القسائم",
+    "loyaltyPrograms": "برامج الولاء",
+    "loyaltyMembers": "أعضاء الولاء",
+    "companies": "الشركات",
+    "contacts": "جهات الاتصال",
+    "bankingAndPayments": "البنوك والمدفوعات",
+    "accountingAndReports": "المحاسبة والتقارير",
+    "payments": "المدفوعات",
+    "expenses": "المصروفات",
+    "withholdingCertificates": "شهادات الخصم من المنبع",
+    "bankReconciliation": "التسوية البنكية",
+    "finance": "المالية",
+    "chartOfAccounts": "دليل الحسابات",
+    "generalLedger": "دفتر الأستاذ العام",
+    "journalEntries": "قيود اليومية",
+    "trialBalance": "ميزان المراجعة",
+    "profitLoss": "قائمة الأرباح والخسائر",
+    "balanceSheet": "الميزانية العمومية",
+    "agedReceivables": "تحليل أعمار المقبوضات",
+    "agedPayables": "تحليل أعمار المدفوعات",
+    "vatReporting": "تقارير ضريبة القيمة المضافة",
+    "analytics": "التحليلات",
+    "zReports": "تقارير Z",
+    "automotive": "السيارات",
+    "vehicles": "المركبات",
+    "services": "الخدمات",
+    "allServices": "جميع الخدمات",
+    "serviceCategories": "الفئات",
+    "workshopBundles": "باقات الخدمات",
+    "workshopWorkOrders": "أوامر العمل",
+    "partsCatalog": "كتالوج القطع",
+    "parts-catalog": "كتالوج القطع",
+    "workshopTechnicians": "فريق الورشة",
+    "workshopPayrollExports": "تصدير الرواتب",
+    "scheduling": "جدولة المواعيد",
+    "parapharmacy": "المنتجات شبه الصيدلانية",
+    "ingredients": "المكوّنات",
+    "certifications": "الشهادات",
+    "healthClaims": "الادعاءات الصحية",
+    "keyComponents": "المكوّنات الرئيسية",
+    "settings": "الإعدادات",
+    "locations": "المواقع",
+    "treasury": "الخزينة",
+    "expenseCategories": "فئات المصروفات",
+    "instruments": "الأدوات",
+    "paymentMethods": "طرق الدفع",
+    "repositories": "الصناديق",
+    "pricing": "التسعير",
+    "reports": "التقارير",
+    "pos": "نقطة البيع",
+    "catalog": "الكتالوج",
+    "crm": "إدارة علاقات العملاء",
+    "compliance": "تصدير الامتثال"
+  },
+  "locations": {
+    "title": "إدارة المواقع",
+    "subtitle": "أدِر مواقع نشاطك التجاري والمستودعات والمتاجر",
+    "addLocation": "إضافة موقع",
+    "editLocation": "تعديل الموقع",
+    "deleteLocation": "حذف الموقع",
+    "setDefault": "تعيين كافتراضي",
+    "default": "افتراضي",
+    "posEnabled": "نقطة البيع مفعّلة",
+    "code": "الرمز",
+    "types": {
+      "shop": "متجر",
+      "warehouse": "مستودع",
+      "office": "مكتب",
+      "mobile": "وحدة متنقّلة"
+    },
+    "form": {
+      "name": "اسم الموقع",
+      "namePlaceholder": "أدخل اسم الموقع",
+      "type": "نوع الموقع",
+      "code": "رمز الموقع",
+      "codePlaceholder": "يُولَّد تلقائيًا إذا ترك فارغًا",
+      "phone": "الهاتف",
+      "email": "البريد الإلكتروني",
+      "address": "عنوان الشارع",
+      "city": "المدينة",
+      "postalCode": "الرمز البريدي",
+      "country": "الدولة",
+      "posEnabled": "تفعيل نقطة البيع"
+    },
+    "empty": {
+      "title": "لا توجد مواقع بعد",
+      "description": "ابدأ بإنشاء أوّل موقع."
+    },
+    "deleteConfirm": {
+      "title": "حذف الموقع",
+      "message": "هل أنت متأكد من حذف \"{{name}}\"؟ لا يمكن التراجع عن هذا الإجراء.",
+      "cannotDeleteDefault": "لا يمكن حذف الموقع الافتراضي. يرجى تعيين موقع آخر كافتراضي أولًا."
+    },
+    "messages": {
+      "created": "تمّ إنشاء الموقع بنجاح",
+      "updated": "تمّ تحديث الموقع بنجاح",
+      "deleted": "تمّ حذف الموقع بنجاح",
+      "defaultSet": "تمّ تحديث الموقع الافتراضي"
+    }
+  },
+  "table": {
+    "actionsColumn": "الإجراءات",
+    "noData": "لا توجد بيانات"
+  },
+  "pagination": {
+    "showing": "عرض {{from}} إلى {{to}} من {{total}} نتيجة",
+    "previous": "السابق",
+    "next": "التالي",
+    "rowsPerPage": "صفوف في الصفحة",
+    "page": "صفحة",
+    "of": "من",
+    "item": "عنصر",
+    "items": "عناصر"
+  },
+  "clearAll": "مسح الكل",
+  "activeFilters": "{{count}} عامل تصفية نشط",
+  "remove": "إزالة",
+  "sort": "ترتيب",
+  "sortBy": "ترتيب حسب",
+  "ascending": "تصاعدي",
+  "descending": "تنازلي",
+  "confirmation": {
+    "delete": "هل أنت متأكد من حذف هذا العنصر؟",
+    "unsavedChanges": "لديك تغييرات غير محفوظة. هل أنت متأكد من المغادرة؟"
+  },
+  "loading": "جارٍ التحميل…",
+  "noData": "لا توجد بيانات",
+  "error": "خطأ",
+  "details": "التفاصيل",
+  "cancel": "إلغاء",
+  "retry": "إعادة المحاولة",
+  "save": "حفظ",
+  "saving": "جارٍ الحفظ…",
+  "creating": "جارٍ الإنشاء…",
+  "processing": "جارٍ المعالجة…",
+  "back": "عودة",
+  "previous": "السابق",
+  "next": "التالي",
+  "view": "عرض",
+  "viewAll": "عرض الكل",
+  "viewDetails": "عرض التفاصيل",
+  "clear": "مسح",
+  "yes": "نعم",
+  "no": "لا",
+  "none": "لا شيء",
+  "active": "نشط",
+  "inactive": "غير نشط",
+  "optional": "اختياري",
+  "continue": "متابعة",
+  "dismiss": "تجاهل",
+  "clearFilters": "مسح عوامل التصفية",
+  "all": "الكل",
+  "actionsLabel": "الإجراءات",
+  "allStatuses": "جميع الحالات",
+  "edit": "تعديل",
+  "download": "تحميل",
+  "preview": "معاينة",
+  "print": "طباعة",
+  "send": "إرسال",
+  "delete": "حذف",
+  "confirm": "تأكيد",
+  "convert": "تحويل",
+  "reports": {
+    "description": "نظرة عامة على أداء نشاطك التجاري",
+    "metrics": {
+      "totalInvoiced": "إجمالي المفوتر",
+      "totalCollected": "إجمالي المحصّل",
+      "outstanding": "غير المحصّل",
+      "quotesPending": "عروض الأسعار المعلّقة",
+      "toCollect": "للتحصيل"
+    },
+    "subtitles": {
+      "invoices": "{{count}} فاتورة",
+      "payments": "{{count}} دفعة",
+      "quotes": "{{count}} عرض سعر"
+    },
+    "sections": {
+      "documentSummary": "ملخّص الوثائق",
+      "partners": "الشركاء",
+      "inventory": "المخزون",
+      "lowStockAlert": "تنبيه مخزون منخفض"
+    },
+    "labels": {
+      "quotes": "عروض الأسعار",
+      "salesOrders": "طلبات البيع",
+      "invoices": "الفواتير",
+      "totalDocuments": "إجمالي الوثائق",
+      "customers": "العملاء",
+      "suppliers": "المورّدون",
+      "totalProducts": "إجمالي المنتجات",
+      "lowStock": "مخزون منخفض"
+    },
+    "table": {
+      "product": "المنتج",
+      "currentStock": "المخزون الحالي",
+      "reorderPoint": "نقطة إعادة الطلب"
+    },
+    "moreProducts": "و{{count}} منتج إضافي…"
+  },
+  "fiscal": {
+    "category": {
+      "label": "الفئة الضريبية",
+      "nonFiscal": "غير ضريبي",
+      "fiscalReceipt": "إيصال ضريبي",
+      "taxInvoice": "فاتورة ضريبية",
+      "creditNote": "إشعار دائن"
+    },
+    "status": {
+      "label": "الحالة الضريبية",
+      "draft": "مسوّدة",
+      "sealed": "مُختَم",
+      "voided": "مُلغى"
+    },
+    "sealed": "هذه الوثيقة مختومة ضريبيًا ولا يمكن تعديلها",
+    "cannotDelete": "لا يمكن حذف الوثائق الضريبية",
+    "immutable": "غير قابل للتعديل"
+  },
+  "openingBalances": {
+    "title": "الأرصدة الافتتاحية",
+    "description": "استورد الأرصدة الافتتاحية من نظامك السابق",
+    "progressOverview": "نظرة عامة على التقدّم",
+    "batchesLocked": "{{locked}} من أصل {{total}} دفعة مُقفَلة",
+    "selectBatchType": "اختر نوع الدفعة المراد استيرادها",
+    "types": {
+      "accounting": {
+        "title": "المحاسبة (GL)",
+        "description": "استورد أرصدة الحسابات (الأصول، الالتزامات، حقوق الملكية)"
+      },
+      "inventory": {
+        "title": "المخزون الابتدائي",
+        "description": "استورد كميّات المنتجات وتكاليفها حسب الموقع"
+      },
+      "arOpenItems": {
+        "title": "ذمم العملاء المفتوحة",
+        "description": "استورد فواتير العملاء غير المسدّدة"
+      },
+      "apOpenItems": {
+        "title": "ذمم المورّدين المفتوحة",
+        "description": "استورد فواتير المورّدين غير المسدّدة"
+      }
+    },
+    "status": {
+      "draft": "مسوّدة",
+      "validated": "مُعتَمد",
+      "locked": "مُقفَل",
+      "notStarted": "لم يبدأ"
+    },
+    "wizard": {
+      "title": "استيراد الرصيد الافتتاحي",
+      "backToList": "العودة إلى الأرصدة الافتتاحية",
+      "steps": {
+        "setup": "الإعداد",
+        "upload": "الرفع",
+        "validate": "التحقّق",
+        "preview": "المعاينة",
+        "post": "الترحيل",
+        "lock": "القفل",
+        "complete": "الإكمال"
+      },
+      "setup": {
+        "title": "إعداد الدفعة",
+        "description": "اضبط إعدادات دفعة الرصيد الافتتاحي",
+        "batchName": "اسم الدفعة",
+        "batchNamePlaceholder": "مثال: الافتتاح الأوّلي — جانفي 2025",
+        "cutoverDate": "تاريخ القطع",
+        "cutoverDateHint": "التاريخ الذي تعكس الأرصدة دقّته",
+        "sourceSystem": "النظام المصدر (اختياري)",
+        "sourceSystemPlaceholder": "مثال: Sage أو QuickBooks أو Excel"
+      },
+      "upload": {
+        "title": "رفع البيانات",
+        "description": "ارفع ملف CSV يحتوي على بيانات الرصيد الافتتاحي",
+        "dropzone": "أفلت ملف CSV هنا أو انقر للاختيار",
+        "dropzoneHint": "يدعم ملفات CSV حتى 10 ميغابايت",
+        "expectedColumns": "الأعمدة المتوقّعة",
+        "downloadTemplate": "تنزيل القالب",
+        "fileSelected": "تمّ اختيار الملف",
+        "rowsFound": "تمّ العثور على {{count}} صف",
+        "preview": "معاينة (أوّل 5 صفوف)"
+      },
+      "validate": {
+        "title": "التحقّق من البيانات",
+        "description": "راجع نتائج التحقّق وصحّح الأخطاء",
+        "validating": "جارٍ التحقّق…",
+        "summary": "ملخّص التحقّق",
+        "totalRows": "إجمالي الصفوف",
+        "validRows": "صالحة",
+        "invalidRows": "غير صالحة",
+        "skippedRows": "متخطّاة",
+        "showOnlyErrors": "عرض الأخطاء فقط",
+        "rowDetails": "تفاصيل الصف",
+        "row": "الصف",
+        "status": "الحالة",
+        "errors": "الأخطاء",
+        "valid": "صالح",
+        "invalid": "غير صالح",
+        "skipped": "متخطّى",
+        "noErrors": "لم يُعثَر على أخطاء تحقّق",
+        "hasErrors": "يرجى تصحيح الأخطاء قبل المتابعة"
+      },
+      "preview": {
+        "title": "معاينة التغييرات",
+        "description": "راجع ما سيُنشَأ عند ترحيل هذه الدفعة",
+        "loading": "جارٍ تحميل المعاينة…",
+        "accounting": {
+          "journalEntry": "قيد يومية",
+          "account": "الحساب",
+          "debit": "مدين",
+          "credit": "دائن"
+        },
+        "inventory": {
+          "stockMovements": "حركات المخزون",
+          "product": "المنتج",
+          "location": "الموقع",
+          "quantity": "الكمية",
+          "unitCost": "تكلفة الوحدة",
+          "totalValue": "القيمة الإجمالية",
+          "glEntry": "قيد دفتر الأستاذ"
+        },
+        "arAp": {
+          "documents": "الوثائق",
+          "documentNumber": "رقم الوثيقة الخارجي",
+          "partner": "الشريك",
+          "date": "التاريخ",
+          "dueDate": "تاريخ الاستحقاق",
+          "total": "المجموع",
+          "openAmount": "المبلغ المفتوح"
+        }
+      },
+      "post": {
+        "title": "ترحيل الدفعة",
+        "description": "أنشئ القيود في نظامك المحاسبي",
+        "posting": "جارٍ الترحيل…",
+        "postButton": "ترحيل الدفعة",
+        "confirmPost": "سيؤدّي هذا إلى إنشاء جميع قيود اليومية وحركات المخزون. هل تودّ المتابعة؟"
+      },
+      "lock": {
+        "title": "قفل الدفعة",
+        "description": "أنهِ هذه الدفعة واقفلها",
+        "warningTitle": "تحذير هام",
+        "warning1": "بمجرد القفل، لا يمكن تعديل هذه الدفعة أو حذفها",
+        "warning2": "ستصبح جميع القيود نهائية وغير قابلة للتعديل",
+        "warning3": "تأكّد من التحقّق من جميع البيانات قبل القفل",
+        "confirmTitle": "جاهز للقفل",
+        "confirmDescription": "بقفل هذه الدفعة، فإنك تؤكّد أنّ جميع الأرصدة الافتتاحية دقيقة ومراجَعة.",
+        "locking": "جارٍ القفل…",
+        "lockButton": "قفل الدفعة"
+      },
+      "complete": {
+        "title": "اكتمل الاستيراد",
+        "description": "تمّ قفل دفعة الرصيد الافتتاحي بنجاح",
+        "summary": "الملخّص",
+        "batchId": "معرّف الدفعة",
+        "lockedAt": "تاريخ القفل",
+        "lockedBy": "أُقفلت بواسطة",
+        "hash": "البصمة (Hash)",
+        "viewJournalEntries": "عرض قيود اليومية",
+        "startAnother": "بدء استيراد آخر",
+        "backToOverview": "العودة إلى النظرة العامة"
+      }
+    },
+    "messages": {
+      "batchCreated": "تمّ إنشاء دفعة الرصيد الافتتاحي",
+      "importSuccess": "تمّ استيراد الملف بنجاح",
+      "validationSuccess": "اكتمل التحقّق",
+      "postSuccess": "تمّ ترحيل الدفعة بنجاح",
+      "lockSuccess": "تمّ قفل الدفعة بنجاح",
+      "error": "حدث خطأ",
+      "deleteConfirm": "هل أنت متأكد من حذف هذه الدفعة؟",
+      "deleted": "تمّ حذف الدفعة بنجاح"
+    },
+    "columns": {
+      "accounting": {
+        "accountCode": "رمز الحساب",
+        "debit": "مدين",
+        "credit": "دائن"
+      },
+      "inventory": {
+        "productCode": "رمز المنتج",
+        "locationCode": "رمز الموقع",
+        "quantity": "الكمية",
+        "unitCost": "تكلفة الوحدة"
+      },
+      "arOpenItems": {
+        "customerCode": "رمز العميل",
+        "invoiceNumber": "رقم الفاتورة",
+        "issueDate": "تاريخ الإصدار",
+        "dueDate": "تاريخ الاستحقاق",
+        "currency": "العملة",
+        "total": "المجموع",
+        "openAmount": "المبلغ المفتوح"
+      },
+      "apOpenItems": {
+        "supplierCode": "رمز المورّد",
+        "invoiceNumber": "رقم الفاتورة",
+        "issueDate": "تاريخ الإصدار",
+        "dueDate": "تاريخ الاستحقاق",
+        "currency": "العملة",
+        "total": "المجموع",
+        "openAmount": "المبلغ المفتوح"
+      }
+    }
+  },
+  "services": {
+    "title": "الخدمات",
+    "addService": "إضافة خدمة",
+    "editService": "تعديل الخدمة",
+    "manageCategories": "إدارة الفئات",
+    "searchPlaceholder": "ابحث عن الخدمات…",
+    "noServices": "لا توجد خدمات",
+    "noServicesDescription": "ابدأ بإنشاء خدمة جديدة.",
+    "serviceCount": {
+      "singular": "خدمة",
+      "plural": "خدمات"
+    },
+    "pricingType": "نوع التسعير",
+    "category": "الفئة",
+    "pricingTypes": {
+      "flatRate": "سعر ثابت",
+      "hourly": "بالساعة",
+      "percentage": "نسبة مئوية"
+    },
+    "fields": {
+      "code": "الرمز",
+      "name": "الاسم",
+      "description": "الوصف",
+      "category": "الفئة",
+      "price": "السعر",
+      "basePrice": "السعر الأساسي",
+      "hourlyRate": "أجر الساعة",
+      "duration": "المدّة",
+      "taxRate": "نسبة الضريبة"
+    },
+    "categories": {
+      "title": "فئات الخدمات",
+      "addCategory": "إضافة فئة",
+      "editCategory": "تعديل الفئة",
+      "noCategories": "لا توجد فئات",
+      "noCategoriesDescription": "أنشئ فئات لتنظيم خدماتك.",
+      "parentCategory": "الفئة الأم",
+      "rootCategory": "فئة جذر"
+    },
+    "form": {
+      "basicInfo": "المعلومات الأساسية",
+      "pricing": "التسعير",
+      "codePlaceholder": "مثال: SRV-001",
+      "namePlaceholder": "مثال: تغيير الزيت",
+      "descriptionPlaceholder": "وصف الخدمة…",
+      "selectCategory": "اختر الفئة",
+      "noCategory": "لا توجد فئة",
+      "durationMinutes": "المدّة (بالدقائق)",
+      "durationHint": "مدّة الخدمة التقديرية",
+      "taxRateHint": "اتركه فارغًا لاستخدام نسبة الضريبة الافتراضية"
+    },
+    "messages": {
+      "created": "تمّ إنشاء الخدمة بنجاح",
+      "updated": "تمّ تحديث الخدمة بنجاح",
+      "deleted": "تمّ حذف الخدمة بنجاح",
+      "categoryCreated": "تمّ إنشاء الفئة بنجاح",
+      "categoryUpdated": "تمّ تحديث الفئة بنجاح",
+      "categoryDeleted": "تمّ حذف الفئة بنجاح"
+    }
+  },
+  "total": "المجموع",
+  "views": {
+    "list": "عرض قائمة",
+    "grid": "عرض شبكة"
+  },
+  "users": {
+    "title": "إدارة المستخدمين",
+    "count": "{{count}} مستخدم",
+    "count_plural": "{{count}} مستخدمين",
+    "addUser": "إضافة مستخدم",
+    "searchPlaceholder": "ابحث عن المستخدمين…",
+    "errorLoading": "خطأ في تحميل المستخدمين. يرجى المحاولة مرة أخرى.",
+    "empty": {
+      "title": "لا يوجد مستخدمون",
+      "noResults": "لا توجد نتائج",
+      "getStarted": "ابدأ بإضافة مستخدم جديد.",
+      "tryDifferent": "جرّب كلمة بحث مختلفة."
+    },
+    "table": {
+      "user": "المستخدم",
+      "role": "الدور",
+      "status": "الحالة",
+      "lastLogin": "آخر دخول",
+      "actions": "الإجراءات"
+    },
+    "statusLabels": {
+      "active": "نشط",
+      "inactive": "غير نشط",
+      "pending": "قيد الانتظار",
+      "locked": "مُقفَل"
+    },
+    "filterTabs": {
+      "all": "الكل",
+      "active": "نشط",
+      "inactive": "غير نشط",
+      "pending": "قيد الانتظار"
+    },
+    "actions": {
+      "activate": "تفعيل",
+      "deactivate": "تعطيل",
+      "resetPassword": "إعادة تعيين كلمة المرور",
+      "setPosPin": "تعيين رمز PIN لنقطة البيع",
+      "delete": "حذف"
+    },
+    "confirmations": {
+      "deactivate": "هل أنت متأكد من تعطيل هذا المستخدم؟",
+      "delete": "هل أنت متأكد من حذف هذا المستخدم؟ لا يمكن التراجع عن هذا الإجراء."
+    },
+    "messages": {
+      "created": "تمّ إنشاء المستخدم بنجاح. تمّ إرسال رسالة دعوة.",
+      "activated": "تمّ تفعيل المستخدم بنجاح.",
+      "deactivated": "تمّ تعطيل المستخدم بنجاح.",
+      "passwordReset": "تمّ إرسال رسالة إعادة تعيين كلمة المرور بنجاح.",
+      "deleted": "تمّ حذف المستخدم بنجاح.",
+      "pinSet": "تمّ تعيين رمز PIN لنقطة البيع بنجاح.",
+      "pinCleared": "تمّ مسح رمز PIN لنقطة البيع."
+    },
+    "modal": {
+      "title": "إضافة مستخدم جديد",
+      "nameLabel": "الاسم",
+      "namePlaceholder": "جون دو",
+      "emailLabel": "البريد الإلكتروني",
+      "emailPlaceholder": "john@example.com",
+      "phoneLabel": "الهاتف",
+      "phonePlaceholder": "+216 71 234 567",
+      "roleLabel": "الدور",
+      "invitationNote": "ستُرسَل رسالة دعوة إلى المستخدم تتضمّن تعليمات لتعيين كلمة المرور.",
+      "emailOptionalHint": "البريد الإلكتروني اختياري للصرّافين. يمكنهم استخدام رمز PIN لتسجيل الدخول على الطرفية.",
+      "cashierPinNote": "سيستخدم هذا الصرّاف رمز PIN لتسجيل الدخول إلى نقطة البيع. يمكنك تعيين الرمز بعد إنشاء الحساب.",
+      "createUser": "إنشاء المستخدم"
+    },
+    "pinModal": {
+      "title": "تعيين رمز PIN لنقطة البيع",
+      "pinLabel": "رمز PIN (4 إلى 6 أرقام)",
+      "clearPin": "مسح الرمز"
+    },
+    "validation": {
+      "nameRequired": "الاسم مطلوب",
+      "emailRequired": "البريد الإلكتروني مطلوب",
+      "invalidEmail": "تنسيق البريد الإلكتروني غير صالح",
+      "invalidPin": "يجب أن يتكوّن رمز PIN من 4 إلى 6 أرقام",
+      "roleRequired": "الدور مطلوب"
+    },
+    "never": "أبدًا"
+  },
+  "auditLogs": {
+    "title": "سجلّات التدقيق",
+    "description": "تتبّع جميع الإجراءات الإدارية",
+    "loading": "جارٍ تحميل سجلّات التدقيق…",
+    "empty": "لا توجد سجلّات تدقيق بعد",
+    "table": {
+      "date": "التاريخ",
+      "admin": "المسؤول",
+      "action": "الإجراء",
+      "tenant": "المستأجر",
+      "notes": "ملاحظات"
+    }
+  },
+  "purchases": {
+    "supplierInvoiceNumber": "رقم فاتورة المورّد",
+    "supplierInvoiceNumberPlaceholder": "مثال: INV-2025-001",
+    "supplierInvoiceDate": "تاريخ فاتورة المورّد"
+  },
+  "settings": {
+    "title": "الإعدادات",
+    "description": "أدِر إعدادات التطبيق والتكوين",
+    "sections": {
+      "users": {
+        "title": "المستخدمون",
+        "description": "أدِر حسابات المستخدمين والوصول"
+      },
+      "roles": {
+        "title": "الأدوار والصلاحيات",
+        "description": "اضبط الأدوار والصلاحيات الخاصة بها"
+      },
+      "company": {
+        "title": "الشركة",
+        "description": "معلومات الشركة والهوية البصرية"
+      },
+      "tax": {
+        "title": "إعدادات الضرائب",
+        "description": "اضبط نسب الضرائب وإعدادات السنة المالية"
+      },
+      "inventory": {
+        "title": "المخزون والتسعير",
+        "description": "اضبط طرق التكلفة والهوامش وحجز المخزون"
+      },
+      "import": {
+        "title": "استيراد البيانات",
+        "description": "استورد البيانات من ملفات CSV أو Excel"
+      },
+      "openingBalances": {
+        "title": "الأرصدة الافتتاحية",
+        "description": "استورد الأرصدة الافتتاحية من النظام السابق"
+      }
+    },
+    "appInfo": {
+      "title": "معلومات التطبيق",
+      "version": "الإصدار",
+      "environment": "البيئة",
+      "apiUrl": "رابط الـ API",
+      "buildDate": "تاريخ البناء",
+      "notConfigured": "غير مكوَّن"
+    }
+  },
+  "roles": {
+    "title": "الأدوار والصلاحيات",
+    "subtitle": "{{count}} دور | {{permCount}} صلاحية",
+    "addRole": "إضافة دور",
+    "editRole": "تعديل الدور",
+    "createRole": "إنشاء دور",
+    "deleteRole": "حذف الدور",
+    "roleName": "اسم الدور",
+    "roleNamePlaceholder": "مثال: مدير مبيعات",
+    "permissions": "الصلاحيات",
+    "permissionMatrix": "مصفوفة الصلاحيات",
+    "permissionMatrixDescription": "اعرض الصلاحيات المعيّنة لكل دور",
+    "selectPermissions": "اختر الصلاحيات لهذا الدور",
+    "usersAssigned": "{{count}} مستخدم مُعيَّن",
+    "noUsers": "لا يوجد مستخدمون معيَّنون",
+    "systemRole": "دور نظام",
+    "systemRoleHint": "لا يمكن إعادة تسمية أو حذف أدوار النظام",
+    "clickToEdit": "انقر للتعديل",
+    "empty": {
+      "title": "لا توجد أدوار",
+      "description": "ابدأ بإنشاء أوّل دور."
+    },
+    "confirmations": {
+      "delete": {
+        "title": "حذف الدور",
+        "message": "هل أنت متأكد من حذف دور \"{{name}}\"؟ لا يمكن التراجع عن هذا الإجراء.",
+        "confirm": "حذف الدور"
+      }
+    },
+    "messages": {
+      "created": "تمّ إنشاء الدور بنجاح",
+      "updated": "تمّ تحديث الدور بنجاح",
+      "deleted": "تمّ حذف الدور بنجاح",
+      "cannotDeleteSystem": "لا يمكن حذف أدوار النظام",
+      "cannotDeleteWithUsers": "لا يمكن حذف دور به مستخدمون. أعد تعيين المستخدمين أولًا."
+    },
+    "validation": {
+      "nameRequired": "اسم الدور مطلوب",
+      "nameExists": "يوجد دور بهذا الاسم بالفعل"
+    },
+    "info": {
+      "title": "إدارة الأدوار",
+      "description": "أنشئ أدوارًا مخصّصة لتحديد ما يمكن للمستخدمين فعله في التطبيق. لا يمكن تعديل أدوار النظام (admin، owner)."
+    }
+  },
+  "email": {
+    "title": "إرسال الوثيقة عبر البريد الإلكتروني",
+    "recipientEmail": "بريد المستلم",
+    "recipientEmailPlaceholder": "email@example.com",
+    "recipientEmailHint": "اتركه فارغًا لاستخدام بريد الشريك",
+    "subject": "الموضوع",
+    "subjectPlaceholder": "موضوع مخصّص للرسالة (اختياري)",
+    "message": "الرسالة",
+    "messagePlaceholder": "أضف رسالة مخصّصة (اختياري)",
+    "ccEmails": "نسخة",
+    "ccEmailsPlaceholder": "مستلمون إضافيون (مفصولون بفواصل)",
+    "send": "إرسال البريد",
+    "sending": "جارٍ الإرسال…",
+    "success": "تمّ إرسال البريد بنجاح",
+    "error": "فشل إرسال البريد",
+    "noRecipient": "لم يُعثَر على عنوان بريد للمستلم"
+  },
+  "reconciliation": {
+    "title": "التسوية البنكية",
+    "subtitle": "طابق كشوف البنك مع المدفوعات المسجّلة",
+    "startNew": "بدء التسوية",
+    "continue": "متابعة التسوية",
+    "viewDetails": "عرض التفاصيل",
+    "statementDate": "تاريخ الكشف",
+    "statementBalance": "رصيد الكشف",
+    "openingBalance": "الرصيد الافتتاحي",
+    "closingBalance": "الرصيد الختامي",
+    "difference": "الفرق",
+    "repository": "الحساب البنكي / الصندوق",
+    "selectRepository": "اختر الحساب المراد تسويته",
+    "status": {
+      "draft": "قيد التنفيذ",
+      "completed": "مكتمل",
+      "cancelled": "مُلغى"
+    },
+    "items": {
+      "title": "المعاملات",
+      "matched": "مطابقة",
+      "unmatched": "غير مطابقة",
+      "matchAll": "مطابقة الكل",
+      "unmatchAll": "إلغاء مطابقة الكل",
+      "match": "مطابقة",
+      "unmatch": "إلغاء المطابقة",
+      "bankReference": "مرجع البنك",
+      "bankReferencePlaceholder": "أدخل مرجع البنك (اختياري)",
+      "paymentDate": "تاريخ الدفع",
+      "paymentReference": "المرجع",
+      "paymentAmount": "المبلغ",
+      "partner": "الشريك"
+    },
+    "summary": {
+      "title": "ملخّص التسوية",
+      "matchedCount": "المعاملات المطابقة",
+      "unmatchedCount": "المعاملات غير المطابقة",
+      "matchedTotal": "إجمالي المطابقة",
+      "unmatchedTotal": "إجمالي غير المطابقة",
+      "canComplete": "جاهز للإنهاء",
+      "cannotComplete": "يجب أن يكون الفرق صفرًا للإنهاء"
+    },
+    "actions": {
+      "complete": "إنهاء التسوية",
+      "cancel": "إلغاء التسوية",
+      "save": "حفظ التقدّم"
+    },
+    "confirmations": {
+      "complete": {
+        "title": "إنهاء التسوية",
+        "message": "هل أنت متأكد من إنهاء هذه التسوية؟ سيتمّ تأشير المدفوعات المطابقة كمسوّاة.",
+        "confirm": "إنهاء"
+      },
+      "cancel": {
+        "title": "إلغاء التسوية",
+        "message": "هل أنت متأكد من إلغاء هذه التسوية؟ ستُفقد جميع عمليات المطابقة.",
+        "confirm": "إلغاء التسوية"
+      }
+    },
+    "messages": {
+      "started": "بدأت التسوية",
+      "completed": "اكتملت التسوية بنجاح",
+      "cancelled": "تمّ إلغاء التسوية",
+      "itemMatched": "تمّت مطابقة المعاملة",
+      "itemUnmatched": "تمّ إلغاء مطابقة المعاملة",
+      "differenceWarning": "يوجد فرق بقيمة {{amount}}. يرجى حلّه قبل الإنهاء."
+    },
+    "empty": {
+      "title": "لا توجد تسويات",
+      "description": "ابدأ جلسة تسوية جديدة لمطابقة كشوف البنك مع المدفوعات المسجّلة."
+    },
+    "filters": {
+      "all": "الكل",
+      "inProgress": "قيد التنفيذ",
+      "completed": "مكتمل"
+    },
+    "table": {
+      "date": "التاريخ",
+      "repository": "الحساب",
+      "statementBalance": "الكشف",
+      "difference": "الفرق",
+      "status": "الحالة",
+      "createdBy": "أنشأه"
+    }
+  },
+  "catalog": {
+    "categories": {
+      "title": "الفئات",
+      "create": "إنشاء فئة",
+      "edit": "تعديل الفئة",
+      "name": "اسم الفئة",
+      "description": "الوصف",
+      "parent": "الفئة الأم",
+      "noCategory": "لا توجد فئة",
+      "tree": "شجرة الفئات",
+      "cannotDelete": "لا يمكن حذف فئة تحتوي على منتجات أو فئات فرعية",
+      "selectCategory": "اختر الفئة…",
+      "rootCategory": "فئة جذر (بدون أم)",
+      "productsCount": "{{count}} منتج"
+    },
+    "products": {
+      "category": "الفئة"
+    }
+  },
+  "pos": {
+    "title": "نقطة البيع",
+    "exitFullscreen": "الخروج من نقطة البيع",
+    "quickCheckout": "دفع سريع",
+    "advancedPayments": "مدفوعات متقدّمة",
+    "completeTransaction": "إتمام المعاملة",
+    "subtotal": "المجموع الفرعي",
+    "tax": "الضريبة",
+    "total": "المجموع",
+    "remaining": "المتبقّي",
+    "paymentMethod": "طريقة الدفع",
+    "paymentDistribution": "توزيع المدفوعات",
+    "totalDue": "المستحقّ",
+    "totalPaid": "المدفوع",
+    "useRemaining": "استخدم المتبقّي",
+    "discount": "الخصم",
+    "voucher": "قسيمة",
+    "overpaymentDetected": "تمّ اكتشاف دفعة زائدة",
+    "overpaymentAmount": "الفائض: {{amount}}",
+    "giveChange": "إعطاء الباقي للعميل",
+    "addToCustomerCredit": "إضافة إلى رصيد حساب العميل",
+    "customerBalance": "رصيد العميل",
+    "accountCredit": "رصيد دائن",
+    "outstandingInvoices": "الفواتير غير المسدّدة",
+    "applyCreditToPayment": "تطبيق الرصيد على الدفعة",
+    "allocateToInvoices": "تخصيص لفواتير مفتوحة",
+    "allocateToInvoicesDescription": "تطبيق الدفعة على فواتير محدّدة",
+    "due": "المستحقّ",
+    "cartSummary": "ملخّص السلّة",
+    "calculator": "الآلة الحاسبة",
+    "shift": "الوردية",
+    "operations": "العمليات",
+    "generateXReport": "إنشاء تقرير X",
+    "xReportGenerated": "تمّ إنشاء تقرير X بنجاح",
+    "xReportError": "فشل إنشاء تقرير X",
+    "cashDeposit": "إيداع نقدي",
+    "cashPayout": "سحب نقدي",
+    "pauseShift": "إيقاف الوردية مؤقّتًا",
+    "openShift": "فتح الوردية",
+    "enterOpeningCash": "أدخل المبلغ النقدي الابتدائي في الدرج",
+    "openingCash": "النقدية الافتتاحية",
+    "openingCashHelp": "احسب جميع الأوراق والقطع النقدية في درج الكاشير قبل بدء الوردية",
+    "openingCashMustBePositive": "يجب أن تكون النقدية الافتتاحية موجبة",
+    "mustOpenShift": "يجب فتح وردية قبل استخدام نقطة البيع",
+    "mustOpenShiftWarning": "لا يمكنك استخدام نقطة البيع دون فتح وردية",
+    "shiftOpened": "تمّ فتح الوردية بنجاح",
+    "shiftOpenError": "فشل فتح الوردية",
+    "openingShift": "جارٍ فتح الوردية…",
+    "startShift": "بدء الوردية",
+    "featureComingSoon": "هذه الميزة قادمة قريبًا",
+    "shiftInfo": "معلومات الوردية",
+    "totalSales": "المبيعات",
+    "expectedCash": "المتوقّع",
+    "amount": "المبلغ",
+    "reason": "السبب",
+    "reasonPlaceholder": "أدخل سبب هذه العملية…",
+    "amountMustBePositive": "يجب أن يكون المبلغ موجبًا",
+    "depositInfo": "سجّل النقد المضاف إلى الدرج",
+    "payoutInfo": "سجّل النقد المسحوب من الدرج",
+    "cashOperationWarning": "سيؤثّر هذا على رصيد الوردية. تأكّد من عدّ النقد بدقّة.",
+    "recording": "جارٍ التسجيل…",
+    "recordDeposit": "تسجيل الإيداع",
+    "recordPayout": "تسجيل السحب",
+    "depositRecorded": "تمّ تسجيل الإيداع النقدي بنجاح",
+    "payoutRecorded": "تمّ تسجيل السحب النقدي بنجاح",
+    "operationError": "فشل تسجيل العملية",
+    "terminal": {
+      "terminal": "الطرفية",
+      "register": "تسجيل الطرفية",
+      "code": "رمز الطرفية",
+      "name": "اسم الطرفية",
+      "location": "الموقع",
+      "status": "الحالة",
+      "active": "نشطة",
+      "inactive": "غير نشطة",
+      "currentShift": "الوردية الحالية",
+      "description": "الوصف",
+      "addTerminal": "إضافة طرفية",
+      "editTerminal": "تعديل الطرفية",
+      "activate": "تفعيل",
+      "deactivate": "تعطيل",
+      "deleteTerminal": "حذف الطرفية",
+      "terminalDetails": "تفاصيل الطرفية",
+      "noTerminals": "لا توجد طرفيات",
+      "noTerminalsDescription": "ابدأ بتسجيل أوّل طرفية.",
+      "pageDescription": "أدِر طرفيات نقطة البيع وإعداداتها",
+      "deactivationReasonPrompt": "سبب التعطيل (اختياري):",
+      "deactivateTerminal": "تعطيل الطرفية",
+      "deactivationReasonPlaceholder": "أدخل السبب…",
+      "archive": "أرشفة",
+      "confirmArchiveTitle": "أرشفة الطرفية",
+      "confirmArchive": "هل أنت متأكد من أرشفة {{resource}}؟ سيتمّ إخفاء الطرفية مع الاحتفاظ بسجلّ المعاملات.",
+      "cannotDeleteHasHistory": "لا يمكن الحذف — للطرفية سجلّ معاملات. استخدم الأرشفة بدلًا من ذلك.",
+      "namePlaceholder": "مثال: طرفية المنضدة الرئيسية",
+      "descriptionPlaceholder": "وصف اختياري لهذه الطرفية",
+      "trainingMode": "تدريب",
+      "enableTraining": "تفعيل وضع التدريب",
+      "disableTraining": "تعطيل وضع التدريب"
+    },
+    "messages": {
+      "checkoutSuccess": "تمّ الدفع بنجاح!",
+      "transactionComplete": "اكتملت المعاملة بنجاح",
+      "paymentProcessing": "جارٍ معالجة الدفعة…",
+      "terminalCreated": "تمّ إنشاء الطرفية بنجاح",
+      "terminalUpdated": "تمّ تحديث الطرفية بنجاح",
+      "terminalArchived": "تمّت أرشفة الطرفية بنجاح",
+      "terminalDeleted": "تمّ حذف الطرفية بنجاح",
+      "terminalActivated": "تمّ تفعيل الطرفية بنجاح",
+      "terminalDeactivated": "تمّ تعطيل الطرفية بنجاح",
+      "trainingModeEnabled": "تمّ تفعيل وضع التدريب — لن تؤثّر المعاملات على السجلّ الضريبي",
+      "trainingModeDisabled": "تمّ تعطيل وضع التدريب — عودة إلى الإنتاج"
+    }
+  },
+  "realtime": {
+    "connected": "التحديثات الفورية مفعّلة",
+    "connecting": "جارٍ الاتصال بالتحديثات الفورية…",
+    "disconnected": "التحديثات الفورية غير متاحة"
+  },
+  "permissions": {
+    "modules": {
+      "products": "المنتجات",
+      "partners": "الشركاء",
+      "vehicles": "المركبات",
+      "documents": "الوثائق",
+      "quotes": "عروض الأسعار",
+      "orders": "الطلبات",
+      "invoices": "الفواتير",
+      "credit-notes": "إشعارات الدائن",
+      "purchase-orders": "أوامر الشراء",
+      "deliveries": "التسليمات",
+      "treasury": "الخزينة",
+      "repositories": "الصناديق",
+      "instruments": "الأدوات",
+      "payments": "المدفوعات",
+      "withholding": "الخصم من المنبع",
+      "taxation": "الضرائب",
+      "inventory": "المخزون",
+      "accounts": "الحسابات",
+      "journal": "اليومية",
+      "ledger": "دفتر الأستاذ",
+      "reports": "التقارير",
+      "pricing": "التسعير",
+      "uom": "وحدات القياس",
+      "pos": "نقطة البيع",
+      "services": "الخدمات",
+      "expenses": "المصروفات",
+      "reconciliation": "التسوية",
+      "locations": "المواقع",
+      "categories": "الفئات",
+      "composite-items": "العناصر المركّبة",
+      "modifier-groups": "مجموعات الإضافات",
+      "menus": "القوائم",
+      "promotions": "العروض الترويجية",
+      "coupons": "القسائم",
+      "loyalty": "الولاء",
+      "companies": "الشركات",
+      "contacts": "جهات الاتصال",
+      "users": "المستخدمون",
+      "roles": "الأدوار",
+      "settings": "الإعدادات"
+    },
+    "actions": {
+      "view": "عرض",
+      "create": "إنشاء",
+      "update": "تعديل",
+      "delete": "حذف",
+      "manage": "إدارة",
+      "confirm": "تأكيد",
+      "convert": "تحويل",
+      "post": "ترحيل",
+      "cancel": "إلغاء",
+      "receive": "استلام",
+      "transfer": "تحويل",
+      "clear": "مسح",
+      "refund": "استرداد",
+      "reverse": "عكس",
+      "issue": "إصدار",
+      "void": "إلغاء",
+      "submit": "إرسال",
+      "adjust": "تعديل",
+      "edit": "تعديل",
+      "operate": "تشغيل",
+      "manage_terminals": "إدارة الطرفيات",
+      "open_shift": "فتح الوردية",
+      "close_shift": "إغلاق الوردية",
+      "cash_drawer": "درج النقدية",
+      "reports": "التقارير",
+      "admin": "إدارة",
+      "sell_below_target_margin": "البيع تحت الهامش المستهدف",
+      "sell_below_minimum_margin": "البيع تحت الحدّ الأدنى للهامش",
+      "sell_below_cost": "البيع تحت التكلفة",
+      "view_cost_prices": "عرض أسعار التكلفة",
+      "manage_pricing_rules": "إدارة قواعد التسعير",
+      "manage_withholding_rules": "إدارة قواعد الخصم من المنبع",
+      "reconcile": "تسوية",
+      "export": "تصدير",
+      "import": "استيراد"
+    }
+  },
+  "commandPalette": {
+    "placeholder": "ابحث أو انتقل إلى…",
+    "navigation": "التنقّل",
+    "actions": "الإجراءات",
+    "recent": "الأخيرة",
+    "noResults": "لا توجد نتائج",
+    "hint": "↑↓ تنقّل • Enter اختيار • Esc إغلاق",
+    "searchTrigger": "بحث…",
+    "createInvoice": "إنشاء فاتورة",
+    "createQuote": "إنشاء عرض سعر",
+    "createCustomer": "إنشاء عميل",
+    "createProduct": "إنشاء منتج",
+    "createPayment": "إنشاء دفعة",
+    "createExpense": "إنشاء مصروف",
+    "createPurchaseOrder": "إنشاء أمر شراء"
+  },
+  "legal": {
+    "privacyPolicy": "سياسة الخصوصية",
+    "termsOfService": "شروط الخدمة",
+    "cookieConsent": {
+      "message": "يستخدم هذا الموقع ملفات تعريف ارتباط أساسية للمصادقة والأمن.",
+      "accept": "قبول",
+      "learnMore": "معرفة المزيد"
+    }
+  },
+  "quickCreate": {
+    "label": "إنشاء سريع",
+    "newInvoice": "فاتورة جديدة",
+    "newQuote": "عرض سعر جديد",
+    "newCustomer": "عميل جديد",
+    "newProduct": "منتج جديد",
+    "newPayment": "دفعة جديدة",
+    "newExpense": "مصروف جديد",
+    "newPurchaseOrder": "أمر شراء جديد",
+    "openPos": "فتح نقطة البيع"
+  },
+  "tax": {
+    "selectPlaceholder": "اختر الضريبة…",
+    "addNew": "+ إضافة ضريبة جديدة…",
+    "loadingError": "فشل تحميل الضرائب — أدخل النسبة يدويًا",
+    "staleTaxWarning": "الضريبة المختارة لم تعد موجودة",
+    "noTaxes": "لم تُكوَّن أي ضريبة"
+  }
+}

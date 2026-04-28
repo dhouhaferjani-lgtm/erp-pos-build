@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Import;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
@@ -15,6 +16,8 @@ use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Domain\ImportRow;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Import\Services\ValidationEngine;
+use App\Modules\Partner\Domain\Enums\PartnerType;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -55,7 +58,7 @@ class ImportInfrastructureTest extends TestCase
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
@@ -283,11 +286,11 @@ class ImportInfrastructureTest extends TestCase
         $engine = app(ValidationEngine::class);
 
         // Create existing partner
-        \App\Modules\Partner\Domain\Partner::create([
+        Partner::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'name' => 'Existing Partner',
-            'type' => \App\Modules\Partner\Domain\Enums\PartnerType::Customer,
+            'type' => PartnerType::Customer,
             'vat_number' => 'FR12345678901',
         ]);
 
@@ -497,6 +500,7 @@ class ImportInfrastructureTest extends TestCase
             'original_filename' => 'customers.csv',
             'file_path' => 'imports/test.csv',
             'total_rows' => 1,
+            'successful_rows' => 1,
         ]);
 
         ImportRow::create([

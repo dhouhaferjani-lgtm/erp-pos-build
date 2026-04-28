@@ -65,7 +65,7 @@ class Country extends Model
         $first = mb_chr(0x1F1E6 + ord($code[0]) - ord('A'));
         $second = mb_chr(0x1F1E6 + ord($code[1]) - ord('A'));
 
-        return $first . $second;
+        return $first.$second;
     }
 
     /**

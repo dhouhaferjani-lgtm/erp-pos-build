@@ -1,0 +1,96 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\POS\Presentation\Controllers;
+
+use App\Http\Controllers\Controller;
+use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Application\Services\PinVerifier;
+use App\Modules\POS\Presentation\Requests\VerifyManagerPinRequest;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\RateLimiter;
+
+/**
+ * Controller for verifying a manager's POS PIN.
+ *
+ * POST /api/v1/pos/verify-manager-pin
+ *
+ * Used by the POS terminal to confirm a manager's identity (and variance-close permission)
+ * before allowing a cashier to close a shift with a variance above the hard threshold.
+ *
+ * Security design:
+ * - Rate-limited to 3 attempts per 30 s per (IP + target user_id).
+ * - Always returns { valid: false } for any failure reason — no info leak.
+ * - Same-tenant guard prevents cross-tenant manager lookups.
+ * - Permission check (pos.close_shift_with_variance) happens AFTER rate-limiting to
+ *   avoid timing-based enumeration of permission state.
+ */
+final class ManagerPinController extends Controller
+{
+    public function __construct(
+        private readonly PinVerifier $pinVerifier,
+    ) {}
+
+    public function verify(VerifyManagerPinRequest $request): JsonResponse
+    {
+        $userId = $request->string('user_id')->toString();
+        $pin = $request->string('pin')->toString();
+        $caller = $request->user();
+
+        if (! $caller instanceof User) {
+            return response()->json(['data' => ['valid' => false]]);
+        }
+
+        // Rate limiting: 3 attempts per 30 seconds per (ip + user_id).
+        $key = 'verify-manager-pin:'.$request->ip().':'.$userId;
+        if (RateLimiter::tooManyAttempts($key, 3)) {
+            $seconds = RateLimiter::availableIn($key);
+
+            return response()->json([
+                'error' => [
+                    'code' => 'TOO_MANY_ATTEMPTS',
+                    'message' => "Too many attempts. Try again in {$seconds} seconds.",
+                ],
+            ], 429);
+        }
+        RateLimiter::hit($key, 30);
+
+        // Verify the target user exists + holds the permission (BEFORE checking PIN, to avoid
+        // even a constant-time PIN check on an unauthorised user — but after rate-limiting to
+        // avoid enumeration via timing).
+        $manager = User::find($userId);
+        if ($manager === null) {
+            return response()->json([
+                'data' => ['valid' => false],
+            ]);
+        }
+
+        // Same-tenant guard.
+        if ($manager->tenant_id !== $caller->tenant_id) {
+            return response()->json([
+                'data' => ['valid' => false],
+            ]);
+        }
+
+        // Permission scope: manager must hold pos.close_shift_with_variance.
+        if (! $manager->hasPermissionTo('pos.close_shift_with_variance')) {
+            return response()->json([
+                'data' => ['valid' => false],
+            ]);
+        }
+
+        $valid = $this->pinVerifier->verify($userId, $pin);
+        if ($valid) {
+            RateLimiter::clear($key);
+        }
+
+        return response()->json([
+            'data' => [
+                'valid' => $valid,
+                'user_id' => $userId,
+                'user_name' => $valid ? $manager->name : null,
+            ],
+        ]);
+    }
+}

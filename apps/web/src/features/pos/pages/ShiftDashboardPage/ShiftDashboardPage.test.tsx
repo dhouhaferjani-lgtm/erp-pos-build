@@ -1,18 +1,34 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, fireEvent, waitFor } from '@testing-library/react'
 import { ShiftDashboardPage } from './ShiftDashboardPage'
 
+const eurMock = {
+  currency: 'EUR',
+  locale: 'fr-FR',
+  decimals: 2,
+  format: (value: string | number) => {
+    const num = typeof value === 'string' ? parseFloat(value) : value
+    return `${num.toFixed(2)} EUR`
+  },
+  toFixed: (value: number) => value.toFixed(2),
+}
+
+const tndMock = {
+  currency: 'TND',
+  locale: 'fr-TN',
+  decimals: 3,
+  format: (value: string | number) => {
+    const num = typeof value === 'string' ? parseFloat(value) : value
+    return `${num.toFixed(3)} TND`
+  },
+  toFixed: (value: number) => value.toFixed(3),
+}
+
+// useCurrency is a vi.fn() so individual tests can override its return value.
+const mockUseCurrency = vi.fn(() => eurMock)
+
 vi.mock('@/hooks/useCurrency', () => ({
-  useCurrency: () => ({
-    currency: 'EUR',
-    locale: 'fr-FR',
-    decimals: 2,
-    format: (value: string | number) => {
-      const num = typeof value === 'string' ? parseFloat(value) : value
-      return `${num.toFixed(2)} EUR`
-    },
-    toFixed: (value: number) => value.toFixed(2),
-  }),
+  useCurrency: (...args: Parameters<typeof mockUseCurrency>) => mockUseCurrency(...args),
   getDecimals: (currency: string) => currency === 'TND' || currency === 'LYD' ? 3 : 2,
   getLocale: (_currency: string) => 'fr-FR',
   formatAmount: (value: string | number, currency: string) => {
@@ -399,5 +415,110 @@ describe('ShiftDashboardPage', () => {
     )
 
     expect(getByText(/loading/i)).toBeInTheDocument()
+  })
+})
+
+describe('ShiftDashboardPage — EUR 2-decimal variance renders at currency scale', () => {
+  it('computes variance at 2 decimals for EUR', async () => {
+    mockUseCurrency.mockReturnValue({ ...eurMock, decimals: 2 })
+
+    const currentShift: import('./ShiftDashboardPage').Shift = {
+      id: 's-eur',
+      terminal_id: 't1',
+      shift_number: 1,
+      cashier_id: 'u1',
+      cashier_name: 'Jean',
+      opening_cash: '100.00',
+      expected_cash: '250.10',
+      opened_at: '2026-04-24T08:00:00Z',
+      status: 'OPEN',
+    }
+    const terminal: import('./ShiftDashboardPage').Terminal = {
+      id: 't1',
+      code: 'T001',
+      location_id: 'l1',
+      location_name: 'Main',
+    }
+
+    const { getByRole, getByPlaceholderText, getByText } = render(
+      <ShiftDashboardPage
+        currentShift={currentShift}
+        terminal={terminal}
+        onOpenShift={vi.fn()}
+        onCloseShift={vi.fn()}
+        onGenerateXReport={vi.fn()}
+        onCashDeposit={vi.fn()}
+        onCashPayout={vi.fn()}
+      />
+    )
+
+    fireEvent.click(getByRole('button', { name: /close shift/i }))
+    const input = getByPlaceholderText(/actual cash/i)
+    fireEvent.change(input, { target: { value: '250.13' } })
+
+    // Variance should be '0.03' — 2 decimals for EUR, not '0.030'
+    await waitFor(() => {
+      expect(getByText('0.03')).toBeInTheDocument()
+    })
+  })
+})
+
+describe('ShiftDashboardPage — TND 3-decimal variance (no float drift)', () => {
+  // Switch useCurrency to return TND (3 decimals) so MoneyInput allows 3 decimal places.
+  // Without this override MoneyInput truncates '250.103' → '250.10', hiding the drift.
+  beforeEach(() => {
+    mockUseCurrency.mockReturnValue(tndMock)
+  })
+
+  afterEach(() => {
+    mockUseCurrency.mockReturnValue(eurMock)
+  })
+
+  const tndShift: import('./ShiftDashboardPage').Shift = {
+    id: 's1',
+    terminal_id: 't1',
+    shift_number: 1,
+    cashier_id: 'u1',
+    cashier_name: 'Amine',
+    opening_cash: '100.000',
+    expected_cash: '250.100',
+    opened_at: '2026-04-24T08:00:00Z',
+    status: 'OPEN',
+  }
+
+  const tndTerminal: import('./ShiftDashboardPage').Terminal = {
+    id: 't1',
+    code: 'T001',
+    location_id: 'l1',
+    location_name: 'Main',
+  }
+
+  it('computes variance exactly for TND 3-decimal values without float drift', async () => {
+    const { getByRole, getByPlaceholderText, getByText } = render(
+      <ShiftDashboardPage
+        currentShift={tndShift}
+        terminal={tndTerminal}
+        onOpenShift={vi.fn()}
+        onCloseShift={vi.fn()}
+        onGenerateXReport={vi.fn()}
+        onCashDeposit={vi.fn()}
+        onCashPayout={vi.fn()}
+      />
+    )
+
+    // Open the Close Shift modal
+    const closeButton = getByRole('button', { name: /close shift/i })
+    fireEvent.click(closeButton)
+
+    // Enter an actual cash that differs by exactly 0.003 from expected 250.100.
+    // With TND decimals=3, MoneyInput allows 3 decimal places so '250.103' passes through.
+    const input = getByPlaceholderText(/actual cash/i)
+    fireEvent.change(input, { target: { value: '250.103' } })
+
+    // Variance should be exactly '0.003' — NOT '0.0030000000000001355' from float arithmetic.
+    // bcsub('250.103', '250.100', 3) === '0.003' (exact Big.js arithmetic).
+    await waitFor(() => {
+      expect(getByText('0.003')).toBeInTheDocument()
+    })
   })
 })

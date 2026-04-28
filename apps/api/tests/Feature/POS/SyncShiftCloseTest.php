@@ -6,6 +6,7 @@ namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Shift;
@@ -27,10 +28,15 @@ final class SyncShiftCloseTest extends TestCase
     use RefreshDatabase;
 
     private Tenant $tenant;
+
     private Company $company;
+
     private User $user;
+
     private Location $location;
+
     private Terminal $terminal;
+
     private Shift $shift;
 
     protected function setUp(): void
@@ -117,7 +123,7 @@ final class SyncShiftCloseTest extends TestCase
             'tenant_id' => $this->tenant->id,
         ]);
 
-        \App\Modules\Company\Domain\UserCompanyMembership::create([
+        UserCompanyMembership::create([
             'user_id' => $this->user->id,
             'company_id' => $this->company->id,
             'role' => 'admin',

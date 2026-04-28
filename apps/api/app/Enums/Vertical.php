@@ -168,6 +168,27 @@ enum Vertical: string
     }
 
     /**
+     * Get the platform vertical alias for this vertical.
+     * Maps ERP verticals to Syneriva platform VerticalAlias values.
+     *
+     * @return string|null Null means this vertical has no platform equivalent
+     */
+    public function platformVertical(): ?string
+    {
+        return match ($this) {
+            self::Mechanic,
+            self::BodyShop,
+            self::PartsRetailer,
+            self::CarGlass,
+            self::TireShop,
+            self::ServiceStation => 'automotive',
+            self::Parapharmacy => 'parapharmacy',
+            self::Pharmacy => 'pharmacy',
+            default => null,
+        };
+    }
+
+    /**
      * Get all verticals for a specific product
      *
      * @return array<int, self>

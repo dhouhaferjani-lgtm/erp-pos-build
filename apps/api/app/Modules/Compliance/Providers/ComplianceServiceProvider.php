@@ -4,14 +4,21 @@ declare(strict_types=1);
 
 namespace App\Modules\Compliance\Providers;
 
+use App\Modules\Compliance\Application\Contracts\NotificationDispatcherInterface;
+use App\Modules\Compliance\Application\Services\CompanyFraudSettingsService;
+use App\Modules\Compliance\Application\Services\ComplianceNotificationDispatcher;
 use App\Modules\Compliance\Commands\ExportNf525JetCommand;
 use App\Modules\Compliance\Commands\VerifyFiscalChainsCommand;
 use App\Modules\Compliance\Listeners\DomainEventSubscriber;
+use App\Modules\Compliance\Listeners\OpenFraudAlertForShiftVariance;
+use App\Modules\Compliance\Presentation\Controllers\AuditController;
 use App\Modules\Compliance\Services\AnomalyDetectionService;
 use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Compliance\Services\FraudAlertNotificationService;
 use App\Modules\Inventory\Application\Services\FraudTriggeredCountingService;
+use App\Modules\POS\Domain\Events\CashCountRecorded;
+use App\Shared\Contracts\Company\CompanyVerticalQueryContract;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -32,11 +39,23 @@ class ComplianceServiceProvider extends ServiceProvider
             return new FraudAlertNotificationService;
         });
 
+        $this->app->singleton(NotificationDispatcherInterface::class, function ($app) {
+            return new ComplianceNotificationDispatcher(
+                $app->make(FraudAlertNotificationService::class),
+            );
+        });
+
         $this->app->singleton(AnomalyDetectionService::class, function ($app) {
             return new AnomalyDetectionService(
                 $app->make(AuditService::class),
                 $app->make(FraudAlertNotificationService::class),
                 $app->make(FraudTriggeredCountingService::class),
+            );
+        });
+
+        $this->app->singleton(CompanyFraudSettingsService::class, function ($app) {
+            return new CompanyFraudSettingsService(
+                $app->make(CompanyVerticalQueryContract::class),
             );
         });
     }
@@ -60,6 +79,11 @@ class ComplianceServiceProvider extends ServiceProvider
     private function registerEventSubscribers(): void
     {
         Event::subscribe(DomainEventSubscriber::class);
+
+        Event::listen(
+            CashCountRecorded::class,
+            [OpenFraudAlertForShiftVariance::class, 'handle'],
+        );
     }
 
     private function registerRoutes(): void
@@ -71,8 +95,8 @@ class ComplianceServiceProvider extends ServiceProvider
         Route::middleware(['api', 'auth:sanctum'])
             ->prefix('api/v1')
             ->group(function (): void {
-                Route::get('/audit/events', [\App\Modules\Compliance\Presentation\Controllers\AuditController::class, 'index']);
-                Route::get('/audit/anomalies', [\App\Modules\Compliance\Presentation\Controllers\AuditController::class, 'anomalies']);
+                Route::get('/audit/events', [AuditController::class, 'index']);
+                Route::get('/audit/anomalies', [AuditController::class, 'anomalies']);
             });
     }
 }

@@ -94,4 +94,47 @@ describe('decimal precision', () => {
       expect(formatCurrency('', false, 'TND')).toBe('0.000')
     })
   })
+
+  describe('safeBig crash-proofing', () => {
+    // safeBig is internal to decimal.ts but every public helper routes
+    // through it. These tests exercise the crash-proof fallback that
+    // turns unparseable input into Big(0) — without it, user-pasted
+    // garbage reaching any of the ~100 bcsub/bcadd/bccomp call sites
+    // in the app would throw and trip React's error boundary.
+    const GARBAGE_INPUTS = ['abc', '1.2.3', '5abc', '  5  ', '0x10', 'NaN', 'Infinity']
+
+    it('bcadd returns the other operand when garbage is passed as zero', () => {
+      for (const input of GARBAGE_INPUTS) {
+        expect(bcadd(input, '5.000', 3)).toBe('5.000')
+        expect(bcadd('5.000', input, 3)).toBe('5.000')
+      }
+    })
+
+    it('bcsub treats garbage as zero', () => {
+      for (const input of GARBAGE_INPUTS) {
+        expect(bcsub('5.000', input, 3)).toBe('5.000')
+        expect(bcsub(input, '5.000', 3)).toBe('-5.000')
+      }
+    })
+
+    it('bcmul treats garbage as zero', () => {
+      for (const input of GARBAGE_INPUTS) {
+        expect(bcmul(input, '5.000', 3)).toBe('0.000')
+      }
+    })
+
+    it('bccomp treats garbage as zero', () => {
+      for (const input of GARBAGE_INPUTS) {
+        expect(bccomp(input, '0')).toBe(0)
+        expect(bccomp(input, '1')).toBe(-1)
+        expect(bccomp('1', input)).toBe(1)
+      }
+    })
+
+    it('formatCurrency treats garbage as zero', () => {
+      for (const input of GARBAGE_INPUTS) {
+        expect(formatCurrency(input, false, 'EUR', 2)).toBe('0.00')
+      }
+    })
+  })
 })

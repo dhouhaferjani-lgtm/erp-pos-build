@@ -7,9 +7,22 @@ namespace App\Modules\Treasury\Application\Services;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Treasury\Domain\CountryPaymentSettings;
+use App\Shared\Contracts\Treasury\DTOs\ToleranceCheckResult;
+use App\Shared\Contracts\Treasury\Enums\ToleranceType;
+use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 
-class PaymentToleranceService
+class PaymentToleranceService implements PaymentToleranceCheckerContract
 {
+    /**
+     * Default tolerance settings used when neither company nor country
+     * settings are configured. Mirrors the legacy fall-through chain in
+     * getToleranceSettings() and resolveCountrySettings() so the two
+     * code paths return identical numbers for the system_default branch.
+     */
+    private const SYSTEM_DEFAULT_PERCENTAGE = '0.0050';
+
+    private const SYSTEM_DEFAULT_MAX_AMOUNT = '0.50';
+
     public function __construct(
         private GeneralLedgerService $glService
     ) {}
@@ -18,7 +31,12 @@ class PaymentToleranceService
      * Get effective tolerance settings for a company
      * Priority: Company override → Country default → System default
      *
-     * @return array{enabled: bool, percentage: string, max_amount: string, source: string}
+     * The percentage / max_amount strings are always bcmath-formatted at
+     * scale 4 (see the bcadd($value, '0', 4) calls below) — `numeric-string`
+     * is the truthful type, and tightening it lets downstream callers do
+     * bccomp / bcmul without static-analysis noise.
+     *
+     * @return array{enabled: bool, percentage: numeric-string, max_amount: numeric-string, source: string}
      */
     public function getToleranceSettings(string $companyId): array
     {
@@ -29,11 +47,11 @@ class PaymentToleranceService
 
         $percentage = $company->payment_tolerance_percentage
             /** @phpstan-ignore-next-line nullsafe.neverNull */
-            ?? ($countrySettings?->payment_tolerance_percentage ?? '0.0050');
+            ?? ($countrySettings?->payment_tolerance_percentage ?? self::SYSTEM_DEFAULT_PERCENTAGE);
 
         $maxAmount = $company->max_payment_tolerance_amount
             /** @phpstan-ignore-next-line nullsafe.neverNull */
-            ?? ($countrySettings?->max_payment_tolerance_amount ?? '0.50');
+            ?? ($countrySettings?->max_payment_tolerance_amount ?? self::SYSTEM_DEFAULT_MAX_AMOUNT);
 
         return [
             'enabled' => $company->payment_tolerance_enabled
@@ -48,50 +66,76 @@ class PaymentToleranceService
     }
 
     /**
-     * Check if a payment difference qualifies for auto-write-off
-     *
-     * @return array{qualifies: bool, difference: string, type: string|null, reason: string|null}
+     * Typed cross-module qualifier surface — see PaymentToleranceCheckerContract docblock
+     * for full semantics. Country/currency keyed; company-level overrides are exposed
+     * via getToleranceSettings() above (used by SmartPaymentController, DiscountToleranceBoundary,
+     * and CloseInvoiceWithToleranceService for the company-aware UI/threshold path).
      */
-    public function checkTolerance(
-        string $invoiceAmount,
-        string $paymentAmount,
-        string $companyId
-    ): array {
-        $settings = $this->getToleranceSettings($companyId);
+    public function check(
+        string $shortfall,
+        string $invoiceTotal,
+        string $currencyCode,
+        string $countryCode,
+        bool $strict = false,
+    ): ToleranceCheckResult {
+        $settings = $this->resolveCountrySettings($countryCode);
 
         if (! $settings['enabled']) {
-            return [
-                'qualifies' => false,
-                'difference' => '0.0000',
-                'type' => null,
-                'reason' => 'Tolerance disabled',
-            ];
+            return new ToleranceCheckResult(
+                qualifies: false,
+                difference: '0.0000',
+                type: ToleranceType::None,
+                reason: 'Tolerance disabled',
+            );
+        }
+
+        // Normalise inputs to scale 4. Negative shortfalls are not meaningful;
+        // callers are expected to pass an absolute value, but defensively
+        // collapse the sign so downstream comparisons are stable.
+        /** @phpstan-ignore-next-line argument.type */
+        $absDifference = bcadd($shortfall, '0', 4);
+        if (bccomp($absDifference, '0', 4) < 0) {
+            $absDifference = bcmul($absDifference, '-1', 4);
         }
 
         /** @phpstan-ignore-next-line argument.type */
-        $difference = bcsub($paymentAmount, $invoiceAmount, 4);
-        $absDifference = bccomp($difference, '0', 4) < 0
-            ? bcmul($difference, '-1', 4)
-            : $difference;
+        $percentageThreshold = bcmul($invoiceTotal, $settings['percentage'], 4);
 
-        // Calculate percentage threshold
-        /** @phpstan-ignore-next-line argument.type */
-        $percentageThreshold = bcmul($invoiceAmount, $settings['percentage'], 4);
+        $withinPercentage = $strict
+            ? bccomp($absDifference, $percentageThreshold, 4) < 0
+            : bccomp($absDifference, $percentageThreshold, 4) <= 0;
 
-        // Must be within BOTH percentage AND max amount
-        $withinPercentage = bccomp($absDifference, $percentageThreshold, 4) <= 0;
-        /** @phpstan-ignore-next-line argument.type */
-        $withinMaxAmount = bccomp($absDifference, $settings['max_amount'], 4) <= 0;
+        $withinMaxAmount = $strict
+            /** @phpstan-ignore-next-line argument.type */
+            ? bccomp($absDifference, $settings['max_amount'], 4) < 0
+            /** @phpstan-ignore-next-line argument.type */
+            : bccomp($absDifference, $settings['max_amount'], 4) <= 0;
 
-        if ($withinPercentage && $withinMaxAmount && bccomp($absDifference, '0', 4) > 0) {
-            $type = bccomp($difference, '0', 4) < 0 ? 'underpayment' : 'overpayment';
+        // Zero difference is never a qualifying writeoff — no money gap to clear.
+        // A non-strict caller that passes 0.0000 still gets ToleranceType::None.
+        if (bccomp($absDifference, '0', 4) === 0) {
+            return new ToleranceCheckResult(
+                qualifies: false,
+                difference: '0.0000',
+                type: ToleranceType::None,
+                reason: null,
+            );
+        }
 
-            return [
-                'qualifies' => true,
-                'difference' => $absDifference,
-                'type' => $type,
-                'reason' => null,
-            ];
+        // Note: shortfall is unsigned by contract — the contract callers compute
+        // abs(payment - invoice) before invoking. We default the direction to
+        // Underpayment (matches the dominant POS A1 / B2B A2 use cases). A future
+        // overload could thread an explicit direction if overpayment write-offs
+        // become a thing on this surface.
+        $type = ToleranceType::Underpayment;
+
+        if ($withinPercentage && $withinMaxAmount) {
+            return new ToleranceCheckResult(
+                qualifies: true,
+                difference: $absDifference,
+                type: $type,
+                reason: null,
+            );
         }
 
         $reason = null;
@@ -101,12 +145,12 @@ class PaymentToleranceService
             $reason = "Exceeds max amount threshold ({$settings['max_amount']})";
         }
 
-        return [
-            'qualifies' => false,
-            'difference' => $absDifference,
-            'type' => bccomp($difference, '0', 4) < 0 ? 'underpayment' : 'overpayment',
-            'reason' => $reason,
-        ];
+        return new ToleranceCheckResult(
+            qualifies: false,
+            difference: $absDifference,
+            type: $type,
+            reason: $reason,
+        );
     }
 
     /**
@@ -131,6 +175,39 @@ class PaymentToleranceService
             date: $date,
             description: $description
         );
+    }
+
+    /**
+     * Country-only settings resolution for the typed contract surface.
+     * Mirrors the Country → System-default tail of getToleranceSettings(),
+     * minus the Company override step (the contract has no companyId).
+     *
+     * @return array{enabled: bool, percentage: string, max_amount: string}
+     */
+    private function resolveCountrySettings(string $countryCode): array
+    {
+        /** @var CountryPaymentSettings|null $countrySettings */
+        $countrySettings = CountryPaymentSettings::query()
+            ->where('country_code', $countryCode)
+            ->first();
+
+        $percentage =
+            /** @phpstan-ignore-next-line nullsafe.neverNull */
+            ($countrySettings?->payment_tolerance_percentage ?? self::SYSTEM_DEFAULT_PERCENTAGE);
+
+        $maxAmount =
+            /** @phpstan-ignore-next-line nullsafe.neverNull */
+            ($countrySettings?->max_payment_tolerance_amount ?? self::SYSTEM_DEFAULT_MAX_AMOUNT);
+
+        return [
+            'enabled' =>
+                /** @phpstan-ignore-next-line nullsafe.neverNull */
+                ($countrySettings?->payment_tolerance_enabled ?? true),
+            /** @phpstan-ignore argument.type */
+            'percentage' => bcadd($percentage, '0', 4),
+            /** @phpstan-ignore argument.type */
+            'max_amount' => bcadd($maxAmount, '0', 4),
+        ];
     }
 
     private function determineSettingsSource(Company $company, ?CountryPaymentSettings $countrySettings): string

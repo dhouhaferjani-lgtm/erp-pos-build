@@ -17,18 +17,12 @@
         <tr>
             <td>{{ $index + 1 }}</td>
             <td>
-                @if($line->product)
-                    <strong>{{ $line->product->name }}</strong>
-                    @if($line->product->sku)
-                        <span style="color: #888;">[{{ $line->product->sku }}]</span>
-                    @endif
-                @elseif($line->service)
-                    <strong>{{ $line->service->name }}</strong>
-                @else
-                    <strong>{{ $line->product_name ?? 'Item' }}</strong>
+                <strong>{{ $line->description }}</strong>
+                @if($line->product_code)
+                    <span class="sku">[{{ $line->product_code }}]</span>
                 @endif
-                @if($line->description)
-                    <div class="item-description">{{ $line->description }}</div>
+                @if(config('features.documents.line_designation_override.enabled') && $line->notes)
+                    <div class="item-description">{{ $line->notes }}</div>
                 @endif
             </td>
             <td class="center">{{ $formatNumber($line->quantity, 2) }}</td>

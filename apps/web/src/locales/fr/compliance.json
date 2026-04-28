@@ -96,6 +96,24 @@
       "timeWindowRange": "La fenêtre temporelle doit être entre 1 et 365 jours",
       "invalidEmail": "Veuillez entrer une adresse e-mail valide",
       "duplicateEmail": "Cet e-mail est déjà dans la liste"
+    },
+    "cashControls": {
+      "sectionTitle": "Contrôles du tiroir-caisse",
+      "softLabel": "Seuil souple (journalisation uniquement)",
+      "hardLabel": "Seuil strict (PIN manager requis)",
+      "useSameToggle": "Utiliser le même seuil pour les écarts positifs et négatifs",
+      "overSoftLabel": "Écart positif souple",
+      "overHardLabel": "Écart positif strict",
+      "underSoftLabel": "Écart négatif souple",
+      "underHardLabel": "Écart négatif strict",
+      "blindCountLabel": "Comptage à l'aveugle (les caissiers ne voient pas le montant attendu)",
+      "managerPinAboveHardLabel": "Exiger le PIN manager au-dessus du seuil strict",
+      "emailSeverityLabel": "M'envoyer un e-mail quand l'écart de clôture est au moins…",
+      "emailSeverityNever": "Jamais — tableau de bord uniquement",
+      "emailSeverityCritical": "Critique uniquement",
+      "emailSeverityWarning": "Avertissement et plus",
+      "emailSeverityInfo": "Toutes les sévérités (volume élevé)",
+      "softGteHard": "Le seuil souple doit être inférieur au seuil strict."
     }
   },
   "fraudAlerts": {

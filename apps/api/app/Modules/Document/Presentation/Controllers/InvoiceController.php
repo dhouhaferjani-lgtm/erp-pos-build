@@ -21,10 +21,16 @@ use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Product\Domain\Product;
+use App\Modules\Service\Domain\Service;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
+use App\Modules\Treasury\Application\Services\CloseInvoiceWithToleranceService;
+use App\Modules\Treasury\Domain\Exceptions\InvoiceAlreadyPaidException;
+use App\Modules\Treasury\Domain\Exceptions\ToleranceExceededException;
 use App\Modules\Vehicle\Application\Services\VehicleContextBuilder;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Support\Traits\PaginatesResults;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -62,6 +68,7 @@ class InvoiceController extends Controller
         private readonly TaxCalculationService $taxCalculationService,
         private readonly VehicleContextBuilder $vehicleContextBuilder,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly CloseInvoiceWithToleranceService $closeInvoiceWithToleranceService,
     ) {}
 
     private function scale(): int
@@ -155,7 +162,7 @@ class InvoiceController extends Controller
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
 
-        /** @var array<int, array{description: string, quantity: string, unit_price: string, product_id?: string, tax_rate?: string, discount_percent?: string, discount_amount?: string, notes?: string}> $lines */
+        /** @var array<int, array{description: string, quantity: string, unit_price: string, product_id?: string, service_id?: string, tax_rate?: string, discount_percent?: string, discount_amount?: string, notes?: string}> $lines */
         $lines = $validated['lines'] ?? [];
         unset($validated['lines']);
 
@@ -222,6 +229,14 @@ class InvoiceController extends Controller
                 'total' => $total,
             ]);
 
+            // Batch-fetch products and services for snapshot capture (1 query each)
+            $productIds = collect($lines)->pluck('product_id')->filter()->unique()->values()->toArray();
+            $serviceIds = collect($lines)->pluck('service_id')->filter()->unique()->values()->toArray();
+            /** @var Collection<int, Product> $products */
+            $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
+            /** @var Collection<int, Service> $services */
+            $services = Service::whereIn('id', $serviceIds)->get()->keyBy('id');
+
             // Create lines
             foreach ($lines as $index => $lineData) {
                 /** @var numeric-string $quantity */
@@ -230,11 +245,22 @@ class InvoiceController extends Controller
                 $unitPrice = (string) $lineData['unit_price'];
                 $lineTotal = bcmul($quantity, $unitPrice, $this->scale());
 
+                /** @var Service|null $lineService */
+                $lineService = isset($lineData['service_id']) ? $services->get($lineData['service_id']) : null;
+                /** @var Product|null $lineProduct */
+                $lineProduct = isset($lineData['product_id']) ? $products->get($lineData['product_id']) : null;
+
+                $defaultName = $lineService !== null
+                    ? (string) $lineService->name
+                    : ($lineProduct !== null ? (string) $lineProduct->name : '');
+
                 DocumentLine::create([
                     'document_id' => $document->id,
                     'product_id' => $lineData['product_id'] ?? null,
+                    'service_id' => $lineData['service_id'] ?? null,
                     'line_number' => $index + 1,
                     'description' => $lineData['description'],
+                    'designation_default_snapshot' => $defaultName !== '' ? mb_substr($defaultName, 0, 500) : null,
                     'quantity' => $quantity,
                     'unit_price' => $unitPrice,
                     'discount_percent' => isset($lineData['discount_percent']) ? (string) $lineData['discount_percent'] : null,
@@ -288,7 +314,7 @@ class InvoiceController extends Controller
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
 
-        /** @var array<int, array{description: string, quantity: string, unit_price: string, product_id?: string, tax_rate?: string, discount_percent?: string, discount_amount?: string, notes?: string}>|null $lines */
+        /** @var array<int, array{description: string, quantity: string, unit_price: string, product_id?: string, service_id?: string, tax_rate?: string, discount_percent?: string, discount_amount?: string, notes?: string}>|null $lines */
         $lines = $validated['lines'] ?? null;
         unset($validated['lines']);
 
@@ -313,6 +339,14 @@ class InvoiceController extends Controller
                 // Delete existing lines
                 $documentModel->lines()->delete();
 
+                // Batch-fetch products and services for snapshot capture (1 query each)
+                $updateProductIds = collect($lines)->pluck('product_id')->filter()->unique()->values()->toArray();
+                $updateServiceIds = collect($lines)->pluck('service_id')->filter()->unique()->values()->toArray();
+                /** @var Collection<int, Product> $updateProducts */
+                $updateProducts = Product::whereIn('id', $updateProductIds)->get()->keyBy('id');
+                /** @var Collection<int, Service> $updateServices */
+                $updateServices = Service::whereIn('id', $updateServiceIds)->get()->keyBy('id');
+
                 // Calculate totals from new lines
                 $subtotal = '0.00';
                 $taxAmount = '0.00';
@@ -331,11 +365,22 @@ class InvoiceController extends Controller
                     $subtotal = bcadd($subtotal, $lineSubtotal, $this->scale());
                     $taxAmount = bcadd($taxAmount, $lineTax, $this->scale());
 
+                    /** @var Service|null $updateLineService */
+                    $updateLineService = isset($lineData['service_id']) ? $updateServices->get($lineData['service_id']) : null;
+                    /** @var Product|null $updateLineProduct */
+                    $updateLineProduct = isset($lineData['product_id']) ? $updateProducts->get($lineData['product_id']) : null;
+
+                    $updateDefaultName = $updateLineService !== null
+                        ? (string) $updateLineService->name
+                        : ($updateLineProduct !== null ? (string) $updateLineProduct->name : '');
+
                     DocumentLine::create([
                         'document_id' => $documentModel->id,
                         'product_id' => $lineData['product_id'] ?? null,
+                        'service_id' => $lineData['service_id'] ?? null,
                         'line_number' => $index + 1,
                         'description' => $lineData['description'],
+                        'designation_default_snapshot' => $updateDefaultName !== '' ? mb_substr($updateDefaultName, 0, 500) : null,
                         'quantity' => $quantity,
                         'unit_price' => $unitPrice,
                         'discount_percent' => isset($lineData['discount_percent']) ? (string) $lineData['discount_percent'] : null,
@@ -641,6 +686,94 @@ class InvoiceController extends Controller
         } catch (\DomainException $e) {
             return $this->validationErrorResponse('OPERATION_FAILED', $e->getMessage());
         }
+    }
+
+    /**
+     * Close a partially-paid invoice by writing off the residual balance to GL 658.
+     *
+     * Eligibility (enforced by CloseInvoiceWithToleranceService):
+     *   - balance_due > 0 (not already settled)
+     *   - balance_due strictly less than both the absolute and percentage
+     *     payment-tolerance thresholds for the company.
+     *
+     * Successful close: posts Dr 658 / Cr AR via existing
+     * GeneralLedgerService::createPaymentToleranceJournalEntry, sets the
+     * invoice status to Paid + balance_due to 0, and dispatches
+     * InvoiceClosedWithTolerance.
+     *
+     * Permission: payments.allocate (gated on the route).
+     *
+     * POST /api/v1/invoices/{invoice}/close-with-tolerance
+     */
+    public function closeWithTolerance(Request $request, string $invoice): JsonResponse
+    {
+        $documentModel = $this->baseQuery()
+            ->ofType(DocumentType::Invoice)
+            ->find($invoice);
+
+        if ($documentModel === null) {
+            return $this->notFoundResponse('Invoice');
+        }
+
+        // Block premature close attempts at workflow boundary: only Posted invoices
+        // can be closed-with-tolerance. Paid is allowed to fall through so the
+        // service surfaces the more specific ALREADY_PAID idempotency error.
+        if (
+            $documentModel->status !== DocumentStatus::Posted
+            && $documentModel->status !== DocumentStatus::Paid
+        ) {
+            return response()->json([
+                'error' => [
+                    'code' => 'INVALID_STATUS',
+                    'message' => 'Invoice must be Posted to close with tolerance.',
+                    'details' => ['status' => $documentModel->status->value],
+                ],
+            ], 422);
+        }
+
+        /** @var User $user */
+        $user = $request->user();
+
+        try {
+            $result = $this->closeInvoiceWithToleranceService->close(
+                invoiceId: $documentModel->id,
+                closedBy: (string) $user->id,
+            );
+        } catch (ToleranceExceededException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'TOLERANCE_EXCEEDED',
+                    'message' => 'Invoice balance exceeds payment tolerance threshold.',
+                    'details' => [
+                        'remaining_balance' => $e->remainingBalance,
+                        'max_amount' => $e->maxAmount,
+                        'percentage' => $e->percentage,
+                    ],
+                ],
+            ], 422);
+        } catch (InvoiceAlreadyPaidException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'ALREADY_PAID',
+                    'message' => 'Invoice is already settled; close-with-tolerance is a no-op.',
+                    'details' => ['invoice_id' => $e->invoiceId],
+                ],
+            ], 422);
+        }
+
+        /** @var Document $fresh */
+        $fresh = $documentModel->fresh($this->detailRelations());
+
+        return response()->json([
+            'data' => DocumentData::fromModel($fresh, true, $this->scale()),
+            'meta' => [
+                'tolerance_writeoff' => [
+                    'amount' => $result->amountWrittenOff,
+                    'gl_entry_id' => $result->glEntryId,
+                ],
+                'timestamp' => now()->toIso8601String(),
+            ],
+        ]);
     }
 
     /**

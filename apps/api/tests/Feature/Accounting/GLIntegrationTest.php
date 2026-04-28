@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace Tests\Feature\Accounting;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
@@ -69,7 +72,7 @@ class GLIntegrationTest extends TestCase
             'locale' => 'fr_TN',
             'timezone' => 'Africa/Tunis',
             'currency' => 'TND',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
@@ -308,7 +311,7 @@ class GLIntegrationTest extends TestCase
             'company_id' => $this->company->id,
             'code' => '6100',
             'name' => 'Purchases',
-            'type' => \App\Modules\Accounting\Domain\Enums\AccountType::Expense,
+            'type' => AccountType::Expense,
         ]);
 
         $service = app(GeneralLedgerService::class);
@@ -402,7 +405,7 @@ class GLIntegrationTest extends TestCase
 
         // Balance is refreshed after posting - need to manually refresh again
         // because postEntry doesn't call refreshPartnerBalance
-        $balanceService = app(\App\Modules\Accounting\Application\Services\PartnerBalanceService::class);
+        $balanceService = app(PartnerBalanceService::class);
         $balanceService->refreshPartnerBalance($this->company->id, $this->partner->id);
 
         // Partner balance should now reflect posted entry

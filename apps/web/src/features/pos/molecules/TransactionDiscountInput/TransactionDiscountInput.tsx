@@ -5,6 +5,11 @@ import { POSButton } from '../../atoms'
 import { textColors, borderColors, tokens } from '@/lib/designTokens'
 import { bcmul, bcdiv, bccomp, bcsub } from '@/lib/decimal'
 import { useCurrency } from '@/hooks/useCurrency'
+import {
+  computeDiscountAmount,
+  isDiscountAboveTolerance,
+} from '../../lib/discountValidation'
+import type { ToleranceSettings } from '@/types/treasury'
 
 export interface TransactionDiscountInputProps {
   currentAmount?: string | undefined
@@ -15,6 +20,13 @@ export interface TransactionDiscountInputProps {
   onApply: (amount: string, reason?: string  ) => void
   onClear: () => void
   touchOptimized?: boolean | undefined
+  /**
+   * Resolved tolerance configuration. When supplied, the input renders an
+   * inline below-tolerance error and disables preset buttons whose
+   * computed amount would fall sub-threshold (spec §7 frontend mirror).
+   * Server is authoritative; this is purely a UX assist.
+   */
+  toleranceSettings?: ToleranceSettings | undefined
 }
 
 /**
@@ -41,6 +53,7 @@ export function TransactionDiscountInput({
   onApply,
   onClear,
   touchOptimized = false,
+  toleranceSettings,
 }: TransactionDiscountInputProps) {
   const { t } = useTranslation(['pos'])
   const { currency } = useCurrency()
@@ -129,6 +142,12 @@ export function TransactionDiscountInput({
       ? bcsub(subtotal, amount, 3)
       : subtotal
 
+  const belowTolerance =
+    !!toleranceSettings &&
+    !!value &&
+    bccomp(amount, '0') > 0 &&
+    !isDiscountAboveTolerance(amount, subtotal, toleranceSettings)
+
   return (
     <div className="space-y-4">
       {/* Discount Mode Toggle */}
@@ -161,18 +180,24 @@ export function TransactionDiscountInput({
         <div>
           <label className={tokens.label.base}>{t('pos:cart.presets')}</label>
           <div className="mt-2 grid grid-cols-4 gap-2">
-            {presets.map((percent) => (
-              <POSButton
-                key={percent}
-                variant="secondary"
-                size={touchOptimized ? 'md' : 'sm'}
-                touchOptimized={touchOptimized}
-                onClick={() => { handlePresetClick(percent); }}
-                disabled={percent > effectiveLimit}
-              >
-                {percent}%
-              </POSButton>
-            ))}
+            {presets.map((percent) => {
+              const presetAmount = computeDiscountAmount(subtotal, String(percent))
+              const presetBelow =
+                !!toleranceSettings &&
+                !isDiscountAboveTolerance(presetAmount, subtotal, toleranceSettings)
+              return (
+                <POSButton
+                  key={percent}
+                  variant="secondary"
+                  size={touchOptimized ? 'md' : 'sm'}
+                  touchOptimized={touchOptimized}
+                  onClick={() => { handlePresetClick(percent); }}
+                  disabled={percent > effectiveLimit || presetBelow}
+                >
+                  {percent}%
+                </POSButton>
+              )
+            })}
           </div>
         </div>
       )}
@@ -265,9 +290,17 @@ export function TransactionDiscountInput({
         </div>
       )}
 
+      {/* Sub-tolerance discount warning — anti-abuse boundary mirror
+          (spec §7). Authoritative check is server-side. */}
+      {belowTolerance && !error && (
+        <div className={tokens.alert.error}>
+          {t('pos:discount.below_tolerance')}
+        </div>
+      )}
+
       {/* Preview */}
       {parseFloat(amount) > 0 && !error && (
-        <div className={cn('p-3 rounded-lg', 'bg-blue-50', borderColors.primary)}>
+        <div className={cn('p-3 rounded-lg', tokens.alert.info, borderColors.primary)}>
           <p className={cn(textColors.secondary, 'text-sm mb-1')}>
             {t('pos:cart.preview')}:
           </p>
@@ -313,7 +346,7 @@ export function TransactionDiscountInput({
           size={touchOptimized ? 'md' : 'sm'}
           touchOptimized={touchOptimized}
           onClick={handleApply}
-          disabled={!value || parseFloat(value) <= 0}
+          disabled={!value || parseFloat(value) <= 0 || belowTolerance}
         >
           {t('pos:cart.applyDiscount')}
         </POSButton>

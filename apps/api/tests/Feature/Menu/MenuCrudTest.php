@@ -9,10 +9,10 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Menu\Domain\Entities\Menu;
-use App\Modules\Menu\Domain\Entities\MenuCategory;
 use App\Modules\Menu\Domain\Entities\MenuCategoryItem;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
@@ -25,7 +25,9 @@ final class MenuCrudTest extends TestCase
     use RefreshDatabase;
 
     private Tenant $tenant;
+
     private Company $company;
+
     private User $user;
 
     protected function setUp(): void
@@ -76,7 +78,7 @@ final class MenuCrudTest extends TestCase
         return CompositeItem::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
-            'code' => 'CI-' . fake()->unique()->numberBetween(1000, 9999),
+            'code' => 'CI-'.fake()->unique()->numberBetween(1000, 9999),
             'name' => 'Test Item',
             'vertical_type' => 'fnb',
             'base_price' => '5.00',
@@ -96,7 +98,7 @@ final class MenuCrudTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'name' => 'Test Product',
-            'sku' => 'PROD-' . fake()->unique()->numberBetween(1000, 9999),
+            'sku' => 'PROD-'.fake()->unique()->numberBetween(1000, 9999),
             'is_physical' => true,
             'sale_price' => '3.50',
             'tax_rate' => 7.00,
@@ -397,6 +399,72 @@ final class MenuCrudTest extends TestCase
         $this->assertContains('product', $types);
     }
 
+    public function test_active_menu_excludes_soft_deleted_composite_items(): void
+    {
+        $menu = $this->createMenu(['is_default' => true]);
+        $category = $menu->categories()->create(['name' => 'Drinks', 'is_active' => true]);
+        $kept = $this->createCompositeItem(['name' => 'Latte']);
+        $deleted = $this->createCompositeItem(['name' => 'Mocha']);
+
+        MenuCategoryItem::create([
+            'menu_category_id' => $category->id,
+            'composite_item_id' => $kept->id,
+            'product_id' => null,
+            'display_order' => 0,
+            'is_available' => true,
+        ]);
+        MenuCategoryItem::create([
+            'menu_category_id' => $category->id,
+            'composite_item_id' => $deleted->id,
+            'product_id' => null,
+            'display_order' => 1,
+            'is_available' => true,
+        ]);
+
+        $deleted->delete(); // soft-delete
+
+        $response = $this->getJson('/api/v1/active-menu');
+
+        $response->assertOk();
+        $items = $response->json('data.categories.0.items');
+        $names = array_column($items, 'name');
+        $this->assertContains('Latte', $names);
+        $this->assertNotContains('Mocha', $names);
+    }
+
+    public function test_active_menu_excludes_soft_deleted_products(): void
+    {
+        $menu = $this->createMenu(['is_default' => true]);
+        $category = $menu->categories()->create(['name' => 'Shop', 'is_active' => true]);
+        $kept = $this->createProduct(['name' => 'Water', 'sale_price' => '1.50']);
+        $deleted = $this->createProduct(['name' => 'Soda', 'sale_price' => '2.00']);
+
+        MenuCategoryItem::create([
+            'menu_category_id' => $category->id,
+            'composite_item_id' => null,
+            'product_id' => $kept->id,
+            'display_order' => 0,
+            'is_available' => true,
+        ]);
+        MenuCategoryItem::create([
+            'menu_category_id' => $category->id,
+            'composite_item_id' => null,
+            'product_id' => $deleted->id,
+            'display_order' => 1,
+            'is_available' => true,
+        ]);
+
+        $deleted->delete();
+
+        $response = $this->getJson('/api/v1/active-menu');
+
+        $response->assertOk();
+        $items = $response->json('data.categories.0.items');
+        $names = array_column($items, 'name');
+        $this->assertContains('Water', $names);
+        $this->assertNotContains('Soda', $names);
+    }
+
     /**
      * @requires extension pdo_pgsql
      */
@@ -411,7 +479,7 @@ final class MenuCrudTest extends TestCase
         $compositeItem = $this->createCompositeItem();
         $product = $this->createProduct();
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
         MenuCategoryItem::create([
             'menu_category_id' => $category->id,
@@ -434,7 +502,7 @@ final class MenuCrudTest extends TestCase
         $menu = $this->createMenu();
         $category = $menu->categories()->create(['name' => 'Bad']);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
         MenuCategoryItem::create([
             'menu_category_id' => $category->id,

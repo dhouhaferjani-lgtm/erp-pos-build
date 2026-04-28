@@ -5,13 +5,16 @@ declare(strict_types=1);
 namespace Tests\Feature\Taxation;
 
 use App\Modules\Company\Domain\Company;
-use App\Modules\Inventory\Domain\Location;
-use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Company\Domain\Location;
+use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
-use App\Modules\User\Domain\User;
+use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
+use App\Modules\Tenant\Domain\Tenant;
+use Database\Seeders\CountriesSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -47,20 +50,25 @@ class TaxRecoverabilityTest extends TestCase
 
     private TaxConfiguration $stampDuty;
 
+    private Tenant $tenant;
+
     protected function setUp(): void
     {
         parent::setUp();
 
-        // Create user and tenant
+        $this->seed(CountriesSeeder::class);
+
+        // Create tenant
+        $this->tenant = Tenant::factory()->create();
+
+        // Create user
         $this->user = User::factory()->create([
-            'tenant_id' => 'test-tenant',
+            'tenant_id' => $this->tenant->id,
         ]);
 
         // Create VAT Registered Company (Tunisia)
-        $this->vatRegisteredCompany = Company::create([
-            'tenant_id' => 'test-tenant',
+        $this->vatRegisteredCompany = Company::factory()->for($this->tenant)->create([
             'name' => 'Garage Assujetti SARL',
-            'legal_name' => 'Garage Assujetti SARL',
             'country_code' => 'TN',
             'currency' => 'TND',
             'tax_status' => CompanyTaxStatus::REGISTERED,
@@ -69,10 +77,8 @@ class TaxRecoverabilityTest extends TestCase
         ]);
 
         // Create Non-VAT Registered Company (Tunisia)
-        $this->nonVatRegisteredCompany = Company::create([
-            'tenant_id' => 'test-tenant',
+        $this->nonVatRegisteredCompany = Company::factory()->for($this->tenant)->create([
             'name' => 'Garage Non-Assujetti',
-            'legal_name' => 'Garage Non-Assujetti',
             'country_code' => 'TN',
             'currency' => 'TND',
             'tax_status' => CompanyTaxStatus::NON_REGISTERED,
@@ -81,56 +87,45 @@ class TaxRecoverabilityTest extends TestCase
         ]);
 
         // Create locations for each company
-        $this->vatLocation = Location::create([
-            'tenant_id' => 'test-tenant',
-            'company_id' => $this->vatRegisteredCompany->id,
+        $this->vatLocation = Location::factory()->for($this->vatRegisteredCompany)->create([
             'name' => 'Main Warehouse',
             'code' => 'WH-VAT',
             'is_default' => true,
         ]);
 
-        $this->nonVatLocation = Location::create([
-            'tenant_id' => 'test-tenant',
-            'company_id' => $this->nonVatRegisteredCompany->id,
+        $this->nonVatLocation = Location::factory()->for($this->nonVatRegisteredCompany)->create([
             'name' => 'Main Warehouse',
             'code' => 'WH-NONVAT',
             'is_default' => true,
         ]);
 
         // Create supplier
-        $this->supplier = Partner::create([
-            'tenant_id' => 'test-tenant',
+        $this->supplier = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
             'company_id' => $this->vatRegisteredCompany->id,
-            'type' => 'SUPPLIER',
+            'type' => PartnerType::Supplier,
             'name' => 'Auto Parts Supplier TN',
-            'email' => 'supplier@example.tn',
-            'tax_status' => 'REGISTERED',
+            'tax_status' => PartnerTaxStatus::REGISTERED,
         ]);
 
         // Create products
-        $this->product1 = Product::create([
-            'tenant_id' => 'test-tenant',
+        $this->product1 = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
             'company_id' => $this->vatRegisteredCompany->id,
-            'reference' => 'BRAKE-PAD-001',
             'name' => 'Brake Pads Set',
-            'description' => 'Front brake pads',
-            'unit_of_measure' => 'SET',
-            'category_id' => null,
-            'purchase_price' => '50.000', // Base price before tax
-            'selling_price' => '100.000',
+            'sku' => 'BRAKE-PAD-001',
+            'purchase_price' => '50.000',
+            'sale_price' => '100.000',
             'tax_rate' => '19.00',
         ]);
 
-        $this->product2 = Product::create([
-            'tenant_id' => 'test-tenant',
+        $this->product2 = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
             'company_id' => $this->nonVatRegisteredCompany->id,
-            'reference' => 'OIL-FILTER-001',
             'name' => 'Oil Filter',
-            'description' => 'Engine oil filter',
-            'unit_of_measure' => 'PIECE',
-            'category_id' => null,
-            'purchase_price' => '10.000', // Base price before tax
-            'selling_price' => '25.000',
+            'sku' => 'OIL-FILTER-001',
+            'purchase_price' => '10.000',
+            'sale_price' => '25.000',
             'tax_rate' => '19.00',
         ]);
 

@@ -73,7 +73,7 @@ final class CompositeItemPricePrecisionTest extends TestCase
     #[Test]
     public function variant_absolute_adjustment_preserves_precision(): void
     {
-        $variant = new CompositeItemVariant();
+        $variant = new CompositeItemVariant;
         $variant->price_adjustment_type = PriceAdjustmentType::Absolute;
         $variant->price_adjustment = '2.000';
 
@@ -86,7 +86,7 @@ final class CompositeItemPricePrecisionTest extends TestCase
     #[Test]
     public function variant_percentage_adjustment_preserves_precision(): void
     {
-        $variant = new CompositeItemVariant();
+        $variant = new CompositeItemVariant;
         $variant->price_adjustment_type = PriceAdjustmentType::Percentage;
         $variant->price_adjustment = '10.00';
 
@@ -99,7 +99,7 @@ final class CompositeItemPricePrecisionTest extends TestCase
     #[Test]
     public function variant_override_preserves_precision(): void
     {
-        $variant = new CompositeItemVariant();
+        $variant = new CompositeItemVariant;
         $variant->price_adjustment_type = PriceAdjustmentType::Override;
         $variant->price_adjustment = '7.500';
 
@@ -158,8 +158,8 @@ final class CompositeItemPricePrecisionTest extends TestCase
 
     private function makeCompositeItem(string $basePrice): CompositeItem
     {
-        $item = new CompositeItem();
-        $item->id = 'test-' . md5($basePrice);
+        $item = new CompositeItem;
+        $item->id = 'test-'.md5($basePrice);
         $item->code = 'TEST-001';
         $item->name = 'Test Composite Item';
         $item->vertical_type = VerticalType::Fnb;

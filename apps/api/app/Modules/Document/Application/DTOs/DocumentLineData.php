@@ -7,7 +7,9 @@ namespace App\Modules\Document\Application\DTOs;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Shared\Domain\CurrencyScale;
 use Spatie\LaravelData\Data;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
+#[TypeScript]
 final class DocumentLineData extends Data
 {
     public function __construct(
@@ -23,6 +25,7 @@ final class DocumentLineData extends Data
         public ?string $tax_rate,
         public string $line_total,
         public ?string $notes,
+        public ?string $designation_default_snapshot,
     ) {}
 
     public static function fromModel(DocumentLine $line, int $scale = 3): self
@@ -40,6 +43,7 @@ final class DocumentLineData extends Data
             tax_rate: $line->tax_rate !== null ? CurrencyScale::bcformat($line->tax_rate, 2) : null,
             line_total: CurrencyScale::bcformat($line->line_total, $scale),
             notes: $line->notes,
+            designation_default_snapshot: $line->designation_default_snapshot,
         );
     }
 }

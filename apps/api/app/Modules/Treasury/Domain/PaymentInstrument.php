@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * Physical payment instrument (check, voucher, etc.).
@@ -26,23 +27,23 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $drawer_name
  * @property numeric-string $amount
  * @property string $currency
- * @property \Illuminate\Support\Carbon $received_date
- * @property \Illuminate\Support\Carbon|null $maturity_date
- * @property \Illuminate\Support\Carbon|null $expiry_date
+ * @property Carbon $received_date
+ * @property Carbon|null $maturity_date
+ * @property Carbon|null $expiry_date
  * @property InstrumentStatus $status
  * @property string|null $repository_id
  * @property string|null $bank_name
  * @property string|null $bank_branch
  * @property string|null $bank_account
- * @property \Illuminate\Support\Carbon|null $deposited_at
+ * @property Carbon|null $deposited_at
  * @property string|null $deposited_to_id
- * @property \Illuminate\Support\Carbon|null $cleared_at
- * @property \Illuminate\Support\Carbon|null $bounced_at
+ * @property Carbon|null $cleared_at
+ * @property Carbon|null $bounced_at
  * @property string|null $bounce_reason
  * @property string|null $payment_id
  * @property string|null $created_by
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read Tenant $tenant
  * @property-read Company $company
  * @property-read PaymentMethod|null $paymentMethod

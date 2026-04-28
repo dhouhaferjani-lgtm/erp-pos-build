@@ -8,6 +8,7 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -16,11 +17,11 @@ use Illuminate\Database\Eloquent\Model;
  * @property FiscalCategory|null $fiscal_category
  * @property string $stamp_amount
  * @property bool $is_active
- * @property \Illuminate\Support\Carbon $effective_from
- * @property \Illuminate\Support\Carbon|null $effective_to
+ * @property Carbon $effective_from
+ * @property Carbon|null $effective_to
  * @property array<string, mixed>|null $metadata
- * @property \Illuminate\Support\Carbon $created_at
- * @property \Illuminate\Support\Carbon $updated_at
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
  */
 class StampDutyRule extends Model
 {
@@ -69,7 +70,7 @@ class StampDutyRule extends Model
     /**
      * Check if this rule applies to a specific date
      */
-    public function isEffectiveOn(\Illuminate\Support\Carbon $date): bool
+    public function isEffectiveOn(Carbon $date): bool
     {
         if ($this->effective_from->greaterThan($date)) {
             return false;

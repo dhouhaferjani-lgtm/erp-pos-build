@@ -1,0 +1,40 @@
+{
+  "lines": {
+    "designation": {
+      "editAriaLabel": "Edit designation",
+      "overriddenTooltip": "Designation overridden — original: {{originalName}}",
+      "resetLink": "Reset to product name",
+      "resetAriaLabel": "Reset designation to product name",
+      "resetDisabledTooltip": "Product no longer exists",
+      "emptyHint": "Designation cannot be empty"
+    },
+    "additionalDescription": {
+      "addLink": "Add description",
+      "addAriaLabel": "Add additional description",
+      "editAriaLabel": "Additional description",
+      "placeholder": "e.g. 2.5h × 60/hr by mechanic John"
+    }
+  },
+  "invoice": {
+    "closeWithWriteoff": {
+      "calloutTitle": "رصيد متبقٍ ضمن حد التسامح",
+      "calloutMessage": "يتبقى {{amount}} على هذه الفاتورة وهو ضمن هامش تسامح الدفع. يمكن إقفالها بترحيل المبلغ المتبقي إلى الحساب 658.",
+      "button": "إقفال مع شطب ({{amount}})",
+      "dialog": {
+        "title": "إقفال الفاتورة مع شطب",
+        "message": "سيتم شطب {{amount}} على الحساب 658 (مصاريف تسامح الدفع) وسيتم تحديد الفاتورة كمدفوعة. لا يمكن التراجع عن هذا الإجراء.",
+        "confirm": "إقفال الفاتورة",
+        "cancel": "إلغاء"
+      },
+      "success": "تم إقفال الفاتورة — تم شطب {{amount}} إلى الحساب 658.",
+      "error": {
+        "toleranceExceeded": "الرصيد المتبقي يتجاوز حد تسامح الدفع لهذه الشركة.",
+        "alreadyPaid": "هذه الفاتورة مسددة بالفعل.",
+        "generic": "تعذر إقفال الفاتورة. يرجى المحاولة مرة أخرى."
+      }
+    }
+  },
+  "discount": {
+    "below_tolerance": "يجب أن يتجاوز الخصم هامش التسامح ({{margin}}). للمبالغ المتبقية الأصغر، استخدم تسوية تسامح الدفع عند التسوية."
+  }
+}

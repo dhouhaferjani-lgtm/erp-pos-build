@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
@@ -55,7 +56,7 @@ return new class extends Migration
             Schema::table('tenant_subscriptions', function (Blueprint $table): void {
                 $table->index('next_payment_due');
             });
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             // Index already exists, ignore
         }
     }

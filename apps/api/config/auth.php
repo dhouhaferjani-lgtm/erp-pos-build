@@ -1,5 +1,8 @@
 <?php
 
+use App\Models\SuperAdmin;
+use App\Modules\Identity\Domain\User;
+
 return [
 
     /*
@@ -70,11 +73,11 @@ return [
     'providers' => [
         'users' => [
             'driver' => 'eloquent',
-            'model' => env('AUTH_MODEL', App\Modules\Identity\Domain\User::class),
+            'model' => env('AUTH_MODEL', User::class),
         ],
         'super_admins' => [
             'driver' => 'eloquent',
-            'model' => App\Models\SuperAdmin::class,
+            'model' => SuperAdmin::class,
         ],
     ],
 

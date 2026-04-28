@@ -7,13 +7,11 @@ namespace Tests\Unit\POS;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
-use App\Modules\POS\Domain\CashDrawerOperation;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Exceptions\ShiftAlreadyOpenException;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Services\CashDrawerService;
 use App\Modules\POS\Domain\Services\ShiftManagementService;
-use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -61,7 +59,7 @@ final class ShiftManagementServiceTest extends TestCase
         $this->assertEquals($this->terminal->id, $shift->terminal_id);
         $this->assertEquals($this->cashier->id, $shift->cashier_id);
         $this->assertEquals(1, $shift->shift_number);
-        $this->assertEquals('100.000', $shift->opening_cash);
+        $this->assertEquals('100.0000', $shift->opening_cash);
         $this->assertEquals(ShiftStatus::Open, $shift->status);
         $this->assertNotNull($shift->opened_at);
     }
@@ -104,9 +102,9 @@ final class ShiftManagementServiceTest extends TestCase
         $closedShift = $this->service->closeShift($shift, '95.00', $this->cashier);
 
         $this->assertEquals(ShiftStatus::Closed, $closedShift->status);
-        $this->assertEquals('100.000', $closedShift->expected_cash);
-        $this->assertEquals('95.000', $closedShift->actual_cash);
-        $this->assertEquals('-5.000', $closedShift->variance);
+        $this->assertEquals('100.0000', $closedShift->expected_cash);
+        $this->assertEquals('95.0000', $closedShift->actual_cash);
+        $this->assertEquals('-5.0000', $closedShift->variance);
         $this->assertNotNull($closedShift->closed_at);
         $this->assertEquals($this->cashier->id, $closedShift->closed_by);
     }

@@ -1,0 +1,175 @@
+{
+  "pageTitle": "Scheduling",
+  "scheduler": {
+    "title": "Scheduler",
+    "subtitle": "Plan bay workload day by day.",
+    "viewDay": "Day",
+    "viewWeek": "Week",
+    "today": "Today",
+    "previous": "Previous",
+    "next": "Next",
+    "newAppointment": "Book appointment",
+    "emptyDay": "No appointments scheduled for this day.",
+    "emptyBay": "Nothing booked on this bay.",
+    "noBays": "No bays configured. Add at least one bay in settings to start scheduling.",
+    "loading": "Loading calendar…",
+    "loadError": "Could not load the calendar.",
+    "unassignedBay": "Unassigned"
+  },
+  "status": {
+    "scheduled": "Scheduled",
+    "confirmed": "Confirmed",
+    "checked_in": "Checked in",
+    "in_progress": "In progress",
+    "completed": "Completed",
+    "closed": "Closed",
+    "no_show": "No show",
+    "cancelled": "Cancelled"
+  },
+  "source": {
+    "manual": "Manual",
+    "phone": "Phone",
+    "online": "Online",
+    "walkin": "Walk-in"
+  },
+  "waitType": {
+    "waiter": "Customer waits",
+    "drop_off": "Drop off",
+    "pickup_scheduled": "Scheduled pickup"
+  },
+  "appointmentType": {
+    "quick_service": "Quick service",
+    "inspection": "Inspection",
+    "diagnostic": "Diagnostic",
+    "standard_repair": "Standard repair",
+    "major_repair": "Major repair",
+    "maintenance": "Maintenance",
+    "tire_service": "Tire service",
+    "bodywork": "Bodywork",
+    "other": "Other"
+  },
+  "bayType": {
+    "general": "General",
+    "quick_service": "Quick service",
+    "alignment": "Alignment",
+    "heavy": "Heavy",
+    "specialist": "Specialist",
+    "flat": "Flat",
+    "other": "Other"
+  },
+  "actions": {
+    "book": "Book appointment",
+    "confirm": "Confirm",
+    "reschedule": "Reschedule",
+    "checkIn": "Check in",
+    "cancel": "Cancel",
+    "convert": "Convert to work order",
+    "save": "Save",
+    "close": "Close",
+    "back": "Back"
+  },
+  "fields": {
+    "appointmentNumber": "Appointment #",
+    "status": "Status",
+    "source": "Source",
+    "type": "Type",
+    "bay": "Bay",
+    "technician": "Technician",
+    "customer": "Customer",
+    "customerName": "Customer name",
+    "customerPhone": "Phone",
+    "customerEmail": "Email",
+    "vehicle": "Vehicle",
+    "vehiclePlate": "Plate",
+    "vehicleDescription": "Vehicle description",
+    "waitType": "Wait type",
+    "scheduledStart": "Starts at",
+    "scheduledEnd": "Ends at",
+    "estimatedDuration": "Estimated duration (minutes)",
+    "actualArrival": "Actual arrival",
+    "servicesSummary": "Services summary",
+    "customerNotes": "Customer notes",
+    "internalNotes": "Internal notes",
+    "colorLabel": "Color label",
+    "plannedServices": "Planned services",
+    "location": "Location",
+    "appointmentType": "Appointment type"
+  },
+  "drawer": {
+    "bookTitle": "Book appointment",
+    "rescheduleTitle": "Reschedule appointment",
+    "editTitle": "Edit appointment",
+    "sectionCustomer": "Customer",
+    "sectionVehicle": "Vehicle",
+    "sectionSchedule": "Schedule",
+    "sectionServices": "Services",
+    "sectionNotes": "Notes",
+    "savingLabel": "Saving…",
+    "successBooked": "Appointment booked.",
+    "successUpdated": "Appointment updated.",
+    "successConfirmed": "Appointment confirmed.",
+    "successRescheduled": "Appointment rescheduled.",
+    "successCheckedIn": "Customer checked in.",
+    "successCancelled": "Appointment cancelled.",
+    "successConverted": "Appointment converted to work order."
+  },
+  "errors": {
+    "required": "This field is required.",
+    "invalidDate": "Please enter a valid date.",
+    "invalidRange": "End must be after start.",
+    "conflict": "Time slot conflicts with an existing booking on this bay.",
+    "notConvertible": "This appointment is not in a convertible state.",
+    "invalidTransition": "This transition is not allowed for the current status.",
+    "generic": "Something went wrong. Please try again."
+  },
+  "conflict": {
+    "title": "Scheduling conflict",
+    "bayBusy": "Bay is already booked for the selected window.",
+    "outsideHours": "Selected window is outside the bay's operating hours.",
+    "seeExisting": "View conflicting appointment"
+  },
+  "reminder": {
+    "smsSent": "SMS reminder sent",
+    "emailSent": "Email reminder sent",
+    "smsFailed": "SMS reminder failed",
+    "emailFailed": "Email reminder failed",
+    "skipped": "Reminder skipped"
+  },
+  "capacity": {
+    "title": "Capacity report",
+    "subtitle": "How much of each bay is booked today.",
+    "bay": "Bay",
+    "utilization": "Utilization",
+    "bookedMinutes": "Booked minutes",
+    "availableMinutes": "Available minutes",
+    "overbooked": "Overbooked",
+    "underutilized": "Under-utilized",
+    "healthy": "Healthy",
+    "empty": "No capacity data for the selected range."
+  },
+  "detail": {
+    "title": "Appointment details",
+    "notFound": "Appointment not found.",
+    "timeline": "Timeline",
+    "plannedServicesTitle": "Planned services",
+    "noServices": "No services planned.",
+    "convertedTo": "Converted to work order",
+    "confirmCancelTitle": "Cancel this appointment?",
+    "confirmCancelBody": "Are you sure you want to cancel this appointment? This cannot be undone.",
+    "reasonLabel": "Cancellation reason",
+    "reasonPlaceholder": "e.g. customer requested"
+  },
+  "availability": {
+    "title": "Find free slot",
+    "duration": "Duration (minutes)",
+    "from": "From",
+    "to": "To",
+    "search": "Search slots",
+    "emptySlots": "No free slots in the selected window.",
+    "pick": "Pick slot"
+  },
+  "upcoming": {
+    "title": "Upcoming appointments",
+    "empty": "No upcoming appointments."
+  }
+}

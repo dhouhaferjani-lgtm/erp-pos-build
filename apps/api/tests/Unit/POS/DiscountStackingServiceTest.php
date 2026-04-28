@@ -12,6 +12,7 @@ use Tests\Traits\WithCurrencyScale;
 final class DiscountStackingServiceTest extends TestCase
 {
     use WithCurrencyScale;
+
     private DiscountStackingService $service;
 
     protected function setUp(): void

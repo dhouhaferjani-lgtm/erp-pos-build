@@ -18,14 +18,40 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
+/**
+ * Coverage for BarcodeLookupService against the platform's universal
+ * product-lookup endpoint (POST /api/v1/products/lookup).
+ *
+ * Asserts the BarcodeLookupResultData DTO's actual public surface:
+ *   status, barcode, product (PlatformProductData), trackingId,
+ *   suggestedProduct, errorReason — all camelCase per Spatie\LaravelData.
+ *
+ * Also covers UPC-12 → EAN-13 left-pad normalisation, EAN-13 check-digit
+ * acceptance, the in-memory cache short-circuit, and the open-circuit
+ * 'platform_unavailable' early return.
+ */
 class BarcodeLookupTest extends TestCase
 {
     use RefreshDatabase;
+
+    /**
+     * EAN-13 with a valid check digit (Staedtler — 4006381333931). Used
+     * wherever the test needs the normaliser to accept the input rather
+     * than reject it as 'invalid_barcode'.
+     */
+    private const VALID_EAN_13 = '4006381333931';
+
+    /** UPC-12 corresponding to {@see self::VALID_UPC_13_PADDED}. */
+    private const VALID_UPC_12 = '012345678905';
+
+    /** UPC-12 left-padded to a check-digit-valid EAN-13. */
+    private const VALID_UPC_13_PADDED = '0012345678905';
 
     private Tenant $tenant;
 
@@ -79,105 +105,99 @@ class BarcodeLookupTest extends TestCase
 
         config(['services.platform.url' => 'https://platform.test']);
         config(['services.platform.api_key' => 'test-api-key']);
+
+        // BarcodeLookupService persists results to the application cache so
+        // its results survive across tests in the same PHPUnit process. Flush
+        // here to keep each test isolated.
+        Cache::flush();
     }
 
-    /** @test */
-    public function it_returns_found_status_when_barcode_matches(): void
+    public function test_it_returns_found_status_when_barcode_matches(): void
     {
         Http::fake([
-            'platform.test/api/v1/automotive/articles/barcode/4005209123456' => Http::response([
-                'data' => [
+            'platform.test/api/v1/products/lookup' => Http::response([
+                'status' => 'found',
+                'product' => [
                     'id' => '550e8400-e29b-41d4-a716-446655440000',
-                    'article_number' => '0986494123',
+                    'barcode' => self::VALID_EAN_13,
                     'name' => 'Bosch Brake Pad Set',
-                    'supplier_brand' => 'Bosch',
-                    'product_group_name' => 'Brake Pads',
-                    'barcode' => '4005209123456',
-                    'brand_quality_tier' => 'oes',
-                    'weight_kg' => '1.250',
-                    'dimensions' => null,
-                    'cross_references' => [
-                        ['type' => 'oe', 'number' => 'ABC123', 'manufacturer_name' => 'Toyota'],
-                    ],
-                    'vehicle_linkages' => [
-                        ['vehicle_type' => 'pc', 'vehicle_id' => 'v-001', 'display' => 'Toyota Corolla', 'year_from' => 2019, 'year_to' => 2023],
-                    ],
-                    'criteria' => [
-                        ['key' => 'length_mm', 'label' => 'Length', 'value' => '450', 'unit' => 'mm'],
-                    ],
+                    'brand' => 'Bosch',
+                    'description' => 'Premium ceramic brake pads',
+                    'classification' => ['category' => 'brakes'],
+                    'ingredients' => [],
+                    'images' => [],
+                    'confidence_score' => 95,
+                    'enrichment_tier' => 'gold',
                 ],
             ], 200),
         ]);
 
         /** @var BarcodeLookupService $service */
         $service = app(BarcodeLookupService::class);
-        $result = $service->lookup('4005209123456');
+        $result = $service->lookup(self::VALID_EAN_13);
 
         $this->assertSame('found', $result->status);
-        $this->assertSame('4005209123456', $result->barcode);
-        $this->assertNotNull($result->article);
-        $this->assertSame('0986494123', $result->article['article_number']);
-        $this->assertSame('Bosch', $result->article['supplier_brand']);
+        $this->assertSame(self::VALID_EAN_13, $result->barcode);
+        $this->assertNotNull($result->product);
+        $this->assertSame('Bosch Brake Pad Set', $result->product->name);
+        $this->assertSame('Bosch', $result->product->brand);
         $this->assertNotNull($result->suggestedProduct);
         $this->assertSame('Bosch Brake Pad Set', $result->suggestedProduct['name']);
+        $this->assertNull($result->errorReason);
     }
 
-    /** @test */
-    public function it_returns_not_found_when_barcode_has_no_match(): void
+    public function test_it_returns_not_found_when_barcode_has_no_match(): void
     {
-        // Note: PlatformHttpClient::get() checks for 404 to return null,
-        // but retry() throws RequestException before that check runs.
-        // The catch in BarcodeLookupService maps this to an 'error' status.
-        // This tests the actual runtime behavior.
         Http::fake([
-            'platform.test/api/v1/automotive/articles/barcode/9999999999999' => Http::response(null, 404),
+            'platform.test/api/v1/products/lookup' => Http::response(null, 404),
         ]);
 
         /** @var BarcodeLookupService $service */
         $service = app(BarcodeLookupService::class);
-        $result = $service->lookup('9999999999999');
+        $result = $service->lookup(self::VALID_EAN_13);
 
-        $this->assertSame('error', $result->status);
-        $this->assertSame('9999999999999', $result->barcode);
-        $this->assertSame('platform_error', $result->error_reason);
+        $this->assertSame('not_found', $result->status);
+        $this->assertSame(self::VALID_EAN_13, $result->barcode);
+        $this->assertNull($result->product);
+        $this->assertNull($result->errorReason);
     }
 
-    /** @test */
-    public function it_normalizes_upc_to_ean(): void
+    public function test_it_normalizes_upc_to_ean(): void
     {
         Http::fake([
-            'platform.test/api/v1/automotive/articles/barcode/0400520912345' => Http::response(null, 404),
+            'platform.test/api/v1/products/lookup' => Http::response(null, 404),
         ]);
 
         /** @var BarcodeLookupService $service */
         $service = app(BarcodeLookupService::class);
-        $result = $service->lookup('400520912345'); // 12-digit UPC
+        $result = $service->lookup(self::VALID_UPC_12);
 
-        $this->assertSame('0400520912345', $result->barcode);
+        $this->assertSame(self::VALID_UPC_13_PADDED, $result->barcode);
 
-        Http::assertSent(function (\Illuminate\Http\Client\Request $request): bool {
-            return str_contains($request->url(), '0400520912345');
+        Http::assertSent(function (Request $request): bool {
+            /** @var array<string, mixed> $body */
+            $body = $request->data();
+
+            return ($body['barcode'] ?? null) === self::VALID_UPC_13_PADDED;
         });
     }
 
-    /** @test */
-    public function it_caches_successful_lookups(): void
+    public function test_it_caches_successful_lookups(): void
     {
         Http::fake([
-            'platform.test/api/v1/automotive/articles/barcode/4005209123456' => Http::response([
-                'data' => [
+            'platform.test/api/v1/products/lookup' => Http::response([
+                'status' => 'found',
+                'product' => [
                     'id' => '550e8400-e29b-41d4-a716-446655440000',
-                    'article_number' => '0986494123',
+                    'barcode' => self::VALID_EAN_13,
                     'name' => 'Bosch Brake Pad',
-                    'supplier_brand' => 'Bosch',
-                    'product_group_name' => 'Brake Pads',
-                    'barcode' => '4005209123456',
-                    'brand_quality_tier' => 'oes',
-                    'weight_kg' => '1.250',
-                    'dimensions' => null,
-                    'cross_references' => [],
-                    'vehicle_linkages' => [],
-                    'criteria' => [],
+                    'brand' => 'Bosch',
+                    'description' => null,
+                    'classification' => [],
+                    'ingredients' => [],
+                    'images' => [],
+                    'confidence_score' => 80,
+                    'enrichment_tier' => null,
                 ],
             ], 200),
         ]);
@@ -185,29 +205,26 @@ class BarcodeLookupTest extends TestCase
         /** @var BarcodeLookupService $service */
         $service = app(BarcodeLookupService::class);
 
-        // First call - hits the API
-        $result1 = $service->lookup('4005209123456');
+        $result1 = $service->lookup(self::VALID_EAN_13);
         $this->assertSame('found', $result1->status);
 
-        // Second call - should use cache
-        $result2 = $service->lookup('4005209123456');
+        $result2 = $service->lookup(self::VALID_EAN_13);
         $this->assertSame('found', $result2->status);
 
-        // HTTP should have been called only once
         Http::assertSentCount(1);
     }
 
-    /** @test */
-    public function it_returns_error_when_platform_unavailable(): void
+    public function test_it_returns_error_when_platform_unavailable(): void
     {
-        // Open the circuit breaker by setting the cache key
+        // Open the circuit breaker by setting the cache key the
+        // PlatformHttpClient checks via Cache::has(...)
         Cache::put('platform:circuit_breaker', true, 30);
 
         /** @var BarcodeLookupService $service */
         $service = app(BarcodeLookupService::class);
-        $result = $service->lookup('4005209123456');
+        $result = $service->lookup(self::VALID_EAN_13);
 
         $this->assertSame('error', $result->status);
-        $this->assertSame('platform_unavailable', $result->error_reason);
+        $this->assertSame('platform_unavailable', $result->errorReason);
     }
 }

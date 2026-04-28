@@ -1,13 +1,10 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { cn } from '@/lib/utils';
 import { useCurrency } from '@/lib/currency';
-import { useConnectivityStore } from '@/stores/connectivityStore';
 import { usePrinterStore } from '@/stores/printerStore';
 import { useCashDrawerStore } from '@/stores/cashDrawerStore';
 import {
   printReceipt,
-  printReceiptAsPdf,
   openCashDrawer,
   getPrintSettingsFromStore,
   getDrawerSettingsFromStore,
@@ -15,7 +12,7 @@ import {
 } from '@/lib/printing';
 import type { ReceiptData } from '@/lib/printing';
 import { Modal } from './Modal';
-import { CheckCircle, Printer, FileText, Loader2 } from 'lucide-react';
+import { CheckCircle, Printer, Loader2 } from 'lucide-react';
 
 interface CheckoutSuccessModalProps {
   isOpen: boolean;
@@ -23,12 +20,8 @@ interface CheckoutSuccessModalProps {
   receiptNumber: string;
   total: string;
   changeDue: number;
-  /** Receipt ID for PDF printing. */
-  receiptId?: string;
   /** Optional pre-built receipt data for ESC/POS printing. */
   receiptData?: ReceiptData;
-  /** Whether this receipt was created offline. */
-  isOfflineReceipt?: boolean;
 }
 
 export function CheckoutSuccessModal({
@@ -37,19 +30,15 @@ export function CheckoutSuccessModal({
   receiptNumber,
   total,
   changeDue,
-  receiptId,
   receiptData,
-  isOfflineReceipt = false,
 }: CheckoutSuccessModalProps) {
   const { t } = useTranslation('pos');
   const { format } = useCurrency();
-  const isOnline = useConnectivityStore((s) => s.isOnline);
 
   const printerConfig = usePrinterStore((s) => s.printerConfig);
   const autoPrint = usePrinterStore((s) => s.autoPrint);
 
   const [isPrinting, setIsPrinting] = useState(false);
-  const [isPdfPrinting, setIsPdfPrinting] = useState(false);
   const [printError, setPrintError] = useState<string | null>(null);
   const autoPrintTriggered = useRef(false);
 
@@ -67,20 +56,6 @@ export function CheckoutSuccessModal({
       setIsPrinting(false);
     }
   }, [printerConfig, receiptData]);
-
-  // PDF print via browser dialog
-  const handlePdfPrint = useCallback(async () => {
-    if (!receiptId) return;
-    setIsPdfPrinting(true);
-    setPrintError(null);
-    try {
-      await printReceiptAsPdf(receiptId);
-    } catch (err: unknown) {
-      setPrintError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setIsPdfPrinting(false);
-    }
-  }, [receiptId]);
 
   // Auto-print when the modal opens with receipt data + auto-open drawer
   useEffect(() => {
@@ -108,7 +83,6 @@ export function CheckoutSuccessModal({
 
   const canEscPosPrint =
     isTauriEnvironment() && printerConfig !== null && receiptData !== undefined;
-  const canPdfPrint = isOnline && receiptId !== undefined;
 
   const footerContent = (
     <div className="space-y-3">
@@ -125,27 +99,6 @@ export function CheckoutSuccessModal({
             <Printer className="h-5 w-5" />
           )}
           {t('settings.printReceipt')}
-        </button>
-      )}
-
-      {/* PDF Print — secondary fallback, subtle link style when thermal is available */}
-      {canPdfPrint && (
-        <button
-          onClick={() => void handlePdfPrint()}
-          disabled={isPdfPrinting}
-          className={cn(
-            'flex w-full items-center justify-center gap-2 disabled:opacity-50',
-            canEscPosPrint
-              ? 'text-sm text-gray-500 underline hover:text-gray-700'
-              : 'rounded-xl border border-gray-300 bg-white px-6 py-3 text-base font-medium text-gray-700 transition-colors hover:bg-gray-50',
-          )}
-        >
-          {isPdfPrinting ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
-          ) : (
-            <FileText className="h-5 w-5" />
-          )}
-          {t('settings.printReceiptPdf')}
         </button>
       )}
 
@@ -168,14 +121,6 @@ export function CheckoutSuccessModal({
             <CheckCircle className="h-12 w-12 text-green-600" />
           </div>
         </div>
-
-        {/* Offline banner */}
-        {isOfflineReceipt && (
-          <div className="rounded-md bg-amber-50 p-3 text-sm text-amber-700">
-            <p className="font-medium">{t('payment.offlineSaved')}</p>
-            <p className="mt-1">{t('payment.offlineWillSync')}</p>
-          </div>
-        )}
 
         {/* Receipt number */}
         <div>

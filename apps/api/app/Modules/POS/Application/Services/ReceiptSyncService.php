@@ -4,17 +4,19 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Application\Services;
 
+use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
-use App\Shared\Domain\CurrencyScale;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\POS\Application\DTOs\SyncReceiptPayload;
 use App\Modules\POS\Application\DTOs\SyncReceiptResult;
+use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
+use App\Modules\POS\Domain\Enums\SyncStatus;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
 use App\Modules\POS\Domain\ReceiptPayment;
@@ -23,7 +25,9 @@ use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -58,7 +62,7 @@ final class ReceiptSyncService
      * validation fails, all subsequent receipts are marked as chain_broken.
      *
      * @param  array<int, SyncReceiptPayload>  $payloads  Ordered array of receipt payloads
-     * @return array<int, SyncReceiptResult>  Per-receipt sync results
+     * @return array<int, SyncReceiptResult> Per-receipt sync results
      */
     public function syncBatch(array $payloads): array
     {
@@ -81,7 +85,7 @@ final class ReceiptSyncService
                 $results[] = $result;
 
                 // If sync failed (not duplicate), break the chain for subsequent receipts
-                if ($result->status === \App\Modules\POS\Domain\Enums\SyncStatus::Failed) {
+                if ($result->status === SyncStatus::Failed) {
                     $chainBroken = true;
                 }
             } catch (\Throwable $e) {
@@ -110,10 +114,18 @@ final class ReceiptSyncService
         // 1. Idempotency check: if receipt with this key already exists, return duplicate
         $existing = Receipt::where('idempotency_key', $payload->idempotencyKey)->first();
         if ($existing !== null) {
+            // Refresh the terminal so the echo reflects the current persisted state
+            // (not the idempotency-hit terminal's pre-modification state).
+            $terminalForEcho = Terminal::where('id', $existing->terminal_id)->first();
+
             return SyncReceiptResult::duplicate(
                 $payload->idempotencyKey,
                 $existing->id,
                 $existing->fiscal_hash,
+                terminalLastHash: $terminalForEcho?->last_hash,
+                terminalHashSequence: $terminalForEcho !== null
+                    ? $terminalForEcho->current_sequence - 1
+                    : null,
             );
         }
 
@@ -180,7 +192,7 @@ final class ReceiptSyncService
                         $taxRate = (string) ($product->tax_rate ?? '0.00');
                     }
                 } elseif ($compositeItemId !== null) {
-                    $compositeItem = \App\Modules\Catalog\Domain\Entities\CompositeItem::find($compositeItemId);
+                    $compositeItem = CompositeItem::find($compositeItemId);
                     if ($compositeItem !== null) {
                         $sellableName = $compositeItem->getSellableName();
                         $sellableCode = $compositeItem->code;
@@ -299,7 +311,13 @@ final class ReceiptSyncService
                 'tax_amount' => $payload->taxAmount,
                 'discount_amount' => $payload->discountAmount,
                 'total' => $total,
+                'change_due' => $payload->changeDue,
                 'currency' => $payload->currency,
+                'consumption_mode' => $payload->consumptionMode !== null
+                    ? ConsumptionMode::from($payload->consumptionMode)
+                    : null,
+                'table_id' => $payload->tableId,
+                'fiscal_status' => 'fiscalized',
                 'is_voided' => false,
                 'vat_breakdown_hash' => $vatHash,
                 'payment_methods_hash' => $paymentHash,
@@ -351,15 +369,17 @@ final class ReceiptSyncService
                 }
             }
 
-            // 13. Create payment record if payment info provided
-            if ($payload->paymentMethodId !== '') {
-                $paymentMethod = \App\Modules\Treasury\Domain\PaymentMethod::find($payload->paymentMethodId);
+            // 13. Create payment records — loop over the payments array
+            foreach ($payload->payments as $entry) {
+                $method = PaymentMethod::findOrFail($entry['payment_method_id']);
                 ReceiptPayment::create([
                     'id' => Str::uuid()->toString(),
                     'receipt_id' => $receipt->id,
-                    'payment_method_id' => $payload->paymentMethodId,
-                    'payment_type' => $paymentMethod->code ?? 'unknown',
-                    'amount' => $total,
+                    'payment_method_id' => $entry['payment_method_id'],
+                    'payment_type' => $method->code,
+                    'amount' => $entry['amount'],
+                    'card_last_four' => $entry['card_last_four'] ?? null,
+                    'transaction_reference' => $entry['transaction_reference'] ?? null,
                 ]);
             }
 
@@ -367,6 +387,8 @@ final class ReceiptSyncService
                 $payload->idempotencyKey,
                 $receipt->id,
                 $fiscalHash,
+                terminalLastHash: $terminal->last_hash,
+                terminalHashSequence: $terminal->current_sequence - 1,
             );
         });
     }

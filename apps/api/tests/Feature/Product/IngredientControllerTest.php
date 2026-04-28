@@ -22,6 +22,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -80,8 +81,7 @@ class IngredientControllerTest extends TestCase
         app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
-    /** @test */
-    public function it_can_list_ingredients(): void
+    public function test_list_ingredients(): void
     {
         $ingredient = Ingredient::create([
             'slug' => 'vitamin-c',
@@ -110,8 +110,7 @@ class IngredientControllerTest extends TestCase
         $this->assertNotEmpty($data);
     }
 
-    /** @test */
-    public function it_can_create_ingredient(): void
+    public function test_create_ingredient(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/parapharmacy/ingredients', [
@@ -155,8 +154,7 @@ class IngredientControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function it_can_update_ingredient(): void
+    public function test_update_ingredient(): void
     {
         $ingredient = Ingredient::create([
             'slug' => 'retinol',
@@ -199,8 +197,7 @@ class IngredientControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function it_can_delete_ingredient(): void
+    public function test_delete_ingredient(): void
     {
         $ingredient = Ingredient::create([
             'slug' => 'niacinamide',
@@ -224,8 +221,7 @@ class IngredientControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function it_prevents_deletion_of_in_use_ingredient(): void
+    public function test_prevents_deletion_of_in_use_ingredient(): void
     {
         $ingredient = Ingredient::create([
             'slug' => 'salicylic-acid',
@@ -249,7 +245,7 @@ class IngredientControllerTest extends TestCase
         ]);
 
         DB::table('product_ingredient')->insert([
-            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'id' => (string) Str::uuid(),
             'product_id' => $product->id,
             'ingredient_id' => $ingredient->id,
             'created_at' => now(),
@@ -268,16 +264,14 @@ class IngredientControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function unauthenticated_user_cannot_access_ingredients(): void
+    public function test_unauthenticated_user_cannot_access_ingredients(): void
     {
         $response = $this->getJson('/api/v1/parapharmacy/ingredients');
 
         $response->assertStatus(401);
     }
 
-    /** @test */
-    public function user_without_settings_manage_permission_cannot_create_ingredient(): void
+    public function test_user_without_settings_manage_permission_cannot_create_ingredient(): void
     {
         $limitedUser = User::create([
             'tenant_id' => $this->tenant->id,

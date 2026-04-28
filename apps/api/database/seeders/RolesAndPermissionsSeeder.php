@@ -44,6 +44,9 @@ class RolesAndPermissionsSeeder extends Seeder
             'products.update',
             'products.delete',
             'products.import',
+            'enrichment.view',
+            'enrichment.review',
+            'enrichment.submit',
 
             // Composite Items / Catalog
             'composite-items.view',
@@ -53,6 +56,10 @@ class RolesAndPermissionsSeeder extends Seeder
             'composite-items.manage-recipes',
             'modifier-groups.view',
             'modifier-groups.manage',
+
+            // Workshop Service Bundles (automotive menu pricing)
+            'workshop-bundles.view',
+            'workshop-bundles.manage',
 
             // Menu Management
             'menus.view',
@@ -71,9 +78,12 @@ class RolesAndPermissionsSeeder extends Seeder
             'vehicles.create',
             'vehicles.update',
             'vehicles.delete',
+            'vehicles.manage_ownership',
+            'vehicles.log_mileage',
 
             // Sales Documents (Quotes, Orders, Invoices)
             'documents.view',  // Unified document view
+            'documents.update',  // Document attachments (Media module)
             'quotes.view',
             'quotes.create',
             'quotes.update',
@@ -114,6 +124,8 @@ class RolesAndPermissionsSeeder extends Seeder
 
             'deliveries.view',
             'deliveries.create',
+            'deliveries.edit',
+            'deliveries.delete',
             'deliveries.confirm',
 
             // Expenses
@@ -160,11 +172,41 @@ class RolesAndPermissionsSeeder extends Seeder
             'reports.operational',
             'reports.manage',  // VAT period management
 
-            // Workshop
+            // Workshop — Work Orders (Spec B)
             'work-orders.view',
             'work-orders.create',
             'work-orders.update',
+            'work-orders.approve',
+            'work-orders.assign',
+            'work-orders.transition',
+            'work-orders.cancel',
             'work-orders.complete',
+            'work-orders.view_financials',
+
+            // Workshop — Technicians (Spec C)
+            'workshop.technicians.view',
+            'workshop.technicians.manage',
+            'workshop.technicians.view_pay',
+            'workshop.technicians.view_pii',
+            'workshop.technicians.approve_time_off',
+            'workshop.technicians.adjust_time_entries',
+            // Authoring permissions added by Phase A.4 (technician authoring UI).
+            'workshop.technicians.manage_certifications',
+            'workshop.technicians.manage_time_off',
+            'workshop.technicians.manage_time_entries',
+
+            // Workshop — Payroll export (Phase A.4)
+            'workshop.payroll.view',
+            'workshop.payroll.generate',
+
+            // Scheduling — Bays + Appointments (Spec D / Plan D)
+            'scheduling.bays.view',
+            'scheduling.bays.manage',
+            'scheduling.appointments.view',
+            'scheduling.appointments.create',
+            'scheduling.appointments.update',
+            'scheduling.appointments.cancel',
+            'scheduling.appointments.convert',
 
             // User & Tenant Management
             'users.view',
@@ -182,9 +224,13 @@ class RolesAndPermissionsSeeder extends Seeder
             'pos.manage_shifts',
             'pos.manage_tables',
             'pos.view_reports',
+            'pos.generate_z_report',
             'pos.void_receipts',
             'pos.view_receipts',
             'pos.process_returns',
+            'pos.close_shift_with_variance',
+            'pos.configure_cash_count',
+            'pos.tolerance.apply',
 
             // POS Orders
             'pos_orders.view',
@@ -241,6 +287,12 @@ class RolesAndPermissionsSeeder extends Seeder
             'compliance.verify_chains',
             'compliance.view_reprint_log',
 
+            // Compliance / Fraud Detection
+            'fraud-settings.view',
+            'fraud-settings.update',
+            'fraud-alerts.view',
+            'fraud-alerts.manage',
+
             // System
             'settings.view',
             'settings.update',
@@ -271,15 +323,17 @@ class RolesAndPermissionsSeeder extends Seeder
         $manager->syncPermissions([
             'partners.view', 'partners.create', 'partners.update',
             'products.view', 'products.create', 'products.update', 'products.import',
+            'enrichment.view', 'enrichment.review', 'enrichment.submit',
             'vehicles.view', 'vehicles.create', 'vehicles.update',
-            'documents.view',
+            'vehicles.manage_ownership', 'vehicles.log_mileage',
+            'documents.view', 'documents.update',
             'quotes.view', 'quotes.create', 'quotes.update', 'quotes.convert',
             'orders.view', 'orders.create', 'orders.update', 'orders.confirm',
             'purchase-orders.view', 'purchase-orders.create', 'purchase-orders.update', 'purchase-orders.confirm', 'purchase-orders.receive',
             'invoices.view', 'invoices.create', 'invoices.update', 'invoices.post', 'invoices.print',
             'credit-notes.view', 'credit-notes.create', 'credit-notes.post',
             'inventory.view', 'inventory.adjust', 'inventory.transfer', 'inventory.receive',
-            'deliveries.view', 'deliveries.create', 'deliveries.confirm',
+            'deliveries.view', 'deliveries.create', 'deliveries.edit', 'deliveries.delete', 'deliveries.confirm',
             'expenses.view', 'expenses.create', 'expenses.update', 'expenses.post',
             'expense-categories.view', 'expense-categories.create', 'expense-categories.update', 'expense-categories.delete',
             'payments.view', 'payments.create', 'payments.allocate',
@@ -289,10 +343,24 @@ class RolesAndPermissionsSeeder extends Seeder
             'journal.view',
             'accounts.view', 'accounts.manage',
             'reports.financial', 'reports.operational', 'reports.manage',
-            'work-orders.view', 'work-orders.create', 'work-orders.update', 'work-orders.complete',
+            'work-orders.view', 'work-orders.create', 'work-orders.update',
+            'work-orders.approve', 'work-orders.assign', 'work-orders.transition',
+            'work-orders.cancel', 'work-orders.complete', 'work-orders.view_financials',
+            'workshop.technicians.view', 'workshop.technicians.manage',
+            'workshop.technicians.view_pay', 'workshop.technicians.view_pii',
+            'workshop.technicians.approve_time_off', 'workshop.technicians.adjust_time_entries',
+            'workshop.technicians.manage_certifications',
+            'workshop.technicians.manage_time_off',
+            'workshop.technicians.manage_time_entries',
+            'workshop.payroll.view', 'workshop.payroll.generate',
+            'scheduling.bays.view', 'scheduling.bays.manage',
+            'scheduling.appointments.view', 'scheduling.appointments.create',
+            'scheduling.appointments.update', 'scheduling.appointments.cancel',
+            'scheduling.appointments.convert',
             'users.view',
             'pos.manage_terminals', 'pos.operate_terminal', 'pos.manage_shifts', 'pos.manage_tables',
-            'pos.view_reports', 'pos.void_receipts', 'pos.view_receipts', 'pos.process_returns',
+            'pos.view_reports', 'pos.generate_z_report', 'pos.void_receipts', 'pos.view_receipts', 'pos.process_returns',
+            'pos.close_shift_with_variance', 'pos.configure_cash_count', 'pos.tolerance.apply',
             'pos_orders.view', 'pos_orders.create', 'pos_orders.update', 'pos_orders.delete',
             'pos_held_orders.view', 'pos_held_orders.create', 'pos_held_orders.delete',
             'batches.view', 'batches.create', 'batches.update', 'batches.delete',
@@ -301,6 +369,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'settings.view', 'settings.manage',
             'composite-items.view', 'composite-items.create', 'composite-items.update', 'composite-items.delete', 'composite-items.manage-recipes',
             'modifier-groups.view', 'modifier-groups.manage',
+            'workshop-bundles.view', 'workshop-bundles.manage',
             'menus.view', 'menus.manage',
             'promotions.view', 'promotions.manage',
             'coupons.view', 'coupons.manage',
@@ -310,6 +379,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'catalog_cart.view', 'catalog_cart.create', 'catalog_cart.convert_po', 'catalog_cart.convert_so',
             'catalog_cart.marketplace_checkout',
             'compliance.export_jet', 'compliance.verify_chains', 'compliance.view_reprint_log',
+            'fraud-settings.view', 'fraud-settings.update',
+            'fraud-alerts.view', 'fraud-alerts.manage',
         ]);
         $this->command->info('Created role: manager');
 
@@ -319,7 +390,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'partners.view', 'partners.create',
             'products.view',
             'vehicles.view',
-            'documents.view',
+            'documents.view', 'documents.update',
             'quotes.view', 'quotes.create',
             'orders.view',
             'invoices.view', 'invoices.create', 'invoices.print',
@@ -330,7 +401,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'payments.view', 'payments.create',
             'instruments.view', 'instruments.create',
             'work-orders.view',
-            'pos.operate_terminal', 'pos.view_receipts',
+            'pos.operate_terminal', 'pos.manage_shifts', 'pos.generate_z_report', 'pos.view_receipts',
+            'pos.tolerance.apply',
             'pos_orders.view', 'pos_orders.create', 'pos_orders.update',
             'pos_held_orders.view', 'pos_held_orders.create', 'pos_held_orders.delete',
             'batches.view',
@@ -384,8 +456,23 @@ class RolesAndPermissionsSeeder extends Seeder
             'partners.view',
             'products.view',
             'vehicles.view',
+            'vehicles.log_mileage',
             'inventory.view',
             'work-orders.view', 'work-orders.update', 'work-orders.complete',
+            // Technicians see their own profile (list + show), but NOT pay nor PII —
+            // those are admin/manager scope; PII masking is enforced at DTO layer.
+            'workshop.technicians.view',
+            // Technicians may self-log time entries. The controller enforces
+            // "own entries only" for non-admin callers. They cannot edit/delete
+            // past entries once they're linked to a locked work-order.
+            'workshop.technicians.manage_time_entries',
+            'workshop-bundles.view',
+            // Technicians can view bays + their own upcoming appointments
+            // (list / show only — no create / update / cancel).
+            'scheduling.bays.view',
+            'scheduling.appointments.view',
+            // Technicians cannot approve/cancel WOs nor see financials (those are
+            // manager/accountant scope); DTO-level redaction enforces the latter.
         ]);
         $this->command->info('Created role: technician');
 
@@ -395,7 +482,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'partners.view', 'partners.create', 'partners.update',
             'products.view',
             'vehicles.view', 'vehicles.create', 'vehicles.update',
-            'documents.view',
+            'vehicles.manage_ownership', 'vehicles.log_mileage',
+            'documents.view', 'documents.update',
             'quotes.view', 'quotes.create', 'quotes.update',
             'orders.view', 'orders.create', 'orders.update',
             'purchase-orders.view', 'purchase-orders.create', 'purchase-orders.update',
@@ -403,9 +491,17 @@ class RolesAndPermissionsSeeder extends Seeder
             'expenses.view', 'expenses.create', 'expenses.update',
             'expense-categories.view',
             'inventory.view',
-            'deliveries.view', 'deliveries.create',
+            'deliveries.view', 'deliveries.create', 'deliveries.edit',
             'payments.view', 'payments.create',
             'work-orders.view', 'work-orders.create', 'work-orders.update',
+            'work-orders.transition', 'work-orders.complete',
+            'workshop.technicians.view',
+            'workshop-bundles.view', 'workshop-bundles.manage',
+            // Scheduling: operators run the bay/calendar + appointment flow
+            // except manage-bay + convert (reserved for manager/admin).
+            'scheduling.bays.view',
+            'scheduling.appointments.view', 'scheduling.appointments.create',
+            'scheduling.appointments.update', 'scheduling.appointments.cancel',
             'marketplace.browse',
             'catalog_cart.view', 'catalog_cart.create',
         ]);
@@ -415,7 +511,7 @@ class RolesAndPermissionsSeeder extends Seeder
         $accountant = Role::firstOrCreate(['name' => 'accountant', 'guard_name' => 'sanctum']);
         $accountant->syncPermissions([
             'partners.view',
-            'documents.view',
+            'documents.view', 'documents.update',
             'invoices.view', 'invoices.post',
             'credit-notes.view', 'credit-notes.post',
             'expenses.view', 'expenses.create', 'expenses.update', 'expenses.delete', 'expenses.post',
@@ -430,6 +526,11 @@ class RolesAndPermissionsSeeder extends Seeder
             'withholding.view', 'withholding.create', 'withholding.update',
             'audit.view',
             'compliance.export_jet', 'compliance.verify_chains', 'compliance.view_reprint_log',
+            // Accountant has read-only audit access to fraud detection.
+            'fraud-settings.view', 'fraud-alerts.view',
+            'work-orders.view', 'work-orders.view_financials',
+            // Accountant can view scheduling for audit / cancellation reporting.
+            'scheduling.bays.view', 'scheduling.appointments.view',
         ]);
         $this->command->info('Created role: accountant');
     }

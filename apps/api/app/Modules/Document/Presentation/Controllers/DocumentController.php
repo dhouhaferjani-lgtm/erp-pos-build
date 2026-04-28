@@ -11,6 +11,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
+use App\Modules\Treasury\Domain\Payment;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -290,7 +291,10 @@ class DocumentController extends Controller
 
         $document = Document::forCompany($companyId)->findOrFail($id);
 
+        // Filter out tolerance-only writeoff allocations (payment_id IS NULL): they
+        // are not real money movements and don't belong in the payment-history view.
         $allocations = $document->allocations()
+            ->whereNotNull('payment_id')
             ->with(['payment.partner', 'payment.paymentMethod'])
             ->orderByDesc('created_at')
             ->get();
@@ -309,15 +313,20 @@ class DocumentController extends Controller
                 'balance_due' => $document->balance_due,
                 'payment_status' => $document->getPaymentStatus()->value,
                 'outstanding_amount' => $document->getOutstandingAmount(),
-                'payment_allocations' => $allocations->map(fn ($allocation) => [
-                    'id' => $allocation->id,
-                    'payment_id' => $allocation->payment_id,
-                    'payment_reference' => $allocation->payment->reference,
-                    'payment_date' => $allocation->payment->payment_date->toDateString(),
-                    'payment_method' => $allocation->payment->paymentMethod?->name,
-                    'amount' => $allocation->amount,
-                    'created_at' => $allocation->created_at?->toIso8601String(),
-                ])->toArray(),
+                'payment_allocations' => $allocations->map(function ($allocation): array {
+                    /** @var Payment $payment */
+                    $payment = $allocation->payment;  // non-null by whereNotNull('payment_id') above
+
+                    return [
+                        'id' => $allocation->id,
+                        'payment_id' => $allocation->payment_id,
+                        'payment_reference' => $payment->reference,
+                        'payment_date' => $payment->payment_date->toDateString(),
+                        'payment_method' => $payment->paymentMethod?->name,
+                        'amount' => $allocation->amount,
+                        'created_at' => $allocation->created_at?->toIso8601String(),
+                    ];
+                })->toArray(),
                 'credit_note_allocations' => $creditAllocations->map(fn ($allocation) => [
                     'id' => $allocation->id,
                     'credit_note_id' => $allocation->credit_note_id,

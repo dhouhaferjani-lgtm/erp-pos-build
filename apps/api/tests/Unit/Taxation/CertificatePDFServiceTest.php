@@ -11,6 +11,7 @@ use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
 use App\Modules\Taxation\Domain\Enums\CertificateStatus;
 use App\Modules\Taxation\Domain\Enums\WithholdingDirection;
 use App\Modules\Tenant\Domain\Tenant;
+use Barryvdh\DomPDF\PDF;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -22,8 +23,11 @@ class CertificatePDFServiceTest extends TestCase
     use RefreshDatabase;
 
     private CertificatePDFService $pdfService;
+
     private Tenant $tenant;
+
     private Company $company;
+
     private Partner $partner;
 
     protected function setUp(): void
@@ -101,7 +105,7 @@ class CertificatePDFServiceTest extends TestCase
         $pdf = $this->pdfService->generatePDF($certificate);
 
         // Verify it's a PDF object
-        $this->assertInstanceOf(\Barryvdh\DomPDF\PDF::class, $pdf);
+        $this->assertInstanceOf(PDF::class, $pdf);
 
         // Get PDF content
         $content = $pdf->output();

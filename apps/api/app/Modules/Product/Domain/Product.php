@@ -5,11 +5,16 @@ declare(strict_types=1);
 namespace App\Modules\Product\Domain;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Domain\Enums\ProductType;
+use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Uom\Domain\Entities\Unit;
 use App\Shared\Contracts\SellableContract;
+use App\Shared\Enums\EnrichmentStatus;
+use Database\Factories\ProductFactory;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -17,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -39,22 +45,27 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $target_margin_override
  * @property string|null $minimum_margin_override
  * @property string|null $last_purchase_cost
- * @property \Illuminate\Support\Carbon|null $cost_updated_at
+ * @property Carbon|null $cost_updated_at
+ * @property string|null $platform_product_id
+ * @property string|null $platform_submission_id
+ * @property EnrichmentStatus|null $enrichment_status
  * @property bool $is_physical False for services, true for parts/consumables
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property string $company_id
- * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property Carbon|null $deleted_at
  * @property string|null $unit_id
  * @property-read Tenant $tenant
  * @property-read Company $company
  * @property-read Unit|null $unitOfMeasure
  * @property-read ParapharmacyProductMetadata|null $parapharmacyMetadata
  * @property-read AutomotiveProductMetadata|null $automotiveMetadata
+ * @property-read EnrichmentResult|null $latestEnrichmentResult
+ * @property-read Collection<int, EnrichmentResult> $enrichmentResults
  */
 class Product extends Model implements SellableContract
 {
-    /** @use HasFactory<\Database\Factories\ProductFactory> */
+    /** @use HasFactory<ProductFactory> */
     use HasFactory;
 
     use HasUuids;
@@ -84,6 +95,9 @@ class Product extends Model implements SellableContract
         'minimum_margin_override',
         'last_purchase_cost',
         'cost_updated_at',
+        'platform_product_id',
+        'platform_submission_id',
+        'enrichment_status',
     ];
 
     /**
@@ -107,15 +121,16 @@ class Product extends Model implements SellableContract
             'oem_numbers' => 'array',
             'cross_references' => 'array',
             'cost_updated_at' => 'datetime',
+            'enrichment_status' => EnrichmentStatus::class,
         ];
     }
 
     /**
      * Create a new factory instance for the model.
      */
-    protected static function newFactory(): \Database\Factories\ProductFactory
+    protected static function newFactory(): ProductFactory
     {
-        return \Database\Factories\ProductFactory::new();
+        return ProductFactory::new();
     }
 
     /**
@@ -256,12 +271,12 @@ class Product extends Model implements SellableContract
     /**
      * Get the default tax configuration for this product.
      *
-     * @return BelongsTo<\App\Modules\Taxation\Domain\Entities\TaxConfiguration, $this>
+     * @return BelongsTo<TaxConfiguration, $this>
      */
     public function defaultTaxConfiguration(): BelongsTo
     {
         return $this->belongsTo(
-            \App\Modules\Taxation\Domain\Entities\TaxConfiguration::class,
+            TaxConfiguration::class,
             'default_tax_configuration_id'
         );
     }
@@ -289,10 +304,30 @@ class Product extends Model implements SellableContract
     /**
      * Get all stock levels for this product across all locations.
      *
-     * @return HasMany<\App\Modules\Inventory\Domain\StockLevel, $this>
+     * @return HasMany<StockLevel, $this>
      */
     public function stockLevels(): HasMany
     {
-        return $this->hasMany(\App\Modules\Inventory\Domain\StockLevel::class);
+        return $this->hasMany(StockLevel::class);
+    }
+
+    /**
+     * Get the latest enrichment result for this product.
+     *
+     * @return HasOne<EnrichmentResult, $this>
+     */
+    public function latestEnrichmentResult(): HasOne
+    {
+        return $this->hasOne(EnrichmentResult::class)->latestOfMany();
+    }
+
+    /**
+     * Get all enrichment results for this product.
+     *
+     * @return HasMany<EnrichmentResult, $this>
+     */
+    public function enrichmentResults(): HasMany
+    {
+        return $this->hasMany(EnrichmentResult::class);
     }
 }

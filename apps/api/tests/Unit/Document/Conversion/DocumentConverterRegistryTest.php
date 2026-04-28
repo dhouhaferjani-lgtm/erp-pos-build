@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Document\Conversion;
 
+use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -11,6 +12,8 @@ use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterInterface;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
+use App\Modules\Partner\Domain\Partner;
+use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
 use Tests\TestCase;
@@ -297,11 +300,11 @@ final class DocumentConverterRegistryTest extends TestCase
     private function createTestDocument(DocumentType $type): Document
     {
         // Create minimal related entities needed for the document
-        $tenant = \App\Modules\Tenant\Domain\Tenant::factory()->create();
-        $company = \App\Modules\Company\Domain\Company::factory()->create([
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create([
             'tenant_id' => $tenant->id,
         ]);
-        $partner = \App\Modules\Partner\Domain\Partner::factory()->create([
+        $partner = Partner::factory()->create([
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,
         ]);

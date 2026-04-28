@@ -6,7 +6,9 @@ namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Shift;
@@ -16,6 +18,9 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
@@ -32,12 +37,19 @@ final class SyncReceiptsTest extends TestCase
     use RefreshDatabase;
 
     private Tenant $tenant;
+
     private Company $company;
+
     private User $user;
+
     private Location $location;
+
     private Terminal $terminal;
+
     private Product $product;
+
     private PaymentMethod $paymentMethod;
+
     private PaymentRepository $paymentRepo;
 
     protected function setUp(): void
@@ -70,6 +82,69 @@ final class SyncReceiptsTest extends TestCase
         $this->terminal->refresh();
         $this->assertNotNull($this->terminal->last_hash);
         $this->assertEquals(2, $this->terminal->current_sequence);
+
+        // Fiscal response must now echo the terminal's authoritative state so the
+        // POS client can reconcile local hash_sequence without re-pulling /pos/terminals.
+        $response->assertJsonStructure([
+            'data' => [
+                'results' => [
+                    ['idempotency_key', 'status', 'receipt_id', 'server_fiscal_hash', 'error', 'terminal_last_hash', 'terminal_hash_sequence'],
+                ],
+            ],
+        ]);
+        $resultItem = $response->json('data.results.0');
+        $this->assertSame($this->terminal->last_hash, $resultItem['terminal_last_hash']);
+        $this->assertSame($this->terminal->current_sequence - 1, $resultItem['terminal_hash_sequence']);
+    }
+
+    public function test_sync_response_exposes_terminal_last_hash_on_every_result(): void
+    {
+        $payloadA = $this->buildReceiptPayload([
+            'idempotency_key' => 'tlh-a',
+            'receipt_number' => 'POS01-2026-00000001',
+            'hash_sequence' => 1,
+        ]);
+        $responseA = $this->postJson('/api/v1/pos/receipts/sync', $payloadA);
+        $responseA->assertStatus(200);
+        $hashA = $responseA->json('data.results.0.terminal_last_hash');
+        $this->assertNotNull($hashA);
+
+        // Second receipt must echo a DIFFERENT terminal_last_hash (chain advanced).
+        $payloadB = $this->buildReceiptPayload([
+            'idempotency_key' => 'tlh-b',
+            'receipt_number' => 'POS01-2026-00000002',
+            'hash_sequence' => 2,
+            'previous_hash' => $hashA,
+        ]);
+        $responseB = $this->postJson('/api/v1/pos/receipts/sync', $payloadB);
+        $responseB->assertStatus(200);
+        $responseB->assertJsonPath('data.results.0.status', 'synced');
+        $hashB = $responseB->json('data.results.0.terminal_last_hash');
+        $this->assertNotSame($hashA, $hashB);
+        $this->assertSame(2, $responseB->json('data.results.0.terminal_hash_sequence'));
+    }
+
+    public function test_sync_persists_change_due_from_payload(): void
+    {
+        $payload = $this->buildReceiptPayload([
+            'idempotency_key' => 'change-due-1',
+            'total' => '20.00',
+            'tendered_amount' => '25.00',
+            'change_due' => '5.00',
+            'payments' => [
+                ['payment_method_id' => $this->paymentMethod->id, 'repository_id' => $this->paymentRepo->id, 'amount' => '25.00'],
+            ],
+        ]);
+
+        $response = $this->postJson('/api/v1/pos/receipts/sync', $payload);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('data.results.0.status', 'synced');
+
+        $this->assertDatabaseHas('pos_receipts', [
+            'idempotency_key' => 'change-due-1',
+            'change_due' => '5.000',
+        ]);
     }
 
     public function test_sync_duplicate_receipt_returns_duplicate_status(): void
@@ -128,7 +203,7 @@ final class SyncReceiptsTest extends TestCase
     public function test_sync_requires_authentication(): void
     {
         // Create a new TestCase-level request without auth
-        $response = $this->withoutMiddleware(\Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class)
+        $response = $this->withoutMiddleware(EnsureFrontendRequestsAreStateful::class)
             ->withHeaders(['Accept' => 'application/json'])
             ->postJson('/api/v1/pos/receipts/sync', $this->buildReceiptPayload());
 
@@ -157,6 +232,77 @@ final class SyncReceiptsTest extends TestCase
         $response->assertJsonPath('data.synced', 1);
     }
 
+    public function test_sync_receipt_with_split_payments_persists_all_payment_rows(): void
+    {
+        $paymentMethod2 = PaymentMethod::factory()->create([
+            'company_id' => $this->company->id,
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Card',
+            'code' => 'CARD',
+        ]);
+        $paymentRepo2 = PaymentRepository::factory()->create([
+            'company_id' => $this->company->id,
+            'tenant_id' => $this->tenant->id,
+        ]);
+
+        $payload = $this->buildReceiptPayload([
+            'total' => '30.00',
+            'payments' => [
+                ['payment_method_id' => $this->paymentMethod->id, 'repository_id' => $this->paymentRepo->id, 'amount' => '10.00'],
+                ['payment_method_id' => $paymentMethod2->id, 'repository_id' => $paymentRepo2->id, 'amount' => '20.00', 'card_last_four' => '4242', 'transaction_reference' => 'AUTH-123'],
+            ],
+        ]);
+
+        $response = $this->postJson('/api/v1/pos/receipts/sync', $payload);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('data.results.0.status', 'synced');
+
+        $receipt = Receipt::where('idempotency_key', $payload['idempotency_key'])->first();
+        $this->assertNotNull($receipt);
+        $this->assertCount(2, $receipt->payments);
+        $this->assertEquals('10.000', $receipt->payments->firstWhere('payment_method_id', $this->paymentMethod->id)->amount);
+        $this->assertEquals('20.000', $receipt->payments->firstWhere('payment_method_id', $paymentMethod2->id)->amount);
+        $cardPayment = $receipt->payments->firstWhere('payment_method_id', $paymentMethod2->id);
+        $this->assertEquals('4242', $cardPayment->card_last_four);
+        $this->assertEquals('AUTH-123', $cardPayment->transaction_reference);
+    }
+
+    public function test_sync_receipt_persists_fnb_consumption_mode_and_table_id(): void
+    {
+        // Table has no factory — insert raw so we don't depend on one being added.
+        $tableId = Str::uuid()->toString();
+        DB::table('pos_tables')->insert([
+            'id' => $tableId,
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'table_number' => 'T1',
+            'label' => 'Table 1',
+            'seats' => 4,
+            'status' => 'available',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $payload = $this->buildReceiptPayload([
+            'consumption_mode' => 'SUR_PLACE',
+            'table_id' => $tableId,
+            'payments' => [
+                ['payment_method_id' => $this->paymentMethod->id, 'repository_id' => $this->paymentRepo->id, 'amount' => '20.00'],
+            ],
+        ]);
+
+        $response = $this->postJson('/api/v1/pos/receipts/sync', $payload);
+
+        $response->assertStatus(200);
+
+        $receipt = Receipt::where('idempotency_key', $payload['idempotency_key'])->first();
+        $this->assertNotNull($receipt);
+        // consumption_mode is cast to ConsumptionMode enum on the Receipt model — assert via enum equality.
+        $this->assertSame(ConsumptionMode::SurPlace, $receipt->consumption_mode);
+        $this->assertEquals($tableId, $receipt->table_id);
+    }
+
     /**
      * Build a valid receipt sync payload.
      *
@@ -166,7 +312,7 @@ final class SyncReceiptsTest extends TestCase
     private function buildReceiptPayload(array $overrides = []): array
     {
         $defaults = [
-            'idempotency_key' => 'test-' . uniqid(),
+            'idempotency_key' => 'test-'.uniqid(),
             'receipt_number' => 'POS01-2026-00000001',
             'terminal_id' => $this->terminal->id,
             'operator_id' => $this->user->id,
@@ -192,6 +338,11 @@ final class SyncReceiptsTest extends TestCase
             'payment_method_id' => $this->paymentMethod->id,
             'payment_repository_id' => $this->paymentRepo->id,
             'created_at' => now()->toIso8601String(),
+            'payments' => [
+                ['payment_method_id' => $this->paymentMethod->id, 'repository_id' => $this->paymentRepo->id, 'amount' => '20.00'],
+            ],
+            'consumption_mode' => null,
+            'table_id' => null,
         ];
 
         return array_merge($defaults, $overrides);
@@ -208,7 +359,7 @@ final class SyncReceiptsTest extends TestCase
             'tenant_id' => $this->tenant->id,
         ]);
 
-        \App\Modules\Company\Domain\UserCompanyMembership::create([
+        UserCompanyMembership::create([
             'user_id' => $this->user->id,
             'company_id' => $this->company->id,
             'role' => 'admin',

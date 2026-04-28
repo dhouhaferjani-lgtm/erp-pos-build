@@ -5,11 +5,12 @@ declare(strict_types=1);
 namespace Database\Factories;
 
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Modules\Partner\Domain\Partner>
+ * @extends Factory<Partner>
  */
 class PartnerFactory extends Factory
 {
@@ -40,7 +41,7 @@ class PartnerFactory extends Factory
             'country_code' => 'FR',
             'notes' => $this->faker->optional(0.3)->paragraph(),
             'is_active' => $this->faker->boolean(95),
-            'tax_status' => \App\Modules\Taxation\Domain\Enums\PartnerTaxStatus::REGISTERED,
+            'tax_status' => PartnerTaxStatus::REGISTERED,
             'withholding_exempt' => false,
         ];
     }

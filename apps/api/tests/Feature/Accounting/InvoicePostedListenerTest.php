@@ -30,6 +30,7 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Events\Dispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
@@ -240,7 +241,7 @@ class InvoicePostedListenerTest extends TestCase
     public function test_invoice_posted_listener_is_registered(): void
     {
         // Get the event dispatcher
-        $dispatcher = app(\Illuminate\Events\Dispatcher::class);
+        $dispatcher = app(Dispatcher::class);
 
         // Check that InvoicePosted event has listeners
         $listeners = $dispatcher->getListeners(InvoicePosted::class);

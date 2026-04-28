@@ -21,6 +21,7 @@ vi.mock('react-i18next', () => ({
         'cart.applyDiscount': 'Apply Discount',
         'errors.discountExceedsLimit': params?.['limit'] ? `Discount exceeds maximum allowed (${params['limit']}%)` : 'Discount exceeds maximum allowed',
         'errors.reasonRequired': 'Reason is required for discounts above 10%',
+        'discount.below_tolerance': 'This discount is too small — use payment tolerance at the till instead.',
       }
       return translations[key] || key
     },
@@ -258,6 +259,101 @@ describe('DiscountInput', () => {
 
     await waitFor(() => {
       expect(screen.queryByText('Discount exceeds maximum allowed (10%)')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('tolerance boundary mirror (spec §7)', () => {
+    const FR_TOLERANCE = {
+      enabled: true,
+      percentage: '0.0050',
+      max_amount: '0.5000',
+      source: 'country' as const,
+    }
+
+    it('shows below-tolerance error for sub-threshold fixed discount', async () => {
+      render(
+        <DiscountInput
+          {...defaultProps}
+          lineTotal="100.00"
+          toleranceSettings={FR_TOLERANCE}
+        />,
+      )
+
+      // Switch to fixed mode and enter 0.20 — below the €0.50 margin.
+      const fixedToggle = screen.getByRole('button', { name: 'Fixed Amount' })
+      fireEvent.click(fixedToggle)
+
+      const input = screen.getByRole('spinbutton')
+      fireEvent.change(input, { target: { value: '0.20' } })
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/use payment tolerance at the till/i),
+        ).toBeInTheDocument()
+      })
+    })
+
+    it('hides below-tolerance error once discount exceeds margin', async () => {
+      render(
+        <DiscountInput
+          {...defaultProps}
+          lineTotal="100.00"
+          toleranceSettings={FR_TOLERANCE}
+        />,
+      )
+
+      const fixedToggle = screen.getByRole('button', { name: 'Fixed Amount' })
+      fireEvent.click(fixedToggle)
+
+      const input = screen.getByRole('spinbutton')
+      fireEvent.change(input, { target: { value: '0.20' } })
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/use payment tolerance at the till/i),
+        ).toBeInTheDocument()
+      })
+
+      fireEvent.change(input, { target: { value: '5.00' } })
+
+      await waitFor(() => {
+        expect(
+          screen.queryByText(/use payment tolerance at the till/i),
+        ).not.toBeInTheDocument()
+      })
+    })
+
+    it('disables apply button when discount is below tolerance', () => {
+      render(
+        <DiscountInput
+          {...defaultProps}
+          lineTotal="100.00"
+          toleranceSettings={FR_TOLERANCE}
+        />,
+      )
+
+      const fixedToggle = screen.getByRole('button', { name: 'Fixed Amount' })
+      fireEvent.click(fixedToggle)
+
+      const input = screen.getByRole('spinbutton')
+      fireEvent.change(input, { target: { value: '0.20' } })
+
+      const applyButton = screen.getByRole('button', { name: 'Apply Discount' })
+      expect(applyButton).toBeDisabled()
+    })
+
+    it('does not render the warning when toleranceSettings is omitted', () => {
+      render(<DiscountInput {...defaultProps} lineTotal="100.00" />)
+
+      const fixedToggle = screen.getByRole('button', { name: 'Fixed Amount' })
+      fireEvent.click(fixedToggle)
+
+      const input = screen.getByRole('spinbutton')
+      fireEvent.change(input, { target: { value: '0.20' } })
+
+      expect(
+        screen.queryByText(/use payment tolerance at the till/i),
+      ).not.toBeInTheDocument()
     })
   })
 })

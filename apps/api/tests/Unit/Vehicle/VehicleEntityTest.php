@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Vehicle;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
@@ -45,7 +46,7 @@ class VehicleEntityTest extends TestCase
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         app(CompanyContext::class)->setCompanyId($this->company->id);
@@ -146,8 +147,8 @@ class VehicleEntityTest extends TestCase
         $this->assertEquals(50000, $vehicle->mileage);
         $this->assertEquals('JT2BF22K1W0123456', $vehicle->vin);
         $this->assertEquals('1ZZ-FE', $vehicle->engine_code);
-        $this->assertEquals('gasoline', $vehicle->fuel_type);
-        $this->assertEquals('automatic', $vehicle->transmission);
+        $this->assertEquals('gasoline', $vehicle->fuel_type?->value);
+        $this->assertEquals('automatic', $vehicle->transmission?->value);
         $this->assertEquals('Customer vehicle notes', $vehicle->notes);
     }
 
@@ -221,7 +222,7 @@ class VehicleEntityTest extends TestCase
             'locale' => 'fr_FR',
             'timezone' => 'Europe/Paris',
             'currency' => 'EUR',
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
         ]);
 
         Vehicle::create([

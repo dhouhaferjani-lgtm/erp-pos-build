@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Presentation\Resources;
 
+use App\Modules\POS\Domain\Table;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * API Resource for table transformation.
  *
- * @mixin \App\Modules\POS\Domain\Table
+ * @mixin Table
  */
 final class TableResource extends JsonResource
 {

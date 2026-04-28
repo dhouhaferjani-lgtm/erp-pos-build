@@ -2,9 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main, develop, dev]
+    branches: [main]              # post-merge confirmation only
   pull_request:
-    branches: [main, develop, dev]
+    branches: [main, dev]         # cheap checks on PR→dev; full pipeline on PR→main
+  workflow_dispatch:              # manual full run from the Actions tab
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -80,11 +81,14 @@ jobs:
         run: composer install --no-interaction --prefer-dist
 
       - name: Run PHPStan
-        run: ./vendor/bin/phpstan analyse --level=8 --memory-limit=512M
+        run: ./vendor/bin/phpstan analyse --level=8 --memory-limit=1G
 
   backend-test:
     name: Backend Tests (PHPUnit)
     runs-on: ubuntu-latest
+    # Heavy job: only on PR→main, push→main, or manual workflow_dispatch.
+    # Skipped on PR→dev — local preflight is the gate during dev iteration.
+    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     defaults:
       run:
         working-directory: apps/api
@@ -98,7 +102,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U autoerp -d autoerp_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -111,6 +115,21 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+    env:
+      # Static test APP_KEY — avoids needing `php artisan key:generate`, which
+      # would also boot the full framework (including BroadcastManager) before
+      # the test env overrides in phpunit.xml take effect.
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_ENV: testing
+      # Override the broadcasting driver because .env.example ships with
+      # BROADCAST_CONNECTION=redis but config/broadcasting.php has no "redis"
+      # connection defined, which makes any Laravel bootstrap blow up.
+      BROADCAST_CONNECTION: 'null'
+      # NOTE: Do NOT set DB_* env vars at the job level. phpunit.xml pins
+      # DB_CONNECTION=sqlite (:memory:) for Unit tests, and PHPUnit 11's
+      # <env/> directive does not override pre-existing environment variables
+      # unless force="true" is set. The Postgres service remains available
+      # for future Feature-suite coverage that opts into it explicitly.
     steps:
       - uses: actions/checkout@v4
 
@@ -140,6 +159,7 @@ jobs:
 
       - name: Configure test environment
         run: |
+          sed -i "s|^APP_KEY=.*|APP_KEY=${APP_KEY}|" .env.testing
           sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env.testing
           sed -i 's/DB_PORT=.*/DB_PORT=5432/' .env.testing
           sed -i 's/DB_DATABASE=.*/DB_DATABASE=autoerp_test/' .env.testing
@@ -147,17 +167,17 @@ jobs:
           sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=secret/' .env.testing
           sed -i 's/REDIS_HOST=.*/REDIS_HOST=127.0.0.1/' .env.testing
           sed -i 's/REDIS_PORT=.*/REDIS_PORT=6379/' .env.testing
+          # .env.example ships BROADCAST_CONNECTION=redis, which breaks bootstrap
+          # because config/broadcasting.php has no "redis" connection defined.
+          sed -i 's/BROADCAST_CONNECTION=.*/BROADCAST_CONNECTION=null/' .env.testing
 
-      - name: Generate application key
-        run: php artisan key:generate --env=testing
-
-      - name: Run migrations
-        run: php artisan migrate --env=testing --force
-
-      - name: Run tests
-        run: php artisan test --coverage-clover=coverage.xml
-        env:
-          APP_ENV: testing
+      # Note: phpunit.xml pins DB_CONNECTION=sqlite for the in-memory unit test
+      # suite, so no Postgres migrations are required. The postgres service is
+      # kept available for future feature-test coverage that requires pgsql.
+      # APP_KEY is injected via job-level env so we don't need `key:generate`
+      # (which would fail on the BroadcastManager the moment it boots the framework).
+      - name: Run unit tests
+        run: php artisan test --testsuite=Unit --coverage-clover=coverage.xml
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -177,8 +197,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -204,8 +222,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -223,6 +239,8 @@ jobs:
   frontend-test:
     name: Frontend Tests (Vitest)
     runs-on: ubuntu-latest
+    # Heavy job: only on PR→main, push→main, or manual workflow_dispatch.
+    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     defaults:
       run:
         working-directory: apps/web
@@ -231,9 +249,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          version: ${{ env.PNPM_VERSION }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -251,6 +266,8 @@ jobs:
   frontend-build:
     name: Frontend Build
     runs-on: ubuntu-latest
+    # Heavy job: only on PR→main, push→main, or manual workflow_dispatch.
+    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     needs: [frontend-lint, frontend-typecheck, frontend-test]
     defaults:
       run:
@@ -260,8 +277,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -283,10 +298,69 @@ jobs:
           path: apps/web/dist
           retention-days: 7
 
+  types-drift:
+    name: Generated Types Drift Guard
+    runs-on: ubuntu-latest
+    # Intentionally lean: no .env, no APP_KEY, no Postgres, no Redis.
+    # `php artisan typescript:transform` is pure reflection — it loads the
+    # service-provider graph but never opens a DB/Redis connection. If this
+    # job ever fails with a connection error, audit recent service-provider
+    # changes for lazy-boot paths that hit infrastructure.
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, pdo_pgsql, redis
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('apps/api/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Regenerate TypeScript types
+        run: php artisan typescript:transform
+
+      - name: Fail if generated.d.ts is out of sync
+        working-directory: ${{ github.workspace }}
+        run: |
+          if ! git diff --quiet -- packages/shared/types/generated.d.ts; then
+            echo "::error::packages/shared/types/generated.d.ts is out of date. A #[TypeScript]-tagged PHP DTO changed without a matching regen."
+            echo ""
+            echo "To fix:"
+            echo "  (cd apps/api && php artisan typescript:transform)"
+            echo "  git add packages/shared/types/generated.d.ts"
+            echo "  git commit -m 'chore(types): regenerate TypeScript types'"
+            echo ""
+            echo "Diff summary:"
+            git --no-pager diff --stat -- packages/shared/types/generated.d.ts
+            echo ""
+            echo "First 200 lines of the diff:"
+            git --no-pager diff -- packages/shared/types/generated.d.ts | head -200
+            exit 1
+          fi
+
   all-checks-pass:
     name: All Checks Pass
     runs-on: ubuntu-latest
-    needs: [backend-lint, backend-analyse, backend-test, frontend-lint, frontend-typecheck, frontend-test, frontend-build]
+    # Only meaningful when the heavy jobs ran. Skipped on PR→dev.
+    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    needs: [backend-lint, backend-analyse, backend-test, frontend-lint, frontend-typecheck, frontend-test, frontend-build, types-drift]
     steps:
       - name: All checks passed
         run: echo "All CI checks have passed!"

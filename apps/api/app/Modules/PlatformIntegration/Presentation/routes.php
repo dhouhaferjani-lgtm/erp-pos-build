@@ -3,10 +3,21 @@
 declare(strict_types=1);
 
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
+use App\Modules\PlatformIntegration\Infrastructure\Middleware\VerifySynerivaWebhookSignature;
 use App\Modules\PlatformIntegration\Presentation\Controllers\BarcodeLookupController;
 use App\Modules\PlatformIntegration\Presentation\Controllers\CatalogBrowseController;
+use App\Modules\PlatformIntegration\Presentation\Controllers\EnrichmentWebhookController;
+use App\Modules\PlatformIntegration\Presentation\Controllers\ProductSubmissionController;
 use App\Modules\PlatformIntegration\Presentation\Controllers\VinDecodeController;
 use Illuminate\Support\Facades\Route;
+
+// Webhook receiver — NO auth:sanctum (platform calls this with HMAC signature)
+Route::middleware(['api', VerifySynerivaWebhookSignature::class])
+    ->prefix('api/v1/webhooks')
+    ->group(function () {
+        Route::post('/syneriva', EnrichmentWebhookController::class)
+            ->name('platform.webhook.syneriva');
+    });
 
 Route::prefix('api/v1/platform')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function () {
     // Barcode Lookup
@@ -72,4 +83,7 @@ Route::prefix('api/v1/platform')->middleware(['api', 'auth:sanctum', SetPermissi
 
     Route::post('vin-decode/confirm-match', [VinDecodeController::class, 'confirmMatch'])
         ->name('platform.vin-decode.confirm-match');
+
+    Route::post('submit-for-enrichment', ProductSubmissionController::class)
+        ->name('platform.submit-for-enrichment');
 });

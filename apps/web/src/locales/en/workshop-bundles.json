@@ -1,0 +1,149 @@
+{
+  "list": {
+    "title": "Service bundles",
+    "createCta": "New bundle",
+    "loading": "Loading bundles…",
+    "error": "Could not load bundles.",
+    "empty": "No bundles yet. Create one to get started.",
+    "inactive": "Inactive"
+  },
+  "create": {
+    "title": "New service bundle"
+  },
+  "detail": {
+    "title": "Bundle · {{name}}",
+    "loading": "Loading bundle…",
+    "error": "Could not load bundle.",
+    "fields": "Bundle details",
+    "components": "Components ({{count}})",
+    "emptyComponents": "No components attached yet.",
+    "applicabilities": "Vehicle applicabilities",
+    "emptyApplicabilities": "Universal — applies to any vehicle.",
+    "expansionPreview": "Expansion preview"
+  },
+  "form": {
+    "code": "Code",
+    "name": "Name",
+    "description": "Description",
+    "pricingMode": "Pricing mode",
+    "pricingMode.standard": "Standard (sum of components)",
+    "pricingMode.fixedBundle": "Fixed bundle (flat price)",
+    "basePrice": "Base price",
+    "currency": "Currency",
+    "taxRate": "Tax rate (%)",
+    "estimatedLaborHours": "Estimated labor hours",
+    "serviceIntervalKm": "Service interval (km)",
+    "serviceIntervalMonths": "Service interval (months)",
+    "cancel": "Cancel",
+    "save": "Save",
+    "create": "Create",
+    "saving": "Saving…"
+  },
+  "priceChip": {
+    "sumOfLines": "Sum of lines"
+  },
+  "interval": {
+    "km": "Every {{count}} km",
+    "months_one": "Every {{count}} month",
+    "months_other": "Every {{count}} months"
+  },
+  "applicability": {
+    "universal": "Universal",
+    "vehicleFallback": "{{type}} #{{id}}"
+  },
+  "picker": {
+    "title": "Pick a service bundle",
+    "searchPlaceholder": "Search by name or code…",
+    "loading": "Loading applicable bundles…",
+    "empty": "No applicable bundles for this vehicle.",
+    "selectPreview": "Select a bundle to see its expansion preview.",
+    "cancel": "Cancel",
+    "confirm": "Add to work order"
+  },
+  "expansion": {
+    "loading": "Loading preview…",
+    "error": "Could not load expansion.",
+    "empty": "No lines in this bundle yet.",
+    "pricedLines": "Priced lines",
+    "informationalLines": "Informational (consumed but not billed)"
+  },
+  "authoring": {
+    "componentType": {
+      "part": "Part",
+      "labor": "Labor service",
+      "nestedBundle": "Nested bundle"
+    },
+    "fields": {
+      "componentType": "Component type",
+      "nestedBundle": "Nested bundle",
+      "quantity": "Quantity",
+      "unit": "Unit",
+      "unitPlaceholder": "Select a unit…",
+      "overridePrice": "Override unit price ({{currency}})",
+      "overridePricePlaceholder": "Leave empty to use the catalog price",
+      "isOptional": "Optional line (does not block completion)",
+      "notes": "Notes"
+    },
+    "errors": {
+      "productRequired": "Select a part.",
+      "serviceRequired": "Select a labor service.",
+      "nestedBundleRequired": "Select a nested bundle.",
+      "referenceRequired": "A component reference is required.",
+      "quantityRequired": "Quantity is required.",
+      "quantityPositive": "Quantity must be greater than zero.",
+      "unitRequired": "Unit is required.",
+      "pricePositive": "Price must be zero or positive.",
+      "cycleDetected": "This nested bundle would create a cycle.",
+      "generic": "Could not save this component."
+    },
+    "modal": {
+      "createTitle": "Add component",
+      "editTitle": "Edit component",
+      "save": "Save component",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "close": "Close modal",
+      "loading": "Loading…"
+    },
+    "row": {
+      "edit": "Edit",
+      "delete": "Delete"
+    },
+    "detail": {
+      "addComponent": "Add component"
+    },
+    "deleteConfirm": {
+      "title": "Delete component?",
+      "body": "This removes the line from the bundle. Existing work orders are not affected.",
+      "confirm": "Delete",
+      "cancel": "Cancel"
+    },
+    "applicability": {
+      "sectionTitle": "Vehicle applicabilities",
+      "addRule": "Add rule",
+      "remove": "Remove",
+      "scopeUniversal": "Universal (applies to all vehicles)",
+      "scopeScoped": "Scoped",
+      "vehicleType": "Vehicle type",
+      "vehicleTypePlaceholder": "Select a vehicle type…",
+      "vehicleDisplay": "Vehicle label",
+      "yearFrom": "Year from",
+      "yearTo": "Year to",
+      "save": "Save rule",
+      "cancel": "Cancel",
+      "addTitle": "Add an applicability rule",
+      "errors": {
+        "pairInvariant": "Vehicle type and label must either both be empty (universal) or both be provided (scoped).",
+        "yearRange": "year_from must be less than or equal to year_to."
+      },
+      "vehicleTypeOptions": {
+        "pc": "Passenger car",
+        "cv": "Commercial vehicle",
+        "mtb": "Motorbike",
+        "eng": "Engine",
+        "axl": "Axle",
+        "universal": "Universal"
+      }
+    }
+  }
+}

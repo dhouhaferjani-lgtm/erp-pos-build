@@ -16,6 +16,7 @@ use App\Modules\Treasury\Domain\Enums\AllocationMethod;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Events\PaymentRecorded;
+use App\Modules\Treasury\Domain\Events\RepositoryBalanceChanged;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentRepository;
@@ -301,8 +302,23 @@ class PaymentController extends Controller
                     // Increment repository balance by payment amount
                     /** @var numeric-string $currentBalance */
                     $currentBalance = $repository->balance ?? '0.00';
+                    $previousBalance = $currentBalance;
                     $repository->balance = bcadd($currentBalance, $paymentAmount, $this->scale());
                     $repository->save();
+
+                    $newBalance = $repository->balance;
+                    DB::afterCommit(function () use ($repository, $tenantId, $companyId, $previousBalance, $newBalance, $paymentAmount, $validated): void {
+                        event(new RepositoryBalanceChanged(
+                            repositoryId: $repository->id,
+                            tenantId: $tenantId,
+                            companyId: $companyId,
+                            previousBalance: $previousBalance,
+                            newBalance: $newBalance,
+                            changeAmount: $paymentAmount,
+                            currency: $validated['currency'] ?? 'TND',
+                            changedAt: now()->toIso8601String(),
+                        ));
+                    });
                 }
             }
 

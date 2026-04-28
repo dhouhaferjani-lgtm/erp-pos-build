@@ -125,6 +125,7 @@ trait CopiesDocumentData
             'tax_rate' => $line->tax_rate,
             'line_total' => $lineTotal ?? $line->line_total ?? '0',
             'notes' => $line->notes,
+            'designation_default_snapshot' => $line->designation_default_snapshot,
             'source_line_id' => $linkSource ? $line->id : null,
         ]);
     }

@@ -1,0 +1,44 @@
+{
+  "dashboard": {
+    "greeting": "Bonjour",
+    "title": "Tableau de bord de croissance",
+    "subtitle": "Voici ce qui demande votre attention aujourd'hui",
+    "milestones": "Progression des jalons",
+    "recommendations": "Recommandations",
+    "unavailable": "Le conseiller de croissance est temporairement indisponible",
+    "retry": "Réessayer",
+    "stage": {
+      "launch": "Lancement",
+      "stabilize": "Stabilisation",
+      "optimize": "Optimisation",
+      "expand": "Expansion"
+    }
+  },
+  "modules": {
+    "title": "Modules",
+    "subtitle": "Débloquez des fonctionnalités au fur et à mesure que votre entreprise grandit. Plus la préparation est élevée, plus la remise est importante.",
+    "activate": "Activer maintenant",
+    "active": "Actif",
+    "ready": "Prêt !",
+    "locked": "Verrouillé",
+    "available": "Disponible",
+    "readyPercent": "{{percent}}% prêt",
+    "discountAvailable": "{{percent}}% de remise disponible",
+    "needsRequirements": "Nécessite : {{requirements}}",
+    "availableAtStage": "Disponible à l'étape {{stage}}",
+    "viewRoadmap": "Feuille de route",
+    "viewGrid": "Grille",
+    "activated": "Module activé"
+  },
+  "recommendation": {
+    "showMeHow": "Montrez-moi comment",
+    "accepted": "Acceptée",
+    "dismissed": "Rejetée",
+    "dismiss": "Rejeter",
+    "dismissedSuccess": "Recommandation rejetée"
+  },
+  "sidebar": {
+    "growth": "Croissance",
+    "modules": "Modules"
+  }
+}

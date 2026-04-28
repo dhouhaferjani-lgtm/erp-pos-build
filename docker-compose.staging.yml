@@ -1,0 +1,255 @@
+# =============================================================================
+# AutoERP - Docker Compose for Dokploy (Staging / Dev Branch)
+# =============================================================================
+# Mirrors production architecture exactly to catch deployment issues early.
+# Deploys from the `dev` branch. Set environment variables in Dokploy's UI.
+#
+# Architecture: One process per container (same as production)
+#   - api:       nginx + php-fpm (runs migrations on startup)
+#   - worker:    Laravel Horizon queue worker
+#   - scheduler: Laravel task scheduler
+#   - websocket: Laravel Reverb WebSocket server
+#   - web:       React frontend (nginx)
+#
+# Infrastructure: postgres, redis, pgbouncer, meilisearch, minio
+# =============================================================================
+
+# Reusable environment block for all Laravel services
+x-api-env: &api-env
+  APP_ENV: staging
+  APP_DEBUG: "true"
+  APP_KEY: ${APP_KEY}
+  APP_URL: ${APP_URL:-https://api.erp.otospex.dev}
+  FRONTEND_URL: ${FRONTEND_URL:-https://erp.otospex.dev}
+  DB_CONNECTION: pgsql
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_DATABASE: autoerp
+  DB_USERNAME: autoerp
+  DB_PASSWORD: ${DB_PASSWORD}
+  REDIS_HOST: redis
+  REDIS_PASSWORD: ${REDIS_PASSWORD}
+  REDIS_PORT: "6379"
+  CACHE_STORE: redis
+  QUEUE_CONNECTION: redis
+  SESSION_DRIVER: redis
+  BROADCAST_CONNECTION: reverb
+  MEILISEARCH_HOST: http://meilisearch:7700
+  MEILISEARCH_KEY: ${MEILISEARCH_KEY}
+  AWS_ENDPOINT: http://minio:9000
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+  AWS_DEFAULT_REGION: us-east-1
+  AWS_BUCKET: autoerp
+  AWS_USE_PATH_STYLE_ENDPOINT: "true"
+  REVERB_APP_ID: ${REVERB_APP_ID:-autoerp-staging}
+  REVERB_APP_KEY: ${REVERB_APP_KEY}
+  REVERB_APP_SECRET: ${REVERB_APP_SECRET}
+  REVERB_SERVER_HOST: websocket
+  REVERB_SERVER_PORT: "8080"
+  LOG_CHANNEL: stack
+  LOG_LEVEL: debug
+  AUTO_SEED: "true"
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL with TimescaleDB
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: timescale/timescaledb:2.13.0-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: autoerp
+      POSTGRES_USER: autoerp
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autoerp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Redis
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Meilisearch
+  # ---------------------------------------------------------------------------
+  meilisearch:
+    image: getmeili/meilisearch:v1.6
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: ${MEILISEARCH_KEY}
+      MEILI_ENV: production
+    volumes:
+      - meilisearch_data:/meili_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # MinIO (S3-compatible storage)
+  # ---------------------------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID}
+      MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # PgBouncer (connection pooler)
+  # All app containers connect here instead of directly to PostgreSQL.
+  # ---------------------------------------------------------------------------
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://autoerp:${DB_PASSWORD}@postgres:5432/autoerp
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      DEFAULT_POOL_SIZE: "20"
+      MAX_CLIENT_CONN: "200"
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # API (nginx + php-fpm only)
+  # Runs migrations on startup. Other services wait for this to be healthy.
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+      target: api
+    restart: unless-stopped
+    environment:
+      <<: *api-env
+      CONTAINER_ROLE: api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # Worker (Laravel Horizon queue worker)
+  # ---------------------------------------------------------------------------
+  worker:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+      target: worker
+    restart: unless-stopped
+    environment:
+      <<: *api-env
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # Scheduler (Laravel task scheduler)
+  # ---------------------------------------------------------------------------
+  scheduler:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+      target: scheduler
+    restart: unless-stopped
+    environment:
+      <<: *api-env
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # WebSocket (Laravel Reverb)
+  # ---------------------------------------------------------------------------
+  websocket:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+      target: websocket
+    restart: unless-stopped
+    environment:
+      <<: *api-env
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # Web (React Frontend)
+  # ---------------------------------------------------------------------------
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_URL: ${APP_URL:-https://api.erp.otospex.dev}
+        VITE_APP_PRODUCT: ${VITE_APP_PRODUCT:-izipos}
+    restart: unless-stopped
+    environment:
+      API_URL: ${APP_URL:-https://api.erp.otospex.dev}
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+  redis_data:
+  meilisearch_data:
+  minio_data:

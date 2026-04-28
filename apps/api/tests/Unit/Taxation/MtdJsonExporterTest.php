@@ -10,7 +10,9 @@ use App\Modules\Taxation\Domain\DTOs\VatSummary;
 use App\Modules\Taxation\Domain\Entities\VatPeriod;
 use App\Modules\Taxation\Domain\Enums\VatExportFormat;
 use App\Modules\Taxation\Infrastructure\Exporters\MtdJsonExporter;
+use Illuminate\Support\Carbon;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MtdJsonExporterTest extends TestCase
 {
@@ -39,8 +41,8 @@ class MtdJsonExporterTest extends TestCase
         $period = $this->createMock(VatPeriod::class);
         $period->method('__get')->willReturnMap([
             ['country_code', 'GB'],
-            ['period_start', new \Illuminate\Support\Carbon('2026-01-01')],
-            ['period_end', new \Illuminate\Support\Carbon('2026-03-31')],
+            ['period_start', new Carbon('2026-01-01')],
+            ['period_end', new Carbon('2026-03-31')],
         ]);
 
         $filename = $this->exporter->getFilename($period);
@@ -209,7 +211,7 @@ class MtdJsonExporterTest extends TestCase
     /**
      * @return array<string, float|int>
      */
-    private function captureAndDecode(\Symfony\Component\HttpFoundation\StreamedResponse $response): array
+    private function captureAndDecode(StreamedResponse $response): array
     {
         $output = $this->captureStreamedResponse($response);
         $decoded = json_decode($output, true);
@@ -219,7 +221,7 @@ class MtdJsonExporterTest extends TestCase
         return $decoded;
     }
 
-    private function captureStreamedResponse(\Symfony\Component\HttpFoundation\StreamedResponse $response): string
+    private function captureStreamedResponse(StreamedResponse $response): string
     {
         ob_start();
         $response->sendContent();

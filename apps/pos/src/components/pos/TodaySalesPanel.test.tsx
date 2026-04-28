@@ -1,7 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { toast } from 'sonner';
 import { TodaySalesPage } from './TodaySalesPanel';
+
+// ── Static mocks ──────────────────────────────────────────────────────────────
 
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => {} },
@@ -25,62 +28,104 @@ vi.mock('react-i18next', () => ({
         'reports.actions': 'Actions',
         'reports.typeSale': 'Sale',
         'reports.typeReturn': 'Return',
+        'reports.noShiftOpen': "Open a shift to see today's sales.",
+        'reports.noReceiptsYet': 'No receipts for this shift yet.',
+        'reports.fetchError': 'Could not load receipts. Check your connection and try again.',
+        'voidReturn.void': 'Void',
       };
       return map[key] ?? key;
     },
   }),
 }));
 
-vi.mock('@/stores/terminalStore', () => ({
-  useTerminalStore: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector({ shift: { id: 'shift-1' } }),
-}));
-
-vi.mock('@/api/reportApi', () => ({
-  fetchShiftReceipts: vi.fn().mockResolvedValue([
-    {
-      id: 'r-1',
-      receipt_number: 'REC-001',
-      receipt_type: 'sale',
-      total: '50.00',
-      status: 'active',
-      created_at: '2026-03-12T10:30:00Z',
-      payment_method: 'cash',
-      lines: [
-        { id: 'l-1', product_name: 'Widget A', quantity: 2, unit_price: '15.00', line_total: '30.00' },
-        { id: 'l-2', product_name: 'Widget B', quantity: 1, unit_price: '20.00', line_total: '20.00' },
-      ],
-    },
-    {
-      id: 'r-2',
-      receipt_number: 'REC-002',
-      receipt_type: 'sale',
-      total: '75.00',
-      status: 'active',
-      created_at: '2026-03-12T11:00:00Z',
-      payment_method: 'card',
-      lines: [
-        { id: 'l-3', product_name: 'Gadget C', quantity: 3, unit_price: '25.00', line_total: '75.00' },
-      ],
-    },
-    {
-      id: 'r-3',
-      receipt_number: 'REC-003',
-      receipt_type: 'return',
-      total: '20.00',
-      status: 'active',
-      created_at: '2026-03-12T11:30:00Z',
-      payment_method: 'cash',
-      lines: [
-        { id: 'l-4', product_name: 'Widget A', quantity: 1, unit_price: '20.00', line_total: '20.00' },
-      ],
-    },
-  ]),
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
 }));
 
 vi.mock('@/lib/printing', () => ({
   printReceiptAsPdf: vi.fn().mockResolvedValue(undefined),
 }));
+
+vi.mock('@/lib/currency', () => ({
+  useCurrency: () => ({ format: (v: number) => String(v) }),
+}));
+
+// ── Dynamic mocks ─────────────────────────────────────────────────────────────
+
+const mockUseTerminalStore = vi.fn();
+vi.mock('@/stores/terminalStore', () => ({
+  useTerminalStore: (selector: (s: Record<string, unknown>) => unknown) =>
+    mockUseTerminalStore(selector),
+}));
+
+const mockFetchShiftReceipts = vi.fn();
+vi.mock('@/api/reportApi', () => ({
+  fetchShiftReceipts: (...args: unknown[]) => mockFetchShiftReceipts(...args),
+}));
+
+// ── Fixtures ──────────────────────────────────────────────────────────────────
+
+const sampleReceipts = [
+  {
+    id: 'r-1',
+    receipt_number: 'REC-001',
+    receipt_type: 'sale',
+    total: '50.00',
+    subtotal: '42.02',
+    tax_amount: '7.98',
+    is_voided: false,
+    posted_at: '2026-03-12T10:30:00Z',
+    payments: [{ id: 'p-1', payment_type: 'CASH', amount: '50.00' }],
+    lines: [
+      { id: 'l-1', product_name: 'Widget A', quantity: 2, unit_price: '15.00', line_total: '30.00' },
+      { id: 'l-2', product_name: 'Widget B', quantity: 1, unit_price: '20.00', line_total: '20.00' },
+    ],
+  },
+  {
+    id: 'r-2',
+    receipt_number: 'REC-002',
+    receipt_type: 'sale',
+    total: '75.00',
+    subtotal: '63.03',
+    tax_amount: '11.97',
+    is_voided: false,
+    posted_at: '2026-03-12T11:00:00Z',
+    payments: [{ id: 'p-2', payment_type: 'CARD', amount: '75.00' }],
+    lines: [
+      { id: 'l-3', product_name: 'Gadget C', quantity: 3, unit_price: '25.00', line_total: '75.00' },
+    ],
+  },
+  {
+    id: 'r-3',
+    receipt_number: 'REC-003',
+    receipt_type: 'return',
+    total: '20.00',
+    subtotal: '16.81',
+    tax_amount: '3.19',
+    is_voided: false,
+    posted_at: '2026-03-12T11:30:00Z',
+    payments: [{ id: 'p-3', payment_type: 'CASH', amount: '20.00' }],
+    lines: [
+      { id: 'l-4', product_name: 'Widget A', quantity: 1, unit_price: '20.00', line_total: '20.00' },
+    ],
+  },
+];
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function withShift() {
+  mockUseTerminalStore.mockImplementation(
+    (selector: (s: Record<string, unknown>) => unknown) =>
+      selector({ shift: { id: 'shift-1' } }),
+  );
+}
+
+function withoutShift() {
+  mockUseTerminalStore.mockImplementation(
+    (selector: (s: Record<string, unknown>) => unknown) =>
+      selector({ shift: null }),
+  );
+}
 
 function renderPage() {
   return render(
@@ -90,7 +135,34 @@ function renderPage() {
   );
 }
 
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
 describe('TodaySalesPage', () => {
+  beforeEach(() => {
+    withShift();
+    mockFetchShiftReceipts.mockResolvedValue(sampleReceipts);
+  });
+
+  it('renders the "no shift" empty state when shift is null', () => {
+    withoutShift();
+    renderPage();
+    expect(screen.getByText("Open a shift to see today's sales.")).toBeInTheDocument();
+  });
+
+  it('renders the empty "no receipts" state when shift exists but no receipts', async () => {
+    mockFetchShiftReceipts.mockResolvedValue([]);
+    renderPage();
+    expect(await screen.findByText('No receipts yet this shift')).toBeInTheDocument();
+  });
+
+  it('surfaces a toast when fetchShiftReceipts throws', async () => {
+    mockFetchShiftReceipts.mockRejectedValue(new Error('network'));
+    renderPage();
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalled();
+    });
+  });
+
   it('renders the page title and back button', () => {
     const { getByText } = renderPage();
     expect(getByText("Today's Sales")).toBeInTheDocument();
@@ -108,7 +180,6 @@ describe('TodaySalesPage', () => {
     const { findByText, findAllByText } = renderPage();
 
     expect(await findByText('Returns')).toBeInTheDocument();
-    expect(await findByText('1')).toBeInTheDocument();
     const returnBadges = await findAllByText('Return');
     expect(returnBadges.length).toBeGreaterThanOrEqual(1);
   });

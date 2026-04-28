@@ -3,13 +3,19 @@ import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Save, RotateCcw, Mail, Shield } from 'lucide-react'
 import { toast } from 'sonner'
+import { tokens, textColors } from '@/lib/designTokens'
+import { usePermissions } from '../../../hooks/usePermissions'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { getFraudSettings, updateFraudSettings, resetFraudSettings } from '../api/fraudApi'
 import type { FraudSettings } from '../types/fraud'
+import { CashDrawerControlsSection } from '../components/CashDrawerControlsSection'
+import type { CashDrawerControlsValue } from '../components/CashDrawerControlsSection'
 
 export function FraudSettingsPage() {
   const { t } = useTranslation(['common', 'compliance'])
   const queryClient = useQueryClient()
+  const { hasPermission } = usePermissions()
+  const canEdit = hasPermission('pos.configure_cash_count')
 
   const [formData, setFormData] = useState<Partial<FraudSettings>>({
     abandoned_draft_threshold: 5,
@@ -18,6 +24,13 @@ export function FraudSettingsPage() {
     alert_enabled: true,
     auto_trigger_counting: true,
     auto_restrict_access: false,
+    cash_variance_over_soft: '1.00',
+    cash_variance_over_hard: '20.00',
+    cash_variance_under_soft: '1.00',
+    cash_variance_under_hard: '20.00',
+    require_blind_cash_count: false,
+    require_manager_pin_above_hard: true,
+    cash_variance_email_severity: 'none',
   })
 
   const [emailInput, setEmailInput] = useState('')
@@ -128,10 +141,11 @@ export function FraudSettingsPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">{t('common:loading')}</div>
+        <div className={textColors.tertiary}>{t('common:loading')}</div>
       </div>
     )
   }
+
 
   const isConfigured = settingsData?.data.is_configured ?? false
 
@@ -141,11 +155,11 @@ export function FraudSettingsPage() {
       <div>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <Shield className="h-6 w-6 text-gray-400" />
+            <h1 className={`text-2xl font-bold ${textColors.primary} flex items-center gap-2`}>
+              <Shield className={`h-6 w-6 ${textColors.disabled}`} />
               {t('compliance:fraudSettings.title')}
             </h1>
-            <p className="text-gray-500 mt-1">
+            <p className={`${textColors.tertiary} mt-1`}>
               {t('compliance:fraudSettings.description')}
             </p>
           </div>
@@ -155,7 +169,7 @@ export function FraudSettingsPage() {
               type="button"
               onClick={handleResetClick}
               disabled={resetMutation.isPending}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg disabled:opacity-50 ${tokens.button.secondary}`}
             >
               <RotateCcw className="h-4 w-4" />
               {t('compliance:fraudSettings.actions.reset')}
@@ -181,14 +195,14 @@ export function FraudSettingsPage() {
       {/* Settings Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Detection Thresholds */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+        <div className={tokens.card.base}>
+          <h2 className={`text-lg font-semibold ${textColors.primary} mb-4`}>
             {t('compliance:fraudSettings.sections.detection')}
           </h2>
 
           <div className="grid gap-6 md:grid-cols-2">
             <div>
-              <label htmlFor="threshold" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="threshold" className={`${tokens.label.base} mb-1`}>
                 {t('compliance:fraudSettings.fields.threshold.label')}
               </label>
               <input
@@ -198,18 +212,18 @@ export function FraudSettingsPage() {
                 max="100"
                 value={formData.abandoned_draft_threshold || 5}
                 onChange={(e) => { setFormData({ ...formData, abandoned_draft_threshold: parseInt(e.target.value) }); }}
-                className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                className={tokens.input.base}
               />
-              <p className="text-sm text-gray-500 mt-1">
+              <p className={`${tokens.helperText.base}`}>
                 {t('compliance:fraudSettings.fields.threshold.hint')}
               </p>
               {errors['abandoned_draft_threshold'] && (
-                <p className="text-sm text-red-600 mt-1">{errors['abandoned_draft_threshold']}</p>
+                <p className={tokens.helperText.error}>{errors['abandoned_draft_threshold']}</p>
               )}
             </div>
 
             <div>
-              <label htmlFor="timeWindow" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="timeWindow" className={`${tokens.label.base} mb-1`}>
                 {t('compliance:fraudSettings.fields.timeWindow.label')}
               </label>
               <input
@@ -219,22 +233,22 @@ export function FraudSettingsPage() {
                 max="365"
                 value={formData.time_window_days || 30}
                 onChange={(e) => { setFormData({ ...formData, time_window_days: parseInt(e.target.value) }); }}
-                className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                className={tokens.input.base}
               />
-              <p className="text-sm text-gray-500 mt-1">
+              <p className={tokens.helperText.base}>
                 {t('compliance:fraudSettings.fields.timeWindow.hint')}
               </p>
               {errors['time_window_days'] && (
-                <p className="text-sm text-red-600 mt-1">{errors['time_window_days']}</p>
+                <p className={tokens.helperText.error}>{errors['time_window_days']}</p>
               )}
             </div>
           </div>
         </div>
 
         {/* Alert Configuration */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Mail className="h-5 w-5 text-gray-400" />
+        <div className={tokens.card.base}>
+          <h2 className={`text-lg font-semibold ${textColors.primary} mb-4 flex items-center gap-2`}>
+            <Mail className={`h-5 w-5 ${textColors.disabled}`} />
             {t('compliance:fraudSettings.sections.alerts')}
           </h2>
 
@@ -245,15 +259,15 @@ export function FraudSettingsPage() {
                 id="alertEnabled"
                 checked={formData.alert_enabled ?? true}
                 onChange={(e) => { setFormData({ ...formData, alert_enabled: e.target.checked }); }}
-                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className={tokens.checkbox.base}
               />
-              <label htmlFor="alertEnabled" className="ms-2 text-sm font-medium text-gray-700">
+              <label htmlFor="alertEnabled" className={`ms-2 text-sm font-medium ${textColors.secondary}`}>
                 {t('compliance:fraudSettings.fields.alertEnabled.label')}
               </label>
             </div>
 
             <div>
-              <label htmlFor="emailInput" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="emailInput" className={`${tokens.label.base} mb-1`}>
                 {t('compliance:fraudSettings.fields.emails.label')}
               </label>
               <div className="flex gap-2">
@@ -264,21 +278,21 @@ export function FraudSettingsPage() {
                   onChange={(e) => { setEmailInput(e.target.value); }}
                   onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddEmail())}
                   placeholder={t('compliance:fraudSettings.fields.emails.placeholder')}
-                  className="block flex-1 rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className={`flex-1 ${tokens.input.base}`}
                 />
                 <button
                   type="button"
                   onClick={handleAddEmail}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                  className={`px-4 py-2 text-sm font-medium rounded-lg ${tokens.button.primary}`}
                 >
                   {t('common:actions.add')}
                 </button>
               </div>
-              <p className="text-sm text-gray-500 mt-1">
+              <p className={tokens.helperText.base}>
                 {t('compliance:fraudSettings.fields.emails.hint')}
               </p>
               {errors['email'] && (
-                <p className="text-sm text-red-600 mt-1">{errors['email']}</p>
+                <p className={tokens.helperText.error}>{errors['email']}</p>
               )}
             </div>
 
@@ -287,7 +301,7 @@ export function FraudSettingsPage() {
                 {formData.alert_emails.map((email) => (
                   <span
                     key={email}
-                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800"
+                    className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm ${tokens.badge.blue}`}
                   >
                     {email}
                     <button
@@ -305,8 +319,8 @@ export function FraudSettingsPage() {
         </div>
 
         {/* Auto Actions */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+        <div className={tokens.card.base}>
+          <h2 className={`text-lg font-semibold ${textColors.primary} mb-4`}>
             {t('compliance:fraudSettings.sections.actions')}
           </h2>
 
@@ -317,13 +331,13 @@ export function FraudSettingsPage() {
                 id="autoCounting"
                 checked={formData.auto_trigger_counting ?? true}
                 onChange={(e) => { setFormData({ ...formData, auto_trigger_counting: e.target.checked }); }}
-                className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className={`mt-1 ${tokens.checkbox.base}`}
               />
               <label htmlFor="autoCounting" className="ms-2">
-                <span className="text-sm font-medium text-gray-700 block">
+                <span className={`text-sm font-medium ${textColors.secondary} block`}>
                   {t('compliance:fraudSettings.fields.autoCounting.label')}
                 </span>
-                <span className="text-sm text-gray-500">
+                <span className={`text-sm ${textColors.tertiary}`}>
                   {t('compliance:fraudSettings.fields.autoCounting.hint')}
                 </span>
               </label>
@@ -335,13 +349,13 @@ export function FraudSettingsPage() {
                 id="autoRestrict"
                 checked={formData.auto_restrict_access ?? false}
                 onChange={(e) => { setFormData({ ...formData, auto_restrict_access: e.target.checked }); }}
-                className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className={`mt-1 ${tokens.checkbox.base}`}
               />
               <label htmlFor="autoRestrict" className="ms-2">
-                <span className="text-sm font-medium text-gray-700 block">
+                <span className={`text-sm font-medium ${textColors.secondary} block`}>
                   {t('compliance:fraudSettings.fields.autoRestrict.label')}
                 </span>
-                <span className="text-sm text-gray-500">
+                <span className={`text-sm ${textColors.tertiary}`}>
                   {t('compliance:fraudSettings.fields.autoRestrict.hint')}
                 </span>
               </label>
@@ -349,12 +363,30 @@ export function FraudSettingsPage() {
           </div>
         </div>
 
+        {/* Cash Drawer Controls */}
+        <CashDrawerControlsSection
+          value={{
+            cash_variance_over_soft: formData.cash_variance_over_soft ?? '1.00',
+            cash_variance_over_hard: formData.cash_variance_over_hard ?? '20.00',
+            cash_variance_under_soft: formData.cash_variance_under_soft ?? '1.00',
+            cash_variance_under_hard: formData.cash_variance_under_hard ?? '20.00',
+            require_blind_cash_count: formData.require_blind_cash_count ?? false,
+            require_manager_pin_above_hard: formData.require_manager_pin_above_hard ?? true,
+            cash_variance_email_severity: formData.cash_variance_email_severity ?? 'none',
+          }}
+          currencyCode="EUR"
+          onChange={(next: CashDrawerControlsValue) => {
+            setFormData({ ...formData, ...next })
+          }}
+          canEdit={canEdit}
+        />
+
         {/* Actions */}
         <div className="flex justify-end gap-3">
           <button
             type="submit"
             disabled={updateMutation.isPending}
-            className="flex items-center gap-2 px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            className={`flex items-center gap-2 px-6 py-2 text-sm font-medium rounded-lg disabled:opacity-50 ${tokens.button.primary}`}
           >
             <Save className="h-4 w-4" />
             {updateMutation.isPending ? t('common:actions.saving') : t('common:actions.save')}

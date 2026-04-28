@@ -1,12 +1,17 @@
+import Big from 'big.js';
 import { apiGet, apiPost } from '@/lib/api';
 import { getDatabase } from '@/lib/db';
 import { queryAll } from '@/lib/db';
 import { getCurrencyDecimals } from '@/lib/currency';
+import { bcadd, bcformat } from '@/lib/decimal';
 import { useAuthStore } from '@/stores/authStore';
 import { generateZReport as generateLocalZReport } from '@/lib/offline/zReportService';
+import type { GenerateZReportOpts } from '@/lib/offline/zReportService';
 import { getAllPaymentMethods } from '@/lib/db/repositories/paymentRepository';
 import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 import type { LocalZReport } from '@/lib/offline/types';
+
+export type { GenerateZReportOpts };
 
 export interface VatBreakdownItem {
   tax_rate: number;
@@ -47,6 +52,10 @@ export interface ZReportResponse {
   generated_at: string;
   is_first_z_report: boolean;
   formatted_z_number: string;
+  /** True when this Z was already generated for the shift and returned idempotently. */
+  was_reused?: boolean;
+  /** Per-tender cash count rows — only present when cash counts were captured at shift close. */
+  cash_counts?: import('@/lib/offline/types').ZReportCountEntry[];
   sales_count: number;
   gross_sales: string;
   opening_cash: string;
@@ -130,13 +139,14 @@ export async function generateZReport(
   companyId: string,
   shiftId: string,
   shiftOpenedAt: string,
-  openingCash: number,
+  openingCash: string,
+  opts: GenerateZReportOpts = {},
 ): Promise<ZReportResponse> {
   const authState = useAuthStore.getState();
   const company = authState.companies.find((c) => c.id === authState.companyId);
   const decimals = getCurrencyDecimals(company?.currency ?? 'EUR');
   const db = await getDatabase(companyId);
-  const localReport = await generateLocalZReport(db, terminalId, shiftId, shiftOpenedAt, openingCash);
+  const localReport = await generateLocalZReport(db, terminalId, shiftId, shiftOpenedAt, openingCash, opts);
   return localZReportToResponse(localReport, decimals);
 }
 
@@ -153,10 +163,11 @@ function localZReportToResponse(report: LocalZReport, decimals: number): ZReport
     generated_at: report.generated_at,
     is_first_z_report: report.z_number === 1,
     formatted_z_number: report.formatted_z_number,
+    cash_counts: report.cash_counts,
     sales_count: report.report_data.sales_count,
     gross_sales: report.report_data.gross_sales,
-    opening_cash: report.opening_cash.toFixed(decimals),
-    expected_cash: report.expected_cash.toFixed(decimals),
+    opening_cash: new Big(report.opening_cash).toFixed(decimals),
+    expected_cash: new Big(report.expected_cash).toFixed(decimals),
     actual_cash: (0).toFixed(decimals),
     variance: (0).toFixed(decimals),
     has_variance: false,
@@ -168,8 +179,8 @@ function localZReportToResponse(report: LocalZReport, decimals: number): ZReport
       refunds_count: report.report_data.refunds_count,
       refunds_amount: report.report_data.refunds_amount,
       voided_count: report.report_data.voided_count,
-      opening_cash: report.opening_cash.toFixed(decimals),
-      expected_cash: report.expected_cash.toFixed(decimals),
+      opening_cash: new Big(report.opening_cash).toFixed(decimals),
+      expected_cash: new Big(report.expected_cash).toFixed(decimals),
       vat_breakdown: report.report_data.vat_breakdown.map((v) => ({
         tax_rate: v.tax_rate,
         net_amount: v.net_amount,
@@ -190,12 +201,77 @@ export async function generateZReportServer(terminalId: string): Promise<ZReport
   return apiPost<ZReportResponse>('/pos/reports/z', { terminal_id: terminalId });
 }
 
+export interface ZReportListItem {
+  id: string;
+  terminal_id: string;
+  shift_id: string;
+  z_number: number;
+  formatted_z_number: string;
+  generated_at: string;
+  fiscal_hash: string;
+  gross_sales: string;
+  is_reprint: boolean;
+}
+
+/**
+ * Fetch all Z-reports for the current terminal from the local SQLite store.
+ * Falls back to the server API when online.
+ */
+export async function fetchZReports(terminalId: string, companyId: string): Promise<ZReportListItem[]> {
+  try {
+    const { useConnectivityStore } = await import('@/stores/connectivityStore');
+    if (useConnectivityStore.getState().isOnline) {
+      return await apiGet<ZReportListItem[]>(`/pos/terminals/${terminalId}/z-reports`);
+    }
+  } catch {
+    // fall through to local
+  }
+
+  // Offline: read from local SQLite
+  const db = await getDatabase(companyId);
+  const { queryAll: dbQueryAll } = await import('@/lib/db');
+  const rows = await dbQueryAll<{
+    id: string;
+    terminal_id: string;
+    shift_id: string;
+    z_number: number;
+    formatted_z_number: string;
+    generated_at: string;
+    fiscal_hash: string;
+    report_data: string;
+  }>(
+    db,
+    'SELECT id, terminal_id, shift_id, z_number, formatted_z_number, generated_at, fiscal_hash, report_data FROM z_reports WHERE terminal_id = $1 ORDER BY z_number DESC',
+    [terminalId],
+  );
+
+  return rows.map((row) => {
+    const data = JSON.parse(row.report_data) as { gross_sales?: string };
+    return {
+      id: row.id,
+      terminal_id: row.terminal_id,
+      shift_id: row.shift_id,
+      z_number: row.z_number,
+      formatted_z_number: row.formatted_z_number,
+      generated_at: row.generated_at,
+      fiscal_hash: row.fiscal_hash,
+      gross_sales: data.gross_sales ?? '0.00',
+      is_reprint: false,
+    };
+  });
+}
+
 export async function fetchShiftReceipts(shiftId: string): Promise<ShiftReceipt[]> {
   try {
     return await apiGet<ShiftReceipt[]>(`/pos/shifts/${shiftId}/receipts`);
-  } catch {
-    // Offline fallback: load from local SQLite
-    return await fetchLocalShiftReceipts();
+  } catch (err) {
+    const { useConnectivityStore } = await import('@/stores/connectivityStore');
+    if (!useConnectivityStore.getState().isOnline) {
+      // Offline: silent fallback to local SQLite.
+      return await fetchLocalShiftReceipts();
+    }
+    // Online error: bubble up so the UI can surface it as a toast.
+    throw err;
   }
 }
 
@@ -272,32 +348,32 @@ async function generateLocalXReport(terminalId: string): Promise<XReportResponse
   }
 
   // Aggregate
-  let grossSales = 0;
-  let netSales = 0;
-  let taxAmount = 0;
-  const vatByRate = new Map<string, { net: number; vat: number; gross: number }>();
-  const paymentByType = new Map<string, { amount: number; count: number }>();
+  let grossSales = '0';
+  let netSales = '0';
+  let taxAmount = '0';
+  const vatByRate = new Map<string, { net: string; vat: string; gross: string }>();
+  const paymentByType = new Map<string, { amount: string; count: number }>();
 
   for (const receipt of receipts) {
-    grossSales += parseFloat(receipt.total);
-    netSales += parseFloat(receipt.subtotal);
-    taxAmount += parseFloat(receipt.tax_amount);
+    grossSales = bcadd(grossSales, receipt.total);
+    netSales = bcadd(netSales, receipt.subtotal);
+    taxAmount = bcadd(taxAmount, receipt.tax_amount);
 
     const lines = JSON.parse(receipt.lines) as ReceiptLineJson[];
     for (const line of lines) {
       const rate = line.tax_rate ?? '0';
-      const lineVat = parseFloat(line.tax_amount ?? '0');
-      const lineNet = parseFloat(line.line_total ?? '0');
-      const existing = vatByRate.get(rate) ?? { net: 0, vat: 0, gross: 0 };
-      existing.net += lineNet;
-      existing.vat += lineVat;
-      existing.gross += lineNet + lineVat;
+      const lineVat = line.tax_amount ?? '0';
+      const lineNet = line.line_total ?? '0';
+      const existing = vatByRate.get(rate) ?? { net: '0', vat: '0', gross: '0' };
+      existing.net = bcadd(existing.net, lineNet);
+      existing.vat = bcadd(existing.vat, lineVat);
+      existing.gross = bcadd(existing.gross, bcadd(lineNet, lineVat));
       vatByRate.set(rate, existing);
     }
 
     const methodCode = methodMap.get(receipt.payment_method_id) ?? 'UNKNOWN';
-    const payExisting = paymentByType.get(methodCode) ?? { amount: 0, count: 0 };
-    payExisting.amount += parseFloat(receipt.total);
+    const payExisting = paymentByType.get(methodCode) ?? { amount: '0', count: 0 };
+    payExisting.amount = bcadd(payExisting.amount, receipt.total);
     payExisting.count += 1;
     paymentByType.set(methodCode, payExisting);
   }
@@ -309,21 +385,21 @@ async function generateLocalXReport(terminalId: string): Promise<XReportResponse
     generated_by: 'local',
     generated_at: new Date().toISOString(),
     sales_count: receipts.length,
-    gross_sales: grossSales.toFixed(decimals),
-    net_sales: netSales.toFixed(decimals),
-    tax_amount: taxAmount.toFixed(decimals),
+    gross_sales: bcformat(grossSales, decimals),
+    net_sales: bcformat(netSales, decimals),
+    tax_amount: bcformat(taxAmount, decimals),
     refunds_count: 0,
     vat_breakdown: Array.from(vatByRate.entries())
       .sort(([a], [b]) => parseFloat(a) - parseFloat(b))
       .map(([rate, totals]) => ({
         tax_rate: parseFloat(rate),
-        net_amount: totals.net.toFixed(decimals),
-        vat_amount: totals.vat.toFixed(decimals),
-        gross_amount: totals.gross.toFixed(decimals),
+        net_amount: bcformat(totals.net, decimals),
+        vat_amount: bcformat(totals.vat, decimals),
+        gross_amount: bcformat(totals.gross, decimals),
       })),
     payment_methods: Array.from(paymentByType.entries()).map(([type, data]) => ({
       payment_type: type,
-      total_amount: data.amount.toFixed(decimals),
+      total_amount: bcformat(data.amount, decimals),
       transaction_count: data.count,
     })),
   };

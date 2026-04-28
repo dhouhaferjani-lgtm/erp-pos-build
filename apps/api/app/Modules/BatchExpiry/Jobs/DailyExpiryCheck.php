@@ -12,6 +12,8 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
@@ -74,7 +76,7 @@ class DailyExpiryCheck implements ShouldQueue
      *
      * @return int Number of batches marked as expired
      */
-    private function markExpiredBatches(\Illuminate\Support\Carbon $today): int
+    private function markExpiredBatches(Carbon $today): int
     {
         return DB::transaction(function () use ($today): int {
             $expiredBatches = Batch::where('expiry_date', '<', $today)
@@ -105,9 +107,9 @@ class DailyExpiryCheck implements ShouldQueue
      * Get batches approaching expiry within threshold.
      *
      * @param  int  $daysThreshold  Number of days threshold
-     * @return \Illuminate\Support\Collection<int, Batch>
+     * @return Collection<int, Batch>
      */
-    private function getBatchesApproachingExpiry(\Illuminate\Support\Carbon $today, int $daysThreshold): \Illuminate\Support\Collection
+    private function getBatchesApproachingExpiry(Carbon $today, int $daysThreshold): Collection
     {
         $thresholdDate = $today->copy()->addDays($daysThreshold);
 
@@ -124,9 +126,9 @@ class DailyExpiryCheck implements ShouldQueue
      *
      * Groups batches by company and sends notifications.
      *
-     * @param  \Illuminate\Support\Collection<int, Batch>  $criticalBatches
+     * @param  Collection<int, Batch>  $criticalBatches
      */
-    private function notifyCompaniesOfCriticalBatches(\Illuminate\Support\Collection $criticalBatches): void
+    private function notifyCompaniesOfCriticalBatches(Collection $criticalBatches): void
     {
         // Group batches by company
         $batchesByCompany = $criticalBatches->groupBy('company_id');

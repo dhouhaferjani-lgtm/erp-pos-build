@@ -14,49 +14,49 @@ use Illuminate\Support\Facades\Route;
 // Group 1: Composite items — ungated (no Inventory module required)
 Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function () {
     // Composite Items
-    Route::get('composite-items', [CompositeItemController::class, 'index']);
-    Route::post('composite-items', [CompositeItemController::class, 'store']);
-    Route::get('composite-items/{id}', [CompositeItemController::class, 'show']);
-    Route::patch('composite-items/{id}', [CompositeItemController::class, 'update']);
-    Route::delete('composite-items/{id}', [CompositeItemController::class, 'destroy']);
-    Route::post('composite-items/{id}/duplicate', [CompositeItemController::class, 'duplicate']);
-    Route::get('composite-items/{id}/availability', [CompositeItemController::class, 'checkAvailability']);
+    Route::get('composite-items', [CompositeItemController::class, 'index'])->middleware('can:composite-items.view');
+    Route::post('composite-items', [CompositeItemController::class, 'store'])->middleware('can:composite-items.create');
+    Route::get('composite-items/{id}', [CompositeItemController::class, 'show'])->middleware('can:composite-items.view');
+    Route::patch('composite-items/{id}', [CompositeItemController::class, 'update'])->middleware('can:composite-items.update');
+    Route::delete('composite-items/{id}', [CompositeItemController::class, 'destroy'])->middleware('can:composite-items.delete');
+    Route::post('composite-items/{id}/duplicate', [CompositeItemController::class, 'duplicate'])->middleware('can:composite-items.create');
+    Route::get('composite-items/{id}/availability', [CompositeItemController::class, 'checkAvailability'])->middleware('can:composite-items.view');
 });
 
 // Group 2: Recipes, recipe lines, variants, modifier groups — gated behind Inventory module
 Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, 'module:Inventory'])->group(function () {
     // Recipes (nested under composite items for creation, standalone for show/update)
-    Route::get('composite-items/{compositeItemId}/recipes', [RecipeController::class, 'index']);
-    Route::post('composite-items/{compositeItemId}/recipes', [RecipeController::class, 'store']);
-    Route::get('recipes/{id}', [RecipeController::class, 'show']);
-    Route::patch('recipes/{id}', [RecipeController::class, 'update']);
-    Route::post('recipes/{id}/activate', [RecipeController::class, 'activate']);
-    Route::post('recipes/{id}/calculate-cost', [RecipeController::class, 'calculateCost']);
+    Route::get('composite-items/{compositeItemId}/recipes', [RecipeController::class, 'index'])->middleware('can:composite-items.manage-recipes');
+    Route::post('composite-items/{compositeItemId}/recipes', [RecipeController::class, 'store'])->middleware('can:composite-items.manage-recipes');
+    Route::get('recipes/{id}', [RecipeController::class, 'show'])->middleware('can:composite-items.manage-recipes');
+    Route::patch('recipes/{id}', [RecipeController::class, 'update'])->middleware('can:composite-items.manage-recipes');
+    Route::post('recipes/{id}/activate', [RecipeController::class, 'activate'])->middleware('can:composite-items.manage-recipes');
+    Route::post('recipes/{id}/calculate-cost', [RecipeController::class, 'calculateCost'])->middleware('can:composite-items.manage-recipes');
 
     // Recipe Lines (nested under recipes)
-    Route::post('recipes/{recipeId}/lines', [RecipeLineController::class, 'store']);
-    Route::patch('recipes/{recipeId}/lines/{lineId}', [RecipeLineController::class, 'update']);
-    Route::delete('recipes/{recipeId}/lines/{lineId}', [RecipeLineController::class, 'destroy']);
+    Route::post('recipes/{recipeId}/lines', [RecipeLineController::class, 'store'])->middleware('can:composite-items.manage-recipes');
+    Route::patch('recipes/{recipeId}/lines/{lineId}', [RecipeLineController::class, 'update'])->middleware('can:composite-items.manage-recipes');
+    Route::delete('recipes/{recipeId}/lines/{lineId}', [RecipeLineController::class, 'destroy'])->middleware('can:composite-items.manage-recipes');
 
     // Composite Item Variants (nested under composite items for listing/creation)
-    Route::get('composite-items/{compositeItemId}/variants', [CompositeItemVariantController::class, 'index']);
-    Route::post('composite-items/{compositeItemId}/variants', [CompositeItemVariantController::class, 'store']);
-    Route::patch('variants/{id}', [CompositeItemVariantController::class, 'update']);
-    Route::delete('variants/{id}', [CompositeItemVariantController::class, 'destroy']);
+    Route::get('composite-items/{compositeItemId}/variants', [CompositeItemVariantController::class, 'index'])->middleware('can:composite-items.update');
+    Route::post('composite-items/{compositeItemId}/variants', [CompositeItemVariantController::class, 'store'])->middleware('can:composite-items.update');
+    Route::patch('variants/{id}', [CompositeItemVariantController::class, 'update'])->middleware('can:composite-items.update');
+    Route::delete('variants/{id}', [CompositeItemVariantController::class, 'destroy'])->middleware('can:composite-items.update');
 
     // Modifier Group assignment to composite items
-    Route::post('composite-items/{compositeItemId}/modifier-groups', [ModifierGroupController::class, 'assignToItem']);
-    Route::delete('composite-items/{compositeItemId}/modifier-groups/{modifierGroupId}', [ModifierGroupController::class, 'removeFromItem']);
+    Route::post('composite-items/{compositeItemId}/modifier-groups', [ModifierGroupController::class, 'assignToItem'])->middleware('can:composite-items.update');
+    Route::delete('composite-items/{compositeItemId}/modifier-groups/{modifierGroupId}', [ModifierGroupController::class, 'removeFromItem'])->middleware('can:composite-items.update');
 
     // Modifier Groups (standalone CRUD)
-    Route::get('modifier-groups', [ModifierGroupController::class, 'index']);
-    Route::post('modifier-groups', [ModifierGroupController::class, 'store']);
-    Route::get('modifier-groups/{id}', [ModifierGroupController::class, 'show']);
-    Route::patch('modifier-groups/{id}', [ModifierGroupController::class, 'update']);
-    Route::delete('modifier-groups/{id}', [ModifierGroupController::class, 'destroy']);
+    Route::get('modifier-groups', [ModifierGroupController::class, 'index'])->middleware('can:modifier-groups.view');
+    Route::post('modifier-groups', [ModifierGroupController::class, 'store'])->middleware('can:modifier-groups.manage');
+    Route::get('modifier-groups/{id}', [ModifierGroupController::class, 'show'])->middleware('can:modifier-groups.view');
+    Route::patch('modifier-groups/{id}', [ModifierGroupController::class, 'update'])->middleware('can:modifier-groups.manage');
+    Route::delete('modifier-groups/{id}', [ModifierGroupController::class, 'destroy'])->middleware('can:modifier-groups.manage');
 
     // Modifiers (nested under groups for creation)
-    Route::post('modifier-groups/{groupId}/modifiers', [ModifierController::class, 'store']);
-    Route::patch('modifiers/{id}', [ModifierController::class, 'update']);
-    Route::delete('modifiers/{id}', [ModifierController::class, 'destroy']);
+    Route::post('modifier-groups/{groupId}/modifiers', [ModifierController::class, 'store'])->middleware('can:modifier-groups.manage');
+    Route::patch('modifiers/{id}', [ModifierController::class, 'update'])->middleware('can:modifier-groups.manage');
+    Route::delete('modifiers/{id}', [ModifierController::class, 'destroy'])->middleware('can:modifier-groups.manage');
 });

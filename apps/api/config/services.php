@@ -37,6 +37,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Google reCAPTCHA v3 — used by the public Scheduling storefront endpoints
+    | (apps/api/app/Modules/Scheduling). The secret key is server-side only.
+    | RECAPTCHA_MIN_SCORE is the threshold below which verify() returns false;
+    | default 0.5 balances friction vs bot traffic per Google's guidance.
+    |--------------------------------------------------------------------------
+    */
+
+    'recaptcha' => [
+        'secret_key' => env('RECAPTCHA_SECRET_KEY', ''),
+        'min_score' => (float) env('RECAPTCHA_MIN_SCORE', 0.5),
+        'hostname' => env('RECAPTCHA_HOSTNAME'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Payment Providers
     |--------------------------------------------------------------------------
     */
@@ -89,6 +104,7 @@ return [
     'platform' => [
         'url' => env('SYNERIVA_PLATFORM_URL', 'http://localhost:8080'),
         'api_key' => env('SYNERIVA_PLATFORM_API_KEY'),
+        'webhook_secret' => env('SYNERIVA_WEBHOOK_SECRET'),
     ],
 
     'vin_decoder' => [
@@ -96,6 +112,38 @@ return [
         'api_key' => env('VIN_DECODER_API_KEY'),
         'base_url' => env('VIN_DECODER_URL', 'https://api.vindecoder.eu/3.2'),
         'cache_ttl' => (int) env('VIN_DECODER_CACHE_TTL', 86400),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Growth Advisor Service
+    |--------------------------------------------------------------------------
+    */
+
+    'growth_advisor' => [
+        'url' => env('GROWTH_ADVISOR_URL', 'http://localhost:8004'),
+        'timeout' => 30,
+        'connect_timeout' => 10,
+        'retry_times' => 2,
+        'retry_delay' => 200,
+        'circuit_breaker_threshold' => 3,
+        'circuit_breaker_cooldown' => 30,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Recommendation Engine Service (erp-ml)
+    |--------------------------------------------------------------------------
+    */
+
+    'recommendation_engine' => [
+        'url' => env('RECOMMENDATION_ENGINE_URL', 'http://localhost:8002'),
+        'timeout' => 5,
+        'connect_timeout' => 3,
+        'retry_times' => 2,
+        'retry_delay' => 200,
+        'circuit_breaker_threshold' => 3,
+        'circuit_breaker_cooldown' => 30,
     ],
 
 ];

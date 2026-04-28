@@ -300,4 +300,223 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 16,
+    name: 'add_offline_first_columns_to_offline_receipts',
+    sql: '',
+    async run(db) {
+      const statements = [
+        "ALTER TABLE offline_receipts ADD COLUMN server_receipt_id TEXT",
+        "ALTER TABLE offline_receipts ADD COLUMN payments_json TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE offline_receipts ADD COLUMN consumption_mode TEXT",
+        "ALTER TABLE offline_receipts ADD COLUMN table_id TEXT",
+      ];
+      for (const stmt of statements) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
+  {
+    version: 17,
+    name: 'create_held_transactions_table',
+    sql: `
+      CREATE TABLE IF NOT EXISTS held_transactions (
+        id TEXT PRIMARY KEY,
+        terminal_id TEXT NOT NULL,
+        operator_id TEXT NOT NULL,
+        label TEXT NOT NULL,
+        items_json TEXT NOT NULL,
+        transaction_discount_json TEXT,
+        subtotal TEXT NOT NULL,
+        total TEXT NOT NULL,
+        item_count INTEGER NOT NULL,
+        held_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_held_transactions_terminal ON held_transactions(terminal_id);
+      CREATE INDEX IF NOT EXISTS idx_held_transactions_held_at ON held_transactions(held_at);
+    `,
+  },
+  {
+    version: 18,
+    name: 'create_queued_pin_updates',
+    sql: `
+      CREATE TABLE IF NOT EXISTS queued_pin_updates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        pin_hash TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'syncing', 'synced', 'failed')),
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        synced_at TEXT,
+        sync_error TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_queued_pin_updates_status ON queued_pin_updates(status);
+    `,
+  },
+  {
+    version: 19,
+    name: 'create_floors_and_tables',
+    sql: `
+      CREATE TABLE IF NOT EXISTS floors (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        synced_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_floors_position ON floors(position);
+
+      CREATE TABLE IF NOT EXISTS tables (
+        id TEXT PRIMARY KEY,
+        floor_id TEXT,
+        table_number TEXT NOT NULL,
+        label TEXT,
+        seats INTEGER NOT NULL DEFAULT 4,
+        status TEXT NOT NULL DEFAULT 'available',
+        shape TEXT,
+        position_x TEXT,
+        position_y TEXT,
+        width TEXT,
+        height TEXT,
+        current_order_id TEXT,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        synced_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_tables_floor ON tables(floor_id);
+      CREATE INDEX IF NOT EXISTS idx_tables_status ON tables(status);
+    `,
+  },
+  {
+    version: 20,
+    name: 'create_menu_categories_and_items',
+    sql: `
+      CREATE TABLE IF NOT EXISTS menu_categories (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        synced_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_menu_categories_position ON menu_categories(position);
+
+      CREATE TABLE IF NOT EXISTS menu_category_items (
+        id TEXT PRIMARY KEY,
+        menu_category_id TEXT NOT NULL,
+        sellable_id TEXT NOT NULL,
+        sellable_type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        code TEXT NOT NULL,
+        barcode TEXT,
+        base_price TEXT NOT NULL,
+        effective_price TEXT NOT NULL,
+        image_url TEXT,
+        tax_rate TEXT,
+        display_order INTEGER NOT NULL DEFAULT 0,
+        is_available INTEGER NOT NULL DEFAULT 1,
+        modifier_groups TEXT,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        synced_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_menu_items_category ON menu_category_items(menu_category_id);
+      CREATE INDEX IF NOT EXISTS idx_menu_items_order ON menu_category_items(menu_category_id, display_order);
+    `,
+  },
+  {
+    // Widen REAL monetary columns to TEXT so multi-decimal currencies (TND
+    // uses 3 decimals) survive storage without IEEE 754 coercion. Mirrors the
+    // backend decimal(15,3) widening from 2026_03_11_200000; the PostgreSQL
+    // migration skipped SQLite because SQLite has no ALTER COLUMN TYPE.
+    // Requires SQLite 3.35+ for DROP/RENAME COLUMN (bundled with Tauri).
+    //
+    // BACKFILL SEMANTICS: the `CAST(col AS TEXT)` step uses SQLite's shortest
+    // round-trip decimal representation. This means:
+    //   - A cleanly-stored EUR value like 100.25 emerges as "100.25" (correct).
+    //   - A TND value that had already drifted to 100.24999999998 emerges as
+    //     "100.24999999998" and is *locked in* — this migration preserves the
+    //     existing (possibly imprecise) state. It does NOT heal historical
+    //     float drift. Only writes *after* this migration runs benefit from
+    //     exact decimal persistence. For verticals that launched TND before
+    //     this fix, reconcile existing terminal_state/z_reports rows manually
+    //     against authoritative server values if needed.
+    version: 21,
+    name: 'widen_monetary_columns_to_text',
+    sql: '',
+    async run(db) {
+      const columnMigrations: Array<{ table: string; column: string }> = [
+        { table: 'z_reports', column: 'opening_cash' },
+        { table: 'z_reports', column: 'expected_cash' },
+        { table: 'terminal_state', column: 'cumulative_sales' },
+        { table: 'terminal_state', column: 'cumulative_tax' },
+        { table: 'terminal_state', column: 'cumulative_refunds' },
+        { table: 'terminal_state', column: 'perpetual_grand_total' },
+      ];
+
+      await db.execute('BEGIN TRANSACTION');
+      try {
+        for (const { table, column } of columnMigrations) {
+          const tmp = `${column}_new`;
+          await db.execute(
+            `ALTER TABLE ${table} ADD COLUMN ${tmp} TEXT NOT NULL DEFAULT '0'`,
+          );
+          await db.execute(
+            `UPDATE ${table} SET ${tmp} = CAST(${column} AS TEXT)`,
+          );
+          await db.execute(`ALTER TABLE ${table} DROP COLUMN ${column}`);
+          await db.execute(`ALTER TABLE ${table} RENAME COLUMN ${tmp} TO ${column}`);
+        }
+        await db.execute('COMMIT');
+      } catch (error) {
+        await db.execute('ROLLBACK');
+        throw error;
+      }
+    },
+  },
+  {
+    version: 22,
+    name: 'cash_counting_feature',
+    sql: `
+      CREATE TABLE z_report_counts (
+        id                  TEXT PRIMARY KEY,
+        z_report_id         TEXT NOT NULL,
+        payment_method_id   TEXT NOT NULL,
+        currency_code       TEXT NOT NULL,
+        expected_amount     TEXT NOT NULL,
+        actual_amount       TEXT NOT NULL,
+        variance_amount     TEXT NOT NULL,
+        variance_direction  TEXT NOT NULL,
+        transaction_count   INTEGER NOT NULL DEFAULT 0,
+        created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE UNIQUE INDEX idx_z_report_counts_unique ON z_report_counts(z_report_id, payment_method_id);
+      CREATE INDEX idx_z_report_counts_method ON z_report_counts(payment_method_id);
+
+      ALTER TABLE z_reports ADD COLUMN blind_count_used    INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE z_reports ADD COLUMN manager_override_by TEXT;
+      ALTER TABLE z_reports ADD COLUMN variance_severity   TEXT;
+      ALTER TABLE z_reports ADD COLUMN variance_reason     TEXT;
+
+      CREATE TABLE company_fraud_settings_cache (
+        company_id                          TEXT PRIMARY KEY,
+        cash_variance_over_soft             TEXT NOT NULL,
+        cash_variance_over_hard             TEXT NOT NULL,
+        cash_variance_under_soft            TEXT NOT NULL,
+        cash_variance_under_hard            TEXT NOT NULL,
+        require_blind_cash_count            INTEGER NOT NULL DEFAULT 0,
+        require_manager_pin_above_hard      INTEGER NOT NULL DEFAULT 1,
+        cash_variance_email_severity        TEXT NOT NULL DEFAULT 'none',
+        refreshed_at                        TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      ALTER TABLE terminal_state ADD COLUMN manager_pin_throttle_until   TEXT;
+      ALTER TABLE terminal_state ADD COLUMN manager_pin_failed_attempts  INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ];

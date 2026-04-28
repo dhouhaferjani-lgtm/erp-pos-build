@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
+use App\Modules\Identity\Domain\User;
+use App\Modules\SmartPrompts\Domain\Enums\SmartPromptsVariant;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Services\CompanyConfigService;
 use Illuminate\Http\JsonResponse;
@@ -36,11 +38,11 @@ class CompanyConfigController
         // Get authenticated user (guaranteed by auth:sanctum middleware)
         $requestUser = $request->user();
 
-        if (! $requestUser instanceof \App\Modules\Identity\Domain\User) {
+        if (! $requestUser instanceof User) {
             abort(401, 'User must be authenticated');
         }
 
-        /** @var \App\Modules\Identity\Domain\User $user */
+        /** @var User $user */
         $user = $requestUser;
 
         // Get tenant from user (refresh to ensure fresh data)
@@ -82,6 +84,11 @@ class CompanyConfigController
                     'show_payment_details' => (bool) ($company?->receipt_show_payment_details ?? true),
                     'show_customer' => (bool) ($company?->receipt_show_customer ?? true),
                 ],
+                'smart_prompts_enabled' => (bool) $company?->smart_prompts_enabled,
+                'line_designation_override_enabled' => config('features.documents.line_designation_override.enabled', false),
+                'smart_prompts_variant' => $company?->getAttribute('smart_prompts_variant') instanceof SmartPromptsVariant
+                    ? $company->getAttribute('smart_prompts_variant')->value
+                    : 'inline',
             ],
         ]);
     }

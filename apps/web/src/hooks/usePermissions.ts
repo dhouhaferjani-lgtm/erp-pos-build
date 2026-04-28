@@ -1,3 +1,8 @@
+// TODO(auth): this hook reads from a hardcoded ROLE_PERMISSIONS map. The proper fix is to consume
+// the user's actual permission list from the auth payload (passport/sanctum response). Until that
+// ships, custom roles with granted permissions will be silently denied. See follow-up ticket.
+// Tracked in: memory/feedback_usePermissions_hardcoded_map.md
+
 import { useAuthStore } from '../stores/authStore'
 
 // Permission keys mapped to modules
@@ -53,6 +58,8 @@ export const PERMISSIONS = {
   'vehicles.view': ['admin', 'sales', 'manager'],
   'vehicles.create': ['admin', 'sales', 'manager'],
   'vehicles.edit': ['admin', 'sales', 'manager'],
+  'vehicles.manage_ownership': ['admin', 'manager', 'operator'],
+  'vehicles.log_mileage': ['admin', 'manager', 'operator', 'technician'],
 
   // Pricing
   'pricing.view': ['admin', 'sales', 'manager'],
@@ -77,6 +84,7 @@ export const PERMISSIONS = {
   'pos.void_receipts': ['admin', 'manager'],
   'pos.view_receipts': ['admin', 'manager', 'cashier'],
   'pos.manage_tables': ['admin', 'manager'],
+  'pos.configure_cash_count': ['admin', 'manager'],
 
   // Catalog (Composite Items & Modifiers)
   'composite-items.view': ['admin', 'manager'],
@@ -86,6 +94,10 @@ export const PERMISSIONS = {
   'composite-items.manage-recipes': ['admin', 'manager'],
   'modifier-groups.view': ['admin', 'manager'],
   'modifier-groups.manage': ['admin', 'manager'],
+
+  // Workshop Service Bundles
+  'workshop-bundles.view': ['admin', 'manager', 'technician'],
+  'workshop-bundles.manage': ['admin', 'manager'],
 
   // Promotions
   'promotions.view': ['admin', 'manager'],
@@ -104,6 +116,45 @@ export const PERMISSIONS = {
   'contacts.create': ['admin', 'manager', 'sales', 'cashier'],
   'contacts.update': ['admin', 'manager', 'sales'],
   'contacts.delete': ['admin', 'manager'],
+
+  // Enrichment
+  'enrichment.view': ['admin', 'manager'],
+  'enrichment.review': ['admin', 'manager'],
+
+  // Workshop — Technicians (HRM-lite; Spec C)
+  'workshop.technicians.view': ['admin', 'manager', 'technician', 'sales'],
+  'workshop.technicians.manage': ['admin', 'manager'],
+  'workshop.technicians.view_pay': ['admin', 'manager'],
+  'workshop.technicians.view_pii': ['admin', 'manager'],
+  'workshop.technicians.approve_time_off': ['admin', 'manager'],
+  'workshop.technicians.adjust_time_entries': ['admin', 'manager'],
+  'workshop.technicians.manage_certifications': ['admin', 'manager'],
+  'workshop.technicians.manage_time_off': ['admin', 'manager'],
+  'workshop.technicians.manage_time_entries': ['admin', 'manager', 'technician'],
+
+  // Workshop — Payroll exports (Phase A.4)
+  'workshop.payroll.view': ['admin', 'manager'],
+  'workshop.payroll.generate': ['admin', 'manager'],
+
+  // Workshop — Work Orders (Spec B)
+  'work-orders.view': ['admin', 'manager', 'operator', 'technician'],
+  'work-orders.create': ['admin', 'manager', 'operator'],
+  'work-orders.update': ['admin', 'manager', 'operator', 'technician'],
+  'work-orders.approve': ['admin', 'manager'],
+  'work-orders.assign': ['admin', 'manager'],
+  'work-orders.transition': ['admin', 'manager', 'operator'],
+  'work-orders.cancel': ['admin', 'manager'],
+  'work-orders.complete': ['admin', 'manager', 'operator', 'technician'],
+  'work-orders.view_financials': ['admin', 'manager', 'accountant'],
+
+  // Scheduling (Spec D)
+  'scheduling.bays.view': ['admin', 'manager', 'operator'],
+  'scheduling.bays.manage': ['admin', 'manager'],
+  'scheduling.appointments.view': ['admin', 'manager', 'operator', 'technician'],
+  'scheduling.appointments.create': ['admin', 'manager', 'operator'],
+  'scheduling.appointments.update': ['admin', 'manager', 'operator'],
+  'scheduling.appointments.cancel': ['admin', 'manager'],
+  'scheduling.appointments.convert': ['admin', 'manager', 'operator'],
 } as const
 
 export type Permission = keyof typeof PERMISSIONS
@@ -127,10 +178,16 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   withholding: ['withholding.view'],
   'composite-items': ['composite-items.view'],
   'modifier-groups': ['modifier-groups.view'],
+  'workshop-bundles': ['workshop-bundles.view'],
   promotions: ['promotions.view'],
   coupons: ['coupons.view'],
   loyalty: ['loyalty.view'],
   contacts: ['contacts.view'],
+  enrichment: ['enrichment.view'],
+  'workshop-technicians': ['workshop.technicians.view'],
+  'workshop-payroll': ['workshop.payroll.view'],
+  'workshop-work-orders': ['work-orders.view'],
+  scheduling: ['scheduling.appointments.view'],
 }
 
 /**

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Application\Services;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -16,6 +17,7 @@ use App\Modules\Treasury\Domain\Events\PaymentAllocated;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -23,6 +25,7 @@ use Illuminate\Support\Facades\DB;
 class PaymentAllocationService
 {
     public function __construct(
+        private readonly PaymentToleranceCheckerContract $toleranceChecker,
         private PaymentToleranceService $toleranceService,
         private GeneralLedgerService $glService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
@@ -100,6 +103,7 @@ class PaymentAllocationService
                     'payment_id' => $payment->id,
                     'document_id' => $allocation['document_id'],
                     'amount' => $allocation['amount'],
+                    'tolerance_writeoff' => $allocation['tolerance_writeoff'] ?? null,
                 ]);
 
                 $createdAllocations[] = [
@@ -347,6 +351,14 @@ class PaymentAllocationService
         $allocations = [];
         $totalToInvoices = '0.0000';
 
+        // PaymentToleranceCheckerContract is country/currency-keyed: resolve country
+        // once from the owning company; currency is per-invoice (accurate for
+        // multi-currency tenants). strict=false rides the inclusive A1 / SmartPayment
+        // semantics — a difference exactly at the threshold qualifies for write-off.
+        /** @var Company $company */
+        $company = Company::query()->findOrFail($companyId);
+        $countryCode = (string) $company->country_code;
+
         foreach ($openInvoices as $invoice) {
             /** @phpstan-ignore-next-line argument.type */
             if (bccomp($remainingAmount, '0', 4) <= 0) {
@@ -356,17 +368,29 @@ class PaymentAllocationService
             // Calculate invoice balance
             $invoiceBalance = $this->getInvoiceBalance($invoice);
 
+            // Compute the unsigned shortfall (contract input is unsigned by spec)
+            // alongside the signed delta we still need to choose the allocation
+            // direction (overpayment caps at balance, underpayment consumes remainder).
+            /** @phpstan-ignore-next-line argument.type */
+            $signedDelta = bcsub($remainingAmount, $invoiceBalance, 4);
+            $absShortfall = bccomp($signedDelta, '0', 4) < 0
+                ? bcmul($signedDelta, '-1', 4)
+                : $signedDelta;
+
             // Check if this is the last invoice and we can apply tolerance
-            $toleranceCheck = $this->toleranceService->checkTolerance(
-                invoiceAmount: $invoiceBalance,
-                paymentAmount: $remainingAmount,
-                companyId: $companyId
+            $toleranceCheck = $this->toleranceChecker->check(
+                shortfall: $absShortfall,
+                invoiceTotal: $invoiceBalance,
+                currencyCode: (string) $invoice->currency,
+                countryCode: $countryCode,
+                strict: false,
             );
 
-            if ($toleranceCheck['qualifies']) {
+            if ($toleranceCheck->qualifies) {
                 // For overpayment: allocate invoice balance (can't exceed)
                 // For underpayment: allocate all remaining payment
-                $isOverpayment = $toleranceCheck['type'] === 'overpayment';
+                /** @phpstan-ignore-next-line argument.type */
+                $isOverpayment = bccomp($remainingAmount, $invoiceBalance, 4) > 0;
                 $allocationAmount = $isOverpayment ? $invoiceBalance : $remainingAmount;
 
                 $allocations[] = [
@@ -374,12 +398,12 @@ class PaymentAllocationService
                     'document_number' => $invoice->document_number,
                     'amount' => $allocationAmount,
                     'original_balance' => $invoiceBalance,
-                    'tolerance_writeoff' => $toleranceCheck['difference'],
+                    'tolerance_writeoff' => $toleranceCheck->difference,
                 ];
 
                 // total_to_invoices = amount + tolerance (invoice value cleared)
                 /** @phpstan-ignore-next-line argument.type */
-                $totalToInvoices = bcadd($totalToInvoices, bcadd($allocationAmount, $toleranceCheck['difference'], 4), 4);
+                $totalToInvoices = bcadd($totalToInvoices, bcadd($allocationAmount, $toleranceCheck->difference, 4), 4);
                 $remainingAmount = '0.0000';
                 break;
             }

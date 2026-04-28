@@ -48,8 +48,6 @@
     "transactionRef": "Référence",
     "morePaymentMethods": "Plus...",
     "processingQuickCheckout": "Traitement du paiement...",
-    "offlineSaved": "Vente enregistrée localement",
-    "offlineWillSync": "Synchronisation automatique au retour de la connexion",
     "pendingSyncCount": "{{count}} vente(s) en attente de synchronisation"
   },
   "cashPayment": {
@@ -147,7 +145,9 @@
     "mismatch": "Les PINs ne correspondent pas. Réessayez.",
     "clear": "Effacer",
     "verifying": "Vérification...",
-    "enter": "Valider"
+    "enter": "Valider",
+    "offlineSetupQueued": "Code PIN enregistré localement. Il sera synchronisé quand le serveur sera joignable.",
+    "offlineSetupFailed": "Impossible d'enregistrer le code PIN localement."
   },
   "header": {
     "noShift": "Aucun service ouvert",
@@ -169,7 +169,11 @@
     "pendingCount": "{{count}} ticket(s) en attente",
     "syncNow": "Synchroniser",
     "receiptQueued": "Ticket enregistré localement — sera synchronisé en ligne",
-    "lastSync": "Dernière synchro : {{time}}"
+    "lastSync": "Dernière synchro : {{time}}",
+    "debounceBlocked": "Un instant — synchronisation en cours."
+  },
+  "fiscal": {
+    "regressionBlocked": "Intégrité de la chaîne fiscale préservée. Les données locales sont plus récentes que le serveur."
   },
   "quickActions": {
     "discount": "Remise",
@@ -211,7 +215,8 @@
     "verifyingPin": "Vérification...",
     "managerDenied": "Le responsable n'a pas une autorisation de remise suffisante",
     "invalidPin": "PIN invalide",
-    "authorize": "Autoriser"
+    "authorize": "Autoriser",
+    "cancel": "Annuler"
   },
   "modifiers": {
     "basePrice": "Prix de base",
@@ -281,7 +286,47 @@
     "cashReconciliation": "Réconciliation de caisse",
     "loading": "Génération du rapport...",
     "noOpenShift": "Aucun service ouvert. Ouvrez un service pour générer un rapport.",
-    "errorGenerating": "Erreur lors de la génération du rapport"
+    "errorGenerating": "Erreur lors de la génération du rapport",
+    "noShiftOpen": "Ouvrez un service pour voir les ventes du jour.",
+    "noReceiptsYet": "Aucun ticket pour ce service pour l'instant.",
+    "fetchError": "Impossible de charger les tickets. Vérifiez votre connexion et réessayez.",
+    "endOfDay": {
+      "title": "Clôture de caisse",
+      "subtitle": "Vérifiez les totaux avant de clôturer le service. Cette action est définitive.",
+      "openingCash": "Fond de caisse",
+      "expectedCash": "Espèces attendues",
+      "cashReconciliation": "Réconciliation de caisse",
+      "salesCount": "Tickets",
+      "grossSales": "Ventes brutes",
+      "netSales": "Ventes nettes",
+      "taxAmount": "TVA",
+      "vatBreakdown": "Ventilation TVA",
+      "payments": "Paiements",
+      "cancel": "Annuler",
+      "confirmLabel": "Confirmer et clôturer",
+      "confirming": "Clôture en cours...",
+      "successTitle": "Caisse clôturée",
+      "successZNumber": "Rapport Z",
+      "successReused": "Ce service avait déjà un rapport Z — affichage de l'existant.",
+      "printReceipt": "Imprimer le ticket",
+      "printError": "Échec de l'envoi du ticket à l'imprimante.",
+      "done": "Terminer"
+    },
+    "zList": {
+      "title": "Rapports Z",
+      "columns": {
+        "zNumber": "Numéro Z",
+        "generatedAt": "Généré le",
+        "gross": "Ventes brutes",
+        "hash": "Empreinte"
+      },
+      "actions": {
+        "print": "Imprimer",
+        "pdf": "Télécharger PDF"
+      },
+      "empty": "Aucun rapport Z trouvé.",
+      "duplicataBanner": "DUPLICATA"
+    }
   },
   "productDetail": {
     "title": "Détails du produit",
@@ -357,6 +402,9 @@
     "fullscreen": "Plein écran",
     "fullscreenDesc": "Lancer l'application en plein écran",
     "exitFullscreen": "Quitter le plein écran",
+    "forceFullscreen": "Forcer le plein écran",
+    "forceFullscreenDesc": "Réappliquer le plein écran si la fenêtre est désynchronisée",
+    "forceFullscreenApplied": "Plein écran réappliqué",
     "drawerRequiresPrinter": "Le tiroir-caisse nécessite une imprimante de tickets configurée.",
     "drawerConnectionInfo": "Connecté via l'imprimante de tickets (câble RJ45). Assurez-vous que votre tiroir-caisse est connecté au port DK de l'imprimante.",
     "drawerPin": "Broche du connecteur",
@@ -494,7 +542,26 @@
     "unexpected": "Une erreur inattendue s'est produite",
     "noCashMethod": "Aucun moyen de paiement espèces configuré. Veuillez configurer un moyen de paiement espèces dans Paramètres → Moyens de paiement.",
     "noCashRegister": "Aucune caisse enregistreuse configurée. Veuillez configurer une caisse dans Paramètres → Dépôts de paiement.",
-    "checkoutFailed": "Échec du paiement"
+    "checkoutFailed": "Échec du paiement",
+    "noCompanySelected": "Aucune entreprise sélectionnée. Veuillez sélectionner une entreprise avant d'encaisser.",
+    "noOperatorIdentified": "Aucun opérateur identifié. Veuillez vous connecter avec votre code PIN avant d'encaisser.",
+    "noPaymentProvided": "Au moins un moyen de paiement est requis.",
+    "unknownPaymentMethod": "Moyen de paiement inconnu dans le paiement mixte.",
+    "noCardMethod": "Aucun moyen de paiement par carte n'est configuré pour ce terminal.",
+    "noCardRepository": "Aucun dépôt carte (virtuel ou compte bancaire) n'est configuré pour ce terminal."
+  },
+  "terminalNotReady": {
+    "title": "Terminal non activé",
+    "description": "Ce terminal doit se connecter à Internet une fois pour activer sa chaîne de hash fiscale. L'encaissement est désactivé jusqu'à l'activation.",
+    "syncNow": "Tenter l'activation"
+  },
+  "chainBreak": {
+    "title": "Chaîne fiscale rompue",
+    "description": "La chaîne de hash des tickets est rompue après le ticket {{receiptNumber}}. Les tickets suivants seront rejetés par le serveur. Arrêtez d'encaisser et contactez le support immédiatement.",
+    "contactSupport": "Mentionnez cette alerte lors du contact avec le support. Ne supprimez ni ne modifiez aucun ticket.",
+    "acknowledge": "J'ai compris",
+    "unknownReceipt": "(inconnu)",
+    "acknowledgedAt": "Accusé de réception à {{time}} — l'alerte persiste jusqu'à la résolution par le support."
   },
   "receiptLabel": {
     "receipt": "Reçu :",
@@ -511,11 +578,64 @@
     "total": "TOTAL :",
     "payments": "Paiements :",
     "changeDue": "Monnaie Rendue :",
+    "rounding": "Arrondi",
     "vatRate": "TVA %",
     "taxable": "Base HT",
     "taxCol": "TVA",
     "thankYou": "Merci pour votre achat !",
     "taxId": "MF :",
     "tel": "Tél :"
+  },
+  "config": {
+    "refreshed": "Paramètres de l'entreprise actualisés.",
+    "refreshFailed": "Impossible d'actualiser les paramètres de l'entreprise. Utilisation des valeurs en cache."
+  },
+  "cash_count": {
+    "section_title": "Réconciliation de caisse",
+    "commit_counts": "Valider les comptages",
+    "reason_label": "Motif de l'écart (requis)",
+    "tender": "Mode de paiement",
+    "transactions": "Txns",
+    "expected": "Attendu",
+    "actual": "Compté",
+    "variance": "Écart",
+    "electronic_marker": "✓ élec.",
+    "entering_actual_for": "Saisie : {{name}}",
+    "numpad_label": "Pavé de comptage",
+    "manager_pin": {
+      "section_title": "Autorisation responsable requise",
+      "verified": "Autorisé par : {{name}}",
+      "select_manager": "Sélectionner un responsable",
+      "enter_pin": "Saisir le PIN",
+      "verify": "Vérifier",
+      "verifying": "Vérification…",
+      "throttle": "Trop de tentatives échouées. Réessayez dans {{seconds}}s.",
+      "no_managers": "Aucun responsable autorisé disponible hors ligne — contactez votre administrateur.",
+      "manager_label": "Responsable",
+      "pin_label": "PIN",
+      "no_manager_selected": "Veuillez sélectionner un responsable.",
+      "pin_too_short": "Le PIN doit comporter au moins 4 chiffres.",
+      "throttled": "Trop de tentatives échouées. Veuillez patienter.",
+      "invalid": "PIN invalide.",
+      "error": "Échec de la vérification.",
+      "numpad_label": "Pavé PIN",
+      "wait": "Veuillez patienter {{seconds}}s avant de réessayer."
+    },
+    "table": {
+      "tender": "Mode de paiement",
+      "expected": "Attendu",
+      "actual": "Compté",
+      "variance": "Écart",
+      "status": "Statut",
+      "electronic": "élec."
+    },
+    "tolerance": {
+      "row_label": "Remises de tolérance",
+      "empty": "Aucune remise enregistrée.",
+      "col_receipt": "Reçu",
+      "col_cashier": "Caissier",
+      "col_time": "Heure",
+      "col_writeoff": "Remise"
+    }
   }
 }

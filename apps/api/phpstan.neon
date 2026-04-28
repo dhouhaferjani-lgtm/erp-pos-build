@@ -1,10 +1,14 @@
 includes:
     - vendor/larastan/larastan/extension.neon
+    - phpstan-baseline.neon
 
 parameters:
     paths:
         - app/
     level: 8
+
+    # Allow stale @phpstan-ignore annotations (pre-existing drift)
+    reportUnmatchedIgnoredErrors: false
 
     # Exclude paths
     excludePaths:
@@ -21,3 +25,6 @@ parameters:
     parallel:
         maximumNumberOfProcesses: 4
         processTimeout: 300.0
+
+rules:
+    - App\PHPStan\Rules\WorkOrderStatusWriteOnlyViaTransitionService

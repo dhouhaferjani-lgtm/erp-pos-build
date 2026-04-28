@@ -15,7 +15,10 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
 use App\Modules\Inventory\Application\Services\InventoryService;
 use App\Modules\Partner\Application\Services\PartnerService;
+use App\Modules\PlatformIntegration\Application\Services\ProductSubmissionService;
 use App\Modules\Product\Application\Services\ProductService;
+use App\Modules\Product\Infrastructure\Services\ProductEnrichmentQueryService;
+use App\Modules\Product\Infrastructure\Services\ProductInventoryQueryService;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Observers\TenantObserver;
 use App\Services\CompanyConfigService;
@@ -23,9 +26,12 @@ use App\Services\ProductService as AppProductService;
 use App\Services\VerticalConfigService;
 use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\EnrichmentQueryInterface;
 use App\Shared\Contracts\InventoryServiceInterface;
 use App\Shared\Contracts\LocationServiceInterface;
 use App\Shared\Contracts\PartnerServiceInterface;
+use App\Shared\Contracts\PlatformSubmissionInterface;
+use App\Shared\Contracts\ProductInventoryQueryInterface;
 use App\Shared\Contracts\ProductServiceInterface;
 use App\Shared\Infrastructure\CurrencyScaleResolver;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -70,6 +76,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(InventoryServiceInterface::class, InventoryService::class);
         $this->app->bind(LocationServiceInterface::class, LocationService::class);
         $this->app->bind(AccountingServiceInterface::class, AccountingService::class);
+        $this->app->bind(PlatformSubmissionInterface::class, ProductSubmissionService::class);
+        $this->app->bind(EnrichmentQueryInterface::class, ProductEnrichmentQueryService::class);
+        $this->app->bind(ProductInventoryQueryInterface::class, ProductInventoryQueryService::class);
     }
 
     /**
@@ -159,6 +168,29 @@ class AppServiceProvider extends ServiceProvider
         // Public product image access - 100 per minute per IP (prevent scraping)
         RateLimiter::for('public-product-images', function (Request $request): Limit {
             return Limit::perMinute(100)->by($request->ip() ?? 'unknown');
+        });
+
+        // Storefront appointment booking - 10 requests per minute per IP + company pair.
+        // The {company_id} route parameter is the companies.uuid primary key.
+        RateLimiter::for('storefront-booking-ip', function (Request $request): Limit {
+            $ip = $request->ip() ?? 'unknown';
+            $companyId = (string) ($request->route('company_id') ?? 'none');
+
+            return Limit::perMinute(10)->by($ip.'|'.$companyId);
+        });
+
+        // Storefront appointment booking - daily cap keyed on company_id + sha256(phone).
+        // 5 bookings per calendar day per (company, phone). Phones are hashed so the
+        // cache key space does not leak PII. When no phone is supplied we fall back
+        // to the IP address so the rule still throttles anonymous traffic.
+        RateLimiter::for('storefront-booking-company-phone', function (Request $request): Limit {
+            $companyId = (string) ($request->route('company_id') ?? 'none');
+            $phone = trim((string) $request->input('phone', ''));
+            $digest = $phone !== ''
+                ? hash('sha256', $phone)
+                : ('ip:'.($request->ip() ?? 'unknown'));
+
+            return Limit::perDay(5)->by($companyId.'|'.$digest);
         });
     }
 }

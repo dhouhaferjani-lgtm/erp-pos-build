@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Migrations;
 
+use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -61,7 +62,7 @@ class VerticalMigrationTest extends TestCase
     public function test_signup_source_column_is_nullable(): void
     {
         // Test by attempting to insert with null value
-        $tenant = \App\Modules\Tenant\Domain\Tenant::factory()->create([
+        $tenant = Tenant::factory()->create([
             'signup_source' => null,
         ]);
 
@@ -93,13 +94,13 @@ class VerticalMigrationTest extends TestCase
     public function test_vertical_column_has_default_value(): void
     {
         // Test by creating a tenant without specifying vertical in attributes
-        $tenant = \App\Modules\Tenant\Domain\Tenant::factory()->make();
+        $tenant = Tenant::factory()->make();
 
         // Remove vertical from attributes to test database default
         $attributes = $tenant->getAttributes();
         unset($attributes['vertical']);
 
-        $tenant = new \App\Modules\Tenant\Domain\Tenant($attributes);
+        $tenant = new Tenant($attributes);
         $tenant->save();
 
         // Refresh from database to get default value
@@ -108,7 +109,7 @@ class VerticalMigrationTest extends TestCase
         // Should default to 'retail' based on migration
         $this->assertEquals(
             'retail',
-            $tenant->vertical,
+            $tenant->vertical->value,
             'vertical column should default to retail'
         );
     }

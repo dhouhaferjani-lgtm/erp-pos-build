@@ -10,6 +10,7 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -172,7 +173,7 @@ class LocationTest extends TestCase
             'type' => LocationType::Shop,
         ]);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
         Location::create([
             'company_id' => $this->company->id,

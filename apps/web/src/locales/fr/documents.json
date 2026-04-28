@@ -1,4 +1,20 @@
 {
+  "lines": {
+    "designation": {
+      "editAriaLabel": "Modifier la désignation",
+      "overriddenTooltip": "Désignation modifiée — originale : {{originalName}}",
+      "resetLink": "Rétablir le nom du produit",
+      "resetAriaLabel": "Rétablir la désignation au nom du produit",
+      "resetDisabledTooltip": "Le produit n'existe plus",
+      "emptyHint": "La désignation ne peut pas être vide"
+    },
+    "additionalDescription": {
+      "addLink": "Ajouter une description",
+      "addAriaLabel": "Ajouter une description supplémentaire",
+      "editAriaLabel": "Description supplémentaire",
+      "placeholder": "ex. 2.5h × 60/h par le mécanicien Jean"
+    }
+  },
   "taxMention": {
     "label": "Mention fiscale",
     "placeholder": "ex: Exonéré TVA - Certificat #123",
@@ -24,5 +40,27 @@
       "uploadFailed": "Échec de l'envoi du fichier",
       "deleteFailed": "Échec de la suppression du fichier"
     }
+  },
+  "invoice": {
+    "closeWithWriteoff": {
+      "calloutTitle": "Solde résiduel dans la tolérance",
+      "calloutMessage": "Il reste {{amount}} sur cette facture, dans la marge de tolérance de paiement configurée. Vous pouvez la clôturer en passant ce résidu en charge sur le compte 658.",
+      "button": "Clôturer avec écart ({{amount}})",
+      "dialog": {
+        "title": "Clôturer la facture avec écart",
+        "message": "{{amount}} sera passé en charge sur le compte 658 (Charges de tolérance de paiement) et la facture sera marquée comme payée. Cette action est irréversible.",
+        "confirm": "Clôturer la facture",
+        "cancel": "Annuler"
+      },
+      "success": "Facture clôturée — {{amount}} passé en charge sur le compte 658.",
+      "error": {
+        "toleranceExceeded": "Le solde restant dépasse le seuil de tolérance de paiement pour cette société.",
+        "alreadyPaid": "Cette facture est déjà soldée.",
+        "generic": "Impossible de clôturer la facture. Veuillez réessayer."
+      }
+    }
+  },
+  "discount": {
+    "below_tolerance": "La remise doit dépasser la marge de tolérance ({{margin}}). Pour des résidus plus petits, utilisez l'écriture de tolérance de paiement au règlement."
   }
 }

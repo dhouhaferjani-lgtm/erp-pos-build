@@ -1,0 +1,54 @@
+<h2>Where should Smart Prompts appear in the POS?</h2>
+<p class="subtitle">When a cashier adds a parapharmacy item to the cart, where do recommendations show up?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Inline in Cart Panel</h3>
+      <p>A collapsible "Smart Prompts" section appears <strong>below the cart items</strong>, above the totals. Shows 3-5 compact recommendation cards. Cashier taps one to add it. Disappears after checkout or dismiss.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Visible without extra action</li><li>Close to the cart context</li><li>Easy to quick-add</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Takes vertical space in an already-dense cart panel</li><li>May feel intrusive during fast checkout</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Slide-up Toast / Bottom Bar</h3>
+      <p>A subtle <strong>horizontal bar slides up</strong> at the bottom of the screen (or bottom of the product grid) showing "💡 3 suggestions available" — tapping it expands to show recommendation cards. Auto-dismisses after 10s if ignored.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Non-intrusive — doesn't disrupt flow</li><li>Cashier opts in when time permits</li><li>Works well on touch screens</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Easy to miss or ignore</li><li>Extra tap to see details</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Temporary Product Grid Overlay</h3>
+      <p>The product grid <strong>briefly replaces its content</strong> with recommendation cards for 5-8 seconds after adding an item. Shows "Suggested for this cart" header. Tapping anywhere or waiting returns to normal grid. Cashier can tap a recommendation to add it.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Maximum visibility — uses the large grid area</li><li>Familiar card layout</li><li>Natural touch target size</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Interrupts product browsing</li><li>Could annoy power users in high-volume mode</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="d" onclick="toggleSelect(this)">
+    <div class="letter">D</div>
+    <div class="content">
+      <h3>Dedicated Sidebar Tab</h3>
+      <p>Add a <strong>"💡 Suggestions" tab</strong> next to the cart panel (or as a toggle within it). When recommendations exist, a badge shows the count. Cashier switches to it when consulting with a customer about complementary products.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Always accessible, never intrusive</li><li>Full space for rich recommendation info</li><li>Pharmacist consultation-friendly</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Not visible by default — requires intent</li><li>May go unused if not discoverable</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p style="margin-top: 1.5rem; opacity: 0.7;">My recommendation: <strong>Option B (slide-up toast)</strong> — it's non-intrusive for fast retail checkout but surfaceable when a pharmacist is advising a customer. The parapharmacy context is consultation-heavy, not speed-checkout.</p>

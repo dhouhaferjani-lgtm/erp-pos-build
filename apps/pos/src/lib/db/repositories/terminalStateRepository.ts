@@ -1,6 +1,41 @@
 import type Database from '@tauri-apps/plugin-sql';
+import Big from 'big.js';
 import { queryOne, execute } from '@/lib/db';
+import { bcadd, bcsub } from '@/lib/decimal';
 import type { ZChainState } from '@/lib/offline/types';
+
+// Max currency scale used for cumulative monetary arithmetic. TND needs 3;
+// everyone else rounds trailing zeros at the display layer. The three-decimal
+// cap is a deliberate constraint — supporting currencies with >3 decimals
+// (crypto, some historical minor units) would require a per-currency scale
+// flowing into every writer. Revisit only if an onboarded country demands it.
+const CUMULATIVE_SCALE = 3;
+const ZERO = '0.000';
+
+/**
+ * Defensive coercion for grand-totals fields coming over the wire.
+ *
+ * The Laravel side casts monetary columns as `decimal:3`, which serializes as
+ * a decimal string ("100.250"). Our `ZChainStateResponse` types them as string
+ * accordingly. If the server ever sends a number (silent JSON cast regression,
+ * unversioned deployment, middleware that strips type hints), a bare assignment
+ * would write "100.25" for JS number 100.25 — losing the trailing zero that
+ * makes the hash chain reproducible.
+ *
+ * This normalizes whatever came in to a CUMULATIVE_SCALE-padded decimal string,
+ * so a latent server bug cannot silently corrupt local cumulative state.
+ */
+function coerceCumulative(value: unknown): string {
+  if (typeof value === 'string') {
+    // Already a string — trust it (might be "100.250" or "100.25"; Big.js
+    // normalizes both at downstream arithmetic time).
+    return value;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return new Big(value).toFixed(CUMULATIVE_SCALE);
+  }
+  return ZERO;
+}
 
 export interface TerminalHashState {
   terminal_id: string;
@@ -9,6 +44,34 @@ export interface TerminalHashState {
   genesis_seed: string;
   last_hash: string;
   hash_sequence: number;
+  manager_pin_throttle_until: string | null;
+  manager_pin_failed_attempts: number;
+}
+
+/**
+ * Thrown when a write would move `hash_sequence` backwards.
+ * The fiscal chain is append-only — any regressive write is a bug or a sync
+ * race that must NEVER be silently persisted.
+ */
+export class FiscalRegressionError extends Error {
+  constructor(
+    readonly terminalId: string,
+    readonly op: string,
+    readonly before: number,
+    readonly after: number,
+  ) {
+    super(
+      `[fiscal] Regressive ${op} for terminal ${terminalId}: ` +
+        `local hash_sequence=${before}, incoming=${after}. Rejecting write.`,
+    );
+    this.name = 'FiscalRegressionError';
+  }
+}
+
+function logFiscal(entry: Record<string, unknown>): void {
+  // Stable single-line structured log. Grep with `rg '\[fiscal\]'` during post-mortems.
+  // Also surfaces in Tauri devtools so manual repro sessions capture the trace.
+  console.info('[fiscal]', entry);
 }
 
 export async function getTerminalState(
@@ -17,8 +80,34 @@ export async function getTerminalState(
 ): Promise<TerminalHashState | null> {
   return queryOne<TerminalHashState>(
     db,
-    'SELECT * FROM terminal_state WHERE terminal_id = $1',
-    [terminalId]
+    `SELECT terminal_id, terminal_code, location_code, genesis_seed, last_hash, hash_sequence,
+            manager_pin_throttle_until, manager_pin_failed_attempts
+     FROM terminal_state WHERE terminal_id = $1`,
+    [terminalId],
+  );
+}
+
+export async function setManagerPinThrottle(
+  db: Database,
+  terminalId: string,
+  until: string | null,
+): Promise<void> {
+  await execute(
+    db,
+    `UPDATE terminal_state SET manager_pin_throttle_until = $1 WHERE terminal_id = $2`,
+    [until, terminalId],
+  );
+}
+
+export async function setManagerPinFailedAttempts(
+  db: Database,
+  terminalId: string,
+  count: number,
+): Promise<void> {
+  await execute(
+    db,
+    `UPDATE terminal_state SET manager_pin_failed_attempts = $1 WHERE terminal_id = $2`,
+    [count, terminalId],
   );
 }
 
@@ -26,6 +115,29 @@ export async function upsertTerminalState(
   db: Database,
   state: TerminalHashState,
 ): Promise<void> {
+  const current = await queryOne<{ hash_sequence: number }>(
+    db,
+    'SELECT hash_sequence FROM terminal_state WHERE terminal_id = $1',
+    [state.terminal_id],
+  );
+  const before = current?.hash_sequence ?? null;
+
+  if (before !== null && state.hash_sequence < before) {
+    logFiscal({
+      op: 'upsertTerminalState.reject',
+      terminal_id: state.terminal_id,
+      before,
+      after: state.hash_sequence,
+      reason: 'regressive_write',
+    });
+    throw new FiscalRegressionError(
+      state.terminal_id,
+      'upsertTerminalState',
+      before,
+      state.hash_sequence,
+    );
+  }
+
   await execute(
     db,
     `INSERT INTO terminal_state (terminal_id, terminal_code, location_code, genesis_seed, last_hash, hash_sequence, updated_at)
@@ -37,8 +149,23 @@ export async function upsertTerminalState(
        last_hash = excluded.last_hash,
        hash_sequence = excluded.hash_sequence,
        updated_at = datetime('now')`,
-    [state.terminal_id, state.terminal_code, state.location_code, state.genesis_seed, state.last_hash, state.hash_sequence]
+    [
+      state.terminal_id,
+      state.terminal_code,
+      state.location_code,
+      state.genesis_seed,
+      state.last_hash,
+      state.hash_sequence,
+    ],
   );
+
+  logFiscal({
+    op: 'upsertTerminalState',
+    terminal_id: state.terminal_id,
+    before,
+    after: state.hash_sequence,
+    last_hash: state.last_hash,
+  });
 }
 
 export async function advanceHashChain(
@@ -47,11 +174,42 @@ export async function advanceHashChain(
   newHash: string,
   newSequence: number,
 ): Promise<void> {
+  const current = await queryOne<{ hash_sequence: number }>(
+    db,
+    'SELECT hash_sequence FROM terminal_state WHERE terminal_id = $1',
+    [terminalId],
+  );
+  const before = current?.hash_sequence ?? null;
+
+  if (before === null || newSequence <= before) {
+    logFiscal({
+      op: 'advanceHashChain.reject',
+      terminal_id: terminalId,
+      before,
+      after: newSequence,
+      reason: before === null ? 'no_local_state' : 'non_strictly_increasing',
+    });
+    throw new FiscalRegressionError(
+      terminalId,
+      'advanceHashChain',
+      before ?? -1,
+      newSequence,
+    );
+  }
+
   await execute(
     db,
     "UPDATE terminal_state SET last_hash = $1, hash_sequence = $2, updated_at = datetime('now') WHERE terminal_id = $3",
-    [newHash, newSequence, terminalId]
+    [newHash, newSequence, terminalId],
   );
+
+  logFiscal({
+    op: 'advanceHashChain',
+    terminal_id: terminalId,
+    before,
+    after: newSequence,
+    last_hash: newHash,
+  });
 }
 
 // ─── Z-Chain State Methods ───────────────────────────────────────────────────
@@ -67,7 +225,7 @@ export async function getZChainState(
               cumulative_sales, cumulative_tax, cumulative_refunds,
               perpetual_grand_total, receipt_count_lifetime
        FROM terminal_state WHERE terminal_id = $1`,
-      [terminalId]
+      [terminalId],
     );
   } catch (error) {
     // Z-chain columns may not exist if migration 8 hasn't run yet
@@ -91,7 +249,7 @@ export async function advanceZChain(
     `UPDATE terminal_state
      SET z_last_hash = $1, z_hash_sequence = $2, z_number = $3, updated_at = datetime('now')
      WHERE terminal_id = $4`,
-    [newHash, newSequence, newZNumber, terminalId]
+    [newHash, newSequence, newZNumber, terminalId],
   );
 }
 
@@ -103,10 +261,10 @@ export async function upsertZChainState(
     z_hash_sequence: number;
     z_number: number;
     grand_totals: {
-      cumulative_sales: number;
-      cumulative_tax: number;
-      cumulative_refunds: number;
-      perpetual_grand_total: number;
+      cumulative_sales: string;
+      cumulative_tax: string;
+      cumulative_refunds: string;
+      perpetual_grand_total: string;
       receipt_count_lifetime: number;
     } | null;
   },
@@ -129,37 +287,57 @@ export async function upsertZChainState(
       state.z_last_hash,
       state.z_hash_sequence,
       state.z_number,
-      gt?.cumulative_sales ?? 0,
-      gt?.cumulative_tax ?? 0,
-      gt?.cumulative_refunds ?? 0,
-      gt?.perpetual_grand_total ?? 0,
+      coerceCumulative(gt?.cumulative_sales),
+      coerceCumulative(gt?.cumulative_tax),
+      coerceCumulative(gt?.cumulative_refunds),
+      coerceCumulative(gt?.perpetual_grand_total),
       gt?.receipt_count_lifetime ?? 0,
       terminalId,
-    ]
+    ],
   );
   if (result.rowsAffected === 0) {
-    throw new Error('Z-chain state recovery failed: terminal_state row does not exist for terminal ' + terminalId + '. Run pullTerminalState() first.');
+    throw new Error(
+      'Z-chain state recovery failed: terminal_state row does not exist for terminal ' +
+        terminalId +
+        '. Run pullTerminalState() first.',
+    );
   }
 }
 
 export async function updateGrandTotals(
   db: Database,
   terminalId: string,
-  addSales: number,
-  addTax: number,
-  addRefunds: number,
+  addSales: string,
+  addTax: string,
+  addRefunds: string,
   addReceiptCount: number,
 ): Promise<void> {
+  // Arithmetic is done in TypeScript via Big.js — SQLite-side `col = col + $n`
+  // would coerce TEXT to REAL and lose multi-decimal precision.
+  const current = await getZChainState(db, terminalId);
+  const salesBefore = current?.cumulative_sales ?? ZERO;
+  const taxBefore = current?.cumulative_tax ?? ZERO;
+  const refundsBefore = current?.cumulative_refunds ?? ZERO;
+  const perpetualBefore = current?.perpetual_grand_total ?? ZERO;
+  const countBefore = current?.receipt_count_lifetime ?? 0;
+
+  const newSales = bcadd(salesBefore, addSales, CUMULATIVE_SCALE);
+  const newTax = bcadd(taxBefore, addTax, CUMULATIVE_SCALE);
+  const newRefunds = bcadd(refundsBefore, addRefunds, CUMULATIVE_SCALE);
+  const netDelta = bcsub(addSales, addRefunds, CUMULATIVE_SCALE);
+  const newPerpetual = bcadd(perpetualBefore, netDelta, CUMULATIVE_SCALE);
+  const newCount = countBefore + addReceiptCount;
+
   await execute(
     db,
     `UPDATE terminal_state
-     SET cumulative_sales = cumulative_sales + $1,
-         cumulative_tax = cumulative_tax + $2,
-         cumulative_refunds = cumulative_refunds + $3,
-         perpetual_grand_total = perpetual_grand_total + ($1 - $3),
-         receipt_count_lifetime = receipt_count_lifetime + $4,
+     SET cumulative_sales = $1,
+         cumulative_tax = $2,
+         cumulative_refunds = $3,
+         perpetual_grand_total = $4,
+         receipt_count_lifetime = $5,
          updated_at = datetime('now')
-     WHERE terminal_id = $5`,
-    [addSales, addTax, addRefunds, addReceiptCount, terminalId]
+     WHERE terminal_id = $6`,
+    [newSales, newTax, newRefunds, newPerpetual, newCount, terminalId],
   );
 }

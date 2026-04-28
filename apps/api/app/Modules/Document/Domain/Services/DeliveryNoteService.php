@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Document\Domain\Services;
 
 use App\Modules\BatchExpiry\Application\Services\BatchStockService;
+use App\Modules\Company\Domain\Company;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -205,7 +206,7 @@ final class DeliveryNoteService
      */
     private function getCompanyGenesisSeed(Document $deliveryNote): string
     {
-        /** @var \App\Modules\Company\Domain\Company $company */
+        /** @var Company $company */
         $company = $deliveryNote->company;
 
         if ($company->fiscal_chain_seed === null) {

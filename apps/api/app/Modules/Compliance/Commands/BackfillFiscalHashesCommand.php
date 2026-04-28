@@ -10,6 +10,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -67,7 +68,7 @@ class BackfillFiscalHashesCommand extends Command
         /** @var string|null $documentType */
         $documentType = $this->option('type');
 
-        /** @var \Illuminate\Database\Eloquent\Collection<int, Company> $companies */
+        /** @var Collection<int, Company> $companies */
         $companies = $companyId
             ? Company::where('id', $companyId)->get()
             : Company::all();

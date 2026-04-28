@@ -6,6 +6,7 @@ namespace App\Modules\POS\Domain\Services;
 
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Domain\ZReport;
+use App\Shared\Domain\CurrencyScale;
 
 /**
  * Service for calculating and verifying Z report hash chains.
@@ -52,9 +53,13 @@ final class ZReportHashService
      */
     private function serializeForHashing(ZReport $zReport): string
     {
+        // Normalize monetary fields to scale 3 for schema_version >= 2 before hashing.
+        // v1-shape payloads (no schema_version) pass through unchanged.
+        $reportData = $this->normalizeForHash($zReport->report_data);
+
         // Convert report_data to deterministic JSON
         // Must match JavaScript's JSON.stringify() output — unescaped unicode and slashes
-        $reportDataJson = json_encode($zReport->report_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $reportDataJson = json_encode($reportData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return sprintf(
             '%d|%s|%s|%s',
@@ -63,6 +68,66 @@ final class ZReportHashService
             $zReport->generated_at->toIso8601String(),
             $reportDataJson
         );
+    }
+
+    /**
+     * Normalize all monetary fields in report_data to scale 3 for hash input.
+     * Applies only when report_data.schema_version >= 2. v1-shape payloads pass through unchanged.
+     *
+     * Contract v1.1: all monetary normalizations use scale 3.
+     *
+     * @param  array<string, mixed>  $reportData
+     * @return array<string, mixed>
+     */
+    public function normalizeForHash(array $reportData): array
+    {
+        $schemaVersion = (int) ($reportData['schema_version'] ?? 1);
+        if ($schemaVersion < 2) {
+            return $reportData;
+        }
+
+        $monetaryKeys = ['opening_cash', 'expected_cash', 'actual_cash', 'variance', 'gross_sales', 'net_sales', 'tax_amount'];
+        foreach ($monetaryKeys as $key) {
+            if (isset($reportData[$key]) && is_string($reportData[$key])) {
+                $reportData[$key] = CurrencyScale::bcformat($reportData[$key], 3);
+            }
+        }
+
+        if (isset($reportData['cash_counts']) && is_array($reportData['cash_counts'])) {
+            $reportData['cash_counts'] = array_map(
+                fn (array $row): array => array_merge($row, [
+                    'expected_amount' => CurrencyScale::bcformat((string) $row['expected_amount'], 3),
+                    'actual_amount' => CurrencyScale::bcformat((string) $row['actual_amount'], 3),
+                    'variance_amount' => CurrencyScale::bcformat((string) $row['variance_amount'], 3),
+                ]),
+                $reportData['cash_counts'],
+            );
+        }
+
+        if (isset($reportData['variance_summary']) && is_array($reportData['variance_summary'])
+            && isset($reportData['variance_summary']['aggregate_amount'])) {
+            $reportData['variance_summary']['aggregate_amount'] = CurrencyScale::bcformat(
+                (string) $reportData['variance_summary']['aggregate_amount'], 3
+            );
+        }
+
+        if (isset($reportData['tolerance_summary']) && is_array($reportData['tolerance_summary'])
+            && isset($reportData['tolerance_summary']['totalAmount'])) {
+            $reportData['tolerance_summary']['totalAmount'] = CurrencyScale::bcformat(
+                (string) $reportData['tolerance_summary']['totalAmount'], 3
+            );
+        }
+
+        if (isset($reportData['payment_methods']) && is_array($reportData['payment_methods'])) {
+            $reportData['payment_methods'] = array_map(
+                fn (array $row): array => isset($row['total_amount']) && is_string($row['total_amount'])
+                    ? array_merge($row, ['total_amount' => CurrencyScale::bcformat($row['total_amount'], 3)])
+                    : $row,
+                $reportData['payment_methods'],
+            );
+        }
+
+        return $reportData;
     }
 
     /**

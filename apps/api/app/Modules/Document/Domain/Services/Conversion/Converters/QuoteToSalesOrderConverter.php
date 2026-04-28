@@ -9,7 +9,9 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\Conversion\Concerns\CopiesDocumentData;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterInterface;
+use App\Modules\Document\Domain\Services\Conversion\StripSubToleranceDiscountsService;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -36,7 +38,8 @@ final class QuoteToSalesOrderConverter implements DocumentConverterInterface
 
     public function __construct(
         protected readonly DocumentNumberingService $numberingService,
-        protected readonly \App\Shared\Contracts\CurrencyScaleResolverInterface $scaleResolver,
+        protected readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly StripSubToleranceDiscountsService $discountStripper,
     ) {}
 
     public function sourceType(): DocumentType
@@ -127,6 +130,15 @@ final class QuoteToSalesOrderConverter implements DocumentConverterInterface
 
             // Copy lines
             $this->copyLines($source, $order);
+
+            // Strip sub-tolerance discounts BEFORE downstream consumers see
+            // the order — catches the Quote loophole described in spec §7.
+            // The strip mutates per-line line_total (residual flows through
+            // as an amount due), so document-level subtotal/tax/total MUST
+            // be recomputed afterwards or the sales order would carry stale
+            // source-quote totals that no longer match the sum of its lines.
+            $this->discountStripper->stripFromConvertedDocument($source, $order);
+            $this->recalculateTotals($order);
 
             // Copy vehicle context if present
             $this->copyVehicleContext($source, $order);

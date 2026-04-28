@@ -10,10 +10,12 @@ use App\Modules\Billing\Domain\Payment;
 use App\Modules\Billing\Domain\TenantSubscription;
 use App\Modules\Tenant\Domain\Tenant;
 use Carbon\Carbon;
+use Illuminate\Redis\Connections\Connection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Str;
 
 final class MonitoringService
 {
@@ -203,7 +205,7 @@ final class MonitoringService
             $info = [];
             if ($driver === 'redis') {
                 try {
-                    /** @var \Illuminate\Redis\Connections\Connection $redis */
+                    /** @var Connection $redis */
                     $redis = Redis::connection();
                     $redisInfo = $redis->info();
                     $info = [
@@ -578,7 +580,7 @@ final class MonitoringService
                     'id' => $job->id,
                     'queue' => $job->queue,
                     'failed_at' => $job->failed_at,
-                    'exception' => \Illuminate\Support\Str::limit($job->exception, 200),
+                    'exception' => Str::limit($job->exception, 200),
                 ])
                 ->toArray();
         } catch (\Exception $e) {

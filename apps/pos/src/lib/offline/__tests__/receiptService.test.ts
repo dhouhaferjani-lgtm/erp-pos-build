@@ -20,6 +20,7 @@ import { getTerminalState, advanceHashChain } from '@/lib/db/repositories/termin
 import { insertOfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 import { makeCartItem } from '@/test/helpers';
 import type { FiscalHashInput } from '@/lib/fiscal/hashService';
+import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 
 function makeMockDb() {
   return {
@@ -36,6 +37,8 @@ const terminalState = {
   genesis_seed: 'seed-abc',
   last_hash: 'previous-hash-xyz',
   hash_sequence: 5,
+  manager_pin_throttle_until: null,
+  manager_pin_failed_attempts: 0,
 };
 
 describe('receiptService - createOfflineReceipt', () => {
@@ -62,6 +65,7 @@ describe('receiptService - createOfflineReceipt', () => {
       paymentMethodId: 'pm-1',
       paymentRepositoryId: 'repo-1',
       tenderedAmount: 200,
+      payments: [{ methodCode: 'CASH', amount: '150.00' }],
     });
 
     expect(result.subtotal).toBe('150.00');
@@ -83,6 +87,7 @@ describe('receiptService - createOfflineReceipt', () => {
       paymentMethodId: 'pm-1',
       paymentRepositoryId: 'repo-1',
       tenderedAmount: 20,
+      payments: [{ methodCode: 'CASH', amount: '10.00' }],
     });
 
     const year = new Date().getFullYear();
@@ -102,6 +107,7 @@ describe('receiptService - createOfflineReceipt', () => {
         paymentMethodId: 'pm-1',
         paymentRepositoryId: 'repo-1',
         tenderedAmount: 20,
+        payments: [{ methodCode: 'CASH', amount: '10.00' }],
       }),
     ).rejects.toThrow('Terminal hash chain not initialized');
   });
@@ -119,6 +125,7 @@ describe('receiptService - createOfflineReceipt', () => {
       paymentRepositoryId: 'repo-1',
       tenderedAmount: 200,
       transactionDiscount: { type: 'fixed', value: '20.00', reason: 'Loyalty' },
+      payments: [{ methodCode: 'CASH', amount: '80.00' }],
     });
 
     expect(result.total).toBe('80.00');
@@ -138,6 +145,7 @@ describe('receiptService - createOfflineReceipt', () => {
       paymentRepositoryId: 'repo-1',
       tenderedAmount: 0,
       transactionDiscount: { type: 'fixed', value: '999.00' },
+      payments: [{ methodCode: 'CASH', amount: '0.00' }],
     });
 
     expect(result.total).toBe('0.00');
@@ -155,6 +163,7 @@ describe('receiptService - createOfflineReceipt', () => {
       paymentMethodId: 'pm-1',
       paymentRepositoryId: 'repo-1',
       tenderedAmount: 50,
+      payments: [{ methodCode: 'CASH', amount: '30.00' }],
     });
 
     expect(result.changeDue).toBe(20);
@@ -172,6 +181,7 @@ describe('receiptService - createOfflineReceipt', () => {
       paymentMethodId: 'pm-1',
       paymentRepositoryId: 'repo-1',
       tenderedAmount: 20,
+      payments: [{ methodCode: 'CASH', amount: '10.00' }],
     });
 
     const executeCalls = vi.mocked(db.execute).mock.calls.map((c) => c[0]);
@@ -201,6 +211,7 @@ describe('receiptService - createOfflineReceipt', () => {
         paymentMethodId: 'pm-1',
         paymentRepositoryId: 'repo-1',
         tenderedAmount: 20,
+        payments: [{ methodCode: 'CASH', amount: '10.00' }],
       }),
     ).rejects.toThrow('insert failed');
 
@@ -222,6 +233,7 @@ describe('receiptService - createOfflineReceipt', () => {
       paymentMethodId: 'pm-1',
       paymentRepositoryId: 'repo-1',
       tenderedAmount: 50,
+      payments: [{ methodCode: 'CASH', amount: '50.00' }],
     });
 
     expect(computeFiscalHash).toHaveBeenCalledWith(
@@ -245,6 +257,7 @@ describe('receiptService - createOfflineReceipt', () => {
       paymentMethodId: 'pm-1',
       paymentRepositoryId: 'repo-1',
       tenderedAmount: 10,
+      payments: [{ methodCode: 'CASH', amount: '10.00' }],
     });
 
     expect(result.fiscalHash).toBe('mock-fiscal-hash-abc123');
@@ -266,6 +279,7 @@ describe('receiptService - createOfflineReceipt', () => {
       paymentMethodId: 'pm-1',
       paymentRepositoryId: 'repo-1',
       tenderedAmount: 250,
+      payments: [{ methodCode: 'CASH', amount: '180.00' }],
     });
 
     expect(computeFiscalHash).toHaveBeenCalledOnce();
@@ -274,5 +288,55 @@ describe('receiptService - createOfflineReceipt', () => {
     expect(hashInput.vatBreakdown).toHaveLength(2);
     expect(hashInput.vatBreakdown[0]).toEqual({ rate: '10', amount: '3.00' });
     expect(hashInput.vatBreakdown[1]).toEqual({ rate: '20', amount: '30.00' });
+  });
+
+  it('computes fiscal hash with multi-payment breakdown (not hardcoded CASH)', async () => {
+    const items = [makeCartItem({ line_total: '30.00', tax_amount: '0.00' })];
+
+    await createOfflineReceipt(db, {
+      terminalId: 'terminal-1',
+      operatorId: 'op-1',
+      operatorName: 'Test Operator',
+      cartItems: items,
+      currency: 'EUR',
+      paymentMethodId: 'pm-1',
+      paymentRepositoryId: 'repo-1',
+      tenderedAmount: 30,
+      payments: [
+        { methodCode: 'CASH', amount: '10.00' },
+        { methodCode: 'CARD', amount: '20.00' },
+      ],
+    });
+
+    const hashInput = vi.mocked(computeFiscalHash).mock.calls[0]![0] as FiscalHashInput;
+    expect(hashInput.payments).toEqual([
+      { methodCode: 'CASH', amount: '10.00' },
+      { methodCode: 'CARD', amount: '20.00' },
+    ]);
+  });
+
+  it('persists payments_json, consumption_mode, and table_id to SQLite', async () => {
+    const items = [makeCartItem({ line_total: '30.00', tax_amount: '0.00' })];
+
+    await createOfflineReceipt(db, {
+      terminalId: 'terminal-1',
+      operatorId: 'op-1',
+      operatorName: 'Test Operator',
+      cartItems: items,
+      currency: 'EUR',
+      paymentMethodId: 'pm-1',
+      paymentRepositoryId: 'repo-1',
+      tenderedAmount: 30,
+      payments: [{ methodCode: 'CASH', amount: '30.00' }],
+      consumptionMode: 'SUR_PLACE',
+      tableId: 'table-42',
+    });
+
+    const inserted = vi.mocked(insertOfflineReceipt).mock.calls[0]![1] as Omit<OfflineReceipt, 'created_at' | 'synced_at' | 'sync_error' | 'retry_count' | 'server_receipt_id'>;
+    expect(inserted.consumption_mode).toBe('SUR_PLACE');
+    expect(inserted.table_id).toBe('table-42');
+    const parsedPayments = JSON.parse(inserted.payments_json) as Array<{ amount: string }>;
+    expect(parsedPayments).toHaveLength(1);
+    expect(parsedPayments[0]!.amount).toBe('30.00');
   });
 });

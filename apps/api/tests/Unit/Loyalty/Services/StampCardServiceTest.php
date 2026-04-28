@@ -7,6 +7,7 @@ namespace Tests\Unit\Loyalty\Services;
 use App\Modules\Loyalty\Domain\Entities\MemberStampCard;
 use App\Modules\Loyalty\Domain\Entities\StampCardDefinition;
 use App\Modules\Loyalty\Domain\Services\StampCardService;
+use Illuminate\Support\Carbon;
 use PHPUnit\Framework\TestCase;
 
 class StampCardServiceTest extends TestCase
@@ -464,7 +465,7 @@ class StampCardServiceTest extends TestCase
      * Create a stub MemberStampCard
      *
      * @param  array<string, mixed>  $attributes
-     * @return object{current_stamps: int, completed_at: \Illuminate\Support\Carbon|null}
+     * @return object{current_stamps: int, completed_at: Carbon|null}
      */
     private function createMemberCard(array $attributes = []): object
     {

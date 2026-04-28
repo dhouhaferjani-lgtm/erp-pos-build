@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Receipt;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Barryvdh\DomPDF\PDF as DomPdf;
 use Carbon\Carbon;
@@ -101,15 +102,22 @@ final class ReceiptPdfService
         $locale = $company->locale ?? 'en';
         $currency = $receipt->currency ?? $company->currency;
 
-        // Calculate change given if any
+        // Calculate change given. Prefer the persisted column (new rows);
+        // fall back to totalPaid - total for legacy rows written before the
+        // 2026-04-23 migration (BG6).
         $totalPaid = $receipt->payments->sum('amount');
         /** @var numeric-string $totalPaidStr */
         $totalPaidStr = (string) $totalPaid;
         /** @var numeric-string $receiptTotal */
         $receiptTotal = (string) $receipt->total;
-        $changeGiven = (float) $totalPaid > (float) $receipt->total
-            ? bcsub($totalPaidStr, $receiptTotal, $this->scale())
-            : number_format(0, $this->scale(), '.', '');
+
+        if ($receipt->change_due !== null) {
+            $changeGiven = CurrencyScale::bcformat((string) $receipt->change_due, $this->scale());
+        } else {
+            $changeGiven = (float) $totalPaid > (float) $receipt->total
+                ? bcsub($totalPaidStr, $receiptTotal, $this->scale())
+                : CurrencyScale::bcformat('0', $this->scale());
+        }
 
         $isReturn = $receipt->receipt_type === ReceiptType::Return;
 

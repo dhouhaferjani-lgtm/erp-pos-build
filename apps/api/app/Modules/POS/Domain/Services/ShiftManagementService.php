@@ -13,6 +13,8 @@ use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -109,10 +111,18 @@ final class ShiftManagementService
      * - Calculates variance (actual - expected)
      * - Creates CLOSING cash drawer operation
      *
+     * When the shift was already updated by the cash-count-aware path
+     * (ReportGenerationService::generateZReport with cash-count inputs), the
+     * `variance_severity` column will be non-null. In that case, `actual_cash`,
+     * `variance`, and `variance_severity` are already authoritative — we MUST NOT
+     * recompute them with the raw $actualCash argument, which would silently overwrite
+     * the validated, per-tender-summed values written by Task 18.
+     *
      * @param  Shift  $shift  The shift to close
-     * @param  string  $actualCash  Counted cash amount (decimal string)
+     * @param  string  $actualCash  Counted cash amount (decimal string) — ignored when
+     *                              cash-count path has already written authoritative values
      * @param  User  $closedBy  User closing the shift
-     * @param  \Illuminate\Support\Carbon|null  $closedAt  Optional offline close timestamp (defaults to now)
+     * @param  Carbon|null  $closedAt  Optional offline close timestamp (defaults to now)
      *
      * @throws ShiftNotOpenException If shift is not in OPEN status
      */
@@ -120,30 +130,45 @@ final class ShiftManagementService
         Shift $shift,
         string $actualCash,
         User $closedBy,
-        ?\Illuminate\Support\Carbon $closedAt = null,
+        ?Carbon $closedAt = null,
     ): Shift {
         if (! $shift->isOpen()) {
             throw ShiftNotOpenException::forShift($shift->id);
         }
 
         return DB::transaction(function () use ($shift, $actualCash, $closedBy, $closedAt) {
-            // Calculate expected cash
+            // When the cash-count-aware path (generateZReport with cash-count inputs) has
+            // already written authoritative actual_cash + variance + variance_severity, skip
+            // the recompute entirely so we do not overwrite those validated values.
+            $cashCountAlreadyApplied = $shift->variance_severity !== null;
+
             /** @var numeric-string $expectedCash */
             $expectedCash = $this->cashDrawerService->calculateExpectedCash($shift);
 
-            // Calculate variance
-            /** @var numeric-string $actualCash */
-            $variance = bcsub($actualCash, $expectedCash, $this->scale());
+            if ($cashCountAlreadyApplied) {
+                // Cash-count path: preserve actual_cash, variance, variance_severity.
+                // Only update status, closed_at, closed_by, and expected_cash.
+                $shift->update([
+                    'status' => ShiftStatus::Closed,
+                    'expected_cash' => $expectedCash,
+                    'closed_at' => $closedAt ?? now(),
+                    'closed_by' => $closedBy->id,
+                ]);
+            } else {
+                // Legacy path: recompute actual_cash and variance from the raw argument.
+                /** @var numeric-string $actualCash */
+                /** @var numeric-string $variance */
+                $variance = bcsub($actualCash, $expectedCash, $this->scale());
 
-            // Update shift
-            $shift->update([
-                'status' => ShiftStatus::Closed,
-                'expected_cash' => $expectedCash,
-                'actual_cash' => $actualCash,
-                'variance' => $variance,
-                'closed_at' => $closedAt ?? now(),
-                'closed_by' => $closedBy->id,
-            ]);
+                $shift->update([
+                    'status' => ShiftStatus::Closed,
+                    'expected_cash' => $expectedCash,
+                    'actual_cash' => $actualCash,
+                    'variance' => $variance,
+                    'closed_at' => $closedAt ?? now(),
+                    'closed_by' => $closedBy->id,
+                ]);
+            }
 
             // Record closing cash drawer operation
             $this->cashDrawerService->recordClosing($shift, $actualCash, $closedBy);
@@ -151,10 +176,10 @@ final class ShiftManagementService
             /** @var Shift $freshShift */
             $freshShift = $shift->fresh();
 
-            /** @var \App\Modules\POS\Domain\Terminal $shiftTerminal */
+            /** @var Terminal $shiftTerminal */
             $shiftTerminal = $freshShift->terminal;
 
-            /** @var \Illuminate\Support\Carbon $closedAtTimestamp */
+            /** @var Carbon $closedAtTimestamp */
             $closedAtTimestamp = $freshShift->closed_at;
 
             DB::afterCommit(function () use ($freshShift, $shiftTerminal, $closedAtTimestamp): void {
@@ -203,7 +228,7 @@ final class ShiftManagementService
      *
      * @param  string  $shiftId  The shift ID
      *
-     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException
+     * @throws ModelNotFoundException
      */
     public function getShiftById(string $shiftId): Shift
     {

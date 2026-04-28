@@ -1,3 +1,10 @@
+// TODO(test-pattern): this file mocks `apiGet`/`api.get` with hand-fed payloads. This antipattern
+// lets the test pass even when the real backend response shape diverges (e.g. snake_case vs
+// camelCase), because the mocked payload encodes the test author's assumption rather than reality.
+// It was the root cause of the PR #37 casing slip. The correct fix is to validate the API contract
+// via PHPUnit Feature tests with RefreshDatabase + a seeded fixture (see Testing Conventions in
+// MEMORY.md and memory/feedback_frontend_api_test_antipattern.md). Component-level tests may mock
+// hooks/providers, but the API contract layer should be tested against real responses.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { fetchContacts, fetchContact, createContact, updateContact, contactKeys } from '../contactApi'
 

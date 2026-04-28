@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptPayment;
@@ -32,13 +33,21 @@ final class ReceiptPaymentFlowTest extends TestCase
     use RefreshDatabase;
 
     private Tenant $tenant;
+
     private Company $company;
+
     private User $user;
+
     private Account $cashAccount;
+
     private Account $revenueAccount;
+
     private PaymentMethod $paymentMethod;
+
     private PaymentRepository $repository;
+
     private Location $location;
+
     private Terminal $terminal;
 
     protected function setUp(): void
@@ -346,16 +355,21 @@ final class ReceiptPaymentFlowTest extends TestCase
         ]);
 
         // Create user-company membership
-        \App\Modules\Company\Domain\UserCompanyMembership::create([
+        UserCompanyMembership::create([
             'user_id' => $this->user->id,
             'company_id' => $this->company->id,
             'role' => 'admin',
         ]);
 
-        // Create and assign POS permission
+        // Create and assign POS permissions. Note: short-pay flows separately require
+        // `pos.tolerance.apply` (added in Phase 2 / Task 8); we grant it here so the
+        // pre-A1 reject/validation tests below still exercise the service-layer paths
+        // they were written for, rather than getting blocked at the new auth gate.
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
         Permission::findOrCreate('pos.operate_terminal', 'sanctum');
+        Permission::findOrCreate('pos.tolerance.apply', 'sanctum');
         $this->user->givePermissionTo('pos.operate_terminal');
+        $this->user->givePermissionTo('pos.tolerance.apply');
 
         $this->cashAccount = Account::factory()->create([
             'tenant_id' => $this->tenant->id,
@@ -399,7 +413,7 @@ final class ReceiptPaymentFlowTest extends TestCase
     /**
      * Create a receipt with all required FK fields.
      *
-     * @param array<string, mixed> $overrides
+     * @param  array<string, mixed>  $overrides
      */
     private function createReceipt(array $overrides = []): Receipt
     {

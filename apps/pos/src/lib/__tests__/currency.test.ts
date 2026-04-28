@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatCurrency } from '../currency';
+import { formatCurrency, getCurrencyDecimals } from '../currency';
 
 describe('formatCurrency', () => {
   it('formats EUR amounts in French locale', () => {
@@ -65,5 +65,47 @@ describe('formatCurrency', () => {
   it('handles large amounts', () => {
     const result = formatCurrency(1000000, 'EUR');
     expect(result).toContain('000');
+  });
+});
+
+describe('getCurrencyDecimals — ISO 4217 display precision', () => {
+  it('returns 2 for EUR (standard two-decimal currency)', () => {
+    expect(getCurrencyDecimals('EUR')).toBe(2);
+  });
+
+  it('returns 2 for USD', () => {
+    expect(getCurrencyDecimals('USD')).toBe(2);
+  });
+
+  it('returns 2 for GBP', () => {
+    expect(getCurrencyDecimals('GBP')).toBe(2);
+  });
+
+  it('returns 3 for TND (Tunisian Dinar)', () => {
+    expect(getCurrencyDecimals('TND')).toBe(3);
+  });
+
+  it('returns 3 for KWD (Kuwaiti Dinar)', () => {
+    expect(getCurrencyDecimals('KWD')).toBe(3);
+  });
+
+  it('returns 3 for BHD (Bahraini Dinar)', () => {
+    expect(getCurrencyDecimals('BHD')).toBe(3);
+  });
+
+  it('returns 0 for JPY (Japanese Yen)', () => {
+    expect(getCurrencyDecimals('JPY')).toBe(0);
+  });
+
+  it('returns 0 for KRW (Korean Won)', () => {
+    expect(getCurrencyDecimals('KRW')).toBe(0);
+  });
+
+  it('returns 2 as default fallback for unknown currency code', () => {
+    expect(getCurrencyDecimals('XYZ')).toBe(2);
+  });
+
+  it('returns 2 as default fallback for empty string', () => {
+    expect(getCurrencyDecimals('')).toBe(2);
   });
 });

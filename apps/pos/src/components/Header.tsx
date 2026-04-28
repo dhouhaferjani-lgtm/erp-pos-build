@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeftRight, BarChart3, Lock, LogOut, Minimize2, Settings } from 'lucide-react';
@@ -13,15 +13,30 @@ import { useProductStore } from '@/stores/productStore';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { SyncButton } from '@/components/atoms/SyncButton/SyncButton';
-import { CloseShiftModal } from '@/components/organisms/CloseShiftModal';
+import { EndOfDayPreviewModal } from '@/components/pos/EndOfDayPreviewModal';
 import { ReportsMenu } from '@/components/pos/ReportsMenu';
 import { XReportModal } from '@/components/pos/XReportModal';
-import { ZReportModal } from '@/components/pos/ZReportModal';
 import { generateXReport, generateZReport } from '@/api/reportApi';
-import type { XReportResponse, ZReportResponse } from '@/api/reportApi';
+import type { XReportResponse } from '@/api/reportApi';
 import { getErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { CashDrawerModal } from '@/components/organisms/CashDrawerModal';
+import type { EndOfDayConfirmResult, CompanyFraudSettings, AuthorizedManager } from '@/components/pos/EndOfDayPreviewModal';
+import type { CashCountCommitPayload } from '@/components/pos/EndOfDayPreviewModal';
+import type { EndOfDayPreview } from '@/lib/offline/endOfDayPreview';
+import { printReceipt, getPrintSettingsFromStore, isTauriEnvironment, buildZReceiptData } from '@/lib/printing';
+import type { ZReceiptCashCountRow } from '@/lib/printing';
+import { buildReceiptLabels } from '@/lib/buildReceiptData';
+import type { ZReportCountEntry } from '@/lib/offline/types';
+import type { PaymentMethodItem } from '@/lib/offline/endOfDayPreview';
+import { bcadd, bccomp, bcsub, bcformat } from '@/lib/decimal';
+import { getCurrencyDecimals } from '@/lib/currency';
+import { usePrinterStore } from '@/stores/printerStore';
+import { toast } from 'sonner';
+import { fetchFraudSettings } from '@/api/fraudSettingsApi';
+import { fetchAuthorizedManagers } from '@/api/managersApi';
+import { verifyManagerPin } from '@/api/managerPinApi';
+import { getTerminalState, setManagerPinThrottle, setManagerPinFailedAttempts } from '@/lib/db/repositories/terminalStateRepository';
 
 export function Header() {
   const { t } = useTranslation('pos');
@@ -29,6 +44,7 @@ export function Header() {
   const logout = useAuthStore((s) => s.logout);
   const terminal = useTerminalStore((s) => s.terminal);
   const shift = useTerminalStore((s) => s.shift);
+  const closeShift = useTerminalStore((s) => s.closeShift);
 
   const operator = useOperatorStore((s) => s.operator);
   const lockScreen = useOperatorStore((s) => s.lock);
@@ -41,22 +57,113 @@ export function Header() {
   const pendingReceiptCount = useSyncStore((s) => s.pendingReceiptCount);
   const isSyncing = useSyncStore((s) => s.isSyncing);
 
-  const [showCloseShift, setShowCloseShift] = useState(false);
+  const [showEndOfDay, setShowEndOfDay] = useState(false);
+
+  // Cash-count fraud settings state (loaded when EOD modal opens)
+  const [fraudSettings, setFraudSettings] = useState<CompanyFraudSettings | null>(null);
+  const [authorizedManagers, setAuthorizedManagers] = useState<AuthorizedManager[]>([]);
+  const [managerPinThrottle, setManagerPinThrottleState] = useState<{
+    until: string | null;
+    failedAttempts: number;
+  }>({ until: null, failedAttempts: 0 });
 
   // Reports state
   const [showReportsMenu, setShowReportsMenu] = useState(false);
   const [showXReportModal, setShowXReportModal] = useState(false);
-  const [showZReportModal, setShowZReportModal] = useState(false);
   const [xReport, setXReport] = useState<XReportResponse | null>(null);
-  const [zReport, setZReport] = useState<ZReportResponse | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
   const [showCashDrawerModal, setShowCashDrawerModal] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
+  // Refs for passing EOD data to handlePrintZReport after confirmation
+  const lastCashCountPayloadRef = useRef<CashCountCommitPayload | null>(null);
+  const lastZReportCashCountsRef = useRef<ZReportCountEntry[] | null>(null);
+  const lastPreviewPaymentMethodsRef = useRef<PaymentMethodItem[] | null>(null);
+
   const isManager = operator?.roles?.some((r) =>
     ['manager', 'admin', 'owner'].includes(r),
   ) ?? false;
+
+  // Load fraud settings + authorized managers + local throttle when EOD modal opens
+  useEffect(() => {
+    if (!showEndOfDay || !terminal || !companyId) return;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const [settings, managers] = await Promise.all([
+          fetchFraudSettings(),
+          fetchAuthorizedManagers(),
+        ]);
+        if (cancelled) return;
+
+        setFraudSettings({
+          cash_variance_over_soft: settings.cashVarianceOverSoft,
+          cash_variance_over_hard: settings.cashVarianceOverHard,
+          cash_variance_under_soft: settings.cashVarianceUnderSoft,
+          cash_variance_under_hard: settings.cashVarianceUnderHard,
+          require_blind_cash_count: settings.requireBlindCashCount,
+          require_manager_pin_above_hard: settings.requireManagerPinAboveHard,
+        });
+        setAuthorizedManagers(managers);
+
+        // Load throttle state from local SQLite
+        const { getDatabase } = await import('@/lib/db');
+        const db = await getDatabase(companyId);
+        const ts = await getTerminalState(db, terminal.id);
+        if (!cancelled) {
+          setManagerPinThrottleState({
+            until: ts?.manager_pin_throttle_until ?? null,
+            failedAttempts: ts?.manager_pin_failed_attempts ?? 0,
+          });
+        }
+      } catch {
+        // Offline: keep existing local state from SQLite only
+        if (cancelled) return;
+        try {
+          const { getDatabase } = await import('@/lib/db');
+          const db = await getDatabase(companyId);
+          const ts = await getTerminalState(db, terminal.id);
+          if (!cancelled) {
+            setManagerPinThrottleState({
+              until: ts?.manager_pin_throttle_until ?? null,
+              failedAttempts: ts?.manager_pin_failed_attempts ?? 0,
+            });
+          }
+        } catch {
+          // Silently ignore — throttle state resets to defaults
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showEndOfDay, terminal, companyId]);
+
+  const onVerifyManagerPin = useCallback(
+    (userId: string, pin: string) => verifyManagerPin(userId, pin),
+    [],
+  );
+
+  const onManagerPinThrottleUpdate = useCallback(
+    async (next: { until: string | null; failedAttempts: number }) => {
+      setManagerPinThrottleState(next);
+      if (!terminal || !companyId) return;
+      try {
+        const { getDatabase } = await import('@/lib/db');
+        const db = await getDatabase(companyId);
+        await Promise.all([
+          setManagerPinThrottle(db, terminal.id, next.until),
+          setManagerPinFailedAttempts(db, terminal.id, next.failedAttempts),
+        ]);
+      } catch {
+        // Best-effort persistence — throttle state is still held in React state
+      }
+    },
+    [terminal, companyId],
+  );
 
   const handleXReport = async () => {
     if (!terminal) return;
@@ -74,30 +181,146 @@ export function Header() {
     }
   };
 
-  const handleZReportOpen = () => {
-    setZReport(null);
-    setReportError(null);
-    setShowZReportModal(true);
+  /**
+   * Called by EndOfDayPreviewModal when the operator confirms.
+   * Atomically: generates Z (offline-first, with optional cash counts) →
+   * closes shift → returns result.
+   */
+  const handleEndOfDayConfirm = async (
+    preview: EndOfDayPreview,
+    cashCountPayload: CashCountCommitPayload | null,
+  ): Promise<EndOfDayConfirmResult> => {
+    if (!terminal || !shift || !companyId) {
+      throw new Error('Missing terminal, shift, or company context');
+    }
+
+    // Build opts from cash-count payload when present.
+    // Pass fraudSettings so generateZReport can compute variance_severity.
+    const zOpts = cashCountPayload != null
+      ? {
+          cashCounts: cashCountPayload.cashCounts,
+          varianceReason: cashCountPayload.varianceReason,
+          managerUserId: cashCountPayload.managerUserId,
+          blindCountUsed: cashCountPayload.blindCountUsed,
+          fraudSettings: fraudSettings ?? null,
+        }
+      : {};
+
+    // Store refs so handlePrintZReport can access them after confirmation
+    lastCashCountPayloadRef.current = cashCountPayload;
+    lastPreviewPaymentMethodsRef.current = preview.payment_methods;
+
+    // 1. Generate Z report (offline-first, idempotent)
+    const zReport = await generateZReport(
+      terminal.id,
+      companyId,
+      shift.id,
+      shift.opened_at,
+      shift.opening_cash,
+      zOpts,
+    );
+
+    // Store the computed cash count entries (with expected/actual/variance amounts)
+    lastZReportCashCountsRef.current = zReport.cash_counts ?? null;
+
+    // 2. Close the shift. In Option B, variance = 0: pass expected_cash as actualCash.
+    await closeShift(preview.expected_cash);
+
+    return {
+      formattedZNumber: zReport.formatted_z_number,
+      wasReused: zReport.was_reused ?? false,
+    };
   };
 
-  const handleZReportConfirm = async () => {
-    if (!terminal || !shift || !companyId) return;
-    setReportLoading(true);
-    setReportError(null);
-    try {
-      const report = await generateZReport(
-        terminal.id,
-        companyId,
-        shift.id,
-        shift.opened_at,
-        parseFloat(shift.opening_cash),
-      );
-      setZReport(report);
-    } catch (err) {
-      setReportError(getErrorMessage(err));
-    } finally {
-      setReportLoading(false);
+  /**
+   * Print a minimal Z-report summary receipt.
+   * Only invoked in Tauri (thermal printer) environment.
+   * Sets is_reprint=true when wasReused so a DUPLICATA banner is printed.
+   * Includes per-tender cash-count block when cash counts were captured.
+   */
+  const handlePrintZReport = (result: EndOfDayConfirmResult) => {
+    if (!isTauriEnvironment()) return;
+
+    const { printerConfig } = usePrinterStore.getState();
+    if (!printerConfig) {
+      toast.error(t('settings.noPrinterConfigured'));
+      return;
     }
+
+    const { companies } = useAuthStore.getState();
+    const company = companies.find((c) => c.id === companyId) ?? null;
+
+    const payload = lastCashCountPayloadRef.current;
+    const zCashCounts = lastZReportCashCountsRef.current;
+    const previewMethods = lastPreviewPaymentMethodsRef.current;
+
+    // Build a map of payment_method_id → { code, name } from the preview
+    const methodById = new Map<string, { code: string; name: string }>();
+    if (previewMethods) {
+      for (const m of previewMethods) {
+        methodById.set(m.payment_method_id, {
+          code: m.payment_method_code,
+          name: m.payment_method_name,
+        });
+      }
+    }
+
+    // Map zReport cash count entries to ZReceiptCashCountRow for printing
+    const cashCountRows: ZReceiptCashCountRow[] | undefined =
+      zCashCounts && zCashCounts.length > 0
+        ? zCashCounts.map((entry) => {
+            const method = methodById.get(entry.payment_method_id);
+            return {
+              code: method?.code ?? entry.payment_method_id,
+              name: method?.name ?? method?.code ?? entry.payment_method_id,
+              expected: entry.expected_amount,
+              actual: entry.actual_amount,
+              variance: entry.variance_amount,
+              direction: entry.variance_direction,
+            };
+          })
+        : undefined;
+
+    // Aggregate total variance magnitude for display
+    const currency = company?.currency ?? 'EUR';
+    const scale = getCurrencyDecimals(currency);
+    const aggregateVariance =
+      cashCountRows && cashCountRows.length > 0
+        ? cashCountRows.reduce((acc, row) => {
+            const absVariance = bccomp(row.variance, '0') < 0
+              ? bcsub('0', row.variance, scale)
+              : bcformat(row.variance, scale);
+            return bcadd(acc, absVariance, scale);
+          }, bcformat('0', scale))
+        : null;
+
+    // Resolve manager name from authorizedManagers list
+    const managerName =
+      payload?.managerUserId
+        ? (authorizedManagers.find((m) => m.id === payload.managerUserId)?.name ?? null)
+        : null;
+
+    const receiptData = buildZReceiptData({
+      companyName: company?.name ?? '',
+      formattedZNumber: result.formattedZNumber,
+      dateTime: new Date().toISOString(),
+      terminalName: terminal?.name ?? '',
+      operatorName: operator?.name ?? '',
+      currencySymbol: '',
+      wasReused: result.wasReused,
+      cashCounts: cashCountRows,
+      managerName,
+      varianceReason: payload?.varianceReason ?? null,
+      varianceSeverity: null,
+      aggregateVariance,
+      labels: buildReceiptLabels(),
+    });
+
+    void printReceipt(receiptData, printerConfig, getPrintSettingsFromStore()).catch(
+      (err: unknown) => {
+        toast.error(err instanceof Error ? err.message : t('reports.endOfDay.printError', 'Failed to send receipt to printer.'));
+      },
+    );
   };
 
   const handleExitFullscreen = async () => {
@@ -158,10 +381,10 @@ export function Header() {
           {/* Manual sync button */}
           <SyncButton />
 
-          {/* Shift badge */}
+          {/* Shift badge — opens End of Day preview */}
           {shift ? (
             <button
-              onClick={() => setShowCloseShift(true)}
+              onClick={() => setShowEndOfDay(true)}
               className="flex items-center gap-2 rounded-md bg-green-50 px-2.5 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"
             >
               <span>{t('shift.number', { number: shift.shift_number })}</span>
@@ -242,12 +465,21 @@ export function Header() {
         </div>
       </header>
 
-      {/* Close Shift Modal */}
+      {/* End of Day Preview Modal (replaces CloseShiftModal) */}
       {shift && (
-        <CloseShiftModal
-          isOpen={showCloseShift}
-          onClose={() => setShowCloseShift(false)}
+        <EndOfDayPreviewModal
+          isOpen={showEndOfDay}
+          onClose={() => setShowEndOfDay(false)}
           shift={shift}
+          terminalId={terminal?.id ?? ''}
+          onConfirmAndClose={handleEndOfDayConfirm}
+          onPrintReceipt={isTauriEnvironment() ? handlePrintZReport : undefined}
+          fraudSettings={fraudSettings}
+          authorizedManagers={authorizedManagers}
+          cashierUserId={operator?.id ?? ''}
+          onVerifyManagerPin={onVerifyManagerPin}
+          managerPinThrottle={managerPinThrottle}
+          onManagerPinThrottleUpdate={(next) => { void onManagerPinThrottleUpdate(next); }}
         />
       )}
 
@@ -256,10 +488,10 @@ export function Header() {
         isOpen={showReportsMenu}
         onClose={() => setShowReportsMenu(false)}
         onXReport={() => void handleXReport()}
-        onZReport={handleZReportOpen}
         onTransactionHistory={() => { setShowReportsMenu(false); navigate('/sales'); }}
         onCashDrawerOps={() => { setShowReportsMenu(false); setShowCashDrawerModal(true); }}
         onTodaySales={() => { setShowReportsMenu(false); navigate('/sales'); }}
+        onZReportHistory={() => { setShowReportsMenu(false); navigate('/reports/z'); }}
       />
 
       {/* X Report Modal */}
@@ -267,16 +499,6 @@ export function Header() {
         isOpen={showXReportModal}
         onClose={() => setShowXReportModal(false)}
         report={xReport}
-        isLoading={reportLoading}
-        error={reportError}
-      />
-
-      {/* Z Report Modal */}
-      <ZReportModal
-        isOpen={showZReportModal}
-        onClose={() => setShowZReportModal(false)}
-        onConfirmGenerate={() => handleZReportConfirm()}
-        report={zReport}
         isLoading={reportLoading}
         error={reportError}
       />

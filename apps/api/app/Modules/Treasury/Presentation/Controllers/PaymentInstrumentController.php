@@ -7,6 +7,10 @@ namespace App\Modules\Treasury\Presentation\Controllers;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
+use App\Modules\Treasury\Domain\Events\InstrumentBounced;
+use App\Modules\Treasury\Domain\Events\InstrumentCleared;
+use App\Modules\Treasury\Domain\Events\InstrumentDeposited;
+use App\Modules\Treasury\Domain\Events\InstrumentTransferred;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Http\JsonResponse;
@@ -160,6 +164,15 @@ class PaymentInstrumentController extends Controller
             'deposited_to_id' => $validated['repository_id'],
         ]);
 
+        event(new InstrumentDeposited(
+            instrumentId: $instrument->id,
+            tenantId: $tenantId,
+            companyId: $companyId,
+            repositoryId: $validated['repository_id'],
+            amount: $instrument->amount,
+            depositedAt: now()->toIso8601String(),
+        ));
+
         /** @var PaymentInstrument $freshInstrument */
         $freshInstrument = $instrument->fresh(['paymentMethod', 'partner', 'repository', 'depositedTo']);
 
@@ -192,6 +205,14 @@ class PaymentInstrumentController extends Controller
             'status' => InstrumentStatus::Cleared,
             'cleared_at' => now(),
         ]);
+
+        event(new InstrumentCleared(
+            instrumentId: $instrument->id,
+            tenantId: $tenantId,
+            companyId: $companyId,
+            amount: $instrument->amount,
+            clearedAt: now()->toIso8601String(),
+        ));
 
         /** @var PaymentInstrument $freshInstrument */
         $freshInstrument = $instrument->fresh(['paymentMethod', 'partner', 'repository', 'depositedTo']);
@@ -231,6 +252,15 @@ class PaymentInstrumentController extends Controller
             'bounce_reason' => $validated['reason'] ?? null,
         ]);
 
+        event(new InstrumentBounced(
+            instrumentId: $instrument->id,
+            tenantId: $tenantId,
+            companyId: $companyId,
+            amount: $instrument->amount,
+            reason: $validated['reason'] ?? '',
+            bouncedAt: now()->toIso8601String(),
+        ));
+
         /** @var PaymentInstrument $freshInstrument */
         $freshInstrument = $instrument->fresh(['paymentMethod', 'partner', 'repository', 'depositedTo']);
 
@@ -264,9 +294,21 @@ class PaymentInstrumentController extends Controller
             'reason' => ['nullable', 'string', 'max:255'],
         ]);
 
+        $fromRepositoryId = $instrument->repository_id ?? '';
+
         $instrument->update([
             'repository_id' => $validated['to_repository_id'],
         ]);
+
+        event(new InstrumentTransferred(
+            instrumentId: $instrument->id,
+            tenantId: $tenantId,
+            companyId: $companyId,
+            fromRepositoryId: $fromRepositoryId,
+            toRepositoryId: $validated['to_repository_id'],
+            amount: $instrument->amount,
+            transferredAt: now()->toIso8601String(),
+        ));
 
         /** @var PaymentInstrument $freshInstrument */
         $freshInstrument = $instrument->fresh(['paymentMethod', 'partner', 'repository', 'depositedTo']);

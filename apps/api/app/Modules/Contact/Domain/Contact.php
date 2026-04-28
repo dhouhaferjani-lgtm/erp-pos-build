@@ -9,13 +9,16 @@ use App\Modules\Contact\Domain\Enums\Gender;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
@@ -26,24 +29,24 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $email
  * @property string|null $phone
  * @property string|null $mobile
- * @property \Illuminate\Support\Carbon|null $date_of_birth
+ * @property Carbon|null $date_of_birth
  * @property Gender|null $gender
  * @property string|null $national_id
  * @property string|null $avatar_media_id
  * @property string|null $notes
  * @property bool $is_active
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
  * @property-read Tenant $tenant
  * @property-read Company $company
- * @property-read \Illuminate\Database\Eloquent\Collection<int, PartyContact> $partyContacts
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Partner> $parties
+ * @property-read Collection<int, PartyContact> $partyContacts
+ * @property-read Collection<int, Partner> $parties
  * @property-read string $full_name
  */
 class Contact extends Model
 {
-    /** @use HasFactory<\Illuminate\Database\Eloquent\Factories\Factory<static>> */
+    /** @use HasFactory<Factory<static>> */
     use HasFactory;
 
     use HasUuids;
@@ -67,6 +70,7 @@ class Contact extends Model
         'avatar_media_id',
         'notes',
         'is_active',
+        'profile_metadata',
     ];
 
     /**
@@ -78,6 +82,7 @@ class Contact extends Model
             'date_of_birth' => 'date',
             'is_active' => 'boolean',
             'gender' => Gender::class,
+            'profile_metadata' => 'array',
         ];
     }
 

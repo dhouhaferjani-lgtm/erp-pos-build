@@ -1,14 +1,50 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { CompanyConfigProvider, useCompanyConfig } from '../CompanyConfigContext'
 import * as api from '../../lib/api'
+import { useAuthStore } from '../../stores/authStore'
+import {
+  defaultCompanyConfig,
+  pharmacyCompanyConfig,
+} from '../../test/fixtures/companyConfig'
 
 // Mock the API
 vi.mock('../../lib/api', () => ({
   apiGet: vi.fn(),
 }))
+
+/**
+ * Strategy for testing CompanyConfigProvider
+ * -------------------------------------------
+ * Unlike feature-level tests (which use `renderWithProviders` and seed the
+ * QueryClient cache to bypass fetching), this file exercises the provider
+ * itself — so it must go through the real fetch path.
+ *
+ * The provider gates its query on `isAuthenticated` (see
+ * `CompanyConfigContext.tsx`: `enabled: isAuthenticated`). If we leave the
+ * auth store in its default unauthenticated state, the query never fires,
+ * `apiGet` is never called, and the mocked response sits unused. That would
+ * defeat the point of tests like "handles API errors gracefully" and
+ * "caches config data with 1 hour staleTime" which explicitly assert on
+ * fetch behaviour.
+ *
+ * We therefore seed the auth store to an authenticated state in `beforeEach`
+ * and reset it in `afterEach`. Fixtures come from `@/test/fixtures/companyConfig`
+ * (Task 1.1), so the mocked response shape always matches the real
+ * `CompanyConfig` contract including fields like `currency`, `locale`,
+ * `smart_prompts_enabled`, etc.
+ */
+
+const testUser = {
+  id: 'test-user-id',
+  name: 'Test User',
+  email: 'test@example.com',
+  tenant_id: 'test-tenant',
+  roles: ['admin'],
+  email_verified_at: null,
+}
 
 describe('CompanyConfigContext', () => {
   let queryClient: QueryClient
@@ -23,6 +59,20 @@ describe('CompanyConfigContext', () => {
       },
     })
     vi.clearAllMocks()
+
+    // Seed the auth store so the provider's query is enabled.
+    useAuthStore.setState({
+      user: testUser,
+      token: 'test-token',
+      isAuthenticated: true,
+      isLoading: false,
+    })
+  })
+
+  afterEach(() => {
+    // Reset auth store to a clean unauthenticated state between tests.
+    useAuthStore.getState().logout()
+    queryClient.clear()
   })
 
   const wrapper = ({ children }: { children: ReactNode }) => (
@@ -32,15 +82,7 @@ describe('CompanyConfigContext', () => {
   )
 
   it('provides company config data when loaded', async () => {
-    // Mock successful API response
-    const mockConfig = {
-      vertical: 'mechanic',
-      default_modules: ['Identity', 'Vehicle', 'Workshop'],
-      enabled_extras: ['Fleet'],
-      all_enabled_modules: ['Identity', 'Vehicle', 'Workshop', 'Fleet'],
-    }
-
-    vi.mocked(api.apiGet).mockResolvedValueOnce(mockConfig)
+    vi.mocked(api.apiGet).mockResolvedValueOnce(defaultCompanyConfig)
 
     const { result } = renderHook(() => useCompanyConfig(), { wrapper })
 
@@ -54,19 +96,12 @@ describe('CompanyConfigContext', () => {
     })
 
     // Check data is available
-    expect(result.current.config).toEqual(mockConfig)
+    expect(result.current.config).toEqual(defaultCompanyConfig)
     expect(result.current.error).toBeNull()
   })
 
   it('provides vertical from config', async () => {
-    const mockConfig = {
-      vertical: 'pharmacy',
-      default_modules: ['Identity', 'BatchExpiry'],
-      enabled_extras: [],
-      all_enabled_modules: ['Identity', 'BatchExpiry'],
-    }
-
-    vi.mocked(api.apiGet).mockResolvedValueOnce(mockConfig)
+    vi.mocked(api.apiGet).mockResolvedValueOnce(pharmacyCompanyConfig)
 
     const { result } = renderHook(() => useCompanyConfig(), { wrapper })
 
@@ -76,14 +111,14 @@ describe('CompanyConfigContext', () => {
   })
 
   it('provides all_enabled_modules from config', async () => {
-    const mockConfig = {
+    const restaurantConfig = {
+      ...defaultCompanyConfig,
       vertical: 'restaurant',
       default_modules: ['Identity', 'Menu', 'Tables'],
       enabled_extras: ['Appointments'],
       all_enabled_modules: ['Identity', 'Menu', 'Tables', 'Appointments'],
     }
-
-    vi.mocked(api.apiGet).mockResolvedValueOnce(mockConfig)
+    vi.mocked(api.apiGet).mockResolvedValueOnce(restaurantConfig)
 
     const { result } = renderHook(() => useCompanyConfig(), { wrapper })
 
@@ -98,14 +133,14 @@ describe('CompanyConfigContext', () => {
   })
 
   it('provides hasModule utility function', async () => {
-    const mockConfig = {
+    const mechanicConfig = {
+      ...defaultCompanyConfig,
       vertical: 'mechanic',
       default_modules: ['Identity', 'Vehicle', 'Workshop'],
       enabled_extras: ['Fleet'],
       all_enabled_modules: ['Identity', 'Vehicle', 'Workshop', 'Fleet'],
     }
-
-    vi.mocked(api.apiGet).mockResolvedValueOnce(mockConfig)
+    vi.mocked(api.apiGet).mockResolvedValueOnce(mechanicConfig)
 
     const { result } = renderHook(() => useCompanyConfig(), { wrapper })
 
@@ -139,14 +174,7 @@ describe('CompanyConfigContext', () => {
   })
 
   it('caches config data with 1 hour staleTime', async () => {
-    const mockConfig = {
-      vertical: 'mechanic',
-      default_modules: ['Identity', 'Vehicle'],
-      enabled_extras: [],
-      all_enabled_modules: ['Identity', 'Vehicle'],
-    }
-
-    vi.mocked(api.apiGet).mockResolvedValueOnce(mockConfig)
+    vi.mocked(api.apiGet).mockResolvedValueOnce(defaultCompanyConfig)
 
     const { result, rerender } = renderHook(() => useCompanyConfig(), { wrapper })
 
@@ -166,7 +194,7 @@ describe('CompanyConfigContext', () => {
     expect(api.apiGet).toHaveBeenCalledTimes(1)
 
     // Data should still be available
-    expect(result.current.config).toEqual(mockConfig)
+    expect(result.current.config).toEqual(defaultCompanyConfig)
   })
 
   it('hasModule returns false when config is not loaded', () => {
@@ -181,14 +209,14 @@ describe('CompanyConfigContext', () => {
   })
 
   it('handles empty enabled_extras array', async () => {
-    const mockConfig = {
+    const retailConfig = {
+      ...defaultCompanyConfig,
       vertical: 'retail',
       default_modules: ['Identity', 'Catalog'],
       enabled_extras: [],
       all_enabled_modules: ['Identity', 'Catalog'],
     }
-
-    vi.mocked(api.apiGet).mockResolvedValueOnce(mockConfig)
+    vi.mocked(api.apiGet).mockResolvedValueOnce(retailConfig)
 
     const { result } = renderHook(() => useCompanyConfig(), { wrapper })
 
@@ -199,7 +227,8 @@ describe('CompanyConfigContext', () => {
   })
 
   it('handles multiple enabled extras', async () => {
-    const mockConfig = {
+    const mechanicConfig = {
+      ...defaultCompanyConfig,
       vertical: 'mechanic',
       default_modules: ['Identity', 'Vehicle', 'Workshop'],
       enabled_extras: ['Fleet', 'Appointments', 'Recipe'],
@@ -212,8 +241,7 @@ describe('CompanyConfigContext', () => {
         'Recipe',
       ],
     }
-
-    vi.mocked(api.apiGet).mockResolvedValueOnce(mockConfig)
+    vi.mocked(api.apiGet).mockResolvedValueOnce(mechanicConfig)
 
     const { result } = renderHook(() => useCompanyConfig(), { wrapper })
 

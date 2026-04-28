@@ -202,6 +202,155 @@ describe('cartStore', () => {
     expect(useCartStore.getState().taxAmount()).toBeCloseTo(16.67);
     expect(useCartStore.getState().subtotal()).toBeCloseTo(100);
   });
+
+  describe('replaceCart', () => {
+    it('atomically replaces items and transactionDiscount', () => {
+      // seed some state
+      useCartStore.getState().addItem(makeProduct());
+      useCartStore.getState().setTransactionDiscount({ type: 'fixed', value: '1.00' });
+
+      const replacementItems = [
+        {
+          id: 'line-1',
+          product: { id: 'p-new', name: 'Foo', sku: 'FOO', price: '9.80' },
+          quantity: 1,
+          unit_price: '9.80',
+          line_total: '9.80',
+          tax_rate: '0',
+          tax_amount: '0.00',
+        },
+        {
+          id: 'line-2',
+          product: { id: 'p-new-2', name: 'Bar', sku: 'BAR', price: '6.30' },
+          quantity: 1,
+          unit_price: '6.30',
+          line_total: '6.30',
+          tax_rate: '0',
+          tax_amount: '0.00',
+        },
+      ];
+
+      useCartStore.getState().replaceCart(replacementItems, undefined);
+
+      const state = useCartStore.getState();
+      expect(state.items).toEqual(replacementItems);
+      expect(state.transactionDiscount).toBeUndefined();
+      expect(state.subtotal()).toBeCloseTo(16.1);
+      expect(state.total()).toBeCloseTo(16.1);
+    });
+
+    it('replaces items and carries a new transactionDiscount', () => {
+      useCartStore.getState().replaceCart(
+        [
+          {
+            id: 'line-1',
+            product: { id: 'p-new', name: 'Foo', sku: 'FOO', price: '100.00' },
+            quantity: 1,
+            unit_price: '100.00',
+            line_total: '100.00',
+            tax_rate: '0',
+            tax_amount: '0.00',
+          },
+        ],
+        { type: 'fixed', value: '15.00', reason: 'Loyalty' },
+      );
+
+      const state = useCartStore.getState();
+      expect(state.transactionDiscount).toEqual({ type: 'fixed', value: '15.00', reason: 'Loyalty' });
+      expect(state.total()).toBeCloseTo(85);
+    });
+
+    it('clears the cart when called with an empty array and no discount', () => {
+      useCartStore.getState().addItem(makeProduct());
+      useCartStore.getState().replaceCart([], undefined);
+      const state = useCartStore.getState();
+      expect(state.items).toHaveLength(0);
+      expect(state.transactionDiscount).toBeUndefined();
+    });
+  });
+});
+
+describe('tax recalculation regression', () => {
+  beforeEach(() => {
+    useCartStore.getState().clearCart();
+  });
+
+  it('taxAmount adjusts proportionally when a transaction discount is applied', () => {
+    // €100 at 20% VAT (inclusive) → raw tax = 100 - 100/1.2 = 16.67
+    useCartStore.getState().addItem(makeProduct({ sale_price: '100.00', tax_rate: '20' }));
+    expect(useCartStore.getState().taxAmount()).toBeCloseTo(16.67);
+
+    // 10% transaction discount: subtotal=100, discount=10, ratio=0.9
+    // taxAmount = 16.67 * 0.9 ≈ 15.00
+    useCartStore.getState().setTransactionDiscount({ type: 'percentage', value: '10' });
+    expect(useCartStore.getState().taxAmount()).toBeCloseTo(15.0);
+  });
+
+  it('taxAmount restores fully when transaction discount is removed', () => {
+    useCartStore.getState().addItem(makeProduct({ sale_price: '100.00', tax_rate: '20' }));
+    useCartStore.getState().setTransactionDiscount({ type: 'percentage', value: '10' });
+    expect(useCartStore.getState().taxAmount()).toBeCloseTo(15.0);
+
+    useCartStore.getState().setTransactionDiscount(undefined);
+    expect(useCartStore.getState().taxAmount()).toBeCloseTo(16.67);
+    expect(useCartStore.getState().total()).toBeCloseTo(100);
+  });
+
+  it('taxAmount and subtotal restore after line discount is removed', () => {
+    useCartStore.getState().addItem(makeProduct({ sale_price: '100.00', tax_rate: '20' }));
+    const itemId = useCartStore.getState().items[0]!.id;
+
+    // Apply 20% line discount: line_total = 80, tax = 80 - 80/1.2 = 13.33
+    useCartStore.setState((state) => ({
+      items: state.items.map((i) => {
+        if (i.id !== itemId) return i;
+        const gross = parseFloat(i.unit_price) * i.quantity;
+        const discAmt = (gross * 20) / 100;
+        const lineTotal = gross - discAmt;
+        const rate = parseFloat(i.tax_rate);
+        return {
+          ...i,
+          discount_type: 'percentage' as const,
+          discount_percent: '20',
+          discount_amount: discAmt.toFixed(2),
+          line_total: lineTotal.toFixed(2),
+          tax_amount: (lineTotal - lineTotal / (1 + rate / 100)).toFixed(2),
+        };
+      }),
+    }));
+    expect(useCartStore.getState().taxAmount()).toBeCloseTo(13.33);
+    expect(useCartStore.getState().subtotal()).toBeCloseTo(80);
+
+    // Simulate handleRemoveLineDiscount: clear discount fields, restore line_total
+    const grossTotal = 100;
+    useCartStore.setState((state) => ({
+      items: state.items.map((i) => {
+        if (i.id !== itemId) return i;
+        const rate = parseFloat(i.tax_rate);
+        return {
+          ...i,
+          discount_type: undefined,
+          discount_percent: undefined,
+          discount_amount: undefined,
+          discount_reason: undefined,
+          line_total: grossTotal.toFixed(2),
+          tax_amount: (grossTotal - grossTotal / (1 + rate / 100)).toFixed(2),
+        };
+      }),
+    }));
+    expect(useCartStore.getState().taxAmount()).toBeCloseTo(16.67);
+    expect(useCartStore.getState().subtotal()).toBeCloseTo(100);
+  });
+
+  it('taxAmount is zero after all items are cleared', () => {
+    useCartStore.getState().addItem(makeProduct({ sale_price: '50.00', tax_rate: '20' }));
+    useCartStore.getState().setTransactionDiscount({ type: 'fixed', value: '5.00' });
+    useCartStore.getState().clearCart();
+
+    expect(useCartStore.getState().taxAmount()).toBe(0);
+    expect(useCartStore.getState().total()).toBe(0);
+    expect(useCartStore.getState().transactionDiscount).toBeUndefined();
+  });
 });
 
 describe('computeTaxAmount', () => {
