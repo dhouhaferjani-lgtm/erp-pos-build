@@ -110,8 +110,9 @@ final class PayrollExportControllerTest extends TestCase
 
         $response->assertOk();
         $this->assertSame('text/csv; charset=UTF-8', $response->headers->get('Content-Type'));
+        // streamedContent() is declared `string` so the prior assertIsString
+        // call always evaluated to true (PHPStan method.alreadyNarrowedType).
         $body = $response->streamedContent();
-        $this->assertIsString($body);
         $this->assertStringContainsString('TECH-01', $body);
         $this->assertStringContainsString('4.00', $body); // 240 min = 4h
     }

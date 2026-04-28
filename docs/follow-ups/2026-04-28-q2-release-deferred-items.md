@@ -170,8 +170,8 @@ PR #36's drift guard catches file-level regen drift but cannot detect this kind 
 | Field | Value |
 |---|---|
 | **Origin** | Mediums/lows remediation session note |
-| **Status** | To-do |
-| **Owner** | TBD |
+| **Status** | Done (session1, commit `4751b648`) |
+| **Owner** | session1 |
 | **Effort** | One-line fix |
 
 **What.** `scripts/preflight.sh:28` — PR #36 (`b6603304`) silently reverted commit `80d497e8`'s bump of PHPStan memory limit from 512M back to 2G. CI's PHPStan job runs with its own memory config and is fine, but local `./scripts/preflight.sh` OOMs on PHPStan.
@@ -212,6 +212,8 @@ Pre-existing skips + 1 new (stamp duty draft — see M3). Worth a triage to deci
 
 ### L8. Unbatched `Company::all()` in 2026-03-24 backfill
 
+**Status:** Done (session1, commit `539045bb`). `Company::all()` replaced with `Company::query()->chunk(50, ...)`; per-company logic extracted to `backfillCompany()`. Idempotency preserved (each branch short-circuits when target state already reached).
+
 `2026_03_24_200000_backfill_tunisian_payment_repositories_and_gl_purposes.php:31` — unbatched. Realistic company count is small so practically OK; convert to `Company::chunk(50, ...)` in a future cleanup pass.
 
 ### L9. Per-distinct-value UPDATE in vehicle sanitize migration
@@ -220,7 +222,22 @@ Pre-existing skips + 1 new (stamp duty draft — see M3). Worth a triage to deci
 
 ### L10. Node.js 20 → Node.js 24 actions migration
 
-CI workflow uses `actions/checkout@v4`, `actions/cache@v4`, `actions/setup-node@v4`, `pnpm/action-setup@v4`, `codecov/codecov-action@v4` which run on Node.js 20. **GitHub deadline: 2026-06-02.** After that, actions may break. Monitor for v5+ releases or set `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` once safe.
+**Status:** Done — PR #59 (merged 2026-04-28 to `dev`, merge SHA `905106f5`).
+
+| Action | Old | New | Path |
+|---|---|---|---|
+| `actions/checkout` | v4 | **v5** | bumped (Node 24) |
+| `actions/cache` | v4 | **v5** | bumped (Node 24) |
+| `actions/setup-node` | v4 | **v5** | bumped (Node 24) |
+| `pnpm/action-setup` | v4 | **v5** | bumped (Node 24) |
+| `codecov/codecov-action` | v4 | **v5** | bumped (composite, OS binary) |
+| `actions/upload-artifact` | v4 | v4 | env-var fallback — v5 still on Node 20; v6 introduces artifact-immutability semantics not bundled here |
+| `shivammathur/setup-php` | v2 | v2 | already Node 24 native (verified action.yml head) |
+| `SonarSource/sonarcloud-github-action` | master | master | composite (Sonar scanner CLI), not a Node JS action |
+
+Workflow-level `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'` added to all three workflows (`ci.yml`, `smoke-test.yml`, `sonarcloud.yml`) as the in-repo, reviewable belt-and-braces fallback for the residual `actions/upload-artifact@v4` and any future addition we might forget to bump.
+
+**Follow-up to schedule before 2026-06-02:** bump `actions/upload-artifact@v4` to `@v6` (first Node 24 major). v6 changes artifact naming + adds immutability — small contract test recommended on the smoke-test workflow's `playwright-report/` and `test-results/` upload.
 
 ---
 
@@ -230,16 +247,19 @@ When picking up an item, change its `Status` field to `In progress` and assign a
 
 | Item | Status | Owner | PR # | Notes |
 |---|---|---|---|---|
-| M1 — Workshop converter bypass | To-do | — | — | Material risk if WO + tolerance combine |
+| M1 — Workshop converter bypass | Done | session4 | dev `de4533e2` | Option 2 (inject `StripSubToleranceDiscountsService`) — adapter now derives `discount_amount` from WO `discount_percent` and strips before posting; regression suite covers €0.20 strip + €5 above-tolerance preserve |
 | M2 — LoyaltyMember morph migration | Done | session5 | — | Closed by 858d872c on session5-types-m2-m5; wire-format byte-stable, zero FE migration needed |
 | M3 — Stamp duty draft guard | To-do | — | — | Needs accounting input |
 | M4 — `unit_categories` partial unique | To-do | — | — | Migration + duplicate cleanup |
 | M5 — FraudSettings shape decision | Done | session5 | — | Closed by d8c1addc on session5-types-m2-m5; canonical CompanyFraudSettingsData DTO + 5-consumer FE migration; latent is_configured gap on update/reset closed in passing |
 | H1 — JsonValidationErrors envelope | To-do | — | — | Sweep needed |
-| H2 — `work_order_line_id` whitelist | To-do | — | — | + retroactive backfill |
+| H2 — `work_order_line_id` whitelist | Done | session4 | dev `de4533e2` | `DocumentLine::$fillable` + `CopiesDocumentData::copyLine()` whitelist + property docblock; backfill migration `2026_04_28_120000_*` committed unstaged pending owner approval |
 | H3 — Compliance Rule #6 cleanup | To-do | — | — | Architectural |
-| H4 — preflight.sh PHPStan memory | To-do | — | — | One line |
-| L1–L10 | To-do | — | — | Bundle when convenient |
+| H4 — preflight.sh PHPStan memory | Done | session1 | dev `8bb3cca3` | `--memory-limit` restored to `2G` in `scripts/preflight.sh` (commit `4751b648`) |
+| L1–L4, L6, L7, L9 | To-do | — | — | Bundle when convenient |
+| L5 — PHPStan in TechnicianTimeEntryControllerTest | Done | session4 | dev `de4533e2` | All 11 errors across `tests/Feature/Workshop/` swept (Mockery typing + missing array param types + redundant assertIsString); `phpstan analyse tests/Feature/Workshop/` returns zero errors |
+| L8 — TN backfill `Company::all()` chunking | Done | session1 | dev `8bb3cca3` | `Company::query()->chunk(50, ...)` + `backfillCompany()` extraction (commit `539045bb`) |
+| L10 — Node 24 actions migration | Done | session7 | #59 | All 5 listed actions bumped to v5; `actions/upload-artifact@v4` covered by `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` env var pending v6 follow-up |
 
 ---
 
