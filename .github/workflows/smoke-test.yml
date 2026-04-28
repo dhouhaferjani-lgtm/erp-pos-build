@@ -15,6 +15,12 @@ concurrency:
 env:
   NODE_VERSION: '20'
   PNPM_VERSION: '9'
+  # Belt-and-braces for the 2026-06-02 GitHub Node 20 deprecation. Forces
+  # any JS-runtime action still on `using: node20` (currently
+  # actions/upload-artifact@v4) to run under Node 24 once GitHub flips
+  # the runtime kill switch. See L10 in
+  # docs/follow-ups/2026-04-28-q2-release-deferred-items.md.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
   smoke:
@@ -25,13 +31,13 @@ jobs:
       run:
         working-directory: apps/web
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
