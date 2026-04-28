@@ -3,8 +3,8 @@ import type {
   FraudAlert,
   FraudAlertFilters,
   FraudAlertStatistics,
-  FraudSettings,
-} from '../types/fraud'
+} from '../types/fraudAlerts'
+import type { FraudSettings } from '../types/fraudSettings'
 
 interface AdminUser {
   id: string

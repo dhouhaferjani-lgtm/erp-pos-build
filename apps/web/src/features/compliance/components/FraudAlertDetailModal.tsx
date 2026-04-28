@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { X, AlertTriangle, Calendar, User, Package } from 'lucide-react'
-import type { FraudAlert } from '../types/fraud'
+import type { FraudAlert } from '../types/fraudAlerts'
 
 interface Props {
   alert: FraudAlert

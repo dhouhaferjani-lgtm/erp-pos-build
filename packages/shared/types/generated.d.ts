@@ -337,6 +337,28 @@ export type SequenceType = 'invoice' | 'credit_note' | 'quote' | 'sales_order' |
 export type VerificationStatus = 'pending' | 'submitted' | 'in_review' | 'verified' | 'rejected';
 export type VerificationTier = 'basic' | 'standard' | 'enhanced' | 'certified';
 }
+declare namespace App.Modules.Compliance.Application.DTOs {
+export type CompanyFraudSettingsData = {
+id: string | null;
+company_id: string;
+abandoned_draft_threshold: number;
+time_window_days: number;
+alert_emails: Array<any> | null;
+alert_enabled: boolean;
+auto_trigger_counting: boolean;
+auto_restrict_access: boolean;
+cash_variance_over_soft: string;
+cash_variance_over_hard: string;
+cash_variance_under_soft: string;
+cash_variance_under_hard: string;
+require_blind_cash_count: boolean;
+require_manager_pin_above_hard: boolean;
+cash_variance_email_severity: string;
+created_at: string | null;
+updated_at: string | null;
+is_configured: boolean;
+};
+}
 declare namespace App.Modules.Compliance.Domain.Enums {
 export type Nf525EventType = 'TICKET' | 'ANNULATION' | 'RETOUR' | 'DUPLICATA' | 'OUVERTURE_CAISSE' | 'FERMETURE_CAISSE' | 'RAPPORT_Z' | 'DEPOT_ESPECES' | 'RETRAIT_ESPECES' | 'REMBOURSEMENT' | 'ACTIVATION_TERMINAL' | 'DESACTIVATION_TERMINAL' | 'MODE_FORMATION' | 'MAJ_LOGICIEL';
 }

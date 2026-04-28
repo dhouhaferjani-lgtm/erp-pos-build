@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { X, UserPlus, XCircle, CheckCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { assignFraudAlert, dismissFraudAlert, resolveFraudAlert, getAdminUsers } from '../api/fraudApi'
-import type { FraudAlert } from '../types/fraud'
+import type { FraudAlert } from '../types/fraudAlerts'
 
 interface AssignModalProps {
   alert: FraudAlert

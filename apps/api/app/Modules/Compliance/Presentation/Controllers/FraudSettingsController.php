@@ -6,6 +6,7 @@ namespace App\Modules\Compliance\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Compliance\Application\DTOs\CompanyFraudSettingsData;
 use App\Modules\Compliance\Domain\CompanyFraudSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -52,24 +53,12 @@ class FraudSettingsController extends Controller
 
         $settings = CompanyFraudSettings::where('company_id', $companyId)->first();
 
-        // Return defaults if not yet configured
-        if ($settings === null) {
-            return response()->json([
-                'data' => array_merge(
-                    CompanyFraudSettings::getDefaults(),
-                    [
-                        'company_id' => $companyId,
-                        'is_configured' => false,
-                    ]
-                ),
-            ]);
-        }
+        $dto = $settings === null
+            ? CompanyFraudSettingsData::fromDefaults($companyId)
+            : CompanyFraudSettingsData::fromModel($settings);
 
         return response()->json([
-            'data' => array_merge(
-                $settings->toArray(),
-                ['is_configured' => true]
-            ),
+            'data' => $dto,
         ]);
     }
 
@@ -134,7 +123,7 @@ class FraudSettingsController extends Controller
         );
 
         return response()->json([
-            'data' => $settings,
+            'data' => CompanyFraudSettingsData::fromModel($settings),
             'message' => 'Fraud detection settings updated successfully',
         ]);
     }
@@ -182,7 +171,7 @@ class FraudSettingsController extends Controller
         );
 
         return response()->json([
-            'data' => $settings,
+            'data' => CompanyFraudSettingsData::fromModel($settings),
             'message' => 'Fraud detection settings reset to defaults',
         ]);
     }

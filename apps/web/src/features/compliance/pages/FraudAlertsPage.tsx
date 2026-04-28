@@ -12,7 +12,7 @@ import {
   Shield,
 } from 'lucide-react'
 import { getFraudAlerts, getFraudAlertStatistics } from '../api/fraudApi'
-import type { FraudAlert, FraudAlertFilters } from '../types/fraud'
+import type { FraudAlert, FraudAlertFilters } from '../types/fraudAlerts'
 import {
   FraudAlertDetailModal,
   AssignAlertModal,
