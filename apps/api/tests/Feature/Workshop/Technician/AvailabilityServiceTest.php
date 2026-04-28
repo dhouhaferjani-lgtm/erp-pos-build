@@ -46,6 +46,9 @@ final class AvailabilityServiceTest extends TestCase
         return $this->app->make(TechnicianAvailabilityServiceInterface::class);
     }
 
+    /**
+     * @param  array<int, string>|null  $specialties
+     */
     private function makeActiveProfile(
         ?array $specialties = null,
         ?EmploymentStatus $status = null,

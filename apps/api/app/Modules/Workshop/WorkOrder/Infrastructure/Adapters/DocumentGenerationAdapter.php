@@ -8,6 +8,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Services\Conversion\StripSubToleranceDiscountsService;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
 use App\Modules\Workshop\WorkOrder\Domain\Contracts\WorkOrderLineRepositoryInterface;
@@ -26,6 +27,7 @@ use Illuminate\Support\Carbon;
  *   unsigned / unnumbered in the fiscal sense. Returns the draft Document id.
  *
  * - Invoice (fiscal, called on Invoiced transition): creates Draft → confirms
+ *   → invokes StripSubToleranceDiscountsService (Phase 4 anti-abuse, spec §7)
  *   → calls DocumentPostingService::post which signs + writes the fiscal hash
  *   chain entry. Returns the posted Document id.
  *
@@ -38,6 +40,7 @@ final readonly class DocumentGenerationAdapter
         private DocumentNumberingService $numbering,
         private DocumentPostingService $posting,
         private WorkOrderLineRepositoryInterface $lines,
+        private StripSubToleranceDiscountsService $discountStripper,
     ) {}
 
     /**
@@ -68,6 +71,28 @@ final readonly class DocumentGenerationAdapter
         $document = $this->buildDocument($wo, DocumentType::Invoice);
 
         $this->mapLines($wo, $document);
+
+        // M1 — Phase 4 anti-abuse strip (spec §7). The Workshop quote stage
+        // legitimately bypasses the DiscountAboveTolerance request validator
+        // (negotiation-stage), so a WO Quote may carry a sub-tolerance line
+        // discount that must NOT survive into the fiscal hash chain on the
+        // resulting Invoice. We invoke the strip BEFORE recalculateTotals so
+        // the resulting subtotal/tax/total reflect the post-strip state, and
+        // BEFORE DocumentPostingService::post so the chain entry is signed
+        // over the corrected document.
+        //
+        // Source identity: when a prior Quote document exists (the WO went
+        // through the Quoted transition), pass it as `$source` so the audit
+        // event records sourceType=quote / targetType=invoice. Otherwise fall
+        // back to the invoice itself — the audit event still survives, with
+        // sourceType=invoice signaling no prior Quote document was created.
+        $sourceDocument = $wo->quote_document_id !== null
+            ? Document::find($wo->quote_document_id)
+            : null;
+        $this->discountStripper->stripFromConvertedDocument(
+            $sourceDocument ?? $document,
+            $document,
+        );
 
         $document->recalculateTotals();
         $document->status = DocumentStatus::Confirmed;
@@ -127,6 +152,29 @@ final readonly class DocumentGenerationAdapter
 
     private function mapLine(WorkOrderLine $wol, Document $document, int $lineNumber): void
     {
+        // Derive an explicit discount_amount on the DocumentLine from the WO
+        // line's discount_percent so StripSubToleranceDiscountsService — which
+        // gates strictly on `discount_amount` — can act on it. Without this
+        // derivation the percent silently vanishes into line_total and the
+        // Phase 4 strip becomes a no-op for the WO path.
+        /** @var numeric-string $quantity */
+        $quantity = $wol->quantity;
+        /** @var numeric-string $unitPrice */
+        $unitPrice = $wol->unit_price;
+        /** @var numeric-string $discountPercent */
+        $discountPercent = $wol->discount_percent;
+
+        /** @var numeric-string $discountAmount */
+        $discountAmount = '0';
+        if (bccomp($discountPercent, '0', 4) !== 0) {
+            $lineSubtotal = bcmul($quantity, $unitPrice, 4);
+            $discountAmount = bcdiv(
+                bcmul($lineSubtotal, $discountPercent, 4),
+                '100',
+                4,
+            );
+        }
+
         $line = new DocumentLine;
         $line->fill([
             'document_id' => $document->id,
@@ -141,7 +189,7 @@ final readonly class DocumentGenerationAdapter
             'quantity_received' => '0',
             'unit_price' => $wol->unit_price,
             'discount_percent' => $wol->discount_percent,
-            'discount_amount' => '0',
+            'discount_amount' => $discountAmount,
             'tax_rate' => $wol->tax_rate,
             'line_total' => $wol->line_total_incl_tax,
             'allocated_costs' => '0',

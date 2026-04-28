@@ -18,6 +18,7 @@ use App\Modules\Workshop\Technician\Domain\TechnicianProfile;
 use App\Modules\Workshop\Technician\Domain\TechnicianTimeEntry;
 use App\Modules\Workshop\WorkOrder\Domain\Contracts\WorkOrderRepositoryInterface;
 use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderStatus;
+use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Mockery;
@@ -80,21 +81,26 @@ final class TechnicianTimeEntryControllerTest extends TestCase
     {
         $repo = Mockery::mock(WorkOrderRepositoryInterface::class);
         if ($workOrderId === null || $status === null) {
-            $repo->shouldReceive('findById')->andReturn(null);
+            /** @var Mockery\Expectation $expectation */
+            $expectation = $repo->shouldReceive('findById');
+            $expectation->andReturn(null);
         } else {
-            // Rule #6: do NOT import the WorkOrder Eloquent model in this
-            // Technician-module test. We instead stub an object of the
-            // correct class via Mockery, keyed off the FQCN as a string so
-            // there is no compile-time cross-module dependency here. The
-            // controller only reads `->status` from the returned value, so
-            // a Mockery double with that one property stubbed is enough.
-            /** @var class-string $workOrderFqcn */
-            $workOrderFqcn = 'App\\Modules\\Workshop\\WorkOrder\\Domain\\WorkOrder';
-            $wo = Mockery::mock($workOrderFqcn)->makePartial();
+            // The controller only reads `->status` and `->id` from the value
+            // returned by `findById`. We stub a WorkOrder mock with those two
+            // properties hydrated. Importing the WorkOrder model in this
+            // Technician-module test is a Rule #6 exemption: tests are not
+            // production code, so cross-module imports here do not constitute
+            // a runtime cross-module edge.
+            /** @var Mockery\MockInterface&WorkOrder $wo */
+            $wo = Mockery::mock(WorkOrder::class)->makePartial();
             $wo->id = $workOrderId;
             $wo->status = $status;
-            $repo->shouldReceive('findById')->with($workOrderId)->andReturn($wo);
-            $repo->shouldReceive('findById')->andReturn(null);
+            /** @var Mockery\Expectation $matchExpectation */
+            $matchExpectation = $repo->shouldReceive('findById');
+            $matchExpectation->with($workOrderId)->andReturn($wo);
+            /** @var Mockery\Expectation $fallbackExpectation */
+            $fallbackExpectation = $repo->shouldReceive('findById');
+            $fallbackExpectation->andReturn(null);
         }
         $this->app->instance(WorkOrderRepositoryInterface::class, $repo);
     }
