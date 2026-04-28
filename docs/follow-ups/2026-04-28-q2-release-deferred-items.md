@@ -170,7 +170,7 @@ PR #36's drift guard catches file-level regen drift but cannot detect this kind 
 | Field | Value |
 |---|---|
 | **Origin** | Mediums/lows remediation session note |
-| **Status** | Done (session1, commit `9f9aac80`) |
+| **Status** | Done (session1, commit `4751b648`) |
 | **Owner** | session1 |
 | **Effort** | One-line fix |
 
@@ -212,7 +212,7 @@ Pre-existing skips + 1 new (stamp duty draft — see M3). Worth a triage to deci
 
 ### L8. Unbatched `Company::all()` in 2026-03-24 backfill
 
-**Status:** Done (session1, commit `bd67d17b`). `Company::all()` replaced with `Company::query()->chunk(50, ...)`; per-company logic extracted to `backfillCompany()`. Idempotency preserved (each branch short-circuits when target state already reached).
+**Status:** Done (session1, commit `539045bb`). `Company::all()` replaced with `Company::query()->chunk(50, ...)`; per-company logic extracted to `backfillCompany()`. Idempotency preserved (each branch short-circuits when target state already reached).
 
 `2026_03_24_200000_backfill_tunisian_payment_repositories_and_gl_purposes.php:31` — unbatched. Realistic company count is small so practically OK; convert to `Company::chunk(50, ...)` in a future cleanup pass.
 
@@ -255,9 +255,9 @@ When picking up an item, change its `Status` field to `In progress` and assign a
 | H1 — JsonValidationErrors envelope | To-do | — | — | Sweep needed |
 | H2 — `work_order_line_id` whitelist | To-do | — | — | + retroactive backfill |
 | H3 — Compliance Rule #6 cleanup | To-do | — | — | Architectural |
-| H4 — preflight.sh PHPStan memory | Done | session1 | (merge SHA TBD) | `--memory-limit` restored to `2G` in `scripts/preflight.sh` (commit `9f9aac80`) |
+| H4 — preflight.sh PHPStan memory | Done | session1 | (merge SHA TBD) | `--memory-limit` restored to `2G` in `scripts/preflight.sh` (commit `4751b648`) |
 | L1–L7, L9 | To-do | — | — | Bundle when convenient |
-| L8 — TN backfill `Company::all()` chunking | Done | session1 | (merge SHA TBD) | `Company::query()->chunk(50, ...)` + `backfillCompany()` extraction (commit `bd67d17b`) |
+| L8 — TN backfill `Company::all()` chunking | Done | session1 | (merge SHA TBD) | `Company::query()->chunk(50, ...)` + `backfillCompany()` extraction (commit `539045bb`) |
 | L10 — Node 24 actions migration | Done | session7 | #59 | All 5 listed actions bumped to v5; `actions/upload-artifact@v4` covered by `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` env var pending v6 follow-up |
 
 ---
