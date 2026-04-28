@@ -245,16 +245,17 @@ When picking up an item, change its `Status` field to `In progress` and assign a
 
 | Item | Status | Owner | PR # | Notes |
 |---|---|---|---|---|
-| M1 — Workshop converter bypass | To-do | — | — | Material risk if WO + tolerance combine |
+| M1 — Workshop converter bypass | Done | session4 | dev `de4533e2` | Option 2 (inject `StripSubToleranceDiscountsService`) — adapter now derives `discount_amount` from WO `discount_percent` and strips before posting; regression suite covers €0.20 strip + €5 above-tolerance preserve |
 | M2 — LoyaltyMember morph migration | To-do | — | — | FE ripple |
 | M3 — Stamp duty draft guard | To-do | — | — | Needs accounting input |
 | M4 — `unit_categories` partial unique | To-do | — | — | Migration + duplicate cleanup |
 | M5 — FraudSettings shape decision | To-do | — | — | Pick canonical, delete loser |
 | H1 — JsonValidationErrors envelope | To-do | — | — | Sweep needed |
-| H2 — `work_order_line_id` whitelist | To-do | — | — | + retroactive backfill |
+| H2 — `work_order_line_id` whitelist | Done | session4 | dev `de4533e2` | `DocumentLine::$fillable` + `CopiesDocumentData::copyLine()` whitelist + property docblock; backfill migration `2026_04_28_120000_*` committed unstaged pending owner approval |
 | H3 — Compliance Rule #6 cleanup | To-do | — | — | Architectural |
 | H4 — preflight.sh PHPStan memory | To-do | — | — | One line |
-| L1–L9 | To-do | — | — | Bundle when convenient |
+| L1–L4, L6–L9 | To-do | — | — | Bundle when convenient |
+| L5 — PHPStan in TechnicianTimeEntryControllerTest | Done | session4 | dev `de4533e2` | All 11 errors across `tests/Feature/Workshop/` swept (Mockery typing + missing array param types + redundant assertIsString); `phpstan analyse tests/Feature/Workshop/` returns zero errors |
 | L10 — Node 24 actions migration | Done | session7 | #59 | All 5 listed actions bumped to v5; `actions/upload-artifact@v4` covered by `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` env var pending v6 follow-up |
 
 ---
