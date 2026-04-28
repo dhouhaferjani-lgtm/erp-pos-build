@@ -231,10 +231,10 @@ When picking up an item, change its `Status` field to `In progress` and assign a
 | Item | Status | Owner | PR # | Notes |
 |---|---|---|---|---|
 | M1 — Workshop converter bypass | To-do | — | — | Material risk if WO + tolerance combine |
-| M2 — LoyaltyMember morph migration | To-do | — | — | FE ripple |
+| M2 — LoyaltyMember morph migration | Done | session5 | — | Closed by 858d872c on session5-types-m2-m5; wire-format byte-stable, zero FE migration needed |
 | M3 — Stamp duty draft guard | To-do | — | — | Needs accounting input |
 | M4 — `unit_categories` partial unique | To-do | — | — | Migration + duplicate cleanup |
-| M5 — FraudSettings shape decision | To-do | — | — | Pick canonical, delete loser |
+| M5 — FraudSettings shape decision | Done | session5 | — | Closed by d8c1addc on session5-types-m2-m5; canonical CompanyFraudSettingsData DTO + 5-consumer FE migration; latent is_configured gap on update/reset closed in passing |
 | H1 — JsonValidationErrors envelope | To-do | — | — | Sweep needed |
 | H2 — `work_order_line_id` whitelist | To-do | — | — | + retroactive backfill |
 | H3 — Compliance Rule #6 cleanup | To-do | — | — | Architectural |
