@@ -28,54 +28,63 @@ return new class extends Migration
 {
     public function up(): void
     {
-        $companies = Company::all();
-
-        foreach ($companies as $company) {
-            $tenant = Tenant::find($company->tenant_id);
-            if ($tenant === null) {
-                continue;
+        // Chunk to avoid loading every Company into memory at once. The migration
+        // remains idempotent: each per-company branch below short-circuits when
+        // its target state is already reached (repos already exist, purpose
+        // already assigned, etc.), so re-running is safe.
+        Company::query()->chunk(50, function ($companies): void {
+            foreach ($companies as $company) {
+                $this->backfillCompany($company);
             }
+        });
+    }
 
-            $changes = [];
+    private function backfillCompany(Company $company): void
+    {
+        $tenant = Tenant::find($company->tenant_id);
+        if ($tenant === null) {
+            return;
+        }
 
-            // 1. Seed payment repositories if none exist
-            $repoCount = PaymentRepository::where('company_id', $company->id)->count();
-            if ($repoCount === 0) {
-                $seeder = new PaymentRepositorySeeder;
-                $seeder->run($company);
-                $changes[] = 'payment_repositories_seeded';
-            } else {
-                // Backfill gl_account_id on existing repositories that are missing it
-                $this->backfillRepositoryGlAccounts($company, $changes);
-            }
+        $changes = [];
 
-            // 2. Add CostOfGoodsSold purpose if missing (Tunisia: account 603)
-            if (strtoupper($company->country_code) === 'TN') {
-                $this->ensureTunisiaSystemPurpose(
-                    $company,
-                    SystemAccountPurpose::CostOfGoodsSold,
-                    '603',
-                    'Variation des stocks',
-                    'expense',
-                    '60',
-                    $changes,
-                );
+        // 1. Seed payment repositories if none exist
+        $repoCount = PaymentRepository::where('company_id', $company->id)->count();
+        if ($repoCount === 0) {
+            $seeder = new PaymentRepositorySeeder;
+            $seeder->run($company);
+            $changes[] = 'payment_repositories_seeded';
+        } else {
+            // Backfill gl_account_id on existing repositories that are missing it
+            $this->backfillRepositoryGlAccounts($company, $changes);
+        }
 
-                $this->ensureTunisiaSystemPurpose(
-                    $company,
-                    SystemAccountPurpose::GeneralExpense,
-                    null, // Don't create, just assign to existing account 65
-                    null,
-                    null,
-                    null,
-                    $changes,
-                    '65', // Try to assign to existing account with this code
-                );
-            }
+        // 2. Add CostOfGoodsSold purpose if missing (Tunisia: account 603)
+        if (strtoupper($company->country_code) === 'TN') {
+            $this->ensureTunisiaSystemPurpose(
+                $company,
+                SystemAccountPurpose::CostOfGoodsSold,
+                '603',
+                'Variation des stocks',
+                'expense',
+                '60',
+                $changes,
+            );
 
-            if (count($changes) > 0) {
-                Log::info("Migration: Backfilled company {$company->id} ({$company->name}): ".implode(', ', $changes));
-            }
+            $this->ensureTunisiaSystemPurpose(
+                $company,
+                SystemAccountPurpose::GeneralExpense,
+                null, // Don't create, just assign to existing account 65
+                null,
+                null,
+                null,
+                $changes,
+                '65', // Try to assign to existing account with this code
+            );
+        }
+
+        if (count($changes) > 0) {
+            Log::info("Migration: Backfilled company {$company->id} ({$company->name}): ".implode(', ', $changes));
         }
     }
 
