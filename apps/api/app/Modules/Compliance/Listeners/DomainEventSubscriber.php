@@ -24,6 +24,7 @@ use App\Modules\Inventory\Domain\Events\ReservationExpired;
 use App\Modules\Inventory\Domain\Events\ReservationReleased;
 use App\Modules\POS\Domain\Events\CashDrawerOperationRecorded;
 use App\Modules\POS\Domain\Events\ReceiptCreated;
+use App\Modules\POS\Domain\Events\ReceiptDrafted;
 use App\Modules\POS\Domain\Events\ReceiptPrinted;
 use App\Modules\POS\Domain\Events\ReceiptVoided;
 use App\Modules\POS\Domain\Events\ShiftClosed;
@@ -452,9 +453,35 @@ final class DomainEventSubscriber
     }
 
     /**
+     * Handle ReceiptDrafted events.
+     *
+     * Audit trail for the pre-seal lifecycle step — receipt created as
+     * pending_seal before fiscal finalization.
+     */
+    public function handleReceiptDrafted(ReceiptDrafted $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Receipt',
+            aggregateId: $event->receiptId,
+            eventType: $event->getEventName(),
+            payload: [
+                'receipt_number' => $event->receiptNumber,
+                'cashier_id' => $event->cashierId,
+                'total' => $event->total,
+                'currency' => $event->currency,
+                'terminal_id' => $event->terminalId,
+                'posted_at' => $event->postedAt,
+            ]
+        );
+    }
+
+    /**
      * Handle ReceiptCreated events.
      *
-     * NF525 TICKET event - every receipt creation with fiscal hash.
+     * NF525 TICKET event — fired after fiscal sealing; fiscalHash and
+     * chainSequence are always non-null at this point.
      */
     public function handleReceiptCreated(ReceiptCreated $event): void
     {
@@ -848,6 +875,7 @@ final class DomainEventSubscriber
             DraftLineRemoved::class => 'handleDraftLineRemoved',
 
             // POS events (NF525 compliance)
+            ReceiptDrafted::class => 'handleReceiptDrafted',
             ReceiptCreated::class => 'handleReceiptCreated',
             ReceiptVoided::class => 'handleReceiptVoided',
             ReceiptPrinted::class => 'handleReceiptPrinted',

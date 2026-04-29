@@ -11,6 +11,7 @@ use App\Modules\POS\Application\Exceptions\CashCountValidationException;
 use App\Modules\POS\Application\Exceptions\UnauthorizedManagerException;
 use App\Modules\POS\Domain\DTOs\CashCountBreakdownDTO;
 use App\Modules\POS\Domain\DTOs\CashCountInputDTO;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Events\CashCountRecorded;
 use App\Modules\POS\Domain\Events\ZReportGenerated;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
@@ -471,6 +472,7 @@ final class ReportGenerationService
         $rows = DB::table('pos_receipt_payments')
             ->join('pos_receipts', 'pos_receipt_payments.receipt_id', '=', 'pos_receipts.id')
             ->where('pos_receipts.terminal_id', $shift->terminal_id)
+            ->where('pos_receipts.fiscal_status', FiscalStatus::Fiscalized->value)
             ->where('pos_receipts.is_voided', false)
             ->where('pos_receipts.is_training', false)
             ->whereBetween('pos_receipts.posted_at', [$shift->opened_at, now()])
@@ -515,6 +517,7 @@ final class ReportGenerationService
         $rows = DB::table('pos_receipt_payments')
             ->join('pos_receipts', 'pos_receipt_payments.receipt_id', '=', 'pos_receipts.id')
             ->where('pos_receipts.terminal_id', $shift->terminal_id)
+            ->where('pos_receipts.fiscal_status', FiscalStatus::Fiscalized->value)
             ->where('pos_receipts.is_voided', false)
             ->where('pos_receipts.is_training', false)
             ->whereBetween('pos_receipts.posted_at', [$shift->opened_at, now()])

@@ -191,21 +191,17 @@ final class ReceiptPaymentServiceFinalizationTest extends TestCase
         $this->assertSame($fresh->fiscal_hash, $terminalFresh->last_hash);
     }
 
-    public function test_pay_keeps_pending_when_partial_tender(): void
+    // NOTE: split-across-calls partial tender (Phase E) is deferred to Phase E.
+    public function test_pay_finalizes_within_tolerance_short_pay(): void
     {
-        // Arrange: receipt total = 12.500, only 5.000 tendered
+        // Arrange: receipt total = 12.500, tender is 12.440 (0.060 short — within 0.5% tolerance)
         $receipt = $this->seedPendingSealReceipt('12.500');
 
         /** @var ReceiptPaymentService $service */
         $service = $this->app->make(ReceiptPaymentService::class);
 
-        // Act: partial tender — not enough to cover total
-        // (this will throw because existing code rejects underpayment outside tolerance)
-        // We test this edge by using a receipt total that leaves room within tolerance,
-        // but to keep it simple we verify that a receipt within tolerance is sealed.
-        // For a true partial case (split-across-calls), the current service architecture
-        // processes all payments in a single call. This test verifies that a single call
-        // with a short-pay WITHIN tolerance still seals the receipt.
+        // A tolerance-admitted short-pay is treated as fully-tendered (difference written off).
+        // This test verifies that a single call with a within-tolerance short-pay seals the receipt.
         $result = $service->processReceiptPayments(
             receiptId: $receipt->id,
             payments: [[

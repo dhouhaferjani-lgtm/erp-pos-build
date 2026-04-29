@@ -7,6 +7,7 @@ namespace App\Modules\POS\Application\Services;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\POS\Domain\CashDrawerOperation;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\GrandtotalEvent;
 use App\Modules\POS\Domain\Receipt;
@@ -99,10 +100,11 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             );
         }
 
-        // Sale receipts (non-voided, non-return, non-training)
+        // Sale receipts (non-voided, non-return, non-training, fiscalized only)
         $salesQuery = Receipt::with(['lines', 'vatDetails', 'payments'])
             ->where('company_id', $companyId)
             ->where('receipt_type', ReceiptType::Sale)
+            ->where('fiscal_status', FiscalStatus::Fiscalized->value)
             ->where('is_voided', false)
             ->where('is_training', false)
             ->whereBetween('posted_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
@@ -113,8 +115,10 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             $sales[] = $this->mapSaleReceipt($receipt);
         }
 
-        // Voided receipts (any type, voided in window, non-training)
+        // Voided receipts (any type, voided in window, non-training, fiscalized only)
+        // Receipts that were voided before being fiscalized should not appear in the export.
         $voidedQuery = Receipt::where('company_id', $companyId)
+            ->where('fiscal_status', FiscalStatus::Fiscalized->value)
             ->where('is_voided', true)
             ->where('is_training', false)
             ->whereBetween('voided_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
@@ -125,9 +129,10 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             $voidedReceipts[] = $this->mapVoidedReceipt($receipt);
         }
 
-        // Return receipts (non-voided, non-training)
+        // Return receipts (non-voided, non-training, fiscalized only)
         $returnsQuery = Receipt::where('company_id', $companyId)
             ->where('receipt_type', ReceiptType::Return)
+            ->where('fiscal_status', FiscalStatus::Fiscalized->value)
             ->where('is_voided', false)
             ->where('is_training', false)
             ->whereBetween('posted_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])

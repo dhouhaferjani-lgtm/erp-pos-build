@@ -44,4 +44,26 @@ final class CanonicalJsonEncoderTest extends TestCase
         $encoder = new CanonicalJsonEncoder;
         $this->assertSame('{"x":[1,2,3]}', $encoder->encode(['x' => [1, 2, 3]]));
     }
+
+    // ── Parity tests backfilled to match TS encoder test suite (9 tests each) ──
+
+    public function test_throws_on_non_integer_numbers(): void
+    {
+        $encoder = new CanonicalJsonEncoder;
+        $this->expectException(\InvalidArgumentException::class);
+        $encoder->encode(['x' => 1.5]);
+    }
+
+    public function test_handles_booleans(): void
+    {
+        $encoder = new CanonicalJsonEncoder;
+        // Keys sorted lexicographically: "bad" < "ok"
+        $this->assertSame('{"bad":false,"ok":true}', $encoder->encode(['ok' => true, 'bad' => false]));
+    }
+
+    public function test_encodes_empty_list_as_brackets(): void
+    {
+        $encoder = new CanonicalJsonEncoder;
+        $this->assertSame('[]', $encoder->encodeList([]));
+    }
 }

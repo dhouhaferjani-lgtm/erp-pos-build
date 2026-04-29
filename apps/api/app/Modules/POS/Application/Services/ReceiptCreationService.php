@@ -26,7 +26,7 @@ use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
-use App\Modules\POS\Domain\Events\ReceiptCreated;
+use App\Modules\POS\Domain\Events\ReceiptDrafted;
 use App\Modules\POS\Domain\Exceptions\DiscountExceedsLimitException;
 use App\Modules\POS\Domain\Exceptions\DiscountNotAllowedException;
 use App\Modules\POS\Domain\Receipt;
@@ -657,17 +657,17 @@ final class ReceiptCreationService
             ]);
 
             DB::afterCommit(function () use ($freshReceipt) {
-                event(new ReceiptCreated(
+                // Dispatch ReceiptDrafted — the pre-seal lifecycle event.
+                // ReceiptCreated (with fiscal hash + chain sequence) is dispatched later
+                // by ReceiptFinalizationService::finalize() once the receipt is sealed.
+                event(new ReceiptDrafted(
                     receiptId: $freshReceipt->id,
                     companyId: $freshReceipt->company_id,
                     terminalId: $freshReceipt->terminal_id,
+                    cashierId: (string) $freshReceipt->cashier_id,
                     receiptNumber: $freshReceipt->receipt_number,
                     total: (string) $freshReceipt->total,
                     currency: $freshReceipt->currency,
-                    // pending_seal receipts have no fiscal_hash yet; null is acceptable
-                    // until ReceiptFinalizationService::finalize() seals the receipt.
-                    fiscalHash: $freshReceipt->fiscal_hash,
-                    chainSequence: $freshReceipt->chain_sequence,
                     postedAt: $freshReceipt->posted_at->toIso8601String(),
                 ));
             });

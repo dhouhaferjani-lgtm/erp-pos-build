@@ -6,6 +6,7 @@ namespace App\Modules\POS\Application\Services;
 
 use App\Modules\POS\Application\Services\Fiscal\V3\V3ReceiptHashComputer;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
+use App\Modules\POS\Domain\Events\ReceiptCreated;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Terminal;
@@ -80,7 +81,25 @@ final class ReceiptFinalizationService
             $terminal->current_sequence++;
             $terminal->save();
 
-            return $receipt->refresh();
+            $sealed = $receipt->refresh();
+
+            // Dispatch ReceiptCreated — the post-seal NF525 TICKET event.
+            // At this point fiscalHash and chainSequence are always non-null.
+            DB::afterCommit(function () use ($sealed): void {
+                event(new ReceiptCreated(
+                    receiptId: $sealed->id,
+                    companyId: $sealed->company_id,
+                    terminalId: $sealed->terminal_id,
+                    receiptNumber: $sealed->receipt_number,
+                    total: (string) $sealed->total,
+                    currency: $sealed->currency,
+                    fiscalHash: (string) $sealed->fiscal_hash,
+                    chainSequence: (int) $sealed->chain_sequence,
+                    postedAt: $sealed->posted_at->toIso8601String(),
+                ));
+            });
+
+            return $sealed;
         });
     }
 }
