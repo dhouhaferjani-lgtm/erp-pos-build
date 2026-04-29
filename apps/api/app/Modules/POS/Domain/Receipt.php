@@ -10,6 +10,7 @@ use App\Modules\Contact\Domain\Contact;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\Tenant\Domain\Tenant;
@@ -68,6 +69,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $voided_by
  * @property string|null $void_reason
  * @property string|null $void_receipt_id Reference to negative receipt
+ * @property FiscalStatus $fiscal_status Lifecycle state: pending_seal, fiscalized, voided, etc.
  * @property Carbon|null $synced_at When terminal synced to server
  * @property string|null $sync_error Last sync error if any
  * @property array<string, mixed>|null $discount_breakdown JSONB audit snapshot of resolved discounts
@@ -183,6 +185,7 @@ class Receipt extends Model
             'total' => 'decimal:3',
             'change_due' => 'decimal:3',
             'tolerance_writeoff' => 'decimal:3',
+            'fiscal_status' => FiscalStatus::class,
             'consumption_mode' => ConsumptionMode::class,
             'is_voided' => 'boolean',
             'is_training' => 'boolean',
