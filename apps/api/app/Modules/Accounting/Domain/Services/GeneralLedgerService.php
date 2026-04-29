@@ -19,6 +19,10 @@ use App\Modules\POS\Domain\Receipt;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Modules\Voucher\Domain\Enums\VoucherEvent;
+use App\Modules\Voucher\Domain\Enums\VoucherSource;
+use App\Modules\Voucher\Domain\Voucher;
+use App\Modules\Voucher\Domain\VoucherLedger;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 
@@ -860,6 +864,142 @@ final class GeneralLedgerService
 
             return $entry->load('lines');
         });
+    }
+
+    /**
+     * Create a GL journal entry for a voucher ledger event.
+     *
+     * IMPORTANT: Voucher redemption MUST NOT route through createPOSPaymentEntry()
+     * — that method credits revenue and would double-count it. This method posts
+     * the correct non-taxable liability legs per the §5.2 GL matrix.
+     *
+     * Per EU Directive 2016/1065, MPV-issued vouchers carry NO VAT lines at the
+     * voucher layer. VAT is computed only on the underlying redeeming sale.
+     *
+     * Phase 1 supports: Issued (from Refund, ExchangeSurplus, Goodwill).
+     * PartiallyRedeemed is a projection-only event and returns no GL entry.
+     * All other events (Redeemed, Voided, Expired, Reversed, Transferred,
+     * RoundingAdjustment) are Phase 2+ and will throw until wired.
+     *
+     * GL matrix (Phase 1):
+     *   Issued + Refund/ExchangeSurplus → Dr SalesReturnsClearing / Cr VoucherLiability
+     *   Issued + Goodwill               → Dr MarketingGoodwillExpense / Cr VoucherLiability
+     *
+     * @throws \LogicException when event is not yet wired in Phase 1
+     */
+    public function createVoucherLedgerEntry(VoucherLedger $ledgerRow, Voucher $voucher): JournalEntry
+    {
+        if ($ledgerRow->event === VoucherEvent::PartiallyRedeemed) {
+            // Projection-only event: no monetary movement at the GL layer.
+            // Callers should not invoke this method for PartiallyRedeemed.
+            throw new \LogicException(
+                'VoucherEvent::PartiallyRedeemed is a projection-only event; '
+                .'it carries no GL lines. Do not call createVoucherLedgerEntry() for it.'
+            );
+        }
+
+        $wiredEvents = [VoucherEvent::Issued];
+
+        if (! in_array($ledgerRow->event, $wiredEvents, true)) {
+            throw new \LogicException(sprintf(
+                'VoucherEvent::%s GL wiring is not yet implemented in Phase 1. '
+                .'This ships in Task 14/15/16.',
+                $ledgerRow->event->name
+            ));
+        }
+
+        return DB::transaction(function () use ($ledgerRow, $voucher): JournalEntry {
+            $companyId = $voucher->company_id;
+            $entryNumber = $this->generateEntryNumber($companyId);
+            /** @var numeric-string $rawAmount */
+            $rawAmount = $ledgerRow->amount;
+            $absAmount = bccomp($rawAmount, '0', $this->scale()) < 0
+                ? bcmul($rawAmount, '-1', $this->scale())
+                : $rawAmount;
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $voucher->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => $ledgerRow->occurred_at->toDateString(),
+                'description' => $this->describeVoucherEvent($ledgerRow, $voucher),
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'voucher_ledger',
+                'source_id' => $ledgerRow->id,
+            ]);
+
+            [$debitPurpose, $creditPurpose] = $this->resolveVoucherEventAccounts($ledgerRow, $voucher);
+
+            $debitAccount = $this->getAccountByPurpose($companyId, $debitPurpose);
+            $creditAccount = $this->getAccountByPurpose($companyId, $creditPurpose);
+
+            // Debit leg
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $debitAccount->id,
+                'partner_id' => null,
+                'debit' => $absAmount,
+                'credit' => '0',
+                'description' => $debitPurpose->label(),
+                'line_order' => 0,
+            ]);
+
+            // Credit leg
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $creditAccount->id,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $absAmount,
+                'description' => $creditPurpose->label(),
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+    }
+
+    /**
+     * Resolve the debit and credit system account purposes for a voucher ledger event.
+     *
+     * @return array{0: SystemAccountPurpose, 1: SystemAccountPurpose}
+     */
+    private function resolveVoucherEventAccounts(VoucherLedger $ledgerRow, Voucher $voucher): array
+    {
+        return match ($ledgerRow->event) {
+            VoucherEvent::Issued => match ($voucher->source) {
+                VoucherSource::Refund,
+                VoucherSource::ExchangeSurplus => [
+                    SystemAccountPurpose::SalesReturnsClearing,
+                    SystemAccountPurpose::VoucherLiability,
+                ],
+                VoucherSource::Goodwill => [
+                    SystemAccountPurpose::MarketingGoodwillExpense,
+                    SystemAccountPurpose::VoucherLiability,
+                ],
+                default => throw new \LogicException(sprintf(
+                    'VoucherSource::%s GL wiring is not yet implemented in Phase 1.',
+                    $voucher->source->name
+                )),
+            },
+            default => throw new \LogicException(sprintf(
+                'VoucherEvent::%s GL wiring is not yet implemented in Phase 1.',
+                $ledgerRow->event->name
+            )),
+        };
+    }
+
+    /**
+     * Build a human-readable description for a voucher ledger event.
+     */
+    private function describeVoucherEvent(VoucherLedger $ledgerRow, Voucher $voucher): string
+    {
+        return sprintf(
+            'Voucher %s — %s (%s)',
+            $voucher->code,
+            $ledgerRow->event->value,
+            $voucher->source->value
+        );
     }
 
     /**

@@ -58,6 +58,13 @@ enum SystemAccountPurpose: string
     // Extensibility: Cash Discounts (Phase 2)
     case SalesDiscount = 'sales_discount';                        // 709 (or separate)
 
+    // Voucher Accounting (Phase 1 — non-taxable MPV layer per EU Directive 2016/1065)
+    case SalesReturnsClearing = 'sales_returns_clearing';         // Contra-revenue clearing for refund/exchange-surplus issuance
+    case VoucherLiability = 'voucher_liability';                  // Current liability: outstanding unredeemed voucher balance
+    case MarketingGoodwillExpense = 'marketing_goodwill_expense'; // Operating expense for goodwill voucher issuance
+    case VoucherBreakageIncome = 'voucher_breakage_income';       // Revenue recognised when vouchers expire unredeemed
+    case RoundingLossExpense = 'rounding_loss_expense';           // Sub-minor residual write-off on voucher rounding adjustments
+
     /**
      * Get human-readable label for display.
      */
@@ -91,6 +98,11 @@ enum SystemAccountPurpose: string
             self::RealizedFxGain => 'Realized FX Gain',
             self::RealizedFxLoss => 'Realized FX Loss',
             self::SalesDiscount => 'Sales Discount',
+            self::SalesReturnsClearing => 'Sales Returns Clearing',
+            self::VoucherLiability => 'Voucher Liability',
+            self::MarketingGoodwillExpense => 'Marketing Goodwill Expense',
+            self::VoucherBreakageIncome => 'Voucher Breakage Income',
+            self::RoundingLossExpense => 'Rounding Loss Expense',
         };
     }
 
@@ -126,15 +138,18 @@ enum SystemAccountPurpose: string
             self::SupplierAdvance, self::Inventory, self::VatDeductible,
             self::UninvoicedRevenue => AccountType::Asset,
 
-            self::SupplierPayable, self::CustomerAdvance, self::VatCollected => AccountType::Liability,
+            self::SupplierPayable, self::CustomerAdvance,
+            self::VatCollected, self::VoucherLiability => AccountType::Liability,
 
             self::ProductRevenue, self::ServiceRevenue,
-            self::PaymentToleranceIncome, self::RealizedFxGain => AccountType::Revenue,
+            self::PaymentToleranceIncome, self::RealizedFxGain,
+            self::VoucherBreakageIncome => AccountType::Revenue,
 
             self::CostOfGoodsSold, self::PurchaseExpenses, self::OfficeExpense,
             self::TravelExpense, self::MealsExpense, self::UtilitiesExpense, self::GeneralExpense,
             self::PaymentToleranceExpense, self::SalesReturn, self::RealizedFxLoss,
-            self::SalesDiscount => AccountType::Expense,
+            self::SalesDiscount, self::SalesReturnsClearing,
+            self::MarketingGoodwillExpense, self::RoundingLossExpense => AccountType::Expense,
 
             self::RetainedEarnings, self::OpeningBalanceEquity => AccountType::Equity,
         };
