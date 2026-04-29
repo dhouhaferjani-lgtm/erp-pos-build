@@ -85,6 +85,7 @@ final class SyncReceiptsRequest extends FormRequest
             'receipts.*.payments.*.transaction_reference' => ['nullable', 'string', 'max:100'],
             'receipts.*.consumption_mode' => ['nullable', 'string', 'in:SUR_PLACE,A_EMPORTER'],
             'receipts.*.table_id' => ['nullable', 'uuid'],
+            'receipts.*.fiscal_schema_version' => ['nullable', 'integer', 'in:2,3'],
         ];
     }
 

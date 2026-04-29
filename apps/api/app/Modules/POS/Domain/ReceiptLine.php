@@ -38,6 +38,9 @@ use Illuminate\Support\Carbon;
  * @property numeric-string $discount_amount
  * @property string|null $discount_reason
  * @property string|null $notes
+ * @property numeric-string|null $eco_tax_amount Eco-contribution amount (Phase 2)
+ * @property numeric-string|null $eco_tax_rate Eco-tax rate as decimal fraction (Phase 2)
+ * @property string|null $eco_tax_category Eco-tax category code, max 64 chars (Phase 2)
  * @property Carbon $created_at
  * @property Carbon $updated_at
  * @property-read Receipt $receipt
@@ -78,6 +81,10 @@ class ReceiptLine extends Model
         'discount_amount',
         'discount_reason',
         'notes',
+        // Phase 2 eco-tax forward compatibility (Phase 1: columns exist, Phase 2: writer wired)
+        'eco_tax_amount',
+        'eco_tax_rate',
+        'eco_tax_category',
     ];
 
     /**
@@ -96,6 +103,10 @@ class ReceiptLine extends Model
             'discount_amount' => 'decimal:3',
             'modifiers' => 'array',
             'combo_components' => 'array',
+            // Eco-tax columns: cast as strings for bcmath-safe arithmetic (project convention).
+            // Phase 1: always null; Phase 2 wires the writer.
+            'eco_tax_amount' => 'decimal:5',
+            'eco_tax_rate' => 'decimal:4',
         ];
     }
 

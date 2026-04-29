@@ -14,9 +14,12 @@ use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\POS\Application\DTOs\SyncReceiptPayload;
 use App\Modules\POS\Application\DTOs\SyncReceiptResult;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Enums\SyncStatus;
+use App\Modules\POS\Domain\Exceptions\OfflineFiscalHashMismatchException;
+use App\Modules\POS\Domain\Exceptions\OfflineReceiptVersionMismatchException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
 use App\Modules\POS\Domain\ReceiptPayment;
@@ -41,6 +44,8 @@ use Illuminate\Support\Str;
  * - Hash chain continuity validation
  * - Stock decrement per receipt
  * - Chain break propagation (if receipt N fails, N+1..N+M all fail)
+ * - v3-aware finalization: delegates hash computation to ReceiptFinalizationService
+ * - offline_fiscal_hash verification: server recomputes and compares against payload hash
  */
 final class ReceiptSyncService
 {
@@ -48,6 +53,7 @@ final class ReceiptSyncService
         private readonly CompanyContext $companyContext,
         private readonly ReceiptHashService $receiptHashService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly ReceiptFinalizationService $finalizationService,
     ) {}
 
     private function scale(): int
@@ -108,6 +114,8 @@ final class ReceiptSyncService
      * Sync a single offline receipt.
      *
      * Checks idempotency, validates hash chain, creates receipt with stock decrement.
+     * Delegates finalization (hash computation + chain advance) to ReceiptFinalizationService.
+     * After finalize, verifies the server-computed hash matches the payload's offline_fiscal_hash.
      */
     private function syncSingleReceipt(SyncReceiptPayload $payload): SyncReceiptResult
     {
@@ -146,7 +154,24 @@ final class ReceiptSyncService
                 );
             }
 
-            // 3. Validate hash chain continuity
+            // 3. Validate fiscal_schema_version: payload version must match terminal version.
+            //    Force-drain cutover policy: a v3 terminal refuses any v2 payload, and
+            //    a v2 terminal refuses any v3 payload. No compatibility window.
+            $terminalVersion = $terminal->fiscal_schema_version;
+            $payloadVersion = $payload->fiscalSchemaVersion;
+
+            if ($payloadVersion !== $terminalVersion) {
+                $exception = $payloadVersion === 2 && $terminalVersion === 3
+                    ? OfflineReceiptVersionMismatchException::payloadV2AgainstV3Terminal($terminal->id)
+                    : OfflineReceiptVersionMismatchException::versionMismatch($terminal->id, $payloadVersion, $terminalVersion);
+
+                return SyncReceiptResult::failed(
+                    $payload->idempotencyKey,
+                    $exception->getMessage(),
+                );
+            }
+
+            // 4. Validate hash chain continuity
             // The client's previous_hash must match the terminal's current last_hash
             // Both can be null/empty for the first receipt in chain
             $clientPreviousHash = $payload->previousHash ?? '';
@@ -158,7 +183,7 @@ final class ReceiptSyncService
                 );
             }
 
-            // 4. Find active shift (or any shift for this terminal if created offline)
+            // 5. Find active shift (or any shift for this terminal if created offline)
             $shift = Shift::where('terminal_id', $terminal->id)
                 ->where('status', ShiftStatus::Open)
                 ->first();
@@ -167,7 +192,7 @@ final class ReceiptSyncService
             $cashier = User::find($cashierId);
             $cashierName = $cashier->name ?? 'Unknown';
 
-            // 5. Resolve line items and compute VAT
+            // 6. Resolve line items and compute VAT
             $receiptLines = [];
             $vatAggregates = [];
             $subtotal = '0.00';
@@ -189,7 +214,10 @@ final class ReceiptSyncService
                         $sellableName = $product->name;
                         $sellableCode = $product->sku ?? $product->barcode ?? '';
                         $sellableUnit = $product->unit ?? 'pc';
-                        $taxRate = (string) ($product->tax_rate ?? '0.00');
+                        // Normalize tax_rate to 2 decimal places so the vatBreakdown hash is
+                        // consistent regardless of how the column is returned by the DB driver
+                        // (e.g. 0 vs '0.00' vs '0' for a nullable decimal(5,2) column).
+                        $taxRate = CurrencyScale::bcformat($product->tax_rate ?? '0', 2);
                     }
                 } elseif ($compositeItemId !== null) {
                     $compositeItem = CompositeItem::find($compositeItemId);
@@ -197,7 +225,7 @@ final class ReceiptSyncService
                         $sellableName = $compositeItem->getSellableName();
                         $sellableCode = $compositeItem->code;
                         $sellableUnit = $compositeItem->getSellableUnit() ?? 'pc';
-                        $taxRate = (string) ($compositeItem->tax_rate ?? '0.00');
+                        $taxRate = CurrencyScale::bcformat($compositeItem->tax_rate ?? '0', 2);
                     }
                 }
 
@@ -274,25 +302,57 @@ final class ReceiptSyncService
             }
             unset($vatData);
 
-            // Use client-provided totals (they are the fiscal truth from the offline sale)
-            $total = $payload->total;
+            // Use client-provided totals (they are the fiscal truth from the offline sale).
+            // Normalize to the currency scale using bcadd so that the stored value has
+            // the correct decimal precision (e.g. '20.00' → '20.000' for TND=3).
+            // This is required for v2 hash parity because ReceiptHashService::serializeForHashing()
+            // uses $receipt->total as-is; a precision mismatch ('20.00' vs '20.000') produces a
+            // different hash than what the ReceiptCreationService (online path) would produce.
+            $scale = $this->scale();
+            /** @var numeric-string $payloadTotal */
+            $payloadTotal = $payload->total;
+            /** @var numeric-string $payloadSubtotal */
+            $payloadSubtotal = $payload->subtotal;
+            /** @var numeric-string $payloadTaxAmount */
+            $payloadTaxAmount = $payload->taxAmount;
+            /** @var numeric-string $payloadDiscountAmount */
+            $payloadDiscountAmount = $payload->discountAmount;
+            $total = bcadd($payloadTotal, '0', $scale);
+            $subtotalNorm = bcadd($payloadSubtotal, '0', $scale);
+            $taxAmountNorm = bcadd($payloadTaxAmount, '0', $scale);
+            $discountAmountNorm = bcadd($payloadDiscountAmount, '0', $scale);
+            $changeDueNorm = $payload->changeDue !== null
+                ? (static function (string $v) use ($scale): string {
+                    /** @var numeric-string $v */
+                    return bcadd($v, '0', $scale);
+                })($payload->changeDue)
+                : null;
 
-            // 6. Generate hashes
+            // Compute sub-hashes required by v2 ReceiptHashService.
+            // These are also stored for auditability in the v3 path (the v3 computer
+            // does not read them, but the columns are NOT NULL so they must be populated).
             $vatHash = $this->receiptHashService->hashVATBreakdown(array_values($vatAggregates));
+            // Payment rows are not yet persisted when this hash is computed; for the sync
+            // path (same as the original code) we pass an empty array.  The hash serves
+            // as a column filler; the v2 hash chain itself uses the serialized receipt
+            // fields (not this standalone payment-hash column directly).
             $paymentHash = $this->receiptHashService->hashPaymentMethods([]);
 
             $postedAt = Carbon::parse($payload->createdAt);
-            $previousHash = $terminal->last_hash;
 
-            // 7. Get sequence from terminal
+            // 7. Get sequence / year from terminal.
+            //    If the receipt was created in a new year (offline year-boundary scenario),
+            //    reset the terminal's sequence counter and persist immediately so that
+            //    ReceiptFinalizationService reads the correct chain state.
             $currentYear = (int) $postedAt->format('Y');
             if ($terminal->current_year !== $currentYear) {
                 $terminal->current_year = $currentYear;
                 $terminal->current_sequence = 1;
+                $terminal->save();
             }
-            $sequence = $terminal->current_sequence;
 
-            // 8. Create receipt
+            // 8. Create receipt as pending_seal — no inline hash, no terminal advance yet.
+            //    ReceiptFinalizationService will compute the hash and advance the chain.
             $receiptId = Str::uuid()->toString();
             $receipt = new Receipt([
                 'tenant_id' => $terminal->tenant_id,
@@ -301,23 +361,23 @@ final class ReceiptSyncService
                 'terminal_id' => $terminal->id,
                 'receipt_number' => $payload->receiptNumber,
                 'receipt_type' => ReceiptType::Sale,
-                'chain_sequence' => $sequence,
+                'chain_sequence' => null,   // set by finalizationService
                 'receipt_year' => $currentYear,
-                'previous_hash' => $previousHash,
+                'previous_hash' => null,    // set by finalizationService
                 'posted_at' => $postedAt,
                 'cashier_id' => $cashierId,
                 'cashier_name' => $cashierName,
-                'subtotal' => $payload->subtotal,
-                'tax_amount' => $payload->taxAmount,
-                'discount_amount' => $payload->discountAmount,
+                'subtotal' => $subtotalNorm,
+                'tax_amount' => $taxAmountNorm,
+                'discount_amount' => $discountAmountNorm,
                 'total' => $total,
-                'change_due' => $payload->changeDue,
+                'change_due' => $changeDueNorm,
                 'currency' => $payload->currency,
                 'consumption_mode' => $payload->consumptionMode !== null
                     ? ConsumptionMode::from($payload->consumptionMode)
                     : null,
                 'table_id' => $payload->tableId,
-                'fiscal_status' => 'fiscalized',
+                'fiscal_status' => FiscalStatus::PendingSeal,
                 'is_voided' => false,
                 'vat_breakdown_hash' => $vatHash,
                 'payment_methods_hash' => $paymentHash,
@@ -326,11 +386,8 @@ final class ReceiptSyncService
                 'notes' => null,
             ]);
 
-            // Calculate fiscal hash
             $receipt->id = $receiptId;
             $receipt->setRelation('terminal', $terminal);
-            $fiscalHash = $this->receiptHashService->calculateHash($receipt, $previousHash);
-            $receipt->fiscal_hash = $fiscalHash;
             $receipt->save();
 
             // 9. Create receipt lines
@@ -349,12 +406,41 @@ final class ReceiptSyncService
                 ]));
             }
 
-            // 11. Update terminal sequence and hash chain
-            $terminal->current_sequence = $sequence + 1;
-            $terminal->last_hash = $fiscalHash;
-            $terminal->save();
+            // 11. Create payment records
+            //     (Phase 1: voucher ledger entries are empty.)
+            foreach ($payload->payments as $entry) {
+                $method = PaymentMethod::findOrFail($entry['payment_method_id']);
+                ReceiptPayment::create([
+                    'id' => Str::uuid()->toString(),
+                    'receipt_id' => $receipt->id,
+                    'payment_method_id' => $entry['payment_method_id'],
+                    'payment_type' => $method->code,
+                    'amount' => $entry['amount'],
+                    'card_last_four' => $entry['card_last_four'] ?? null,
+                    'transaction_reference' => $entry['transaction_reference'] ?? null,
+                ]);
+            }
 
-            // 12. Decrement stock for product lines
+            // 12. Finalize: ReceiptFinalizationService computes the hash using the
+            //     version-appropriate path (v2 legacy or v3 canonical) and advances
+            //     the terminal's chain counters under the existing FOR UPDATE lock.
+            //     The service runs its own DB::transaction() which is nested inside
+            //     ours — it will reuse this transaction (Laravel savepoints).
+            $receipt = $this->finalizationService->finalize($receipt);
+            $fiscalHash = $receipt->fiscal_hash;
+
+            // 13. Verify server-computed hash against the offline hash from the payload.
+            //     Mismatch = tamper / version drift → throw to roll back the transaction.
+            if ($fiscalHash !== $payload->offlineFiscalHash) {
+                throw OfflineFiscalHashMismatchException::create(
+                    $payload->receiptNumber,
+                    $payload->offlineFiscalHash,
+                    (string) $fiscalHash,
+                );
+            }
+
+            // 14. Decrement stock for product lines
+            $terminal->refresh();
             foreach ($receiptLines as $lineData) {
                 if ($lineData['product_id'] !== null) {
                     $this->decrementStock(
@@ -369,24 +455,10 @@ final class ReceiptSyncService
                 }
             }
 
-            // 13. Create payment records — loop over the payments array
-            foreach ($payload->payments as $entry) {
-                $method = PaymentMethod::findOrFail($entry['payment_method_id']);
-                ReceiptPayment::create([
-                    'id' => Str::uuid()->toString(),
-                    'receipt_id' => $receipt->id,
-                    'payment_method_id' => $entry['payment_method_id'],
-                    'payment_type' => $method->code,
-                    'amount' => $entry['amount'],
-                    'card_last_four' => $entry['card_last_four'] ?? null,
-                    'transaction_reference' => $entry['transaction_reference'] ?? null,
-                ]);
-            }
-
             return SyncReceiptResult::synced(
                 $payload->idempotencyKey,
                 $receipt->id,
-                $fiscalHash,
+                (string) $fiscalHash,
                 terminalLastHash: $terminal->last_hash,
                 terminalHashSequence: $terminal->current_sequence - 1,
             );
