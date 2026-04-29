@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\POS\Presentation\Controllers\AnalyticsController;
 use App\Modules\POS\Presentation\Controllers\AuthorizedManagersController;
+use App\Modules\POS\Presentation\Controllers\CustomerHistorySearchAuditController;
 use App\Modules\POS\Presentation\Controllers\CashDrawerController;
 use App\Modules\POS\Presentation\Controllers\DiscountController;
 use App\Modules\POS\Presentation\Controllers\FiscalSchemaCutoverController;
@@ -112,6 +113,11 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 
     // Authorized managers for variance-close PIN approval
     Route::get('/pos/authorized-managers', [AuthorizedManagersController::class, 'index']);
+
+    // Customer history search audit log (Manager / Admin only)
+    Route::get('/pos/customer-history-searches', [CustomerHistorySearchAuditController::class, 'index'])
+        ->middleware('can:pos.search_customer_full_history')
+        ->name('pos.customer-history-searches.index');
 
     // Analytics
     Route::get('/pos/analytics/summary', [AnalyticsController::class, 'summary']);

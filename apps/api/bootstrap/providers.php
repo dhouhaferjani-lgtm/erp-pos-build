@@ -17,6 +17,7 @@ use App\Modules\Import\Providers\ImportServiceProvider;
 use App\Modules\Inventory\Providers\InventoryServiceProvider;
 use App\Modules\Loyalty\Providers\LoyaltyServiceProvider;
 use App\Modules\Marketplace\Providers\MarketplaceServiceProvider;
+use App\Modules\Voucher\Providers\VoucherServiceProvider;
 use App\Modules\Media\MediaServiceProvider;
 use App\Modules\Menu\Providers\MenuServiceProvider;
 use App\Modules\Partner\PartnerServiceProvider;
@@ -77,6 +78,7 @@ return [
     KitchenServiceProvider::class,
     UomServiceProvider::class,
     LoyaltyServiceProvider::class,
+    VoucherServiceProvider::class,
     CatalogServiceProvider::class,
     MenuServiceProvider::class,
     PromotionServiceProvider::class,
