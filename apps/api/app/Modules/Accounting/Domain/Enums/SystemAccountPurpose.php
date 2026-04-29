@@ -64,6 +64,7 @@ enum SystemAccountPurpose: string
     case MarketingGoodwillExpense = 'marketing_goodwill_expense'; // Operating expense for goodwill voucher issuance
     case VoucherBreakageIncome = 'voucher_breakage_income';       // Revenue recognised when vouchers expire unredeemed
     case RoundingLossExpense = 'rounding_loss_expense';           // Sub-minor residual write-off on voucher rounding adjustments
+    case PosTenderClearing = 'pos_tender_clearing';               // Transient suspense: credit leg when voucher redeems against a POS sale (Task 14)
 
     /**
      * Get human-readable label for display.
@@ -103,6 +104,7 @@ enum SystemAccountPurpose: string
             self::MarketingGoodwillExpense => 'Marketing Goodwill Expense',
             self::VoucherBreakageIncome => 'Voucher Breakage Income',
             self::RoundingLossExpense => 'Rounding Loss Expense',
+            self::PosTenderClearing => 'POS Tender Clearing',
         };
     }
 
@@ -136,7 +138,7 @@ enum SystemAccountPurpose: string
         return match ($this) {
             self::Bank, self::Cash, self::CustomerReceivable,
             self::SupplierAdvance, self::Inventory, self::VatDeductible,
-            self::UninvoicedRevenue => AccountType::Asset,
+            self::UninvoicedRevenue, self::PosTenderClearing => AccountType::Asset,
 
             self::SupplierPayable, self::CustomerAdvance,
             self::VatCollected, self::VoucherLiability => AccountType::Liability,

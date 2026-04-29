@@ -162,6 +162,8 @@ class GenericChartOfAccountsSeeder extends Seeder
                 'system_purpose' => SystemAccountPurpose::VoucherBreakageIncome->value, 'is_system' => true],
             ['code' => '6588', 'name' => 'Rounding Loss Expense (Voucher)', 'type' => 'expense', 'parent_code' => '6000',
                 'system_purpose' => SystemAccountPurpose::RoundingLossExpense->value, 'is_system' => true],
+            ['code' => '5810', 'name' => 'POS Tender Clearing (Voucher Redemption)', 'type' => 'asset', 'parent_code' => null,
+                'system_purpose' => SystemAccountPurpose::PosTenderClearing->value, 'is_system' => true],
         ];
     }
 }

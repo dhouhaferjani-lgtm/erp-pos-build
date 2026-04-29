@@ -245,6 +245,8 @@ class FranceChartOfAccountsSeeder extends Seeder
                 'system_purpose' => SystemAccountPurpose::VoucherBreakageIncome->value, 'is_system' => true],
             ['code' => '6588', 'name' => 'Pertes d\'arrondis sur bons d\'achat', 'type' => 'expense', 'parent_code' => '65',
                 'system_purpose' => SystemAccountPurpose::RoundingLossExpense->value, 'is_system' => true],
+            ['code' => '5810', 'name' => 'Compte d\'attente règlements TPV (bons d\'achat)', 'type' => 'asset', 'parent_code' => '58',
+                'system_purpose' => SystemAccountPurpose::PosTenderClearing->value, 'is_system' => true],
 
             ['code' => '71', 'name' => 'Production stockée (ou déstockage)', 'type' => 'revenue', 'parent_code' => '7'],
             ['code' => '713', 'name' => 'Variation des stocks (en-cours de production de biens)', 'type' => 'revenue', 'parent_code' => '71'],

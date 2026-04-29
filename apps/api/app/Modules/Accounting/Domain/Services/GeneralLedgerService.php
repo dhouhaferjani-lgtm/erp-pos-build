@@ -898,12 +898,16 @@ final class GeneralLedgerService
             );
         }
 
-        $wiredEvents = [VoucherEvent::Issued];
+        $wiredEvents = [
+            VoucherEvent::Issued,
+            VoucherEvent::Redeemed,
+            VoucherEvent::RoundingAdjustment,
+        ];
 
         if (! in_array($ledgerRow->event, $wiredEvents, true)) {
             throw new \LogicException(sprintf(
                 'VoucherEvent::%s GL wiring is not yet implemented in Phase 1. '
-                .'This ships in Task 14/15/16.',
+                .'This ships in Task 15/16.',
                 $ledgerRow->event->name
             ));
         }
@@ -962,6 +966,18 @@ final class GeneralLedgerService
     /**
      * Resolve the debit and credit system account purposes for a voucher ledger event.
      *
+     * GL matrix (Phase 1):
+     *   Issued + Refund/ExchangeSurplus → Dr SalesReturnsClearing / Cr VoucherLiability
+     *   Issued + Goodwill               → Dr MarketingGoodwillExpense / Cr VoucherLiability
+     *   Redeemed                        → Dr VoucherLiability / Cr PosTenderClearing
+     *   RoundingAdjustment              → Dr VoucherLiability / Cr RoundingLossExpense
+     *
+     * No VAT lines on any voucher GL event (EU Directive 2016/1065 MPV rule).
+     *
+     * NOTE: Voucher tender rows MUST bypass GeneralLedgerService::createPOSPaymentEntry()
+     * in the sale receipt finalization path — that method credits revenue and would
+     * double-count it. TODO: wire the bypass in Tasks 22-25 (Phase E) / Task 53 (POS frontend).
+     *
      * @return array{0: SystemAccountPurpose, 1: SystemAccountPurpose}
      */
     private function resolveVoucherEventAccounts(VoucherLedger $ledgerRow, Voucher $voucher): array
@@ -982,6 +998,19 @@ final class GeneralLedgerService
                     $voucher->source->name
                 )),
             },
+            // Redemption: paying off the outstanding voucher liability.
+            // Credit goes to PosTenderClearing — a transient suspense account that
+            // accumulates per shift and will be offset by the POS receipt's revenue entry.
+            // Voucher tender MUST bypass createPOSPaymentEntry() (TODO Tasks 22-25 / 53).
+            VoucherEvent::Redeemed => [
+                SystemAccountPurpose::VoucherLiability,
+                SystemAccountPurpose::PosTenderClearing,
+            ],
+            // Rounding adjustment: write off the sub-minor-unit residual balance.
+            VoucherEvent::RoundingAdjustment => [
+                SystemAccountPurpose::VoucherLiability,
+                SystemAccountPurpose::RoundingLossExpense,
+            ],
             default => throw new \LogicException(sprintf(
                 'VoucherEvent::%s GL wiring is not yet implemented in Phase 1.',
                 $ledgerRow->event->name
