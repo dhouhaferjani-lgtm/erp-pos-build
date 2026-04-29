@@ -80,6 +80,7 @@ use Illuminate\Support\Carbon;
  * @property bool|null $out_of_window TRUE when return window had expired at time of return
  * @property string|null $policy_trigger Machine-readable policy trigger key (e.g. "over_threshold")
  * @property string|null $refund_request_id Client-supplied idempotency UUID
+ * @property string|null $exchange_group_id UUID shared by both halves of an exchange transaction (committed in v3 hash)
  * @property Carbon $created_at Server creation time
  * @property Carbon $updated_at
  * @property-read Tenant $tenant
@@ -178,6 +179,7 @@ class Receipt extends Model
         'out_of_window',
         'policy_trigger',
         'refund_request_id',
+        'exchange_group_id',
     ];
 
     /**

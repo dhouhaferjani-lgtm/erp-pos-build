@@ -92,6 +92,7 @@ final class ReceiptReturnService
      * @param  string|null  $refundRequestId  Client-supplied idempotency UUID
      * @param  string|null  $authorizedByUserId  Manager UUID when an override fires
      * @param  string|null  $overrideReason  Reason text for the manager override
+     * @param  string|null  $exchangeGroupId  Exchange group UUID shared with the paired sale receipt (Phase F)
      * @return Receipt The created return receipt with relationships loaded
      *
      * @throws \RuntimeException If receipt cannot be returned
@@ -110,6 +111,7 @@ final class ReceiptReturnService
         ?string $refundRequestId = null,
         ?string $authorizedByUserId = null,
         ?string $overrideReason = null,
+        ?string $exchangeGroupId = null,
     ): Receipt {
         if (count($returnLines) === 0) {
             throw new \InvalidArgumentException('At least one line item is required for a return');
@@ -129,6 +131,7 @@ final class ReceiptReturnService
             $authorizedByUserId,
             $overrideReason,
             $companyId,
+            $exchangeGroupId,
         ): Receipt {
             // ─────────────────────────────────────────────────────────────────
             // Step 1: DB-level idempotency — return existing receipt unchanged
@@ -261,6 +264,7 @@ final class ReceiptReturnService
                 authorizedByUserId: $authorizedByUserId,
                 overrideReason: $overrideReason,
                 refundRequestId: $refundRequestId,
+                exchangeGroupId: $exchangeGroupId,
             );
 
             // ─────────────────────────────────────────────────────────────────
@@ -311,6 +315,9 @@ final class ReceiptReturnService
                     $cashier,
                     $shift,
                 ),
+                // ExchangeDeferred: no payment side effect on the return half.
+                // Net settlement is handled externally by ExchangeService.
+                RefundDestination::ExchangeDeferred => null,
             };
 
             // ─────────────────────────────────────────────────────────────────
@@ -444,6 +451,9 @@ final class ReceiptReturnService
      * When $requested is null (legacy / unspecified), default to Cash to preserve
      * backward-compatible behaviour (original service always did a cash-drawer refund).
      *
+     * ExchangeDeferred bypasses the policy resolver: it is a service-internal sentinel
+     * used by ExchangeService to indicate that net settlement happens externally.
+     *
      * @param  array<string>  $cashierPermissions
      */
     private function resolveDestination(
@@ -453,6 +463,11 @@ final class ReceiptReturnService
         array $cashierPermissions,
     ): RefundDestination {
         $effective = $requested ?? RefundDestination::Cash;
+
+        // ExchangeDeferred is a service-internal value — skip the policy resolver.
+        if ($effective === RefundDestination::ExchangeDeferred) {
+            return RefundDestination::ExchangeDeferred;
+        }
 
         return $this->destinationResolver->resolve(
             $effective,
@@ -533,6 +548,7 @@ final class ReceiptReturnService
         ?string $authorizedByUserId,
         ?string $overrideReason,
         ?string $refundRequestId,
+        ?string $exchangeGroupId = null,
     ): Receipt {
         $now = Carbon::now();
         $receiptId = Str::uuid()->toString();
@@ -589,6 +605,8 @@ final class ReceiptReturnService
             'authorized_by_user_id' => $authorizedByUserId,
             'override_reason' => $overrideReason,
             'refund_request_id' => $refundRequestId,
+            // Exchange link (Phase F / Task 36)
+            'exchange_group_id' => $exchangeGroupId,
         ]);
 
         $draft->id = $receiptId;

@@ -13,12 +13,12 @@ use App\Shared\Domain\CurrencyScale;
  * Computes the v3 canonical receipt hash by mapping a Receipt Eloquent model
  * onto the CanonicalPayloadBuilder's input shape and calling SHA-256.
  *
- * Phase 1 constraints (Tasks 1-9):
- *   - voucher_ledger_entries is always [] (voucher module not yet merged)
- *   - exchange_group_id is always null (Task 35+)
- *   - audit is always null (refund audit fields come in Task 27+)
- *
- * These will be populated by later tasks as those features land.
+ * Phase F (Tasks 34-38):
+ *   - exchange_group_id is now read from $receipt->exchange_group_id (nullable UUID).
+ *     Both halves of an exchange share the same group UUID which is committed into each
+ *     half's canonical hash payload (spec §3.4 / §5.1).
+ *   - voucher_ledger_entries populated since Phase E (Task 30).
+ *   - audit populated since Phase E (Task 27).
  */
 final class V3ReceiptHashComputer
 {
@@ -60,8 +60,14 @@ final class V3ReceiptHashComputer
      *   - audit: populated from the receipt's new return-audit columns.  NULL when no audit
      *     fields are set (normal sale receipts).
      *
+     * Phase F addition (spec §3.4 / §5.1):
+     *   - exchange_group_id: read from $receipt->exchange_group_id (nullable UUID).
+     *     When two receipts (return + sale) form an exchange, they share the same group UUID
+     *     which is encoded into each half's hash. A tampering detector can verify the link.
+     *     For non-exchange receipts this is null — hash unchanged from Phase E.
+     *
      * Fixture-01 round-trip: cash-only sale with no vouchers → empty voucher_ledger_entries,
-     * null audit → hash unchanged from Phase A/B/C/D.
+     * null audit, null exchange_group_id → hash unchanged from Phase A/B/C/D/E.
      *
      * @return array{
      *   receipt_number: string,
@@ -72,7 +78,7 @@ final class V3ReceiptHashComputer
      *   vat_breakdown: list<array{rate: string, amount: numeric-string}>,
      *   payments: list<array{method_code: string, payment_type: string, amount: numeric-string, instrument_type: null, instrument_serial: null}>,
      *   voucher_ledger_entries: list<array{voucher_id: string, voucher_code: string, event: string, amount: numeric-string, gl_journal_entry_id: string|null}>,
-     *   exchange_group_id: null,
+     *   exchange_group_id: string|null,
      *   audit: array{authorized_by_user_id: string|null, override_reason: string|null, out_of_window: bool|null, policy_trigger: string|null, refund_request_id: string|null}|null
      * }
      */
@@ -146,7 +152,7 @@ final class V3ReceiptHashComputer
             'vat_breakdown' => $vatBreakdown,
             'payments' => $payments,
             'voucher_ledger_entries' => $voucherLedgerEntries,
-            'exchange_group_id' => null,
+            'exchange_group_id' => $receipt->exchange_group_id,
             'audit' => $audit,
         ];
     }

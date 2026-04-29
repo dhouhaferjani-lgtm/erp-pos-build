@@ -93,6 +93,7 @@ final class ReceiptCreationService
      * @param  string|null  $loyaltyDiscountAmount  Optional loyalty reward discount
      * @param  string|null  $loyaltyRewardId  Optional loyalty reward reference
      * @param  ConsumptionMode|null  $consumptionMode  Optional consumption mode (F&B)
+     * @param  string|null  $exchangeGroupId  Exchange group UUID to commit in both halves' v3 hash (Phase F)
      * @return Receipt The created receipt with relationships loaded
      *
      * @throws \RuntimeException If no active shift or insufficient stock
@@ -112,6 +113,7 @@ final class ReceiptCreationService
         ?string $loyaltyDiscountAmount = null,
         ?string $loyaltyRewardId = null,
         ?ConsumptionMode $consumptionMode = null,
+        ?string $exchangeGroupId = null,
     ): Receipt {
         if (count($lines) === 0) {
             throw new \InvalidArgumentException('At least one line item is required');
@@ -119,7 +121,7 @@ final class ReceiptCreationService
 
         $companyId = $this->companyContext->requireCompanyId();
 
-        return DB::transaction(function () use ($terminalId, $lines, $customerId, $contactId, $notes, $companyId, $transactionDiscountAmount, $transactionDiscountReason, $couponCode, $loyaltyDiscountAmount, $loyaltyRewardId, $consumptionMode): Receipt {
+        return DB::transaction(function () use ($terminalId, $lines, $customerId, $contactId, $notes, $companyId, $transactionDiscountAmount, $transactionDiscountReason, $couponCode, $loyaltyDiscountAmount, $loyaltyRewardId, $consumptionMode, $exchangeGroupId): Receipt {
             // 1. Lock and load terminal with location
             /** @var Terminal $terminal */
             $terminal = Terminal::where('company_id', $companyId)
@@ -571,6 +573,8 @@ final class ReceiptCreationService
                 'consumption_mode' => $consumptionMode,
                 'discount_breakdown' => $discountBreakdownData,
                 'notes' => $notes,
+                // Exchange link (Phase F / Task 36)
+                'exchange_group_id' => $exchangeGroupId,
             ]);
 
             $receipt->id = $receiptId;

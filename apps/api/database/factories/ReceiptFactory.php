@@ -21,7 +21,7 @@ class ReceiptFactory extends Factory
     protected $model = Receipt::class;
 
     /**
-     * @return array<string, mixed>
+     * @return array<model-property<Receipt>, mixed>
      */
     public function definition(): array
     {
@@ -68,15 +68,33 @@ class ReceiptFactory extends Factory
     /**
      * Configure receipt with consistent totals.
      * Use when overriding total to ensure CHECK constraint passes.
+     *
+     * @param  numeric-string  $total
+     * @param  numeric-string  $taxAmount
      */
     public function withTotal(string $total, string $taxAmount = '0.000'): static
     {
-        $subtotal = bcsub($total, $taxAmount, 3);
+        /** @var numeric-string $numericTotal */
+        $numericTotal = $total;
+        /** @var numeric-string $numericTaxAmount */
+        $numericTaxAmount = $taxAmount;
+        $subtotal = bcsub($numericTotal, $numericTaxAmount, 3);
 
         return $this->state(fn () => [
             'total' => $total,
             'subtotal' => $subtotal,
             'tax_amount' => $taxAmount,
+        ]);
+    }
+
+    /**
+     * Configure receipt as part of an exchange group (Phase F).
+     * Both the return half and the sale half must share the same exchange_group_id.
+     */
+    public function inExchangeGroup(string $exchangeGroupId): static
+    {
+        return $this->state(fn () => [
+            'exchange_group_id' => $exchangeGroupId,
         ]);
     }
 }
