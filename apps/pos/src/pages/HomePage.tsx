@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTerminalStore } from '@/stores/terminalStore';
+import { useAuthStore } from '@/stores/authStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useProductStore } from '@/stores/productStore';
 import { useCartStore, computeTaxAmount } from '@/stores/cartStore';
@@ -163,11 +164,15 @@ export function HomePage() {
     enabled: !!shift,
   });
 
-  // Fetch products and payment config when shift is open
+  // Fetch products and payment config when shift is open. Also refresh
+  // companyConfig so a session that started before a server-side config
+  // change (e.g., the smart_prompts_variant migration) picks up the new
+  // values without requiring a full app restart.
   useEffect(() => {
     if (shift) {
       void fetchProducts();
       void fetchPaymentConfig();
+      void useAuthStore.getState().refreshCompanyConfig();
     }
   }, [shift, fetchProducts, fetchPaymentConfig]);
 
