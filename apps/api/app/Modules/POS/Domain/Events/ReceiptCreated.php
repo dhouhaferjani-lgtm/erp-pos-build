@@ -21,8 +21,8 @@ final class ReceiptCreated extends DomainEvent
         public readonly string $receiptNumber,
         public readonly string $total,
         public readonly string $currency,
-        public readonly string $fiscalHash,
-        public readonly int $chainSequence,
+        public readonly ?string $fiscalHash,
+        public readonly ?int $chainSequence,
         public readonly string $postedAt,
     ) {
         parent::__construct($receiptId);
