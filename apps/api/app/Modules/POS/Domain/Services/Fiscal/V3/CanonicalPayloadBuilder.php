@@ -10,10 +10,29 @@ namespace App\Modules\POS\Domain\Services\Fiscal\V3;
  * Top-level keys (lexicographic): audit_hash, currency, exchange_group_id,
  * payment_methods_hash, posted_at, previous_hash, receipt_number,
  * schema_version (3), total, vat_breakdown_hash, voucher_ledger_hash.
+ *
+ * The encoder is instantiated inline rather than constructor-injected because
+ * it is a stateless, dependency-free utility. This is an explicit, documented
+ * exception to the project's constructor-injection convention (CLAUDE.md
+ * rule #13). If the encoder ever gains state or dependencies, refactor to
+ * inject it.
  */
 final class CanonicalPayloadBuilder
 {
     /**
+     * Build and return the canonical JSON bytes (UTF-8) for the given receipt
+     * input. The caller computes `hash('sha256', ...)` separately to produce
+     * the chain hash.
+     *
+     * **Decimal formatting contract**: all monetary fields in the input
+     * (`total`, every `payments[].amount`, every
+     * `voucher_ledger_entries[].amount`, every `vat_breakdown[].amount`,
+     * `vat_breakdown[].rate`) MUST be pre-formatted decimal strings at the
+     * appropriate scale (currency_scale for tender amounts, currency_scale + 2
+     * for voucher ledger internal precision per spec §5.5). The builder treats
+     * them as opaque strings; it does NOT round, reformat, or validate scale.
+     * Pre-format using `CurrencyScale::bcformat()` at the call site.
+     *
      * @param  array{
      *   receipt_number: string,
      *   posted_at: string,
