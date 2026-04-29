@@ -16,6 +16,7 @@ use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * VoucherCascadeService — Phase 1 cascade logic when a credit note is voided (spec §3.1, §4.9).
@@ -102,36 +103,52 @@ final class VoucherCascadeService
     {
         $voidedBalance = $voucher->current_balance;
 
-        // Append Voided ledger row
+        // Build unsaved Voided ledger row; create GL entry first; then INSERT with id set.
+        $voidedId = (string) Str::uuid();
+        $voidedAmount = bccomp($voidedBalance, '0', 5) > 0
+            ? bcmul($voidedBalance, '-1', 5)
+            : '0.00000';
+        $userId = $creditNote->voided_by ?? $creditNote->cashier_id;
+
+        $unsavedVoided = new VoucherLedger;
+        $unsavedVoided->id = $voidedId;
+        $unsavedVoided->tenant_id = $voucher->tenant_id;
+        $unsavedVoided->company_id = $voucher->company_id;
+        $unsavedVoided->voucher_id = $voucher->id;
+        $unsavedVoided->event = VoucherEvent::Voided;
+        $unsavedVoided->amount = $voidedAmount;
+        $unsavedVoided->currency = $voucher->currency;
+        $unsavedVoided->receipt_id = $creditNote->id;
+        $unsavedVoided->terminal_id = $creditNote->terminal_id;
+        $unsavedVoided->user_id = $userId;
+        $unsavedVoided->gl_journal_entry_id = null;
+        $unsavedVoided->authorized_by_user_id = null;
+        $unsavedVoided->policy_trigger = 'cascade_credit_note_void';
+        $unsavedVoided->reverses_voucher_ledger_id = null;
+        $unsavedVoided->occurred_at = $now;
+
+        // Write GL reversal entry (mirror of issuance)
+        $glEntry = $this->generalLedger->createVoucherLedgerEntry($unsavedVoided, $voucher);
+
+        // INSERT the VoucherLedger row with gl_journal_entry_id already populated (no UPDATE).
         /** @var VoucherLedger $ledgerRow */
-        $ledgerRow = VoucherLedger::create([
+        $ledgerRow = VoucherLedger::forceCreate([
+            'id' => $voidedId,
             'tenant_id' => $voucher->tenant_id,
             'company_id' => $voucher->company_id,
             'voucher_id' => $voucher->id,
             'event' => VoucherEvent::Voided,
-            'amount' => bccomp($voidedBalance, '0', 5) > 0
-                ? bcmul($voidedBalance, '-1', 5)
-                : '0.00000',
+            'amount' => $voidedAmount,
             'currency' => $voucher->currency,
             'receipt_id' => $creditNote->id,
             'terminal_id' => $creditNote->terminal_id,
-            'user_id' => $creditNote->voided_by ?? $creditNote->cashier_id,
-            'gl_journal_entry_id' => null,
+            'user_id' => $userId,
+            'gl_journal_entry_id' => $glEntry->id,
             'authorized_by_user_id' => null,
             'policy_trigger' => 'cascade_credit_note_void',
             'reverses_voucher_ledger_id' => null,
             'occurred_at' => $now,
         ]);
-
-        // Write GL reversal entry (mirror of issuance)
-        $glEntry = $this->generalLedger->createVoucherLedgerEntry($ledgerRow, $voucher);
-
-        // Back-fill GL reference on ledger row
-        DB::table('voucher_ledger')
-            ->where('id', $ledgerRow->id)
-            ->update(['gl_journal_entry_id' => $glEntry->id]);
-
-        $ledgerRow->gl_journal_entry_id = $glEntry->id;
 
         // Update voucher status and zero balance
         $voucher->status = VoucherStatus::Voided;

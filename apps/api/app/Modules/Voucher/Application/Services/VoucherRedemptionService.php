@@ -28,6 +28,7 @@ use App\Shared\Domain\CurrencyScale;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Voucher redemption — applies a voucher as a tender at POS sale time (Phase 1).
@@ -180,8 +181,32 @@ final class VoucherRedemptionService
             /** @var numeric-string $signedAmount */
             $signedAmount = bcmul($appliedAtInternal, '-1', $internalScale);
 
+            // 8. Build unsaved Redeemed ledger row; create GL entry first; then INSERT with id set.
+            $redemptionId = (string) Str::uuid();
+            $unsavedRedemption = new VoucherLedger;
+            $unsavedRedemption->id = $redemptionId;
+            $unsavedRedemption->tenant_id = $voucher->tenant_id;
+            $unsavedRedemption->company_id = $voucher->company_id;
+            $unsavedRedemption->voucher_id = $voucher->id;
+            $unsavedRedemption->event = VoucherEvent::Redeemed;
+            $unsavedRedemption->amount = $signedAmount;
+            $unsavedRedemption->currency = $request->currency;
+            $unsavedRedemption->receipt_id = $request->receiptId;
+            $unsavedRedemption->terminal_id = $request->terminalId;
+            $unsavedRedemption->user_id = $request->cashierId;
+            $unsavedRedemption->gl_journal_entry_id = null;
+            $unsavedRedemption->authorized_by_user_id = $request->authorizedByUserId;
+            $unsavedRedemption->policy_trigger = $request->policyTrigger;
+            $unsavedRedemption->reverses_voucher_ledger_id = null;
+            $unsavedRedemption->occurred_at = $now;
+
+            // Create the GL JournalEntry: Dr VoucherLiability / Cr PosTenderClearing.
+            $glEntry = $this->generalLedger->createVoucherLedgerEntry($unsavedRedemption, $voucher);
+
+            // INSERT the VoucherLedger row with gl_journal_entry_id already populated (no UPDATE).
             /** @var VoucherLedger $redemptionEntry */
-            $redemptionEntry = VoucherLedger::create([
+            $redemptionEntry = VoucherLedger::forceCreate([
+                'id' => $redemptionId,
                 'tenant_id' => $voucher->tenant_id,
                 'company_id' => $voucher->company_id,
                 'voucher_id' => $voucher->id,
@@ -191,24 +216,14 @@ final class VoucherRedemptionService
                 'receipt_id' => $request->receiptId,
                 'terminal_id' => $request->terminalId,
                 'user_id' => $request->cashierId,
-                'gl_journal_entry_id' => null,
+                'gl_journal_entry_id' => $glEntry->id,
                 'authorized_by_user_id' => $request->authorizedByUserId,
                 'policy_trigger' => $request->policyTrigger,
                 'reverses_voucher_ledger_id' => null,
                 'occurred_at' => $now,
             ]);
 
-            // 8. Create the GL JournalEntry: Dr VoucherLiability / Cr PosTenderClearing.
-            $glEntry = $this->generalLedger->createVoucherLedgerEntry($redemptionEntry, $voucher);
-
-            // 9. Back-fill gl_journal_entry_id (allowed back-fill column per VoucherIssuanceService pattern).
-            DB::table('voucher_ledger')
-                ->where('id', $redemptionEntry->id)
-                ->update(['gl_journal_entry_id' => $glEntry->id]);
-
-            $redemptionEntry->gl_journal_entry_id = $glEntry->id;
-
-            // 10. Handle RoundingAdjustment when residual is below the minimum currency unit.
+            // 9. Handle RoundingAdjustment when residual is below the minimum currency unit.
             $roundingEntry = null;
             if ($needsRounding) {
                 /** @var numeric-string $residual */
@@ -216,8 +231,30 @@ final class VoucherRedemptionService
                 /** @var numeric-string $signedResidual */
                 $signedResidual = bcmul($residual, '-1', $internalScale);
 
+                // Build unsaved RoundingAdjustment row; create GL entry first; then INSERT.
+                $roundingId = (string) Str::uuid();
+                $unsavedRounding = new VoucherLedger;
+                $unsavedRounding->id = $roundingId;
+                $unsavedRounding->tenant_id = $voucher->tenant_id;
+                $unsavedRounding->company_id = $voucher->company_id;
+                $unsavedRounding->voucher_id = $voucher->id;
+                $unsavedRounding->event = VoucherEvent::RoundingAdjustment;
+                $unsavedRounding->amount = $signedResidual;
+                $unsavedRounding->currency = $request->currency;
+                $unsavedRounding->receipt_id = $request->receiptId;
+                $unsavedRounding->terminal_id = $request->terminalId;
+                $unsavedRounding->user_id = $request->cashierId;
+                $unsavedRounding->gl_journal_entry_id = null;
+                $unsavedRounding->authorized_by_user_id = null;
+                $unsavedRounding->policy_trigger = null;
+                $unsavedRounding->reverses_voucher_ledger_id = null;
+                $unsavedRounding->occurred_at = $now;
+
+                $roundingGlEntry = $this->generalLedger->createVoucherLedgerEntry($unsavedRounding, $voucher);
+
                 /** @var VoucherLedger $roundingEntry */
-                $roundingEntry = VoucherLedger::create([
+                $roundingEntry = VoucherLedger::forceCreate([
+                    'id' => $roundingId,
                     'tenant_id' => $voucher->tenant_id,
                     'company_id' => $voucher->company_id,
                     'voucher_id' => $voucher->id,
@@ -227,20 +264,12 @@ final class VoucherRedemptionService
                     'receipt_id' => $request->receiptId,
                     'terminal_id' => $request->terminalId,
                     'user_id' => $request->cashierId,
-                    'gl_journal_entry_id' => null,
+                    'gl_journal_entry_id' => $roundingGlEntry->id,
                     'authorized_by_user_id' => null,
                     'policy_trigger' => null,
                     'reverses_voucher_ledger_id' => null,
                     'occurred_at' => $now,
                 ]);
-
-                $roundingGlEntry = $this->generalLedger->createVoucherLedgerEntry($roundingEntry, $voucher);
-
-                DB::table('voucher_ledger')
-                    ->where('id', $roundingEntry->id)
-                    ->update(['gl_journal_entry_id' => $roundingGlEntry->id]);
-
-                $roundingEntry->gl_journal_entry_id = $roundingGlEntry->id;
 
                 // The residual is written off: balance becomes zero.
                 $newBalance = CurrencyScale::bcformat('0', $internalScale);

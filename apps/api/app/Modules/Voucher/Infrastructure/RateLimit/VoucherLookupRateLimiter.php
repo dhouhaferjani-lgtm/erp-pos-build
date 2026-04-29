@@ -6,8 +6,11 @@ namespace App\Modules\Voucher\Infrastructure\RateLimit;
 
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\Voucher\Domain\Events\VoucherLookupSoftAlert;
 use App\Modules\Voucher\Domain\Exceptions\VoucherRateLimitedException;
 use Illuminate\Cache\RateLimiter;
+use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Support\Carbon;
 
 /**
  * Layered rate limiter for the voucher lookup endpoint (spec §4.7).
@@ -34,6 +37,9 @@ final class VoucherLookupRateLimiter
     /** Max lookups per cashier per day */
     private const PER_CASHIER_DAY = 100;
 
+    /** Failed lookups per tenant per hour before soft alert (informational, no block) */
+    private const PER_TENANT_FAILED_HOUR_SOFT = 50;
+
     /** Failed lookups per tenant per hour before hard block */
     private const PER_TENANT_FAILED_HOUR_HARD = 200;
 
@@ -54,6 +60,7 @@ final class VoucherLookupRateLimiter
 
     public function __construct(
         private readonly RateLimiter $rateLimiter,
+        private readonly Dispatcher $events,
     ) {}
 
     /**
@@ -113,11 +120,25 @@ final class VoucherLookupRateLimiter
     /**
      * Record a failed lookup from the tenant perspective.
      * Must be called whenever a lookup returns "not found" or "invalid".
+     *
+     * Emits VoucherLookupSoftAlert when the count crosses the soft threshold (50).
+     * Blocking (via VoucherRateLimitedException) happens at the hard threshold (200)
+     * via checkPerTenantFailed(), which is called in checkAll() before this method.
      */
     public function recordTenantFailedAttempt(string $tenantId): void
     {
         $key = "voucher_lookup:tenant_failed:{$tenantId}:".date('Y-m-d-H');
         $this->rateLimiter->hit($key, self::TTL_HOUR);
+
+        $count = $this->rateLimiter->attempts($key);
+
+        if ($count === self::PER_TENANT_FAILED_HOUR_SOFT) {
+            $this->events->dispatch(new VoucherLookupSoftAlert(
+                tenantId: $tenantId,
+                count: $count,
+                occurredAt: Carbon::now()->toIso8601String(),
+            ));
+        }
     }
 
     /**

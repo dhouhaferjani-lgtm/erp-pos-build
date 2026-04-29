@@ -24,6 +24,7 @@ use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * Voucher lookup service — controls disclosure boundary between in-session and out-of-session
@@ -226,38 +227,55 @@ final class VoucherLookupService
             $now = Carbon::now();
             $voidedBalance = $voucher->current_balance;
 
-            // Append Voided ledger row
+            // Build unsaved Voided ledger row; create GL entry first if needed; then INSERT.
+            $voidedAmount = bccomp($voidedBalance, '0', 5) > 0
+                ? bcmul($voidedBalance, '-1', 5)
+                : '0.00000';
+
+            $voidedId = (string) Str::uuid();
+            $glEntry = null;
+
+            if (bccomp($voidedBalance, '0', 5) > 0) {
+                $unsavedVoided = new VoucherLedger;
+                $unsavedVoided->id = $voidedId;
+                $unsavedVoided->tenant_id = $voucher->tenant_id;
+                $unsavedVoided->company_id = $voucher->company_id;
+                $unsavedVoided->voucher_id = $voucher->id;
+                $unsavedVoided->event = VoucherEvent::Voided;
+                $unsavedVoided->amount = $voidedAmount;
+                $unsavedVoided->currency = $voucher->currency;
+                $unsavedVoided->receipt_id = null;
+                $unsavedVoided->terminal_id = $terminalId;
+                $unsavedVoided->user_id = $cashierId;
+                $unsavedVoided->gl_journal_entry_id = null;
+                $unsavedVoided->authorized_by_user_id = null;
+                $unsavedVoided->policy_trigger = 'auto_fraud_void';
+                $unsavedVoided->reverses_voucher_ledger_id = null;
+                $unsavedVoided->occurred_at = $now;
+
+                // Write GL reversal (only if there's something to reverse)
+                $glEntry = $this->generalLedger->createVoucherLedgerEntry($unsavedVoided, $voucher);
+            }
+
+            // INSERT the Voided ledger row with gl_journal_entry_id already set (no UPDATE).
             /** @var VoucherLedger $ledgerRow */
-            $ledgerRow = VoucherLedger::create([
+            $ledgerRow = VoucherLedger::forceCreate([
+                'id' => $voidedId,
                 'tenant_id' => $voucher->tenant_id,
                 'company_id' => $voucher->company_id,
                 'voucher_id' => $voucher->id,
                 'event' => VoucherEvent::Voided,
-                'amount' => bccomp($voidedBalance, '0', 5) > 0
-                    ? bcmul($voidedBalance, '-1', 5)
-                    : '0.00000',
+                'amount' => $voidedAmount,
                 'currency' => $voucher->currency,
                 'receipt_id' => null,
                 'terminal_id' => $terminalId,
                 'user_id' => $cashierId,
-                'gl_journal_entry_id' => null,
+                'gl_journal_entry_id' => $glEntry !== null ? $glEntry->id : null,
                 'authorized_by_user_id' => null,
                 'policy_trigger' => 'auto_fraud_void',
                 'reverses_voucher_ledger_id' => null,
                 'occurred_at' => $now,
             ]);
-
-            // Write GL reversal (only if there's something to reverse)
-            $glEntry = null;
-            if (bccomp($voidedBalance, '0', 5) > 0) {
-                $glEntry = $this->generalLedger->createVoucherLedgerEntry($ledgerRow, $voucher);
-
-                DB::table('voucher_ledger')
-                    ->where('id', $ledgerRow->id)
-                    ->update(['gl_journal_entry_id' => $glEntry->id]);
-
-                $ledgerRow->gl_journal_entry_id = $glEntry->id;
-            }
 
             // Update voucher status and balance
             $voucher->status = VoucherStatus::Voided;

@@ -28,6 +28,7 @@ use App\Modules\Voucher\Domain\Enums\RedemptionMode;
 use App\Modules\Voucher\Domain\Enums\VoucherEvent;
 use App\Modules\Voucher\Domain\Enums\VoucherStatus;
 use App\Modules\Voucher\Domain\Events\VoucherFraudAlert;
+use App\Modules\Voucher\Domain\Events\VoucherLookupSoftAlert;
 use App\Modules\Voucher\Domain\Voucher;
 use App\Modules\Voucher\Domain\VoucherLedger;
 use App\Modules\Voucher\Infrastructure\RateLimit\VoucherLookupRateLimiter;
@@ -397,6 +398,90 @@ final class VoucherLookupServiceTest extends TestCase
         );
         $this->assertInstanceOf(InSessionLookupResult::class, $resultB);
         $this->assertFalse($resultB->partnerIdMatch);
+    }
+
+    // -------------------------------------------------------------------------
+    // Per-IP rate limit
+    // -------------------------------------------------------------------------
+
+    public function test_generic_lookup_per_ip_hard_block_returns_generic_invalid(): void
+    {
+        $voucher = $this->issueVoucher('50.00000');
+        $rateLimiter = app(RateLimiter::class);
+
+        $ip = '192.168.1.100';
+        $safe = preg_replace('/[^a-zA-Z0-9._:-]/', '_', $ip);
+        $ipKey = "voucher_lookup:ip:{$safe}:".date('Y-m-d-H');
+
+        // Exhaust the per-IP hourly counter (300 hits)
+        for ($i = 0; $i < 305; $i++) {
+            $rateLimiter->hit($ipKey, 3600);
+        }
+
+        $result = $this->makeService()->lookupGeneric(
+            $voucher->code,
+            $this->terminal,
+            $this->cashier,
+            $ip,
+        );
+
+        // IP hard-blocked → identical to "code not found"
+        $this->assertFalse($result->exists);
+        $this->assertSame('invalid', $result->status);
+    }
+
+    // -------------------------------------------------------------------------
+    // Per-tenant soft alert
+    // -------------------------------------------------------------------------
+
+    public function test_per_tenant_soft_alert_dispatched_at_50_failed_lookups(): void
+    {
+        Event::fake([VoucherLookupSoftAlert::class]);
+
+        $rateLimiter = app(RateLimiter::class);
+
+        // Pre-seed 49 failed attempts (one below the soft-alert threshold)
+        $tenantKey = "voucher_lookup:tenant_failed:{$this->tenant->id}:".date('Y-m-d-H');
+        for ($i = 0; $i < 49; $i++) {
+            $rateLimiter->hit($tenantKey, 3600);
+        }
+
+        // The 50th failed lookup (non-existent code) should cross the threshold and emit the event.
+        $this->makeService()->lookupGeneric(
+            'POSC-ZZZZ-8888-9999',
+            $this->terminal,
+            $this->cashier,
+            '127.0.0.1',
+        );
+
+        // VoucherLookupSoftAlert must be dispatched exactly once at count=50
+        Event::assertDispatched(VoucherLookupSoftAlert::class, function (VoucherLookupSoftAlert $event): bool {
+            return $event->tenantId === $this->tenant->id
+                && $event->count === 50;
+        });
+    }
+
+    public function test_per_tenant_soft_alert_not_dispatched_before_threshold(): void
+    {
+        Event::fake([VoucherLookupSoftAlert::class]);
+
+        $rateLimiter = app(RateLimiter::class);
+
+        // Pre-seed 48 failed attempts (two below the threshold)
+        $tenantKey = "voucher_lookup:tenant_failed:{$this->tenant->id}:".date('Y-m-d-H');
+        for ($i = 0; $i < 48; $i++) {
+            $rateLimiter->hit($tenantKey, 3600);
+        }
+
+        // 49th failed lookup — not yet at threshold
+        $this->makeService()->lookupGeneric(
+            'POSC-ZZZZ-7777-8888',
+            $this->terminal,
+            $this->cashier,
+            '127.0.0.1',
+        );
+
+        Event::assertNotDispatched(VoucherLookupSoftAlert::class);
     }
 
     // -------------------------------------------------------------------------

@@ -23,6 +23,7 @@ use App\Modules\Voucher\Domain\VoucherLedger;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Voucher issuance — all paths that mint a new voucher (Phase 1).
@@ -36,9 +37,9 @@ use Illuminate\Support\Facades\DB;
  *   1. Validate request (SPV guard, goodwill controls)
  *   2. Mint voucher code via VoucherCodeGenerator
  *   3. Create Voucher row (status = Issued)
- *   4. Create VoucherLedger row (event = Issued, amount = +abs)
+ *   4. Build unsaved VoucherLedger payload with pre-assigned UUID
  *   5. Create GL JournalEntry via GeneralLedgerService::createVoucherLedgerEntry()
- *   6. Back-fill VoucherLedger.gl_journal_entry_id
+ *   6. INSERT VoucherLedger row with gl_journal_entry_id already set (no UPDATE ever)
  *   7. Dispatch VoucherIssued domain event
  *
  * Per EU Directive 2016/1065 (MPV-by-default), NO VAT lines are created at the
@@ -330,9 +331,36 @@ final class VoucherIssuanceService
                 'policy_trigger' => $request->policyTrigger,
             ]);
 
-            // 3. Create the first VoucherLedger row (gl_journal_entry_id filled in step 5)
+            // 3. Build the ledger payload (unsaved) with a pre-assigned UUID so the GL
+            //    JournalEntry can reference it as source_id before the row is inserted.
+            $ledgerId = (string) Str::uuid();
+            $unsavedLedger = new VoucherLedger;
+            $unsavedLedger->id = $ledgerId;
+            $unsavedLedger->tenant_id = $request->tenantId;
+            $unsavedLedger->company_id = $request->companyId;
+            $unsavedLedger->voucher_id = $voucher->id;
+            $unsavedLedger->event = VoucherEvent::Issued;
+            $unsavedLedger->amount = $absAmount;
+            $unsavedLedger->currency = $request->currency;
+            $unsavedLedger->receipt_id = $request->sourceReceiptId;
+            $unsavedLedger->terminal_id = $request->issuedAtTerminalId;
+            $unsavedLedger->user_id = $request->issuedByUserId;
+            $unsavedLedger->gl_journal_entry_id = null;
+            $unsavedLedger->authorized_by_user_id = $request->authorizedByUserId;
+            $unsavedLedger->policy_trigger = $request->policyTrigger;
+            $unsavedLedger->reverses_voucher_ledger_id = null;
+            $unsavedLedger->occurred_at = $now;
+
+            // 4. Create the GL JournalEntry BEFORE inserting the ledger row.
+            //    GeneralLedgerService reads field values from the unsaved model but does not persist it.
+            $glEntry = $this->generalLedger->createVoucherLedgerEntry($unsavedLedger, $voucher);
+
+            // 5. INSERT the VoucherLedger row with gl_journal_entry_id already populated.
+            //    The append-only PostgreSQL trigger fires on UPDATE/DELETE — this is an INSERT,
+            //    so no trigger violation occurs on any platform.
             /** @var VoucherLedger $ledgerRow */
-            $ledgerRow = VoucherLedger::create([
+            $ledgerRow = VoucherLedger::forceCreate([
+                'id' => $ledgerId,
                 'tenant_id' => $request->tenantId,
                 'company_id' => $request->companyId,
                 'voucher_id' => $voucher->id,
@@ -342,27 +370,12 @@ final class VoucherIssuanceService
                 'receipt_id' => $request->sourceReceiptId,
                 'terminal_id' => $request->issuedAtTerminalId,
                 'user_id' => $request->issuedByUserId,
-                'gl_journal_entry_id' => null,
+                'gl_journal_entry_id' => $glEntry->id,
                 'authorized_by_user_id' => $request->authorizedByUserId,
                 'policy_trigger' => $request->policyTrigger,
                 'reverses_voucher_ledger_id' => null,
                 'occurred_at' => $now,
             ]);
-
-            // 4. Create the GL JournalEntry (non-taxable; no VAT lines)
-            $glEntry = $this->generalLedger->createVoucherLedgerEntry($ledgerRow, $voucher);
-
-            // 5. Back-fill the GL reference on the ledger row
-            // The VoucherLedger table is append-only (enforced by DB trigger on PostgreSQL),
-            // but gl_journal_entry_id is a nullable back-fill column set once at creation time.
-            // We use a direct DB update here because the trigger only blocks UPDATE on amount/event
-            // columns — the implementation allows gl_journal_entry_id to be filled post-insert.
-            // On SQLite (tests), there is no trigger; the update always succeeds.
-            DB::table('voucher_ledger')
-                ->where('id', $ledgerRow->id)
-                ->update(['gl_journal_entry_id' => $glEntry->id]);
-
-            $ledgerRow->gl_journal_entry_id = $glEntry->id;
 
             // 6. Dispatch domain event
             $this->events->dispatch(new VoucherIssued(
