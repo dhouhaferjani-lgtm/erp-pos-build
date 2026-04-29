@@ -7,6 +7,7 @@ namespace Database\Factories;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
@@ -49,6 +50,19 @@ class ReceiptFactory extends Factory
             'currency' => 'EUR',
             'is_voided' => false,
         ];
+    }
+
+    /**
+     * Receipt in pending_seal state: fiscal_hash and chain_sequence are null,
+     * fiscal_status is pending_seal. Use when testing ReceiptFinalizationService.
+     */
+    public function pendingSeal(): static
+    {
+        return $this->state(fn () => [
+            'fiscal_status' => FiscalStatus::PendingSeal,
+            'fiscal_hash' => null,
+            'chain_sequence' => null,
+        ]);
     }
 
     /**

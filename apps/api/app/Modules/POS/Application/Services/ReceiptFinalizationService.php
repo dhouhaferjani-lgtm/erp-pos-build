@@ -1,0 +1,86 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\POS\Application\Services;
+
+use App\Modules\POS\Application\Services\Fiscal\V3\V3ReceiptHashComputer;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
+use App\Modules\POS\Domain\Receipt;
+use App\Modules\POS\Domain\Services\ReceiptHashService;
+use App\Modules\POS\Domain\Terminal;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Finalizes a pending_seal receipt, computing and persisting its fiscal_hash
+ * then advancing the terminal's hash-chain counters under a FOR UPDATE lock.
+ *
+ * Idempotent: calling finalize() on an already-fiscalized receipt returns the
+ * same record unchanged without a second hash computation or terminal advance.
+ *
+ * Schema version dispatch:
+ *   v2 → ReceiptHashService::calculateHash() (legacy NF525 pipe-separated format)
+ *   v3 → V3ReceiptHashComputer (canonical JSON, byte-stable across PHP/TS)
+ */
+final class ReceiptFinalizationService
+{
+    public function __construct(
+        private readonly ReceiptHashService $legacyHashService,
+        private readonly V3ReceiptHashComputer $v3Computer,
+    ) {}
+
+    /**
+     * Finalize a receipt by computing its fiscal hash and transitioning its
+     * status from pending_seal to fiscalized.
+     *
+     * @throws \DomainException When the receipt is in an unrecoverable state (voided, etc.)
+     * @throws \LogicException When the terminal's fiscal_schema_version is unsupported
+     */
+    public function finalize(Receipt $receipt): Receipt
+    {
+        // Idempotency guard: already sealed, return immediately
+        if ($receipt->fiscal_status === FiscalStatus::Fiscalized) {
+            return $receipt;
+        }
+
+        if ($receipt->fiscal_status !== FiscalStatus::PendingSeal) {
+            throw new \DomainException(
+                "Cannot finalize receipt {$receipt->receipt_number}: ".
+                "status is {$receipt->fiscal_status->value}, expected pending_seal"
+            );
+        }
+
+        return DB::transaction(function () use ($receipt): Receipt {
+            /** @var Terminal $terminal */
+            $terminal = Terminal::lockForUpdate()->findOrFail($receipt->terminal_id);
+
+            // Ensure terminal relation is fresh (may have been loaded before the lock)
+            $receipt->setRelation('terminal', $terminal);
+
+            // Set previous_hash and chain_sequence on the receipt model BEFORE computing
+            // the hash so that the v3 computer (and the legacy service) read the correct
+            // chain state from the model.  The legacy service receives $terminal->last_hash
+            // explicitly; the v3 computer reads $receipt->previous_hash.
+            $receipt->previous_hash = $terminal->last_hash;
+            $receipt->chain_sequence = $terminal->current_sequence;
+
+            $hash = match ($terminal->fiscal_schema_version) {
+                2 => $this->legacyHashService->calculateHash($receipt, $terminal->last_hash),
+                3 => $this->v3Computer->compute($receipt),
+                default => throw new \LogicException(
+                    "Unsupported fiscal_schema_version: {$terminal->fiscal_schema_version}"
+                ),
+            };
+
+            $receipt->fiscal_hash = $hash;
+            $receipt->fiscal_status = FiscalStatus::Fiscalized;
+            $receipt->save();
+
+            $terminal->last_hash = $hash;
+            $terminal->current_sequence++;
+            $terminal->save();
+
+            return $receipt->refresh();
+        });
+    }
+}
