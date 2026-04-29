@@ -3,19 +3,21 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { cn } from '@/lib/utils';
-import { Search, X, Package, LayoutGrid, Image } from 'lucide-react';
-import { useCurrency } from '@/lib/currency';
+import { Search, X, Package, LayoutGrid, Image, TrendingUp } from 'lucide-react';
 import { ProductCard } from '@/components/molecules/ProductCard';
 import type { POSProduct } from '@/types/product';
+import { useAuthStore } from '@/stores/authStore';
+import { useMostSoldCounts } from '@/hooks/useMostSoldCounts';
+import {
+  CARD_MIN_H_GRID,
+  CARD_MIN_H_VISUAL,
+  GAP,
+} from '@/components/molecules/ProductCard/cardSizing';
 
 type DisplayMode = 'grid' | 'visual';
+type SortMode = 'default' | 'mostSold';
 
 const DISPLAY_MODE_STORAGE_KEY = 'pos-display-mode';
-
-/** Estimated row height in pixels (card + gap). */
-const ROW_HEIGHT_GRID = 140;
-const ROW_HEIGHT_VISUAL = 220;
-const GAP = 12;
 
 function getStoredDisplayMode(): DisplayMode {
   const stored = localStorage.getItem(DISPLAY_MODE_STORAGE_KEY);
@@ -32,8 +34,6 @@ export interface ProductGridProps {
   isLoading?: boolean;
   consumptionModeToggle?: ReactNode;
 }
-
-const POPULAR_COUNT = 8;
 
 /** Column counts per display mode. */
 function getColumns(displayMode: DisplayMode): number {
@@ -64,11 +64,17 @@ export function ProductGrid({
   consumptionModeToggle,
 }: ProductGridProps) {
   const { t } = useTranslation('pos');
-  const { format } = useCurrency();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<DisplayMode>(getStoredDisplayMode);
   const [inStockOnly, setInStockOnly] = useState(false);
+  const [sortMode, setSortMode] = useState<SortMode>('default');
+
+  const companyId = useAuthStore((s) => s.companyId);
+  const { counts: salesCounts } = useMostSoldCounts({
+    companyId,
+    enabled: sortMode === 'mostSold',
+  });
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -79,9 +85,18 @@ export function ProductGrid({
     localStorage.setItem(DISPLAY_MODE_STORAGE_KEY, mode);
   }, []);
 
-  // Products sorted by position/name
+  // Products sorted by position/name or by most-sold
   const sortedProducts = useMemo(() => {
-    return [...products].sort((a, b) => {
+    const base = [...products];
+    if (sortMode === 'mostSold') {
+      return base.sort((a, b) => {
+        const ca = salesCounts.get(a.id) ?? 0;
+        const cb = salesCounts.get(b.id) ?? 0;
+        if (cb !== ca) return cb - ca;
+        return a.name.localeCompare(b.name);
+      });
+    }
+    return base.sort((a, b) => {
       if (a.position !== undefined && b.position !== undefined) {
         return a.position - b.position;
       }
@@ -89,12 +104,7 @@ export function ProductGrid({
       if (b.position !== undefined) return 1;
       return a.name.localeCompare(b.name);
     });
-  }, [products]);
-
-  // Popular items (first N by position)
-  const popularProducts = useMemo(() => {
-    return sortedProducts.filter((p) => p.stock_quantity > 0).slice(0, POPULAR_COUNT);
-  }, [sortedProducts]);
+  }, [products, sortMode, salesCounts]);
 
   // Category product counts
   const categoryCounts = useMemo(() => {
@@ -133,7 +143,7 @@ export function ProductGrid({
 
   const columns = useMemo(() => getColumns(displayMode), [displayMode]);
   const rowCount = Math.ceil(filteredProducts.length / columns);
-  const rowHeight = displayMode === 'grid' ? ROW_HEIGHT_GRID : ROW_HEIGHT_VISUAL;
+  const rowHeight = displayMode === 'grid' ? CARD_MIN_H_GRID : CARD_MIN_H_VISUAL;
 
   const virtualizer = useVirtualizer({
     count: rowCount,
@@ -166,7 +176,7 @@ export function ProductGrid({
 
   return (
     <div className="flex h-full flex-col gap-2">
-      {/* Search bar + display mode toggle */}
+      {/* Search bar + sort toggle + display mode toggle */}
       <div className="flex items-center gap-2">
         {consumptionModeToggle}
         <div className="relative flex-1">
@@ -188,6 +198,23 @@ export function ProductGrid({
             </button>
           )}
         </div>
+
+        {/* Most-sold sort toggle: label stays constant; aria-pressed reflects state.
+            `title` gives a click-to-undo hint when pressed. */}
+        <button
+          onClick={() => setSortMode((m) => (m === 'mostSold' ? 'default' : 'mostSold'))}
+          className={cn(
+            'flex h-12 items-center gap-2 rounded-lg border px-4 text-sm font-medium transition-colors',
+            sortMode === 'mostSold'
+              ? 'border-primary-500 bg-primary-50 text-primary-700'
+              : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50',
+          )}
+          title={sortMode === 'mostSold' ? t('products.sortDefault') : undefined}
+          aria-pressed={sortMode === 'mostSold'}
+        >
+          <TrendingUp className="h-5 w-5" />
+          {t('products.sortByMostSold')}
+        </button>
 
         {/* Display mode toggle */}
         <div className="flex rounded-lg border border-gray-300 bg-white">
@@ -266,33 +293,6 @@ export function ProductGrid({
           >
             {t('display.inStockOnly')}
           </button>
-        </div>
-      )}
-
-      {/* Popular items row (only shown in "All" category, no search query) */}
-      {!selectedCategory && !searchQuery && popularProducts.length > 0 && (
-        <div>
-          <h3 className="mb-2 text-sm font-semibold text-gray-600 uppercase tracking-wide">
-            {t('products.popular')}
-          </h3>
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            {popularProducts.map((product) => (
-              <button
-                key={`popular-${product.id}`}
-                onClick={() => onAddToCart(product)}
-                className={cn(
-                  'flex shrink-0 items-center gap-2 rounded-full border-2 px-4 py-2 text-sm font-medium transition-all',
-                  'min-h-[44px] active:scale-[0.95]',
-                  cartProductIds.includes(product.id)
-                    ? 'border-primary-500 bg-primary-50 text-primary-700'
-                    : 'border-gray-200 bg-white text-gray-800 hover:border-primary-300 hover:shadow-sm',
-                )}
-              >
-                <span className="max-w-[120px] truncate">{product.name}</span>
-                <span className="font-bold text-primary-600">{format(product.sale_price ?? '0')}</span>
-              </button>
-            ))}
-          </div>
         </div>
       )}
 

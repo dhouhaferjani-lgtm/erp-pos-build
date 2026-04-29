@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTerminalStore } from '@/stores/terminalStore';
+import { useAuthStore } from '@/stores/authStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useProductStore } from '@/stores/productStore';
 import { useCartStore, computeTaxAmount } from '@/stores/cartStore';
@@ -31,7 +32,9 @@ import { ModifierSelectionModal } from '@/components/organisms/ModifierSelection
 import { VoidReturnModal } from '@/components/organisms/VoidReturnModal';
 import { QuantityNumpad } from '@/components/organisms/QuantityNumpad';
 import { useSmartPromptsStore } from '@/stores/smartPromptsStore';
-import { InlineSmartPrompts } from '@/components/organisms/InlineSmartPrompts';
+// InlineSmartPrompts intentionally not imported: the in-cart variant is
+// disabled. Only the toast variant (under the product grid) is rendered.
+// See HomePage.tsx around the smart-prompts toast block below.
 import { ToastSmartPrompts } from '@/components/organisms/ToastSmartPrompts';
 import { apiGet } from '@/lib/api';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -161,11 +164,15 @@ export function HomePage() {
     enabled: !!shift,
   });
 
-  // Fetch products and payment config when shift is open
+  // Fetch products and payment config when shift is open. Also refresh
+  // companyConfig so a session that started before a server-side config
+  // change (e.g., the smart_prompts_variant migration) picks up the new
+  // values without requiring a full app restart.
   useEffect(() => {
     if (shift) {
       void fetchProducts();
       void fetchPaymentConfig();
+      void useAuthStore.getState().refreshCompanyConfig();
     }
   }, [shift, fetchProducts, fetchPaymentConfig]);
 
@@ -237,23 +244,6 @@ export function HomePage() {
 
     return () => { cancelled = true; };
   }, [showSuccessModal, lastReceipt, lastReceiptIdempotencyKey, lastReceiptServerId, escPosSource, receiptVisibility]);
-
-  // Smart Prompts: fetch recommendations when cart changes
-  useEffect(() => {
-    const productIds = cartItems.map((item) => item.product.id);
-    if (productIds.length > 0) {
-      spFetchForCart(productIds);
-    } else {
-      spClear();
-    }
-  }, [cartItems, spFetchForCart, spClear]);
-
-  useEffect(() => {
-    const productIds = cartItems.map((item) => item.product.id);
-    if (productIds.length > 0 && spSkinType !== null) {
-      spFetchForCart(productIds);
-    }
-  }, [spSkinType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Smart Prompts: fetch recommendations when cart changes
   useEffect(() => {
@@ -542,10 +532,12 @@ export function HomePage() {
     isLoading: spIsLoading,
   };
 
-  const smartPromptsInline =
-    smartPromptsVariant === 'inline' || smartPromptsVariant === 'both' ? (
-      <InlineSmartPrompts {...smartPromptsSharedProps} />
-    ) : undefined;
+  // In-cart inline smart prompts are disabled by product decision: they
+  // competed for vertical space with the cart's PaymentSummary on smaller
+  // viewports. The toast variant (rendered under the product grid further
+  // below) remains the supported placement when smart_prompts_variant is
+  // 'toast' or 'both'. 'inline' now has no UI effect.
+  const smartPromptsInline = undefined;
 
   // Open shift screen
   if (!shift) {
@@ -613,7 +605,7 @@ export function HomePage() {
       )}
 
       {/* Cart - left panel (first in DOM) */}
-      <div className="flex-[4] min-w-[340px] border-r border-gray-200">
+      <div className="flex min-h-0 min-w-[340px] flex-[4] overflow-hidden border-r border-gray-200">
         <TransactionCart
           items={cartItems}
           subtotal={subtotal()}
