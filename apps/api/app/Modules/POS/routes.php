@@ -16,6 +16,7 @@ use App\Modules\POS\Presentation\Controllers\ReportController;
 use App\Modules\POS\Presentation\Controllers\ShiftController;
 use App\Modules\POS\Presentation\Controllers\SyncController;
 use App\Modules\POS\Presentation\Controllers\TerminalController;
+use App\Modules\POS\Presentation\Controllers\VoucherSyncController;
 use App\Modules\POS\Presentation\Controllers\ZReportSyncController;
 use Illuminate\Support\Facades\Route;
 
@@ -79,6 +80,12 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/pos/sync/pull', [SyncController::class, 'pull']);
     Route::get('/pos/sync/menu', [SyncController::class, 'menu']);
     Route::post('/pos/shifts/{id}/sync-close', [SyncController::class, 'syncCloseShift']);
+
+    // Voucher + receipt-QR-index sync (Session 1.5 — offline POS mirror)
+    Route::get('/pos/vouchers/sync', [VoucherSyncController::class, 'pullVouchers']);
+    Route::get('/pos/voucher-ledger/sync', [VoucherSyncController::class, 'pullVoucherLedger']);
+    Route::post('/pos/voucher-ledger/sync', [VoucherSyncController::class, 'pushVoucherLedger']);
+    Route::get('/pos/receipts/qr-index', [VoucherSyncController::class, 'pullReceiptQrIndex']);
 
     // Receipts (collection routes BEFORE parameterized)
     Route::get('/pos/receipts', [ReceiptController::class, 'index']);
