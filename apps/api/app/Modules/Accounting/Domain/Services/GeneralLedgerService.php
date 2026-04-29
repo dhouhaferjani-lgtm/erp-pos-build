@@ -902,6 +902,7 @@ final class GeneralLedgerService
             VoucherEvent::Issued,
             VoucherEvent::Redeemed,
             VoucherEvent::RoundingAdjustment,
+            VoucherEvent::Voided,
         ];
 
         if (! in_array($ledgerRow->event, $wiredEvents, true)) {
@@ -1011,6 +1012,31 @@ final class GeneralLedgerService
                 SystemAccountPurpose::VoucherLiability,
                 SystemAccountPurpose::RoundingLossExpense,
             ],
+            // Voided: mirror-reversal of the original issuance GL entry.
+            //   Refund/ExchangeSurplus issuance: Dr SalesReturnsClearing / Cr VoucherLiability
+            //   → Reversal:                      Dr VoucherLiability / Cr SalesReturnsClearing
+            //   Goodwill issuance: Dr MarketingGoodwillExpense / Cr VoucherLiability
+            //   → Reversal:        Dr VoucherLiability / Cr MarketingGoodwillExpense
+            //
+            // The Voided event applies to:
+            //   - Auto-void (fraud-detection: 5 failed attempts, spec §4.7)
+            //   - Cascade void (credit-note void, spec §4.9)
+            // In both cases the source discriminates the credit account.
+            VoucherEvent::Voided => match ($voucher->source) {
+                VoucherSource::Refund,
+                VoucherSource::ExchangeSurplus => [
+                    SystemAccountPurpose::VoucherLiability,
+                    SystemAccountPurpose::SalesReturnsClearing,
+                ],
+                VoucherSource::Goodwill => [
+                    SystemAccountPurpose::VoucherLiability,
+                    SystemAccountPurpose::MarketingGoodwillExpense,
+                ],
+                default => throw new \LogicException(sprintf(
+                    'VoucherSource::%s Voided GL wiring is not yet implemented in Phase 1.',
+                    $voucher->source->name
+                )),
+            },
             default => throw new \LogicException(sprintf(
                 'VoucherEvent::%s GL wiring is not yet implemented in Phase 1.',
                 $ledgerRow->event->name
