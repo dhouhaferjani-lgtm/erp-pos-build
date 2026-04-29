@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Voucher\Application\DTOs;
 
+use App\Modules\POS\Domain\Enums\PaymentInstrumentKind;
 use App\Modules\Voucher\Domain\Enums\RedemptionMode;
 use App\Modules\Voucher\Domain\Enums\VoucherKind;
 use Illuminate\Support\Carbon;
@@ -35,6 +36,7 @@ final readonly class VoucherIssuanceRequest
      * @param  string|null  $policyTrigger  Machine-readable trigger key (e.g. 'refund_v1')
      * @param  RedemptionMode  $redemptionMode  Bearer (default) or CustomerBound
      * @param  VoucherKind  $voucherKind  MPV (default); SPV is rejected at issuance
+     * @param  PaymentInstrumentKind  $instrumentKind  Must be StoreVoucher or None in Phase 1; RestaurantVoucher/GiftCard throw
      */
     public function __construct(
         public readonly string $amount,
@@ -52,5 +54,6 @@ final readonly class VoucherIssuanceRequest
         public readonly ?string $policyTrigger = null,
         public readonly RedemptionMode $redemptionMode = RedemptionMode::Bearer,
         public readonly VoucherKind $voucherKind = VoucherKind::MPV,
+        public readonly PaymentInstrumentKind $instrumentKind = PaymentInstrumentKind::StoreVoucher,
     ) {}
 }

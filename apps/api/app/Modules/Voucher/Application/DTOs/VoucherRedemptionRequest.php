@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Voucher\Application\DTOs;
 
+use App\Modules\POS\Domain\Enums\PaymentInstrumentKind;
+
 /**
  * Immutable value object carrying everything needed to redeem a voucher.
  *
@@ -24,6 +26,7 @@ final readonly class VoucherRedemptionRequest
      * @param  string|null  $partnerId  Current cart customer FK to partners (required for CustomerBound vouchers)
      * @param  string|null  $authorizedByUserId  Supervisor FK to users (for supervised overrides)
      * @param  string|null  $policyTrigger  Machine-readable policy trigger key
+     * @param  PaymentInstrumentKind  $instrumentKind  Must be StoreVoucher or None in Phase 1; RestaurantVoucher/GiftCard throw
      */
     public function __construct(
         public readonly string $voucherCode,
@@ -35,5 +38,6 @@ final readonly class VoucherRedemptionRequest
         public readonly ?string $partnerId = null,
         public readonly ?string $authorizedByUserId = null,
         public readonly ?string $policyTrigger = null,
+        public readonly PaymentInstrumentKind $instrumentKind = PaymentInstrumentKind::StoreVoucher,
     ) {}
 }

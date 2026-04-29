@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Modules\Voucher\Application\Services;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\POS\Domain\Enums\PaymentInstrumentKind;
+use App\Modules\POS\Domain\Exceptions\GiftCardNotYetSupportedException;
+use App\Modules\POS\Domain\Exceptions\RestaurantVoucherNotYetSupportedException;
 use App\Modules\Voucher\Application\DTOs\VoucherIssuanceRequest;
 use App\Modules\Voucher\Domain\Enums\VoucherEvent;
 use App\Modules\Voucher\Domain\Enums\VoucherKind;
@@ -94,10 +97,13 @@ final class VoucherIssuanceService
      * GL: Dr SalesReturnsClearing / Cr VoucherLiability (no VAT).
      *
      * @throws SpvNotYetSupportedException if request specifies SPV kind
+     * @throws RestaurantVoucherNotYetSupportedException if request specifies restaurant_voucher instrument
+     * @throws GiftCardNotYetSupportedException if request specifies gift_card instrument
      */
     public function issueFromRefund(VoucherIssuanceRequest $request): Voucher
     {
         $this->guardSpv($request);
+        $this->guardInstrumentKind($request);
 
         return $this->performIssuance($request, VoucherSource::Refund);
     }
@@ -109,10 +115,13 @@ final class VoucherIssuanceService
      * GL: Dr SalesReturnsClearing / Cr VoucherLiability (no VAT).
      *
      * @throws SpvNotYetSupportedException if request specifies SPV kind
+     * @throws RestaurantVoucherNotYetSupportedException if request specifies restaurant_voucher instrument
+     * @throws GiftCardNotYetSupportedException if request specifies gift_card instrument
      */
     public function issueFromExchangeSurplus(VoucherIssuanceRequest $request): Voucher
     {
         $this->guardSpv($request);
+        $this->guardInstrumentKind($request);
 
         return $this->performIssuance($request, VoucherSource::ExchangeSurplus);
     }
@@ -122,6 +131,7 @@ final class VoucherIssuanceService
      *
      * Goodwill controls (Codex review 2 finding I):
      *   - SPV rejected.
+     *   - Restaurant-voucher and gift-card instrument kinds rejected (Phase 1).
      *   - Named-customer required above GOODWILL_NAMED_CUSTOMER_THRESHOLD.
      *   - Four-eyes approval required above GOODWILL_FOUR_EYES_THRESHOLD.
      *   - Daily issuance cap per user enforced when GOODWILL_DAILY_CAP_PER_USER is set.
@@ -129,6 +139,8 @@ final class VoucherIssuanceService
      * GL: Dr MarketingGoodwillExpense / Cr VoucherLiability (no VAT).
      *
      * @throws SpvNotYetSupportedException if request specifies SPV kind
+     * @throws RestaurantVoucherNotYetSupportedException if request specifies restaurant_voucher instrument
+     * @throws GiftCardNotYetSupportedException if request specifies gift_card instrument
      * @throws GoodwillRequiresNamedCustomerException if amount > threshold and no partner supplied
      * @throws GoodwillFourEyesRequiredException if amount > threshold and no authorizer supplied
      * @throws \RuntimeException if daily cap is exceeded
@@ -136,6 +148,7 @@ final class VoucherIssuanceService
     public function issueGoodwill(VoucherIssuanceRequest $request): Voucher
     {
         $this->guardSpv($request);
+        $this->guardInstrumentKind($request);
         $this->guardGoodwillControls($request);
 
         return $this->performIssuance($request, VoucherSource::Goodwill);
@@ -153,6 +166,25 @@ final class VoucherIssuanceService
         if ($request->voucherKind === VoucherKind::SPV) {
             throw new SpvNotYetSupportedException;
         }
+    }
+
+    /**
+     * Reject Phase 1 unsupported instrument kinds.
+     *
+     * Only StoreVoucher and None instruments are wired in Phase 1. Restaurant-voucher
+     * tender (ticket-restaurant) ships in Phase 2 via a dedicated RestaurantTicketTenderService
+     * (spec §3.2.1). Gift-card support also ships in Phase 2.
+     *
+     * @throws RestaurantVoucherNotYetSupportedException
+     * @throws GiftCardNotYetSupportedException
+     */
+    private function guardInstrumentKind(VoucherIssuanceRequest $request): void
+    {
+        match ($request->instrumentKind) {
+            PaymentInstrumentKind::RestaurantVoucher => throw new RestaurantVoucherNotYetSupportedException,
+            PaymentInstrumentKind::GiftCard => throw new GiftCardNotYetSupportedException,
+            default => null,
+        };
     }
 
     /**

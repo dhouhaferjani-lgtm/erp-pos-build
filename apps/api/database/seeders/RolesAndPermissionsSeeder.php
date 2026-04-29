@@ -293,6 +293,24 @@ class RolesAndPermissionsSeeder extends Seeder
             'fraud-alerts.view',
             'fraud-alerts.manage',
 
+            // POS — Refund flow (spec §3.8)
+            'pos.search_customer_recent_purchases',
+            'pos.search_customer_full_history',
+            'pos.search_customer_cross_company',
+            'pos.refund_above_threshold',
+            'pos.refund_no_receipt',
+            'pos.refund_extend_daily_cap',
+            'pos.issue_goodwill_voucher',
+            'pos.issue_goodwill_voucher_high_value',
+            'pos.void_voucher',
+            'pos.extend_voucher_expiry',
+            'pos.transfer_voucher',
+            'pos.redeem_voucher',
+            'pos.refund_destination_override',
+            'pos.refund_voucher_to_cash',
+            'pos.fiscal_schema_cutover',
+            'pos.rotate_qr_signing_key',
+
             // System
             'settings.view',
             'settings.update',
@@ -381,6 +399,17 @@ class RolesAndPermissionsSeeder extends Seeder
             'compliance.export_jet', 'compliance.verify_chains', 'compliance.view_reprint_log',
             'fraud-settings.view', 'fraud-settings.update',
             'fraud-alerts.view', 'fraud-alerts.manage',
+            // POS — Refund flow (spec §3.8)
+            'pos.search_customer_recent_purchases',
+            'pos.search_customer_full_history',
+            'pos.refund_above_threshold',
+            'pos.refund_no_receipt',
+            'pos.refund_extend_daily_cap',
+            'pos.issue_goodwill_voucher',
+            'pos.void_voucher',
+            'pos.redeem_voucher',
+            'pos.refund_destination_override',
+            'pos.refund_voucher_to_cash',
         ]);
         $this->command->info('Created role: manager');
 
@@ -412,6 +441,9 @@ class RolesAndPermissionsSeeder extends Seeder
             'contacts.view', 'contacts.create',
             'marketplace.browse',
             'catalog_cart.view',
+            // POS — Refund flow (spec §3.8)
+            'pos.search_customer_recent_purchases',
+            'pos.redeem_voucher',
         ]);
         $this->command->info('Created role: cashier');
 

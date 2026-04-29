@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Modules\Voucher\Application\Services;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\POS\Domain\Enums\PaymentInstrumentKind;
+use App\Modules\POS\Domain\Exceptions\GiftCardNotYetSupportedException;
+use App\Modules\POS\Domain\Exceptions\RestaurantVoucherNotYetSupportedException;
 use App\Modules\Voucher\Application\DTOs\VoucherRedemptionRequest;
 use App\Modules\Voucher\Application\DTOs\VoucherRedemptionResult;
 use App\Modules\Voucher\Domain\Enums\RedemptionMode;
@@ -61,6 +64,8 @@ final class VoucherRedemptionService
     /**
      * Redeem (part of) a voucher against a sale receipt.
      *
+     * @throws RestaurantVoucherNotYetSupportedException if request specifies restaurant_voucher instrument
+     * @throws GiftCardNotYetSupportedException if request specifies gift_card instrument
      * @throws VoucherInvalidStatusException Voucher not in redeemable status, or currency mismatch
      * @throws VoucherExpiredException Voucher has passed its expires_at
      * @throws VoucherNotForThisTerminalException Single-terminal Phase 1 guard
@@ -70,6 +75,8 @@ final class VoucherRedemptionService
      */
     public function redeem(VoucherRedemptionRequest $request): VoucherRedemptionResult
     {
+        $this->guardInstrumentKind($request);
+
         return DB::transaction(function () use ($request): VoucherRedemptionResult {
             // 1. Normalise code to uppercase and look up the voucher with a FOR UPDATE lock.
             $code = strtoupper(trim($request->voucherCode));
@@ -293,5 +300,28 @@ final class VoucherRedemptionService
                 fullyRedeemed: $isFullyRedeemed,
             );
         });
+    }
+
+    // -------------------------------------------------------------------------
+    // Private: guards
+    // -------------------------------------------------------------------------
+
+    /**
+     * Reject Phase 1 unsupported instrument kinds.
+     *
+     * Only StoreVoucher and None instruments are wired in Phase 1. Restaurant-voucher
+     * tender (ticket-restaurant) ships in Phase 2 via a dedicated RestaurantTicketTenderService
+     * (spec §3.2.1). Gift-card support also ships in Phase 2.
+     *
+     * @throws RestaurantVoucherNotYetSupportedException
+     * @throws GiftCardNotYetSupportedException
+     */
+    private function guardInstrumentKind(VoucherRedemptionRequest $request): void
+    {
+        match ($request->instrumentKind) {
+            PaymentInstrumentKind::RestaurantVoucher => throw new RestaurantVoucherNotYetSupportedException,
+            PaymentInstrumentKind::GiftCard => throw new GiftCardNotYetSupportedException,
+            default => null,
+        };
     }
 }
