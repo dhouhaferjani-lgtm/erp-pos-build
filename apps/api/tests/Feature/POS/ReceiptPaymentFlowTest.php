@@ -419,7 +419,9 @@ final class ReceiptPaymentFlowTest extends TestCase
      */
     private function createReceipt(array $overrides = []): Receipt
     {
-        return Receipt::factory()->create(array_merge([
+        // Receipts must be in pending_seal state when entering the payment service.
+        // processReceiptPayments() finalizes them (computes fiscal_hash) when fully tendered.
+        return Receipt::factory()->pendingSeal()->create(array_merge([
             'company_id' => $this->company->id,
             'tenant_id' => $this->tenant->id,
             'location_id' => $this->location->id,
