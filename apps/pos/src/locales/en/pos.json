@@ -31,7 +31,9 @@
     "inCart": "In Cart",
     "stock": "Stock: {{count}}",
     "lowStock": "Low Stock",
-    "popular": "Popular",
+    "fullName": "Full product name",
+    "sortByMostSold": "Sort by most sold",
+    "sortDefault": "Default order",
     "favorites": "Favorites"
   },
   "payment": {

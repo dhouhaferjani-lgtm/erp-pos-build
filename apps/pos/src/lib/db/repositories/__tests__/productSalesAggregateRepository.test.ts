@@ -120,4 +120,29 @@ d('aggregateProductSales', () => {
     const counts = await aggregateProductSales(adapter, { sinceDays: 30 });
     expect(counts.size).toBe(0);
   });
+
+  it('excludes voided receipts from the aggregation', async () => {
+    await insertReceipt(adapter, {
+      id: 'r-sold',
+      idempotencyKey: 'k-sold',
+      linesJson: JSON.stringify([
+        { product_id: 'p1', name: 'A', sku: 'A', quantity: 7, unit_price: '1.000', line_total: '7.000' },
+      ]),
+    });
+    await insertReceipt(adapter, {
+      id: 'r-voided',
+      idempotencyKey: 'k-voided',
+      linesJson: JSON.stringify([
+        { product_id: 'p1', name: 'A', sku: 'A', quantity: 99, unit_price: '1.000', line_total: '99.000' },
+      ]),
+    });
+    // Mark the second receipt as voided after insertion.
+    await adapter.execute(
+      `UPDATE offline_receipts SET voided = 1 WHERE id = $1`,
+      ['r-voided'],
+    );
+
+    const counts = await aggregateProductSales(adapter, { sinceDays: 30 });
+    expect(counts.get('p1')).toBe(7);
+  });
 });

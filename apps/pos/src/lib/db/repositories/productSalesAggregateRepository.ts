@@ -37,7 +37,8 @@ export async function aggregateProductSales(
 ): Promise<Map<string, number>> {
   const rows = await db.select<{ lines: string }[]>(
     `SELECT lines FROM offline_receipts
-     WHERE created_at >= datetime('now', $1)`,
+     WHERE created_at >= datetime('now', $1)
+       AND COALESCE(voided, 0) = 0`,
     [`-${sinceDays} days`],
   );
 
