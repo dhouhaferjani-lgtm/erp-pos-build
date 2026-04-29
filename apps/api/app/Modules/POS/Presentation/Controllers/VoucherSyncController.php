@@ -14,7 +14,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
-use InvalidArgumentException;
 
 /**
  * Voucher + receipt-QR-index sync endpoints.
@@ -136,19 +135,9 @@ final class VoucherSyncController extends Controller
         $failed = 0;
 
         foreach ($entries as $rawEntry) {
-            try {
-                $payload = VoucherLedgerPushPayload::fromArray($rawEntry);
-            } catch (InvalidArgumentException $e) {
-                $id = isset($rawEntry['id']) && is_string($rawEntry['id']) ? $rawEntry['id'] : '';
-                $results[] = [
-                    'id' => $id,
-                    'status' => 'failed',
-                    'error' => 'event_kind_not_supported_in_offline_path',
-                ];
-                $failed++;
-
-                continue;
-            }
+            // FormRequest validates `event` against VoucherEvent case names,
+            // so fromArray() cannot fail here for the FormRequest path.
+            $payload = VoucherLedgerPushPayload::fromArray($rawEntry);
 
             $requestingTerminalId = $payload->terminalId;
 

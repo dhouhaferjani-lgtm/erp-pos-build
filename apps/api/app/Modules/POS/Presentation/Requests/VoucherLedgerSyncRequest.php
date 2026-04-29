@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Presentation\Requests;
 
+use App\Modules\Voucher\Domain\Enums\VoucherEvent;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 /**
  * Request validation for POST /api/v1/pos/voucher-ledger/sync.
@@ -32,7 +34,7 @@ final class VoucherLedgerSyncRequest extends FormRequest
             'entries' => ['required', 'array', 'min:1', 'max:100'],
             'entries.*.id' => ['required', 'uuid'],
             'entries.*.voucher_id' => ['required', 'uuid'],
-            'entries.*.event' => ['required', 'string', 'max:64'],
+            'entries.*.event' => ['required', 'string', Rule::in(array_column(VoucherEvent::cases(), 'name'))],
             'entries.*.amount' => ['required', 'string'],
             'entries.*.currency' => ['required', 'string', 'size:3'],
             'entries.*.receipt_id' => ['nullable', 'uuid'],
