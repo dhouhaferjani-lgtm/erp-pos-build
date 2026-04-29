@@ -179,10 +179,10 @@ d('Migration v22 — idempotent reapply', () => {
       // CREATE TABLE without IF NOT EXISTS, so re-running would throw. The
       // production runner guards via the _migrations table — confirmed by the
       // existing test pattern in migrations.integration.test.ts (see comment in
-      // "_migrations table records v21 as applied" test). Here we assert the
-      // current DB version matches v22 by checking the last migration version.
-      const lastVersion = migrations[migrations.length - 1]!.version;
-      expect(lastVersion).toBe(22);
+      // "_migrations table records v21 as applied" test). Here we assert v22 is
+      // still part of the registered migrations after later versions were added.
+      const v22Migration = migrations.find((m) => m.version === 22);
+      expect(v22Migration).toBeDefined();
 
       // Schema is still intact after double-inspection
       const colsSecond = await adapter.select<{ name: string; type: string }[]>(

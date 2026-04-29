@@ -48,6 +48,17 @@ import {
   cleanupSyncedCashDrawerOps,
 } from '@/lib/db/repositories/cashDrawerRepository';
 import { logSyncOperation, getSyncMetadata, setSyncMetadata, cleanupOldSyncLogs } from '@/lib/db/repositories/syncLogRepository';
+import {
+  upsertVouchers,
+  upsertVoucherLedgerEntries,
+  upsertReceiptQrIndexEntries,
+  getPendingVoucherLedgerEntries,
+  markVoucherLedgerEntrySynced,
+  markVoucherLedgerEntryFailed,
+  type LocalVoucher,
+  type LocalVoucherLedgerEntry,
+  type LocalReceiptQrIndexEntry,
+} from '@/lib/offline/voucherRepository';
 import type { LocalZReport } from '@/lib/offline/types';
 import type { POSProduct } from '@/types/product';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
@@ -134,12 +145,17 @@ export interface SyncResult {
   zReportsFailed: number;
   cashDrawerOpsPushed: number;
   pinUpdatesPushed: number;
+  voucherLedgerPushed: number;
+  voucherLedgerFailed: number;
   productsPulled: number;
   paymentConfigPulled: boolean;
   operatorsPulled: number;
   terminalStatePulled: boolean;
   tablesPulled: boolean;
   activeMenuPulled: boolean;
+  vouchersPulled: number;
+  voucherLedgerPulled: number;
+  receiptQrIndexPulled: number;
   chainBreak: boolean;
   errors: string[];
 }
@@ -817,6 +833,186 @@ export async function pullActiveMenu(db: Database): Promise<boolean> {
   }
 }
 
+// ─── Voucher + receipt-QR mirror sync ───────────────────────────────────────
+//
+// Mirror tables created in migrations 23/24/25. The pull functions hit
+// server endpoints that do not yet exist (Task 44 only ships the POS-side
+// scaffolding); a 404 is therefore treated as a benign "nothing to sync"
+// and logged via logSyncOperation('error', …) rather than thrown. Backend
+// endpoints `/pos/vouchers/sync`, `/pos/voucher-ledger/sync`, and
+// `/pos/receipts/qr-index` are wired up in subsequent backend tasks.
+
+interface VouchersSyncResponse {
+  vouchers: LocalVoucher[];
+  deleted_ids?: string[];
+}
+
+interface VoucherLedgerSyncResponse {
+  entries: LocalVoucherLedgerEntry[];
+}
+
+interface ReceiptQrIndexSyncResponse {
+  entries: LocalReceiptQrIndexEntry[];
+}
+
+/**
+ * Pull voucher mirror updates from the server. Backend endpoint pending —
+ * see comment block above. Errors are swallowed and logged so a missing
+ * backend doesn't break the rest of the sync run.
+ */
+export async function pullVouchers(
+  db: Database,
+  terminalId: string,
+): Promise<number> {
+  // Backend endpoint pending: /pos/vouchers/sync (delivered in a later backend task).
+  try {
+    const lastSync = await getSyncMetadata(db, 'vouchers_last_sync');
+    const params: Record<string, string> = { terminal_id: terminalId };
+    if (lastSync) params['updated_since'] = lastSync;
+
+    const response = await apiGet<VouchersSyncResponse>('/pos/vouchers/sync', params);
+    const vouchers = response.vouchers ?? [];
+    if (vouchers.length > 0) {
+      await upsertVouchers(db, vouchers);
+    }
+
+    await setSyncMetadata(db, 'vouchers_last_sync', new Date().toISOString());
+    await logSyncOperation(
+      db,
+      'pull',
+      'vouchers',
+      null,
+      'success',
+      `${vouchers.length} vouchers`,
+    );
+    return vouchers.length;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    await logSyncOperation(db, 'pull', 'vouchers', null, 'error', message);
+    return 0;
+  }
+}
+
+/**
+ * Pull voucher_ledger updates from the server. Backend endpoint pending.
+ */
+export async function pullVoucherLedger(
+  db: Database,
+  terminalId: string,
+): Promise<number> {
+  // Backend endpoint pending: /pos/voucher-ledger/sync (delivered in a later backend task).
+  try {
+    const lastSync = await getSyncMetadata(db, 'voucher_ledger_last_sync');
+    const params: Record<string, string> = { terminal_id: terminalId };
+    if (lastSync) params['updated_since'] = lastSync;
+
+    const response = await apiGet<VoucherLedgerSyncResponse>(
+      '/pos/voucher-ledger/sync',
+      params,
+    );
+    const entries = response.entries ?? [];
+    if (entries.length > 0) {
+      // Server-pulled rows always arrive in 'synced' state from this terminal's
+      // perspective. If the server returns a different sync_status, trust it.
+      await upsertVoucherLedgerEntries(db, entries);
+    }
+
+    await setSyncMetadata(db, 'voucher_ledger_last_sync', new Date().toISOString());
+    await logSyncOperation(
+      db,
+      'pull',
+      'voucher_ledger',
+      null,
+      'success',
+      `${entries.length} ledger entries`,
+    );
+    return entries.length;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    await logSyncOperation(db, 'pull', 'voucher_ledger', null, 'error', message);
+    return 0;
+  }
+}
+
+/**
+ * Pull the receipt_qr_index for this terminal so the scan dispatcher (Task 50)
+ * can resolve scanned QR tokens to receipts without a network round-trip.
+ * Backend endpoint pending.
+ */
+export async function pullReceiptQrIndex(
+  db: Database,
+  terminalId: string,
+): Promise<number> {
+  // Backend endpoint pending: /pos/receipts/qr-index (delivered in a later backend task).
+  try {
+    const lastSync = await getSyncMetadata(db, 'receipt_qr_index_last_sync');
+    const params: Record<string, string> = { terminal_id: terminalId };
+    if (lastSync) params['updated_since'] = lastSync;
+
+    const response = await apiGet<ReceiptQrIndexSyncResponse>(
+      '/pos/receipts/qr-index',
+      params,
+    );
+    const entries = response.entries ?? [];
+    if (entries.length > 0) {
+      await upsertReceiptQrIndexEntries(db, entries);
+    }
+
+    await setSyncMetadata(db, 'receipt_qr_index_last_sync', new Date().toISOString());
+    await logSyncOperation(
+      db,
+      'pull',
+      'receipt_qr_index',
+      null,
+      'success',
+      `${entries.length} entries`,
+    );
+    return entries.length;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    await logSyncOperation(db, 'pull', 'receipt_qr_index', null, 'error', message);
+    return 0;
+  }
+}
+
+/**
+ * Push locally-written voucher_ledger entries (e.g. issued during a refund or
+ * exchange while offline) to the server. Marks each row 'synced' on success
+ * or 'failed' with the error reason on failure. Per-row errors do not halt
+ * the loop — voucher chain is independent of the receipt fiscal chain.
+ * Backend endpoint pending.
+ */
+export async function pushVoucherLedgerEntries(
+  db: Database,
+): Promise<{ pushed: number; failed: number; errors: string[] }> {
+  // Backend endpoint pending: POST /pos/voucher-ledger/sync (delivered in a later backend task).
+  const pending = await getPendingVoucherLedgerEntries(db);
+  let pushed = 0;
+  let failed = 0;
+  const errors: string[] = [];
+
+  if (pending.length === 0) {
+    return { pushed, failed, errors };
+  }
+
+  for (const entry of pending) {
+    try {
+      await apiPost('/pos/voucher-ledger/sync', { entries: [entry] });
+      await markVoucherLedgerEntrySynced(db, entry.id);
+      await logSyncOperation(db, 'push', 'voucher_ledger', entry.id, 'success');
+      pushed++;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      await markVoucherLedgerEntryFailed(db, entry.id, message);
+      await logSyncOperation(db, 'push', 'voucher_ledger', entry.id, 'error', message);
+      errors.push(`Voucher ledger ${entry.id}: ${message}`);
+      failed++;
+    }
+  }
+
+  return { pushed, failed, errors };
+}
+
 /**
  * Full sync: push then pull.
  */
@@ -847,6 +1043,16 @@ export async function runFullSync(
   const { pushed: cashDrawerPushed, errors: cashDrawerErrors } = await pushCashDrawerOps(db);
   errors.push(...cashDrawerErrors);
 
+  // Push voucher_ledger entries written locally during refunds / exchanges.
+  // Failures here are independent of the receipt fiscal chain and must not
+  // halt the rest of the sync run.
+  const {
+    pushed: voucherLedgerPushed,
+    failed: voucherLedgerFailed,
+    errors: voucherLedgerPushErrors,
+  } = await pushVoucherLedgerEntries(db);
+  errors.push(...voucherLedgerPushErrors);
+
   // Then pull (always pull even if push had failures, to keep local data fresh)
   const productsPulled = await pullProducts(db);
   const paymentConfigPulled = await pullPaymentConfig(db);
@@ -855,6 +1061,9 @@ export async function runFullSync(
   await pullZChainState(db, terminalId);
   const tablesPulled = await pullTables(db);
   const activeMenuPulled = await pullActiveMenu(db);
+  const vouchersPulled = await pullVouchers(db, terminalId);
+  const voucherLedgerPulled = await pullVoucherLedger(db, terminalId);
+  const receiptQrIndexPulled = await pullReceiptQrIndex(db, terminalId);
 
   // Refresh company config (locale, modules) — graceful on failure.
   try {
@@ -875,12 +1084,17 @@ export async function runFullSync(
     zReportsFailed: zFailed,
     cashDrawerOpsPushed: cashDrawerPushed,
     pinUpdatesPushed,
+    voucherLedgerPushed,
+    voucherLedgerFailed,
     productsPulled,
     paymentConfigPulled,
     operatorsPulled,
     terminalStatePulled,
     tablesPulled,
     activeMenuPulled,
+    vouchersPulled,
+    voucherLedgerPulled,
+    receiptQrIndexPulled,
     chainBreak,
     errors,
   };

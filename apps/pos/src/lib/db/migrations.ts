@@ -519,4 +519,93 @@ export const migrations: Migration[] = [
       ALTER TABLE terminal_state ADD COLUMN manager_pin_failed_attempts  INTEGER NOT NULL DEFAULT 0;
     `,
   },
+  {
+    // Local mirror of issued vouchers for the refund-flow phase. Phase 1 voucher
+    // domain is single-terminal: a voucher issued at terminal A is redeemable
+    // only at terminal A. Mirror only holds rows the server has scoped to this
+    // terminal (or with a null `redeemable_at_terminal_id` for back-office
+    // goodwill grants). Lookups (`findByCode`) read this table only — never
+    // hit the API during cashier interaction.
+    //
+    // All monetary amounts are decimal strings stored at internal precision
+    // (currency_scale + 2), mirroring the TEXT-decimal pattern established by
+    // migration 21.
+    version: 23,
+    name: 'create_vouchers_mirror',
+    sql: `
+      CREATE TABLE IF NOT EXISTS vouchers (
+        id TEXT PRIMARY KEY,
+        code TEXT NOT NULL UNIQUE,
+        initial_balance TEXT NOT NULL,
+        current_balance TEXT NOT NULL,
+        currency TEXT NOT NULL,
+        status TEXT NOT NULL,
+        redemption_mode TEXT NOT NULL,
+        voucher_kind TEXT NOT NULL DEFAULT 'MPV',
+        source TEXT NOT NULL,
+        issued_at TEXT NOT NULL,
+        expires_at TEXT,
+        partner_id TEXT,
+        issued_to_partner_id TEXT,
+        redeemable_at_terminal_id TEXT,
+        notes TEXT,
+        synced_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_vouchers_terminal_status ON vouchers(redeemable_at_terminal_id, status);
+    `,
+  },
+  {
+    // Local mirror of voucher_ledger entries (issued, redeemed, expired, …).
+    // Server-pulled rows arrive with sync_status = 'synced'. Locally written
+    // rows (issued/redeemed at this terminal during a refund or exchange) start
+    // as sync_status = 'pending' and are pushed by syncService.pushVoucherLedgerEntries.
+    version: 24,
+    name: 'create_voucher_ledger_mirror',
+    sql: `
+      CREATE TABLE IF NOT EXISTS voucher_ledger (
+        id TEXT PRIMARY KEY,
+        voucher_id TEXT NOT NULL,
+        event TEXT NOT NULL,
+        amount TEXT NOT NULL,
+        currency TEXT NOT NULL,
+        receipt_id TEXT,
+        terminal_id TEXT,
+        user_id TEXT NOT NULL,
+        occurred_at TEXT NOT NULL,
+        sync_status TEXT NOT NULL DEFAULT 'synced' CHECK(sync_status IN ('synced', 'pending', 'failed')),
+        sync_error TEXT,
+        synced_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_voucher_ledger_voucher ON voucher_ledger(voucher_id, occurred_at);
+      CREATE INDEX IF NOT EXISTS idx_voucher_ledger_sync_status ON voucher_ledger(sync_status);
+    `,
+  },
+  {
+    // Local index of receipts whose server-signed QR token is known to this
+    // terminal. Used by `findReceiptByQrToken` (scan dispatcher in Task 50)
+    // and `findReceiptByNumber` (manual lookup) — both must answer from local
+    // SQLite alone, with no API round-trip.
+    //
+    // qr_token is nullable: offline-issued receipts whose server-signed token
+    // hasn't synced back yet have an entry keyed by `receipt_uuid` so they
+    // can still be found by receipt number, but `findReceiptByQrToken` will
+    // miss them until the QR token arrives via sync.
+    version: 25,
+    name: 'create_receipt_qr_index',
+    sql: `
+      CREATE TABLE IF NOT EXISTS receipt_qr_index (
+        receipt_uuid TEXT PRIMARY KEY,
+        qr_token TEXT,
+        receipt_number TEXT NOT NULL,
+        terminal_id TEXT NOT NULL,
+        posted_at TEXT NOT NULL,
+        total TEXT NOT NULL,
+        currency TEXT NOT NULL,
+        synced_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_receipt_qr_index_terminal ON receipt_qr_index(terminal_id);
+      CREATE INDEX IF NOT EXISTS idx_receipt_qr_index_number ON receipt_qr_index(receipt_number);
+      CREATE INDEX IF NOT EXISTS idx_receipt_qr_index_qr_token ON receipt_qr_index(qr_token) WHERE qr_token IS NOT NULL;
+    `,
+  },
 ];

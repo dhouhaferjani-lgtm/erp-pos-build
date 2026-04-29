@@ -102,6 +102,15 @@ vi.mock('@/lib/fiscal/hashService', () => ({
   computeGenesisHash: vi.fn().mockResolvedValue('genesis-hash-abc123'),
 }));
 
+vi.mock('@/lib/offline/voucherRepository', () => ({
+  upsertVouchers: vi.fn().mockResolvedValue(undefined),
+  upsertVoucherLedgerEntries: vi.fn().mockResolvedValue(undefined),
+  upsertReceiptQrIndexEntries: vi.fn().mockResolvedValue(undefined),
+  getPendingVoucherLedgerEntries: vi.fn().mockResolvedValue([]),
+  markVoucherLedgerEntrySynced: vi.fn().mockResolvedValue(undefined),
+  markVoucherLedgerEntryFailed: vi.fn().mockResolvedValue(undefined),
+}));
+
 import {
   pushOfflineReceipts,
   pullProducts,
@@ -618,7 +627,12 @@ describe('syncService', () => {
         .mockResolvedValueOnce([]) // payment repos
         .mockResolvedValueOnce([]) // operator pins
         .mockResolvedValueOnce({ id: 't-1', code: 'T001', genesis_seed: 'seed', last_hash: 'h', hash_sequence: 0 }) // terminal state
-        .mockResolvedValueOnce({ z_last_hash: null, z_hash_sequence: 0, z_number: 0, grand_totals: null }); // z-chain state
+        .mockResolvedValueOnce({ z_last_hash: null, z_hash_sequence: 0, z_number: 0, grand_totals: null }) // z-chain state
+        .mockResolvedValueOnce({ data: [] }) // pullTables (floors)
+        .mockResolvedValueOnce({ categories: [] }) // pullActiveMenu
+        .mockResolvedValueOnce({ vouchers: [] }) // pullVouchers
+        .mockResolvedValueOnce({ entries: [] }) // pullVoucherLedger
+        .mockResolvedValueOnce({ entries: [] }); // pullReceiptQrIndex
 
       const result = await runFullSync(db, 't-1');
 
