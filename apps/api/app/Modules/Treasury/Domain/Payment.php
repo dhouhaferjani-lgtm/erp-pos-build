@@ -37,6 +37,10 @@ use Illuminate\Support\Carbon;
  * @property Carbon $payment_date
  * @property PaymentStatus $status
  * @property PaymentType $payment_type
+ * @property string|null $original_payment_id UUID of the original Payment this refund was split from (Task 19)
+ * @property string|null $refund_request_id Idempotency key for refundReceiptPayments() calls (Task 19)
+ * @property string|null $authorized_by_user_id Manager/admin who authorised the override (Task 19 / spec §3.6)
+ * @property string|null $policy_trigger Policy condition that triggered the override (Task 19 / spec §3.6)
  * @property string|null $reference
  * @property string|null $notes
  * @property string|null $journal_entry_id
@@ -82,6 +86,11 @@ class Payment extends Model
         'is_reconciled',
         'reconciled_at',
         'created_by',
+        // Refund audit columns (Task 19 — spec §3.6 / §4.3)
+        'original_payment_id',
+        'refund_request_id',
+        'authorized_by_user_id',
+        'policy_trigger',
     ];
 
     /**
