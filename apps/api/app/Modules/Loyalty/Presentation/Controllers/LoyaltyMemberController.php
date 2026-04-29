@@ -79,7 +79,7 @@ class LoyaltyMemberController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        $member = LoyaltyMember::with(['enrollments.program', 'customer'])->findOrFail($id);
+        $member = LoyaltyMember::with(['enrollments.program', 'loyaltyable'])->findOrFail($id);
 
         return response()->json([
             'data' => LoyaltyMemberData::fromModel($member),

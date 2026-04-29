@@ -1,24 +1,16 @@
-export interface FraudSettings {
-  id?: string
-  company_id: string
-  abandoned_draft_threshold: number
-  time_window_days: number
-  alert_emails: string[]
-  alert_enabled: boolean
-  auto_trigger_counting: boolean
-  auto_restrict_access: boolean
-  // Cash drawer variance thresholds
-  cash_variance_over_soft: string
-  cash_variance_over_hard: string
-  cash_variance_under_soft: string
-  cash_variance_under_hard: string
-  require_blind_cash_count: boolean
-  require_manager_pin_above_hard: boolean
-  cash_variance_email_severity: 'none' | 'critical' | 'warning' | 'info'
-  created_at?: string
-  updated_at?: string
-  is_configured?: boolean
-}
+/**
+ * FE-only types for the fraud-alerts area.
+ *
+ * These shadow the unwrapped Eloquent payload returned by FraudAlertController
+ * and the FE filter UI; there is no backend Spatie Data DTO for FraudAlert at
+ * the moment, so they remain hand-written here. When a Compliance/Domain DTO
+ * is introduced, migrate consumers per Rule #7 (types flow from backend) and
+ * delete this file.
+ *
+ * The canonical FraudSettings shape lives in the generated namespace as
+ * `App.Modules.Compliance.Application.DTOs.CompanyFraudSettingsData`
+ * (see ./fraudSettings.ts re-export) — do NOT add it here.
+ */
 
 export interface FraudAlert {
   id: string

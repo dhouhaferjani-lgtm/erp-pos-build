@@ -19,6 +19,7 @@ use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 /**
  * Validation tests for GenerateZReportRequest (Task 20).
@@ -27,7 +28,8 @@ use Tests\TestCase;
  * through Laravel's normal DI chain (authorize() + rules() + withValidator()).
  *
  * The app's exception handler wraps ValidationException under error.errors,
- * so all assertJsonValidationErrors calls use 'error.errors' as the response key.
+ * so this test uses the project helper `$this->assertJsonValidationErrors(...)`
+ * from `AssertsApiValidation`, which reads from `error.errors` by default.
  *
  * Covered scenarios:
  * 1. Valid payload with cash_counts passes (200).
@@ -41,6 +43,7 @@ use Tests\TestCase;
  */
 final class GenerateZReportRequestValidationTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -151,7 +154,7 @@ final class GenerateZReportRequestValidationTest extends TestCase
         ]);
 
         $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['cash_counts.0.payment_method_id'], 'error.errors');
+        $this->assertJsonValidationErrors($response, ['cash_counts.0.payment_method_id']);
     }
 
     // -------------------------------------------------------------------------
@@ -171,7 +174,7 @@ final class GenerateZReportRequestValidationTest extends TestCase
         ]);
 
         $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['cash_counts.0.actual_amount'], 'error.errors');
+        $this->assertJsonValidationErrors($response, ['cash_counts.0.actual_amount']);
     }
 
     // -------------------------------------------------------------------------
@@ -189,7 +192,7 @@ final class GenerateZReportRequestValidationTest extends TestCase
         ]);
 
         $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['manager_user_id'], 'error.errors');
+        $this->assertJsonValidationErrors($response, ['manager_user_id']);
         $response->assertJsonPath(
             'error.errors.manager_user_id.0',
             'Manager does not hold pos.close_shift_with_variance.'
@@ -221,7 +224,7 @@ final class GenerateZReportRequestValidationTest extends TestCase
         // The exists:users,id rule is tenant-unaware, so the UUID itself passes the rule.
         // withValidator() must catch the cross-tenant violation and return 422.
         $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['manager_user_id'], 'error.errors');
+        $this->assertJsonValidationErrors($response, ['manager_user_id']);
         $response->assertJsonPath(
             'error.errors.manager_user_id.0',
             'Manager must be in the same tenant.'

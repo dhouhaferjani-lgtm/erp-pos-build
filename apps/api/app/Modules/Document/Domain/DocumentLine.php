@@ -36,6 +36,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $notes
  * @property string|null $designation_default_snapshot
  * @property string|null $source_line_id
+ * @property string|null $work_order_line_id
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Document $document
@@ -79,6 +80,13 @@ class DocumentLine extends Model
         'notes',
         'designation_default_snapshot',
         'source_line_id',
+        // Bare nullable UUID — back-reference to Workshop\WorkOrder\Domain\WorkOrderLine.
+        // NOT FK-constrained per Spec §5.1 (cross-module loose reference).
+        // Required in $fillable so DocumentGenerationAdapter mass-assignment
+        // and CopiesDocumentData::copyLine() can both persist the column —
+        // without it, default mass-assignment guarding silently drops it
+        // (H2 audit finding).
+        'work_order_line_id',
     ];
 
     /**

@@ -5,13 +5,11 @@ declare(strict_types=1);
 namespace App\Modules\Loyalty\Domain\Entities;
 
 use App\Modules\Loyalty\Domain\Enums\MemberStatus;
-use App\Modules\Partner\Domain\Partner;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -34,7 +32,6 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Model|null $loyaltyable
- * @property-read Partner|null $customer
  * @property-read Collection<int, Enrollment> $enrollments
  */
 class LoyaltyMember extends Model
@@ -80,18 +77,6 @@ class LoyaltyMember extends Model
     public function loyaltyable(): MorphTo
     {
         return $this->morphTo();
-    }
-
-    /**
-     * Get the customer (partner) associated with this member
-     *
-     * @deprecated Use loyaltyable() instead. Kept for backward compatibility.
-     *
-     * @return BelongsTo<Partner, $this>
-     */
-    public function customer(): BelongsTo
-    {
-        return $this->belongsTo(Partner::class, 'customer_id');
     }
 
     /**

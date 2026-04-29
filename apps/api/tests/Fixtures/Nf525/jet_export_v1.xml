@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<JET xmlns="urn:nf525:jet:v1" version="1.0">
+  <Entete>
+    <Editeur>AutoERP</Editeur>
+    <VersionLogiciel>1.0.0-snapshot</VersionLogiciel>
+    <NumeroCertification>TEST-CERT-001</NumeroCertification>
+    <DateExport>2026-04-28T12:00:00+00:00</DateExport>
+    <Societe>
+      <Identifiant>00000000-0000-4000-8000-000000000002</Identifiant>
+      <RaisonSociale>Snapshot Company SARL</RaisonSociale>
+    </Societe>
+    <Periode>
+      <DateDebut>2026-04-01</DateDebut>
+      <DateFin>2026-04-30</DateFin>
+    </Periode>
+  </Entete>
+  <Tickets type="TICKET" count="1">
+    <Ticket>
+      <Identifiant>00000000-0000-4000-8000-000000000010</Identifiant>
+      <Numero>POS01-2026-00000001</Numero>
+      <TerminalId>00000000-0000-4000-8000-000000000004</TerminalId>
+      <Date>2026-04-15T10:30:00+00:00</Date>
+      <SequenceChaine>1</SequenceChaine>
+      <HashFiscal>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</HashFiscal>
+      <HashPrecedent></HashPrecedent>
+      <SousTotal>100.000</SousTotal>
+      <Taxe>20.000</Taxe>
+      <Remise>0.000</Remise>
+      <Total>120.000</Total>
+      <Devise>EUR</Devise>
+      <Caissier>Snapshot Cashier</Caissier>
+      <Client>Snapshot Customer</Client>
+      <Lignes>
+        <Ligne>
+          <Numero>1</Numero>
+          <CodeProduit>PROD001</CodeProduit>
+          <NomProduit>Snapshot Product</NomProduit>
+          <Quantite>2.000</Quantite>
+          <PrixUnitaire>50.000</PrixUnitaire>
+          <TotalLigne>100.000</TotalLigne>
+          <TauxTVA>20.00</TauxTVA>
+          <MontantTVA>20.000</MontantTVA>
+          <Remise>0.000</Remise>
+        </Ligne>
+      </Lignes>
+      <VentilationTVA>
+        <TVA>
+          <Taux>20.00</Taux>
+          <BaseHT>100.000</BaseHT>
+          <MontantTVA>20.000</MontantTVA>
+          <TotalTTC>120.000</TotalTTC>
+        </TVA>
+      </VentilationTVA>
+      <Paiements/>
+    </Ticket>
+  </Tickets>
+  <Annulations type="ANNULATION" count="0"/>
+  <Retours type="RETOUR" count="0"/>
+  <Duplicatas type="DUPLICATA" count="0"/>
+  <RapportsZ type="RAPPORT_Z" count="0"/>
+  <GrandsTotaux count="0"/>
+  <MouvementsCaisse count="0"/>
+  <EvenementsTechniques count="0"/>
+  <EvenementsTerminal count="0"/>
+  <ModeFormation count="0"/>
+  <ChainesHash count="1">
+    <ChaineTerminal>
+      <TerminalId>00000000-0000-4000-8000-000000000004</TerminalId>
+      <CodeTerminal>POS01</CodeTerminal>
+      <NomTerminal>Snapshot Terminal 1</NomTerminal>
+      <GraineSeed>deadbeef00000000000000000000000000000000000000000000000000000000</GraineSeed>
+      <SequenceActuelle>1</SequenceActuelle>
+      <AnneeActuelle>2026</AnneeActuelle>
+      <DernierHash>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</DernierHash>
+    </ChaineTerminal>
+  </ChainesHash>
+</JET>

@@ -7,9 +7,24 @@ import { tokens, textColors } from '@/lib/designTokens'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { getFraudSettings, updateFraudSettings, resetFraudSettings } from '../api/fraudApi'
-import type { FraudSettings } from '../types/fraud'
+import type { FraudSettings } from '../types/fraudSettings'
 import { CashDrawerControlsSection } from '../components/CashDrawerControlsSection'
 import type { CashDrawerControlsValue } from '../components/CashDrawerControlsSection'
+
+type EmailSeverity = CashDrawerControlsValue['cash_variance_email_severity']
+
+const ALLOWED_EMAIL_SEVERITIES: readonly EmailSeverity[] = ['none', 'critical', 'warning', 'info']
+
+/**
+ * Narrow the `cash_variance_email_severity` field from the generated DTO
+ * (typed as `string`) into the literal union the cash-drawer control
+ * component expects. Falls back to `'none'` for unknown / undefined values.
+ */
+function narrowEmailSeverity(value: string | null | undefined): EmailSeverity {
+  return ALLOWED_EMAIL_SEVERITIES.includes(value as EmailSeverity)
+    ? (value as EmailSeverity)
+    : 'none'
+}
 
 export function FraudSettingsPage() {
   const { t } = useTranslation(['common', 'compliance'])
@@ -372,7 +387,7 @@ export function FraudSettingsPage() {
             cash_variance_under_hard: formData.cash_variance_under_hard ?? '20.00',
             require_blind_cash_count: formData.require_blind_cash_count ?? false,
             require_manager_pin_above_hard: formData.require_manager_pin_above_hard ?? true,
-            cash_variance_email_severity: formData.cash_variance_email_severity ?? 'none',
+            cash_variance_email_severity: narrowEmailSeverity(formData.cash_variance_email_severity),
           }}
           currencyCode="EUR"
           onChange={(next: CashDrawerControlsValue) => {
