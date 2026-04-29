@@ -32,9 +32,6 @@ import { ModifierSelectionModal } from '@/components/organisms/ModifierSelection
 import { VoidReturnModal } from '@/components/organisms/VoidReturnModal';
 import { QuantityNumpad } from '@/components/organisms/QuantityNumpad';
 import { useSmartPromptsStore } from '@/stores/smartPromptsStore';
-// InlineSmartPrompts intentionally not imported: the in-cart variant is
-// disabled. Only the toast variant (under the product grid) is rendered.
-// See HomePage.tsx around the smart-prompts toast block below.
 import { ToastSmartPrompts } from '@/components/organisms/ToastSmartPrompts';
 import { apiGet } from '@/lib/api';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -532,13 +529,6 @@ export function HomePage() {
     isLoading: spIsLoading,
   };
 
-  // In-cart inline smart prompts are disabled by product decision: they
-  // competed for vertical space with the cart's PaymentSummary on smaller
-  // viewports. The toast variant (rendered under the product grid further
-  // below) remains the supported placement when smart_prompts_variant is
-  // 'toast' or 'both'. 'inline' now has no UI effect.
-  const smartPromptsInline = undefined;
-
   // Open shift screen
   if (!shift) {
     return (
@@ -590,7 +580,7 @@ export function HomePage() {
     <div className="flex h-full flex-col">
       <TerminalNotReadyBanner />
       <ChainBreakAlert />
-      <div className={`flex flex-1 relative ${cartPosition === 'end' ? 'flex-row-reverse' : 'flex-row'}`}>
+      <div className={`flex flex-1 min-h-0 relative ${cartPosition === 'end' ? 'flex-row-reverse' : 'flex-row'}`}>
       {/* Barcode scan feedback */}
       {scanMessage && (
         <div
@@ -605,7 +595,7 @@ export function HomePage() {
       )}
 
       {/* Cart - left panel (first in DOM) */}
-      <div className="flex min-h-0 min-w-[340px] flex-[4] overflow-hidden border-r border-gray-200">
+      <div className="flex-[4] min-w-[340px] border-r border-gray-200">
         <TransactionCart
           items={cartItems}
           subtotal={subtotal()}
@@ -628,7 +618,6 @@ export function HomePage() {
           onEditModifiers={handleEditModifiers}
           onRemoveDiscount={handleRemoveDiscount}
           paymentMethods={paymentMethods}
-          smartPromptsSlot={smartPromptsInline}
           checkoutDisabled={!hashChainReady || isProcessing}
         />
       </div>
