@@ -286,6 +286,9 @@ class ReceiptReturnServiceTest extends TestCase
             'genesis_seed' => str_repeat('0', 64),
             'current_sequence' => 200,
             'current_year' => 2026,
+            // Explicitly pinned to v2 so this test targets the legacy hash path.
+            // See V2ToV3ChainReplayTest legacy hash audit note (Task 43).
+            'fiscal_schema_version' => 2,
             'is_active' => true,
             'max_discount_percent' => 20.00,
             'allow_line_discounts' => true,

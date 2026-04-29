@@ -72,7 +72,11 @@ final class ZReportHashService
 
     /**
      * Normalize all monetary fields in report_data to scale 3 for hash input.
-     * Applies only when report_data.schema_version >= 2. v1-shape payloads pass through unchanged.
+     *
+     * - schema_version < 2: pass through unchanged (v1 legacy path).
+     * - schema_version 2: normalize cash-count keys only.
+     * - schema_version 3: additionally normalize the new refund/voucher monetary keys
+     *   (refunds_amount, vouchers_issued_amount, vouchers_redeemed_amount).
      *
      * Contract v1.1: all monetary normalizations use scale 3.
      *
@@ -86,7 +90,18 @@ final class ZReportHashService
             return $reportData;
         }
 
+        // ── v2+ shared normalization keys ────────────────────────────────────────
         $monetaryKeys = ['opening_cash', 'expected_cash', 'actual_cash', 'variance', 'gross_sales', 'net_sales', 'tax_amount'];
+
+        // ── v3-only additional keys ───────────────────────────────────────────────
+        if ($schemaVersion >= 3) {
+            $monetaryKeys = array_merge($monetaryKeys, [
+                'refunds_amount',
+                'vouchers_issued_amount',
+                'vouchers_redeemed_amount',
+            ]);
+        }
+
         foreach ($monetaryKeys as $key) {
             if (isset($reportData[$key]) && is_string($reportData[$key])) {
                 $reportData[$key] = CurrencyScale::bcformat($reportData[$key], 3);

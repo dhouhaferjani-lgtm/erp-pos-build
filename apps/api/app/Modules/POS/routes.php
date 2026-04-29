@@ -7,6 +7,7 @@ use App\Modules\POS\Presentation\Controllers\AnalyticsController;
 use App\Modules\POS\Presentation\Controllers\AuthorizedManagersController;
 use App\Modules\POS\Presentation\Controllers\CashDrawerController;
 use App\Modules\POS\Presentation\Controllers\DiscountController;
+use App\Modules\POS\Presentation\Controllers\FiscalSchemaCutoverController;
 use App\Modules\POS\Presentation\Controllers\FraudSettingsPosController;
 use App\Modules\POS\Presentation\Controllers\ManagerPinController;
 use App\Modules\POS\Presentation\Controllers\PosAuthController;
@@ -47,6 +48,8 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::patch('/pos/terminals/{id}/archive', [TerminalController::class, 'archive']);
     Route::post('/pos/terminals/{id}/toggle-training', [TerminalController::class, 'toggleTrainingMode']);
     Route::get('/pos/terminals/{id}/z-chain-state', [TerminalController::class, 'zChainState']);
+    // Fiscal-schema cutover: admin-only, gated on no-open-shift + no-unzreported + empty-queue
+    Route::post('/pos/terminals/{terminal}/fiscal-schema-cutover', FiscalSchemaCutoverController::class);
 
     // Shift Management
     Route::post('/pos/shifts/open', [ShiftController::class, 'open']);

@@ -264,6 +264,9 @@ class ReceiptPdfGenerationTest extends TestCase
             'is_active' => true,
             'current_year' => 2026,
             'current_sequence' => 0,
+            // Explicitly pinned to v2 so this test targets the legacy hash path.
+            // See V2ToV3ChainReplayTest legacy hash audit note (Task 43).
+            'fiscal_schema_version' => 2,
         ]);
 
         // Create cashier
