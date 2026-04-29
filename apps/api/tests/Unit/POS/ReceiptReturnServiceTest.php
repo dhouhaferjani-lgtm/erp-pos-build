@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\POS\Application\Services\ReceiptFinalizationService;
 use App\Modules\POS\Application\Services\ReceiptReturnService;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
@@ -16,10 +17,13 @@ use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
 use App\Modules\POS\Domain\Services\CashDrawerService;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
+use App\Modules\POS\Domain\Services\RefundDestinationResolver;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Services\PaymentRefundService;
+use App\Modules\Voucher\Application\Services\VoucherIssuanceService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
@@ -69,9 +73,13 @@ class ReceiptReturnServiceTest extends TestCase
 
         $this->service = new ReceiptReturnService(
             $companyContext,
-            $this->app->make(ReceiptHashService::class),
             $this->app->make(CashDrawerService::class),
             $this->app->make(CurrencyScaleResolverInterface::class),
+            $this->app->make(ReceiptFinalizationService::class),
+            $this->app->make(RefundDestinationResolver::class),
+            $this->app->make(VoucherIssuanceService::class),
+            $this->app->make(PaymentRefundService::class),
+            $this->app->make(ReceiptHashService::class),
         );
     }
 

@@ -6,6 +6,7 @@ namespace App\Modules\POS\Application\Services\Fiscal\V3;
 
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Services\Fiscal\V3\CanonicalPayloadBuilder;
+use App\Modules\Voucher\Domain\VoucherLedger;
 use App\Shared\Domain\CurrencyScale;
 
 /**
@@ -28,8 +29,8 @@ final class V3ReceiptHashComputer
     /**
      * Compute the v3 SHA-256 hash for the given receipt.
      *
-     * Eager-loads `payments` and `vatDetails` if not already loaded so callers
-     * do not need to worry about relation state.
+     * Eager-loads `payments`, `vatDetails`, and `voucherLedgerEntries` if not
+     * already loaded so callers do not need to worry about relation state.
      */
     public function compute(Receipt $receipt): string
     {
@@ -41,6 +42,10 @@ final class V3ReceiptHashComputer
             $receipt->load('vatDetails');
         }
 
+        if (! $receipt->relationLoaded('voucherLedgerEntries')) {
+            $receipt->load('voucherLedgerEntries');
+        }
+
         $canonical = $this->builder->build($this->buildInput($receipt));
 
         return hash('sha256', $canonical);
@@ -48,6 +53,15 @@ final class V3ReceiptHashComputer
 
     /**
      * Map a Receipt to the canonical input array expected by CanonicalPayloadBuilder.
+     *
+     * Phase E additions (spec §5.0 / §5.1):
+     *   - voucher_ledger_entries: populated from VoucherLedger rows where receipt_id = receipt.id,
+     *     sorted by voucher_code (via voucher relation). Empty array when none.
+     *   - audit: populated from the receipt's new return-audit columns.  NULL when no audit
+     *     fields are set (normal sale receipts).
+     *
+     * Fixture-01 round-trip: cash-only sale with no vouchers → empty voucher_ledger_entries,
+     * null audit → hash unchanged from Phase A/B/C/D.
      *
      * @return array{
      *   receipt_number: string,
@@ -57,9 +71,9 @@ final class V3ReceiptHashComputer
      *   currency: string,
      *   vat_breakdown: list<array{rate: string, amount: numeric-string}>,
      *   payments: list<array{method_code: string, payment_type: string, amount: numeric-string, instrument_type: null, instrument_serial: null}>,
-     *   voucher_ledger_entries: array{},
+     *   voucher_ledger_entries: list<array{voucher_id: string, voucher_code: string, event: string, amount: numeric-string, gl_journal_entry_id: string|null}>,
      *   exchange_group_id: null,
-     *   audit: null
+     *   audit: array{authorized_by_user_id: string|null, override_reason: string|null, out_of_window: bool|null, policy_trigger: string|null, refund_request_id: string|null}|null
      * }
      */
     private function buildInput(Receipt $receipt): array
@@ -116,6 +130,13 @@ final class V3ReceiptHashComputer
             })
             ->all());
 
+        // voucher_ledger_entries: populated from VoucherLedger rows linked to this receipt (spec §5.0).
+        // For cash-only receipts this will be an empty array, preserving fixture-01 round-trip.
+        $voucherLedgerEntries = $this->buildVoucherLedgerEntries($receipt, $currencyScale);
+
+        // audit: only present on return receipts that recorded an override or out-of-window event.
+        $audit = $this->buildAuditBlock($receipt);
+
         return [
             'receipt_number' => $receipt->receipt_number,
             'posted_at' => $postedAt,
@@ -124,9 +145,81 @@ final class V3ReceiptHashComputer
             'currency' => $receipt->currency,
             'vat_breakdown' => $vatBreakdown,
             'payments' => $payments,
-            'voucher_ledger_entries' => [],
+            'voucher_ledger_entries' => $voucherLedgerEntries,
             'exchange_group_id' => null,
-            'audit' => null,
+            'audit' => $audit,
+        ];
+    }
+
+    /**
+     * Build the voucher_ledger_entries array for the canonical hash payload.
+     *
+     * Entries are sorted by voucher_code to ensure byte-stable ordering across
+     * concurrent inserts.  If no VoucherLedger rows are linked, returns [].
+     *
+     * Fields match the CanonicalPayloadBuilder expected shape (spec §5.0):
+     *   voucher_id, voucher_code, event, amount, gl_journal_entry_id.
+     *
+     * @return list<array{voucher_id: string, voucher_code: string, event: string, amount: numeric-string, gl_journal_entry_id: string|null}>
+     */
+    private function buildVoucherLedgerEntries(Receipt $receipt, int $currencyScale): array
+    {
+        if (! $receipt->relationLoaded('voucherLedgerEntries')) {
+            return [];
+        }
+
+        $entries = $receipt->voucherLedgerEntries;
+
+        if ($entries->isEmpty()) {
+            return [];
+        }
+
+        // Eagerly load the voucher relation so we can read the code
+        $entries->load('voucher');
+
+        return array_values(
+            $entries
+                ->sortBy(fn (VoucherLedger $row): string => (string) ($row->voucher->code ?? ''))
+                ->map(function (VoucherLedger $row) use ($currencyScale): array {
+                    return [
+                        'voucher_id' => $row->voucher_id,
+                        'voucher_code' => (string) ($row->voucher->code ?? ''),
+                        'event' => $row->event->value,
+                        'amount' => CurrencyScale::bcformat((string) $row->amount, $currencyScale),
+                        'gl_journal_entry_id' => $row->gl_journal_entry_id,
+                    ];
+                })
+                ->all()
+        );
+    }
+
+    /**
+     * Build the audit sub-object for the canonical hash payload.
+     *
+     * Returns null when none of the audit fields are set (regular sale receipts,
+     * in-window returns with no override).  This preserves the fixture-01
+     * round-trip test: sale receipt → audit = null → same hash as before Phase E.
+     *
+     * @return array{authorized_by_user_id: string|null, override_reason: string|null, out_of_window: bool|null, policy_trigger: string|null, refund_request_id: string|null}|null
+     */
+    private function buildAuditBlock(Receipt $receipt): ?array
+    {
+        if (
+            $receipt->authorized_by_user_id === null
+            && $receipt->override_reason === null
+            && $receipt->out_of_window === null
+            && $receipt->policy_trigger === null
+            && $receipt->refund_request_id === null
+        ) {
+            return null;
+        }
+
+        return [
+            'authorized_by_user_id' => $receipt->authorized_by_user_id,
+            'override_reason' => $receipt->override_reason,
+            'out_of_window' => $receipt->out_of_window,
+            'policy_trigger' => $receipt->policy_trigger,
+            'refund_request_id' => $receipt->refund_request_id,
         ];
     }
 

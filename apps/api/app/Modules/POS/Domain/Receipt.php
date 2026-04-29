@@ -14,6 +14,7 @@ use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Voucher\Domain\VoucherLedger;
 use Database\Factories\ReceiptFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -74,6 +75,11 @@ use Illuminate\Support\Carbon;
  * @property string|null $sync_error Last sync error if any
  * @property array<string, mixed>|null $discount_breakdown JSONB audit snapshot of resolved discounts
  * @property string|null $notes
+ * @property string|null $authorized_by_user_id UUID of the manager who approved the override
+ * @property string|null $override_reason Human-readable reason for the manager override
+ * @property bool|null $out_of_window TRUE when return window had expired at time of return
+ * @property string|null $policy_trigger Machine-readable policy trigger key (e.g. "over_threshold")
+ * @property string|null $refund_request_id Client-supplied idempotency UUID
  * @property Carbon $created_at Server creation time
  * @property Carbon $updated_at
  * @property-read Tenant $tenant
@@ -90,6 +96,7 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, ReceiptLine> $lines
  * @property-read Collection<int, ReceiptVatDetail> $vatDetails
  * @property-read Collection<int, ReceiptPayment> $payments
+ * @property-read Collection<int, VoucherLedger> $voucherLedgerEntries
  *
  * @method static Builder<static> forTenant(string $tenantId)
  * @method static Builder<static> forCompany(string $companyId)
@@ -166,6 +173,11 @@ class Receipt extends Model
         'idempotency_key',
         'discount_breakdown',
         'notes',
+        'authorized_by_user_id',
+        'override_reason',
+        'out_of_window',
+        'policy_trigger',
+        'refund_request_id',
     ];
 
     /**
@@ -192,6 +204,7 @@ class Receipt extends Model
             'voided_at' => 'datetime',
             'synced_at' => 'datetime',
             'discount_breakdown' => 'array',
+            'out_of_window' => 'boolean',
         ];
     }
 
@@ -310,6 +323,20 @@ class Receipt extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(ReceiptPayment::class, 'receipt_id');
+    }
+
+    /**
+     * Voucher ledger entries linked to this receipt (issuance or redemption events).
+     *
+     * Used by V3ReceiptHashComputer to populate voucher_ledger_entries in the
+     * canonical v3 hash payload (spec §5.0 / §5.1).
+     *
+     * @return HasMany<VoucherLedger, $this>
+     */
+    public function voucherLedgerEntries(): HasMany
+    {
+        return $this->hasMany(VoucherLedger::class, 'receipt_id')
+            ->orderBy('voucher_id');
     }
 
     /**

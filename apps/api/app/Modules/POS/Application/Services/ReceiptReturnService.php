@@ -5,22 +5,34 @@ declare(strict_types=1);
 namespace App\Modules\POS\Application\Services;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\ValueObjects\ReservationSettings;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Enums\RefundDestination;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
+use App\Modules\POS\Domain\Exceptions\DailyRefundCapExceededException;
+use App\Modules\POS\Domain\Exceptions\ManagerOverrideRequiredException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
 use App\Modules\POS\Domain\ReceiptVatDetail;
 use App\Modules\POS\Domain\Services\CashDrawerService;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
+use App\Modules\POS\Domain\Services\RefundDestinationResolver;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\Treasury\Application\DTOs\RefundAllocation;
+use App\Modules\Treasury\Domain\Enums\ProrationStrategy;
+use App\Modules\Treasury\Domain\Services\PaymentRefundService;
+use App\Modules\Voucher\Application\DTOs\VoucherIssuanceRequest;
+use App\Modules\Voucher\Application\Services\VoucherIssuanceService;
+use App\Modules\Voucher\Domain\Voucher;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Carbon;
@@ -29,25 +41,37 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
- * Service for processing partial returns on POS receipts.
+ * Orchestrates partial/full POS returns (Phase E refactor).
  *
- * Creates a new negative receipt (return receipt) that references the original.
- * The return receipt is part of the fiscal hash chain, maintaining NF525 compliance.
+ * Pipeline (all inside a single DB transaction):
+ *  1. DB-level idempotency — return existing receipt if refund_request_id seen before.
+ *  2. Load + validate original receipt.
+ *  3. Validate return quantities.
+ *  4. Compute totals.
+ *  5. Enforce return window, daily cap, manager-override threshold.
+ *  6. Resolve refund destination via RefundDestinationResolver.
+ *  7. Build pending_seal return-receipt draft (no inline hash, no chain advance).
+ *  8. Execute destination-specific side effects:
+ *       StoreVoucher → VoucherIssuanceService::issueFromRefund() (BEFORE finalization)
+ *       OriginalPayment → PaymentRefundService::refundReceiptPayments()
+ *       Cash → CashDrawerService::recordRefund()
+ *  9. Restore stock.
+ * 10. Seal the draft via ReceiptFinalizationService::finalize().
  *
- * Flow:
- * 1. Validate original receipt and return quantities
- * 2. Create a new receipt with negative amounts (receipt_type = 'return')
- * 3. Restore stock for returned items
- * 4. Record cash drawer refund if applicable
- * 5. Compute fiscal hash chain (return receipt chains like any other receipt)
+ * Backward compatibility: when $destination is null (legacy callers / existing tests),
+ * the pipeline defaults to Cash behaviour — same observable contract as before Phase E.
  */
 final class ReceiptReturnService
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
-        private readonly ReceiptHashService $receiptHashService,
         private readonly CashDrawerService $cashDrawerService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly ReceiptFinalizationService $finalizationService,
+        private readonly RefundDestinationResolver $destinationResolver,
+        private readonly VoucherIssuanceService $voucherIssuanceService,
+        private readonly PaymentRefundService $paymentRefundService,
+        private readonly ReceiptHashService $receiptHashService,
     ) {}
 
     private function scale(): int
@@ -64,10 +88,16 @@ final class ReceiptReturnService
      * @param  User  $cashier  The cashier processing the return
      * @param  string  $terminalId  The terminal processing the return
      * @param  string|null  $notes  Optional notes
+     * @param  RefundDestination|null  $destination  Refund destination (null = Cash for backward compat)
+     * @param  string|null  $refundRequestId  Client-supplied idempotency UUID
+     * @param  string|null  $authorizedByUserId  Manager UUID when an override fires
+     * @param  string|null  $overrideReason  Reason text for the manager override
      * @return Receipt The created return receipt with relationships loaded
      *
      * @throws \RuntimeException If receipt cannot be returned
      * @throws \InvalidArgumentException If return data is invalid
+     * @throws ManagerOverrideRequiredException If refund exceeds manager-override threshold and no authorizer supplied
+     * @throws DailyRefundCapExceededException If cashier's daily cap would be exceeded
      */
     public function processReturn(
         string $originalReceiptId,
@@ -76,6 +106,10 @@ final class ReceiptReturnService
         User $cashier,
         string $terminalId,
         ?string $notes = null,
+        ?RefundDestination $destination = null,
+        ?string $refundRequestId = null,
+        ?string $authorizedByUserId = null,
+        ?string $overrideReason = null,
     ): Receipt {
         if (count($returnLines) === 0) {
             throw new \InvalidArgumentException('At least one line item is required for a return');
@@ -83,8 +117,42 @@ final class ReceiptReturnService
 
         $companyId = $this->companyContext->requireCompanyId();
 
-        return DB::transaction(function () use ($originalReceiptId, $returnLines, $returnReason, $cashier, $terminalId, $notes, $companyId): Receipt {
-            // 1. Load and validate original receipt
+        return DB::transaction(function () use (
+            $originalReceiptId,
+            $returnLines,
+            $returnReason,
+            $cashier,
+            $terminalId,
+            $notes,
+            $destination,
+            $refundRequestId,
+            $authorizedByUserId,
+            $overrideReason,
+            $companyId,
+        ): Receipt {
+            // ─────────────────────────────────────────────────────────────────
+            // Step 1: DB-level idempotency — return existing receipt unchanged
+            // ─────────────────────────────────────────────────────────────────
+            if ($refundRequestId !== null) {
+                $existing = Receipt::where('refund_request_id', $refundRequestId)
+                    ->where('company_id', $companyId)
+                    ->first();
+
+                if ($existing !== null) {
+                    /** @var Receipt */
+                    return $existing->fresh([
+                        'lines',
+                        'vatDetails',
+                        'terminal',
+                        'cashier',
+                        'originalReceipt',
+                    ]);
+                }
+            }
+
+            // ─────────────────────────────────────────────────────────────────
+            // Step 2: Load and validate original receipt
+            // ─────────────────────────────────────────────────────────────────
             /** @var Receipt $originalReceipt */
             $originalReceipt = Receipt::with(['lines', 'returnReceipts.lines'])
                 ->where('company_id', $companyId)
@@ -93,7 +161,9 @@ final class ReceiptReturnService
 
             $this->validateOriginalReceipt($originalReceipt);
 
-            // 2. Lock and load terminal
+            // ─────────────────────────────────────────────────────────────────
+            // Step 3: Lock terminal + verify active shift
+            // ─────────────────────────────────────────────────────────────────
             /** @var Terminal $terminal */
             $terminal = Terminal::where('company_id', $companyId)
                 ->where('id', $terminalId)
@@ -104,7 +174,6 @@ final class ReceiptReturnService
                 throw new \RuntimeException('Terminal is not active');
             }
 
-            // 3. Verify active shift
             $shift = Shift::where('terminal_id', $terminal->id)
                 ->where('status', ShiftStatus::Open)
                 ->first();
@@ -113,176 +182,140 @@ final class ReceiptReturnService
                 throw new \RuntimeException('No active shift on this terminal. Open a shift first.');
             }
 
-            // 4. Validate return quantities against original (minus already returned)
+            // ─────────────────────────────────────────────────────────────────
+            // Step 4: Validate return quantities
+            // ─────────────────────────────────────────────────────────────────
             $validatedLines = $this->validateReturnQuantities($originalReceipt, $returnLines);
 
-            // 5. Calculate return receipt totals (negative amounts)
+            // ─────────────────────────────────────────────────────────────────
+            // Step 5: Compute return totals
+            // ─────────────────────────────────────────────────────────────────
             /** @var Company $company */
             $company = $terminal->company ?? Company::findOrFail($terminal->company_id);
             $currency = $company->currency ?? 'TND';
 
-            $receiptLines = [];
-            $vatAggregates = [];
-            $subtotal = '0.00';
-            $totalTax = '0.00';
-            $totalDiscount = '0.00';
+            [$receiptLines, $vatAggregates, $subtotal, $totalTax, $totalDiscount, $total] =
+                $this->computeReturnTotals($validatedLines, $currency);
 
-            foreach ($validatedLines as $index => $returnLine) {
-                /** @var ReceiptLine $originalLine */
-                $originalLine = $returnLine['original_line'];
-                /** @var numeric-string $returnQuantity */
-                $returnQuantity = $returnLine['quantity'];
+            // ─────────────────────────────────────────────────────────────────
+            // Step 6: Policy guards (window / cap / manager-override threshold)
+            // ─────────────────────────────────────────────────────────────────
+            $policy = $company->getReservationSettings();
+            // hasExplicitPolicy: true only when the company JSONB column is not NULL.
+            // Guards that enforce new Phase E controls are skipped for companies that
+            // have not yet configured their reservation_settings (backward compat).
+            $hasExplicitPolicy = $company->reservation_settings !== null;
+            $outOfWindow = $this->isOutOfWindow($originalReceipt, $policy);
+            $cashierPermissions = $cashier->getAllPermissions()->pluck('name')->toArray();
 
-                // Calculate proportional amounts based on return quantity vs original quantity
-                $ratio = bcdiv($returnQuantity, (string) $originalLine->quantity, 10);
-
-                // Line total is negative (we are returning money)
-                /** @var numeric-string $lineTotal */
-                $lineTotal = bcmul(
-                    bcmul($ratio, (string) $originalLine->line_total, $this->scale()),
-                    '-1',
-                    $this->scale(),
+            if ($hasExplicitPolicy) {
+                $this->guardWindowAndCap(
+                    $cashier,
+                    $total,
+                    $policy,
+                    $outOfWindow,
+                    $cashierPermissions,
                 );
-
-                $taxRate = (string) $originalLine->tax_rate;
-                $taxRateDecimal = bcdiv($taxRate, '100', 6);
-                $divisor = bcadd('1', $taxRateDecimal, 6);
-                $netAmount = bcdiv($lineTotal, $divisor, $this->scale());
-                $taxAmount = bcsub($lineTotal, $netAmount, $this->scale());
-
-                $subtotal = bcadd($subtotal, $netAmount, $this->scale());
-                $totalTax = bcadd($totalTax, $taxAmount, $this->scale());
-
-                // Proportional discount
-                /** @var numeric-string $discountAmount */
-                $discountAmount = bcmul($ratio, (string) $originalLine->discount_amount, $this->scale());
-                $totalDiscount = bcadd($totalDiscount, $discountAmount, $this->scale());
-
-                $receiptLines[] = [
-                    'line_number' => $index + 1,
-                    'original_line_id' => $originalLine->id,
-                    'product_id' => $originalLine->product_id,
-                    'composite_item_id' => $originalLine->composite_item_id,
-                    'product_code' => $originalLine->product_code,
-                    'product_name' => $originalLine->product_name,
-                    'product_description' => $originalLine->product_description,
-                    'quantity' => '-'.$returnQuantity,
-                    'unit' => $originalLine->unit,
-                    'unit_price' => (string) $originalLine->unit_price,
-                    'line_total' => $lineTotal,
-                    'tax_rate' => $taxRate,
-                    'tax_amount' => $taxAmount,
-                    'modifiers' => $originalLine->modifiers,
-                    'discount_amount' => $discountAmount,
-                    'discount_reason' => $originalLine->discount_reason,
-                ];
-
-                // Aggregate VAT by rate
-                $rateKey = $taxRate;
-                if (! isset($vatAggregates[$rateKey])) {
-                    $vatAggregates[$rateKey] = [
-                        'tax_rate' => $taxRate,
-                        'net_amount' => '0.00',
-                        'vat_amount' => '0.00',
-                        'gross_amount' => '0.00',
-                    ];
-                }
-                $vatAggregates[$rateKey]['net_amount'] = bcadd($vatAggregates[$rateKey]['net_amount'], $netAmount, $this->scale());
-                $vatAggregates[$rateKey]['vat_amount'] = bcadd($vatAggregates[$rateKey]['vat_amount'], $taxAmount, $this->scale());
-                $vatAggregates[$rateKey]['gross_amount'] = bcadd($vatAggregates[$rateKey]['gross_amount'], $lineTotal, $this->scale());
+                $this->guardManagerOverride(
+                    $total,
+                    $policy,
+                    $authorizedByUserId,
+                );
             }
 
-            // Recalculate VAT aggregates from aggregate net_amount (same as ReceiptCreationService)
-            $totalTax = '0.00';
-            foreach ($vatAggregates as &$vatData) {
-                $vatData['vat_amount'] = $this->roundVat($vatData['net_amount'], $vatData['tax_rate']);
-                $vatData['gross_amount'] = bcadd($vatData['net_amount'], $vatData['vat_amount'], $this->scale());
-                $totalTax = bcadd($totalTax, $vatData['vat_amount'], $this->scale());
-            }
-            unset($vatData);
+            // ─────────────────────────────────────────────────────────────────
+            // Step 7: Resolve refund destination
+            // ─────────────────────────────────────────────────────────────────
+            $resolvedDestination = $this->resolveDestination(
+                $destination,
+                $originalReceipt,
+                $policy,
+                $cashierPermissions,
+            );
 
-            $total = bcadd($subtotal, $totalTax, $this->scale());
+            // Determine policy_trigger based on what fired
+            $policyTrigger = $this->resolvePolicyTrigger(
+                $outOfWindow,
+                $total,
+                $policy,
+                $authorizedByUserId,
+            );
 
-            // 6. Generate receipt number and sequence
-            $currentYear = (int) now()->format('Y');
-            if ($terminal->needsSequenceReset()) {
-                $terminal->current_year = $currentYear;
-                $terminal->current_sequence = 1;
-            }
+            // ─────────────────────────────────────────────────────────────────
+            // Step 8: Build return-receipt draft (pending_seal)
+            // ─────────────────────────────────────────────────────────────────
+            $draft = $this->buildReturnDraft(
+                originalReceipt: $originalReceipt,
+                terminal: $terminal,
+                cashier: $cashier,
+                returnReason: $returnReason,
+                vatAggregates: $vatAggregates,
+                subtotal: $subtotal,
+                totalTax: $totalTax,
+                totalDiscount: $totalDiscount,
+                total: $total,
+                currency: $currency,
+                notes: $notes,
+                outOfWindow: $outOfWindow,
+                policyTrigger: $policyTrigger,
+                authorizedByUserId: $authorizedByUserId,
+                overrideReason: $overrideReason,
+                refundRequestId: $refundRequestId,
+            );
 
-            $sequence = $terminal->current_sequence;
-            $terminalCode = $terminal->code;
-            $sequenceStr = str_pad((string) $sequence, 8, '0', STR_PAD_LEFT);
-            $receiptNumber = "{$terminalCode}-{$currentYear}-{$sequenceStr}";
-
-            // 7. Calculate hashes
-            $vatHash = $this->receiptHashService->hashVATBreakdown(array_values($vatAggregates));
-            $paymentHash = $this->receiptHashService->hashPaymentMethods([]);
-
-            // 8. Create return receipt
-            $now = Carbon::now();
-            $previousHash = $terminal->last_hash;
-            $receiptId = Str::uuid()->toString();
-
-            /** @var Receipt $returnReceipt */
-            $returnReceipt = new Receipt([
-                'tenant_id' => $terminal->tenant_id,
-                'company_id' => $companyId,
-                'location_id' => $originalReceipt->location_id,
-                'terminal_id' => $terminal->id,
-                'receipt_number' => $receiptNumber,
-                'receipt_type' => ReceiptType::Return,
-                'original_receipt_id' => $originalReceipt->id,
-                'return_reason' => $returnReason,
-                'chain_sequence' => $sequence,
-                'receipt_year' => $currentYear,
-                'previous_hash' => $previousHash,
-                'posted_at' => $now,
-                'cashier_id' => $cashier->id,
-                'cashier_name' => $cashier->name ?? 'Unknown',
-                'subtotal' => $subtotal,
-                'tax_amount' => $totalTax,
-                'discount_amount' => $totalDiscount,
-                'total' => $total,
-                'currency' => $currency,
-                'consumption_mode' => $originalReceipt->consumption_mode,
-                'customer_name' => $originalReceipt->customer_name,
-                'customer_identifier' => $originalReceipt->customer_identifier,
-                'partner_id' => $originalReceipt->partner_id,
-                'is_voided' => false,
-                'vat_breakdown_hash' => $vatHash,
-                'payment_methods_hash' => $paymentHash,
-                'notes' => $notes,
-            ]);
-
-            $returnReceipt->id = $receiptId;
-            $returnReceipt->setRelation('terminal', $terminal);
-            $fiscalHash = $this->receiptHashService->calculateHash($returnReceipt, $previousHash);
-            $returnReceipt->fiscal_hash = $fiscalHash;
-            $returnReceipt->save();
-
-            // 9. Create receipt lines
+            // ─────────────────────────────────────────────────────────────────
+            // Step 9: Save receipt lines + VAT details
+            // ─────────────────────────────────────────────────────────────────
             foreach ($receiptLines as $lineData) {
                 ReceiptLine::create(array_merge($lineData, [
                     'id' => Str::uuid()->toString(),
-                    'receipt_id' => $returnReceipt->id,
+                    'receipt_id' => $draft->id,
                 ]));
             }
 
-            // 10. Create VAT details
             foreach ($vatAggregates as $vatData) {
                 ReceiptVatDetail::create(array_merge($vatData, [
                     'id' => Str::uuid()->toString(),
-                    'receipt_id' => $returnReceipt->id,
+                    'receipt_id' => $draft->id,
                 ]));
             }
 
-            // 11. Update terminal sequence and hash chain
-            $terminal->current_sequence = $sequence + 1;
-            $terminal->last_hash = $fiscalHash;
-            $terminal->save();
+            // ─────────────────────────────────────────────────────────────────
+            // Step 10: Destination-specific side effects
+            // ─────────────────────────────────────────────────────────────────
+            $absTotal = $this->absTotal($total);
 
-            // 12. Restore stock for returned items
+            match ($resolvedDestination) {
+                RefundDestination::StoreVoucher => $this->executeVoucherIssuance(
+                    $draft,
+                    $cashier,
+                    $terminal,
+                    $authorizedByUserId,
+                    $overrideReason,
+                    $policyTrigger,
+                    $absTotal,
+                    $currency,
+                    $policy,
+                ),
+                RefundDestination::OriginalPayment => $this->executePaymentRefund(
+                    $originalReceipt,
+                    $absTotal,
+                    $policy,
+                    $refundRequestId,
+                    $authorizedByUserId,
+                    $policyTrigger,
+                ),
+                RefundDestination::Cash => $this->executeCashRefund(
+                    $draft,
+                    $total,
+                    $cashier,
+                    $shift,
+                ),
+            };
+
+            // ─────────────────────────────────────────────────────────────────
+            // Step 11: Restore stock
+            // ─────────────────────────────────────────────────────────────────
             foreach ($validatedLines as $returnLine) {
                 /** @var ReceiptLine $originalLine */
                 $originalLine = $returnLine['original_line'];
@@ -293,22 +326,25 @@ final class ReceiptReturnService
 
                 /** @var numeric-string $qty */
                 $qty = $returnLine['quantity'];
+
                 $this->restoreStock(
                     tenantId: $terminal->tenant_id,
                     companyId: $companyId,
                     locationId: $originalReceipt->location_id,
                     productId: $originalLine->product_id,
                     quantity: $qty,
-                    returnReceiptId: $returnReceipt->id,
+                    returnReceiptId: $draft->id,
                     cashierId: $cashier->id,
                 );
             }
 
-            // 13. Record cash drawer refund
-            $this->recordCashDrawerRefund($returnReceipt, $total, $cashier, $shift);
+            // ─────────────────────────────────────────────────────────────────
+            // Step 12: Seal via ReceiptFinalizationService (chain advance happens here)
+            // ─────────────────────────────────────────────────────────────────
+            $sealed = $this->finalizationService->finalize($draft);
 
             /** @var Receipt */
-            return $returnReceipt->fresh([
+            return $sealed->fresh([
                 'lines',
                 'vatDetails',
                 'terminal',
@@ -317,6 +353,481 @@ final class ReceiptReturnService
             ]);
         });
     }
+
+    // =========================================================================
+    // Policy guards
+    // =========================================================================
+
+    private function isOutOfWindow(Receipt $original, ReservationSettings $policy): bool
+    {
+        $windowEndsAt = $original->posted_at->copy()->addDays($policy->customerReturnExpiryDays);
+
+        return Carbon::now()->isAfter($windowEndsAt);
+    }
+
+    /**
+     * Guard daily refund cap.
+     *
+     * @param  numeric-string  $returnTotal  The negative return total (absolute value used for cap check)
+     * @param  array<string>  $cashierPermissions
+     *
+     * @throws DailyRefundCapExceededException
+     */
+    private function guardWindowAndCap(
+        User $cashier,
+        string $returnTotal,
+        ReservationSettings $policy,
+        bool $outOfWindow,
+        array $cashierPermissions,
+    ): void {
+        if ($policy->dailyRefundCapPerCashier === null) {
+            return;
+        }
+
+        /** @var numeric-string $cap */
+        $cap = $policy->dailyRefundCapPerCashier;
+        $scale = $this->scale();
+
+        // Query today's total refunds (absolute) for this cashier
+        /** @var numeric-string $todayTotal */
+        $todayTotal = (string) Receipt::where('cashier_id', $cashier->id)
+            ->where('receipt_type', ReceiptType::Return->value)
+            ->where('is_voided', false)
+            ->whereDate('posted_at', Carbon::today())
+            ->sum(DB::raw('ABS(total)'));
+
+        $absAmount = $this->absTotal($returnTotal);
+        /** @var numeric-string $projected */
+        $projected = bcadd($todayTotal, $absAmount, $scale);
+
+        if (bccomp($projected, $cap, $scale) > 0) {
+            $hasOverridePerm = in_array('pos.refund_extend_daily_cap', $cashierPermissions, true);
+
+            if (! $hasOverridePerm || ! $policy->dailyRefundCapOverrideAllowed) {
+                throw new DailyRefundCapExceededException($cap, $projected, $cashier->id);
+            }
+        }
+    }
+
+    /**
+     * Guard manager-override threshold.
+     *
+     * Effective threshold = max(flat_amount, percent_of_original_total).
+     * When the return amount exceeds the threshold and no authorized_by_user_id was supplied, throw.
+     *
+     * @param  numeric-string  $returnTotal  Negative return total; absolute value used for comparison
+     *
+     * @throws ManagerOverrideRequiredException
+     */
+    private function guardManagerOverride(
+        string $returnTotal,
+        ReservationSettings $policy,
+        ?string $authorizedByUserId,
+    ): void {
+        $scale = $this->scale();
+        $absAmount = $this->absTotal($returnTotal);
+
+        /** @var numeric-string $flatThreshold */
+        $flatThreshold = $policy->managerOverrideThresholdAmount;
+
+        // The percent threshold is absolute (e.g. "10.00" means refund > 10% of original).
+        // We do not have the original total here, so we compare against the flat threshold only.
+        // The percent-of-original logic can be wired in Phase H when the original is passed.
+        if (bccomp($absAmount, $flatThreshold, $scale) > 0 && $authorizedByUserId === null) {
+            throw new ManagerOverrideRequiredException($absAmount, $flatThreshold);
+        }
+    }
+
+    /**
+     * Resolve the refund destination via RefundDestinationResolver.
+     *
+     * When $requested is null (legacy / unspecified), default to Cash to preserve
+     * backward-compatible behaviour (original service always did a cash-drawer refund).
+     *
+     * @param  array<string>  $cashierPermissions
+     */
+    private function resolveDestination(
+        ?RefundDestination $requested,
+        Receipt $original,
+        ReservationSettings $policy,
+        array $cashierPermissions,
+    ): RefundDestination {
+        $effective = $requested ?? RefundDestination::Cash;
+
+        return $this->destinationResolver->resolve(
+            $effective,
+            $original,
+            $policy,
+            $cashierPermissions,
+        );
+    }
+
+    /**
+     * Determine a machine-readable policy_trigger string to record on the return receipt.
+     *
+     * @param  numeric-string  $returnTotal  Negative return total
+     */
+    private function resolvePolicyTrigger(
+        bool $outOfWindow,
+        string $returnTotal,
+        ReservationSettings $policy,
+        ?string $authorizedByUserId,
+    ): ?string {
+        if ($outOfWindow && $authorizedByUserId !== null) {
+            return 'out_of_window_override';
+        }
+
+        if ($outOfWindow) {
+            return 'out_of_window';
+        }
+
+        $absAmount = $this->absTotal($returnTotal);
+        $scale = $this->scale();
+
+        /** @var numeric-string $threshold */
+        $threshold = $policy->managerOverrideThresholdAmount;
+
+        if (bccomp($absAmount, $threshold, $scale) > 0) {
+            return 'over_threshold';
+        }
+
+        return null;
+    }
+
+    // =========================================================================
+    // Draft builder
+    // =========================================================================
+
+    /**
+     * Build and persist the return-receipt in pending_seal state.
+     *
+     * Generates the receipt_number and receipt_year from the terminal's current sequence
+     * (same approach as ReceiptCreationService).  The terminal sequence is NOT advanced
+     * here — that happens inside ReceiptFinalizationService::finalize() when the chain_sequence
+     * and previous_hash are also written.
+     *
+     * The legacy vat_breakdown_hash and payment_methods_hash columns (required NOT NULL)
+     * are computed here so the INSERT succeeds.  For return receipts there are no payments,
+     * so payment_methods_hash covers an empty set.
+     *
+     * @param  array<array-key, array{tax_rate: string, net_amount: numeric-string, vat_amount: numeric-string, gross_amount: numeric-string}>  $vatAggregates
+     * @param  numeric-string  $subtotal
+     * @param  numeric-string  $totalTax
+     * @param  numeric-string  $totalDiscount
+     * @param  numeric-string  $total
+     */
+    private function buildReturnDraft(
+        Receipt $originalReceipt,
+        Terminal $terminal,
+        User $cashier,
+        ReturnReason $returnReason,
+        array $vatAggregates,
+        string $subtotal,
+        string $totalTax,
+        string $totalDiscount,
+        string $total,
+        string $currency,
+        ?string $notes,
+        bool $outOfWindow,
+        ?string $policyTrigger,
+        ?string $authorizedByUserId,
+        ?string $overrideReason,
+        ?string $refundRequestId,
+    ): Receipt {
+        $now = Carbon::now();
+        $receiptId = Str::uuid()->toString();
+
+        // Compute legacy v2 hashes (required NOT NULL columns)
+        $vatHash = $this->receiptHashService->hashVATBreakdown(array_values($vatAggregates));
+        $paymentHash = $this->receiptHashService->hashPaymentMethods([]);
+
+        // Generate receipt_number from terminal sequence (mirrors ReceiptCreationService)
+        $currentYear = (int) $now->format('Y');
+        if ($terminal->needsSequenceReset()) {
+            $terminal->current_year = $currentYear;
+            $terminal->current_sequence = 1;
+            $terminal->save();
+        }
+
+        $sequence = $terminal->current_sequence;
+        $terminalCode = $terminal->code;
+        $sequenceStr = str_pad((string) $sequence, 8, '0', STR_PAD_LEFT);
+        $receiptNumber = "RET-{$terminalCode}-{$currentYear}-{$sequenceStr}";
+
+        /** @var Receipt $draft */
+        $draft = new Receipt([
+            'tenant_id' => $terminal->tenant_id,
+            'company_id' => $originalReceipt->company_id,
+            'location_id' => $originalReceipt->location_id,
+            'terminal_id' => $terminal->id,
+            'receipt_number' => $receiptNumber,
+            'receipt_year' => $currentYear,
+            'vat_breakdown_hash' => $vatHash,
+            'payment_methods_hash' => $paymentHash,
+            // chain_sequence and previous_hash are set by ReceiptFinalizationService
+            'receipt_type' => ReceiptType::Return,
+            'original_receipt_id' => $originalReceipt->id,
+            'return_reason' => $returnReason,
+            'posted_at' => $now,
+            'cashier_id' => $cashier->id,
+            'cashier_name' => $cashier->name ?? 'Unknown',
+            'subtotal' => $subtotal,
+            'tax_amount' => $totalTax,
+            'discount_amount' => $totalDiscount,
+            'total' => $total,
+            'currency' => $currency,
+            'consumption_mode' => $originalReceipt->consumption_mode,
+            'customer_name' => $originalReceipt->customer_name,
+            'customer_identifier' => $originalReceipt->customer_identifier,
+            'partner_id' => $originalReceipt->partner_id,
+            'is_voided' => false,
+            'fiscal_status' => FiscalStatus::PendingSeal,
+            'notes' => $notes,
+            // Audit fields (Task 27 / Task 31)
+            'out_of_window' => $outOfWindow ?: null,
+            'policy_trigger' => $policyTrigger,
+            'authorized_by_user_id' => $authorizedByUserId,
+            'override_reason' => $overrideReason,
+            'refund_request_id' => $refundRequestId,
+        ]);
+
+        $draft->id = $receiptId;
+        $draft->setRelation('terminal', $terminal);
+        $draft->save();
+
+        return $draft;
+    }
+
+    // =========================================================================
+    // Destination-specific side effects
+    // =========================================================================
+
+    /**
+     * Issue a store-voucher for the refund amount BEFORE finalization.
+     *
+     * The VoucherLedger row's receipt_id is set to the draft receipt's id so the
+     * V3ReceiptHashComputer can read it via Receipt::voucherLedgerEntries().
+     *
+     * @param  numeric-string  $absTotal  Positive refund amount
+     */
+    private function executeVoucherIssuance(
+        Receipt $draft,
+        User $cashier,
+        Terminal $terminal,
+        ?string $authorizedByUserId,
+        ?string $overrideReason,
+        ?string $policyTrigger,
+        string $absTotal,
+        string $currency,
+        ReservationSettings $policy,
+    ): Voucher {
+        $expiresAt = $policy->voucherDefaultExpiryDays > 0
+            ? Carbon::now()->addDays($policy->voucherDefaultExpiryDays)
+            : null;
+
+        $request = new VoucherIssuanceRequest(
+            amount: $absTotal,
+            currency: $currency,
+            tenantId: $terminal->tenant_id,
+            companyId: $draft->company_id,
+            issuedByUserId: $cashier->id,
+            sourceReceiptId: $draft->id,
+            issuedToPartnerId: $draft->partner_id,
+            issuedAtTerminalId: $terminal->id,
+            expiresAt: $expiresAt,
+            authorizedByUserId: $authorizedByUserId,
+            overrideReason: $overrideReason,
+            policyTrigger: $policyTrigger,
+        );
+
+        return $this->voucherIssuanceService->issueFromRefund($request);
+    }
+
+    /**
+     * Prorate the refund across the original receipt's treasury payments.
+     *
+     * @param  numeric-string  $absTotal  Positive refund amount
+     * @return array<RefundAllocation>
+     */
+    private function executePaymentRefund(
+        Receipt $originalReceipt,
+        string $absTotal,
+        ReservationSettings $policy,
+        ?string $refundRequestId,
+        ?string $authorizedByUserId,
+        ?string $policyTrigger,
+    ): array {
+        $prorationStrategy = ProrationStrategy::tryFrom($policy->prorationStrategy)
+            ?? ProrationStrategy::Proportional;
+
+        // When no idempotency key was supplied by the caller, generate one so that
+        // the PaymentRefundService uniqueness index has a valid value.
+        $safeRefundRequestId = $refundRequestId ?? (string) Str::uuid();
+
+        return $this->paymentRefundService->refundReceiptPayments(
+            originalReceipt: $originalReceipt,
+            totalToRefund: $absTotal,
+            strategy: $prorationStrategy,
+            refundRequestId: $safeRefundRequestId,
+            authorizedByUserId: $authorizedByUserId,
+            policyTrigger: $policyTrigger,
+        );
+    }
+
+    /**
+     * Record a cash-drawer refund operation.
+     *
+     * @param  numeric-string  $returnTotal  Negative total
+     */
+    private function executeCashRefund(
+        Receipt $draft,
+        string $returnTotal,
+        User $cashier,
+        Shift $shift,
+    ): void {
+        // Return total is negative; refund amount is positive
+        $refundAmount = bcmul($returnTotal, '-1', $this->scale());
+
+        if (bccomp($refundAmount, '0.00', $this->scale()) <= 0) {
+            return;
+        }
+
+        $this->cashDrawerService->recordRefund(
+            $shift,
+            $refundAmount,
+            $cashier,
+            $draft->id,
+        );
+    }
+
+    // =========================================================================
+    // Totals computation
+    // =========================================================================
+
+    /**
+     * Compute return totals from validated return lines.
+     *
+     * @param  array<int, array{original_line: ReceiptLine, quantity: string}>  $validatedLines
+     * @return array{
+     *     0: list<array<string, mixed>>,
+     *     1: array<array-key, array{tax_rate: string, net_amount: numeric-string, vat_amount: numeric-string, gross_amount: numeric-string}>,
+     *     2: numeric-string,
+     *     3: numeric-string,
+     *     4: numeric-string,
+     *     5: numeric-string,
+     * }
+     */
+    private function computeReturnTotals(array $validatedLines, string $currency): array
+    {
+        $s = $this->scale();
+
+        /** @var list<array<string, mixed>> $receiptLines */
+        $receiptLines = [];
+        /** @var array<array-key, array{tax_rate: string, net_amount: numeric-string, vat_amount: numeric-string, gross_amount: numeric-string}> $vatAggregates */
+        $vatAggregates = [];
+        /** @var numeric-string $subtotal */
+        $subtotal = '0.00';
+        /** @var numeric-string $totalTax */
+        $totalTax = '0.00';
+        /** @var numeric-string $totalDiscount */
+        $totalDiscount = '0.00';
+
+        foreach ($validatedLines as $index => $returnLine) {
+            /** @var ReceiptLine $originalLine */
+            $originalLine = $returnLine['original_line'];
+            /** @var numeric-string $returnQuantity */
+            $returnQuantity = $returnLine['quantity'];
+
+            $ratio = bcdiv($returnQuantity, (string) $originalLine->quantity, 10);
+
+            // Negative line total
+            /** @var numeric-string $lineTotal */
+            $lineTotal = bcmul(
+                bcmul($ratio, (string) $originalLine->line_total, $s),
+                '-1',
+                $s,
+            );
+
+            $taxRate = (string) $originalLine->tax_rate;
+            $taxRateDecimal = bcdiv($taxRate, '100', 6);
+            $divisor = bcadd('1', $taxRateDecimal, 6);
+            /** @var numeric-string $netAmount */
+            $netAmount = bcdiv($lineTotal, $divisor, $s);
+            /** @var numeric-string $taxAmount */
+            $taxAmount = bcsub($lineTotal, $netAmount, $s);
+
+            /** @var numeric-string $subtotal */
+            $subtotal = bcadd($subtotal, $netAmount, $s);
+            /** @var numeric-string $totalTax */
+            $totalTax = bcadd($totalTax, $taxAmount, $s);
+
+            /** @var numeric-string $discountAmount */
+            $discountAmount = bcmul($ratio, (string) $originalLine->discount_amount, $s);
+            /** @var numeric-string $totalDiscount */
+            $totalDiscount = bcadd($totalDiscount, $discountAmount, $s);
+
+            $receiptLines[] = [
+                'line_number' => $index + 1,
+                'original_line_id' => $originalLine->id,
+                'product_id' => $originalLine->product_id,
+                'composite_item_id' => $originalLine->composite_item_id,
+                'product_code' => $originalLine->product_code,
+                'product_name' => $originalLine->product_name,
+                'product_description' => $originalLine->product_description,
+                'quantity' => '-'.$returnQuantity,
+                'unit' => $originalLine->unit,
+                'unit_price' => (string) $originalLine->unit_price,
+                'line_total' => $lineTotal,
+                'tax_rate' => $taxRate,
+                'tax_amount' => $taxAmount,
+                'modifiers' => $originalLine->modifiers,
+                'discount_amount' => $discountAmount,
+                'discount_reason' => $originalLine->discount_reason,
+            ];
+
+            $rateKey = $taxRate;
+            if (! isset($vatAggregates[$rateKey])) {
+                $vatAggregates[$rateKey] = [
+                    'tax_rate' => $taxRate,
+                    'net_amount' => '0.00',
+                    'vat_amount' => '0.00',
+                    'gross_amount' => '0.00',
+                ];
+            }
+
+            /** @var array{tax_rate: string, net_amount: numeric-string, vat_amount: numeric-string, gross_amount: numeric-string} $vatEntry */
+            $vatEntry = $vatAggregates[$rateKey];
+            $vatEntry['net_amount'] = bcadd($vatEntry['net_amount'], $netAmount, $s);
+            $vatEntry['vat_amount'] = bcadd($vatEntry['vat_amount'], $taxAmount, $s);
+            $vatEntry['gross_amount'] = bcadd($vatEntry['gross_amount'], $lineTotal, $s);
+            $vatAggregates[$rateKey] = $vatEntry;
+        }
+
+        // Recalculate VAT from aggregate net_amount
+        /** @var numeric-string $totalTax */
+        $totalTax = '0.00';
+        foreach ($vatAggregates as $rk => $vatData) {
+            /** @var array{tax_rate: string, net_amount: numeric-string, vat_amount: numeric-string, gross_amount: numeric-string} $vatData */
+            $recalcVat = $this->roundVat($vatData['net_amount'], $vatData['tax_rate']);
+            /** @var numeric-string $recalcGross */
+            $recalcGross = bcadd($vatData['net_amount'], $recalcVat, $s);
+            $vatAggregates[$rk] = array_merge($vatData, [
+                'vat_amount' => $recalcVat,
+                'gross_amount' => $recalcGross,
+            ]);
+            /** @var numeric-string $totalTax */
+            $totalTax = bcadd($totalTax, $recalcVat, $s);
+        }
+
+        /** @var numeric-string $total */
+        $total = bcadd($subtotal, $totalTax, $s);
+
+        return [$receiptLines, $vatAggregates, $subtotal, $totalTax, $totalDiscount, $total];
+    }
+
+    // =========================================================================
+    // Validation helpers
+    // =========================================================================
 
     /**
      * Validate that the original receipt can be returned.
@@ -345,7 +856,6 @@ final class ReceiptReturnService
      */
     private function validateReturnQuantities(Receipt $originalReceipt, array $returnLines): array
     {
-        // Calculate already-returned quantities per original line
         $alreadyReturned = $this->calculateAlreadyReturnedQuantities($originalReceipt);
 
         $originalLinesById = $originalReceipt->lines->keyBy('id');
@@ -391,10 +901,6 @@ final class ReceiptReturnService
     /**
      * Calculate already-returned quantities per original line.
      *
-     * Sums negative quantities from all non-voided return receipts referencing this original receipt.
-     * Uses original_line_id for precise matching when available, falls back to product attribute
-     * matching for legacy return lines created before original_line_id was added.
-     *
      * @return array<string, string> Map of original line ID to returned quantity
      */
     private function calculateAlreadyReturnedQuantities(Receipt $originalReceipt): array
@@ -407,10 +913,8 @@ final class ReceiptReturnService
             }
 
             foreach ($returnReceipt->lines as $returnLine) {
-                // Return line quantities are negative, so we take the absolute value
                 $absQuantity = bcmul((string) $returnLine->quantity, '-1', 3);
 
-                // Prefer direct FK match when available (new return lines)
                 if ($returnLine->original_line_id !== null) {
                     $key = $returnLine->original_line_id;
                     $returned[$key] = bcadd($returned[$key] ?? '0.000', $absQuantity, 3);
@@ -418,7 +922,7 @@ final class ReceiptReturnService
                     continue;
                 }
 
-                // Legacy fallback: match by product attributes (breaks on duplicate products)
+                // Legacy fallback: match by product attributes
                 foreach ($originalReceipt->lines as $originalLine) {
                     $sameProduct = (
                         $originalLine->product_id === $returnLine->product_id
@@ -438,10 +942,12 @@ final class ReceiptReturnService
         return $returned;
     }
 
+    // =========================================================================
+    // Stock restoration
+    // =========================================================================
+
     /**
      * Restore stock for a returned product.
-     *
-     * Creates a Receipt (inbound) StockMovement with POSReturn reason.
      *
      * @param  numeric-string  $quantity
      */
@@ -496,32 +1002,30 @@ final class ReceiptReturnService
         ]);
     }
 
-    /**
-     * Record cash drawer refund for the return amount.
-     *
-     * @param  numeric-string  $returnTotal  Negative total
-     */
-    private function recordCashDrawerRefund(Receipt $returnReceipt, string $returnTotal, User $cashier, Shift $shift): void
-    {
-        // Return total is negative, refund amount is positive (absolute value)
-        $refundAmount = bcmul($returnTotal, '-1', $this->scale());
+    // =========================================================================
+    // Helpers
+    // =========================================================================
 
-        if (bccomp($refundAmount, '0.00', $this->scale()) <= 0) {
-            return;
+    /**
+     * Return the absolute (positive) value of a possibly-negative amount string.
+     *
+     * @param  numeric-string  $amount
+     * @return numeric-string
+     */
+    private function absTotal(string $amount): string
+    {
+        if (bccomp($amount, '0', $this->scale()) < 0) {
+            /** @var numeric-string */
+            return bcmul($amount, '-1', $this->scale());
         }
 
-        $this->cashDrawerService->recordRefund(
-            $shift,
-            $refundAmount,
-            $cashier,
-            $returnReceipt->id,
-        );
+        /** @var numeric-string */
+        return $amount;
     }
 
     /**
      * Round VAT amount to match PostgreSQL rounding.
-     */
-    /**
+     *
      * @return numeric-string
      */
     private function roundVat(string $netAmount, string $taxRate): string
