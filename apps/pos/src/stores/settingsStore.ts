@@ -71,6 +71,11 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'izipos-settings',
+      onRehydrateStorage: () => (state) => {
+        if (state?.language) {
+          void i18n.changeLanguage(state.language);
+        }
+      },
     },
   ),
 );
