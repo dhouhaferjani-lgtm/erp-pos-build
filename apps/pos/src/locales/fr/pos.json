@@ -94,12 +94,32 @@
     "confirm": {
       "charge": "Encaisser {{amount}}",
       "refund": "Rembourser {{amount}}",
-      "noPayment": "Aucun paiement dû"
+      "noPayment": "Aucun paiement dû",
+      "title": "Confirmer le remboursement",
+      "amountLabel": "Montant remboursé",
+      "submit": "Rembourser {{amount}}",
+      "submitting": "Traitement…",
+      "cancel": "Annuler",
+      "authorizedBy": "Autorisé par le responsable",
+      "errorGeneric": "Une erreur inattendue s'est produite. Veuillez réessayer.",
+      "pinRequired": {
+        "override": "Autorisation responsable requise",
+        "dailyCap": "Plafond journalier atteint — autorisation responsable requise",
+        "windowClosed": "Fenêtre de remboursement fermée — autorisation responsable requise"
+      }
     },
     "resumeBanner": {
       "title": "Remboursement en cours — Ticket {{number}}",
       "resume": "Reprendre",
       "discard": "Annuler"
+    },
+    "destination": {
+      "label": "Destination du remboursement",
+      "original": "Paiement original",
+      "cash": "Espèces",
+      "store_voucher": "Bon d'achat",
+      "proration_title": "Détail du remboursement",
+      "confirm": "Confirmer la destination"
     }
   },
   "receiptLocator": {
@@ -680,5 +700,29 @@
       "col_time": "Heure",
       "col_writeoff": "Remise"
     }
+  },
+  "voucherTender": {
+    "title": "Appliquer un bon",
+    "codeLabel": "Code du bon",
+    "codePlaceholder": "Scanner ou saisir le code…",
+    "lookup": "Rechercher",
+    "looking": "Recherche…",
+    "cancel": "Annuler",
+    "back": "Retour",
+    "apply": "Appliquer",
+    "balance": "Solde",
+    "redemptionMode": "Mode",
+    "expires": "Expire le",
+    "amountLabel": "Montant à appliquer",
+    "modeBearer": "Porteur (tout détenteur)",
+    "modeCustomerBound": "Lié au client",
+    "notFound": "Bon non trouvé. Vérifiez le code et réessayez.",
+    "alreadyApplied": "Ce bon a déjà été appliqué à cette vente.",
+    "unsupportedKind": "Les tickets restaurant ne sont pas encore pris en charge — fonctionnalité Phase 2. Seuls les bons d'achat (MPV) peuvent être utilisés ici.",
+    "notRedeemable": "Ce bon ne peut pas être utilisé (statut : {{status}}).",
+    "invalidAmount": "Saisissez un montant valide supérieur à zéro.",
+    "amountExceedsBalance": "Le montant ne peut pas dépasser le solde du bon ({{balance}} {{currency}}).",
+    "amountExceedsDue": "Le montant ne peut pas dépasser le reste dû ({{due}} {{currency}}).",
+    "applyFailed": "Échec de l'application du bon."
   }
 }

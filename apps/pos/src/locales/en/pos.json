@@ -94,12 +94,32 @@
     "confirm": {
       "charge": "Charge {{amount}}",
       "refund": "Refund {{amount}}",
-      "noPayment": "No payment due"
+      "noPayment": "No payment due",
+      "title": "Confirm refund",
+      "amountLabel": "Refund amount",
+      "submit": "Refund {{amount}}",
+      "submitting": "Processing…",
+      "cancel": "Cancel",
+      "authorizedBy": "Authorized by manager",
+      "errorGeneric": "An unexpected error occurred. Please try again.",
+      "pinRequired": {
+        "override": "Manager authorization required",
+        "dailyCap": "Daily refund cap reached — manager authorization required",
+        "windowClosed": "Refund window closed — manager authorization required"
+      }
     },
     "resumeBanner": {
       "title": "In-progress refund — Ticket {{number}}",
       "resume": "Resume",
       "discard": "Discard"
+    },
+    "destination": {
+      "label": "Refund destination",
+      "original": "Original Payment",
+      "cash": "Cash",
+      "store_voucher": "Store Voucher",
+      "proration_title": "Refund breakdown",
+      "confirm": "Confirm destination"
     }
   },
   "receiptLocator": {
@@ -680,5 +700,29 @@
       "col_time": "Time",
       "col_writeoff": "Write-off"
     }
+  },
+  "voucherTender": {
+    "title": "Apply voucher",
+    "codeLabel": "Voucher code",
+    "codePlaceholder": "Scan or type code…",
+    "lookup": "Look up",
+    "looking": "Looking up…",
+    "cancel": "Cancel",
+    "back": "Back",
+    "apply": "Apply",
+    "balance": "Balance",
+    "redemptionMode": "Mode",
+    "expires": "Expires",
+    "amountLabel": "Amount to apply",
+    "modeBearer": "Bearer (any holder)",
+    "modeCustomerBound": "Customer-bound",
+    "notFound": "Voucher not found. Check the code and try again.",
+    "alreadyApplied": "This voucher has already been applied to this sale.",
+    "unsupportedKind": "Restaurant vouchers are not yet supported — Phase 2 feature. Only store vouchers (MPV) can be used here.",
+    "notRedeemable": "This voucher cannot be redeemed (status: {{status}}).",
+    "invalidAmount": "Enter a valid amount greater than zero.",
+    "amountExceedsBalance": "Amount cannot exceed the voucher balance ({{balance}} {{currency}}).",
+    "amountExceedsDue": "Amount cannot exceed the remaining due ({{due}} {{currency}}).",
+    "applyFailed": "Failed to apply voucher."
   }
 }
