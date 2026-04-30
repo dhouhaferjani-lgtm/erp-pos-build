@@ -20,17 +20,9 @@
 import type Database from '@tauri-apps/plugin-sql';
 import {
   findReceiptByQrToken,
+  parseReceiptUuidFromQrToken,
   type LocalReceiptQrIndexEntry,
 } from '@/lib/offline/voucherRepository';
-
-/**
- * Lowercase-hyphenated UUID matcher. Token field 3 (the receipt UUID) is
- * matched case-insensitively per §4.5; the parser lowercases it before
- * returning so downstream lookups in `receipt_qr_index` (which stores
- * lowercase UUIDs) are exact.
- */
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface ParsedReceiptToken {
   /** Lowercase hyphenated UUID extracted from token field 3. */
@@ -38,18 +30,16 @@ export interface ParsedReceiptToken {
 }
 
 /**
- * Strict 4-segment `v:kid:receipt_uuid:mac` parser. Returns null for any
- * malformation (wrong field count, non-UUID receipt field, empty input).
- * The dispatcher uses null as the signal to fall through to product-barcode
- * lookup — never to throw.
+ * Dispatcher-side wrapper around the canonical `parseReceiptUuidFromQrToken`
+ * in `voucherRepository`. The wrapper exists for the dispatcher contract —
+ * its `{ receiptUuid: string } | null` shape is what the dispatch flow
+ * works in — but the parsing logic itself lives in one place to prevent
+ * drift if §4.5 ever changes.
  */
 export function parseReceiptToken(token: string): ParsedReceiptToken | null {
-  if (!token) return null;
-  const parts = token.split(':');
-  if (parts.length !== 4) return null;
-  const candidate = parts[2];
-  if (!candidate || !UUID_RE.test(candidate)) return null;
-  return { receiptUuid: candidate.toLowerCase() };
+  const receiptUuid = parseReceiptUuidFromQrToken(token);
+  if (receiptUuid === null) return null;
+  return { receiptUuid };
 }
 
 /**

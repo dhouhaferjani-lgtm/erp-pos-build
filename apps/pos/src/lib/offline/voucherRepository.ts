@@ -164,13 +164,22 @@ export async function findReceiptByNumber(
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function parseReceiptUuidFromQrToken(token: string): string | null {
+/**
+ * Canonical 4-segment `v:kid:receipt_uuid:mac` parser. Returns the lowercased
+ * receipt UUID (the local `receipt_qr_index` stores lowercase) or null on any
+ * malformation (wrong field count, non-UUID receipt field, empty input).
+ *
+ * Exported because the scan dispatcher (Task 50) needs to perform a cheap
+ * pre-flight parse before hitting SQLite — keeping a single source of truth
+ * for the token format avoids accidental drift if §4.5 ever changes.
+ */
+export function parseReceiptUuidFromQrToken(token: string): string | null {
   if (!token) return null;
   const parts = token.split(':');
   if (parts.length !== 4) return null;
   const candidate = parts[2];
   if (!candidate || !UUID_RE.test(candidate)) return null;
-  return candidate;
+  return candidate.toLowerCase();
 }
 
 // ─── Upsert helpers (used by the sync pipeline) ─────────────────────────────

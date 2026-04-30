@@ -69,4 +69,42 @@ describe('refundFlowStore', () => {
 
     expect(useRefundFlowStore.getState().acceptedReceiptToken).toBeNull();
   });
+
+  describe('consumeAcceptedReceiptToken (atomic read+clear)', () => {
+    it('returns null without throwing when the accepted slot is already empty', () => {
+      const value = useRefundFlowStore.getState().consumeAcceptedReceiptToken();
+      expect(value).toBeNull();
+      expect(useRefundFlowStore.getState().acceptedReceiptToken).toBeNull();
+    });
+
+    it('returns the accepted token AND atomically clears the slot', () => {
+      useRefundFlowStore.getState().setPendingScanResult(ENTRY);
+      useRefundFlowStore.getState().acceptPendingScan();
+
+      const value = useRefundFlowStore.getState().consumeAcceptedReceiptToken();
+
+      expect(value).toEqual({
+        receiptUuid: ENTRY.receipt_uuid,
+        receiptNumber: ENTRY.receipt_number,
+        receiptToken: ENTRY.qr_token,
+        postedAt: ENTRY.posted_at,
+        total: ENTRY.total,
+        currency: ENTRY.currency,
+      });
+      // Slot is cleared in the SAME action — no race window where a re-render
+      // could observe the value AND consume it again.
+      expect(useRefundFlowStore.getState().acceptedReceiptToken).toBeNull();
+    });
+
+    it('a re-render scenario (consume called twice) returns null on the second call', () => {
+      useRefundFlowStore.getState().setPendingScanResult(ENTRY);
+      useRefundFlowStore.getState().acceptPendingScan();
+
+      const first = useRefundFlowStore.getState().consumeAcceptedReceiptToken();
+      const second = useRefundFlowStore.getState().consumeAcceptedReceiptToken();
+
+      expect(first).not.toBeNull();
+      expect(second).toBeNull();
+    });
+  });
 });

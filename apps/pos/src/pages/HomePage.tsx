@@ -182,8 +182,13 @@ export function HomePage() {
    */
   const handleBarcodeScan = useCallback(
     (barcode: string) => {
+      // Read both companyId and terminalId from store getState() at scan-time
+      // (not from the captured React state) so a stale closure on the active
+      // terminal can't misroute scans after a terminal switch. Using
+      // getState() here mirrors how companyId is read and keeps the snapshot
+      // symmetric across the two prerequisites.
       const companyId = useAuthStore.getState().companyId;
-      const terminalId = terminal?.id ?? null;
+      const terminalId = useTerminalStore.getState().terminal?.id ?? null;
       if (!companyId || !terminalId) {
         handleProductBarcode(barcode);
         return;
@@ -198,14 +203,19 @@ export function HomePage() {
           }
           handleProductBarcode(barcode);
         } catch (error) {
-          // Local SQLite failure → degrade to product lookup so the cashier
-          // is never stuck. The receipt-token path is opportunistic.
+          // Local SQLite failure → surface a translated toast so the cashier
+          // gets feedback (otherwise they'd see the dispatch silently miss
+          // and then "product not found" a moment later, which is confusing).
+          // After surfacing, we still fall through to product lookup so the
+          // cashier is never stuck — the receipt-token path is opportunistic.
           console.error('[POS] scan dispatcher failed, falling back to product lookup:', error);
+          setScanMessage({ text: t('receiptScan.dispatchError'), type: 'error' });
+          setTimeout(() => setScanMessage(null), 3000);
           handleProductBarcode(barcode);
         }
       })();
     },
-    [terminal?.id, handleProductBarcode, setPendingScanResult],
+    [terminal?.id, handleProductBarcode, setPendingScanResult, t],
   );
 
   useBarcodeScanner({

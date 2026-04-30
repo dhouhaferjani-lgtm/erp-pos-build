@@ -11,9 +11,12 @@ import type { ReceiptTokenAccepted } from '@/types/refund';
  *                        Confirmation Sheet renders from this slot. Cart is
  *                        NOT mutated yet.
  *   acceptedReceiptToken — promoted from `pendingScanResult` when the cashier
- *                        taps "Start refund". This is the typed event Task 52
- *                        subscribes to; it MUST call `clearAccepted()` after
- *                        consuming, otherwise a re-render would re-fire it.
+ *                        taps "Start refund". The slot value is fine for
+ *                        "is something pending?" subscriptions, but consumers
+ *                        that *act on* the event MUST use
+ *                        `consumeAcceptedReceiptToken()` (read+clear in one
+ *                        atomic action) so a re-render cannot re-fire the
+ *                        same event twice.
  */
 interface RefundFlowState {
   pendingScanResult: LocalReceiptQrIndexEntry | null;
@@ -24,7 +27,20 @@ interface RefundFlowActions {
   setPendingScanResult: (entry: LocalReceiptQrIndexEntry | null) => void;
   /** Promotes pendingScanResult → acceptedReceiptToken. No-op when nothing pending. */
   acceptPendingScan: () => void;
-  /** Task 52 calls this after consuming the accepted-token event. */
+  /**
+   * Atomic read-and-clear of `acceptedReceiptToken`. Returns the typed event
+   * payload (or null when the slot is empty) AND clears the slot in the same
+   * action. Task 52 (and any other consumer) MUST use this rather than
+   * reading `acceptedReceiptToken` directly + calling `clearAccepted()`,
+   * because between the read and the clear a re-render could re-fire the
+   * same event. Calling it on an empty slot returns null without throwing.
+   */
+  consumeAcceptedReceiptToken: () => ReceiptTokenAccepted | null;
+  /**
+   * Manual clear. Kept for callers that already have the event in hand
+   * (e.g. from a previous read) and just need to reset the slot. Most
+   * consumers should prefer `consumeAcceptedReceiptToken()` instead.
+   */
   clearAccepted: () => void;
 }
 
@@ -56,6 +72,13 @@ export const useRefundFlowStore = create<RefundFlowStore>()((set, get) => ({
       pendingScanResult: null,
       acceptedReceiptToken: toAcceptedEvent(pending),
     });
+  },
+
+  consumeAcceptedReceiptToken: () => {
+    const accepted = get().acceptedReceiptToken;
+    if (accepted === null) return null;
+    set({ acceptedReceiptToken: null });
+    return accepted;
   },
 
   clearAccepted: () => {

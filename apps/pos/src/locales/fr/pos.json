@@ -83,7 +83,8 @@
     "title": "Reçu de vente détecté",
     "body": "Il s'agit d'un reçu de vente du {{date}}. Démarrer un remboursement ou un échange ?",
     "cancel": "Annuler",
-    "startRefund": "Démarrer le remboursement"
+    "startRefund": "Démarrer le remboursement",
+    "dispatchError": "Impossible de lire l'index local des reçus. Recherche produit en repli."
   },
   "shift": {
     "number": "Service #{{number}}",

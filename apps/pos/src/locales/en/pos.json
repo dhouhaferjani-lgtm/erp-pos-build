@@ -83,7 +83,8 @@
     "title": "Sale receipt detected",
     "body": "This is a sale receipt from {{date}}. Start a refund or exchange?",
     "cancel": "Cancel",
-    "startRefund": "Start refund"
+    "startRefund": "Start refund",
+    "dispatchError": "Couldn't read the local receipt index. Falling back to product lookup."
   },
   "shift": {
     "number": "Shift #{{number}}",

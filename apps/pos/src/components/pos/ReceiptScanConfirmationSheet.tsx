@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from './Modal';
 import type { LocalReceiptQrIndexEntry } from '@/lib/offline/voucherRepository';
@@ -46,18 +46,10 @@ export function ReceiptScanConfirmationSheet({
     }
   }, [entry, i18n.language]);
 
-  // Belt-and-braces: Modal already handles Escape, but we re-bind here so
-  // the dismissal path is explicit even if a future refactor swaps Modal.
-  useEffect(() => {
-    if (entry === null) return;
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onCancel();
-    };
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [entry, onCancel]);
-
   if (entry === null) return null;
+  // Escape dismissal is handled by Modal (it binds Escape → onClose, which
+  // is wired to onCancel below). No second listener here — duplicating it
+  // would fire onCancel twice per press.
 
   return (
     <Modal
@@ -85,10 +77,7 @@ export function ReceiptScanConfirmationSheet({
       }
     >
       <p className="text-base text-gray-800">
-        {t('receiptScan.body', {
-          date: formattedDate,
-          receiptNumber: entry.receipt_number,
-        })}
+        {t('receiptScan.body', { date: formattedDate })}
       </p>
     </Modal>
   );
