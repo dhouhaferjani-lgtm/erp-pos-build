@@ -7,8 +7,14 @@ import { Modal } from '@/components/organisms/Modal/Modal'
 import type { ExtendExpiryPayload } from '../types/voucher'
 
 const schema = z.object({
-  new_expires_at: z.string().min(1),
-  reason: z.string().min(1),
+  new_expires_at: z.string().min(1).refine(
+    (v) => {
+      const d = new Date(v)
+      return !isNaN(d.getTime()) && d.getTime() > Date.now()
+    },
+    { message: 'vouchers:validation.dateInFuture' },
+  ),
+  reason: z.string().min(5, 'vouchers:validation.reasonMin'),
 })
 
 type FormValues = z.infer<typeof schema>

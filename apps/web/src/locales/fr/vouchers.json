@@ -115,6 +115,11 @@
     "phase2Placeholder": "La provenance détaillée pour ce type de source sera disponible en Phase 2."
   },
 
+  "validation": {
+    "reasonMin": "Le motif doit comporter au moins 5 caractères.",
+    "dateInFuture": "La date d'expiration doit être dans le futur."
+  },
+
   "errors": {
     "FOUR_EYES_REQUIRED": "Un second administrateur doit autoriser les bons de geste au-dessus du seuil configuré.",
     "NAMED_CUSTOMER_REQUIRED": "Un client nominatif est requis pour les bons nominatifs.",

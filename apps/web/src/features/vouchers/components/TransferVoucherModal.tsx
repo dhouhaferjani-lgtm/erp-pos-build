@@ -9,7 +9,7 @@ import { PartnerPicker, type PartnerPickerValue } from '@/components/molecules/p
 import type { TransferVoucherPayload } from '../types/voucher'
 
 const schema = z.object({
-  reason: z.string().min(1),
+  reason: z.string().min(5, 'vouchers:validation.reasonMin'),
 })
 
 type FormValues = z.infer<typeof schema>

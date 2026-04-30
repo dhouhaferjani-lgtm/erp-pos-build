@@ -115,6 +115,11 @@
     "phase2Placeholder": "Detailed provenance for this source type will be available in Phase 2."
   },
 
+  "validation": {
+    "reasonMin": "Reason must be at least 5 characters.",
+    "dateInFuture": "Expiry date must be in the future."
+  },
+
   "errors": {
     "FOUR_EYES_REQUIRED": "A second administrator must authorise goodwill vouchers above the configured threshold.",
     "NAMED_CUSTOMER_REQUIRED": "A named customer is required for customer-bound vouchers.",
