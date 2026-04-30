@@ -280,3 +280,42 @@ All four require a Tauri build (`pnpm tauri build` or `pnpm tauri dev`) to print
 
 Steps 4–7 require both the API exception handler fix AND the receipt printer wiring. Steps 1–3 (scan + confirmation sheet + refund cart) can be tested immediately once a Tauri build is available.
 
+---
+
+## Phase H Block 2.5 — Full-fiscal-year local receipt retention (SHIPPED 2026-04-30)
+
+Shipped:
+- POS-side `cleanupSyncedReceipts` no longer prunes after 30 days; receipts within
+  the current fiscal year (calendar year for Phase 1) are retained. The retention
+  anchor is `created_at` (fiscal posting timestamp on this terminal), not
+  `synced_at` — the boundary cares when the receipt was issued, not when it
+  was uploaded.
+- `findRecentReceiptsByPartner` and `CustomerHistorySearchService::search` /
+  `::searchByPartner` apply a permission-bound window at READ time:
+  - `pos.search_customer_full_history` → full fiscal year (calendar year for
+    Phase 1; `Carbon::now()->startOfYear()` on the backend).
+  - `pos.search_customer_recent_purchases` (only) → 30-day cashier window on
+    the POS, `customerHistoryWindowDays` (default 14) on the backend.
+- `ReceiptLocatorScreen.CustomerTab` now derives `searchWindowDays` from the
+  operator's permissions and passes it to `findRecentReceiptsByPartner`.
+
+Deferred to a later phase:
+- Custom fiscal-year start dates per tenant. Phase 1 hardcodes calendar-year
+  boundaries (Jan 1). Most retail tenants in France use the calendar year as
+  their fiscal year, so this is acceptable for the launch wave. Phase 2 will
+  read `fiscal_year.start_date` from `companyConfig` and gate the boundary.
+- Fiscal-year-close archival: at year-close, an NF525-compliant long-term
+  storage flow will migrate the prior year's receipts off local SQLite and
+  reintroduce a pruning boundary aligned with that flow. Today, the POS
+  accumulates receipts indefinitely within a year; at ~100 receipts/day that's
+  ~36k rows in SQLite — well within comfortable limits.
+- Cross-terminal refundability (Option B above — "Phase H follow-up: full
+  receipts mirror for cross-session refunds"). A receipt issued at terminal A
+  is still only refundable at terminal A. Phase 2 will introduce a
+  server-pushed `receipt_lines_mirror` synced to all terminals to enable
+  cross-terminal refunds.
+- HTTP-route wiring of `CustomerHistorySearchService`. Block 2.5c added the
+  permission gate as defence-in-depth; the service is not yet exposed via an
+  endpoint. When a controller is added, the existing permission check will
+  apply without further service refactor.
+

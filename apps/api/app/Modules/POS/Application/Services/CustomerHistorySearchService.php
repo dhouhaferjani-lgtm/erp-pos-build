@@ -140,8 +140,21 @@ final class CustomerHistorySearchService
             return new Collection;
         }
 
-        // Step 4 — Query receipts (terminal-scoped + window).
-        $windowStart = Carbon::now()->subDays($policy->customerHistoryWindowDays)->startOfDay();
+        // Step 4 — Query receipts (terminal-scoped + permission-bound window).
+        //
+        // Phase H Block 2.5c — defence-in-depth permission gate. Cashiers with
+        // `pos.search_customer_full_history` see the full current fiscal year
+        // (calendar year for Phase 1; custom fiscal-year start dates per tenant
+        // are deferred to Phase 2). Cashiers with only the recent-purchases
+        // permission stay on the existing `customerHistoryWindowDays` slice.
+        //
+        // This service isn't wired to an HTTP route today, so this is
+        // defensive: when an HTTP entry-point is added, the permission flag
+        // already gates the SQL window without further refactor.
+        $hasFullHistory = $cashier->can('pos.search_customer_full_history');
+        $windowStart = $hasFullHistory
+            ? Carbon::now()->startOfYear()
+            : Carbon::now()->subDays($policy->customerHistoryWindowDays)->startOfDay();
 
         $receipts = Receipt::query()
             ->where('partner_id', $partner->id)
@@ -229,7 +242,13 @@ final class CustomerHistorySearchService
             return new Collection;
         }
 
-        $windowStart = Carbon::now()->subDays($policy->customerHistoryWindowDays)->startOfDay();
+        // Phase H Block 2.5c — same permission-bound window as `search()`.
+        // Phase 1 uses calendar-year boundaries; Phase 2 will read custom
+        // fiscal-year start dates per tenant.
+        $hasFullHistory = $cashier->can('pos.search_customer_full_history');
+        $windowStart = $hasFullHistory
+            ? Carbon::now()->startOfYear()
+            : Carbon::now()->subDays($policy->customerHistoryWindowDays)->startOfDay();
 
         $receipts = Receipt::query()
             ->where('partner_id', $partner->id)

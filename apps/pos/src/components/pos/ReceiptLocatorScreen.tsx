@@ -179,11 +179,19 @@ function ScanTab({ terminalId, onRefund, companyId, t, locale }: ScanTabProps) {
 interface CustomerTabProps {
   onRefund: (entry: LocalReceiptQrIndexEntry) => void;
   companyId: string;
+  /**
+   * Permission-bound search window applied at READ time (Phase H Block 2.5b).
+   *   - `null` → caller holds `pos.search_customer_full_history`; show the
+   *     full fiscal year (calendar year for Phase 1).
+   *   - positive number → cashier-tier window in days (default 30) for users
+   *     who only hold `pos.search_customer_recent_purchases`.
+   */
+  searchWindowDays: number | null;
   t: (key: string, opts?: Record<string, unknown>) => string;
   locale: string;
 }
 
-function CustomerTab({ onRefund, companyId, t, locale }: CustomerTabProps) {
+function CustomerTab({ onRefund, companyId, searchWindowDays, t, locale }: CustomerTabProps) {
   const [partnerInput, setPartnerInput] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState<LocalReceiptQrIndexEntry[] | null>(null);
@@ -198,7 +206,12 @@ function CustomerTab({ onRefund, companyId, t, locale }: CustomerTabProps) {
     setHasSearched(false);
     try {
       const db = await getDatabase(companyId);
-      const entries = await findRecentReceiptsByPartner(db, trimmed, 20);
+      const entries = await findRecentReceiptsByPartner(
+        db,
+        trimmed,
+        20,
+        searchWindowDays,
+      );
       setResults(entries);
     } catch {
       setResults([]);
@@ -206,7 +219,7 @@ function CustomerTab({ onRefund, companyId, t, locale }: CustomerTabProps) {
       setIsSearching(false);
       setHasSearched(true);
     }
-  }, [partnerInput, companyId]);
+  }, [partnerInput, companyId, searchWindowDays]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -301,6 +314,21 @@ export function ReceiptLocatorScreen({ isOpen, onClose }: ReceiptLocatorScreenPr
   const canSearchByCustomer =
     operator?.permissions.includes('pos.search_customer_recent_purchases') ?? false;
 
+  // Phase H Block 2.5b — permission-bound search window applied at READ time.
+  // Storage on this terminal already retains the full current fiscal year
+  // (see cleanupSyncedReceipts in offlineReceiptRepository.ts). This decides
+  // the SLICE the cashier is allowed to see when searching by customer:
+  //   - pos.search_customer_full_history → null → no date filter
+  //   - pos.search_customer_recent_purchases (only) → 30-day window
+  // Default 30 days is intentionally a frontend constant — the backend
+  // `customerHistoryWindowDays` from `ReservationSettings` defaults to 14, but
+  // the original Phase H §3.5 cashier slice on the POS UI was specced at
+  // 30 days. Phase 2 may pull this from companyConfig to allow per-tenant
+  // overrides.
+  const hasFullHistoryPermission =
+    operator?.permissions.includes('pos.search_customer_full_history') ?? false;
+  const searchWindowDays: number | null = hasFullHistoryPermission ? null : 30;
+
   const [activeTab, setActiveTab] = useState<ActiveTab>('scan');
 
   const handleRefund = useCallback(
@@ -378,6 +406,7 @@ export function ReceiptLocatorScreen({ isOpen, onClose }: ReceiptLocatorScreenPr
           <CustomerTab
             onRefund={handleRefund}
             companyId={companyId}
+            searchWindowDays={searchWindowDays}
             t={t}
             locale={i18n.language}
           />

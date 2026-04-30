@@ -177,6 +177,26 @@ export async function findReceiptByNumber(
  * the "Find by customer" tab will simply show fewer results until the sync
  * layer is updated to populate the column.
  *
+ * `windowDays` is the permission-bound search window applied at READ time
+ * (Phase H Block 2.5b). Storage is full fiscal year on the POS terminal; this
+ * parameter narrows the cashier-visible slice based on what the operator is
+ * allowed to see:
+ *
+ *   - `null` (default) → no date filter — caller has full-history permission
+ *     (`pos.search_customer_full_history`).
+ *   - positive number ≤ 3650 → only receipts where `posted_at >= now - N days`.
+ *     Used for cashiers with the recent-purchases permission only.
+ *   - values > 3650 (including `Number.MAX_VALUE`) → treated as `null` (full
+ *     window). SQLite's `datetime` modifier returns NULL for extreme integers,
+ *     which would silently suppress all rows; the upper bound prevents that.
+ *
+ * The numeric value is interpolated directly into the SQL because SQLite's
+ * `datetime(..., '-N days')` modifier does not accept a bound parameter for
+ * the modifier text. The TypeScript signature constrains `windowDays` to
+ * `number | null`, and we guard with `Number.isFinite`, `> 0`, and `<= 3650`
+ * so the inline fragment cannot host SQL injection and extreme inputs fall
+ * through safely to the full-window path.
+ *
  * TODO (follow-up): Update syncService + backend ReceiptSyncController to
  * include `partner_id` in the sync payload, and pass it through
  * `upsertReceiptQrIndexEntries` so this query becomes fully useful.
@@ -185,12 +205,21 @@ export async function findRecentReceiptsByPartner(
   db: Database,
   partnerId: string,
   limit: number = 20,
+  windowDays: number | null = null,
 ): Promise<LocalReceiptQrIndexEntry[]> {
+  const windowClause =
+    windowDays !== null &&
+    Number.isFinite(windowDays) &&
+    windowDays > 0 &&
+    windowDays <= 3650
+      ? ` AND posted_at >= datetime('now', '-${Math.floor(windowDays)} days')`
+      : '';
+
   return queryAll<LocalReceiptQrIndexEntry>(
     db,
     `SELECT ${RECEIPT_QR_INDEX_COLUMNS}
        FROM receipt_qr_index
-      WHERE partner_id = $1
+      WHERE partner_id = $1${windowClause}
       ORDER BY posted_at DESC
       LIMIT $2`,
     [partnerId, limit],

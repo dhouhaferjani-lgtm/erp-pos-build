@@ -16,12 +16,14 @@ use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Infrastructure\RateLimit\CustomerHistorySearchRateLimiter;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Cache\RateLimiter;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /**
@@ -363,6 +365,109 @@ final class CustomerHistorySearchServiceTest extends TestCase
         }
 
         Event::assertNotDispatched(BroadCustomerSearchAlert::class);
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase H Block 2.5c — permission-bound search window
+    // -------------------------------------------------------------------------
+
+    public function test_cashier_without_full_history_permission_does_not_see_receipts_outside_window(): void
+    {
+        // Default policy `customerHistoryWindowDays = 14`. Receipt posted 90 days ago
+        // is well outside the window — must NOT be returned to a regular cashier.
+        $partner = $this->createPartner(['email' => 'old-shopper@example.com']);
+        $this->createReceipt($partner, ['posted_at' => Carbon::now()->subDays(90)]);
+
+        $results = $this->service->search(
+            'old-shopper@example.com',
+            $this->cashier,
+            $this->terminal,
+            $this->policy,
+        );
+
+        $this->assertCount(0, $results, 'Cashier without full-history permission must not see receipts older than the policy window.');
+    }
+
+    public function test_cashier_with_full_history_permission_sees_receipts_outside_short_window(): void
+    {
+        // Seed Spatie permissions in the tenant team scope, then grant the full-
+        // history permission. After granting, refresh the in-memory cache so the
+        // subsequent ->can(...) call in the service reflects the new state.
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
+        $this->seed(RolesAndPermissionsSeeder::class);
+
+        $this->cashier->givePermissionTo('pos.search_customer_full_history');
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $this->cashier->load('permissions');
+
+        // Receipt posted 90 days ago — outside the 14-day cashier window but
+        // INSIDE the current calendar year (provided the test fixture date is
+        // not within 90 days of January 1).
+        $partner = $this->createPartner(['email' => 'audited-shopper@example.com']);
+        $this->createReceipt($partner, ['posted_at' => Carbon::now()->subDays(90)]);
+
+        $results = $this->service->search(
+            'audited-shopper@example.com',
+            $this->cashier,
+            $this->terminal,
+            $this->policy,
+        );
+
+        // The service uses Carbon::now()->startOfYear() as the boundary when the
+        // operator holds full-history. A receipt 90 days old is inside the
+        // current calendar year unless the test runs in early January — in
+        // which case we accept either 0 or 1 results because the boundary is
+        // genuinely the new-year cutoff. We assert "at least the row is
+        // visible when the calendar permits it" by computing the boundary the
+        // same way the service does.
+        $boundary = Carbon::now()->startOfYear();
+        $receiptDate = Carbon::now()->subDays(90);
+
+        if ($receiptDate->greaterThanOrEqualTo($boundary)) {
+            $this->assertCount(1, $results, 'Cashier with full-history must see receipts within the current fiscal year.');
+        } else {
+            // Run is in very early January — the 90-day-old receipt is in last year.
+            // For Phase 1 (calendar-year fiscal year) that's correctly excluded.
+            $this->assertCount(0, $results);
+        }
+    }
+
+    public function test_cashier_with_full_history_permission_sees_receipts_outside_window_in_search_by_partner(): void
+    {
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
+        $this->seed(RolesAndPermissionsSeeder::class);
+
+        $this->cashier->givePermissionTo('pos.search_customer_full_history');
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $this->cashier->load('permissions');
+
+        $partner = $this->createPartner(['email' => 'partner-search@example.com']);
+        // 90 days ago — inside calendar year (unless we're in very early January).
+        $this->createReceipt($partner, ['posted_at' => Carbon::now()->subDays(90)]);
+
+        $results = $this->service->searchByPartner($partner, $this->cashier, $this->terminal);
+
+        $boundary = Carbon::now()->startOfYear();
+        $receiptDate = Carbon::now()->subDays(90);
+
+        if ($receiptDate->greaterThanOrEqualTo($boundary)) {
+            $this->assertCount(1, $results);
+        } else {
+            $this->assertCount(0, $results);
+        }
+    }
+
+    public function test_cashier_without_full_history_permission_cannot_see_old_receipts_in_search_by_partner(): void
+    {
+        // Default `searchByPartner` uses ReservationSettings defaults
+        // (customerHistoryWindowDays = 14). 90-day-old receipt must be hidden
+        // from a regular cashier.
+        $partner = $this->createPartner(['email' => 'guarded@example.com']);
+        $this->createReceipt($partner, ['posted_at' => Carbon::now()->subDays(90)]);
+
+        $results = $this->service->searchByPartner($partner, $this->cashier, $this->terminal);
+
+        $this->assertCount(0, $results);
     }
 
     // -------------------------------------------------------------------------

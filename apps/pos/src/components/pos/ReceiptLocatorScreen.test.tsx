@@ -173,10 +173,13 @@ import { useRefundFlowStore } from '@/stores/refundFlowStore';
 
 // ─── Store setup helper ───────────────────────────────────────────────────────
 
-function setupStores({ canSearchCustomer = false }: { canSearchCustomer?: boolean } = {}) {
-  const permissions = canSearchCustomer
-    ? ['pos.search_customer_recent_purchases']
-    : [];
+function setupStores({
+  canSearchCustomer = false,
+  canSearchFullHistory = false,
+}: { canSearchCustomer?: boolean; canSearchFullHistory?: boolean } = {}) {
+  const permissions: string[] = [];
+  if (canSearchCustomer) permissions.push('pos.search_customer_recent_purchases');
+  if (canSearchFullHistory) permissions.push('pos.search_customer_full_history');
 
   // Cast to unknown first to bypass strict store-selector compatibility checks
   // in test mocks — these mocks only supply the slice of state that
@@ -328,7 +331,9 @@ describe('ReceiptLocatorScreen', () => {
       expect(screen.getByText('R-0011')).toBeInTheDocument();
     });
 
-    expect(findRecentReceiptsByPartner).toHaveBeenCalledWith({}, 'partner-abc', 20);
+    // Operator has only `pos.search_customer_recent_purchases` (no full-history) →
+    // permission-bound 30-day window applied at READ time (Phase H Block 2.5b).
+    expect(findRecentReceiptsByPartner).toHaveBeenCalledWith({}, 'partner-abc', 20, 30);
 
     // Click the first "Refund this" button
     const refundButtons = screen.getAllByRole('button', { name: 'Refund this' });
@@ -493,5 +498,55 @@ describe('ReceiptLocatorScreen', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
 
     fetchSpy.mockRestore();
+  });
+
+  // ── Permission-bound search window (Phase H Block 2.5b) ───────────────────
+
+  it('passes windowDays = null (full fiscal year) when operator has pos.search_customer_full_history', async () => {
+    setupStores({ canSearchCustomer: true, canSearchFullHistory: true });
+    vi.mocked(findRecentReceiptsByPartner).mockResolvedValue([CUSTOMER_ENTRY_1]);
+
+    render(<ReceiptLocatorScreen isOpen={true} onClose={() => {}} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Find by customer' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Customer ID' }), {
+      target: { value: 'partner-abc' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+
+    await waitFor(() => {
+      expect(findRecentReceiptsByPartner).toHaveBeenCalled();
+    });
+
+    expect(findRecentReceiptsByPartner).toHaveBeenCalledWith(
+      {},
+      'partner-abc',
+      20,
+      null,
+    );
+  });
+
+  it('passes windowDays = 30 when operator only has pos.search_customer_recent_purchases', async () => {
+    setupStores({ canSearchCustomer: true, canSearchFullHistory: false });
+    vi.mocked(findRecentReceiptsByPartner).mockResolvedValue([CUSTOMER_ENTRY_1]);
+
+    render(<ReceiptLocatorScreen isOpen={true} onClose={() => {}} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Find by customer' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Customer ID' }), {
+      target: { value: 'partner-abc' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+
+    await waitFor(() => {
+      expect(findRecentReceiptsByPartner).toHaveBeenCalled();
+    });
+
+    expect(findRecentReceiptsByPartner).toHaveBeenCalledWith(
+      {},
+      'partner-abc',
+      20,
+      30,
+    );
   });
 });
