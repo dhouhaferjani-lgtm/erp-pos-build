@@ -11,7 +11,6 @@ import { useScannerStore } from '@/stores/scannerStore';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { useRefundFlowStore } from '@/stores/refundFlowStore';
 import { useRefundDraftStore } from '@/stores/refundDraftStore';
-import { useAuthStore } from '@/stores/authStore';
 import { dispatchScan } from '@/lib/scan/dispatcher';
 import { getDatabase } from '@/lib/db';
 import { getOfflineReceiptById } from '@/lib/db/repositories/offlineReceiptRepository';
