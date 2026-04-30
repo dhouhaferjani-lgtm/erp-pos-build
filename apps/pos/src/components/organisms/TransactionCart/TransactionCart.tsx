@@ -315,6 +315,7 @@ function ReturnLineItem({
             onClick={() => onQuantityTap?.(item.id)}
             className="min-w-[1.5rem] text-center text-base font-bold text-red-800"
             type="button"
+            aria-label={t('cart.editQty')}
           >
             {absQty}
           </button>

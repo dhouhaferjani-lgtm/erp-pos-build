@@ -153,6 +153,9 @@ export function HomePage() {
   const pendingScanResult = useRefundFlowStore((s) => s.pendingScanResult);
   const setPendingScanResult = useRefundFlowStore((s) => s.setPendingScanResult);
   const acceptPendingScan = useRefundFlowStore((s) => s.acceptPendingScan);
+  // Bug 1 fix: subscribe via selector so React sees each new token value
+  // and re-fires the hydration effect when a second scan arrives in the same session.
+  const acceptedReceiptToken = useRefundFlowStore((s) => s.acceptedReceiptToken);
 
   // Refund draft store (Task 52) — persist/restore in-progress refund carts.
   const loadDraft = useRefundDraftStore((s) => s.loadDraft);
@@ -272,9 +275,12 @@ export function HomePage() {
 
   // Task 52: Consume the acceptedReceiptToken (emitted by Task 50 dispatcher
   // or Task 51 locator). Runs ONCE per token — idempotent via consume+clear.
+  // Bug 1 fix: use the `acceptedReceiptToken` selector (subscribed above) in the
+  // dep array so React re-fires this effect whenever a new token is set, even
+  // within the same session.
   useEffect(() => {
-    // Subscribe directly to the slot value so the effect re-runs when non-null.
-    const token = useRefundFlowStore.getState().acceptedReceiptToken;
+    // The selector value drives the dep array; use it as the early-exit guard.
+    const token = acceptedReceiptToken;
     if (token === null) return;
 
     // Consume atomically (read + clear). A second re-render will not re-fire.
@@ -330,7 +336,7 @@ export function HomePage() {
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useRefundFlowStore.getState().acceptedReceiptToken]);
+  }, [acceptedReceiptToken]);
 
   // Task 52: Auto-persist draft whenever cart items or discount change while
   // a refund is active.
@@ -457,11 +463,14 @@ export function HomePage() {
   );
 
   // Task 52: Resume a persisted refund draft on app restart.
+  // Bug 3 fix: branch cleanly — replaceCart only when there are buying items
+  // (the first replaceReturnItems call was a no-op when replaceCart ran immediately
+  // after and overwrote the entire cart). When only return items exist, call
+  // replaceReturnItems so the discount state is preserved separately.
   const handleResumeDraft = useCallback(() => {
     if (!existingDraft) return;
-    useCartStore.getState().replaceReturnItems(existingDraft.returnItems);
     if (existingDraft.buyingItems.length > 0) {
-      // Re-add sale items that were in flight (Buying-new section).
+      // Exchange mode: restore both return + sale lines atomically.
       useCartStore.getState().replaceCart(
         [
           ...existingDraft.returnItems,
@@ -469,6 +478,9 @@ export function HomePage() {
         ],
         existingDraft.transactionDiscount,
       );
+    } else {
+      // Pure-refund mode: only return items, no sale lines in flight.
+      useCartStore.getState().replaceReturnItems(existingDraft.returnItems);
     }
     setActiveRefundReceiptUuid(existingDraft.receiptUuid);
     setActiveRefundReceiptNumber(existingDraft.receiptNumber);

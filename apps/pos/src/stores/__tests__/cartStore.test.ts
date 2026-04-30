@@ -377,6 +377,72 @@ describe('computeTaxAmount', () => {
   });
 });
 
+describe('cartStore — return-line updateQuantity semantics (Bug 2 fix)', () => {
+  function makeReturnLineAt(id: string, qty: number): import('@/types/cart').CartItem {
+    // unit_price 10.00; line_total is already negative for return lines
+    return {
+      id,
+      product: { id: `prod-${id}`, name: 'Item', sku: 'SKU', price: '10.00' },
+      quantity: qty,
+      unit_price: '10.00',
+      line_total: (10 * qty).toFixed(2), // e.g. -20.00 for qty -2
+      tax_rate: '0',
+      tax_amount: '0.00',
+      kind: 'return',
+    };
+  }
+
+  beforeEach(() => {
+    useCartStore.getState().clearCart();
+  });
+
+  it('increments a return line (makes qty more negative) without removing it', () => {
+    // Hydrate with qty -2 (returning 2 units)
+    const item = makeReturnLineAt('r1', -2);
+    useCartStore.getState().replaceReturnItems([item]);
+    const itemId = useCartStore.getState().returnItems()[0]!.id;
+
+    // Simulate ReturnLineItem.handleIncrement: -(absQty + 1) = -(2 + 1) = -3
+    useCartStore.getState().updateQuantity(itemId, -3);
+
+    const updated = useCartStore.getState().returnItems()[0]!;
+    expect(updated.quantity).toBe(-3);
+    expect(updated.line_total).toBe('-30.00');
+  });
+
+  it('decrements a return line (makes qty less negative) correctly', () => {
+    const item = makeReturnLineAt('r1', -3);
+    useCartStore.getState().replaceReturnItems([item]);
+    const itemId = useCartStore.getState().returnItems()[0]!.id;
+
+    // -(absQty - 1) = -(3 - 1) = -2
+    useCartStore.getState().updateQuantity(itemId, -2);
+
+    const updated = useCartStore.getState().returnItems()[0]!;
+    expect(updated.quantity).toBe(-2);
+    expect(updated.line_total).toBe('-20.00');
+  });
+
+  it('removes a return line when quantity reaches exactly 0', () => {
+    const item = makeReturnLineAt('r1', -1);
+    useCartStore.getState().replaceReturnItems([item]);
+    const itemId = useCartStore.getState().returnItems()[0]!.id;
+
+    useCartStore.getState().updateQuantity(itemId, 0);
+
+    expect(useCartStore.getState().returnItems()).toHaveLength(0);
+  });
+
+  it('still removes a sale line when quantity is set to 0 (existing behaviour preserved)', () => {
+    useCartStore.getState().addItem(makeProduct({ id: 'sale-1', sale_price: '20.00' }));
+    const itemId = useCartStore.getState().saleItems()[0]!.id;
+
+    useCartStore.getState().updateQuantity(itemId, 0);
+
+    expect(useCartStore.getState().saleItems()).toHaveLength(0);
+  });
+});
+
 describe('cartStore — refund/return sections (Task 52)', () => {
   function makeReturnItem(id: string, lineTotal: string): import('@/types/cart').CartItem {
     return {

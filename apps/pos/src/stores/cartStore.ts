@@ -85,7 +85,10 @@ function recalcLineTotal(item: CartItem, newQty: number): CartItem {
     discountAmount = parseFloat(item.discount_amount);
   }
 
-  const lineTotal = Math.max(0, grossTotal - discountAmount);
+  // For sale lines (positive qty) clamp to 0 so discounts never invert the total.
+  // For return lines (negative qty) the raw signed value is correct — do not clamp.
+  const rawTotal = grossTotal - discountAmount;
+  const lineTotal = newQty >= 0 ? Math.max(0, rawTotal) : rawTotal;
 
   return {
     ...item,
@@ -198,7 +201,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
   },
 
   updateQuantity: (itemId: string, quantity: number) => {
-    if (quantity <= 0) {
+    if (quantity === 0) {
       get().removeItem(itemId);
       return;
     }

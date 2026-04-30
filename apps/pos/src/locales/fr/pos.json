@@ -10,6 +10,7 @@
     "editDiscount": "Modifier la remise",
     "decrementQty": "Diminuer la quantité",
     "incrementQty": "Augmenter la quantité",
+    "editQty": "Modifier la quantité",
     "removeItem": "Supprimer l'article",
     "lineDiscount": "Remise article",
     "editModifiers": "Modifier les options",
