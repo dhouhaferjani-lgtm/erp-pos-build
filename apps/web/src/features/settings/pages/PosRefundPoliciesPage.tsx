@@ -436,7 +436,7 @@ export function PosRefundPoliciesPage() {
                         data-testid="daily-cap-cashier-enable"
                         checked={isEnabled}
                         onChange={(e) => {
-                          field.onChange(e.target.checked ? '0.00' : null)
+                          field.onChange(e.target.checked ? '' : null)
                         }}
                         className={tokens.checkbox.base}
                       />
@@ -687,7 +687,7 @@ export function PosRefundPoliciesPage() {
                         data-testid="goodwill-daily-cap-enable"
                         checked={isEnabled}
                         onChange={(e) => {
-                          field.onChange(e.target.checked ? '0.00' : null)
+                          field.onChange(e.target.checked ? '' : null)
                         }}
                         className={tokens.checkbox.base}
                       />
@@ -742,7 +742,7 @@ export function PosRefundPoliciesPage() {
 
         {/* ── Sticky footer ─────────────────────────────────────────────── */}
         <div
-          className={`sticky bottom-0 z-10 flex items-center justify-between gap-3 rounded-lg border ${borderColors.light} bg-white px-6 py-4 shadow-md`}
+          className={`sticky bottom-0 z-10 flex items-center justify-between gap-3 rounded-lg border ${borderColors.light} ${colors.white} px-6 py-4 shadow-md`}
         >
           <button
             type="button"

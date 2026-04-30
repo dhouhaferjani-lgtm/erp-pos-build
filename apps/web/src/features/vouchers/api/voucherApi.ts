@@ -30,47 +30,35 @@ export async function listVouchers(params: VoucherListParams = {}): Promise<Vouc
 // ─── Detail ──────────────────────────────────────────────────────────────────
 
 export async function getVoucher(id: string): Promise<VoucherDetail> {
-  interface SingleResponse { data: VoucherDetail }
-  const result = await apiGet<SingleResponse>(`/vouchers/${id}`)
-  return result.data
+  return apiGet<VoucherDetail>(`/vouchers/${id}`)
 }
 
 // ─── Issue Goodwill ───────────────────────────────────────────────────────────
 
 export async function issueGoodwill(payload: IssueGoodwillPayload): Promise<Voucher> {
-  interface SingleResponse { data: Voucher }
-  const result = await apiPost<SingleResponse>('/vouchers/issue-goodwill', payload)
-  return result.data
+  return apiPost<Voucher>('/vouchers/issue-goodwill', payload)
 }
 
 // ─── Void ─────────────────────────────────────────────────────────────────────
 
 export async function voidVoucher(id: string, payload: VoidVoucherPayload): Promise<Voucher> {
-  interface SingleResponse { data: Voucher }
-  const result = await apiPost<SingleResponse>(`/vouchers/${id}/void`, payload)
-  return result.data
+  return apiPost<Voucher>(`/vouchers/${id}/void`, payload)
 }
 
 // ─── Transfer ─────────────────────────────────────────────────────────────────
 
 export async function transferVoucher(id: string, payload: TransferVoucherPayload): Promise<Voucher> {
-  interface SingleResponse { data: Voucher }
-  const result = await apiPost<SingleResponse>(`/vouchers/${id}/transfer`, payload)
-  return result.data
+  return apiPost<Voucher>(`/vouchers/${id}/transfer`, payload)
 }
 
 // ─── Extend Expiry ────────────────────────────────────────────────────────────
 
 export async function extendExpiry(id: string, payload: ExtendExpiryPayload): Promise<Voucher> {
-  interface SingleResponse { data: Voucher }
-  const result = await apiPost<SingleResponse>(`/vouchers/${id}/extend-expiry`, payload)
-  return result.data
+  return apiPost<Voucher>(`/vouchers/${id}/extend-expiry`, payload)
 }
 
 // ─── Reservation settings (voucher-relevant fields) ──────────────────────────
 
 export async function getVoucherReservationSettings(companyId: string): Promise<VoucherReservationSettings> {
-  interface SettingsResponse { data: VoucherReservationSettings }
-  const result = await apiGet<SettingsResponse>(`/companies/${companyId}/reservation-settings`)
-  return result.data
+  return apiGet<VoucherReservationSettings>(`/companies/${companyId}/reservation-settings`)
 }

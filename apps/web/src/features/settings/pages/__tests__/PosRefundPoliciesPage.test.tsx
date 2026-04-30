@@ -216,4 +216,72 @@ describe('PosRefundPoliciesPage', () => {
     expect(screen.getByTestId('access-denied')).toBeInTheDocument()
     expect(screen.queryByTestId('save-button')).not.toBeInTheDocument()
   })
+
+  // ── Fix 1 regression: form populates from loaded data, not defaults ──────────
+
+  it('populates form with loaded settings, not defaults', () => {
+    // Use a value that differs from the default (default is 30)
+    mockQueryReturn.data = { ...POS_REFUND_POLICY_DEFAULTS, customer_return_expiry_days: 60 }
+    renderPage()
+    const input = screen.getByTestId('field-customer_return_expiry_days') as HTMLInputElement
+    // Without the double-unwrap fix the form would load defaults (30) instead of 60
+    expect(input.value).toBe('60')
+  })
+
+  // ── Fix 2: zero / blank cap is rejected on submit ────────────────────────────
+
+  it('rejects daily_refund_cap_per_cashier=0 when enabled', async () => {
+    renderPage()
+    const enableCapToggle = screen.getByTestId('daily-cap-cashier-enable') as HTMLInputElement
+    fireEvent.click(enableCapToggle)
+    // Input appears with empty string — do NOT enter a value (simulates zero / blank)
+    const capInput = screen.getByTestId('field-daily_refund_cap_per_cashier') as HTMLInputElement
+    expect(capInput.value).toBe('')
+    fireEvent.click(screen.getByTestId('save-button'))
+    await waitFor(() => {
+      expect(mockMutate).not.toHaveBeenCalled()
+    })
+  })
+
+  it('rejects goodwill_daily_issuance_cap_per_user=blank when enabled', async () => {
+    renderPage()
+    const enableToggle = screen.getByTestId('goodwill-daily-cap-enable') as HTMLInputElement
+    fireEvent.click(enableToggle)
+    const capInput = screen.getByTestId(
+      'field-goodwill_daily_issuance_cap_per_user'
+    ) as HTMLInputElement
+    expect(capInput.value).toBe('')
+    fireEvent.click(screen.getByTestId('save-button'))
+    await waitFor(() => {
+      expect(mockMutate).not.toHaveBeenCalled()
+    })
+  })
+
+  // ── Fix 4: acceptance-boundary tests ─────────────────────────────────────────
+
+  it('accepts manager_override_threshold_percent = 100 (boundary)', async () => {
+    renderPage()
+    const input = screen.getByTestId(
+      'field-manager_override_threshold_percent'
+    ) as HTMLInputElement
+    fireEvent.change(input, { target: { value: '100' } })
+    fireEvent.click(screen.getByTestId('save-button'))
+    await waitFor(() => {
+      expect(mockMutate).toHaveBeenCalledOnce()
+    })
+    const payload = mockMutate.mock.calls[0][0] as PosRefundPolicies
+    expect(payload.manager_override_threshold_percent).toBe('100')
+  })
+
+  it('accepts customer_return_expiry_days = 90 (max boundary)', async () => {
+    renderPage()
+    const input = screen.getByTestId('field-customer_return_expiry_days') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '90' } })
+    fireEvent.click(screen.getByTestId('save-button'))
+    await waitFor(() => {
+      expect(mockMutate).toHaveBeenCalledOnce()
+    })
+    const payload = mockMutate.mock.calls[0][0] as PosRefundPolicies
+    expect(payload.customer_return_expiry_days).toBe(90)
+  })
 })
