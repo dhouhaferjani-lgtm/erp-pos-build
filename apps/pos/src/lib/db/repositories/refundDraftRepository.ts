@@ -14,7 +14,11 @@ export interface RefundDraftRow {
   buying_items_json: string;
   /** JSON-encoded { type, value, reason? } or null. */
   transaction_discount_json: string | null;
-  /** NULL until the first positive ("Buying new") line is added. */
+  /**
+   * exchange_request_id: generated lazily on first positive line; preserved for the
+   * lifetime of the draft (does NOT regenerate on empty-then-refill cycles).
+   * Cleared only on draft discard.
+   */
   exchange_request_id: string | null;
   started_at: string;
   updated_at: string;

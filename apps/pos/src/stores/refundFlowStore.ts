@@ -42,6 +42,13 @@ interface RefundFlowActions {
    * consumers should prefer `consumeAcceptedReceiptToken()` instead.
    */
   clearAccepted: () => void;
+  /**
+   * Full in-memory reset — clears both `pendingScanResult` and
+   * `acceptedReceiptToken`. Called on shift close and operator switch so
+   * dangling scan state from Operator A cannot bleed into Operator B's
+   * session. Safe to call when both slots are already null.
+   */
+  clearAll: () => void;
 }
 
 type RefundFlowStore = RefundFlowState & RefundFlowActions;
@@ -83,5 +90,9 @@ export const useRefundFlowStore = create<RefundFlowStore>()((set, get) => ({
 
   clearAccepted: () => {
     set({ acceptedReceiptToken: null });
+  },
+
+  clearAll: () => {
+    set({ pendingScanResult: null, acceptedReceiptToken: null });
   },
 }));

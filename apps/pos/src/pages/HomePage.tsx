@@ -273,6 +273,33 @@ export function HomePage() {
     void loadDraft(companyId, terminalId);
   }, [shift, loadDraft]);
 
+  // Concern #1: Reset refund local state when shift closes or changes.
+  // The SQLite refund_drafts row is intentionally NOT deleted so the legitimate
+  // operator can resume after restart — only the in-memory projection is cleared.
+  useEffect(() => {
+    if (shift !== null) return; // only fire on close/absence
+    setActiveRefundReceiptUuid(null);
+    setActiveRefundReceiptNumber(null);
+    setActiveRefundDraftId(null);
+    setExchangeRequestId(null);
+    setPendingScanResult(null);
+    setDetailsNotLocalWarning(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shift]);
+
+  // Concern #1: Reset refund local state when operator switches.
+  // Prevents Operator A's pending sheet from leaking into Operator B's session.
+  useEffect(() => {
+    if (operator !== null) return; // only fire on operator clear
+    setActiveRefundReceiptUuid(null);
+    setActiveRefundReceiptNumber(null);
+    setActiveRefundDraftId(null);
+    setExchangeRequestId(null);
+    setPendingScanResult(null);
+    setDetailsNotLocalWarning(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [operator?.id]);
+
   // Task 52: Consume the acceptedReceiptToken (emitted by Task 50 dispatcher
   // or Task 51 locator). Runs ONCE per token — idempotent via consume+clear.
   // Bug 1 fix: use the `acceptedReceiptToken` selector (subscribed above) in the
@@ -351,15 +378,17 @@ export function HomePage() {
     const returnItems = useCartStore.getState().returnItems();
     const saleItemsList = useCartStore.getState().saleItems();
 
-    // Determine if exchange_request_id should be generated (first positive line).
+    // Determine if exchange_request_id should be generated.
+    // exchange_request_id: generated lazily on first positive line; preserved for the
+    // lifetime of the draft (does NOT regenerate on empty-then-refill cycles).
+    // Cleared only on draft discard.
     let currentExchangeId = exchangeRequestId;
     if (saleItemsList.length > 0 && currentExchangeId === null) {
       currentExchangeId = crypto.randomUUID();
       setExchangeRequestId(currentExchangeId);
-    } else if (saleItemsList.length === 0 && currentExchangeId !== null) {
-      currentExchangeId = null;
-      setExchangeRequestId(null);
     }
+    // Do NOT clear currentExchangeId when saleItemsList becomes empty — the ID
+    // must survive empty-then-refill cycles so the eventual API submit is idempotent.
 
     void persistDraft(companyId, {
       id: activeRefundDraftId,

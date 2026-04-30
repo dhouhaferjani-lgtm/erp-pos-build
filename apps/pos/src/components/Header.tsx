@@ -36,6 +36,8 @@ import { toast } from 'sonner';
 import { fetchFraudSettings } from '@/api/fraudSettingsApi';
 import { fetchAuthorizedManagers } from '@/api/managersApi';
 import { verifyManagerPin } from '@/api/managerPinApi';
+import { useRefundFlowStore } from '@/stores/refundFlowStore';
+import { useRefundDraftStore } from '@/stores/refundDraftStore';
 import { getTerminalState, setManagerPinThrottle, setManagerPinFailedAttempts } from '@/lib/db/repositories/terminalStateRepository';
 
 export function Header() {
@@ -330,11 +332,17 @@ export function Header() {
 
   function handleSwitchOperator() {
     useCartStore.getState().clearCart();
+    useRefundFlowStore.getState().clearAll();
+    useRefundDraftStore.getState().clearDraftState();
+    usePaymentStore.getState().clearVoucherTenders();
     clearOperator();
   }
 
   function handleLogout() {
     useCartStore.getState().clearCart();
+    useRefundFlowStore.getState().clearAll();
+    useRefundDraftStore.getState().clearDraftState();
+    usePaymentStore.getState().clearVoucherTenders();
     usePaymentStore.getState().reset();
     useProductStore.getState().reset();
     useOperatorStore.getState().clearOperator();
