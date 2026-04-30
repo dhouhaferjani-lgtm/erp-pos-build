@@ -590,6 +590,35 @@ final class VoucherControllerTest extends TestCase
         $this->assertStringContainsString($reason, (string) $voucher->notes);
     }
 
+    public function test_transfer_persists_override_reason(): void
+    {
+        Sanctum::actingAs($this->user);
+
+        $partner = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        $voucher = Voucher::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'issued_by_user_id' => $this->user->id,
+            'partner_id' => null,
+            'override_reason' => null,
+        ]);
+
+        $reason = 'Customer requested transfer to spouse';
+
+        $this->withHeader('X-Company-Id', $this->company->id)
+            ->postJson("/api/v1/vouchers/{$voucher->id}/transfer", [
+                'to_partner_id' => $partner->id,
+                'reason' => $reason,
+            ])
+            ->assertOk();
+
+        $this->assertSame($reason, $voucher->fresh()->override_reason);
+    }
+
     // -------------------------------------------------------------------------
     // POST /api/v1/vouchers/{id}/extend-expiry
     // -------------------------------------------------------------------------

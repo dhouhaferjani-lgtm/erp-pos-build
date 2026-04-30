@@ -422,6 +422,7 @@ final class VoucherController extends Controller
             $voucher->notes = $voucher->notes !== null
                 ? $voucher->notes."\n".$noteEntry
                 : $noteEntry;
+            $voucher->override_reason = $reason;
             $voucher->partner_id = $toPartnerId;
             $voucher->save();
         });
