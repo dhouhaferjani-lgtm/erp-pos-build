@@ -391,19 +391,6 @@ describe('cartStore — refund/return sections (Task 52)', () => {
     };
   }
 
-  function makeSaleItem(id: string, lineTotal: string): import('@/types/cart').CartItem {
-    return {
-      id,
-      product: { id: `prod-${id}`, name: 'Item', sku: 'SKU', price: parseFloat(lineTotal).toFixed(2) },
-      quantity: 1,
-      unit_price: lineTotal,
-      line_total: lineTotal,
-      tax_rate: '0',
-      tax_amount: '0.00',
-      kind: 'sale',
-    };
-  }
-
   beforeEach(() => {
     useCartStore.getState().clearCart();
   });

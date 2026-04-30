@@ -10,11 +10,15 @@ import { useHoldStore } from '@/stores/holdStore';
 import { useScannerStore } from '@/stores/scannerStore';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { useRefundFlowStore } from '@/stores/refundFlowStore';
+import { useRefundDraftStore } from '@/stores/refundDraftStore';
 import { useAuthStore } from '@/stores/authStore';
 import { dispatchScan } from '@/lib/scan/dispatcher';
 import { getDatabase } from '@/lib/db';
+import { getOfflineReceiptById } from '@/lib/db/repositories/offlineReceiptRepository';
+import { hydrateFromReceipt } from '@/lib/refundFlow/hydrateFromReceipt';
 import { ReceiptScanConfirmationSheet } from '@/components/pos/ReceiptScanConfirmationSheet';
 import { ReceiptLocatorScreen } from '@/components/pos/ReceiptLocatorScreen';
+import { ResumeRefundDraftBanner } from '@/components/pos/ResumeRefundDraftBanner';
 import { getErrorMessage } from '@/lib/api';
 import { useCurrency } from '@/lib/currency';
 import { fetchReceipt } from '@/api/receiptApi';
@@ -150,6 +154,20 @@ export function HomePage() {
   const setPendingScanResult = useRefundFlowStore((s) => s.setPendingScanResult);
   const acceptPendingScan = useRefundFlowStore((s) => s.acceptPendingScan);
 
+  // Refund draft store (Task 52) — persist/restore in-progress refund carts.
+  const loadDraft = useRefundDraftStore((s) => s.loadDraft);
+  const persistDraft = useRefundDraftStore((s) => s.persistDraft);
+  const discardDraftAction = useRefundDraftStore((s) => s.discardDraft);
+  const existingDraft = useRefundDraftStore((s) => s.draft);
+  const clearDraftState = useRefundDraftStore((s) => s.clearDraftState);
+
+  // Active refund context: which receipt is being refunded (Task 52).
+  const [activeRefundReceiptUuid, setActiveRefundReceiptUuid] = useState<string | null>(null);
+  const [activeRefundReceiptNumber, setActiveRefundReceiptNumber] = useState<string | null>(null);
+  const [activeRefundDraftId, setActiveRefundDraftId] = useState<string | null>(null);
+  const [exchangeRequestId, setExchangeRequestId] = useState<string | null>(null);
+  const [detailsNotLocalWarning, setDetailsNotLocalWarning] = useState(false);
+
   /**
    * Existing product-barcode handler — extracted so the receipt-token
    * dispatcher (below) can fall through to it cleanly.
@@ -243,6 +261,114 @@ export function HomePage() {
     void loadHeldTransactions();
   }, [loadHeldTransactions]);
 
+  // Task 52: Load refund draft when shift is open so we can offer resume.
+  useEffect(() => {
+    if (!shift) return;
+    const companyId = useAuthStore.getState().companyId;
+    const terminalId = useTerminalStore.getState().terminal?.id ?? null;
+    if (!companyId || !terminalId) return;
+    void loadDraft(companyId, terminalId);
+  }, [shift, loadDraft]);
+
+  // Task 52: Consume the acceptedReceiptToken (emitted by Task 50 dispatcher
+  // or Task 51 locator). Runs ONCE per token — idempotent via consume+clear.
+  useEffect(() => {
+    // Subscribe directly to the slot value so the effect re-runs when non-null.
+    const token = useRefundFlowStore.getState().acceptedReceiptToken;
+    if (token === null) return;
+
+    // Consume atomically (read + clear). A second re-render will not re-fire.
+    const event = useRefundFlowStore.getState().consumeAcceptedReceiptToken();
+    if (event === null) return;
+
+    // Prevent re-hydrating an already-active refund session.
+    if (activeRefundReceiptUuid === event.receiptUuid) return;
+
+    const companyId = useAuthStore.getState().companyId;
+    if (!companyId) return;
+
+    void (async () => {
+      try {
+        const db = await getDatabase(companyId);
+        const receipt = await getOfflineReceiptById(db, event.receiptUuid);
+
+        if (receipt === null) {
+          // Receipt not in local SQLite — likely synced + pruned or was from
+          // a different terminal's DB. Surface a warning message.
+          setDetailsNotLocalWarning(true);
+          return;
+        }
+
+        const returnItems = hydrateFromReceipt(event, receipt);
+
+        // Atomically replace return items in the cart.
+        useCartStore.getState().replaceReturnItems(returnItems);
+        setActiveRefundReceiptUuid(event.receiptUuid);
+        setActiveRefundReceiptNumber(event.receiptNumber);
+        setDetailsNotLocalWarning(false);
+
+        // Persist draft immediately so a crash/close can restore.
+        const terminalId = useTerminalStore.getState().terminal?.id ?? '';
+        const operatorId = useOperatorStore.getState().operator?.id ?? '';
+        const draftId = activeRefundDraftId ?? crypto.randomUUID();
+        setActiveRefundDraftId(draftId);
+
+        await persistDraft(companyId, {
+          id: draftId,
+          terminalId,
+          operatorId,
+          receiptUuid: event.receiptUuid,
+          receiptNumber: event.receiptNumber,
+          returnItems,
+          buyingItems: useCartStore.getState().saleItems(),
+          transactionDiscount: useCartStore.getState().transactionDiscount,
+          exchangeRequestId: null,
+        });
+      } catch (err) {
+        console.error('[refundFlow] hydrateFromReceipt failed:', err);
+        setDetailsNotLocalWarning(true);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useRefundFlowStore.getState().acceptedReceiptToken]);
+
+  // Task 52: Auto-persist draft whenever cart items or discount change while
+  // a refund is active.
+  useEffect(() => {
+    if (!activeRefundReceiptUuid || !activeRefundDraftId) return;
+
+    const companyId = useAuthStore.getState().companyId;
+    const terminalId = useTerminalStore.getState().terminal?.id ?? '';
+    const operatorId = useOperatorStore.getState().operator?.id ?? '';
+    if (!companyId) return;
+
+    const returnItems = useCartStore.getState().returnItems();
+    const saleItemsList = useCartStore.getState().saleItems();
+
+    // Determine if exchange_request_id should be generated (first positive line).
+    let currentExchangeId = exchangeRequestId;
+    if (saleItemsList.length > 0 && currentExchangeId === null) {
+      currentExchangeId = crypto.randomUUID();
+      setExchangeRequestId(currentExchangeId);
+    } else if (saleItemsList.length === 0 && currentExchangeId !== null) {
+      currentExchangeId = null;
+      setExchangeRequestId(null);
+    }
+
+    void persistDraft(companyId, {
+      id: activeRefundDraftId,
+      terminalId,
+      operatorId,
+      receiptUuid: activeRefundReceiptUuid,
+      receiptNumber: activeRefundReceiptNumber ?? '',
+      returnItems,
+      buyingItems: saleItemsList,
+      transactionDiscount: useCartStore.getState().transactionDiscount,
+      exchangeRequestId: currentExchangeId,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartItems, transactionDiscount]);
+
   // Clear payment error when cash modal opens
   useEffect(() => {
     if (showCashModal) {
@@ -329,6 +455,37 @@ export function HomePage() {
     () => cartItems.map((item) => item.product.id),
     [cartItems],
   );
+
+  // Task 52: Resume a persisted refund draft on app restart.
+  const handleResumeDraft = useCallback(() => {
+    if (!existingDraft) return;
+    useCartStore.getState().replaceReturnItems(existingDraft.returnItems);
+    if (existingDraft.buyingItems.length > 0) {
+      // Re-add sale items that were in flight (Buying-new section).
+      useCartStore.getState().replaceCart(
+        [
+          ...existingDraft.returnItems,
+          ...existingDraft.buyingItems,
+        ],
+        existingDraft.transactionDiscount,
+      );
+    }
+    setActiveRefundReceiptUuid(existingDraft.receiptUuid);
+    setActiveRefundReceiptNumber(existingDraft.receiptNumber);
+    setActiveRefundDraftId(existingDraft.id);
+    setExchangeRequestId(existingDraft.exchangeRequestId);
+    clearDraftState();
+  }, [existingDraft, clearDraftState]);
+
+  const handleDiscardDraft = useCallback(async () => {
+    if (!existingDraft) return;
+    const companyId = useAuthStore.getState().companyId;
+    if (!companyId) return;
+    await discardDraftAction(companyId, existingDraft.id);
+  }, [existingDraft, discardDraftAction]);
+
+  // Task 52: Net total for the footer (sale total − abs(return total)).
+  const netTotal = useCartStore((s) => s.netTotal)();
 
   const handleOpenShift = useCallback(async () => {
     setShiftError(null);
@@ -645,6 +802,23 @@ export function HomePage() {
     <div className="flex h-full flex-col">
       <TerminalNotReadyBanner />
       <ChainBreakAlert />
+
+      {/* Task 52: Resume-draft banner — shown when a crashed/closed refund draft is detected. */}
+      {existingDraft !== null && activeRefundReceiptUuid === null && (
+        <ResumeRefundDraftBanner
+          receiptNumber={existingDraft.receiptNumber}
+          onResume={handleResumeDraft}
+          onDiscard={() => void handleDiscardDraft()}
+        />
+      )}
+
+      {/* Task 52: Not-local warning when receipt details couldn't be loaded. */}
+      {detailsNotLocalWarning && (
+        <div className="border-b border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700">
+          {t('pos:refundFlow.detailsNotLocal')}
+        </div>
+      )}
+
       <div className={`flex flex-1 min-h-0 relative ${cartPosition === 'end' ? 'flex-row-reverse' : 'flex-row'}`}>
       {/* Barcode scan feedback */}
       {scanMessage && (
@@ -685,6 +859,7 @@ export function HomePage() {
           onRemoveDiscount={handleRemoveDiscount}
           paymentMethods={paymentMethods}
           checkoutDisabled={!hashChainReady || isProcessing}
+          netTotal={activeRefundReceiptUuid !== null ? netTotal : undefined}
         />
       </div>
 

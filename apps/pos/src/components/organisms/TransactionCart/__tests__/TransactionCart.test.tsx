@@ -136,3 +136,123 @@ describe('TransactionCart', () => {
     expect(screen.queryByTestId('payment-summary')).not.toBeInTheDocument();
   });
 });
+
+// ── Task 52: Refund / Exchange two-section layout ──────────────────────────
+
+vi.mock('@/lib/currency', () => ({
+  useCurrency: () => ({
+    format: (val: string | number) => `€${String(parseFloat(String(val)).toFixed(2))}`,
+  }),
+}));
+
+function makeReturnItem(id: string): import('@/types/cart').CartItem {
+  return {
+    id,
+    product: { id: `prod-${id}`, name: 'Widget', sku: 'WGT', price: '10.00' },
+    quantity: -1,
+    unit_price: '10.00',
+    line_total: '-10.00',
+    tax_rate: '20',
+    tax_amount: '-1.67',
+    kind: 'return',
+  };
+}
+
+describe('TransactionCart — Task 52 refund/exchange sections', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renders "Returning" section header when return items are present', () => {
+    renderCart({
+      items: [makeReturnItem('r1')],
+      itemCount: 1,
+    });
+
+    expect(screen.getByText('refundFlow.returningSection')).toBeInTheDocument();
+  });
+
+  it('does NOT render "Returning" section header when no return items', () => {
+    renderCart({
+      items: [makeCartItem({ id: 's1' })],
+      itemCount: 1,
+    });
+
+    expect(screen.queryByText('refundFlow.returningSection')).not.toBeInTheDocument();
+  });
+
+  it('renders "Buying new" section header when both return and sale items exist', () => {
+    renderCart({
+      items: [makeReturnItem('r1'), makeCartItem({ id: 's1', kind: 'sale' })],
+      itemCount: 2,
+    });
+
+    expect(screen.getByText('refundFlow.buyingNewSection')).toBeInTheDocument();
+  });
+
+  it('does NOT render "Buying new" section header in pure-refund mode (no sale items)', () => {
+    renderCart({
+      items: [makeReturnItem('r1')],
+      itemCount: 1,
+    });
+
+    expect(screen.queryByText('refundFlow.buyingNewSection')).not.toBeInTheDocument();
+  });
+
+  it('return items show − prefix and red styling on the line total', () => {
+    renderCart({
+      items: [makeReturnItem('r1')],
+      itemCount: 1,
+      netTotal: -10,
+    });
+
+    // The ReturnLineItem renders the product name in red
+    const nameEl = screen.getAllByText('Widget')[0]!;
+    expect(nameEl.className).toContain('text-red');
+
+    // At least one element with the minus-prefixed total exists
+    const allMinusTotals = screen.getAllByText('−€10.00');
+    expect(allMinusTotals.length).toBeGreaterThan(0);
+  });
+
+  it('shows "Refund X" confirm label when netTotal < 0', () => {
+    renderCart({
+      items: [makeReturnItem('r1')],
+      itemCount: 1,
+      netTotal: -10,
+    });
+
+    // t('refundFlow.confirm.refund', { amount: '€10.00' }) → key:{"amount":"€10.00"}
+    expect(screen.getByText(/refundFlow.confirm.refund/)).toBeInTheDocument();
+  });
+
+  it('shows "Charge X" confirm label when netTotal > 0', () => {
+    renderCart({
+      items: [makeReturnItem('r1'), makeCartItem({ id: 's1', kind: 'sale' })],
+      itemCount: 2,
+      netTotal: 5,
+    });
+
+    expect(screen.getByText(/refundFlow.confirm.charge/)).toBeInTheDocument();
+  });
+
+  it('shows "No payment due" confirm label when netTotal == 0', () => {
+    renderCart({
+      items: [makeReturnItem('r1'), makeCartItem({ id: 's1', kind: 'sale' })],
+      itemCount: 2,
+      netTotal: 0,
+    });
+
+    expect(screen.getByText('refundFlow.confirm.noPayment')).toBeInTheDocument();
+  });
+
+  it('does NOT show net-footer or confirm button when netTotal is undefined', () => {
+    renderCart({
+      items: [makeCartItem({ id: 's1' })],
+      itemCount: 1,
+    });
+
+    expect(screen.queryByText(/refundFlow.confirm/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('payment-summary')).toBeInTheDocument();
+  });
+});
