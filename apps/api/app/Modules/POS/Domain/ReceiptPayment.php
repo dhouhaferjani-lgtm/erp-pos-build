@@ -34,6 +34,11 @@ use Illuminate\Support\Carbon;
  * @property string $receipt_id
  * @property string $payment_method_id
  * @property string $payment_type Immutable snapshot of payment type
+ * @property string $payment_method_code Immutable snapshot of payment method code
+ *                                       (sourced from payment_methods.code at receipt-creation time).
+ *                                       Bound into the v3 canonical fiscal hash so a rename of the linked
+ *                                       payment_methods row cannot retroactively change a sealed receipt's
+ *                                       canonical input. See Codex review B2 (2026-04-30).
  * @property numeric-string $amount Amount paid with this method
  * @property string|null $instrument_serial Instrument serial (store voucher code, restaurant ticket serial, etc.)
  * @property PaymentInstrumentKind|null $instrument_type Discriminator for instrument_serial kind
@@ -70,6 +75,7 @@ class ReceiptPayment extends Model
         'receipt_id',
         'payment_method_id',
         'payment_type',
+        'payment_method_code',
         'amount',
         'instrument_serial',
         'instrument_type',
@@ -79,6 +85,45 @@ class ReceiptPayment extends Model
         'authorized_at',
         'treasury_payment_id',
     ];
+
+    /**
+     * Defensive auto-snapshot for `payment_method_code`.
+     *
+     * Most application call sites (ReceiptPaymentService, ReceiptSyncService) now
+     * snapshot `payment_methods.code` explicitly when creating a row. This boot hook
+     * exists to keep older test fixtures and any future caller honest: if the row is
+     * being inserted with a `payment_method_id` but no `payment_method_code`, fetch
+     * the code from the linked PaymentMethod once at write time. The column itself
+     * is NOT NULL, so a row with neither id nor code will still error out at the DB
+     * level — exactly the contract the unit tests assert.
+     *
+     * Constructor injection rule (CLAUDE.md #13) does not apply here: Eloquent boot
+     * hooks are static-class plumbing, and the lookup is a model-level concern, not
+     * a service dependency. The cost of an extra SELECT per write is acceptable
+     * because (a) tests dominate this code path and (b) the production callers
+     * already supply the snapshot, so the lookup is a no-op there.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (ReceiptPayment $payment): void {
+            // `payment_method_id` is a NOT NULL FK at the schema level, so we
+            // only check whether the snapshot column was already populated by
+            // the caller. `getAttribute()` (rather than the typed magic accessor)
+            // is used here because PHPStan resolves the docblock-declared
+            // string type for `$payment_method_code` and would treat a direct
+            // null comparison as always-false.
+            $existing = $payment->getAttribute('payment_method_code');
+            if ($existing !== null) {
+                return;
+            }
+
+            /** @var PaymentMethod|null $method */
+            $method = PaymentMethod::query()->find($payment->payment_method_id);
+            if ($method !== null) {
+                $payment->payment_method_code = $method->code;
+            }
+        });
+    }
 
     /**
      * @return array<string, string>

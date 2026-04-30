@@ -195,12 +195,15 @@ final class ReceiptPaymentService
                     $receipt->cashier
                 );
 
-                // Create ReceiptPayment record linked to Treasury payment
+                // Create ReceiptPayment record linked to Treasury payment.
+                // payment_method_code is an immutable snapshot of payment_methods.code
+                // bound into the v3 canonical fiscal hash (Codex review B2, 2026-04-30).
                 $receiptPayment = ReceiptPayment::create([
                     'id' => Str::uuid()->toString(),
                     'receipt_id' => $receipt->id,
                     'payment_method_id' => $paymentData['payment_method_id'],
                     'payment_type' => $paymentMethod->name,
+                    'payment_method_code' => $paymentMethod->code,
                     'amount' => $paymentData['amount'],
                     'card_last_four' => $paymentData['card_last_four'] ?? null,
                     'transaction_reference' => $paymentData['transaction_reference'] ?? null,

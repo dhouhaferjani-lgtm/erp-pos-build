@@ -408,6 +408,8 @@ final class ReceiptSyncService
 
             // 11. Create payment records
             //     (Phase 1: voucher ledger entries are empty.)
+            //     payment_method_code is an immutable snapshot of payment_methods.code
+            //     bound into the v3 canonical fiscal hash (Codex review B2, 2026-04-30).
             foreach ($payload->payments as $entry) {
                 $method = PaymentMethod::findOrFail($entry['payment_method_id']);
                 ReceiptPayment::create([
@@ -415,6 +417,7 @@ final class ReceiptSyncService
                     'receipt_id' => $receipt->id,
                     'payment_method_id' => $entry['payment_method_id'],
                     'payment_type' => $method->code,
+                    'payment_method_code' => $method->code,
                     'amount' => $entry['amount'],
                     'card_last_four' => $entry['card_last_four'] ?? null,
                     'transaction_reference' => $entry['transaction_reference'] ?? null,
