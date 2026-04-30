@@ -647,7 +647,23 @@
     "taxCol": "TVA",
     "thankYou": "Merci pour votre achat !",
     "taxId": "MF :",
-    "tel": "Tél :"
+    "tel": "Tél :",
+    "refundHeader": "REMBOURSEMENT",
+    "originalTicket": "Ticket original :",
+    "originalQrLabel": "Scanner le ticket original :",
+    "voucherTicket": {
+      "header": "BON D'ACHAT",
+      "code": "Code du bon :",
+      "balance": "Solde :",
+      "expires": "Expire le :",
+      "noExpiry": "Sans expiration",
+      "modeBearer": "Au porteur",
+      "modeCustomerBound": "Nominatif",
+      "redemptionMode": "Mode :",
+      "issuedBy": "Émis par :",
+      "issuedAt": "Émis le :",
+      "terms": "Présentez ce bon pour utiliser le solde."
+    }
   },
   "config": {
     "refreshed": "Paramètres de l'entreprise actualisés.",

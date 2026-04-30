@@ -1,6 +1,7 @@
 use crate::printing::{
     self, PrintError, PrinterConnectionType, PrinterInfo,
     receipt_template::{self, DrawerKickSettings, PrintSettings, ReceiptData},
+    voucher_ticket::{self, VoucherTicketData},
 };
 
 /// Discover available printers (USB + network).
@@ -50,6 +51,44 @@ pub async fn print_receipt(
     log::info!(
         "Printing receipt {} ({} bytes, {} copies) to {:?}:{}",
         receipt.receipt_number,
+        data.len(),
+        copies,
+        connection_type,
+        address,
+    );
+
+    for _ in 0..copies {
+        printing::send_to_printer(&connection_type, &address, &data).await?;
+    }
+
+    Ok(())
+}
+
+/// Print a voucher ticket from JSON data.
+///
+/// Voucher tickets are a SEPARATE artifact from refund receipts: when a
+/// refund's destination is `store_voucher`, the POS prints both a refund
+/// receipt AND a voucher ticket so the customer leaves with the redeemable
+/// instrument. The dedicated layout (large code + scannable QR encoding the
+/// code, balance, expiry, redemption mode) lives in
+/// `voucher_ticket::format_voucher_ticket_with_settings`.
+#[tauri::command]
+pub async fn print_voucher_ticket(
+    ticket: VoucherTicketData,
+    connection_type: PrinterConnectionType,
+    address: String,
+    print_settings: Option<PrintSettings>,
+) -> Result<(), PrintError> {
+    let data = voucher_ticket::format_voucher_ticket_with_settings(
+        &ticket,
+        print_settings.as_ref(),
+    );
+
+    let copies = print_settings.as_ref().map_or(1, |s| s.copies.max(1));
+
+    log::info!(
+        "Printing voucher ticket {} ({} bytes, {} copies) to {:?}:{}",
+        ticket.code,
         data.len(),
         copies,
         connection_type,

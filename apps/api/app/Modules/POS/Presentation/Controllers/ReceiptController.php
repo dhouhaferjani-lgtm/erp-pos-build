@@ -11,6 +11,7 @@ use App\Modules\POS\Application\Services\ReceiptCreationService;
 use App\Modules\POS\Application\Services\ReceiptPaymentService;
 use App\Modules\POS\Application\Services\ReceiptPdfService;
 use App\Modules\POS\Application\Services\ReceiptPrintAuditService;
+use App\Modules\POS\Application\Services\ReceiptQrTokenIssuanceService;
 use App\Modules\POS\Application\Services\ReceiptReturnService;
 use App\Modules\POS\Application\Services\ReceiptVoidService;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
@@ -23,6 +24,7 @@ use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Presentation\Requests\StoreReceiptPaymentsRequest;
 use App\Modules\POS\Presentation\Requests\StoreReceiptRequest;
 use App\Modules\POS\Presentation\Requests\StoreReturnRequest;
+use App\Modules\Voucher\Application\Services\VoucherLookupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -44,6 +46,8 @@ final class ReceiptController extends Controller
         private readonly ReceiptPaymentService $receiptPaymentService,
         private readonly ReceiptVoidService $receiptVoidService,
         private readonly ReceiptReturnService $receiptReturnService,
+        private readonly ReceiptQrTokenIssuanceService $qrTokenIssuanceService,
+        private readonly VoucherLookupService $voucherLookupService,
     ) {}
 
     /**
@@ -215,6 +219,15 @@ final class ReceiptController extends Controller
                 notes: $validated['notes'] ?? null,
             );
 
+            // Surface the issued voucher (if any) and the new receipt's QR token
+            // so the POS printer can render the dedicated voucher ticket and the
+            // refund-receipt QR footer without an extra round trip. The voucher
+            // is keyed by source_receipt_id (set by VoucherIssuanceService when
+            // refund destination is StoreVoucher).
+            $issuedVoucher = $this->voucherLookupService->findBySourceReceiptId($returnReceipt->id);
+
+            $qrToken = $this->qrTokenIssuanceService->issueTokenFor($returnReceipt);
+
             return response()->json([
                 'data' => [
                     'id' => $returnReceipt->id,
@@ -227,6 +240,16 @@ final class ReceiptController extends Controller
                     'total' => $returnReceipt->total,
                     'currency' => $returnReceipt->currency,
                     'posted_at' => $returnReceipt->posted_at->toISOString(),
+                    'qr_token' => $qrToken,
+                    'issued_voucher' => $issuedVoucher !== null ? [
+                        'id' => $issuedVoucher->id,
+                        'code' => $issuedVoucher->code,
+                        'initial_balance' => (string) $issuedVoucher->initial_balance,
+                        'currency' => $issuedVoucher->currency,
+                        'expires_at' => $issuedVoucher->expires_at?->toISOString(),
+                        'redemption_mode' => $issuedVoucher->redemption_mode->value,
+                        'partner_id' => $issuedVoucher->issued_to_partner_id,
+                    ] : null,
                     'lines' => $returnReceipt->lines->map(fn ($line) => [
                         'product_name' => $line->product_name,
                         'quantity' => $line->quantity,

@@ -81,6 +81,29 @@ export interface ReceiptLabels {
   cash_count_col_expected?: string;
   cash_count_col_actual?: string;
   cash_count_col_variance?: string;
+  /** Refund receipt header label (REMBOURSEMENT / REFUND / AVOIR). */
+  refund_header?: string;
+  /** "Original ticket:" label printed on refund receipts. */
+  original_ticket?: string;
+  /** "Scan original ticket:" label printed above the original-receipt QR re-print. */
+  original_qr_label?: string;
+}
+
+/**
+ * Voucher ticket localized labels. All optional with English defaults.
+ */
+export interface VoucherTicketLabels {
+  header?: string;
+  code?: string;
+  balance?: string;
+  expires?: string;
+  no_expiry?: string;
+  mode_bearer?: string;
+  mode_customer_bound?: string;
+  redemption_mode?: string;
+  issued_by?: string;
+  issued_at?: string;
+  terms?: string;
 }
 
 export interface ZReceiptCashCountRow {
@@ -133,6 +156,24 @@ export interface ReceiptData {
   variance_reason?: string | null;
   variance_severity?: string | null;
   aggregate_variance?: string | null;
+  /**
+   * Signed QR token (`v:kid:receipt_uuid:mac`) for THIS receipt. When present,
+   * the Rust formatter renders a centred QR code + human-readable token at the
+   * footer so any terminal can scan the printed receipt to start a return.
+   * Null/absent = no QR section (offline receipts whose token has not been
+   * signed by the server yet).
+   */
+  qr_token?: string | null;
+  /**
+   * Receipt kind discriminator. `'refund'` triggers the
+   * REMBOURSEMENT/REFUND header and the original-ticket reference block.
+   * Defaults to `'sale'` semantics when omitted (backward-compatible).
+   */
+  receipt_kind?: 'sale' | 'refund';
+  /** On refund receipts: the original sale receipt's number (e.g. R-T1-2026-00000123). */
+  original_receipt_number?: string | null;
+  /** On refund receipts: the original sale receipt's QR token, re-printed for further partial refunds. */
+  original_receipt_qr_token?: string | null;
 }
 
 export interface BuildZReceiptDataInput {
@@ -243,6 +284,59 @@ export async function printReceipt(
 ): Promise<void> {
   return invoke<void>('print_receipt', {
     receipt,
+    connectionType: printer.connection_type,
+    address: printer.address,
+    printSettings: printSettings ?? null,
+  });
+}
+
+/**
+ * Voucher ticket data passed to the dedicated `print_voucher_ticket` Tauri
+ * command. Voucher tickets have a fundamentally different layout from sale
+ * receipts (no line items, dominant voucher-code section, scannable QR
+ * encoding the code) — so they use a separate Rust template instead of
+ * conditional branches inside the receipt formatter.
+ *
+ * All monetary fields are decimal strings at the currency's display scale.
+ * `expires_at` is an ISO timestamp or null for no-expiry vouchers.
+ */
+export interface VoucherTicketData {
+  /** Company / store information (same shape as a regular receipt). */
+  company: CompanyInfo;
+  /** Voucher code — printed large and encoded into the QR. */
+  code: string;
+  /** Balance issued onto the voucher (positive amount). */
+  initial_balance: string;
+  /** Currency symbol (e.g. "€"). */
+  currency_symbol: string;
+  /** ISO timestamp of expiry, or null for no-expiry. */
+  expires_at: string | null;
+  /** "Bearer" or "CustomerBound" — printed as a localized label. */
+  redemption_mode: 'Bearer' | 'CustomerBound';
+  /** ISO timestamp the voucher was issued. */
+  issued_at: string;
+  /** Issuing terminal name (printed on the ticket). */
+  terminal_name: string;
+  /** Operator/cashier name (printed on the ticket). */
+  operator_name: string;
+  /** Localized labels — English defaults if absent. */
+  labels?: VoucherTicketLabels;
+}
+
+/**
+ * Print a voucher ticket via the dedicated `print_voucher_ticket` Tauri
+ * command. This is a SEPARATE artifact from the refund receipt — when a
+ * refund's destination is `store_voucher`, both the refund receipt AND
+ * the voucher ticket are printed (two physical tickets, or a single tape
+ * with a cut between them).
+ */
+export async function printVoucherTicket(
+  ticket: VoucherTicketData,
+  printer: PrinterConfig,
+  printSettings?: PrintSettings,
+): Promise<void> {
+  return invoke<void>('print_voucher_ticket', {
+    ticket,
     connectionType: printer.connection_type,
     address: printer.address,
     printSettings: printSettings ?? null,

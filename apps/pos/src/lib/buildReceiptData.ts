@@ -1,6 +1,11 @@
 import i18next from 'i18next';
 import type { FullReceiptResponse } from '@/types/receipt';
-import type { ReceiptData, ReceiptLabels } from '@/lib/printing';
+import type {
+  ReceiptData,
+  ReceiptLabels,
+  VoucherTicketData,
+  VoucherTicketLabels,
+} from '@/lib/printing';
 import type { CartItem } from '@/types/cart';
 import type { CheckoutResult } from '@/lib/offline/offlineCheckoutService';
 import { bcadd, bcsub, bccomp, bcformat } from '@/lib/decimal';
@@ -52,16 +57,39 @@ export interface ReceiptVisibilitySettings {
 }
 
 /**
+ * Optional refund-specific extras printed on REMBOURSEMENT/REFUND receipts.
+ * The fields are passed straight through to the Rust formatter, which gates
+ * the AVOIR header + original-ticket reference block on `receipt_kind`.
+ *
+ * `qrToken` (when supplied) overrides any inference from the API response;
+ * callers typically look it up via `findReceiptByQrToken` /
+ * `findReceiptByNumber` in voucherRepository.ts before calling here.
+ */
+export interface ReceiptExtras {
+  /** Receipt's own signed QR token (`v:kid:receipt_uuid:mac`). Null = no QR section. */
+  qrToken?: string | null;
+  /** Override the receipt-kind discriminator. Defaults to inferring from `receipt.receipt_type`. */
+  receiptKind?: 'sale' | 'refund';
+  /** Original (sale) receipt number — only meaningful on refund receipts. */
+  originalReceiptNumber?: string | null;
+  /** Original (sale) receipt's QR token — printed for further partial refunds. */
+  originalReceiptQrToken?: string | null;
+}
+
+/**
  * Transforms a full receipt API response into the ESC/POS ReceiptData
  * structure expected by the Tauri thermal printing backend.
  *
  * @param receipt Full receipt response from the API
  * @param visibilitySettings Optional visibility flags from company receipt settings
+ * @param isReprint True if this is a duplicata of an already-issued receipt
+ * @param extras Optional QR token + refund cross-references
  */
 export function buildEscPosReceiptData(
   receipt: FullReceiptResponse,
   visibilitySettings?: ReceiptVisibilitySettings,
   isReprint?: boolean,
+  extras?: ReceiptExtras,
 ): ReceiptData {
   const currencySymbol = getCurrencySymbol(receipt.currency);
   const decimals = getCurrencyDecimals(receipt.currency);
@@ -81,6 +109,11 @@ export function buildEscPosReceiptData(
     toleranceWriteoff !== null
     && toleranceWriteoff !== ''
     && bccomp(toleranceWriteoff, '0') > 0;
+
+  // Receipt-kind discriminator. Explicit override wins; otherwise infer from
+  // receipt_type ('return' = refund, anything else = sale).
+  const receiptKind: 'sale' | 'refund' =
+    extras?.receiptKind ?? (receipt.receipt_type === 'return' ? 'refund' : 'sale');
 
   return {
     company: {
@@ -137,6 +170,10 @@ export function buildEscPosReceiptData(
     show_payment_details: visibilitySettings?.show_payment_details,
     show_customer: visibilitySettings?.show_customer,
     is_reprint: isReprint ?? undefined,
+    qr_token: extras?.qrToken ?? null,
+    receipt_kind: receiptKind,
+    original_receipt_number: extras?.originalReceiptNumber ?? null,
+    original_receipt_qr_token: extras?.originalReceiptQrToken ?? null,
   };
 }
 
@@ -153,6 +190,7 @@ export function buildEscPosFromOfflineReceipt(
   paymentMethodName: string,
   visibilitySettings?: ReceiptVisibilitySettings,
   locale: string = 'en',
+  extras?: ReceiptExtras,
 ): ReceiptData {
   const currencySymbol = getCurrencySymbol(result.currency);
   const decimals = getCurrencyDecimals(result.currency);
@@ -228,6 +266,10 @@ export function buildEscPosFromOfflineReceipt(
     show_fiscal_info: visibilitySettings?.show_fiscal_info,
     show_payment_details: visibilitySettings?.show_payment_details,
     show_customer: visibilitySettings?.show_customer,
+    qr_token: extras?.qrToken ?? null,
+    receipt_kind: extras?.receiptKind ?? 'sale',
+    original_receipt_number: extras?.originalReceiptNumber ?? null,
+    original_receipt_qr_token: extras?.originalReceiptQrToken ?? null,
   };
 }
 
@@ -265,5 +307,89 @@ export function buildReceiptLabels(): ReceiptLabels {
     cash_count_col_expected: cc('table.expected'),
     cash_count_col_actual: cc('table.actual'),
     cash_count_col_variance: cc('table.variance'),
+    refund_header: t('refundHeader'),
+    original_ticket: t('originalTicket'),
+    original_qr_label: t('originalQrLabel'),
+  };
+}
+
+/** Build localized voucher-ticket labels from i18n. */
+export function buildVoucherTicketLabels(): VoucherTicketLabels {
+  const t = (key: string) => i18next.t(`pos:receiptLabel.voucherTicket.${key}`);
+  return {
+    header: t('header'),
+    code: t('code'),
+    balance: t('balance'),
+    expires: t('expires'),
+    no_expiry: t('noExpiry'),
+    mode_bearer: t('modeBearer'),
+    mode_customer_bound: t('modeCustomerBound'),
+    redemption_mode: t('redemptionMode'),
+    issued_by: t('issuedBy'),
+    issued_at: t('issuedAt'),
+    terms: t('terms'),
+  };
+}
+
+// ─── Voucher ticket builder ─────────────────────────────────────────────────
+
+/**
+ * Input shape for assembling a voucher ticket from server response or local
+ * voucher record. Decoupled from the API DTO to keep the builder pure and
+ * easy to test.
+ *
+ * Monetary values are decimal strings at the currency's display scale; the
+ * formatter uses bcformat to render at the right precision.
+ */
+export interface VoucherTicketInput {
+  code: string;
+  initialBalance: string;
+  currency: string;
+  expiresAt: string | null;
+  redemptionMode: 'Bearer' | 'CustomerBound';
+  issuedAt: string;
+  companyName: string;
+  companyAddressLine1?: string | null;
+  companyAddressLine2?: string | null;
+  companyCity?: string | null;
+  companyPostalCode?: string | null;
+  companyCountry?: string | null;
+  companyTaxId?: string | null;
+  companyPhone?: string | null;
+  terminalName: string;
+  operatorName: string;
+}
+
+/**
+ * Transform a voucher record (from the server's refund response) into the
+ * VoucherTicketData payload sent to the Tauri `print_voucher_ticket` command.
+ *
+ * Currency-aware display: the initial_balance string is formatted to the
+ * currency's native precision (EUR=2, TND=3, JPY=0, …) using bcformat.
+ */
+export function buildVoucherTicketData(input: VoucherTicketInput): VoucherTicketData {
+  const decimals = getCurrencyDecimals(input.currency);
+  const currencySymbol = getCurrencySymbol(input.currency);
+
+  return {
+    company: {
+      name: input.companyName,
+      address_line1: input.companyAddressLine1 ?? '',
+      address_line2: input.companyAddressLine2 ?? null,
+      city: input.companyCity ?? '',
+      postal_code: input.companyPostalCode ?? '',
+      country: input.companyCountry ?? '',
+      tax_id: input.companyTaxId ?? '',
+      phone: input.companyPhone ?? null,
+    },
+    code: input.code,
+    initial_balance: bcformat(input.initialBalance, decimals),
+    currency_symbol: currencySymbol,
+    expires_at: input.expiresAt,
+    redemption_mode: input.redemptionMode,
+    issued_at: input.issuedAt,
+    terminal_name: input.terminalName,
+    operator_name: input.operatorName,
+    labels: buildVoucherTicketLabels(),
   };
 }

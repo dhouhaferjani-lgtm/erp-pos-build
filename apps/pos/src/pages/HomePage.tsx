@@ -48,6 +48,29 @@ import type { ConsumptionMode } from '@/components/atoms/ConsumptionModeToggle';
 import type { POSProduct } from '@/types/product';
 import type { SelectedModifier } from '@/types/cart';
 
+/**
+ * Look up the receipt's signed QR token from the local SQLite index.
+ *
+ * The token format is `v:kid:receipt_uuid:mac`. When absent (offline-issued
+ * receipt whose token has not been signed back yet), callers should treat the
+ * value as null — the printer omits the QR section gracefully.
+ *
+ * @param receiptNumber  The receipt number to look up (e.g. "R-T1-2026-00000001").
+ * @param companyId      The active company ID used to scope the local DB instance.
+ */
+async function lookupQrToken(receiptNumber: string, companyId: string | null): Promise<string | null> {
+  try {
+    if (!companyId) return null;
+    const db = await getDatabase(companyId);
+    const { findReceiptByNumber } = await import('@/lib/offline/voucherRepository');
+    const entry = await findReceiptByNumber(db, receiptNumber);
+    return entry?.qr_token ?? null;
+  } catch (lookupErr) {
+    console.warn('[POS] QR-token lookup failed:', lookupErr);
+    return null;
+  }
+}
+
 export function HomePage() {
   const { t } = useTranslation();
   const { decimals: currencyDecimals } = useCurrency();
@@ -441,10 +464,17 @@ export function HomePage() {
 
     const loader = async () => {
       try {
+        const companyId = useAuthStore.getState().companyId;
+
         if (lastReceiptServerId) {
           const fullReceipt = await fetchReceipt(lastReceiptServerId);
+          const qrToken = await lookupQrToken(fullReceipt.receipt_number, companyId);
           if (!cancelled) {
-            setEscPosData(buildEscPosReceiptData(fullReceipt, receiptVisibility));
+            setEscPosData(
+              buildEscPosReceiptData(fullReceipt, receiptVisibility, undefined, {
+                qrToken,
+              }),
+            );
             setEscPosSource('server');
           }
           return;
@@ -452,8 +482,13 @@ export function HomePage() {
         if (lastReceiptIdempotencyKey) {
           const { getOfflineReceiptForPrint } = await import('@/lib/offline/getOfflineReceiptForPrint');
           const localReceipt = await getOfflineReceiptForPrint(lastReceiptIdempotencyKey);
+          const qrToken = await lookupQrToken(localReceipt.receipt_number, companyId);
           if (!cancelled) {
-            setEscPosData(buildEscPosReceiptData(localReceipt, receiptVisibility));
+            setEscPosData(
+              buildEscPosReceiptData(localReceipt, receiptVisibility, undefined, {
+                qrToken,
+              }),
+            );
             setEscPosSource('local');
           }
         }

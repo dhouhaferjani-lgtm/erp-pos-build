@@ -52,6 +52,21 @@ final class VoucherLookupService
     ) {}
 
     /**
+     * Retrieve the voucher that was freshly issued for a refund receipt.
+     *
+     * Used by the POS Presentation layer (ReceiptController::processReturn) to
+     * surface the issued voucher in the API response so the printer can render
+     * the dedicated voucher ticket without an extra round trip.
+     *
+     * @param  string  $receiptId  UUID of the return receipt whose issuance is being looked up.
+     * @return Voucher|null The voucher issued for this receipt, or null if none was issued.
+     */
+    public function findBySourceReceiptId(string $receiptId): ?Voucher
+    {
+        return Voucher::where('source_receipt_id', $receiptId)->first();
+    }
+
+    /**
      * Outside-session lookup — generic disclosure only (exists + status).
      *
      * Returns GenericLookupResult::invalid() on any failure mode, including

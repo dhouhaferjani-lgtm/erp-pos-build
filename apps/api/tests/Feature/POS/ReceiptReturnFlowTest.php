@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -21,6 +22,7 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
@@ -386,6 +388,116 @@ final class ReceiptReturnFlowTest extends TestCase
             'original_receipt_id' => $saleReceipt->id,
             'return_reason' => ReturnReason::Defective->value,
         ]);
+
+        // Assert: Phase H Block 2 — printer-wiring fields are present.
+        // qr_token may be null if the test environment has no active receipt_qr
+        // signing key for this tenant; the contract is that the KEY EXISTS
+        // (so the frontend can rely on it) and the value is null-or-string.
+        $this->assertArrayHasKey('qr_token', $data, 'response should expose qr_token for printer footer');
+        $this->assertTrue(
+            $data['qr_token'] === null || is_string($data['qr_token']),
+            'qr_token must be null or a string',
+        );
+        // Cash refund (no destination requested) → no voucher issued.
+        $this->assertArrayHasKey('issued_voucher', $data, 'response should expose issued_voucher key');
+        $this->assertNull(
+            $data['issued_voucher'],
+            'No voucher should be issued for a cash refund',
+        );
+    }
+
+    /**
+     * Phase H Block 2 — printer-wiring backend hook.
+     *
+     * When the company policy forces a store-voucher refund (e.g. out-of-window
+     * with `out_of_window_policy=voucher_only`), the controller response MUST
+     * surface the issued voucher so the POS printer can render the dedicated
+     * voucher ticket without a second round trip.
+     */
+    public function test_process_return_forced_voucher_includes_issued_voucher_payload(): void
+    {
+        // Seed GL accounts required for VoucherIssuanceService.
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        // Force voucher-only refunds for out-of-window receipts.
+        /** @var array<string, mixed> $policy */
+        $policy = [
+            'customer_return_expiry_days' => 1,
+            'out_of_window_policy' => 'voucher_only',
+            'allowed_refund_destinations' => ['cash', 'store_voucher'],
+            'voucher_default_expiry_days' => 365,
+            'manager_override_threshold_amount' => '99999.000',
+        ];
+        $this->company->reservation_settings = $policy;
+        $this->company->save();
+
+        $saleReceipt = $this->createSaleReceipt();
+        // Push it out of window so the resolver forces StoreVoucher.
+        $saleReceipt->posted_at = Carbon::now()->subDays(2);
+        $saleReceipt->save();
+
+        $line = ReceiptLine::create([
+            'receipt_id' => $saleReceipt->id,
+            'line_number' => 1,
+            'product_id' => null,
+            'product_code' => 'PROD-VCH',
+            'product_name' => 'Voucher-eligible Item',
+            'quantity' => '3.000',
+            'unit' => 'pcs',
+            'unit_price' => '10.000',
+            'line_total' => '30.000',
+            'tax_rate' => '19.00',
+            'tax_amount' => '5.700',
+            'discount_amount' => '0.000',
+        ]);
+
+        $requestData = [
+            'terminal_id' => $this->terminal->id,
+            'return_reason' => ReturnReason::Defective->value,
+            'lines' => [
+                [
+                    'line_id' => $line->id,
+                    'quantity' => '1',
+                ],
+            ],
+        ];
+
+        $response = $this->postJson(
+            "/api/v1/pos/receipts/{$saleReceipt->id}/return",
+            $requestData,
+        );
+
+        $response->assertStatus(201);
+        $data = $response->json('data');
+
+        // qr_token must always be present in processReturn responses (issuance is unconditional)
+        $this->assertArrayHasKey('qr_token', $data, 'response should expose qr_token on forced-voucher path');
+        $this->assertTrue(
+            $data['qr_token'] === null || is_string($data['qr_token']),
+            'qr_token must be null or a string',
+        );
+
+        // Voucher payload shape used by the POS to print the voucher ticket.
+        $this->assertNotNull(
+            $data['issued_voucher'],
+            'Forced-voucher refund must surface the issued_voucher payload',
+        );
+        $voucher = $data['issued_voucher'];
+        $this->assertArrayHasKey('id', $voucher);
+        $this->assertArrayHasKey('code', $voucher);
+        $this->assertArrayHasKey('initial_balance', $voucher);
+        $this->assertArrayHasKey('currency', $voucher);
+        $this->assertArrayHasKey('expires_at', $voucher);
+        $this->assertArrayHasKey('redemption_mode', $voucher);
+        $this->assertArrayHasKey('partner_id', $voucher);
+        // Refund amount on a 1-of-3 return of the line (line_total=30.000, EUR scale=2):
+        //   ratio = 1/3.000; bcmul truncates → 9.99; VAT back-calculation → gross 9.98.
+        // initial_balance stored as decimal(20,5) → Eloquent decimal:5 cast returns 5-decimal string.
+        $this->assertSame('9.98000', $voucher['initial_balance']);
+        $this->assertSame('EUR', $voucher['currency']);
+        $this->assertIsString($voucher['code']);
+        $this->assertNotEmpty($voucher['code']);
+        $this->assertContains($voucher['redemption_mode'], ['bearer', 'customer_bound']);
     }
 
     public function test_process_return_rejects_over_return(): void

@@ -134,3 +134,149 @@ For a complete refund solution where any terminal can refund any receipt from an
 - Remove the `detailsNotLocal` warning once Option B is live.
 
 **Estimated effort:** 1–2 days (backend sync endpoint + migration + hydration fallback).
+
+---
+
+## Phase H follow-up: API exception handler typed-code mapping
+
+**Filed during Task 53 implementation (2026-04-30).**
+
+**Owner:** Backend session (Laravel / `apps/api/`).
+
+### Current behaviour
+
+`apps/api/bootstrap/app.php` has a single generic handler for all `DomainException` subclasses that returns HTTP 422 with `error.code = 'BUSINESS_ERROR'`. This means the POS frontend cannot distinguish between refund-specific 422s — `ManagerOverrideRequiredException`, `DailyRefundCapExceededException`, `RefundWindowClosedException`, `RefundDestinationNotAllowedException` — and any other domain error.
+
+As a result, `RefundConfirmModal` falls back to a generic toast for all of them instead of showing the inline ManagerPinPanel for the cases that require it.
+
+### Exception classes involved
+
+All four live at: `apps/api/app/Modules/POS/Domain/Exceptions/`
+
+- `ManagerOverrideRequiredException` — should map to 422 with `error.code = 'MANAGER_OVERRIDE_REQUIRED'`
+- `DailyRefundCapExceededException` — should map to 422 with `error.code = 'DAILY_REFUND_CAP_EXCEEDED'`
+- `RefundWindowClosedException` — should map to 422 with `error.code = 'REFUND_WINDOW_CLOSED'`
+- `RefundDestinationNotAllowedException` — should map to 422 with `error.code = 'REFUND_DESTINATION_NOT_ALLOWED'`
+
+### Required fix in `apps/api/bootstrap/app.php`
+
+Add four specific `render` closures **BEFORE** the generic `DomainException` handler, each returning a 422 with the typed code:
+
+```php
+->withExceptions(function (Exceptions $exceptions) {
+    // Specific POS refund exception handlers — MUST come before the generic DomainException handler
+    $exceptions->render(function (ManagerOverrideRequiredException $e, Request $request) {
+        return response()->json([
+            'error' => ['code' => 'MANAGER_OVERRIDE_REQUIRED', 'message' => $e->getMessage()],
+            'meta' => ['timestamp' => now()->toISOString(), 'request_id' => $request->header('X-Request-Id', '')],
+        ], 422);
+    });
+    $exceptions->render(function (DailyRefundCapExceededException $e, Request $request) {
+        return response()->json([
+            'error' => ['code' => 'DAILY_REFUND_CAP_EXCEEDED', 'message' => $e->getMessage()],
+            'meta' => ['timestamp' => now()->toISOString(), 'request_id' => $request->header('X-Request-Id', '')],
+        ], 422);
+    });
+    $exceptions->render(function (RefundWindowClosedException $e, Request $request) {
+        return response()->json([
+            'error' => ['code' => 'REFUND_WINDOW_CLOSED', 'message' => $e->getMessage()],
+            'meta' => ['timestamp' => now()->toISOString(), 'request_id' => $request->header('X-Request-Id', '')],
+        ], 422);
+    });
+    $exceptions->render(function (RefundDestinationNotAllowedException $e, Request $request) {
+        return response()->json([
+            'error' => ['code' => 'REFUND_DESTINATION_NOT_ALLOWED', 'message' => $e->getMessage()],
+            'meta' => ['timestamp' => now()->toISOString(), 'request_id' => $request->header('X-Request-Id', '')],
+        ], 422);
+    });
+    // ... existing generic DomainException handler below ...
+})
+```
+
+### Frontend wiring (already done — waiting on backend)
+
+`apps/pos/src/lib/refundFlow/refundConfirmation.ts` already has `mapRefundErrorToUiAction()` that routes the four typed codes to their respective UI actions (`manager-pin`, `daily-cap`, `window-closed`, `generic`). `RefundConfirmModal` already branches on this. Once the backend emits the typed codes, the PIN prompt will fire automatically.
+
+The TODO comment in `refundConfirmation.ts` and `RefundConfirmModal.tsx` points at this follow-up.
+
+---
+
+## Phase H follow-up: receipt printer wiring (sale QR, AVOIR header, exchange both-halves, voucher tickets)
+
+**Filed during Task 53 implementation (2026-04-30).**
+
+**Owner:** POS session (`apps/pos/`). Requires a Tauri build to smoke-test; cannot be verified in vitest alone.
+
+**Status update (2026-04-30, Block 2 Session 4):**
+- [x] **#1 Sale-receipt QR token at footer** — shipped (TS `ReceiptData.qr_token` + Rust render at footer; HomePage looks up via `findReceiptByNumber`).
+- [x] **#2 Refund-receipt REMBOURSEMENT/REFUND header + original ticket cross-refs** — shipped (i18n keys, `receipt_kind`, `original_receipt_number`, `original_receipt_qr_token`; Rust block before items).
+- [ ] **#3 Exchange both-halves single-ticket layout** — STILL DEFERRED. Exchange already works as two cross-referenced fiscal receipts joined by `exchange_group_id`; printing them as two tickets with cross-references is good enough for go-live. Single-ticket layout remains a polish item.
+- [x] **#4 Voucher ticket** — shipped (separate `print_voucher_ticket` Tauri command + dedicated Rust template + `printVoucherTicket` TS wrapper + backend `processReturn` response now surfaces `issued_voucher`).
+
+### Scope of work
+
+`apps/pos/src/lib/buildReceiptData.ts` needs the following additions:
+
+#### 1. Sale receipt — QR token at footer
+
+The `receipt_qr_index` table has a `qr_token` field (format `v:kid:receipt_uuid:mac`). Currently the sale receipt doesn't include a QR code. The QR token should be appended to the footer of every sale receipt so that any terminal can scan it to start a return.
+
+**Data source:** `receipt_qr_index.qr_token` (from `findReceiptByQrToken` / `findReceiptByNumber` in `voucherRepository.ts`). The POS can look up its own offline receipt's QR token by receipt UUID via `findReceiptByQrToken`.
+
+#### 2. Refund receipt — REMBOURSEMENT / AVOIR header
+
+A refund receipt should carry:
+- Header text: `REMBOURSEMENT` (FR) / `REFUND` (EN) or `AVOIR` at the top (before items).
+- Original receipt number: `Ticket original: R-XXXX` below the header.
+- Original receipt QR reprint: a second QR section (or text equivalent) with the original ticket's QR token, so the original can still be scanned for further partial refunds.
+- V3 hash footer: same chain-hash footer as sale receipts (ensure the refund receipt is included in the fiscal chain).
+
+#### 3. Exchange receipt — both halves on one page
+
+When the cart has both `kind: 'return'` and `kind: 'sale'` items (mixed exchange), print both halves on one receipt:
+- Top half: RETOUR / RETURNING section (negative lines from original).
+- Middle: separator.
+- Bottom half: VENTE / BUYING section (new items).
+
+Currently the receipt builder may only handle one line type. Verify and extend.
+
+#### 4. Voucher ticket
+
+When a refund destination is `store_voucher` and the server issues a voucher code, print a dedicated voucher ticket (or a second page):
+- Voucher code (large, scannable QR + human-readable).
+- Balance at issuance.
+- Expiry date (if set).
+- Redemption mode (Bearer / Customer-bound).
+- Issuing terminal + date.
+
+**Data source:** The server returns the issued voucher details in the refund-confirm API response. Store/pass this to the receipt printer after the successful refund.
+
+### Build requirement
+
+All four require a Tauri build (`pnpm tauri build` or `pnpm tauri dev`) to print to an actual ESC/POS printer and verify layout. Vitest cannot mock the Tauri printer plugin.
+
+---
+
+## Phase H follow-up: end-to-end smoke (cash sale → finalize → print → scan QR → confirmation sheet → refund cart → confirm → print AVOIR → voucher issued → next sale redeems voucher)
+
+**Filed during Task 53 implementation (2026-04-30).**
+
+**Owner:** QA / human tester. Requires all of:
+1. The API exception handlers (above) — so typed PIN prompts fire correctly.
+2. The receipt printer wiring (above) — so AVOIR header + voucher ticket print.
+3. A Tauri build pointing at a dev-tenant server with the refund endpoints deployed.
+
+### Smoke steps
+
+1. **Cash sale:** Ring up any product, tender cash, finalize → receipt prints → QR code at footer.
+2. **Scan QR:** From POS home, scan the receipt QR → confirmation sheet renders (Task 50).
+3. **Start refund:** Tap "Start Return" → unified cart loads with all original lines as negatives (Task 52).
+4. **Confirm refund (no override):** Select "Cash" as refund destination (Task 53 Piece 1). Submit → server accepts without override → cash refund completes → AVOIR receipt prints with original ticket ref + original QR.
+5. **Confirm refund (with override):** Repeat for a refund that exceeds manager threshold → `MANAGER_OVERRIDE_REQUIRED` 422 → ManagerPinPanel shows inline → manager enters PIN → re-submit → refund completes.
+6. **Voucher destination:** Repeat selecting "Store Voucher" destination → server issues voucher → voucher ticket prints.
+7. **Next sale redeems voucher:** Open new sale, tap "Voucher / Bon" tender (Task 53 Piece 3) → scan/type the voucher code → details show (balance, expiry) → apply → receipt posts with `payment_method.code = 'store_voucher'` and `instrument_serial = <code>`.
+
+### Deferred until
+
+Steps 4–7 require both the API exception handler fix AND the receipt printer wiring. Steps 1–3 (scan + confirmation sheet + refund cart) can be tested immediately once a Tauri build is available.
+

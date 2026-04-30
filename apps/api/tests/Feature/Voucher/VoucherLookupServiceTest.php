@@ -109,6 +109,37 @@ final class VoucherLookupServiceTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // findBySourceReceiptId — used by POS Presentation layer
+    // -------------------------------------------------------------------------
+
+    public function test_find_by_source_receipt_id_returns_voucher_when_exists(): void
+    {
+        // Arrange: issue a voucher and manually link it to a fake receipt ID
+        $voucher = $this->issueVoucher('20.00000');
+        $fakeReceiptId = (string) \Illuminate\Support\Str::uuid();
+        $voucher->update(['source_receipt_id' => $fakeReceiptId]);
+
+        // Act
+        $result = $this->makeService()->findBySourceReceiptId($fakeReceiptId);
+
+        // Assert
+        $this->assertNotNull($result);
+        $this->assertSame($voucher->id, $result->id);
+    }
+
+    public function test_find_by_source_receipt_id_returns_null_when_none_exists(): void
+    {
+        // Arrange: a receipt ID that has no associated voucher
+        $unknownReceiptId = (string) \Illuminate\Support\Str::uuid();
+
+        // Act
+        $result = $this->makeService()->findBySourceReceiptId($unknownReceiptId);
+
+        // Assert
+        $this->assertNull($result);
+    }
+
+    // -------------------------------------------------------------------------
     // Generic lookup — happy paths
     // -------------------------------------------------------------------------
 

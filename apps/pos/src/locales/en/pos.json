@@ -647,7 +647,23 @@
     "taxCol": "Tax",
     "thankYou": "Thank you for your purchase!",
     "taxId": "Tax ID:",
-    "tel": "Tel:"
+    "tel": "Tel:",
+    "refundHeader": "REFUND",
+    "originalTicket": "Original ticket:",
+    "originalQrLabel": "Scan original ticket:",
+    "voucherTicket": {
+      "header": "STORE VOUCHER",
+      "code": "Voucher code:",
+      "balance": "Balance:",
+      "expires": "Expires:",
+      "noExpiry": "No expiry",
+      "modeBearer": "Bearer",
+      "modeCustomerBound": "Customer-bound",
+      "redemptionMode": "Mode:",
+      "issuedBy": "Issued by:",
+      "issuedAt": "Issued at:",
+      "terms": "Present this voucher to redeem its balance."
+    }
   },
   "config": {
     "refreshed": "Company settings refreshed.",
