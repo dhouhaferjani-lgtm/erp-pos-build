@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import type { RefundDestination } from '../RefundDestinationPicker';
 import { defaultDestination } from '../RefundDestinationPicker';
 
 vi.mock('react-i18next', () => ({

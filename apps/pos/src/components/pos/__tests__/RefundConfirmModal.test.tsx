@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import type { RefundSubmitPayload } from '../RefundConfirmModal';
+import type { RefundSubmitPayload, RefundConfirmModalProps } from '../RefundConfirmModal';
 
 // ─── Module mocks ─────────────────────────────────────────────────────────────
 
@@ -10,7 +10,6 @@ vi.mock('react-i18next', () => ({
       const map: Record<string, string> = {
         'refundFlow.confirm.title': 'Confirm refund',
         'refundFlow.confirm.amountLabel': 'Refund amount',
-        'refundFlow.confirm.submit': `Refund ${String(opts?.amount ?? '')}`,
         'refundFlow.confirm.submitting': 'Processing…',
         'refundFlow.confirm.cancel': 'Cancel',
         'refundFlow.confirm.errorGeneric': 'An unexpected error occurred. Please try again.',
@@ -19,6 +18,9 @@ vi.mock('react-i18next', () => ({
         'refundFlow.confirm.pinRequired.dailyCap': 'Daily refund cap reached — manager authorization required',
         'refundFlow.confirm.pinRequired.windowClosed': 'Refund window closed — manager authorization required',
       };
+      if (key === 'refundFlow.confirm.submit') {
+        return `Refund ${String(opts?.amount ?? '')}`;
+      }
       return map[key] ?? (opts?.defaultValue as string | undefined) ?? key;
     },
     i18n: { language: 'en' },
@@ -63,16 +65,6 @@ vi.mock('@/components/pos/molecules/ManagerPinPanel', () => ({
         >
           Verify PIN (mock success)
         </button>
-        <button
-          data-testid="mock-pin-verify-fail"
-          onClick={async () => {
-            const manager = eligible[0];
-            if (!manager) return;
-            await onVerify(manager.id, '0000');
-          }}
-        >
-          Verify PIN (mock fail)
-        </button>
       </div>
     );
   },
@@ -108,16 +100,27 @@ const MANAGERS = [
 
 const CASHIER_ID = 'cashier-99';
 
-function buildProps(overrides: Partial<Parameters<typeof RefundConfirmModal>[0]> = {}) {
+type SubmitFn = RefundConfirmModalProps['onSubmitRefund'];
+type VerifyFn = RefundConfirmModalProps['onVerifyManagerPin'];
+
+function makeSubmit(impl: SubmitFn): SubmitFn {
+  return vi.fn(impl) as SubmitFn;
+}
+
+function makeVerify(impl: VerifyFn): VerifyFn {
+  return vi.fn(impl) as VerifyFn;
+}
+
+function buildProps(overrides: Partial<RefundConfirmModalProps> = {}): RefundConfirmModalProps {
   return {
     isOpen: true,
     onClose: vi.fn(),
     refundAmount: '25.00 EUR',
     cashierUserId: CASHIER_ID,
     authorizedManagers: MANAGERS,
-    onSubmitRefund: vi.fn<[RefundSubmitPayload], Promise<void>>().mockResolvedValue(undefined),
+    onSubmitRefund: makeSubmit(() => Promise.resolve()),
     onSuccess: vi.fn(),
-    onVerifyManagerPin: vi.fn<[string, string], Promise<{ valid: boolean }>>().mockResolvedValue({ valid: true }),
+    onVerifyManagerPin: makeVerify(() => Promise.resolve({ valid: true })),
     ...overrides,
   };
 }
@@ -152,7 +155,7 @@ describe('RefundConfirmModal — successful submit', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('calls onSubmitRefund without authorized_by_user_id on first submit', async () => {
-    const onSubmitRefund = vi.fn<[RefundSubmitPayload], Promise<void>>().mockResolvedValue(undefined);
+    const onSubmitRefund = makeSubmit(() => Promise.resolve());
     const onSuccess = vi.fn();
     render(<RefundConfirmModal {...buildProps({ onSubmitRefund, onSuccess })} />);
 
@@ -168,7 +171,7 @@ describe('RefundConfirmModal — MANAGER_OVERRIDE_REQUIRED flow', () => {
 
   it('shows ManagerPinPanel when MANAGER_OVERRIDE_REQUIRED 422 is returned', async () => {
     const err = new ApiRequestError(422, 'Manager override required', 'MANAGER_OVERRIDE_REQUIRED');
-    const onSubmitRefund = vi.fn<[RefundSubmitPayload], Promise<void>>().mockRejectedValue(err);
+    const onSubmitRefund = makeSubmit(() => Promise.reject(err));
 
     render(<RefundConfirmModal {...buildProps({ onSubmitRefund })} />);
 
@@ -180,11 +183,15 @@ describe('RefundConfirmModal — MANAGER_OVERRIDE_REQUIRED flow', () => {
 
   it('re-submits with authorized_by_user_id after manager PIN success', async () => {
     const err = new ApiRequestError(422, 'Manager override required', 'MANAGER_OVERRIDE_REQUIRED');
-    const onSubmitRefund = vi.fn<[RefundSubmitPayload], Promise<void>>()
-      .mockRejectedValueOnce(err)
-      .mockResolvedValueOnce(undefined);
-    const onVerifyManagerPin = vi.fn<[string, string], Promise<{ valid: boolean }>>()
-      .mockResolvedValue({ valid: true });
+    let callCount = 0;
+    const capturedPayloads: RefundSubmitPayload[] = [];
+    const onSubmitRefund = makeSubmit((payload) => {
+      capturedPayloads.push(payload);
+      callCount++;
+      if (callCount === 1) return Promise.reject(err);
+      return Promise.resolve();
+    });
+    const onVerifyManagerPin = makeVerify(() => Promise.resolve({ valid: true }));
     const onSuccess = vi.fn();
 
     render(<RefundConfirmModal {...buildProps({ onSubmitRefund, onVerifyManagerPin, onSuccess })} />);
@@ -201,9 +208,9 @@ describe('RefundConfirmModal — MANAGER_OVERRIDE_REQUIRED flow', () => {
     // Second submit should include authorized_by_user_id
     await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce());
 
-    expect(onSubmitRefund).toHaveBeenCalledTimes(2);
-    const secondCall = onSubmitRefund.mock.calls[1]![0] as RefundSubmitPayload;
-    expect(secondCall.authorized_by_user_id).toBe('mgr-1');
+    expect(capturedPayloads).toHaveLength(2);
+    expect(capturedPayloads[0]).toEqual({});
+    expect(capturedPayloads[1]?.authorized_by_user_id).toBe('mgr-1');
   });
 });
 
@@ -212,7 +219,7 @@ describe('RefundConfirmModal — DAILY_REFUND_CAP_EXCEEDED', () => {
 
   it('shows ManagerPinPanel for DAILY_REFUND_CAP_EXCEEDED', async () => {
     const err = new ApiRequestError(422, 'Daily cap exceeded', 'DAILY_REFUND_CAP_EXCEEDED');
-    const onSubmitRefund = vi.fn<[RefundSubmitPayload], Promise<void>>().mockRejectedValue(err);
+    const onSubmitRefund = makeSubmit(() => Promise.reject(err));
 
     render(<RefundConfirmModal {...buildProps({ onSubmitRefund })} />);
 
@@ -226,7 +233,7 @@ describe('RefundConfirmModal — REFUND_WINDOW_CLOSED', () => {
 
   it('shows ManagerPinPanel for REFUND_WINDOW_CLOSED', async () => {
     const err = new ApiRequestError(422, 'Window closed', 'REFUND_WINDOW_CLOSED');
-    const onSubmitRefund = vi.fn<[RefundSubmitPayload], Promise<void>>().mockRejectedValue(err);
+    const onSubmitRefund = makeSubmit(() => Promise.reject(err));
 
     render(<RefundConfirmModal {...buildProps({ onSubmitRefund })} />);
 
@@ -240,7 +247,7 @@ describe('RefundConfirmModal — BUSINESS_ERROR generic fallback', () => {
 
   it('shows inline error for BUSINESS_ERROR (no PIN prompt)', async () => {
     const err = new ApiRequestError(422, 'Something went wrong', 'BUSINESS_ERROR');
-    const onSubmitRefund = vi.fn<[RefundSubmitPayload], Promise<void>>().mockRejectedValue(err);
+    const onSubmitRefund = makeSubmit(() => Promise.reject(err));
 
     render(<RefundConfirmModal {...buildProps({ onSubmitRefund })} />);
 
@@ -253,7 +260,7 @@ describe('RefundConfirmModal — BUSINESS_ERROR generic fallback', () => {
 
   it('shows inline error for unknown error codes', async () => {
     const err = new ApiRequestError(422, 'Unknown failure', 'UNKNOWN_CODE');
-    const onSubmitRefund = vi.fn<[RefundSubmitPayload], Promise<void>>().mockRejectedValue(err);
+    const onSubmitRefund = makeSubmit(() => Promise.reject(err));
 
     render(<RefundConfirmModal {...buildProps({ onSubmitRefund })} />);
 
@@ -262,8 +269,7 @@ describe('RefundConfirmModal — BUSINESS_ERROR generic fallback', () => {
   });
 
   it('shows generic error for non-ApiRequestError exceptions', async () => {
-    const onSubmitRefund = vi.fn<[RefundSubmitPayload], Promise<void>>()
-      .mockRejectedValue(new Error('Network error'));
+    const onSubmitRefund = makeSubmit(() => Promise.reject(new Error('Network error')));
 
     render(<RefundConfirmModal {...buildProps({ onSubmitRefund })} />);
 

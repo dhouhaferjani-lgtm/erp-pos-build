@@ -12,6 +12,22 @@ import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import type { CartItem } from '@/types/cart';
 import type { CreateReceiptResponse } from '@/types/receipt';
 
+// ─── Voucher tender types ─────────────────────────────────────────────────────
+
+/**
+ * A voucher tender row added to the payment screen alongside Cash/Card.
+ * Per spec §6.5: payment_method.code = 'store_voucher', instrument_serial = voucher code.
+ * The amount is a decimal string at the currency's scale.
+ */
+export interface VoucherTenderRow {
+  /** The voucher code (= LocalVoucher.code). Also used as the unique row key. */
+  code: string;
+  /** Formatted decimal amount string, e.g. "12.50". */
+  amount: string;
+}
+
+// ─── Payment state ────────────────────────────────────────────────────────────
+
 interface PaymentState {
   paymentMethods: PaymentMethod[];
   paymentRepositories: PaymentRepository[];
@@ -24,6 +40,19 @@ interface PaymentState {
   lastReceiptIdempotencyKey: string | null;
   /** Server-assigned receipt UUID, populated when sync completes. Null while pending. */
   lastReceiptServerId: string | null;
+
+  /**
+   * Voucher tender rows applied in the current sale session.
+   * Each row represents one voucher being used as partial/full payment.
+   * Codes are unique per transaction — addVoucherPayment guards against duplicates.
+   */
+  voucherTenders: VoucherTenderRow[];
+
+  /**
+   * Derived set of voucher codes already applied. Exposed so VoucherTenderModal
+   * can guard against applying the same voucher twice without scanning the full row list.
+   */
+  appliedVoucherCodes: ReadonlySet<string>;
 }
 
 export interface AdvancedPaymentLine {
@@ -62,6 +91,24 @@ interface PaymentActions {
   ) => Promise<void>;
   reset: () => void;
   clearLastReceipt: () => void;
+
+  /**
+   * Add a voucher as a tender row for the current sale.
+   * Idempotent guard: throws if `code` is already in `appliedVoucherCodes`.
+   *
+   * @param code    The LocalVoucher.code being redeemed.
+   * @param amount  The decimal amount to apply (string, at currency scale).
+   * @throws Error if the same code is added twice in one transaction.
+   */
+  addVoucherPayment: (code: string, amount: string) => void;
+
+  /**
+   * Remove a voucher tender row (e.g. if the cashier cancels before confirming).
+   */
+  removeVoucherPayment: (code: string) => void;
+
+  /** Clear all voucher tender rows (called by reset()). */
+  clearVoucherTenders: () => void;
 }
 
 type PaymentStore = PaymentState & PaymentActions;
@@ -76,6 +123,8 @@ const initialState: PaymentState = {
   error: null,
   lastReceiptIdempotencyKey: null,
   lastReceiptServerId: null,
+  voucherTenders: [],
+  appliedVoucherCodes: new Set<string>(),
 };
 
 async function getDb(): Promise<import('@tauri-apps/plugin-sql').default> {
@@ -403,6 +452,36 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
 
   clearLastReceipt: () => {
     set({ lastReceipt: null, pendingReceiptId: null, changeDue: 0, lastReceiptIdempotencyKey: null, lastReceiptServerId: null });
+  },
+
+  addVoucherPayment: (code: string, amount: string) => {
+    const { appliedVoucherCodes } = get();
+    if (appliedVoucherCodes.has(code)) {
+      throw new Error(
+        i18n.t('voucherTender.alreadyApplied', { ns: 'pos', defaultValue: 'This voucher has already been applied to this sale.' }),
+      );
+    }
+    const nextCodes = new Set(appliedVoucherCodes);
+    nextCodes.add(code);
+    set((state) => ({
+      voucherTenders: [...state.voucherTenders, { code, amount }],
+      appliedVoucherCodes: nextCodes,
+    }));
+  },
+
+  removeVoucherPayment: (code: string) => {
+    set((state) => {
+      const nextCodes = new Set(state.appliedVoucherCodes);
+      nextCodes.delete(code);
+      return {
+        voucherTenders: state.voucherTenders.filter((v) => v.code !== code),
+        appliedVoucherCodes: nextCodes,
+      };
+    });
+  },
+
+  clearVoucherTenders: () => {
+    set({ voucherTenders: [], appliedVoucherCodes: new Set<string>() });
   },
 
   reset: () => {
