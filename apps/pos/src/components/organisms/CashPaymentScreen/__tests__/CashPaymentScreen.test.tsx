@@ -20,10 +20,20 @@ vi.mock('@/lib/currency', () => ({
 }));
 
 vi.mock('@/components/molecules/NumPad', () => ({
-  NumPad: ({ onChange }: { value: string; onChange: (v: string) => void }) => (
-    <button data-testid="numpad-clear" onClick={() => onChange('')}>
-      NumPad
-    </button>
+  NumPad: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
+    <div>
+      <span data-testid="numpad-value">{value}</span>
+      <button data-testid="numpad-clear" onClick={() => onChange('')}>
+        NumPad clear
+      </button>
+      {/* Mirrors real NumPad.handleKey('digit') — append the digit to value */}
+      <button data-testid="numpad-press-5" onClick={() => onChange(value + '5')}>
+        Press 5
+      </button>
+      <button data-testid="numpad-backspace" onClick={() => onChange(value.slice(0, -1))}>
+        Backspace
+      </button>
+    </div>
   ),
 }));
 
@@ -115,5 +125,46 @@ describe('CashPaymentScreen', () => {
   it('shows change due label', () => {
     renderScreen({ total: 25 });
     expect(screen.getByText('cashPayment.changeDue')).toBeInTheDocument();
+  });
+
+  it('digit press after Exact overwrites the preset (does not append)', () => {
+    // Regression: cashier taps Exact (sets tendered to total), then taps a digit.
+    // Old behavior: digit was appended (e.g. 25 + 5 = "255"), but format() rounded
+    // back to 25 EUR so the display looked unchanged and the cashier was stuck.
+    // New behavior: the digit overwrites the preset like industry-standard POS.
+    renderScreen({ total: 25 });
+    fireEvent.click(screen.getByText('cashPayment.exact'));
+    expect(screen.getByTestId('numpad-value').textContent).toBe('25.00');
+    fireEvent.click(screen.getByTestId('numpad-press-5'));
+    // Preset is overwritten by just the new digit, not appended to "25.005"
+    expect(screen.getByTestId('numpad-value').textContent).toBe('5');
+  });
+
+  it('digit press after a denomination button overwrites the preset', () => {
+    renderScreen({ total: 3 });
+    fireEvent.click(screen.getByText('50 EUR'));
+    expect(screen.getByTestId('numpad-value').textContent).toBe('50.00');
+    fireEvent.click(screen.getByTestId('numpad-press-5'));
+    expect(screen.getByTestId('numpad-value').textContent).toBe('5');
+  });
+
+  it('backspace after Exact behaves normally and does not trigger overwrite', () => {
+    renderScreen({ total: 25 });
+    fireEvent.click(screen.getByText('cashPayment.exact'));
+    expect(screen.getByTestId('numpad-value').textContent).toBe('25.00');
+    fireEvent.click(screen.getByTestId('numpad-backspace'));
+    // Backspace removes the trailing char from the preset, doesn't reset it
+    expect(screen.getByTestId('numpad-value').textContent).toBe('25.0');
+  });
+
+  it('typing further digits after preset+overwrite appends normally', () => {
+    // Preset → digit (overwrite) → next digit (append, since preset flag cleared)
+    renderScreen({ total: 25 });
+    fireEvent.click(screen.getByText('cashPayment.exact'));
+    fireEvent.click(screen.getByTestId('numpad-press-5'));
+    expect(screen.getByTestId('numpad-value').textContent).toBe('5');
+    fireEvent.click(screen.getByTestId('numpad-press-5'));
+    // Preset flag was cleared after the first overwrite, so this appends
+    expect(screen.getByTestId('numpad-value').textContent).toBe('55');
   });
 });

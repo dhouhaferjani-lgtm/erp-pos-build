@@ -27,9 +27,17 @@ export function CashPaymentScreen({
   const { t } = useTranslation('pos');
   const { format, currency, decimals } = useCurrency();
   const [tenderedStr, setTenderedStr] = useState('');
+  // True after Exact / denomination button has set tenderedStr programmatically.
+  // The next digit press from the numpad overwrites the preset (industry-
+  // standard POS behavior: cashier doesn't have to clear before retyping).
+  // Backspace, Clear, or decimal keys clear this flag and behave normally.
+  const [presetSet, setPresetSet] = useState(false);
 
   useEffect(() => {
-    if (isOpen) setTenderedStr('');
+    if (isOpen) {
+      setTenderedStr('');
+      setPresetSet(false);
+    }
   }, [isOpen]);
 
   const tenderedNum = parseFloat(tenderedStr) || 0;
@@ -38,11 +46,27 @@ export function CashPaymentScreen({
 
   const handleExact = useCallback(() => {
     setTenderedStr(total.toFixed(decimals));
+    setPresetSet(true);
   }, [total, decimals]);
 
   const handleDenomination = useCallback((amount: number) => {
     setTenderedStr(amount.toFixed(decimals));
+    setPresetSet(true);
   }, [decimals]);
+
+  const handleNumPadChange = useCallback((newVal: string) => {
+    if (presetSet && newVal.length > tenderedStr.length) {
+      // Digit appended after a preset — overwrite the preset with just the
+      // newly-typed portion so the cashier doesn't see "114.745" when they
+      // tap 5 on a preset of 114.74. The visual confusion (display still
+      // showing the rounded preset) was a recurring blocker in the field.
+      setTenderedStr(newVal.slice(tenderedStr.length));
+    } else {
+      // Backspace, clear, decimal, or normal typing — pass through.
+      setTenderedStr(newVal);
+    }
+    setPresetSet(false);
+  }, [presetSet, tenderedStr]);
 
   const handleConfirm = useCallback(() => {
     if (isValid && !isProcessing) onConfirm(tenderedNum);
@@ -138,7 +162,7 @@ export function CashPaymentScreen({
 
           {/* Numpad */}
           <div className="flex-1">
-            <NumPad value={tenderedStr} onChange={setTenderedStr} />
+            <NumPad value={tenderedStr} onChange={handleNumPadChange} />
           </div>
 
           {/* Confirm button */}
