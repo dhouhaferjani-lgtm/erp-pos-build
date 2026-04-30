@@ -123,6 +123,7 @@ const TaxSettingsPage = lazy(() => import('../features/settings/TaxSettingsPage'
 const LocationsPage = lazy(() => import('../features/settings/LocationsPage').then((m) => ({ default: m.LocationsPage })))
 const InventorySettings = lazy(() => import('../features/settings/components/InventorySettings').then((m) => ({ default: m.InventorySettings })))
 const UnitsSettingsPage = lazy(() => import('../features/uom').then((m) => ({ default: m.UnitsSettingsPage })))
+const PosRefundPoliciesPage = lazy(() => import('../features/settings/pages/PosRefundPoliciesPage').then((m) => ({ default: m.PosRefundPoliciesPage })))
 
 // Finance module
 const ChartOfAccountsPage = lazy(() => import('../features/finance/pages/ChartOfAccountsPage').then((m) => ({ default: m.ChartOfAccountsPage })))
@@ -1780,6 +1781,16 @@ export function AppRoutes() {
               <RequirePermission moduleKey="settings">
                 <SuspenseWrapper>
                   <InventorySettings />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="pos-refund-policies"
+            element={
+              <RequirePermission moduleKey="settings">
+                <SuspenseWrapper>
+                  <PosRefundPoliciesPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

@@ -42,6 +42,7 @@ import enVehicleOwnership from '../locales/en/vehicle-ownership.json'
 import enPickers from '../locales/en/pickers.json'
 import enDocuments from '../locales/en/documents.json'
 import enVouchers from '../locales/en/vouchers.json'
+import enRefundPolicies from '../locales/en/refund-policies.json'
 
 import frCommon from '../locales/fr/common.json'
 import frAuth from '../locales/fr/auth.json'
@@ -82,6 +83,7 @@ import frVehicleOwnership from '../locales/fr/vehicle-ownership.json'
 import frPickers from '../locales/fr/pickers.json'
 import frDocuments from '../locales/fr/documents.json'
 import frVouchers from '../locales/fr/vouchers.json'
+import frRefundPolicies from '../locales/fr/refund-policies.json'
 
 // Arabic: fully translated AutoSpecs + shared foundations (🟠-4 Tunisia Go-Live).
 // Other namespaces still fall back to the EN bundle below.
@@ -147,6 +149,7 @@ const resources = {
     pickers: enPickers,
     documents: enDocuments,
     vouchers: enVouchers,
+    'refund-policies': enRefundPolicies,
   },
   fr: {
     common: frCommon,
@@ -188,6 +191,7 @@ const resources = {
     pickers: frPickers,
     documents: frDocuments,
     vouchers: frVouchers,
+    'refund-policies': frRefundPolicies,
   },
   ar: {
     // 🟠-4 Tunisia Go-Live: AutoSpecs namespaces + shared foundations are now
@@ -232,6 +236,7 @@ const resources = {
     pickers: arPickers,
     documents: arDocuments,
     vouchers: enVouchers,
+    'refund-policies': enRefundPolicies,
   },
 }
 
@@ -242,7 +247,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

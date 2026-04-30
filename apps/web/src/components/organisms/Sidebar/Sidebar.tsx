@@ -220,6 +220,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
         { key: 'analytics', href: '/pos/analytics', icon: BarChart3, module: 'pos' },
         { key: 'zReports', href: '/pos/z-reports', icon: FileCheck, module: 'pos' },
         { key: 'vouchers', href: '/pos/vouchers', icon: Ticket, module: 'pos' },
+        { key: 'posRefundPolicies', href: '/settings/pos-refund-policies', icon: RotateCcw, module: 'settings' },
       ],
     },
     {
