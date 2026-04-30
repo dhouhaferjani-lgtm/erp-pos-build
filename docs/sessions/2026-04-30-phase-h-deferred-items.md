@@ -319,3 +319,130 @@ Deferred to a later phase:
   endpoint. When a controller is added, the existing permission check will
   apply without further service refactor.
 
+---
+
+## Phase H Block 1 — Backend typed-code 422 mapping (SHIPPED 2026-04-30)
+
+Commit `506d2881`. Four `render` closures in `apps/api/bootstrap/app.php` now
+map the four POS refund-flow exceptions to typed `error.code` 422 responses
+the frontend `mapRefundErrorToUiAction()` switch can route on:
+
+- `ManagerOverrideRequiredException` → `MANAGER_OVERRIDE_REQUIRED`
+- `DailyRefundCapExceededException` → `DAILY_REFUND_CAP_EXCEEDED`
+- `RefundWindowClosedException` → `REFUND_WINDOW_CLOSED`
+- `RefundDestinationNotAllowedException` → `REFUND_DESTINATION_NOT_ALLOWED`
+
+The frontend's `RefundConfirmModal` will now surface the inline ManagerPinPanel
+on the manager-PIN paths instead of falling through to a generic toast.
+
+Notes:
+- `RefundDestinationNotAllowedException` extends `\RuntimeException`, so before
+  this commit it would have bubbled to a 500 — now correctly 422.
+- The `DailyRefundCapExceededException` constructor message includes the
+  cashier's UUID. This is operational data the cashier already knows about
+  themselves (not a cross-tenant leak), but a future hardening pass could move
+  IDs to a structured `debug` field invisible in production responses.
+- `RefundWindowClosedException` has the handler in place but no current
+  call-site — the throw happens once `ReceiptReturnService`'s window-guard
+  logic adds it. Today the window-blocked case is handled via
+  `RefundDestinationNotAllowedException` (refuse policy). Phase 2 may surface
+  the named exception explicitly for cleaner error categorization.
+
+---
+
+## Phase H Block 2 — Receipt printer wiring (SHIPPED 2026-04-30)
+
+Commit `dde0ee19` (amended from `dd49dea0` after code-review fixes).
+
+Shipped:
+
+- **Sale-receipt QR token at footer.** TS `ReceiptData` and Rust struct extended
+  with optional `qr_token: string | null` / `Option<String>` (`#[serde(default)]`
+  for back-compat). The Rust formatter renders a centered QR + human-readable
+  token at the receipt footer when present. Call sites in `HomePage.tsx` look
+  up the token from the local `receipt_qr_index` mirror via
+  `findReceiptByNumber` for both server- and offline-sourced receipts.
+- **Refund-receipt header + cross-references.** Optional `receipt_kind?:
+  'sale' | 'refund'` discriminator + `original_receipt_number` +
+  `original_receipt_qr_token` fields on `ReceiptData`. Rust formatter emits a
+  centered REMBOURSEMENT (FR) / REFUND (EN) banner BEFORE items when
+  `receipt_kind === 'refund'`, plus the original ticket number and a re-print
+  of the original receipt's QR (so the original can still be scanned for
+  further partial refunds).
+- **Voucher ticket separate print path.** New Rust module
+  `apps/pos/src-tauri/src/printing/voucher_ticket.rs` with
+  `VoucherTicketData` struct + render function. New Tauri command
+  `print_voucher_ticket` registered on the builder. TS `printVoucherTicket`
+  wrapper in `printing.ts` and `buildVoucherTicketData` helper. Voucher tickets
+  print: large monospaced code, scannable QR, balance, expiry, redemption
+  mode (Bearer / Customer-bound), terms note, issuing terminal + date.
+- **Backend response extension.** `processReturn` controller now returns
+  `qr_token` and `issued_voucher` (when destination is `store_voucher`).
+  Looked up via `VoucherLookupService::findBySourceReceiptId` (NEW method,
+  added to clean up the cross-module model leak the code review caught — the
+  controller no longer imports `Voucher` directly).
+
+Deferred (not in this commit):
+- **Exchange both-halves single-ticket layout.** Today exchange already works
+  as TWO cross-referenced fiscal receipts joined by `exchange_group_id`;
+  printing them as two separate tickets with cross-references is acceptable
+  for go-live. Single-ticket layout is a UX polish for Phase 2.
+
+---
+
+## Phase H Block 3 — Session 2 deferrals (SHIPPED 2026-04-30)
+
+Six commits closed the four Session 2 deferrals + 2 follow-ups:
+
+| Sub-task | SHA | Description |
+|---|---|---|
+| C3 | `7e8509cd` | UserPicker for second-admin + cashier filter |
+| I2 | `f1a77793` | Voucher modal Zod schemas: reason min(5) + future-date refine |
+| I3 | `4fb94b08` | Sidebar: relocate /settings/* entries from POS group to Settings |
+| I4 | `dcbe0060` | parseFloat → Number in posRefundPolicies |
+| C3 backend | `531a5248` | UserController.index now honors `?role=` (Spatie role scope) |
+| AR locale  | `c9846ea0` | New `ar/vouchers.json` with full Arabic translations |
+
+Task #8 (pre-existing backend item: transfer reason persistence + extendExpiry
+ledger row) was explicitly skipped — out of Phase H scope.
+
+---
+
+## Phase H Block 4 — End-to-end smoke testing — NOT EXECUTED IN SESSION
+
+Block 4 of the Session 4 brief specified a manual smoke pass exercising the
+full refund flow on a Tauri build pointing at a dev tenant. This was NOT
+executed in Session 4 because the orchestrator (a non-interactive CLI agent)
+cannot drive a Tauri desktop build interactively.
+
+The smoke path remains as written in the original deferred-items "Phase H
+follow-up: end-to-end smoke" section above (lines 254–276). Recommended
+before merging the PR to dev:
+
+1. **Cash sale → finalize → print.** Receipt should include the QR token at
+   the footer (Block 2 wiring; visible only on a Tauri build with a real or
+   ESC/POS-emulating printer).
+2. **Scan QR (or type receipt number) → confirmation sheet.** Validates Task
+   50 + Task 51's scan dispatcher and the receipt-locator screen.
+3. **Pick lines → destination = Voucher → confirm.** AVOIR receipt prints with
+   the original-ticket reference + original QR re-print + new receipt's QR.
+   Voucher ticket prints separately (Block 2 voucher-ticket Tauri command).
+4. **Next sale → tender = Voucher → scan code.** Validates Task 53 Piece 3
+   voucher-tender flow + Block 2.5 fiscal-year retention (the previously-issued
+   voucher must still be valid).
+5. **Refund with destination = Original Payment.** Verifies the proration
+   breakdown across multiple original payment instruments (Phase C
+   `PaymentRefundService` proration strategies).
+6. **Out-of-window refund** (older than `customerHistoryWindowDays`).
+   `voucher_only` policy should kick in (Phase C `RefundDestinationResolver`).
+7. **Over-threshold refund.** Block 1 typed-code 422 routes the
+   `MANAGER_OVERRIDE_REQUIRED` 422 to the inline ManagerPinPanel.
+8. **Customer-history search permission window** (Block 2.5b verification).
+   A cashier-permission user should see only the last 30 days of receipts when
+   searching by partner. A user with `pos.search_customer_full_history` should
+   see the full fiscal year.
+
+If smoke surfaces blockers, file follow-up commits on `feat/refund-flow` before
+merging to `dev`. If smoke surfaces only minor UX issues, file them as new
+sections in this deferred-items doc and merge anyway.
+
