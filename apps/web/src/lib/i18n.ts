@@ -101,6 +101,7 @@ import arPickers from '../locales/ar/pickers.json'
 import arMenu from '../locales/ar/menu.json'
 import arPartsCatalog from '../locales/ar/parts-catalog.json'
 import arDocuments from '../locales/ar/documents.json'
+import arVouchers from '../locales/ar/vouchers.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -239,7 +240,7 @@ const resources = {
     'vehicle-ownership': arVehicleOwnership,
     pickers: arPickers,
     documents: arDocuments,
-    vouchers: enVouchers,
+    vouchers: arVouchers,
     'refund-policies': enRefundPolicies,
     'customer-history-audit': enCustomerHistoryAudit,
   },

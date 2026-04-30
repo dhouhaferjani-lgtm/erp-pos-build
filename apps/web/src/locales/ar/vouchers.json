@@ -1,0 +1,140 @@
+{
+  "pageTitle": "القسائم والأرصدة",
+  "pageSubtitle": "إدارة القسائم الصادرة والأرصدة والمنح التقديرية",
+
+  "sources": {
+    "All": "الكل",
+    "Refund": "استرداد",
+    "ExchangeSurplus": "فائض التبادل",
+    "Goodwill": "منحة تقديرية",
+    "LoyaltyCredit": "رصيد الولاء",
+    "GiftCard": "بطاقة هدية",
+    "Promotional": "ترويجي"
+  },
+
+  "statuses": {
+    "Issued": "صادر",
+    "PartiallyRedeemed": "مُستخدم جزئياً",
+    "FullyRedeemed": "مُستخدم كلياً",
+    "Voided": "ملغى",
+    "Expired": "منتهي الصلاحية"
+  },
+
+  "events": {
+    "Issued": "إصدار",
+    "Redeemed": "استخدام",
+    "Refunded": "استرداد",
+    "Voided": "إلغاء",
+    "Expired": "انتهاء الصلاحية",
+    "Extended": "تمديد",
+    "Transferred": "تحويل",
+    "Adjusted": "تعديل"
+  },
+
+  "redemptionModes": {
+    "Bearer": "لحامله (مجهول)",
+    "CustomerBound": "مرتبط بالعميل"
+  },
+
+  "fields": {
+    "code": "الرمز",
+    "source": "المصدر",
+    "customer": "العميل",
+    "balance": "الرصيد",
+    "initialBalance": "الرصيد الأولي",
+    "currentBalance": "الرصيد الحالي",
+    "status": "الحالة",
+    "expiresAt": "تاريخ الانتهاء",
+    "terminal": "الطرفية",
+    "issuedBy": "صادر بواسطة",
+    "amount": "المبلغ",
+    "currency": "العملة",
+    "notes": "ملاحظات",
+    "reason": "السبب",
+    "redemptionMode": "طريقة الاستخدام",
+    "newExpiresAt": "تاريخ الانتهاء الجديد"
+  },
+
+  "actions": {
+    "void": "إلغاء",
+    "extend": "تمديد الصلاحية",
+    "transfer": "تحويل",
+    "issueGoodwill": "إصدار قسيمة تقديرية",
+    "issued": "تم إصدار القسيمة بنجاح",
+    "voided": "تم إلغاء القسيمة بنجاح",
+    "transferred": "تم تحويل القسيمة بنجاح",
+    "extended": "تم تمديد تاريخ الانتهاء بنجاح"
+  },
+
+  "issueGoodwill": {
+    "title": "إصدار قسيمة تقديرية",
+    "action": "إصدار القسيمة",
+    "selectTerminal": "اختر الطرفية…",
+    "fourEyesInfo": "يتجاوز هذا المبلغ حد الموافقة المزدوجة. يجب على مدير ثانٍ الموافقة على هذه القسيمة.",
+    "secondAdmin": "المدير الثاني"
+  },
+
+  "void": {
+    "title": "إلغاء القسيمة",
+    "action": "إلغاء القسيمة",
+    "confirm": "سيُلغى هذا القسيمة نهائياً. سيُلغى الرصيد المتبقي. يُرجى تقديم سبب."
+  },
+
+  "extend": {
+    "title": "تمديد تاريخ الانتهاء",
+    "action": "تمديد"
+  },
+
+  "transfer": {
+    "title": "تحويل القسيمة",
+    "action": "تحويل",
+    "toPartner": "تحويل إلى عميل",
+    "partnerRequired": "يُرجى اختيار عميل لإجراء التحويل."
+  },
+
+  "ledger": {
+    "title": "سجل المعاملات",
+    "occurredAt": "التاريخ",
+    "event": "الحدث",
+    "amount": "المبلغ",
+    "receipt": "الإيصال",
+    "terminal": "الطرفية",
+    "user": "المستخدم",
+    "empty": "لا توجد إدخالات في السجل."
+  },
+
+  "provenance": {
+    "title": "المصدر",
+    "sourceReceipt": "إيصال المصدر",
+    "creditNoteLink": "إشعار دائن",
+    "issuedBy": "صادر بواسطة",
+    "notes": "ملاحظات",
+    "overrideReason": "سبب الاستثناء",
+    "loyaltyTransactionId": "معرّف معاملة الولاء",
+    "loyaltyPhase15Placeholder": "ستتوفر تفاصيل معاملة الولاء الكاملة في الإصدار 1.5.",
+    "phase2Placeholder": "ستتوفر تفاصيل المصدر لهذا النوع في الإصدار الثاني."
+  },
+
+  "validation": {
+    "reasonMin": "يجب أن يتضمن السبب خمسة أحرف على الأقل.",
+    "dateInFuture": "يجب أن يكون تاريخ الانتهاء في المستقبل."
+  },
+
+  "errors": {
+    "FOUR_EYES_REQUIRED": "يجب على مدير ثانٍ الموافقة على القسائم التقديرية التي تتجاوز الحد المحدد.",
+    "NAMED_CUSTOMER_REQUIRED": "يلزم وجود عميل محدد للقسائم المرتبطة بعميل.",
+    "SELF_DEALING": "لا يمكن للمدير المُصدِر أن يكون أيضاً المُعتمِد الثاني.",
+    "notFound": "القسيمة غير موجودة.",
+    "loadFailed": "فشل تحميل تفاصيل القسيمة."
+  },
+
+  "empty": {
+    "title": "لا توجد قسائم",
+    "subtitle": "لا تطابق أي قسيمة الفلتر الحالي. جرّب مصدراً آخر أو أصدر قسيمة تقديرية."
+  },
+
+  "detail": {
+    "backToList": "العودة إلى القسائم",
+    "headerSubtitle": "تفاصيل القسيمة"
+  }
+}
