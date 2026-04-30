@@ -4,12 +4,12 @@
 
   "sources": {
     "All": "All",
-    "Refund": "Refund",
-    "ExchangeSurplus": "Exchange Surplus",
-    "Goodwill": "Goodwill",
-    "LoyaltyCredit": "Loyalty Credit",
-    "GiftCard": "Gift Card",
-    "Promotional": "Promotional"
+    "refund": "Refund",
+    "exchange_surplus": "Exchange Surplus",
+    "goodwill": "Goodwill",
+    "loyalty_credit": "Loyalty Credit",
+    "gift_card_purchase": "Gift Card",
+    "promotional": "Promotional"
   },
 
   "statuses": {

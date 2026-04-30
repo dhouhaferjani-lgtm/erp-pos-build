@@ -4,12 +4,12 @@
 
   "sources": {
     "All": "الكل",
-    "Refund": "استرداد",
-    "ExchangeSurplus": "فائض التبادل",
-    "Goodwill": "منحة تقديرية",
-    "LoyaltyCredit": "رصيد الولاء",
-    "GiftCard": "بطاقة هدية",
-    "Promotional": "ترويجي"
+    "refund": "استرداد",
+    "exchange_surplus": "فائض التبادل",
+    "goodwill": "منحة تقديرية",
+    "loyalty_credit": "رصيد الولاء",
+    "gift_card_purchase": "بطاقة هدية",
+    "promotional": "ترويجي"
   },
 
   "statuses": {

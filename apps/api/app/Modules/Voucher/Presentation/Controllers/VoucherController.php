@@ -73,9 +73,16 @@ final class VoucherController extends Controller
             $sourceValue = $request->query('source');
             if (is_string($sourceValue)) {
                 $source = VoucherSource::tryFrom($sourceValue);
-                if ($source !== null) {
-                    $query->where('source', $source->value);
+                if ($source === null) {
+                    return response()->json([
+                        'error' => [
+                            'code' => 'INVALID_SOURCE',
+                            'message' => 'Invalid source value. Must be one of: '
+                                .implode(', ', array_column(VoucherSource::cases(), 'value')),
+                        ],
+                    ], 422);
                 }
+                $query->where('source', $source->value);
             }
         }
 

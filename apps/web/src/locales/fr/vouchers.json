@@ -4,12 +4,12 @@
 
   "sources": {
     "All": "Tous",
-    "Refund": "Remboursement",
-    "ExchangeSurplus": "Surplus d'échange",
-    "Goodwill": "Geste commercial",
-    "LoyaltyCredit": "Crédit fidélité",
-    "GiftCard": "Carte cadeau",
-    "Promotional": "Promotionnel"
+    "refund": "Remboursement",
+    "exchange_surplus": "Surplus d'échange",
+    "goodwill": "Geste commercial",
+    "loyalty_credit": "Crédit fidélité",
+    "gift_card_purchase": "Carte cadeau",
+    "promotional": "Promotionnel"
   },
 
   "statuses": {

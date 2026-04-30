@@ -1,12 +1,12 @@
 // ─── Enums ───────────────────────────────────────────────────────────────────
 
 export type VoucherSource =
-  | 'Refund'
-  | 'ExchangeSurplus'
-  | 'Goodwill'
-  | 'LoyaltyCredit'
-  | 'GiftCard'
-  | 'Promotional'
+  | 'refund'
+  | 'exchange_surplus'
+  | 'goodwill'
+  | 'loyalty_credit'
+  | 'gift_card_purchase'
+  | 'promotional'
 
 export type VoucherStatus = 'Issued' | 'PartiallyRedeemed' | 'FullyRedeemed' | 'Voided' | 'Expired'
 
