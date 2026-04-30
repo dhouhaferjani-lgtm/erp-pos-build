@@ -82,6 +82,18 @@ echo -e "\n${YELLOW}Running Vitest tests...${NC}"
 pnpm test
 echo -e "${GREEN}✓ Vitest passed${NC}"
 
+# Fiscal fixture parity check
+echo -e "\n${YELLOW}🔒 Fiscal Fixture Parity${NC}"
+echo "=================================="
+
+REPO_ROOT="$ROOT_DIR"
+echo -e "\n${YELLOW}Checking fiscal v3 fixture parity...${NC}"
+if ! "$REPO_ROOT/apps/pos/scripts/check-fiscal-fixture-parity.sh"; then
+    echo -e "${RED}✗ Fiscal v3 fixture parity check failed (see output above)${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✓ Fiscal v3 fixture parity OK${NC}"
+
 # Summary
 echo ""
 echo "=================================="

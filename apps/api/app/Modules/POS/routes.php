@@ -6,7 +6,9 @@ use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\POS\Presentation\Controllers\AnalyticsController;
 use App\Modules\POS\Presentation\Controllers\AuthorizedManagersController;
 use App\Modules\POS\Presentation\Controllers\CashDrawerController;
+use App\Modules\POS\Presentation\Controllers\CustomerHistorySearchAuditController;
 use App\Modules\POS\Presentation\Controllers\DiscountController;
+use App\Modules\POS\Presentation\Controllers\FiscalSchemaCutoverController;
 use App\Modules\POS\Presentation\Controllers\FraudSettingsPosController;
 use App\Modules\POS\Presentation\Controllers\ManagerPinController;
 use App\Modules\POS\Presentation\Controllers\PosAuthController;
@@ -15,6 +17,7 @@ use App\Modules\POS\Presentation\Controllers\ReportController;
 use App\Modules\POS\Presentation\Controllers\ShiftController;
 use App\Modules\POS\Presentation\Controllers\SyncController;
 use App\Modules\POS\Presentation\Controllers\TerminalController;
+use App\Modules\POS\Presentation\Controllers\VoucherSyncController;
 use App\Modules\POS\Presentation\Controllers\ZReportSyncController;
 use Illuminate\Support\Facades\Route;
 
@@ -47,6 +50,8 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::patch('/pos/terminals/{id}/archive', [TerminalController::class, 'archive']);
     Route::post('/pos/terminals/{id}/toggle-training', [TerminalController::class, 'toggleTrainingMode']);
     Route::get('/pos/terminals/{id}/z-chain-state', [TerminalController::class, 'zChainState']);
+    // Fiscal-schema cutover: admin-only, gated on no-open-shift + no-unzreported + empty-queue
+    Route::post('/pos/terminals/{terminal}/fiscal-schema-cutover', FiscalSchemaCutoverController::class);
 
     // Shift Management
     Route::post('/pos/shifts/open', [ShiftController::class, 'open']);
@@ -77,6 +82,12 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/pos/sync/menu', [SyncController::class, 'menu']);
     Route::post('/pos/shifts/{id}/sync-close', [SyncController::class, 'syncCloseShift']);
 
+    // Voucher + receipt-QR-index sync (Session 1.5 — offline POS mirror)
+    Route::get('/pos/vouchers/sync', [VoucherSyncController::class, 'pullVouchers']);
+    Route::get('/pos/voucher-ledger/sync', [VoucherSyncController::class, 'pullVoucherLedger']);
+    Route::post('/pos/voucher-ledger/sync', [VoucherSyncController::class, 'pushVoucherLedger']);
+    Route::get('/pos/receipts/qr-index', [VoucherSyncController::class, 'pullReceiptQrIndex']);
+
     // Receipts (collection routes BEFORE parameterized)
     Route::get('/pos/receipts', [ReceiptController::class, 'index']);
     Route::post('/pos/receipts', [ReceiptController::class, 'store']);
@@ -102,6 +113,11 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 
     // Authorized managers for variance-close PIN approval
     Route::get('/pos/authorized-managers', [AuthorizedManagersController::class, 'index']);
+
+    // Customer history search audit log (Manager / Admin only)
+    Route::get('/pos/customer-history-searches', [CustomerHistorySearchAuditController::class, 'index'])
+        ->middleware('can:pos.search_customer_full_history')
+        ->name('pos.customer-history-searches.index');
 
     // Analytics
     Route::get('/pos/analytics/summary', [AnalyticsController::class, 'summary']);

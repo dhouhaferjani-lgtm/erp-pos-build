@@ -10,6 +10,7 @@
     "editDiscount": "Edit Discount",
     "decrementQty": "Decrease quantity",
     "incrementQty": "Increase quantity",
+    "editQty": "Edit quantity",
     "removeItem": "Remove item",
     "lineDiscount": "Item discount",
     "editModifiers": "Edit options",
@@ -78,6 +79,66 @@
     "inputPlaceholder": "Scan or type barcode / SKU...",
     "inputLabel": "Barcode or SKU lookup",
     "clearInput": "Clear barcode input"
+  },
+  "receiptScan": {
+    "title": "Sale receipt detected",
+    "body": "This is a sale receipt from {{date}}. Start a refund or exchange?",
+    "cancel": "Cancel",
+    "startRefund": "Start refund",
+    "dispatchError": "Couldn't read the local receipt index. Falling back to product lookup."
+  },
+  "refundFlow": {
+    "returningSection": "Returning",
+    "buyingNewSection": "Buying new",
+    "detailsNotLocal": "The original receipt details are not available on this terminal. Only items from receipts recorded on this terminal can be refunded locally. Ask a manager to look up the receipt from the back office.",
+    "confirm": {
+      "charge": "Charge {{amount}}",
+      "refund": "Refund {{amount}}",
+      "noPayment": "No payment due",
+      "title": "Confirm refund",
+      "amountLabel": "Refund amount",
+      "submit": "Refund {{amount}}",
+      "submitting": "Processing…",
+      "cancel": "Cancel",
+      "authorizedBy": "Authorized by manager",
+      "errorGeneric": "An unexpected error occurred. Please try again.",
+      "pinRequired": {
+        "override": "Manager authorization required",
+        "dailyCap": "Daily refund cap reached — manager authorization required",
+        "windowClosed": "Refund window closed — manager authorization required"
+      }
+    },
+    "resumeBanner": {
+      "title": "In-progress refund — Ticket {{number}}",
+      "resume": "Resume",
+      "discard": "Discard"
+    },
+    "destination": {
+      "label": "Refund destination",
+      "original": "Original Payment",
+      "cash": "Cash",
+      "store_voucher": "Store Voucher",
+      "proration_title": "Refund breakdown",
+      "confirm": "Confirm destination"
+    }
+  },
+  "receiptLocator": {
+    "title": "Returns / Exchange",
+    "entryButton": "Returns / Exchange",
+    "tabScan": "Scan or type ticket number",
+    "tabCustomer": "Find by customer",
+    "scanHint": "Enter the receipt number or scan the QR code on the receipt.",
+    "numberPlaceholder": "Receipt number",
+    "search": "Search",
+    "searching": "Searching...",
+    "found": "Receipt found",
+    "notFound": "No receipt found for that number.",
+    "wrongTerminal": "This receipt belongs to a different terminal and cannot be refunded here.",
+    "refundThis": "Refund this",
+    "customerHint": "Enter the customer ID to find their recent purchases at this terminal.",
+    "customerPlaceholder": "Customer ID",
+    "noCustomerReceipts": "No receipts found for this customer. Note: customer lookup requires synced receipt data.",
+    "customerResults": "{{count}} receipt(s) found"
   },
   "shift": {
     "number": "Shift #{{number}}",
@@ -586,7 +647,23 @@
     "taxCol": "Tax",
     "thankYou": "Thank you for your purchase!",
     "taxId": "Tax ID:",
-    "tel": "Tel:"
+    "tel": "Tel:",
+    "refundHeader": "REFUND",
+    "originalTicket": "Original ticket:",
+    "originalQrLabel": "Scan original ticket:",
+    "voucherTicket": {
+      "header": "STORE VOUCHER",
+      "code": "Voucher code:",
+      "balance": "Balance:",
+      "expires": "Expires:",
+      "noExpiry": "No expiry",
+      "modeBearer": "Bearer",
+      "modeCustomerBound": "Customer-bound",
+      "redemptionMode": "Mode:",
+      "issuedBy": "Issued by:",
+      "issuedAt": "Issued at:",
+      "terms": "Present this voucher to redeem its balance."
+    }
   },
   "config": {
     "refreshed": "Company settings refreshed.",
@@ -639,5 +716,30 @@
       "col_time": "Time",
       "col_writeoff": "Write-off"
     }
+  },
+  "voucherTender": {
+    "title": "Apply voucher",
+    "codeLabel": "Voucher code",
+    "codePlaceholder": "Scan or type code…",
+    "lookup": "Look up",
+    "looking": "Looking up…",
+    "cancel": "Cancel",
+    "back": "Back",
+    "apply": "Apply",
+    "balance": "Balance",
+    "redemptionMode": "Mode",
+    "expires": "Expires",
+    "amountLabel": "Amount to apply",
+    "modeBearer": "Bearer (any holder)",
+    "modeCustomerBound": "Customer-bound",
+    "notFound": "Voucher not found. Check the code and try again.",
+    "alreadyApplied": "This voucher has already been applied to this sale.",
+    "unsupportedKind": "Restaurant vouchers are not yet supported — Phase 2 feature. Only store vouchers (MPV) can be used here.",
+    "notRedeemable": "This voucher cannot be redeemed (status: {{status}}).",
+    "invalidAmount": "Enter a valid amount greater than zero.",
+    "amountExceedsBalance": "Amount cannot exceed the voucher balance ({{balance}} {{currency}}).",
+    "amountExceedsDue": "Amount cannot exceed the remaining due ({{due}} {{currency}}).",
+    "applyFailed": "Failed to apply voucher.",
+    "lookupFailed": "Could not read local voucher database. Please try again."
   }
 }

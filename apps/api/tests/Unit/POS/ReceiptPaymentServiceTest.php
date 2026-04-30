@@ -12,6 +12,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Application\Services\ReceiptFinalizationService;
 use App\Modules\POS\Application\Services\ReceiptPaymentService;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Receipt;
@@ -54,6 +55,7 @@ final class ReceiptPaymentServiceTest extends TestCase
             $this->companyContext,
             $this->glService,
             $this->app->make(PaymentToleranceCheckerContract::class),
+            $this->app->make(ReceiptFinalizationService::class),
         );
     }
 
@@ -336,6 +338,7 @@ final class ReceiptPaymentServiceTest extends TestCase
             $this->companyContext,
             $this->glService,
             $spy,
+            $this->app->make(ReceiptFinalizationService::class),
         );
 
         $service->processReceiptPayments(
@@ -671,13 +674,16 @@ final class ReceiptPaymentServiceTest extends TestCase
     }
 
     /**
-     * Create a receipt with all required FK fields.
+     * Create a pending_seal receipt with all required FK fields.
+     *
+     * Receipts now enter the payment service in pending_seal state —
+     * processReceiptPayments() finalizes them after recording payments.
      *
      * @param  array<string, mixed>  $overrides
      */
     private function createReceipt(array $overrides = []): Receipt
     {
-        return Receipt::factory()->create(array_merge([
+        return Receipt::factory()->pendingSeal()->create(array_merge([
             'company_id' => $this->company->id,
             'tenant_id' => $this->tenant->id,
             'location_id' => $this->location->id,

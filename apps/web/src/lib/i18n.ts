@@ -41,6 +41,9 @@ import enVehicles from '../locales/en/vehicles.json'
 import enVehicleOwnership from '../locales/en/vehicle-ownership.json'
 import enPickers from '../locales/en/pickers.json'
 import enDocuments from '../locales/en/documents.json'
+import enVouchers from '../locales/en/vouchers.json'
+import enRefundPolicies from '../locales/en/refund-policies.json'
+import enCustomerHistoryAudit from '../locales/en/customer-history-audit.json'
 
 import frCommon from '../locales/fr/common.json'
 import frAuth from '../locales/fr/auth.json'
@@ -80,6 +83,9 @@ import frVehicles from '../locales/fr/vehicles.json'
 import frVehicleOwnership from '../locales/fr/vehicle-ownership.json'
 import frPickers from '../locales/fr/pickers.json'
 import frDocuments from '../locales/fr/documents.json'
+import frVouchers from '../locales/fr/vouchers.json'
+import frRefundPolicies from '../locales/fr/refund-policies.json'
+import frCustomerHistoryAudit from '../locales/fr/customer-history-audit.json'
 
 // Arabic: fully translated AutoSpecs + shared foundations (🟠-4 Tunisia Go-Live).
 // Other namespaces still fall back to the EN bundle below.
@@ -95,6 +101,7 @@ import arPickers from '../locales/ar/pickers.json'
 import arMenu from '../locales/ar/menu.json'
 import arPartsCatalog from '../locales/ar/parts-catalog.json'
 import arDocuments from '../locales/ar/documents.json'
+import arVouchers from '../locales/ar/vouchers.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -144,6 +151,9 @@ const resources = {
     'vehicle-ownership': enVehicleOwnership,
     pickers: enPickers,
     documents: enDocuments,
+    vouchers: enVouchers,
+    'refund-policies': enRefundPolicies,
+    'customer-history-audit': enCustomerHistoryAudit,
   },
   fr: {
     common: frCommon,
@@ -184,6 +194,9 @@ const resources = {
     'vehicle-ownership': frVehicleOwnership,
     pickers: frPickers,
     documents: frDocuments,
+    vouchers: frVouchers,
+    'refund-policies': frRefundPolicies,
+    'customer-history-audit': frCustomerHistoryAudit,
   },
   ar: {
     // 🟠-4 Tunisia Go-Live: AutoSpecs namespaces + shared foundations are now
@@ -227,6 +240,9 @@ const resources = {
     'vehicle-ownership': arVehicleOwnership,
     pickers: arPickers,
     documents: arDocuments,
+    vouchers: arVouchers,
+    'refund-policies': enRefundPolicies,
+    'customer-history-audit': enCustomerHistoryAudit,
   },
 }
 
@@ -237,7 +253,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies', 'customer-history-audit'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

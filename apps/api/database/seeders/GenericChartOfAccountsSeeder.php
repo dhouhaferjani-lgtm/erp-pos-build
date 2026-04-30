@@ -150,6 +150,20 @@ class GenericChartOfAccountsSeeder extends Seeder
                 'system_purpose' => SystemAccountPurpose::PaymentToleranceIncome->value, 'is_system' => true],
             ['code' => '7660', 'name' => 'Realized FX Gain', 'type' => 'revenue', 'parent_code' => '7000',
                 'system_purpose' => SystemAccountPurpose::RealizedFxGain->value, 'is_system' => true],
+
+            // Voucher accounting — EU Directive 2016/1065 MPV layer (non-taxable; Phase 1)
+            ['code' => '7092', 'name' => 'Sales Returns Clearing (Voucher)', 'type' => 'expense', 'parent_code' => '7000',
+                'system_purpose' => SystemAccountPurpose::SalesReturnsClearing->value, 'is_system' => true],
+            ['code' => '4197', 'name' => 'Voucher Liability', 'type' => 'liability', 'parent_code' => '4000',
+                'system_purpose' => SystemAccountPurpose::VoucherLiability->value, 'is_system' => true],
+            ['code' => '6238', 'name' => 'Marketing Goodwill Expense', 'type' => 'expense', 'parent_code' => '6000',
+                'system_purpose' => SystemAccountPurpose::MarketingGoodwillExpense->value, 'is_system' => true],
+            ['code' => '7592', 'name' => 'Voucher Breakage Income', 'type' => 'revenue', 'parent_code' => '7000',
+                'system_purpose' => SystemAccountPurpose::VoucherBreakageIncome->value, 'is_system' => true],
+            ['code' => '6588', 'name' => 'Rounding Loss Expense (Voucher)', 'type' => 'expense', 'parent_code' => '6000',
+                'system_purpose' => SystemAccountPurpose::RoundingLossExpense->value, 'is_system' => true],
+            ['code' => '5810', 'name' => 'POS Tender Clearing (Voucher Redemption)', 'type' => 'asset', 'parent_code' => null,
+                'system_purpose' => SystemAccountPurpose::PosTenderClearing->value, 'is_system' => true],
         ];
     }
 }

@@ -6,6 +6,8 @@ import { useOperatorStore } from '@/stores/operatorStore';
 import { useCartStore } from '@/stores/cartStore';
 import { usePaymentStore } from '@/stores/paymentStore';
 import { useProductStore } from '@/stores/productStore';
+import { useRefundFlowStore } from '@/stores/refundFlowStore';
+import { useRefundDraftStore } from '@/stores/refundDraftStore';
 import { getErrorMessage } from '@/lib/api';
 
 const MAX_PIN_LENGTH = 6;
@@ -25,6 +27,9 @@ export function PinEntryPage({ isLocked }: PinEntryPageProps) {
   function handleSignOut() {
     setShowSignOut(false);
     useCartStore.getState().clearCart();
+    useRefundFlowStore.getState().clearAll();
+    useRefundDraftStore.getState().clearDraftState();
+    usePaymentStore.getState().clearVoucherTenders();
     usePaymentStore.getState().reset();
     useProductStore.getState().reset();
     useOperatorStore.getState().clearOperator();

@@ -267,7 +267,10 @@
     "pos": "نقطة البيع",
     "catalog": "الكتالوج",
     "crm": "إدارة علاقات العملاء",
-    "compliance": "تصدير الامتثال"
+    "compliance": "تصدير الامتثال",
+    "vouchers": "القسائم والأرصدة",
+    "posRefundPolicies": "سياسات الاسترداد",
+    "customerHistoryAudit": "تدقيق سجل العميل"
   },
   "locations": {
     "title": "إدارة المواقع",

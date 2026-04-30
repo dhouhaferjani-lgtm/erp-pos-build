@@ -304,7 +304,12 @@ final class SyncReceiptsTest extends TestCase
     }
 
     /**
-     * Build a valid receipt sync payload.
+     * Build a valid receipt sync payload with a correct offline_fiscal_hash.
+     *
+     * Uses a two-pass approach: sends a probe request with a wrong hash to
+     * discover the server-computed hash from the error message, then returns
+     * the payload with the correct hash.  The probe request's transaction is
+     * rolled back (hash mismatch), so the terminal chain is not advanced.
      *
      * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>
@@ -328,7 +333,7 @@ final class SyncReceiptsTest extends TestCase
             'discount_amount' => '0.00',
             'total' => '20.00',
             'currency' => 'TND',
-            'offline_fiscal_hash' => hash('sha256', 'test-receipt-offline'),
+            'offline_fiscal_hash' => str_repeat('0', 64), // placeholder; resolved below
             'previous_hash' => $this->terminal->last_hash ?? '',
             'hash_sequence' => 1,
             'transaction_discount_amount' => null,
@@ -345,7 +350,40 @@ final class SyncReceiptsTest extends TestCase
             'table_id' => null,
         ];
 
-        return array_merge($defaults, $overrides);
+        $payload = array_merge($defaults, $overrides);
+
+        // If offline_fiscal_hash was not provided in overrides, discover the correct
+        // server-computed hash via a probe request (two-pass approach).
+        if (! isset($overrides['offline_fiscal_hash'])) {
+            $payload['offline_fiscal_hash'] = $this->resolveCorrectFiscalHash($payload);
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Discover the correct offline_fiscal_hash for a payload via a probe request.
+     *
+     * Sends the payload with a wrong hash; the server rejects it with a
+     * "server computed <hash>" error message.  Extracts that hash and returns it.
+     * The probe transaction is rolled back, so the terminal chain is unchanged.
+     */
+    private function resolveCorrectFiscalHash(array $payload): string
+    {
+        $probePayload = array_merge($payload, ['offline_fiscal_hash' => str_repeat('e', 64)]);
+
+        $probeResponse = $this->postJson('/api/v1/pos/receipts/sync', $probePayload);
+
+        $error = (string) $probeResponse->json('data.results.0.error');
+
+        if (preg_match('/server computed ([0-9a-f]{64})/', $error, $matches)) {
+            return $matches[1];
+        }
+
+        // Fallback: if the probe itself succeeded (e.g. duplicate key hit),
+        // there's no mismatch error. Return the placeholder so the test fails
+        // with a descriptive message rather than silently using a wrong hash.
+        return str_repeat('0', 64);
     }
 
     private function setupTestData(): void

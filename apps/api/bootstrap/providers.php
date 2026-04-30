@@ -39,6 +39,7 @@ use App\Modules\Tenant\Infrastructure\Providers\TenantServiceProvider;
 use App\Modules\Treasury\Providers\TreasuryServiceProvider;
 use App\Modules\Uom\Infrastructure\Providers\UomServiceProvider;
 use App\Modules\Vehicle\Providers\VehicleServiceProvider;
+use App\Modules\Voucher\Providers\VoucherServiceProvider;
 use App\Modules\Workshop\Bundle\Infrastructure\BundleServiceProvider;
 use App\Modules\Workshop\Technician\TechnicianServiceProvider;
 use App\Modules\Workshop\WorkOrder\Infrastructure\WorkshopWorkOrderServiceProvider;
@@ -77,6 +78,7 @@ return [
     KitchenServiceProvider::class,
     UomServiceProvider::class,
     LoyaltyServiceProvider::class,
+    VoucherServiceProvider::class,
     CatalogServiceProvider::class,
     MenuServiceProvider::class,
     PromotionServiceProvider::class,

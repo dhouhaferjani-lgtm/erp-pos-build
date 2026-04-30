@@ -12,6 +12,9 @@ use App\Shared\Domain\CurrencyScale;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Barryvdh\DomPDF\PDF as DomPdf;
 use Carbon\Carbon;
+use Endroid\QrCode\ErrorCorrectionLevel;
+use Endroid\QrCode\QrCode;
+use Endroid\QrCode\Writer\SvgWriter;
 use NumberFormatter;
 
 /**
@@ -26,6 +29,7 @@ final class ReceiptPdfService
 {
     public function __construct(
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly ReceiptQrTokenIssuanceService $qrTokenIssuanceService,
     ) {}
 
     private function scale(): int
@@ -121,6 +125,18 @@ final class ReceiptPdfService
 
         $isReturn = $receipt->receipt_type === ReceiptType::Return;
 
+        // Issue QR token for this receipt (null when no active signing key).
+        $qrToken = $this->qrTokenIssuanceService->issueTokenFor($receipt);
+        $qrSvg = $qrToken !== null ? $this->renderQrSvg($qrToken) : null;
+
+        // For return receipts, also issue the original receipt's QR token.
+        $originalQrToken = null;
+        $originalQrSvg = null;
+        if ($isReturn && $receipt->originalReceipt !== null) {
+            $originalQrToken = $this->qrTokenIssuanceService->issueTokenFor($receipt->originalReceipt);
+            $originalQrSvg = $originalQrToken !== null ? $this->renderQrSvg($originalQrToken) : null;
+        }
+
         return [
             'receipt' => $receipt,
             'company' => $company,
@@ -148,6 +164,12 @@ final class ReceiptPdfService
             'formatDate' => fn (Carbon|string|null $date) => $this->formatDate($date, $locale),
             'formatDateTime' => fn (Carbon|string|null $date) => $this->formatDateTime($date, $locale),
             'formatNumber' => fn (string|float|null $number, int $decimals = 2) => $this->formatNumber($number, $decimals, $locale),
+            // QR token for receipt lookup at refund time (null when no active signing key).
+            'qrToken' => $qrToken,
+            'qrSvg' => $qrSvg,
+            // For refund receipts: original receipt's QR for traceability (spec §6.6).
+            'originalQrToken' => $originalQrToken,
+            'originalQrSvg' => $originalQrSvg,
         ];
     }
 
@@ -219,5 +241,26 @@ final class ReceiptPdfService
         $result = $formatter->format($number);
 
         return $result !== false ? $result : number_format($number, $decimals);
+    }
+
+    /**
+     * Render a QR token string as an inline SVG suitable for embedding in a PDF.
+     *
+     * Uses the installed endroid/qr-code library. The SVG writer produces compact,
+     * self-contained XML that dompdf can embed without external resources.
+     */
+    private function renderQrSvg(string $token): string
+    {
+        $qrCode = new QrCode(
+            data: $token,
+            errorCorrectionLevel: ErrorCorrectionLevel::Medium,
+            size: 120,
+            margin: 4,
+        );
+
+        $writer = new SvgWriter;
+        $result = $writer->write($qrCode, options: [SvgWriter::WRITER_OPTION_EXCLUDE_XML_DECLARATION => true]);
+
+        return $result->getString();
     }
 }

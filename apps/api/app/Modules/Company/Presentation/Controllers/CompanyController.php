@@ -215,6 +215,7 @@ class CompanyController extends Controller
 
         return response()->json([
             'data' => [
+                // Existing fields
                 'sales_order_expiry_days' => $settings->salesOrderExpiryDays,
                 'ecommerce_cart_expiry_minutes' => $settings->ecommerceCartExpiryMinutes,
                 'marketplace_order_expiry_hours' => $settings->marketplaceOrderExpiryHours,
@@ -222,6 +223,45 @@ class CompanyController extends Controller
                 'high_value_alert_threshold' => $settings->highValueAlertThreshold,
                 'inventory_count_trigger_threshold' => $settings->inventoryCountTriggerThreshold,
                 'auto_reserve_on_sales_order' => $settings->autoReserveOnSalesOrder,
+
+                // Refund-policy: return-window
+                'customer_history_window_days' => $settings->customerHistoryWindowDays,
+                'out_of_window_policy' => $settings->outOfWindowPolicy,
+
+                // Refund-policy: manager override
+                'manager_override_threshold_amount' => $settings->managerOverrideThresholdAmount,
+                'manager_override_threshold_percent' => $settings->managerOverrideThresholdPercent,
+                'manager_override_required_for_no_receipt' => $settings->managerOverrideRequiredForNoReceipt,
+
+                // Refund-policy: destinations + proration
+                'allowed_refund_destinations' => $settings->allowedRefundDestinations,
+                'proration_strategy' => $settings->prorationStrategy,
+
+                // Refund-policy: voucher defaults
+                'voucher_default_expiry_days' => $settings->voucherDefaultExpiryDays,
+                'voucher_transferable_default' => $settings->voucherTransferableDefault,
+                'voucher_cash_refund_allowed' => $settings->voucherCashRefundAllowed,
+
+                // Refund-policy: daily caps
+                'daily_refund_cap_per_cashier' => $settings->dailyRefundCapPerCashier,
+                'daily_refund_cap_override_allowed' => $settings->dailyRefundCapOverrideAllowed,
+
+                // Refund-policy: customer-history privacy
+                'customer_history_search_max_per_cashier_per_day' => $settings->customerHistorySearchMaxPerCashierPerDay,
+                'customer_history_search_alert_thresholds' => $settings->customerHistorySearchAlertThresholds,
+
+                // Refund-policy: voucher rate limits
+                'voucher_lookup_per_terminal_per_day' => $settings->voucherLookupPerTerminalPerDay,
+                'voucher_lookup_per_cashier_per_day' => $settings->voucherLookupPerCashierPerDay,
+                'voucher_lookup_failed_per_tenant_per_hour_alert' => $settings->voucherLookupFailedPerTenantPerHourAlert,
+                'voucher_lookup_failed_per_tenant_per_hour_block' => $settings->voucherLookupFailedPerTenantPerHourBlock,
+                'voucher_failed_attempts_auto_void' => $settings->voucherFailedAttemptsAutoVoid,
+
+                // Refund-policy: goodwill controls
+                'goodwill_named_customer_threshold' => $settings->goodwillNamedCustomerThreshold,
+                'goodwill_four_eyes_threshold' => $settings->goodwillFourEyesThreshold,
+                'goodwill_daily_issuance_cap_per_user' => $settings->goodwillDailyIssuanceCapPerUser,
+                'goodwill_bearer_default_off' => $settings->goodwillBearerDefaultOff,
             ],
         ]);
     }
@@ -239,6 +279,7 @@ class CompanyController extends Controller
             ->firstOrFail();
 
         $validated = $request->validate([
+            // Existing fields
             'sales_order_expiry_days' => ['sometimes', 'integer', 'min:0', 'max:365'],
             'ecommerce_cart_expiry_minutes' => ['sometimes', 'integer', 'min:0', 'max:1440'],
             'marketplace_order_expiry_hours' => ['sometimes', 'integer', 'min:0', 'max:168'],
@@ -246,12 +287,56 @@ class CompanyController extends Controller
             'high_value_alert_threshold' => ['sometimes', 'numeric', 'min:0'],
             'inventory_count_trigger_threshold' => ['sometimes', 'numeric', 'min:0'],
             'auto_reserve_on_sales_order' => ['sometimes', 'boolean'],
+
+            // Refund-policy: return-window
+            'customer_history_window_days' => ['sometimes', 'integer', 'min:0', 'max:365'],
+            'out_of_window_policy' => ['sometimes', 'string', 'in:refuse,voucher_only'],
+
+            // Refund-policy: manager override
+            'manager_override_threshold_amount' => ['sometimes', 'numeric', 'min:0'],
+            'manager_override_threshold_percent' => ['sometimes', 'numeric', 'min:0', 'max:100'],
+            'manager_override_required_for_no_receipt' => ['sometimes', 'boolean'],
+
+            // Refund-policy: destinations + proration
+            'allowed_refund_destinations' => ['sometimes', 'array'],
+            'allowed_refund_destinations.*' => ['string', 'in:original_payment,cash,store_voucher'],
+            'proration_strategy' => ['sometimes', 'string', 'in:proportional,largest_first,cashier_choice'],
+
+            // Refund-policy: voucher defaults
+            'voucher_default_expiry_days' => ['sometimes', 'integer', 'min:1', 'max:3650'],
+            'voucher_transferable_default' => ['sometimes', 'boolean'],
+            'voucher_cash_refund_allowed' => ['sometimes', 'boolean'],
+
+            // Refund-policy: daily caps
+            'daily_refund_cap_per_cashier' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'daily_refund_cap_override_allowed' => ['sometimes', 'boolean'],
+
+            // Refund-policy: customer-history privacy
+            'customer_history_search_max_per_cashier_per_day' => ['sometimes', 'integer', 'min:0', 'max:1000'],
+            'customer_history_search_alert_thresholds' => ['sometimes', 'array'],
+            'customer_history_search_alert_thresholds.rejected_specificity_per_hour' => ['sometimes', 'integer', 'min:0'],
+            'customer_history_search_alert_thresholds.same_partner_per_day' => ['sometimes', 'integer', 'min:0'],
+            'customer_history_search_alert_thresholds.cross_company_immediate' => ['sometimes', 'boolean'],
+
+            // Refund-policy: voucher rate limits
+            'voucher_lookup_per_terminal_per_day' => ['sometimes', 'integer', 'min:0', 'max:10000'],
+            'voucher_lookup_per_cashier_per_day' => ['sometimes', 'integer', 'min:0', 'max:10000'],
+            'voucher_lookup_failed_per_tenant_per_hour_alert' => ['sometimes', 'integer', 'min:0', 'max:10000'],
+            'voucher_lookup_failed_per_tenant_per_hour_block' => ['sometimes', 'integer', 'min:0', 'max:10000'],
+            'voucher_failed_attempts_auto_void' => ['sometimes', 'integer', 'min:1', 'max:100'],
+
+            // Refund-policy: goodwill controls
+            'goodwill_named_customer_threshold' => ['sometimes', 'numeric', 'min:0'],
+            'goodwill_four_eyes_threshold' => ['sometimes', 'numeric', 'min:0'],
+            'goodwill_daily_issuance_cap_per_user' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'goodwill_bearer_default_off' => ['sometimes', 'boolean'],
         ]);
 
         // Get current settings and merge with updates
         $currentSettings = $company->getReservationSettings();
 
         $newSettings = new ReservationSettings(
+            // Existing fields
             salesOrderExpiryDays: $validated['sales_order_expiry_days'] ?? $currentSettings->salesOrderExpiryDays,
             ecommerceCartExpiryMinutes: $validated['ecommerce_cart_expiry_minutes'] ?? $currentSettings->ecommerceCartExpiryMinutes,
             marketplaceOrderExpiryHours: $validated['marketplace_order_expiry_hours'] ?? $currentSettings->marketplaceOrderExpiryHours,
@@ -259,6 +344,67 @@ class CompanyController extends Controller
             highValueAlertThreshold: $validated['high_value_alert_threshold'] ?? $currentSettings->highValueAlertThreshold,
             inventoryCountTriggerThreshold: $validated['inventory_count_trigger_threshold'] ?? $currentSettings->inventoryCountTriggerThreshold,
             autoReserveOnSalesOrder: $validated['auto_reserve_on_sales_order'] ?? $currentSettings->autoReserveOnSalesOrder,
+
+            // Refund-policy: return-window
+            customerHistoryWindowDays: $validated['customer_history_window_days'] ?? $currentSettings->customerHistoryWindowDays,
+            outOfWindowPolicy: $validated['out_of_window_policy'] ?? $currentSettings->outOfWindowPolicy,
+
+            // Refund-policy: manager override
+            managerOverrideThresholdAmount: isset($validated['manager_override_threshold_amount'])
+                ? number_format((float) $validated['manager_override_threshold_amount'], 2, '.', '')
+                : $currentSettings->managerOverrideThresholdAmount,
+            managerOverrideThresholdPercent: isset($validated['manager_override_threshold_percent'])
+                ? number_format((float) $validated['manager_override_threshold_percent'], 2, '.', '')
+                : $currentSettings->managerOverrideThresholdPercent,
+            managerOverrideRequiredForNoReceipt: $validated['manager_override_required_for_no_receipt'] ?? $currentSettings->managerOverrideRequiredForNoReceipt,
+
+            // Refund-policy: destinations + proration
+            allowedRefundDestinations: $validated['allowed_refund_destinations'] ?? $currentSettings->allowedRefundDestinations,
+            prorationStrategy: $validated['proration_strategy'] ?? $currentSettings->prorationStrategy,
+
+            // Refund-policy: voucher defaults
+            voucherDefaultExpiryDays: $validated['voucher_default_expiry_days'] ?? $currentSettings->voucherDefaultExpiryDays,
+            voucherTransferableDefault: $validated['voucher_transferable_default'] ?? $currentSettings->voucherTransferableDefault,
+            voucherCashRefundAllowed: $validated['voucher_cash_refund_allowed'] ?? $currentSettings->voucherCashRefundAllowed,
+
+            // Refund-policy: daily caps
+            dailyRefundCapPerCashier: array_key_exists('daily_refund_cap_per_cashier', $validated)
+                ? (isset($validated['daily_refund_cap_per_cashier'])
+                    ? number_format((float) $validated['daily_refund_cap_per_cashier'], 2, '.', '')
+                    : null)
+                : $currentSettings->dailyRefundCapPerCashier,
+            dailyRefundCapOverrideAllowed: $validated['daily_refund_cap_override_allowed'] ?? $currentSettings->dailyRefundCapOverrideAllowed,
+
+            // Refund-policy: customer-history privacy
+            customerHistorySearchMaxPerCashierPerDay: $validated['customer_history_search_max_per_cashier_per_day'] ?? $currentSettings->customerHistorySearchMaxPerCashierPerDay,
+            customerHistorySearchAlertThresholds: isset($validated['customer_history_search_alert_thresholds'])
+                ? [
+                    'rejected_specificity_per_hour' => (int) ($validated['customer_history_search_alert_thresholds']['rejected_specificity_per_hour'] ?? $currentSettings->customerHistorySearchAlertThresholds['rejected_specificity_per_hour']),
+                    'same_partner_per_day' => (int) ($validated['customer_history_search_alert_thresholds']['same_partner_per_day'] ?? $currentSettings->customerHistorySearchAlertThresholds['same_partner_per_day']),
+                    'cross_company_immediate' => (bool) ($validated['customer_history_search_alert_thresholds']['cross_company_immediate'] ?? $currentSettings->customerHistorySearchAlertThresholds['cross_company_immediate']),
+                ]
+                : $currentSettings->customerHistorySearchAlertThresholds,
+
+            // Refund-policy: voucher rate limits
+            voucherLookupPerTerminalPerDay: $validated['voucher_lookup_per_terminal_per_day'] ?? $currentSettings->voucherLookupPerTerminalPerDay,
+            voucherLookupPerCashierPerDay: $validated['voucher_lookup_per_cashier_per_day'] ?? $currentSettings->voucherLookupPerCashierPerDay,
+            voucherLookupFailedPerTenantPerHourAlert: $validated['voucher_lookup_failed_per_tenant_per_hour_alert'] ?? $currentSettings->voucherLookupFailedPerTenantPerHourAlert,
+            voucherLookupFailedPerTenantPerHourBlock: $validated['voucher_lookup_failed_per_tenant_per_hour_block'] ?? $currentSettings->voucherLookupFailedPerTenantPerHourBlock,
+            voucherFailedAttemptsAutoVoid: $validated['voucher_failed_attempts_auto_void'] ?? $currentSettings->voucherFailedAttemptsAutoVoid,
+
+            // Refund-policy: goodwill controls
+            goodwillNamedCustomerThreshold: isset($validated['goodwill_named_customer_threshold'])
+                ? number_format((float) $validated['goodwill_named_customer_threshold'], 2, '.', '')
+                : $currentSettings->goodwillNamedCustomerThreshold,
+            goodwillFourEyesThreshold: isset($validated['goodwill_four_eyes_threshold'])
+                ? number_format((float) $validated['goodwill_four_eyes_threshold'], 2, '.', '')
+                : $currentSettings->goodwillFourEyesThreshold,
+            goodwillDailyIssuanceCapPerUser: array_key_exists('goodwill_daily_issuance_cap_per_user', $validated)
+                ? (isset($validated['goodwill_daily_issuance_cap_per_user'])
+                    ? number_format((float) $validated['goodwill_daily_issuance_cap_per_user'], 2, '.', '')
+                    : null)
+                : $currentSettings->goodwillDailyIssuanceCapPerUser,
+            goodwillBearerDefaultOff: $validated['goodwill_bearer_default_off'] ?? $currentSettings->goodwillBearerDefaultOff,
         );
 
         $company->update([
@@ -267,6 +413,7 @@ class CompanyController extends Controller
 
         return response()->json([
             'data' => [
+                // Existing fields
                 'sales_order_expiry_days' => $newSettings->salesOrderExpiryDays,
                 'ecommerce_cart_expiry_minutes' => $newSettings->ecommerceCartExpiryMinutes,
                 'marketplace_order_expiry_hours' => $newSettings->marketplaceOrderExpiryHours,
@@ -274,6 +421,45 @@ class CompanyController extends Controller
                 'high_value_alert_threshold' => $newSettings->highValueAlertThreshold,
                 'inventory_count_trigger_threshold' => $newSettings->inventoryCountTriggerThreshold,
                 'auto_reserve_on_sales_order' => $newSettings->autoReserveOnSalesOrder,
+
+                // Refund-policy: return-window
+                'customer_history_window_days' => $newSettings->customerHistoryWindowDays,
+                'out_of_window_policy' => $newSettings->outOfWindowPolicy,
+
+                // Refund-policy: manager override
+                'manager_override_threshold_amount' => $newSettings->managerOverrideThresholdAmount,
+                'manager_override_threshold_percent' => $newSettings->managerOverrideThresholdPercent,
+                'manager_override_required_for_no_receipt' => $newSettings->managerOverrideRequiredForNoReceipt,
+
+                // Refund-policy: destinations + proration
+                'allowed_refund_destinations' => $newSettings->allowedRefundDestinations,
+                'proration_strategy' => $newSettings->prorationStrategy,
+
+                // Refund-policy: voucher defaults
+                'voucher_default_expiry_days' => $newSettings->voucherDefaultExpiryDays,
+                'voucher_transferable_default' => $newSettings->voucherTransferableDefault,
+                'voucher_cash_refund_allowed' => $newSettings->voucherCashRefundAllowed,
+
+                // Refund-policy: daily caps
+                'daily_refund_cap_per_cashier' => $newSettings->dailyRefundCapPerCashier,
+                'daily_refund_cap_override_allowed' => $newSettings->dailyRefundCapOverrideAllowed,
+
+                // Refund-policy: customer-history privacy
+                'customer_history_search_max_per_cashier_per_day' => $newSettings->customerHistorySearchMaxPerCashierPerDay,
+                'customer_history_search_alert_thresholds' => $newSettings->customerHistorySearchAlertThresholds,
+
+                // Refund-policy: voucher rate limits
+                'voucher_lookup_per_terminal_per_day' => $newSettings->voucherLookupPerTerminalPerDay,
+                'voucher_lookup_per_cashier_per_day' => $newSettings->voucherLookupPerCashierPerDay,
+                'voucher_lookup_failed_per_tenant_per_hour_alert' => $newSettings->voucherLookupFailedPerTenantPerHourAlert,
+                'voucher_lookup_failed_per_tenant_per_hour_block' => $newSettings->voucherLookupFailedPerTenantPerHourBlock,
+                'voucher_failed_attempts_auto_void' => $newSettings->voucherFailedAttemptsAutoVoid,
+
+                // Refund-policy: goodwill controls
+                'goodwill_named_customer_threshold' => $newSettings->goodwillNamedCustomerThreshold,
+                'goodwill_four_eyes_threshold' => $newSettings->goodwillFourEyesThreshold,
+                'goodwill_daily_issuance_cap_per_user' => $newSettings->goodwillDailyIssuanceCapPerUser,
+                'goodwill_bearer_default_off' => $newSettings->goodwillBearerDefaultOff,
             ],
             'message' => 'Reservation settings updated successfully',
         ]);

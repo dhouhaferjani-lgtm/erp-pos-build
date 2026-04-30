@@ -123,6 +123,8 @@ const TaxSettingsPage = lazy(() => import('../features/settings/TaxSettingsPage'
 const LocationsPage = lazy(() => import('../features/settings/LocationsPage').then((m) => ({ default: m.LocationsPage })))
 const InventorySettings = lazy(() => import('../features/settings/components/InventorySettings').then((m) => ({ default: m.InventorySettings })))
 const UnitsSettingsPage = lazy(() => import('../features/uom').then((m) => ({ default: m.UnitsSettingsPage })))
+const PosRefundPoliciesPage = lazy(() => import('../features/settings/pages/PosRefundPoliciesPage').then((m) => ({ default: m.PosRefundPoliciesPage })))
+const CustomerHistoryAuditPage = lazy(() => import('../features/customer-history-audit').then((m) => ({ default: m.CustomerHistoryAuditPage })))
 
 // Finance module
 const ChartOfAccountsPage = lazy(() => import('../features/finance/pages/ChartOfAccountsPage').then((m) => ({ default: m.ChartOfAccountsPage })))
@@ -241,6 +243,8 @@ const LoyaltyProgramDetailPage = lazy(() => import('../features/loyalty').then((
 const LoyaltyMemberListPage = lazy(() => import('../features/loyalty').then((m) => ({ default: m.MemberListPage })))
 const LoyaltyMemberFormPage = lazy(() => import('../features/loyalty').then((m) => ({ default: m.MemberFormPage })))
 const LoyaltyMemberDetailPage = lazy(() => import('../features/loyalty').then((m) => ({ default: m.MemberDetailPage })))
+const VoucherListPage = lazy(() => import('../features/vouchers/pages/VoucherListPage').then((m) => ({ default: m.VoucherListPage })))
+const VoucherDetailPage = lazy(() => import('../features/vouchers/pages/VoucherDetailPage').then((m) => ({ default: m.VoucherDetailPage })))
 
 // Legal pages
 const PrivacyPolicyPage = lazy(() => import('../pages/legal/PrivacyPolicyPage').then((m) => ({ default: m.PrivacyPolicyPage })))
@@ -1783,6 +1787,26 @@ export function AppRoutes() {
             }
           />
           <Route
+            path="pos-refund-policies"
+            element={
+              <RequirePermission moduleKey="settings">
+                <SuspenseWrapper>
+                  <PosRefundPoliciesPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="audit/customer-history"
+            element={
+              <RequirePermission permission="pos.search_customer_full_history">
+                <SuspenseWrapper>
+                  <CustomerHistoryAuditPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
             path="units"
             element={
               <RequirePermission permission="uom.view">
@@ -2437,6 +2461,27 @@ export function AppRoutes() {
               <RequirePermission permission="loyalty.manage">
                 <SuspenseWrapper>
                   <LoyaltyMemberFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          {/* Vouchers & Credits */}
+          <Route
+            path="vouchers"
+            element={
+              <RequirePermission moduleKey="pos">
+                <SuspenseWrapper>
+                  <VoucherListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="vouchers/:id"
+            element={
+              <RequirePermission moduleKey="pos">
+                <SuspenseWrapper>
+                  <VoucherDetailPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

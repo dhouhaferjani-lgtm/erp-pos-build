@@ -11,6 +11,8 @@ use App\Modules\POS\Application\Exceptions\CashCountValidationException;
 use App\Modules\POS\Application\Exceptions\UnauthorizedManagerException;
 use App\Modules\POS\Domain\DTOs\CashCountBreakdownDTO;
 use App\Modules\POS\Domain\DTOs\CashCountInputDTO;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
+use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Events\CashCountRecorded;
 use App\Modules\POS\Domain\Events\ZReportGenerated;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
@@ -25,6 +27,8 @@ use App\Modules\POS\Domain\XReport;
 use App\Modules\POS\Domain\ZReport;
 use App\Modules\POS\Infrastructure\Repositories\ZReportCountRepository;
 use App\Modules\Treasury\Application\Services\PaymentToleranceQueryService;
+use App\Modules\Voucher\Domain\Enums\VoucherEvent;
+use App\Modules\Voucher\Domain\VoucherLedger;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Barryvdh\DomPDF\PDF as DomPdf;
@@ -173,8 +177,13 @@ final class ReportGenerationService
                 return $existing;
             }
 
+            // Determine schema version for this Z report based on terminal's fiscal_schema_version.
+            // Terminals at v3 emit the full sale/return/voucher split; v2 and below use the
+            // existing cash-count path.
+            $terminalSchemaVersion = (int) ($terminal->fiscal_schema_version ?? 2);
+
             // Calculate base shift totals (sales, VAT, payment-type aggregates).
-            $reportData = $this->calculateShiftTotals($terminal, $shift->opened_at, now());
+            $reportData = $this->calculateShiftTotals($terminal, $shift->opened_at, now(), $terminalSchemaVersion);
 
             // Add cash drawer information.
             $reportData['opening_cash'] = $shift->opening_cash;
@@ -185,6 +194,12 @@ final class ReportGenerationService
             $validation = null;
             $perTenderWithCounts = [];
             $currencyCode = $this->resolveCurrencyCode($terminal);
+
+            // For v3 terminals without cash-count input, stamp schema_version=3 so the
+            // hash normalizer picks up the new monetary keys (refunds_amount, vouchers_*).
+            if ($terminalSchemaVersion >= 3 && $cashCountInputs === null) {
+                $reportData['schema_version'] = 3;
+            }
 
             if ($cashCountInputs !== null) {
                 $expectedPerMethod = $this->buildExpectedPerMethod($shift, $cashCountInputs);
@@ -230,7 +245,9 @@ final class ReportGenerationService
                 $perTenderWithCounts = $this->stampTransactionCounts($validation->perTender, $transactionCounts);
 
                 // Stamp cash-count blocks onto report_data.
-                $reportData['schema_version'] = 2;
+                // Use schema_version=3 for v3 terminals so the hash normalizer processes
+                // the new refunds_amount / vouchers_* keys.
+                $reportData['schema_version'] = $terminalSchemaVersion >= 3 ? 3 : 2;
                 $reportData['cash_counts'] = array_map(
                     fn (CashCountBreakdownDTO $b): array => [
                         'payment_method_id' => $b->paymentMethodId,
@@ -471,6 +488,7 @@ final class ReportGenerationService
         $rows = DB::table('pos_receipt_payments')
             ->join('pos_receipts', 'pos_receipt_payments.receipt_id', '=', 'pos_receipts.id')
             ->where('pos_receipts.terminal_id', $shift->terminal_id)
+            ->where('pos_receipts.fiscal_status', FiscalStatus::Fiscalized->value)
             ->where('pos_receipts.is_voided', false)
             ->where('pos_receipts.is_training', false)
             ->whereBetween('pos_receipts.posted_at', [$shift->opened_at, now()])
@@ -515,6 +533,7 @@ final class ReportGenerationService
         $rows = DB::table('pos_receipt_payments')
             ->join('pos_receipts', 'pos_receipt_payments.receipt_id', '=', 'pos_receipts.id')
             ->where('pos_receipts.terminal_id', $shift->terminal_id)
+            ->where('pos_receipts.fiscal_status', FiscalStatus::Fiscalized->value)
             ->where('pos_receipts.is_voided', false)
             ->where('pos_receipts.is_training', false)
             ->whereBetween('pos_receipts.posted_at', [$shift->opened_at, now()])
@@ -800,15 +819,19 @@ final class ReportGenerationService
      * Calculate shift totals for reports
      *
      * Aggregates all receipts in the time period.
+     * Sale receipts (type=sale) contribute to gross_sales / net_sales / sales_count.
+     * Return receipts (type=return) contribute to refunds_count / refunds_amount.
+     * Voided receipts are counted but excluded from monetary totals.
      *
      * Shift window driven by pos_receipts.posted_at — see REALIGNMENT-LOG 2026-04-26.
      *
      * @param  Terminal  $terminal  The terminal to calculate for
      * @param  \Illuminate\Support\Carbon  $startTime  Period start
      * @param  \Illuminate\Support\Carbon  $endTime  Period end
+     * @param  int  $schemaVersion  Report schema version (2 = cash-count, 3 = v3 with voucher counters)
      * @return array<string, mixed> Snapshot data array
      */
-    private function calculateShiftTotals(Terminal $terminal, $startTime, $endTime): array
+    private function calculateShiftTotals(Terminal $terminal, $startTime, $endTime, int $schemaVersion = 1): array
     {
         // Get all production receipts in period (exclude training).
         // Uses posted_at (the fiscal timestamp) as the canonical shift-window column
@@ -816,6 +839,7 @@ final class ReportGenerationService
         $receipts = Receipt::where('terminal_id', $terminal->id)
             ->where('is_training', false)
             ->whereBetween('posted_at', [$startTime, $endTime])
+            ->with(['vatDetails', 'payments'])
             ->get();
 
         $grossSales = '0.00';
@@ -839,6 +863,15 @@ final class ReportGenerationService
                 continue;
             }
 
+            if ($receipt->receipt_type === ReceiptType::Return) {
+                // Return receipts: accumulate refund counters only.
+                $refundsCount++;
+                $refundsAmount = bcadd($refundsAmount, $receipt->total, $this->scale());
+
+                continue;
+            }
+
+            // Sale receipt (default path)
             $salesCount++;
             $grossSales = bcadd($grossSales, $receipt->total, $this->scale());
             $taxAmount = bcadd($taxAmount, $receipt->tax_amount, $this->scale());
@@ -875,7 +908,7 @@ final class ReportGenerationService
             }
         }
 
-        return [
+        $result = [
             'sales_count' => $salesCount,
             'gross_sales' => $grossSales,
             'net_sales' => $netSales,
@@ -885,6 +918,74 @@ final class ReportGenerationService
             'voided_count' => $voidedCount,
             'vat_breakdown' => array_values($vatBreakdown),
             'payment_methods' => array_values($paymentMethods),
+        ];
+
+        // v3 reports include voucher counters from voucher_ledger for the window.
+        if ($schemaVersion >= 3) {
+            $voucherCounters = $this->calculateVoucherCounters($terminal, $startTime, $endTime);
+            $result = array_merge($result, $voucherCounters);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Calculate voucher counters for the shift window from voucher_ledger.
+     * Called only for schema_version >= 3 reports.
+     *
+     * @param  \Illuminate\Support\Carbon  $startTime
+     * @param  \Illuminate\Support\Carbon  $endTime
+     * @return array{
+     *     vouchers_issued_count: int,
+     *     vouchers_issued_amount: string,
+     *     vouchers_redeemed_count: int,
+     *     vouchers_redeemed_amount: string,
+     * }
+     */
+    private function calculateVoucherCounters(Terminal $terminal, $startTime, $endTime): array
+    {
+        $issuedCount = 0;
+        $issuedAmount = '0.00';
+        $redeemedCount = 0;
+        $redeemedAmount = '0.00';
+
+        // Issued events: positive amount entries for this terminal in the window.
+        // VoucherEvent::Issued has a positive amount (credit issued).
+        $issuedRows = VoucherLedger::where('terminal_id', $terminal->id)
+            ->whereIn('event', [VoucherEvent::Issued->value])
+            ->whereBetween('occurred_at', [$startTime, $endTime])
+            ->get(['amount']);
+
+        foreach ($issuedRows as $row) {
+            $issuedCount++;
+            /** @var numeric-string $amount */
+            $amount = (string) $row->amount;
+            $issuedAmount = bcadd($issuedAmount, $amount, $this->scale());
+        }
+
+        // Redeemed events: negative amount entries for this terminal in the window.
+        // Use absolute value for the counter.
+        $redeemedRows = VoucherLedger::where('terminal_id', $terminal->id)
+            ->whereIn('event', [VoucherEvent::Redeemed->value, VoucherEvent::PartiallyRedeemed->value])
+            ->whereBetween('occurred_at', [$startTime, $endTime])
+            ->get(['amount']);
+
+        foreach ($redeemedRows as $row) {
+            $redeemedCount++;
+            /** @var numeric-string $amount */
+            $amount = (string) $row->amount;
+            // Redemption amounts are stored as negative; use absolute value for the report.
+            $absAmount = bccomp($amount, '0', $this->scale()) < 0
+                ? bcmul($amount, '-1', $this->scale())
+                : $amount;
+            $redeemedAmount = bcadd($redeemedAmount, $absAmount, $this->scale());
+        }
+
+        return [
+            'vouchers_issued_count' => $issuedCount,
+            'vouchers_issued_amount' => $issuedAmount,
+            'vouchers_redeemed_count' => $redeemedCount,
+            'vouchers_redeemed_amount' => $redeemedAmount,
         ];
     }
 }

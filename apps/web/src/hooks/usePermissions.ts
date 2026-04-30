@@ -85,6 +85,11 @@ export const PERMISSIONS = {
   'pos.view_receipts': ['admin', 'manager', 'cashier'],
   'pos.manage_tables': ['admin', 'manager'],
   'pos.configure_cash_count': ['admin', 'manager'],
+  'pos.void_voucher': ['admin', 'manager'],
+  'pos.extend_voucher_expiry': ['admin', 'manager'],
+  'pos.transfer_voucher': ['admin'],
+  'pos.issue_goodwill_voucher': ['admin', 'manager'],
+  'pos.search_customer_full_history': ['admin', 'manager'],
 
   // Catalog (Composite Items & Modifiers)
   'composite-items.view': ['admin', 'manager'],

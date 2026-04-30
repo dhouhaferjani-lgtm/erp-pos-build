@@ -7,10 +7,18 @@ namespace App\Modules\POS\Domain\Events;
 use App\Shared\Domain\Events\DomainEvent;
 
 /**
- * Dispatched when a POS receipt is created and fiscally sealed.
+ * Dispatched when a POS receipt is fiscally sealed (post-finalization).
  *
- * NF525 TICKET event - every receipt creation must be audit-logged
- * with its fiscal hash and chain sequence for compliance verification.
+ * NF525 TICKET event — fired by ReceiptFinalizationService::finalize() after the
+ * fiscal hash is computed and the terminal chain advances.  At this point
+ * fiscalHash and chainSequence are always set.
+ *
+ * The preceding lifecycle event (receipt created as pending_seal) is
+ * ReceiptDrafted, fired by ReceiptCreationService::createReceipt().
+ *
+ * Rule #8 — this event is immutable forever.  Do not widen fiscalHash or
+ * chainSequence to nullable.  Introduce a versioned successor (ReceiptCreatedV2)
+ * instead if the signature must change.
  */
 final class ReceiptCreated extends DomainEvent
 {

@@ -70,6 +70,24 @@ pub struct ReceiptData {
     pub variance_reason: Option<String>,
     pub variance_severity: Option<String>,
     pub aggregate_variance: Option<String>,
+    /// Signed QR token (`v:kid:receipt_uuid:mac`) for THIS receipt. When present,
+    /// a centred QR + human-readable token is rendered at the footer. Absent /
+    /// null on offline receipts whose token has not been signed by the server.
+    #[serde(default)]
+    pub qr_token: Option<String>,
+    /// Receipt-kind discriminator. `"refund"` triggers the
+    /// REMBOURSEMENT/REFUND header and the original-ticket reference block;
+    /// any other value (or absent) is treated as a sale receipt.
+    #[serde(default)]
+    pub receipt_kind: Option<String>,
+    /// On refund receipts: the original sale receipt's number.
+    #[serde(default)]
+    pub original_receipt_number: Option<String>,
+    /// On refund receipts: the original sale receipt's QR token, re-printed
+    /// at the top of the refund receipt so the original can still be scanned
+    /// for further partial refunds.
+    #[serde(default)]
+    pub original_receipt_qr_token: Option<String>,
 }
 
 /// Localized receipt labels. All fields optional with English defaults.
@@ -104,6 +122,12 @@ pub struct ReceiptLabels {
     pub cash_count_col_expected: Option<String>,
     pub cash_count_col_actual: Option<String>,
     pub cash_count_col_variance: Option<String>,
+    /// Refund-receipt header label (e.g. "REMBOURSEMENT" / "REFUND" / "AVOIR").
+    pub refund_header: Option<String>,
+    /// "Original ticket:" label printed on refund receipts.
+    pub original_ticket: Option<String>,
+    /// "Scan original ticket:" label above the original-receipt QR re-print.
+    pub original_qr_label: Option<String>,
 }
 
 impl ReceiptData {
@@ -178,7 +202,7 @@ pub struct DrawerKickSettings {
 }
 
 impl PrintSettings {
-    fn code_page(&self) -> u8 {
+    pub(crate) fn code_page(&self) -> u8 {
         match self.encoding.as_str() {
             "cp858" => 19,
             "cp1252" => 16,
@@ -187,20 +211,25 @@ impl PrintSettings {
     }
 
     /// Return the `encoding_rs` encoding matching the configured code page.
-    fn encoding_rs(&self) -> &'static encoding_rs::Encoding {
+    pub(crate) fn encoding_rs(&self) -> &'static encoding_rs::Encoding {
         match self.encoding.as_str() {
             "cp1252" => encoding_rs::WINDOWS_1252,
             "cp858" => encoding_rs::WINDOWS_1252, // CP858 ≈ CP850 + euro; 1252 covers French needs
-            _ => encoding_rs::WINDOWS_1252,        // default to 1252 instead of cp437
+            _ => encoding_rs::WINDOWS_1252,       // default to 1252 instead of cp437
         }
     }
 
-    fn cut_mode_enum(&self) -> Option<CutMode> {
+    pub(crate) fn cut_mode_enum(&self) -> Option<CutMode> {
         match self.cut_mode.as_str() {
             "full" => Some(CutMode::Full),
             "partial" => Some(CutMode::Partial),
             _ => None, // "none"
         }
+    }
+
+    /// Returns `true` when cutting is enabled (i.e. `cut_mode` is not `"none"`).
+    pub(crate) fn is_cut_enabled(&self) -> bool {
+        self.cut_mode != "none"
     }
 }
 
@@ -268,6 +297,43 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
         b.bold(false);
         b.font_size(FontSize::Normal);
         b.align(Alignment::Left);
+    }
+
+    // ── REMBOURSEMENT / REFUND banner (refund receipts only) ──
+    // Gated on receipt_kind == "refund". Sale receipts (default) skip this block.
+    let is_refund = data
+        .receipt_kind
+        .as_deref()
+        .map(|k| k.eq_ignore_ascii_case("refund"))
+        .unwrap_or(false);
+
+    if is_refund {
+        b.align(Alignment::Center);
+        b.font_size(FontSize::DoubleWidthHeight);
+        b.bold(true);
+        b.text_line(&data.label(|l| &l.refund_header, "REFUND"));
+        b.bold(false);
+        b.font_size(FontSize::Normal);
+        b.align(Alignment::Left);
+
+        // Original ticket reference + original-ticket QR re-print
+        if let Some(ref orig_num) = data.original_receipt_number {
+            b.two_column(
+                &data.label(|l| &l.original_ticket, "Original ticket:"),
+                orig_num,
+            );
+        }
+
+        if let Some(ref orig_token) = data.original_receipt_qr_token {
+            b.align(Alignment::Center);
+            b.empty_line();
+            b.select_font(true); // Font B (smaller) for the label
+            b.text_line(&data.label(|l| &l.original_qr_label, "Scan original ticket:"));
+            b.select_font(false);
+            b.qr_code(orig_token, 4, QrErrorCorrection::M);
+            b.empty_line();
+            b.align(Alignment::Left);
+        }
     }
 
     b.separator('=');
@@ -432,6 +498,27 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
         }
 
         b.select_font(false); // Back to Font A
+    }
+
+    // ── Receipt QR token (scannable for return / partial refund) ──
+    // The QR encodes the canonical `v:kid:receipt_uuid:mac` token signed by
+    // the backend's ReceiptQrTokenSigner. Any terminal can scan a printed
+    // receipt to start a return — see voucherRepository.findReceiptByQrToken.
+    // Distinct from the fiscal_hash QR above (compliance-only) — this one
+    // is workflow-facing.
+    if let Some(ref token) = data.qr_token {
+        if !token.is_empty() {
+            b.separator('-');
+            b.align(Alignment::Center);
+            b.empty_line();
+            b.qr_code(token, 4, QrErrorCorrection::M);
+            b.empty_line();
+            // Human-readable token below the QR (small font) so it can be
+            // typed in if the QR is damaged.
+            b.select_font(true);
+            b.text_line(token);
+            b.select_font(false);
+        }
     }
 
     // ── Footer ──
@@ -691,6 +778,10 @@ mod tests_z_cash_counts {
             variance_reason: Some("till miscount".to_string()),
             variance_severity: Some("warning".to_string()),
             aggregate_variance: Some("5.00".to_string()),
+            qr_token: None,
+            receipt_kind: None,
+            original_receipt_number: None,
+            original_receipt_qr_token: None,
         };
         let bytes = format_receipt_with_settings(&data, None);
         let text = String::from_utf8_lossy(&bytes);

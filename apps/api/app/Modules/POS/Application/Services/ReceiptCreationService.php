@@ -23,9 +23,10 @@ use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
-use App\Modules\POS\Domain\Events\ReceiptCreated;
+use App\Modules\POS\Domain\Events\ReceiptDrafted;
 use App\Modules\POS\Domain\Exceptions\DiscountExceedsLimitException;
 use App\Modules\POS\Domain\Exceptions\DiscountNotAllowedException;
 use App\Modules\POS\Domain\Receipt;
@@ -47,16 +48,19 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
- * Service for creating POS receipts with stock decrement and fiscal hashing.
+ * Service for creating POS receipts with stock decrement.
  *
- * Handles the full receipt creation flow:
+ * Handles the draft-creation phase of the receipt lifecycle:
  * 1. Validate active shift on terminal
  * 2. Calculate line totals and VAT
- * 3. Generate receipt number from terminal sequence
- * 4. Create Receipt with lines and VAT details
+ * 3. Generate receipt number from terminal sequence (advances current_sequence)
+ * 4. Create Receipt in pending_seal state (fiscal_hash = null, no chain advance)
  * 5. Decrement stock with pessimistic locking
  * 6. Create StockMovement audit records
- * 7. Compute fiscal hash chain
+ *
+ * Fiscal sealing (hash computation and terminal last_hash advance) happens
+ * separately in ReceiptFinalizationService::finalize() once payment is confirmed.
+ * Training receipts are sealed inline at create time (they are not part of the chain).
  */
 final class ReceiptCreationService
 {
@@ -89,6 +93,7 @@ final class ReceiptCreationService
      * @param  string|null  $loyaltyDiscountAmount  Optional loyalty reward discount
      * @param  string|null  $loyaltyRewardId  Optional loyalty reward reference
      * @param  ConsumptionMode|null  $consumptionMode  Optional consumption mode (F&B)
+     * @param  string|null  $exchangeGroupId  Exchange group UUID to commit in both halves' v3 hash (Phase F)
      * @return Receipt The created receipt with relationships loaded
      *
      * @throws \RuntimeException If no active shift or insufficient stock
@@ -108,6 +113,7 @@ final class ReceiptCreationService
         ?string $loyaltyDiscountAmount = null,
         ?string $loyaltyRewardId = null,
         ?ConsumptionMode $consumptionMode = null,
+        ?string $exchangeGroupId = null,
     ): Receipt {
         if (count($lines) === 0) {
             throw new \InvalidArgumentException('At least one line item is required');
@@ -115,7 +121,7 @@ final class ReceiptCreationService
 
         $companyId = $this->companyContext->requireCompanyId();
 
-        return DB::transaction(function () use ($terminalId, $lines, $customerId, $contactId, $notes, $companyId, $transactionDiscountAmount, $transactionDiscountReason, $couponCode, $loyaltyDiscountAmount, $loyaltyRewardId, $consumptionMode): Receipt {
+        return DB::transaction(function () use ($terminalId, $lines, $customerId, $contactId, $notes, $companyId, $transactionDiscountAmount, $transactionDiscountReason, $couponCode, $loyaltyDiscountAmount, $loyaltyRewardId, $consumptionMode, $exchangeGroupId): Receipt {
             // 1. Lock and load terminal with location
             /** @var Terminal $terminal */
             $terminal = Terminal::where('company_id', $companyId)
@@ -475,14 +481,20 @@ final class ReceiptCreationService
                 ? $this->generateTrainingReceiptNumber($terminal, $currentYear, $sequence)
                 : $this->generateReceiptNumber($terminal, $currentYear, $sequence);
 
-            // 6. Calculate VAT and payment hashes (payment hash is empty initially)
+            // 6. Pre-compute VAT and payment hashes stored on the receipt row.
+            // These are used as inputs to the fiscal hash computed later in
+            // ReceiptFinalizationService::finalize(). The payment hash is seeded
+            // with an empty payments list at create time; it will be correct once
+            // payments are recorded via ReceiptPaymentService.
             $vatHash = $this->receiptHashService->hashVATBreakdown(array_values($vatAggregates));
             $paymentHash = $this->receiptHashService->hashPaymentMethods([]);
 
-            // 7. Create receipt with previous_hash set immediately
+            // 7. Build receipt in draft state.
+            // Non-training receipts are created as pending_seal: fiscal_hash, previous_hash,
+            // and chain_sequence are null. The terminal hash chain is NOT advanced here.
+            // ReceiptFinalizationService::finalize() seals the receipt and advances the chain.
+            // Training receipts are sealed inline (they are excluded from the fiscal chain).
             $now = Carbon::now();
-            // Training receipts skip hash chain — no fiscal_hash, previous_hash, or chain_sequence
-            $previousHash = $isTraining ? null : $terminal->last_hash;
             $currency = $company->currency ?? 'TND';
 
             // 6a. Resolve customer info before receipt creation (must be set at INSERT time,
@@ -516,8 +528,17 @@ final class ReceiptCreationService
                 }
             }
 
-            // 7a. Build receipt in memory to calculate fiscal hash before INSERT
+            // 7a. Build and persist receipt.
+            // Non-training receipts start as pending_seal (fiscal_hash, previous_hash,
+            // and chain_sequence remain null until ReceiptFinalizationService::finalize()).
+            // Training receipts are sealed inline with a placeholder hash because they
+            // are never finalized and are excluded from the fiscal hash chain.
             $receiptId = Str::uuid()->toString();
+
+            $fiscalStatus = $isTraining ? FiscalStatus::Fiscalized : FiscalStatus::PendingSeal;
+            $trainingFiscalHash = $isTraining ? hash('sha256', 'TRAINING-'.$receiptId) : null;
+            $trainingChainSequence = $isTraining ? 0 : null;
+
             /** @var Receipt $receipt */
             $receipt = new Receipt([
                 'tenant_id' => $terminal->tenant_id,
@@ -526,9 +547,11 @@ final class ReceiptCreationService
                 'terminal_id' => $terminal->id,
                 'receipt_number' => $receiptNumber,
                 'receipt_type' => ReceiptType::Sale,
-                'chain_sequence' => $isTraining ? 0 : $sequence,
+                'fiscal_status' => $fiscalStatus,
+                'chain_sequence' => $trainingChainSequence,
                 'receipt_year' => $currentYear,
-                'previous_hash' => $previousHash,
+                'fiscal_hash' => $trainingFiscalHash,
+                'previous_hash' => null,
                 'posted_at' => $now,
                 'cashier_id' => $shift->cashier_id,
                 'cashier_name' => $cashier->name ?? 'Unknown',
@@ -550,20 +573,11 @@ final class ReceiptCreationService
                 'consumption_mode' => $consumptionMode,
                 'discount_breakdown' => $discountBreakdownData,
                 'notes' => $notes,
+                // Exchange link (Phase F / Task 36)
+                'exchange_group_id' => $exchangeGroupId,
             ]);
 
-            // 7b. Calculate fiscal hash before saving (fiscal_hash is NOT NULL)
             $receipt->id = $receiptId;
-            $receipt->setRelation('terminal', $terminal);
-
-            if ($isTraining) {
-                // Training receipts get a placeholder hash — not part of the fiscal chain
-                $receipt->fiscal_hash = hash('sha256', 'TRAINING-'.$receiptId);
-            } else {
-                $fiscalHash = $this->receiptHashService->calculateHash($receipt, $previousHash);
-                $receipt->fiscal_hash = $fiscalHash;
-            }
-
             $receipt->save();
 
             // 8. Create receipt lines
@@ -582,10 +596,14 @@ final class ReceiptCreationService
                 ]));
             }
 
-            // Update terminal sequence and hash chain (skip for training receipts)
+            // Advance terminal receipt-number sequence for ALL receipt types so that
+            // every receipt gets a unique number. Non-training receipt chain state
+            // (last_hash, chain_sequence on the receipt row) is NOT updated here —
+            // that happens in ReceiptFinalizationService::finalize().
+            // Training receipts skip this advance because they use a separate counter
+            // (chain_sequence = 0) and are never part of the fiscal chain.
             if (! $isTraining) {
                 $terminal->current_sequence = $sequence + 1;
-                $terminal->last_hash = $receipt->fiscal_hash;
                 $terminal->save();
             }
 
@@ -643,15 +661,17 @@ final class ReceiptCreationService
             ]);
 
             DB::afterCommit(function () use ($freshReceipt) {
-                event(new ReceiptCreated(
+                // Dispatch ReceiptDrafted — the pre-seal lifecycle event.
+                // ReceiptCreated (with fiscal hash + chain sequence) is dispatched later
+                // by ReceiptFinalizationService::finalize() once the receipt is sealed.
+                event(new ReceiptDrafted(
                     receiptId: $freshReceipt->id,
                     companyId: $freshReceipt->company_id,
                     terminalId: $freshReceipt->terminal_id,
+                    cashierId: (string) $freshReceipt->cashier_id,
                     receiptNumber: $freshReceipt->receipt_number,
                     total: (string) $freshReceipt->total,
                     currency: $freshReceipt->currency,
-                    fiscalHash: $freshReceipt->fiscal_hash,
-                    chainSequence: $freshReceipt->chain_sequence,
                     postedAt: $freshReceipt->posted_at->toIso8601String(),
                 ));
             });

@@ -1,0 +1,160 @@
+{
+  "pageTitle": "POS Refund Policies",
+  "pageSubtitle": "Configure how refunds, vouchers, and customer history are handled at the POS",
+  "accessDenied": {
+    "title": "Access Denied",
+    "description": "You don't have permission to manage POS refund policies. Please contact your administrator."
+  },
+  "sections": {
+    "returnWindow": "Return Window",
+    "managerOverride": "Manager Override",
+    "destinationsProration": "Destinations & Proration",
+    "voucherDefaults": "Voucher Defaults",
+    "dailyCaps": "Daily Caps",
+    "customerHistoryPrivacy": "Customer History Privacy",
+    "voucherRateLimits": "Voucher Rate Limits",
+    "goodwillControls": "Goodwill Controls"
+  },
+  "fields": {
+    "customer_return_expiry_days": {
+      "label": "Return window (days)",
+      "help": "Days a customer has to return a sale receipt for refund or exchange",
+      "unit": "days"
+    },
+    "customer_history_window_days": {
+      "label": "Customer history lookup window (days)",
+      "help": "How far back POS lookups search for past purchases when assisting a customer",
+      "unit": "days"
+    },
+    "out_of_window_policy": {
+      "label": "Out-of-window policy",
+      "help": "What to do when the return is past the window: refuse outright, or allow refund only as store voucher",
+      "options": {
+        "refuse": "Refuse — no refund or exchange",
+        "voucher_only": "Allow as store voucher only"
+      }
+    },
+    "manager_override_threshold_amount": {
+      "label": "Override threshold — amount",
+      "help": "Cash refund amount above which a manager PIN override is required"
+    },
+    "manager_override_threshold_percent": {
+      "label": "Override threshold — % of receipt",
+      "help": "Or % of original receipt total — whichever is higher triggers the override"
+    },
+    "manager_override_required_for_no_receipt": {
+      "label": "Require override for no-receipt refunds",
+      "help": "Require manager override when refunding without a sale receipt"
+    },
+    "allowed_refund_destinations": {
+      "label": "Allowed refund destinations",
+      "help": "Where customers can receive their refund. Disabling 'Cash' restricts to original payment or store voucher",
+      "options": {
+        "original_payment": "Original payment method",
+        "cash": "Cash",
+        "store_voucher": "Store voucher"
+      }
+    },
+    "proration_strategy": {
+      "label": "Multi-tender proration strategy",
+      "help": "How to split refunds across multiple original tenders",
+      "options": {
+        "proportional": "Proportional — split in original ratios",
+        "largest_first": "Largest first — empty the largest tender first",
+        "cashier_choice": "Cashier choice — cashier picks the split"
+      }
+    },
+    "voucher_default_expiry_days": {
+      "label": "Voucher default expiry (days)",
+      "help": "Default voucher expiry in days from issuance",
+      "unit": "days"
+    },
+    "voucher_transferable_default": {
+      "label": "Vouchers transferable by default",
+      "help": "When on, new vouchers are issued as bearer (transferable) by default; otherwise customer-bound"
+    },
+    "voucher_cash_refund_allowed": {
+      "label": "Allow cash refund of vouchers",
+      "help": "Allow refunding a voucher itself for cash. Disabled by default to prevent voucher-as-cash arbitrage"
+    },
+    "daily_refund_cap_per_cashier": {
+      "label": "Daily refund cap per cashier",
+      "enableLabel": "Enable daily cap per cashier",
+      "help": "Max total refund amount one cashier can process per day. Leave unchecked for no cap"
+    },
+    "daily_refund_cap_override_allowed": {
+      "label": "Allow manager to extend daily cap",
+      "help": "Allow a manager to extend a cashier's daily cap on the day with a recorded reason"
+    },
+    "customer_history_search_max_per_cashier_per_day": {
+      "label": "Max customer-history searches per cashier per day",
+      "help": "Max customer-history searches one cashier can run per day. Tightened to limit data exposure"
+    },
+    "customer_history_search_alert_thresholds": {
+      "rejected_specificity_per_hour": {
+        "label": "Alert: rejected broad searches per hour",
+        "help": "Alert when this many rejected (too-broad) searches happen in one hour from one cashier"
+      },
+      "same_partner_per_day": {
+        "label": "Alert: searches targeting same customer per day",
+        "help": "Alert when this many distinct cashier searches target the same customer in one day"
+      },
+      "cross_company_immediate": {
+        "label": "Alert immediately on cross-company search",
+        "help": "Alert immediately on any cross-company customer search"
+      }
+    },
+    "voucher_lookup_per_terminal_per_day": {
+      "label": "Max voucher lookups per terminal per day",
+      "help": "Max voucher lookups per terminal per day"
+    },
+    "voucher_lookup_per_cashier_per_day": {
+      "label": "Max voucher lookups per cashier per day",
+      "help": "Max voucher lookups per cashier per day"
+    },
+    "voucher_lookup_failed_per_tenant_per_hour_alert": {
+      "label": "Failed lookup alert threshold (per hour, tenant-wide)",
+      "help": "Alert threshold for failed voucher lookups across the tenant in one hour"
+    },
+    "voucher_lookup_failed_per_tenant_per_hour_block": {
+      "label": "Failed lookup hard block threshold (per hour, tenant-wide)",
+      "help": "Hard block threshold — when exceeded, voucher lookups are temporarily disabled tenant-wide"
+    },
+    "voucher_failed_attempts_auto_void": {
+      "label": "Auto-void after failed attempts",
+      "help": "After this many failed redemption attempts on the same voucher code, auto-void it as a fraud-protection measure"
+    },
+    "goodwill_named_customer_threshold": {
+      "label": "Named-customer threshold for goodwill vouchers",
+      "help": "Above this amount, a goodwill voucher must be assigned to a named customer (no anonymous bearer)"
+    },
+    "goodwill_four_eyes_threshold": {
+      "label": "Four-eyes approval threshold",
+      "help": "Above this amount, goodwill issuance requires a second admin's approval"
+    },
+    "goodwill_daily_issuance_cap_per_user": {
+      "label": "Daily goodwill issuance cap per user",
+      "help": "Max total goodwill amount one user can issue in a day. Leave unchecked for no cap"
+    },
+    "goodwill_bearer_default_off": {
+      "label": "Goodwill vouchers customer-bound by default",
+      "help": "When on, new goodwill vouchers default to customer-bound (require explicit opt-in for bearer)"
+    }
+  },
+  "actions": {
+    "save": "Save changes",
+    "reset": "Reset to defaults",
+    "saving": "Saving..."
+  },
+  "validation": {
+    "min": "Minimum is {{min}}",
+    "max": "Maximum is {{max}}",
+    "required": "This field is required",
+    "invalidDecimal": "Must be a valid decimal number",
+    "atLeastOneDestination": "At least one refund destination must be selected"
+  },
+  "messages": {
+    "saved": "Refund policies updated",
+    "error": "Failed to save: {{message}}"
+  }
+}

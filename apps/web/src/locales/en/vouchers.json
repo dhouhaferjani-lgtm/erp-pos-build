@@ -1,0 +1,140 @@
+{
+  "pageTitle": "Vouchers & Credits",
+  "pageSubtitle": "Manage issued vouchers, store credit, and goodwill grants",
+
+  "sources": {
+    "All": "All",
+    "Refund": "Refund",
+    "ExchangeSurplus": "Exchange Surplus",
+    "Goodwill": "Goodwill",
+    "LoyaltyCredit": "Loyalty Credit",
+    "GiftCard": "Gift Card",
+    "Promotional": "Promotional"
+  },
+
+  "statuses": {
+    "Issued": "Issued",
+    "PartiallyRedeemed": "Partially Redeemed",
+    "FullyRedeemed": "Fully Redeemed",
+    "Voided": "Voided",
+    "Expired": "Expired"
+  },
+
+  "events": {
+    "Issued": "Issued",
+    "Redeemed": "Redeemed",
+    "Refunded": "Refunded",
+    "Voided": "Voided",
+    "Expired": "Expired",
+    "Extended": "Extended",
+    "Transferred": "Transferred",
+    "Adjusted": "Adjusted"
+  },
+
+  "redemptionModes": {
+    "Bearer": "Bearer (anonymous)",
+    "CustomerBound": "Customer-bound"
+  },
+
+  "fields": {
+    "code": "Code",
+    "source": "Source",
+    "customer": "Customer",
+    "balance": "Balance",
+    "initialBalance": "Initial Balance",
+    "currentBalance": "Current Balance",
+    "status": "Status",
+    "expiresAt": "Expires",
+    "terminal": "Terminal",
+    "issuedBy": "Issued by",
+    "amount": "Amount",
+    "currency": "Currency",
+    "notes": "Notes",
+    "reason": "Reason",
+    "redemptionMode": "Redemption Mode",
+    "newExpiresAt": "New Expiry Date"
+  },
+
+  "actions": {
+    "void": "Void",
+    "extend": "Extend Expiry",
+    "transfer": "Transfer",
+    "issueGoodwill": "Issue Goodwill Voucher",
+    "issued": "Voucher issued successfully",
+    "voided": "Voucher voided successfully",
+    "transferred": "Voucher transferred successfully",
+    "extended": "Expiry date extended successfully"
+  },
+
+  "issueGoodwill": {
+    "title": "Issue Goodwill Voucher",
+    "action": "Issue Voucher",
+    "selectTerminal": "Select terminal…",
+    "fourEyesInfo": "This amount exceeds the dual-approval threshold. A second administrator must authorise this voucher.",
+    "secondAdmin": "Second Administrator"
+  },
+
+  "void": {
+    "title": "Void Voucher",
+    "action": "Void Voucher",
+    "confirm": "This will permanently void the voucher. Any remaining balance will be cancelled. Please provide a reason."
+  },
+
+  "extend": {
+    "title": "Extend Expiry Date",
+    "action": "Extend"
+  },
+
+  "transfer": {
+    "title": "Transfer Voucher",
+    "action": "Transfer",
+    "toPartner": "Transfer to Customer",
+    "partnerRequired": "Please select a customer to transfer to."
+  },
+
+  "ledger": {
+    "title": "Ledger History",
+    "occurredAt": "Date",
+    "event": "Event",
+    "amount": "Amount",
+    "receipt": "Receipt",
+    "terminal": "Terminal",
+    "user": "User",
+    "empty": "No ledger entries found."
+  },
+
+  "provenance": {
+    "title": "Provenance",
+    "sourceReceipt": "Source Receipt",
+    "creditNoteLink": "Credit Note",
+    "issuedBy": "Issued By",
+    "notes": "Notes",
+    "overrideReason": "Override Reason",
+    "loyaltyTransactionId": "Loyalty Transaction ID",
+    "loyaltyPhase15Placeholder": "Full loyalty transaction details will be available in Phase 1.5.",
+    "phase2Placeholder": "Detailed provenance for this source type will be available in Phase 2."
+  },
+
+  "validation": {
+    "reasonMin": "Reason must be at least 5 characters.",
+    "dateInFuture": "Expiry date must be in the future."
+  },
+
+  "errors": {
+    "FOUR_EYES_REQUIRED": "A second administrator must authorise goodwill vouchers above the configured threshold.",
+    "NAMED_CUSTOMER_REQUIRED": "A named customer is required for customer-bound vouchers.",
+    "SELF_DEALING": "The authorising administrator cannot also be the second approver.",
+    "notFound": "Voucher not found.",
+    "loadFailed": "Failed to load voucher details."
+  },
+
+  "empty": {
+    "title": "No vouchers found",
+    "subtitle": "No vouchers match the current filter. Try a different source or issue a goodwill voucher."
+  },
+
+  "detail": {
+    "backToList": "Back to Vouchers",
+    "headerSubtitle": "Voucher Details"
+  }
+}

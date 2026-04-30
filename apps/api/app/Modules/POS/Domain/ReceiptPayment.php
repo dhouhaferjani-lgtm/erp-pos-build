@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Domain;
 
+use App\Modules\POS\Domain\Enums\PaymentInstrumentKind;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use Database\Factories\ReceiptPaymentFactory;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -19,12 +20,23 @@ use Illuminate\Support\Carbon;
  * Supports split payments (multiple payment methods per receipt).
  * Required for NF525 compliance - feeds into payment_methods_hash.
  *
+ * instrument_serial / instrument_type:
+ *   Originally this model had a `voucher_serial` column whose sole meaning was
+ *   "restaurant-voucher (ticket-restaurant) serial number". Task 21 (spec §3.3)
+ *   renamed that column to `instrument_serial` and added `instrument_type` to
+ *   discriminate between store_voucher, restaurant_voucher, gift_card, and none.
+ *   Existing rows that had a non-null serial were backfilled with
+ *   instrument_type = 'restaurant_voucher' to preserve the original meaning.
+ *   New store-voucher rows written by VoucherIssuanceService use
+ *   instrument_type = 'store_voucher'.
+ *
  * @property string $id
  * @property string $receipt_id
  * @property string $payment_method_id
  * @property string $payment_type Immutable snapshot of payment type
  * @property numeric-string $amount Amount paid with this method
- * @property string|null $voucher_serial Restaurant voucher serial (if applicable)
+ * @property string|null $instrument_serial Instrument serial (store voucher code, restaurant ticket serial, etc.)
+ * @property PaymentInstrumentKind|null $instrument_type Discriminator for instrument_serial kind
  * @property string|null $card_last_four Last 4 digits of card (if card payment)
  * @property string|null $transaction_reference External transaction reference
  * @property string|null $authorization_code Card authorization code
@@ -59,7 +71,8 @@ class ReceiptPayment extends Model
         'payment_method_id',
         'payment_type',
         'amount',
-        'voucher_serial',
+        'instrument_serial',
+        'instrument_type',
         'card_last_four',
         'transaction_reference',
         'authorization_code',
@@ -75,6 +88,7 @@ class ReceiptPayment extends Model
         return [
             'amount' => 'decimal:3',
             'authorized_at' => 'datetime',
+            'instrument_type' => PaymentInstrumentKind::class,
         ];
     }
 
@@ -95,11 +109,31 @@ class ReceiptPayment extends Model
     }
 
     /**
-     * Check if payment was made with voucher
+     * Check if payment was made with any instrument (store voucher, restaurant voucher, gift card).
+     *
+     * Previously this checked `voucher_serial !== null`; after the Task 21 rename it checks
+     * `instrument_serial !== null`. The method name is kept unchanged for backward compatibility.
      */
     public function isVoucher(): bool
     {
-        return $this->voucher_serial !== null;
+        return $this->instrument_serial !== null;
+    }
+
+    /**
+     * Check if payment was made with a Phase 1 store-credit voucher specifically.
+     */
+    public function isStoreVoucher(): bool
+    {
+        return $this->instrument_type === PaymentInstrumentKind::StoreVoucher;
+    }
+
+    /**
+     * Check if payment was made with a restaurant voucher (ticket-restaurant).
+     * This is the legacy meaning of the old `voucher_serial` column.
+     */
+    public function isRestaurantVoucher(): bool
+    {
+        return $this->instrument_type === PaymentInstrumentKind::RestaurantVoucher;
     }
 
     /**
@@ -131,14 +165,18 @@ class ReceiptPayment extends Model
     }
 
     /**
-     * Get formatted payment detail line for receipt printing
+     * Get formatted payment detail line for receipt printing.
+     *
+     * Uses instrument_serial (renamed from voucher_serial in Task 21).
      */
     public function getDisplayLine(): string
     {
         $line = "{$this->payment_type}: {$this->amount}";
 
         if ($this->isVoucher()) {
-            $line .= " (Voucher: {$this->voucher_serial})";
+            $instrumentType = $this->instrument_type;
+            $kindLabel = $instrumentType !== null ? $instrumentType->value : 'voucher';
+            $line .= " ({$kindLabel}: {$this->instrument_serial})";
         } elseif ($this->isCard()) {
             $line .= " (Card: {$this->getMaskedCardNumber()})";
         }

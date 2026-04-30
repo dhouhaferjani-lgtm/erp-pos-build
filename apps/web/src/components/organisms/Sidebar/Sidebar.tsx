@@ -54,6 +54,7 @@ import {
   Package2,
   Calendar,
   Download,
+  ShieldAlert,
 } from 'lucide-react'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useCompanyConfig } from '../../../contexts'
@@ -219,6 +220,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
         { key: 'receipts', href: '/pos/receipts', icon: Receipt, module: 'pos' },
         { key: 'analytics', href: '/pos/analytics', icon: BarChart3, module: 'pos' },
         { key: 'zReports', href: '/pos/z-reports', icon: FileCheck, module: 'pos' },
+        { key: 'vouchers', href: '/pos/vouchers', icon: Ticket, module: 'pos' },
       ],
     },
     {
@@ -306,6 +308,23 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
     key: 'settings',
     href: '/settings',
     icon: Settings,
+    section: 'bottom',
+  })
+
+  // Settings sub-pages — pinned to bottom alongside Settings
+  nav.push({
+    key: 'posRefundPolicies',
+    href: '/settings/pos-refund-policies',
+    icon: RotateCcw,
+    module: 'settings',
+    section: 'bottom',
+  })
+
+  nav.push({
+    key: 'customerHistoryAudit',
+    href: '/settings/audit/customer-history',
+    icon: ShieldAlert,
+    module: 'settings',
     section: 'bottom',
   })
 

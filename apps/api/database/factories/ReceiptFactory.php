@@ -7,6 +7,7 @@ namespace Database\Factories;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
@@ -20,7 +21,7 @@ class ReceiptFactory extends Factory
     protected $model = Receipt::class;
 
     /**
-     * @return array<string, mixed>
+     * @return array<model-property<Receipt>, mixed>
      */
     public function definition(): array
     {
@@ -52,17 +53,48 @@ class ReceiptFactory extends Factory
     }
 
     /**
+     * Receipt in pending_seal state: fiscal_hash and chain_sequence are null,
+     * fiscal_status is pending_seal. Use when testing ReceiptFinalizationService.
+     */
+    public function pendingSeal(): static
+    {
+        return $this->state(fn () => [
+            'fiscal_status' => FiscalStatus::PendingSeal,
+            'fiscal_hash' => null,
+            'chain_sequence' => null,
+        ]);
+    }
+
+    /**
      * Configure receipt with consistent totals.
      * Use when overriding total to ensure CHECK constraint passes.
+     *
+     * @param  numeric-string  $total
+     * @param  numeric-string  $taxAmount
      */
     public function withTotal(string $total, string $taxAmount = '0.000'): static
     {
-        $subtotal = bcsub($total, $taxAmount, 3);
+        /** @var numeric-string $numericTotal */
+        $numericTotal = $total;
+        /** @var numeric-string $numericTaxAmount */
+        $numericTaxAmount = $taxAmount;
+        $subtotal = bcsub($numericTotal, $numericTaxAmount, 3);
 
         return $this->state(fn () => [
             'total' => $total,
             'subtotal' => $subtotal,
             'tax_amount' => $taxAmount,
+        ]);
+    }
+
+    /**
+     * Configure receipt as part of an exchange group (Phase F).
+     * Both the return half and the sale half must share the same exchange_group_id.
+     */
+    public function inExchangeGroup(string $exchangeGroupId): static
+    {
+        return $this->state(fn () => [
+            'exchange_group_id' => $exchangeGroupId,
         ]);
     }
 }

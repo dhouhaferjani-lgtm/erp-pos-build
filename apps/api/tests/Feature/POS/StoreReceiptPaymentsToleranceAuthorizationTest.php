@@ -11,6 +11,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Shift;
@@ -265,15 +266,17 @@ final class StoreReceiptPaymentsToleranceAuthorizationTest extends TestCase
 
     private function seedReceipt(string $total, User $cashier): Receipt
     {
+        // Receipts must be in pending_seal state when entering processReceiptPayments().
         return Receipt::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'location_id' => $this->location->id,
             'terminal_id' => $this->terminal->id,
             'receipt_number' => sprintf('T001-C001-L01-POS01-2026-%08d', ++self::$receiptCounter),
-            'chain_sequence' => 1,
+            'chain_sequence' => null,
             'receipt_year' => 2026,
-            'fiscal_hash' => hash('sha256', 'fiscal-'.uniqid()),
+            'fiscal_status' => FiscalStatus::PendingSeal,
+            'fiscal_hash' => null,
             'previous_hash' => null,
             'vat_breakdown_hash' => hash('sha256', 'vat-'.uniqid()),
             'payment_methods_hash' => hash('sha256', 'pay-'.uniqid()),

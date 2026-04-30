@@ -7,6 +7,7 @@ namespace App\Modules\POS\Application\Services;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\POS\Domain\CashDrawerOperation;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\GrandtotalEvent;
 use App\Modules\POS\Domain\Receipt;
@@ -36,6 +37,7 @@ use App\Shared\Contracts\Compliance\DTOs\Nf525TerminalChainSummary;
 use App\Shared\Contracts\Compliance\DTOs\Nf525TerminalData;
 use App\Shared\Contracts\Compliance\DTOs\Nf525TerminalLifecycleEventData;
 use App\Shared\Contracts\Compliance\DTOs\Nf525TrainingModeCount;
+use App\Shared\Contracts\Compliance\DTOs\Nf525VoucherLedgerEntryData;
 use App\Shared\Contracts\Compliance\DTOs\Nf525ZReportData;
 use App\Shared\Contracts\Compliance\Nf525DataProviderContract;
 use Illuminate\Support\Carbon;
@@ -99,10 +101,11 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             );
         }
 
-        // Sale receipts (non-voided, non-return, non-training)
-        $salesQuery = Receipt::with(['lines', 'vatDetails', 'payments'])
+        // Sale receipts (non-voided, non-return, non-training, fiscalized only)
+        $salesQuery = Receipt::with(['lines', 'vatDetails', 'payments', 'voucherLedgerEntries'])
             ->where('company_id', $companyId)
             ->where('receipt_type', ReceiptType::Sale)
+            ->where('fiscal_status', FiscalStatus::Fiscalized->value)
             ->where('is_voided', false)
             ->where('is_training', false)
             ->whereBetween('posted_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
@@ -113,8 +116,10 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             $sales[] = $this->mapSaleReceipt($receipt);
         }
 
-        // Voided receipts (any type, voided in window, non-training)
+        // Voided receipts (any type, voided in window, non-training, fiscalized only)
+        // Receipts that were voided before being fiscalized should not appear in the export.
         $voidedQuery = Receipt::where('company_id', $companyId)
+            ->where('fiscal_status', FiscalStatus::Fiscalized->value)
             ->where('is_voided', true)
             ->where('is_training', false)
             ->whereBetween('voided_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
@@ -125,9 +130,11 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             $voidedReceipts[] = $this->mapVoidedReceipt($receipt);
         }
 
-        // Return receipts (non-voided, non-training)
-        $returnsQuery = Receipt::where('company_id', $companyId)
+        // Return receipts (non-voided, non-training, fiscalized only)
+        $returnsQuery = Receipt::with(['voucherLedgerEntries'])
+            ->where('company_id', $companyId)
             ->where('receipt_type', ReceiptType::Return)
+            ->where('fiscal_status', FiscalStatus::Fiscalized->value)
             ->where('is_voided', false)
             ->where('is_training', false)
             ->whereBetween('posted_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
@@ -485,6 +492,8 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             }
         }
 
+        $voucherLedgerEntries = $this->mapVoucherLedgerEntries($receipt);
+
         return new Nf525ReceiptData(
             id: (string) $receipt->id,
             receiptNumber: $receipt->receipt_number,
@@ -508,6 +517,8 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             voidReason: null,
             originalReceiptId: null,
             returnReasonValue: null,
+            exchangeGroupId: $receipt->exchange_group_id,
+            voucherLedgerEntries: $voucherLedgerEntries,
         );
     }
 
@@ -541,6 +552,8 @@ final class Nf525DataProvider implements Nf525DataProviderContract
 
     private function mapReturnReceipt(Receipt $receipt): Nf525ReceiptData
     {
+        $voucherLedgerEntries = $this->mapVoucherLedgerEntries($receipt);
+
         return new Nf525ReceiptData(
             id: (string) $receipt->id,
             receiptNumber: $receipt->receipt_number,
@@ -564,6 +577,11 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             voidReason: null,
             originalReceiptId: $receipt->original_receipt_id,
             returnReasonValue: $receipt->return_reason !== null ? $receipt->return_reason->value : null,
+            exchangeGroupId: $receipt->exchange_group_id,
+            authorizedByUserId: $receipt->authorized_by_user_id,
+            overrideReason: $receipt->override_reason,
+            outOfWindow: $receipt->out_of_window,
+            voucherLedgerEntries: $voucherLedgerEntries,
         );
     }
 
@@ -597,7 +615,44 @@ final class Nf525DataProvider implements Nf525DataProviderContract
         return new Nf525ReceiptPaymentData(
             paymentType: $payment->payment_type,
             amount: (string) $payment->amount,
+            instrumentType: $payment->instrument_type?->value,
+            instrumentSerial: $payment->instrument_serial,
         );
+    }
+
+    /**
+     * Map voucher-ledger rows attached to a receipt to the NF525 DTO shape.
+     * Returns an empty array for receipts with no voucher activity.
+     *
+     * Voucher ledger entries are sorted by voucher_code (i.e. the voucher's code attribute)
+     * but since we only have the voucher_id here, we sort by id as the tie-breaker for
+     * deterministic ordering without an extra join. The spec only requires a stable order.
+     *
+     * @return list<Nf525VoucherLedgerEntryData>
+     */
+    private function mapVoucherLedgerEntries(Receipt $receipt): array
+    {
+        if (! $receipt->relationLoaded('voucherLedgerEntries')) {
+            return [];
+        }
+
+        $entries = [];
+        // The voucherLedgerEntries relation is already ordered by voucher_id (Receipt model).
+        foreach ($receipt->voucherLedgerEntries as $ledger) {
+            // Use the enum case name (PascalCase, e.g. "Issued") as the DTO event
+            // string per the Nf525VoucherLedgerEntryData contract docblock.
+            $entries[] = new Nf525VoucherLedgerEntryData(
+                voucherId: (string) $ledger->voucher_id,
+                voucherCode: '',   // Code is on the Voucher model; we avoid loading it here
+                // to prevent a N+1. The export consumers use voucherId for
+                // lookup. A future enhancement can eager-load the code.
+                event: $ledger->event->name,
+                amount: (string) $ledger->amount,
+                glJournalEntryId: $ledger->gl_journal_entry_id,
+            );
+        }
+
+        return $entries;
     }
 
     private function mapReceiptPrint(ReceiptPrint $print): Nf525ReceiptPrintData

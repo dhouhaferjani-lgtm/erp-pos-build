@@ -10,6 +10,7 @@
     "editDiscount": "Modifier la remise",
     "decrementQty": "Diminuer la quantité",
     "incrementQty": "Augmenter la quantité",
+    "editQty": "Modifier la quantité",
     "removeItem": "Supprimer l'article",
     "lineDiscount": "Remise article",
     "editModifiers": "Modifier les options",
@@ -78,6 +79,66 @@
     "inputPlaceholder": "Scanner ou saisir code-barres / SKU...",
     "inputLabel": "Recherche code-barres ou SKU",
     "clearInput": "Effacer"
+  },
+  "receiptScan": {
+    "title": "Reçu de vente détecté",
+    "body": "Il s'agit d'un reçu de vente du {{date}}. Démarrer un remboursement ou un échange ?",
+    "cancel": "Annuler",
+    "startRefund": "Démarrer le remboursement",
+    "dispatchError": "Impossible de lire l'index local des reçus. Recherche produit en repli."
+  },
+  "refundFlow": {
+    "returningSection": "À rembourser",
+    "buyingNewSection": "Nouvel achat",
+    "detailsNotLocal": "Les détails du ticket d'origine ne sont pas disponibles sur ce terminal. Seuls les articles des tickets enregistrés sur ce terminal peuvent être remboursés localement. Demandez à un responsable de retrouver le ticket depuis le back-office.",
+    "confirm": {
+      "charge": "Encaisser {{amount}}",
+      "refund": "Rembourser {{amount}}",
+      "noPayment": "Aucun paiement dû",
+      "title": "Confirmer le remboursement",
+      "amountLabel": "Montant remboursé",
+      "submit": "Rembourser {{amount}}",
+      "submitting": "Traitement…",
+      "cancel": "Annuler",
+      "authorizedBy": "Autorisé par le responsable",
+      "errorGeneric": "Une erreur inattendue s'est produite. Veuillez réessayer.",
+      "pinRequired": {
+        "override": "Autorisation responsable requise",
+        "dailyCap": "Plafond journalier atteint — autorisation responsable requise",
+        "windowClosed": "Fenêtre de remboursement fermée — autorisation responsable requise"
+      }
+    },
+    "resumeBanner": {
+      "title": "Remboursement en cours — Ticket {{number}}",
+      "resume": "Reprendre",
+      "discard": "Annuler"
+    },
+    "destination": {
+      "label": "Destination du remboursement",
+      "original": "Paiement original",
+      "cash": "Espèces",
+      "store_voucher": "Bon d'achat",
+      "proration_title": "Détail du remboursement",
+      "confirm": "Confirmer la destination"
+    }
+  },
+  "receiptLocator": {
+    "title": "Retours / Échange",
+    "entryButton": "Retours / Échange",
+    "tabScan": "Scanner ou saisir le numéro de ticket",
+    "tabCustomer": "Rechercher par client",
+    "scanHint": "Saisissez le numéro de reçu ou scannez le QR code du ticket.",
+    "numberPlaceholder": "Numéro de reçu",
+    "search": "Rechercher",
+    "searching": "Recherche...",
+    "found": "Reçu trouvé",
+    "notFound": "Aucun reçu trouvé pour ce numéro.",
+    "wrongTerminal": "Ce reçu appartient à un autre terminal et ne peut pas être remboursé ici.",
+    "refundThis": "Rembourser",
+    "customerHint": "Saisissez l'identifiant du client pour retrouver ses achats récents sur ce terminal.",
+    "customerPlaceholder": "Identifiant client",
+    "noCustomerReceipts": "Aucun reçu trouvé pour ce client. Remarque : la recherche par client nécessite des données synchronisées.",
+    "customerResults": "{{count}} reçu(s) trouvé(s)"
   },
   "shift": {
     "number": "Service #{{number}}",
@@ -586,7 +647,23 @@
     "taxCol": "TVA",
     "thankYou": "Merci pour votre achat !",
     "taxId": "MF :",
-    "tel": "Tél :"
+    "tel": "Tél :",
+    "refundHeader": "REMBOURSEMENT",
+    "originalTicket": "Ticket original :",
+    "originalQrLabel": "Scanner le ticket original :",
+    "voucherTicket": {
+      "header": "BON D'ACHAT",
+      "code": "Code du bon :",
+      "balance": "Solde :",
+      "expires": "Expire le :",
+      "noExpiry": "Sans expiration",
+      "modeBearer": "Au porteur",
+      "modeCustomerBound": "Nominatif",
+      "redemptionMode": "Mode :",
+      "issuedBy": "Émis par :",
+      "issuedAt": "Émis le :",
+      "terms": "Présentez ce bon pour utiliser le solde."
+    }
   },
   "config": {
     "refreshed": "Paramètres de l'entreprise actualisés.",
@@ -639,5 +716,30 @@
       "col_time": "Heure",
       "col_writeoff": "Remise"
     }
+  },
+  "voucherTender": {
+    "title": "Appliquer un bon",
+    "codeLabel": "Code du bon",
+    "codePlaceholder": "Scanner ou saisir le code…",
+    "lookup": "Rechercher",
+    "looking": "Recherche…",
+    "cancel": "Annuler",
+    "back": "Retour",
+    "apply": "Appliquer",
+    "balance": "Solde",
+    "redemptionMode": "Mode",
+    "expires": "Expire le",
+    "amountLabel": "Montant à appliquer",
+    "modeBearer": "Porteur (tout détenteur)",
+    "modeCustomerBound": "Lié au client",
+    "notFound": "Bon non trouvé. Vérifiez le code et réessayez.",
+    "alreadyApplied": "Ce bon a déjà été appliqué à cette vente.",
+    "unsupportedKind": "Les tickets restaurant ne sont pas encore pris en charge — fonctionnalité Phase 2. Seuls les bons d'achat (MPV) peuvent être utilisés ici.",
+    "notRedeemable": "Ce bon ne peut pas être utilisé (statut : {{status}}).",
+    "invalidAmount": "Saisissez un montant valide supérieur à zéro.",
+    "amountExceedsBalance": "Le montant ne peut pas dépasser le solde du bon ({{balance}} {{currency}}).",
+    "amountExceedsDue": "Le montant ne peut pas dépasser le reste dû ({{due}} {{currency}}).",
+    "applyFailed": "Échec de l'application du bon.",
+    "lookupFailed": "Impossible de lire la base de données locale des bons. Veuillez réessayer."
   }
 }

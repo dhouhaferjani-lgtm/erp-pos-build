@@ -1,11 +1,13 @@
 import { useTranslation } from 'react-i18next';
-import { Tag, Pause, ClipboardList } from 'lucide-react';
+import { Tag, Pause, ClipboardList, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface QuickActionsProps {
   onDiscount: () => void;
   onHold: () => void;
   onRecall: () => void;
+  /** Opens the Returns / Exchange receipt-locator screen. */
+  onReturns: () => void;
   hasItems: boolean;
 }
 
@@ -13,6 +15,7 @@ export function QuickActions({
   onDiscount,
   onHold,
   onRecall,
+  onReturns,
   hasItems,
 }: QuickActionsProps) {
   const { t } = useTranslation('pos');
@@ -34,6 +37,12 @@ export function QuickActions({
       label: t('quickActions.recall'),
       icon: ClipboardList,
       onClick: onRecall,
+      disabled: false,
+    },
+    {
+      label: t('receiptLocator.entryButton'),
+      icon: RotateCcw,
+      onClick: onReturns,
       disabled: false,
     },
   ];

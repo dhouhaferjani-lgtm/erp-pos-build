@@ -25,6 +25,18 @@ interface CartActions {
     items: CartItem[],
     transactionDiscount: { type: 'percentage' | 'fixed'; value: string; reason?: string } | undefined,
   ) => void;
+  /**
+   * Atomically replace ALL return-kind items with `newReturnItems`.
+   * Used by Task 52 hydration — replaces the whole Returning section in one shot.
+   */
+  replaceReturnItems: (newReturnItems: CartItem[]) => void;
+  /** Remove all return-kind items (cancel the refund section). */
+  clearReturnItems: () => void;
+  /**
+   * Append additional return-kind items (without clearing existing ones).
+   * Prefer `replaceReturnItems` for initial hydration.
+   */
+  addReturnItems: (items: CartItem[]) => void;
 }
 
 interface CartDerived {
@@ -33,6 +45,15 @@ interface CartDerived {
   discountAmount: () => number;
   total: () => number;
   itemCount: () => number;
+  /** Items whose kind is 'return' (or normalised to 'return'). */
+  returnItems: () => CartItem[];
+  /** Items whose kind is 'sale' or undefined (default). */
+  saleItems: () => CartItem[];
+  /**
+   * Net = sum(saleItems line_total) − abs(sum(returnItems line_total)).
+   * Positive → cashier collects money; negative → cashier owes a refund.
+   */
+  netTotal: () => number;
 }
 
 type CartStore = CartState & CartActions & CartDerived;
@@ -64,7 +85,10 @@ function recalcLineTotal(item: CartItem, newQty: number): CartItem {
     discountAmount = parseFloat(item.discount_amount);
   }
 
-  const lineTotal = Math.max(0, grossTotal - discountAmount);
+  // For sale lines (positive qty) clamp to 0 so discounts never invert the total.
+  // For return lines (negative qty) the raw signed value is correct — do not clamp.
+  const rawTotal = grossTotal - discountAmount;
+  const lineTotal = newQty >= 0 ? Math.max(0, rawTotal) : rawTotal;
 
   return {
     ...item,
@@ -177,7 +201,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
   },
 
   updateQuantity: (itemId: string, quantity: number) => {
-    if (quantity <= 0) {
+    if (quantity === 0) {
       get().removeItem(itemId);
       return;
     }
@@ -229,6 +253,27 @@ export const useCartStore = create<CartStore>()((set, get) => ({
     set({ items, transactionDiscount });
   },
 
+  replaceReturnItems: (newReturnItems) => {
+    set((state) => ({
+      items: [
+        ...state.items.filter((i) => (i.kind ?? 'sale') !== 'return'),
+        ...newReturnItems,
+      ],
+    }));
+  },
+
+  clearReturnItems: () => {
+    set((state) => ({
+      items: state.items.filter((i) => (i.kind ?? 'sale') !== 'return'),
+    }));
+  },
+
+  addReturnItems: (newItems) => {
+    set((state) => ({
+      items: [...state.items, ...newItems],
+    }));
+  },
+
   subtotal: () => {
     return get().items.reduce((sum, item) => sum + parseFloat(item.line_total), 0);
   },
@@ -266,5 +311,28 @@ export const useCartStore = create<CartStore>()((set, get) => ({
 
   itemCount: () => {
     return get().items.reduce((sum, item) => sum + item.quantity, 0);
+  },
+
+  returnItems: () => {
+    return get().items.filter((i) => (i.kind ?? 'sale') === 'return');
+  },
+
+  saleItems: () => {
+    return get().items.filter((i) => (i.kind ?? 'sale') === 'sale');
+  },
+
+  netTotal: () => {
+    const items = get().items;
+    const saleTotal = items
+      .filter((i) => (i.kind ?? 'sale') === 'sale')
+      .reduce((sum, i) => sum + parseFloat(i.line_total), 0);
+    const returnTotal = items
+      .filter((i) => (i.kind ?? 'sale') === 'return')
+      .reduce((sum, i) => sum + Math.abs(parseFloat(i.line_total)), 0);
+
+    const net = saleTotal - returnTotal;
+    // Apply transaction discount against the net (discount applies to saleItems only)
+    const discount = get().discountAmount();
+    return net - discount;
   },
 }));

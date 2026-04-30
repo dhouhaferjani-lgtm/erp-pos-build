@@ -8,6 +8,10 @@ use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\ValidateLocationAccess;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Exceptions\DailyRefundCapExceededException;
+use App\Modules\POS\Domain\Exceptions\ManagerOverrideRequiredException;
+use App\Modules\POS\Domain\Exceptions\RefundDestinationNotAllowedException;
+use App\Modules\POS\Domain\Exceptions\RefundWindowClosedException;
 use App\Modules\Scheduling\Infrastructure\Http\Middleware\VerifyCaptcha;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -134,6 +138,59 @@ return Application::configure(basePath: dirname(__DIR__))
                         'code' => 'VALIDATION_ERROR',
                         'message' => $e->getMessage(),
                         'errors' => $e->errors(),
+                    ],
+                ], 422);
+            }
+        });
+
+        // Return JSON 422 for POS refund-flow exceptions — typed codes so the
+        // frontend (RefundConfirmModal / refundConfirmation.ts) can route to the
+        // correct inline UI (manager PIN panel, cap message, window-closed notice,
+        // destination-blocked notice) rather than showing a generic toast.
+        // These MUST be registered before the generic DomainException handler
+        // because three of them extend \DomainException and Laravel 11 closures
+        // match in registration order (first match wins).
+        $exceptions->render(function (ManagerOverrideRequiredException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'MANAGER_OVERRIDE_REQUIRED',
+                        'message' => $e->getMessage(),
+                    ],
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (DailyRefundCapExceededException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'DAILY_REFUND_CAP_EXCEEDED',
+                        'message' => $e->getMessage(),
+                    ],
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (RefundWindowClosedException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'REFUND_WINDOW_CLOSED',
+                        'message' => $e->getMessage(),
+                    ],
+                ], 422);
+            }
+        });
+
+        // RefundDestinationNotAllowedException extends \RuntimeException (not
+        // \DomainException), so without this handler it would bubble to a 500.
+        $exceptions->render(function (RefundDestinationNotAllowedException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'REFUND_DESTINATION_NOT_ALLOWED',
+                        'message' => $e->getMessage(),
                     ],
                 ], 422);
             }

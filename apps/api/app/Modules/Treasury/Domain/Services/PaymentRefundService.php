@@ -4,12 +4,20 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Domain\Services;
 
+use App\Modules\POS\Domain\Receipt;
+use App\Modules\Treasury\Application\DTOs\RefundAllocation;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
+use App\Modules\Treasury\Domain\Enums\PaymentType;
+use App\Modules\Treasury\Domain\Enums\ProrationStrategy;
 use App\Modules\Treasury\Domain\Events\PaymentRefunded;
 use App\Modules\Treasury\Domain\Events\PaymentReversed;
+use App\Modules\Treasury\Domain\Exceptions\RefundIdempotencyException;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -29,6 +37,10 @@ class PaymentRefundService
      *
      * This method is idempotent: calling it on an already-refunded payment
      * will return the existing refund without error.
+     *
+     * Bug fix (Codex review 2 additional finding): payment_type is now
+     * explicitly set to PaymentType::Refund instead of relying on the column
+     * default ('document_payment').
      */
     public function refundPayment(
         Payment $payment,
@@ -51,6 +63,8 @@ class PaymentRefundService
                 return $this->findExistingFullRefund($payment);
             }
             // Create refund payment (negative amount)
+            // IMPORTANT: payment_type is set explicitly to Refund to avoid the column
+            // default 'document_payment' (Codex review 2 additional finding).
             $refund = Payment::create([
                 'id' => Str::uuid()->toString(),
                 'tenant_id' => $payment->tenant_id,
@@ -63,6 +77,7 @@ class PaymentRefundService
                 'currency' => $payment->currency,
                 'payment_date' => now(),
                 'status' => PaymentStatus::Completed,
+                'payment_type' => PaymentType::Refund,
                 'reference' => "Refund for payment {$payment->reference}",
                 'notes' => "Refund: {$reason}",
                 'created_by' => $userId,
@@ -103,7 +118,11 @@ class PaymentRefundService
     }
 
     /**
-     * Partially refund a payment
+     * Partially refund a payment.
+     *
+     * Bug fix (Codex review 2 additional finding): payment_type is now
+     * explicitly set to PaymentType::Refund instead of relying on the column
+     * default ('document_payment').
      */
     public function partialRefund(
         Payment $payment,
@@ -129,6 +148,8 @@ class PaymentRefundService
 
         return DB::transaction(function () use ($payment, $amount, $reason, $userId): Payment {
             // Create partial refund payment (negative amount)
+            // IMPORTANT: payment_type is set explicitly to Refund to avoid the column
+            // default 'document_payment' (Codex review 2 additional finding).
             $refund = Payment::create([
                 'id' => Str::uuid()->toString(),
                 'tenant_id' => $payment->tenant_id,
@@ -141,6 +162,7 @@ class PaymentRefundService
                 'currency' => $payment->currency,
                 'payment_date' => now(),
                 'status' => PaymentStatus::Completed,
+                'payment_type' => PaymentType::Refund,
                 'reference' => "Partial refund for payment {$payment->reference}",
                 'notes' => "Partial refund ({$amount}): {$reason}",
                 'created_by' => $userId,
@@ -258,6 +280,376 @@ class PaymentRefundService
     }
 
     /**
+     * Prorate a refund total across all of a receipt's original payments.
+     *
+     * Returns one RefundAllocation per touched original payment.
+     * Each allocation corresponds to one newly-written negative Payment row
+     * with payment_type = Refund (explicitly set — Codex review 2 additional finding).
+     *
+     * DB-level idempotency:
+     *   A unique partial index on (company_id, original_payment_id, refund_request_id)
+     *   WHERE payment_type = 'refund' serialises concurrent callers. If the index
+     *   rejects a duplicate insert, this method reads back the existing rows and
+     *   returns them — callers always get the same result for the same refund_request_id.
+     *
+     * Rounding (spec §5.5 / §4.3):
+     *   Amounts are allocated using CurrencyScale::bcformat() (MEMORY.md monetary-
+     *   precision pitfall). The residual cent (rounding remainder) is allocated to the
+     *   LAST payment in deterministic order (amount DESC, id ASC) so that
+     *   sum(allocations) == totalToRefund exactly.
+     *
+     * @param  Receipt  $originalReceipt  The sale receipt whose payments we prorate over.
+     * @param  string  $totalToRefund  Positive bcmath-safe decimal at currency scale
+     *                                 (e.g. "50.00" for EUR, "50.000" for TND).
+     * @param  ProrationStrategy  $strategy  How to split the total across payments.
+     * @param  string  $refundRequestId  UUID idempotency key for this refund operation.
+     * @param  string|null  $authorizedByUserId  Manager/admin UUID when an override fired.
+     * @param  string|null  $policyTrigger  Policy condition code (e.g. "over_threshold").
+     * @param  array<string, string>|null  $cashierAllocations  Required for CashierChoice:
+     *                                                          map of [original_payment_id => positive_amount]. Caller must have
+     *                                                          verified pos.refund_destination_override permission before passing this.
+     * @return list<RefundAllocation>
+     *
+     * @throws \InvalidArgumentException If totalToRefund <= 0 or exceeds receipt total.
+     * @throws \InvalidArgumentException If strategy = CashierChoice but $cashierAllocations is null.
+     * @throws RefundIdempotencyException (internal; callers normally receive existing rows).
+     */
+    public function refundReceiptPayments(
+        Receipt $originalReceipt,
+        string $totalToRefund,
+        ProrationStrategy $strategy,
+        string $refundRequestId,
+        ?string $authorizedByUserId = null,
+        ?string $policyTrigger = null,
+        ?array $cashierAllocations = null,
+    ): array {
+        // Resolve currency scale from the receipt's currency
+        $scale = $this->scaleResolver->getScale($originalReceipt->currency);
+
+        /** @var numeric-string $totalToRefund */
+        if (bccomp($totalToRefund, '0', $scale) <= 0) {
+            throw new \InvalidArgumentException('totalToRefund must be greater than zero');
+        }
+
+        // Load original payments in deterministic order: amount DESC, id ASC
+        $originalPayments = Payment::where('company_id', $originalReceipt->company_id)
+            ->where('payment_type', PaymentType::POS->value)
+            ->whereIn('id', function ($query) use ($originalReceipt): void {
+                $query->select('treasury_payment_id')
+                    ->from('pos_receipt_payments')
+                    ->where('receipt_id', $originalReceipt->id)
+                    ->whereNotNull('treasury_payment_id');
+            })
+            ->orderByRaw('CAST(amount AS NUMERIC) DESC')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        if ($originalPayments->isEmpty()) {
+            // Fallback: no treasury payment rows linked. Nothing to prorate.
+            return [];
+        }
+
+        // Validate totalToRefund does not exceed receipt total
+        /** @var numeric-string $receiptTotal */
+        $receiptTotal = '0';
+        foreach ($originalPayments as $p) {
+            /** @var numeric-string $pAmount */
+            $pAmount = (string) $p->amount;
+            /** @var numeric-string $receiptTotal */
+            $receiptTotal = bcadd($receiptTotal, $pAmount, $scale);
+        }
+
+        if (bccomp($totalToRefund, $receiptTotal, $scale) > 0) {
+            throw new \InvalidArgumentException(
+                "totalToRefund ({$totalToRefund}) exceeds receipt total ({$receiptTotal})"
+            );
+        }
+
+        // Idempotency check: if rows already exist for this refund_request_id, return them
+        $existing = $this->findExistingProrationRows($originalReceipt->company_id, $refundRequestId);
+        if (! empty($existing)) {
+            return $existing;
+        }
+
+        // Build allocation map based on strategy
+        $allocationMap = match ($strategy) {
+            ProrationStrategy::Proportional => $this->buildProportionalMap(
+                $originalPayments,
+                $totalToRefund,
+                $receiptTotal,
+                $scale
+            ),
+            ProrationStrategy::LargestFirst => $this->buildLargestFirstMap(
+                $originalPayments,
+                $totalToRefund,
+                $scale
+            ),
+            ProrationStrategy::CashierChoice => $this->buildCashierChoiceMap(
+                $originalPayments,
+                $cashierAllocations,
+                $totalToRefund,
+                $scale
+            ),
+        };
+
+        // Write refund Payment rows inside a transaction; handle idempotency race
+        return DB::transaction(function () use (
+            $originalReceipt,
+            $allocationMap,
+            $refundRequestId,
+            $authorizedByUserId,
+            $policyTrigger,
+            $scale,
+        ): array {
+            // Re-check inside transaction (another request may have won the race)
+            $existing = $this->findExistingProrationRows($originalReceipt->company_id, $refundRequestId);
+            if (! empty($existing)) {
+                return $existing;
+            }
+
+            $result = [];
+
+            foreach ($allocationMap as $originalPaymentId => $positiveAmount) {
+                /** @var numeric-string $positiveAmount */
+                if (bccomp($positiveAmount, '0', $scale) <= 0) {
+                    // Zero allocation — skip (LargestFirst strategy may leave some untouched)
+                    continue;
+                }
+
+                /** @var Payment $original */
+                $original = Payment::find($originalPaymentId);
+
+                try {
+                    /** @var numeric-string $negativeAmount */
+                    $negativeAmount = CurrencyScale::bcformat(
+                        bcmul($positiveAmount, '-1', $scale),
+                        $scale
+                    );
+                    $refundRow = Payment::create([
+                        'id' => Str::uuid()->toString(),
+                        'tenant_id' => $original->tenant_id,
+                        'company_id' => $original->company_id,
+                        'partner_id' => $original->partner_id,
+                        'payment_method_id' => $original->payment_method_id,
+                        'instrument_id' => $original->instrument_id,
+                        'repository_id' => $original->repository_id,
+                        // Negative amount — refunds reduce the cash side
+                        'amount' => $negativeAmount,
+                        'currency' => $original->currency,
+                        'payment_date' => now(),
+                        'status' => PaymentStatus::Completed,
+                        // IMPORTANT: always explicit — never rely on column default (Codex review 2 §4.3)
+                        'payment_type' => PaymentType::Refund,
+                        // Audit columns (spec §3.6 / F27)
+                        'original_payment_id' => $originalPaymentId,
+                        'refund_request_id' => $refundRequestId,
+                        'authorized_by_user_id' => $authorizedByUserId,
+                        'policy_trigger' => $policyTrigger,
+                        'reference' => "Refund allocation for payment {$original->reference}",
+                        'notes' => "Prorated refund: {$positiveAmount} {$original->currency}",
+                    ]);
+                } catch (UniqueConstraintViolationException $e) {
+                    // Another concurrent request won the race on this specific row.
+                    // Read back the existing rows and return them.
+                    return $this->findExistingProrationRows($original->company_id, $refundRequestId);
+                }
+
+                /** @var numeric-string $positiveAmountForDto */
+                $positiveAmountForDto = $positiveAmount;
+                $result[] = new RefundAllocation(
+                    originalPaymentId: $originalPaymentId,
+                    paymentId: $refundRow->id,
+                    amount: $positiveAmountForDto,
+                );
+            }
+
+            return $result;
+        });
+    }
+
+    // -------------------------------------------------------------------------
+    // Proration strategy builders
+    // -------------------------------------------------------------------------
+
+    /**
+     * Proportional: each payment gets floor((paymentAmount / receiptTotal) * totalToRefund).
+     * Residual goes to the LAST payment in deterministic order (amount DESC, id ASC).
+     *
+     * @param  Collection<int, Payment>  $payments
+     * @return array<string, string> map of [payment_id => positive_amount]
+     */
+    /**
+     * @param  Collection<int, Payment>  $payments
+     * @param  numeric-string  $totalToRefund
+     * @param  numeric-string  $receiptTotal
+     * @return array<string, numeric-string>
+     */
+    private function buildProportionalMap(
+        Collection $payments,
+        string $totalToRefund,
+        string $receiptTotal,
+        int $scale
+    ): array {
+        /** @var array<string, numeric-string> $map */
+        $map = [];
+        /** @var numeric-string $allocated */
+        $allocated = '0';
+
+        foreach ($payments as $payment) {
+            // share = floor((paymentAmount / receiptTotal) * totalToRefund)
+            // Use high-precision intermediate to avoid truncation error
+            /** @var numeric-string $paymentAmt */
+            $paymentAmt = (string) $payment->amount;
+            /** @var numeric-string $share */
+            $share = bcdiv($paymentAmt, $receiptTotal, $scale + 10);
+            /** @var numeric-string $raw */
+            $raw = bcmul($share, $totalToRefund, $scale + 10);
+            // Truncate (floor) to currency scale
+            /** @var numeric-string $slice */
+            $slice = CurrencyScale::bcformat($raw, $scale);
+            // Enforce no slice > what's left (guard against floating weirdness at scale edges)
+            /** @var numeric-string $remaining */
+            $remaining = bcsub($totalToRefund, $allocated, $scale);
+            if (bccomp($slice, $remaining, $scale) > 0) {
+                $slice = $remaining;
+            }
+            $map[$payment->id] = $slice;
+            /** @var numeric-string $allocated */
+            $allocated = bcadd($allocated, $slice, $scale);
+        }
+
+        // Residual (rounding dust) to the LAST payment
+        /** @var numeric-string $residual */
+        $residual = bcsub($totalToRefund, $allocated, $scale);
+        if (bccomp($residual, '0', $scale) !== 0 && ! $payments->isEmpty()) {
+            /** @var Payment $last */
+            $last = $payments->last();
+            /** @var numeric-string $existingLastAmount */
+            $existingLastAmount = $map[$last->id] ?? '0';
+            /** @var numeric-string $newLastAmount */
+            $newLastAmount = bcadd($existingLastAmount, $residual, $scale);
+            $map[$last->id] = $newLastAmount;
+        }
+
+        return $map;
+    }
+
+    /**
+     * LargestFirst: drain from the largest payment first until totalToRefund consumed.
+     * Respects already-refunded amounts for each original payment (cumulative across
+     * multiple refund calls for the same receipt).
+     * Tiebreaker: id ASC (payments are already sorted amount DESC, id ASC).
+     *
+     * @param  Collection<int, Payment>  $payments
+     * @param  numeric-string  $totalToRefund
+     * @return array<string, numeric-string> map of [payment_id => positive_amount]
+     */
+    private function buildLargestFirstMap(
+        Collection $payments,
+        string $totalToRefund,
+        int $scale
+    ): array {
+        /** @var array<string, numeric-string> $map */
+        $map = [];
+        /** @var numeric-string $remaining */
+        $remaining = $totalToRefund;
+
+        foreach ($payments as $payment) {
+            if (bccomp($remaining, '0', $scale) <= 0) {
+                break;
+            }
+
+            // Compute how much of this payment has already been refunded (any prior requests)
+            /** @var numeric-string $alreadyRefunded */
+            $alreadyRefunded = Payment::where('original_payment_id', $payment->id)
+                ->where('payment_type', PaymentType::Refund->value)
+                ->get()
+                ->reduce(function (string $carry, Payment $refundRow) use ($scale): string {
+                    /** @var numeric-string $carry */
+                    // refund rows have negative amounts; take absolute value
+                    /** @var numeric-string $absAmt */
+                    $absAmt = ltrim((string) $refundRow->amount, '-');
+
+                    return bcadd($carry, $absAmt, $scale);
+                }, '0');
+
+            /** @var numeric-string $paymentAmount */
+            $paymentAmount = CurrencyScale::bcformat((string) $payment->amount, $scale);
+            /** @var numeric-string $available */
+            $available = bcsub($paymentAmount, $alreadyRefunded, $scale);
+
+            if (bccomp($available, '0', $scale) <= 0) {
+                // This payment is fully exhausted
+                continue;
+            }
+
+            // How much can we take from this payment?
+            /** @var numeric-string $take */
+            $take = bccomp($remaining, $available, $scale) >= 0
+                ? $available
+                : $remaining;
+            $map[$payment->id] = $take;
+            /** @var numeric-string $remaining */
+            $remaining = bcsub($remaining, $take, $scale);
+        }
+
+        return $map;
+    }
+
+    /**
+     * CashierChoice: use caller-supplied per-payment allocations.
+     * Validates that sum(allocations) == totalToRefund.
+     *
+     * @param  Collection<int, Payment>  $payments
+     * @param  array<string, string>|null  $cashierAllocations
+     * @param  numeric-string  $totalToRefund
+     * @return array<string, numeric-string> map of [payment_id => positive_amount]
+     */
+    private function buildCashierChoiceMap(
+        Collection $payments,
+        ?array $cashierAllocations,
+        string $totalToRefund,
+        int $scale
+    ): array {
+        if ($cashierAllocations === null) {
+            throw new \InvalidArgumentException(
+                'cashierAllocations must be provided for CashierChoice strategy'
+            );
+        }
+
+        // Validate each allocation references a real original payment
+        $validIds = $payments->pluck('id')->all();
+        foreach ($cashierAllocations as $paymentId => $amount) {
+            if (! in_array($paymentId, $validIds, true)) {
+                throw new \InvalidArgumentException(
+                    "cashierAllocations references unknown payment id: {$paymentId}"
+                );
+            }
+        }
+
+        // Validate sum of allocations equals totalToRefund
+        /** @var numeric-string $sum */
+        $sum = '0';
+        foreach ($cashierAllocations as $amount) {
+            /** @var numeric-string $amount */
+            /** @var numeric-string $sum */
+            $sum = bcadd($sum, $amount, $scale);
+        }
+        if (bccomp($sum, $totalToRefund, $scale) !== 0) {
+            throw new \InvalidArgumentException(
+                "Sum of cashier allocations ({$sum}) must equal totalToRefund ({$totalToRefund})"
+            );
+        }
+
+        /** @var array<string, numeric-string> $cashierAllocations */
+        return $cashierAllocations;
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    /**
      * Find the existing full refund for a reversed payment.
      *
      * @throws \RuntimeException If refund cannot be found
@@ -280,5 +672,41 @@ class PaymentRefundService
         }
 
         return $refund;
+    }
+
+    /**
+     * Return existing RefundAllocation VOs for a (company_id, refund_request_id) pair.
+     *
+     * @return list<RefundAllocation>
+     */
+    private function findExistingProrationRows(string $companyId, string $refundRequestId): array
+    {
+        $rows = Payment::where('company_id', $companyId)
+            ->where('refund_request_id', $refundRequestId)
+            ->where('payment_type', PaymentType::Refund->value)
+            ->whereNotNull('original_payment_id')
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return [];
+        }
+
+        /** @var list<RefundAllocation> $result */
+        $result = $rows->map(function (Payment $p): RefundAllocation {
+            /** @var numeric-string $absAmount */
+            $absAmount = CurrencyScale::bcformat(
+                ltrim((string) $p->amount, '-'),
+                $this->scaleResolver->getScale($p->currency)
+            );
+
+            return new RefundAllocation(
+                originalPaymentId: (string) $p->original_payment_id,
+                paymentId: $p->id,
+                // amount is stored as negative; return the positive absolute value
+                amount: $absAmount,
+            );
+        })->values()->all();
+
+        return $result;
     }
 }

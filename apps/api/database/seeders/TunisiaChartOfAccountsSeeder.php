@@ -221,6 +221,21 @@ class TunisiaChartOfAccountsSeeder extends Seeder
                 'system_purpose' => SystemAccountPurpose::ProductRevenue->value, 'is_system' => true],
             ['code' => '708', 'name' => 'Produits des activités annexes', 'type' => 'revenue', 'parent_code' => '70'],
             ['code' => '709', 'name' => 'Rabais, remises et ristournes accordés', 'type' => 'revenue', 'parent_code' => '70'],
+
+            // Voucher accounting — EU Directive 2016/1065 MPV layer (non-taxable; Phase 1)
+            ['code' => '7091', 'name' => 'Remboursements clients - Virements bons d\'achat', 'type' => 'expense', 'parent_code' => '70',
+                'system_purpose' => SystemAccountPurpose::SalesReturnsClearing->value, 'is_system' => true],
+            ['code' => '4197', 'name' => 'Clients - Bons d\'achat émis (passif courant)', 'type' => 'liability', 'parent_code' => '41',
+                'system_purpose' => SystemAccountPurpose::VoucherLiability->value, 'is_system' => true],
+            ['code' => '6238', 'name' => 'Dépenses de bonne volonté commerciale', 'type' => 'expense', 'parent_code' => '62',
+                'system_purpose' => SystemAccountPurpose::MarketingGoodwillExpense->value, 'is_system' => true],
+            ['code' => '7592', 'name' => 'Produits sur bons d\'achat non utilisés (breakage)', 'type' => 'revenue', 'parent_code' => '75',
+                'system_purpose' => SystemAccountPurpose::VoucherBreakageIncome->value, 'is_system' => true],
+            ['code' => '6588', 'name' => 'Pertes d\'arrondis sur bons d\'achat', 'type' => 'expense', 'parent_code' => '65',
+                'system_purpose' => SystemAccountPurpose::RoundingLossExpense->value, 'is_system' => true],
+            ['code' => '5810', 'name' => 'Compte d\'attente règlements TPV (bons d\'achat)', 'type' => 'asset', 'parent_code' => '5',
+                'system_purpose' => SystemAccountPurpose::PosTenderClearing->value, 'is_system' => true],
+
             ['code' => '71', 'name' => 'Production stockée (ou déstockage)', 'type' => 'revenue', 'parent_code' => '7'],
             ['code' => '72', 'name' => 'Production immobilisée', 'type' => 'revenue', 'parent_code' => '7'],
             ['code' => '74', 'name' => 'Subventions d\'exploitation', 'type' => 'revenue', 'parent_code' => '7'],

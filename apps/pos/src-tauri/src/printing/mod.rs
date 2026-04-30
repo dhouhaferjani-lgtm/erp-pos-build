@@ -2,6 +2,7 @@ pub mod escpos;
 pub mod network;
 pub mod receipt_template;
 pub mod usb;
+pub mod voucher_ticket;
 #[cfg(target_os = "windows")]
 pub mod windows;
 

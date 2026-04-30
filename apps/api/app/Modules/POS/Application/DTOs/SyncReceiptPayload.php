@@ -36,6 +36,7 @@ final readonly class SyncReceiptPayload
      * @param  array<int, array{payment_method_id: string, repository_id: string, amount: string, card_last_four?: string|null, transaction_reference?: string|null}>  $payments  Per-payment entries (split-pay support)
      * @param  string|null  $consumptionMode  F&B consumption mode: SUR_PLACE or A_EMPORTER
      * @param  string|null  $tableId  F&B table UUID (dine-in only)
+     * @param  int  $fiscalSchemaVersion  Fiscal hash schema version declared by the client (2 or 3); defaults to 2 for backward compatibility
      */
     public function __construct(
         public string $idempotencyKey,
@@ -62,6 +63,7 @@ final readonly class SyncReceiptPayload
         public array $payments,
         public ?string $consumptionMode,
         public ?string $tableId,
+        public int $fiscalSchemaVersion = 2,
     ) {}
 
     /**
@@ -105,6 +107,7 @@ final readonly class SyncReceiptPayload
             payments: $payments,
             consumptionMode: isset($data['consumption_mode']) ? (string) $data['consumption_mode'] : null,
             tableId: isset($data['table_id']) ? (string) $data['table_id'] : null,
+            fiscalSchemaVersion: isset($data['fiscal_schema_version']) ? (int) $data['fiscal_schema_version'] : 2,
         );
     }
 }

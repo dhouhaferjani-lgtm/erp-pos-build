@@ -1,0 +1,160 @@
+{
+  "pageTitle": "Politiques de remboursement POS",
+  "pageSubtitle": "Configurez la gestion des remboursements, des bons d'achat et de l'historique client au point de vente",
+  "accessDenied": {
+    "title": "Accès refusé",
+    "description": "Vous n'avez pas la permission de gérer les politiques de remboursement POS. Contactez votre administrateur."
+  },
+  "sections": {
+    "returnWindow": "Fenêtre de retour",
+    "managerOverride": "Validation manager",
+    "destinationsProration": "Destinations & proratisation",
+    "voucherDefaults": "Paramètres des bons d'achat",
+    "dailyCaps": "Plafonds journaliers",
+    "customerHistoryPrivacy": "Confidentialité de l'historique client",
+    "voucherRateLimits": "Limites de consultation des bons d'achat",
+    "goodwillControls": "Contrôles des gestes commerciaux"
+  },
+  "fields": {
+    "customer_return_expiry_days": {
+      "label": "Fenêtre de retour (jours)",
+      "help": "Nombre de jours pendant lesquels un client peut retourner un ticket de caisse pour un remboursement ou un échange",
+      "unit": "jours"
+    },
+    "customer_history_window_days": {
+      "label": "Fenêtre de recherche de l'historique client (jours)",
+      "help": "Profondeur de recherche des achats passés lors de l'assistance au client au POS",
+      "unit": "jours"
+    },
+    "out_of_window_policy": {
+      "label": "Politique hors fenêtre",
+      "help": "Que faire lorsque le retour est hors délai : refus ou remboursement uniquement en bon d'achat",
+      "options": {
+        "refuse": "Refuser — aucun remboursement ni échange",
+        "voucher_only": "Autoriser uniquement en bon d'achat"
+      }
+    },
+    "manager_override_threshold_amount": {
+      "label": "Seuil de validation manager — montant",
+      "help": "Montant de remboursement au-delà duquel une validation manager par code PIN est requise"
+    },
+    "manager_override_threshold_percent": {
+      "label": "Seuil de validation manager — % du ticket",
+      "help": "Ou % du total du ticket d'origine — le plus élevé des deux déclenche la validation"
+    },
+    "manager_override_required_for_no_receipt": {
+      "label": "Validation requise en cas de remboursement sans ticket",
+      "help": "Exiger une validation manager pour les remboursements sans ticket de caisse"
+    },
+    "allowed_refund_destinations": {
+      "label": "Destinations de remboursement autorisées",
+      "help": "Modes par lesquels les clients peuvent recevoir leur remboursement. Désactiver 'Espèces' restreint au mode de paiement d'origine ou au bon d'achat",
+      "options": {
+        "original_payment": "Mode de paiement d'origine",
+        "cash": "Espèces",
+        "store_voucher": "Bon d'achat"
+      }
+    },
+    "proration_strategy": {
+      "label": "Stratégie de proratisation multi-moyens de paiement",
+      "help": "Comment répartir le remboursement entre plusieurs moyens de paiement d'origine",
+      "options": {
+        "proportional": "Proportionnel — répartition selon les ratios d'origine",
+        "largest_first": "Le plus grand en premier — vider d'abord le moyen de paiement le plus important",
+        "cashier_choice": "Choix du caissier — le caissier choisit la répartition"
+      }
+    },
+    "voucher_default_expiry_days": {
+      "label": "Expiration par défaut des bons d'achat (jours)",
+      "help": "Expiration par défaut des bons d'achat en jours à compter de l'émission",
+      "unit": "jours"
+    },
+    "voucher_transferable_default": {
+      "label": "Bons d'achat transférables par défaut",
+      "help": "Activé : les nouveaux bons d'achat sont émis au porteur (transférables) par défaut ; sinon liés au client"
+    },
+    "voucher_cash_refund_allowed": {
+      "label": "Autoriser le remboursement en espèces des bons d'achat",
+      "help": "Permettre le remboursement en espèces d'un bon d'achat. Désactivé par défaut pour éviter l'arbitrage bon d'achat/espèces"
+    },
+    "daily_refund_cap_per_cashier": {
+      "label": "Plafond journalier de remboursement par caissier",
+      "enableLabel": "Activer le plafond journalier par caissier",
+      "help": "Montant total maximum de remboursement qu'un caissier peut traiter par jour. Décochez pour aucun plafond"
+    },
+    "daily_refund_cap_override_allowed": {
+      "label": "Autoriser le manager à étendre le plafond journalier",
+      "help": "Autoriser un manager à étendre le plafond journalier d'un caissier avec un motif enregistré"
+    },
+    "customer_history_search_max_per_cashier_per_day": {
+      "label": "Nombre maximum de recherches d'historique client par caissier par jour",
+      "help": "Nombre maximum de recherches d'historique client qu'un caissier peut effectuer par jour, afin de limiter l'exposition des données"
+    },
+    "customer_history_search_alert_thresholds": {
+      "rejected_specificity_per_hour": {
+        "label": "Alerte : recherches trop larges rejetées par heure",
+        "help": "Alerte lorsque ce nombre de recherches rejetées (trop larges) se produisent en une heure depuis un même caissier"
+      },
+      "same_partner_per_day": {
+        "label": "Alerte : recherches ciblant le même client par jour",
+        "help": "Alerte lorsque ce nombre de recherches de caissiers distincts ciblent le même client en une journée"
+      },
+      "cross_company_immediate": {
+        "label": "Alerte immédiate sur les recherches inter-tenants",
+        "help": "Alerter immédiatement lors de toute recherche de client inter-tenants"
+      }
+    },
+    "voucher_lookup_per_terminal_per_day": {
+      "label": "Consultations de bons d'achat max par terminal par jour",
+      "help": "Nombre maximum de consultations de bons d'achat par terminal par jour"
+    },
+    "voucher_lookup_per_cashier_per_day": {
+      "label": "Consultations de bons d'achat max par caissier par jour",
+      "help": "Nombre maximum de consultations de bons d'achat par caissier par jour"
+    },
+    "voucher_lookup_failed_per_tenant_per_hour_alert": {
+      "label": "Seuil d'alerte — consultations échouées (par heure, tenant)",
+      "help": "Seuil d'alerte pour les consultations de bons d'achat échouées sur l'ensemble du tenant en une heure"
+    },
+    "voucher_lookup_failed_per_tenant_per_hour_block": {
+      "label": "Seuil de blocage — consultations échouées (par heure, tenant)",
+      "help": "Seuil de blocage strict — lorsqu'il est dépassé, les consultations de bons d'achat sont temporairement désactivées pour le tenant"
+    },
+    "voucher_failed_attempts_auto_void": {
+      "label": "Annulation automatique après tentatives échouées",
+      "help": "Après ce nombre de tentatives d'utilisation échouées sur le même code de bon d'achat, l'annuler automatiquement comme mesure anti-fraude"
+    },
+    "goodwill_named_customer_threshold": {
+      "label": "Seuil client nommé pour les gestes commerciaux",
+      "help": "Au-delà de ce montant, un bon d'achat de geste commercial doit être attribué à un client nommé (pas de porteur anonyme)"
+    },
+    "goodwill_four_eyes_threshold": {
+      "label": "Seuil de double approbation",
+      "help": "Au-delà de ce montant, l'émission d'un geste commercial nécessite l'approbation d'un second administrateur"
+    },
+    "goodwill_daily_issuance_cap_per_user": {
+      "label": "Plafond journalier de gestes commerciaux par utilisateur",
+      "help": "Montant total maximum de gestes commerciaux qu'un utilisateur peut émettre par jour. Décochez pour aucun plafond"
+    },
+    "goodwill_bearer_default_off": {
+      "label": "Gestes commerciaux liés au client par défaut",
+      "help": "Activé : les nouveaux bons de geste commercial sont liés au client par défaut (opt-in explicite requis pour le porteur)"
+    }
+  },
+  "actions": {
+    "save": "Enregistrer les modifications",
+    "reset": "Réinitialiser les valeurs par défaut",
+    "saving": "Enregistrement..."
+  },
+  "validation": {
+    "min": "Le minimum est {{min}}",
+    "max": "Le maximum est {{max}}",
+    "required": "Ce champ est obligatoire",
+    "invalidDecimal": "Doit être un nombre décimal valide",
+    "atLeastOneDestination": "Au moins une destination de remboursement doit être sélectionnée"
+  },
+  "messages": {
+    "saved": "Politiques de remboursement mises à jour",
+    "error": "Échec de l'enregistrement : {{message}}"
+  }
+}

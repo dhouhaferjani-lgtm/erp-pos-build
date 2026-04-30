@@ -1,0 +1,18 @@
+{
+  "input": {
+    "receipt_number": "R-2026-000005",
+    "posted_at": "2026-04-28T15:00:00Z",
+    "previous_hash": "b8417359789b0e4beab0cdca554a482f6b312a491378bf2951169d63a295b890",
+    "total": "45.00",
+    "currency": "EUR",
+    "vat_breakdown": [{"rate": "0.20", "amount": "7.50"}],
+    "payments": [
+      {"method_code": "cash", "payment_type": "pos", "amount": "45.00", "instrument_type": null, "instrument_serial": null}
+    ],
+    "voucher_ledger_entries": [],
+    "exchange_group_id": "deadbeef-1234-5678-abcd-000000000001",
+    "audit": null
+  },
+  "expected_canonical": "{\"audit_hash\":\"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\",\"currency\":\"EUR\",\"exchange_group_id\":\"deadbeef-1234-5678-abcd-000000000001\",\"payment_methods_hash\":\"54f7c0a65d74fe803bfb55280e532a2cd88363ee713df5d01843f1840619790d\",\"posted_at\":\"2026-04-28T15:00:00Z\",\"previous_hash\":\"b8417359789b0e4beab0cdca554a482f6b312a491378bf2951169d63a295b890\",\"receipt_number\":\"R-2026-000005\",\"schema_version\":3,\"total\":\"45.00\",\"vat_breakdown_hash\":\"80138b55ea7d68dee52a831d14c1b917c164c9441732a98a0929d7bcfd440d10\",\"voucher_ledger_hash\":\"4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945\"}",
+  "expected_hash": "3b85ed5b358948fdb3fa60e5e13c83c2e77964300d73aa2b26861b6896a04492"
+}

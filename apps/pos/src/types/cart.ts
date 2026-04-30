@@ -26,4 +26,9 @@ export interface CartItem {
   discount_percent?: string;
   discount_amount?: string;
   discount_reason?: string;
+  /**
+   * 'return'  — negative line from a refund/exchange (Returning section).
+   * 'sale'    — normal positive purchase line (default when omitted).
+   */
+  kind?: 'return' | 'sale';
 }

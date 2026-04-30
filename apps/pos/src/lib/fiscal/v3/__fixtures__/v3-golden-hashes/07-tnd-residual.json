@@ -1,0 +1,34 @@
+{
+  "input": {
+    "receipt_number": "R-2026-000006",
+    "posted_at": "2026-04-28T16:00:00Z",
+    "previous_hash": "3b85ed5b358948fdb3fa60e5e13c83c2e77964300d73aa2b26861b6896a04492",
+    "total": "15.750",
+    "currency": "TND",
+    "vat_breakdown": [{"rate": "0.19", "amount": "2.510"}],
+    "payments": [
+      {"method_code": "cash", "payment_type": "pos", "amount": "3.215", "instrument_type": null, "instrument_serial": null},
+      {"method_code": "store_voucher", "payment_type": "pos", "amount": "12.535", "instrument_type": "store_voucher", "instrument_serial": "OTSP-TNDVCH000001-Q"}
+    ],
+    "voucher_ledger_entries": [
+      {
+        "voucher_id": "77777777-8888-9999-0000-111111111111",
+        "voucher_code": "OTSP-TNDVCH000001-Q",
+        "event": "redeemed",
+        "amount": "-12.53567",
+        "gl_journal_entry_id": "22222222-3333-4444-5555-666666666666"
+      },
+      {
+        "voucher_id": "77777777-8888-9999-0000-111111111111",
+        "voucher_code": "OTSP-TNDVCH000001-Q",
+        "event": "redeemed",
+        "amount": "-0.00033",
+        "gl_journal_entry_id": "33333333-4444-5555-6666-777777777777"
+      }
+    ],
+    "exchange_group_id": null,
+    "audit": null
+  },
+  "expected_canonical": "{\"audit_hash\":\"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\",\"currency\":\"TND\",\"exchange_group_id\":null,\"payment_methods_hash\":\"0b5e6fa6c2b976799cddf0d21736dddcc5e36119eecabfecb80982d4f303081d\",\"posted_at\":\"2026-04-28T16:00:00Z\",\"previous_hash\":\"3b85ed5b358948fdb3fa60e5e13c83c2e77964300d73aa2b26861b6896a04492\",\"receipt_number\":\"R-2026-000006\",\"schema_version\":3,\"total\":\"15.750\",\"vat_breakdown_hash\":\"49d5e8dc48de04cded9b1805da7a9b1a424c99abd6be88c53aeb509409d0902c\",\"voucher_ledger_hash\":\"5c731d0dea0f13919936901740dbeee619dbfdc23b97029398df83b54c00903a\"}",
+  "expected_hash": "51283f44a20211c203f91a83d58955844b8eb21ace35586de49528c61df7485b"
+}

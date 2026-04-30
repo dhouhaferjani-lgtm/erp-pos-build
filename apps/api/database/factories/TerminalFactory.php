@@ -29,6 +29,15 @@ class TerminalFactory extends Factory
             'current_sequence' => 1,
             'current_year' => (int) date('Y'),
             'is_active' => true,
+            'fiscal_schema_version' => 2,
         ];
+    }
+
+    /**
+     * Pin fiscal_schema_version to v3 (canonical hash path).
+     */
+    public function v3Schema(): static
+    {
+        return $this->state(fn () => ['fiscal_schema_version' => 3]);
     }
 }

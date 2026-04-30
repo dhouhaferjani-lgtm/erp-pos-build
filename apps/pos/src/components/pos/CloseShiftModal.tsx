@@ -4,6 +4,9 @@ import { AlertTriangle } from 'lucide-react';
 import { getErrorMessage } from '@/lib/api';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useCartStore } from '@/stores/cartStore';
+import { useRefundFlowStore } from '@/stores/refundFlowStore';
+import { useRefundDraftStore } from '@/stores/refundDraftStore';
+import { usePaymentStore } from '@/stores/paymentStore';
 import { useSyncStore } from '@/stores/syncStore';
 
 interface CloseShiftModalProps {
@@ -30,6 +33,9 @@ export function CloseShiftModal({ isOpen, onClose, shift }: CloseShiftModalProps
     try {
       await closeShift(actualCash);
       useCartStore.getState().clearCart();
+      useRefundFlowStore.getState().clearAll();
+      useRefundDraftStore.getState().clearDraftState();
+      usePaymentStore.getState().clearVoucherTenders();
       onClose();
       setActualCash('');
     } catch (err) {

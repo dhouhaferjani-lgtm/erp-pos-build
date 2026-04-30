@@ -167,10 +167,30 @@ export async function getReceiptByIdempotencyKey(
   );
 }
 
+/**
+ * Phase 1: retain all synced receipts within the current fiscal year (calendar
+ * year for now). Phase 2 will read fiscal_year.start_date from companyConfig
+ * and gate the boundary per tenant — most retail tenants in France use the
+ * calendar year as their fiscal year, so calendar-year boundaries are correct
+ * for the launch wave.
+ *
+ * At fiscal-year close, an archival flow (NF525-compliant long-term storage)
+ * will migrate the prior year's receipts off the local SQLite and we'll
+ * re-introduce a pruning boundary aligned with that flow.
+ *
+ * The retention anchor is `created_at` (the moment of fiscal posting on this
+ * terminal), not `synced_at` — the fiscal year boundary cares about the date
+ * the receipt was issued, not when it was uploaded to the server.
+ *
+ * SQLite `datetime('now', 'start of year')` resolves to January 1 of the
+ * current year at 00:00:00 UTC. Because `created_at` is stored as ISO 8601
+ * TEXT and 'YYYY-MM-DD HH:MM:SS' both compare lexicographically AND
+ * chronologically, the strict-less-than comparison is correct.
+ */
 export async function cleanupSyncedReceipts(db: Database): Promise<void> {
   await execute(
     db,
-    "DELETE FROM offline_receipts WHERE status = 'synced' AND synced_at < datetime('now', '-30 days')"
+    "DELETE FROM offline_receipts WHERE status = 'synced' AND created_at < datetime('now', 'start of year')"
   );
 }
 

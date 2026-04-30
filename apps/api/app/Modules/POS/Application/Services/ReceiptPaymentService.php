@@ -7,6 +7,7 @@ namespace App\Modules\POS\Application\Services;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Events\ReceiptCompleted;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
@@ -43,6 +44,7 @@ final class ReceiptPaymentService
         private readonly CompanyContext $companyContext,
         private readonly GeneralLedgerService $generalLedgerService,
         private readonly PaymentToleranceCheckerContract $toleranceChecker,
+        private readonly ReceiptFinalizationService $finalizationService,
     ) {}
 
     /**
@@ -67,9 +69,16 @@ final class ReceiptPaymentService
             $receipt = Receipt::with(['lines', 'vatDetails'])->findOrFail($receiptId);
             $companyId = $this->companyContext->requireCompanyId();
 
-            // Validate receipt not already paid
-            if ($receipt->payments()->exists()) {
+            // Guard: fiscalized receipts are immutable — payments are already recorded.
+            // Guard: voided receipts cannot be paid.
+            // Guard: pending_seal receipts with existing payments (e.g., concurrent call)
+            // are also blocked to prevent double-payment.
+            if ($receipt->fiscal_status === FiscalStatus::Fiscalized || $receipt->payments()->exists()) {
                 throw new \RuntimeException('Receipt has already been paid');
+            }
+
+            if ($receipt->fiscal_status === FiscalStatus::Voided) {
+                throw new \RuntimeException('Cannot record payment on a voided receipt');
             }
 
             // Calculate total paid
@@ -203,10 +212,13 @@ final class ReceiptPaymentService
                 $treasuryPayments[] = $treasuryPayment;
             }
 
-            // A1 — Tolerance write-off: same-transaction GL post + shift increment +
-            // pos_receipts.tolerance_writeoff persistence. PaymentRecorded event is
-            // intentionally untouched (Rule #8). Per the v1.1 contract,
-            // pos_receipt_payments.amount continues to store the tendered amount.
+            // A1 — Tolerance write-off: same-transaction GL post + shift increment.
+            // tolerance_writeoff and change_due are set on the model without calling
+            // save() here. finalize() below will persist them atomically together with
+            // the fiscal_hash and the pending_seal → fiscalized status transition,
+            // so a single UPDATE satisfies the immutability trigger.
+            // PaymentRecorded event is intentionally untouched (Rule #8). Per the v1.1
+            // contract, pos_receipt_payments.amount continues to store the tendered amount.
             if (bccomp($toleranceAmount, '0', self::SCALE) > 0) {
                 $toleranceEntry = $this->generalLedgerService->createPOSPaymentToleranceEntry(
                     companyId: $companyId,
@@ -216,9 +228,9 @@ final class ReceiptPaymentService
                 );
                 $this->generalLedgerService->postEntry($toleranceEntry, $receipt->cashier);
 
+                // Stage fields on the model — finalize() will persist them.
                 $receipt->tolerance_writeoff = $toleranceAmount;
                 $receipt->change_due = $changeDue;
-                $receipt->save();
 
                 try {
                     /** @var Shift $shift */
@@ -235,9 +247,16 @@ final class ReceiptPaymentService
                 }
                 $shift->applyToleranceWriteoff($toleranceAmount);
             } else {
+                // Stage change_due on the model — finalize() will persist it.
                 $receipt->change_due = $changeDue;
-                $receipt->save();
             }
+
+            // Finalize the receipt: compute fiscal_hash, advance terminal chain, and
+            // persist all staged fields (change_due, tolerance_writeoff, fiscal_hash,
+            // chain_sequence, fiscal_status) in a single pending_seal → fiscalized UPDATE.
+            // This call is inside the wrapping DB::transaction(), so a finalization
+            // failure (e.g., unsupported schema version) rolls back the payment writes too.
+            $receipt = $this->finalizationService->finalize($receipt);
 
             /** @var Receipt $freshReceipt */
             $freshReceipt = $receipt->fresh(['lines', 'vatDetails', 'payments']);

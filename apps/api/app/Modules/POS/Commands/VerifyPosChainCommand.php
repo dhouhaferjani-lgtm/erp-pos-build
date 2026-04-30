@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Commands;
 
+use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Services\ZReportHashService;
@@ -160,6 +161,7 @@ final class VerifyPosChainCommand extends Command
     private function verifyReceiptChain(Terminal $terminal): array
     {
         $count = Receipt::where('terminal_id', $terminal->id)
+            ->where('fiscal_status', FiscalStatus::Fiscalized->value)
             ->where('is_voided', false)
             ->where('is_training', false)
             ->count();
@@ -192,6 +194,7 @@ final class VerifyPosChainCommand extends Command
     private function findReceiptChainBreak(Terminal $terminal): string
     {
         $receipts = Receipt::where('terminal_id', $terminal->id)
+            ->where('fiscal_status', FiscalStatus::Fiscalized->value)
             ->where('is_voided', false)
             ->where('is_training', false)
             ->orderBy('chain_sequence')

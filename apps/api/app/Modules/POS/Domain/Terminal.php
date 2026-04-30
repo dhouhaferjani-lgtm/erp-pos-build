@@ -36,6 +36,7 @@ use Illuminate\Support\Carbon;
  * @property string $genesis_seed 256-bit hex string for hash chain initialization
  * @property int $current_sequence Next receipt sequence number for current year
  * @property int $current_year Year for sequence reset logic
+ * @property int $fiscal_schema_version Hash-chain schema version for v2/v3 dispatch (default 2)
  * @property string|null $last_hash Hash of most recent receipt (for chain continuity)
  * @property bool $is_active
  * @property bool $is_training_mode
@@ -97,6 +98,7 @@ class Terminal extends Model
         'genesis_seed',
         'current_sequence',
         'current_year',
+        'fiscal_schema_version',
         'last_hash',
         'is_active',
         'is_training_mode',
@@ -119,6 +121,7 @@ class Terminal extends Model
             'type' => TerminalType::class,
             'current_sequence' => 'integer',
             'current_year' => 'integer',
+            'fiscal_schema_version' => 'integer',
             'is_active' => 'boolean',
             'is_training_mode' => 'boolean',
             'activated_at' => 'datetime',

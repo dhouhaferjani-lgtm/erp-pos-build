@@ -22,6 +22,7 @@ pub fn run() {
             commands::greet,
             commands::printing::discover_printers,
             commands::printing::print_receipt,
+            commands::printing::print_voucher_ticket,
             commands::printing::print_test_page,
             commands::printing::open_cash_drawer,
             commands::display::list_monitors,

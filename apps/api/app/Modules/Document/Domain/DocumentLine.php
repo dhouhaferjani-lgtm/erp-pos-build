@@ -35,6 +35,9 @@ use Illuminate\Support\Carbon;
  * @property numeric-string|null $landed_unit_cost
  * @property string|null $notes
  * @property string|null $designation_default_snapshot
+ * @property numeric-string|null $eco_tax_amount Eco-contribution amount (Phase 2)
+ * @property numeric-string|null $eco_tax_rate Eco-tax rate as decimal fraction (Phase 2)
+ * @property string|null $eco_tax_category Eco-tax category code, max 64 chars (Phase 2)
  * @property string|null $source_line_id
  * @property string|null $work_order_line_id
  * @property Carbon|null $created_at
@@ -87,6 +90,10 @@ class DocumentLine extends Model
         // without it, default mass-assignment guarding silently drops it
         // (H2 audit finding).
         'work_order_line_id',
+        // Phase 2 eco-tax forward compatibility (Phase 1: columns exist, Phase 2: writer wired)
+        'eco_tax_amount',
+        'eco_tax_rate',
+        'eco_tax_category',
     ];
 
     /**
@@ -106,6 +113,10 @@ class DocumentLine extends Model
             'line_total' => 'decimal:3',
             'allocated_costs' => 'decimal:3',
             'landed_unit_cost' => 'decimal:3',
+            // Eco-tax columns: cast as strings for bcmath-safe arithmetic (project convention).
+            // Phase 1: always null; Phase 2 wires the writer.
+            'eco_tax_amount' => 'decimal:5',
+            'eco_tax_rate' => 'decimal:4',
         ];
     }
 

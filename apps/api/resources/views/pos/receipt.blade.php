@@ -272,6 +272,36 @@
             border-bottom: 1px dashed #000;
             font-style: italic;
         }
+
+        /* QR Code Section */
+        .receipt-qr {
+            text-align: center;
+            margin: 10px 0;
+            padding: 8px 0;
+            border-top: 1px dashed #000;
+        }
+
+        .receipt-qr svg {
+            display: block;
+            margin: 0 auto;
+        }
+
+        .qr-token-text {
+            font-size: 6pt;
+            word-break: break-all;
+            margin-top: 4px;
+            color: #333;
+        }
+
+        /* Original Receipt Reference (refund receipts) */
+        .original-receipt-ref {
+            font-size: 7pt;
+            text-align: center;
+            margin: 6px 0;
+            padding: 4px 6px;
+            border: 1px dotted #999;
+            background-color: #f9f9f9;
+        }
     </style>
 </head>
 <body>
@@ -320,6 +350,16 @@
                     <div><strong>{{ __('pos.return_reason') }}:</strong> {{ $returnReason }}</div>
                 @endif
             </div>
+            {{-- Original receipt QR reference for traceability (spec §6.6) --}}
+            @if(!empty($originalQrToken))
+                <div class="original-receipt-ref">
+                    <strong>{{ __('pos.original_receipt') }}:</strong> {{ $originalReceiptNumber }}<br>
+                    @if(!empty($originalQrSvg))
+                        {!! $originalQrSvg !!}
+                    @endif
+                    REF: {{ $originalQrToken }}
+                </div>
+            @endif
         @endif
 
         {{-- Receipt Info Section --}}
@@ -452,6 +492,17 @@
                         {{ substr($receipt->previous_hash, 32) }}
                     </div>
                 @endif
+            </div>
+        @endif
+
+        {{-- QR Code Section — receipt lookup token for cashier scan at refund time --}}
+        @if(!empty($qrToken))
+            <div class="receipt-qr">
+                @if(!empty($qrSvg))
+                    {!! $qrSvg !!}
+                @endif
+                {{-- Text fallback: typed-input fallback for refund lookup --}}
+                <div class="qr-token-text">REF: {{ $qrToken }}</div>
             </div>
         @endif
 

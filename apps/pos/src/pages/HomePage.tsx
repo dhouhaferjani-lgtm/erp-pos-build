@@ -9,6 +9,15 @@ import { usePaymentStore } from '@/stores/paymentStore';
 import { useHoldStore } from '@/stores/holdStore';
 import { useScannerStore } from '@/stores/scannerStore';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
+import { useRefundFlowStore } from '@/stores/refundFlowStore';
+import { useRefundDraftStore } from '@/stores/refundDraftStore';
+import { dispatchScan } from '@/lib/scan/dispatcher';
+import { getDatabase } from '@/lib/db';
+import { getOfflineReceiptById } from '@/lib/db/repositories/offlineReceiptRepository';
+import { hydrateFromReceipt } from '@/lib/refundFlow/hydrateFromReceipt';
+import { ReceiptScanConfirmationSheet } from '@/components/pos/ReceiptScanConfirmationSheet';
+import { ReceiptLocatorScreen } from '@/components/pos/ReceiptLocatorScreen';
+import { ResumeRefundDraftBanner } from '@/components/pos/ResumeRefundDraftBanner';
 import { getErrorMessage } from '@/lib/api';
 import { useCurrency } from '@/lib/currency';
 import { fetchReceipt } from '@/api/receiptApi';
@@ -38,6 +47,29 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import type { ConsumptionMode } from '@/components/atoms/ConsumptionModeToggle';
 import type { POSProduct } from '@/types/product';
 import type { SelectedModifier } from '@/types/cart';
+
+/**
+ * Look up the receipt's signed QR token from the local SQLite index.
+ *
+ * The token format is `v:kid:receipt_uuid:mac`. When absent (offline-issued
+ * receipt whose token has not been signed back yet), callers should treat the
+ * value as null — the printer omits the QR section gracefully.
+ *
+ * @param receiptNumber  The receipt number to look up (e.g. "R-T1-2026-00000001").
+ * @param companyId      The active company ID used to scope the local DB instance.
+ */
+async function lookupQrToken(receiptNumber: string, companyId: string | null): Promise<string | null> {
+  try {
+    if (!companyId) return null;
+    const db = await getDatabase(companyId);
+    const { findReceiptByNumber } = await import('@/lib/offline/voucherRepository');
+    const entry = await findReceiptByNumber(db, receiptNumber);
+    return entry?.qr_token ?? null;
+  } catch (lookupErr) {
+    console.warn('[POS] QR-token lookup failed:', lookupErr);
+    return null;
+  }
+}
 
 export function HomePage() {
   const { t } = useTranslation();
@@ -109,6 +141,8 @@ export function HomePage() {
   const [showHeldModal, setShowHeldModal] = useState(false);
   const [showDiscountModal, setShowDiscountModal] = useState(false);
   const [showVoidReturnModal, setShowVoidReturnModal] = useState(false);
+  // Receipt locator screen — Returns / Exchange entry point (Task 51)
+  const [showReceiptLocator, setShowReceiptLocator] = useState(false);
   const [quantityEditItemId, setQuantityEditItemId] = useState<string | null>(null);
 
   // ESC/POS receipt data for thermal printing
@@ -136,7 +170,34 @@ export function HomePage() {
   // Barcode scanner
   const [scanMessage, setScanMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  const handleBarcodeScan = useCallback(
+  // Refund-flow scan dispatcher state (Task 50). The pending entry drives
+  // the Receipt-Scan Confirmation Sheet; cart is NEVER mutated here.
+  const pendingScanResult = useRefundFlowStore((s) => s.pendingScanResult);
+  const setPendingScanResult = useRefundFlowStore((s) => s.setPendingScanResult);
+  const acceptPendingScan = useRefundFlowStore((s) => s.acceptPendingScan);
+  // Bug 1 fix: subscribe via selector so React sees each new token value
+  // and re-fires the hydration effect when a second scan arrives in the same session.
+  const acceptedReceiptToken = useRefundFlowStore((s) => s.acceptedReceiptToken);
+
+  // Refund draft store (Task 52) — persist/restore in-progress refund carts.
+  const loadDraft = useRefundDraftStore((s) => s.loadDraft);
+  const persistDraft = useRefundDraftStore((s) => s.persistDraft);
+  const discardDraftAction = useRefundDraftStore((s) => s.discardDraft);
+  const existingDraft = useRefundDraftStore((s) => s.draft);
+  const clearDraftState = useRefundDraftStore((s) => s.clearDraftState);
+
+  // Active refund context: which receipt is being refunded (Task 52).
+  const [activeRefundReceiptUuid, setActiveRefundReceiptUuid] = useState<string | null>(null);
+  const [activeRefundReceiptNumber, setActiveRefundReceiptNumber] = useState<string | null>(null);
+  const [activeRefundDraftId, setActiveRefundDraftId] = useState<string | null>(null);
+  const [exchangeRequestId, setExchangeRequestId] = useState<string | null>(null);
+  const [detailsNotLocalWarning, setDetailsNotLocalWarning] = useState(false);
+
+  /**
+   * Existing product-barcode handler — extracted so the receipt-token
+   * dispatcher (below) can fall through to it cleanly.
+   */
+  const handleProductBarcode = useCallback(
     (barcode: string) => {
       const product = products.find(
         (p) => p.barcode === barcode || p.sku === barcode,
@@ -154,6 +215,53 @@ export function HomePage() {
       }
     },
     [products, addItem, t],
+  );
+
+  /**
+   * Wrapped scan handler (Phase H Task 50, spec §6.1 entry 2):
+   *   1. If terminal + companyId are present, run `dispatchScan` first.
+   *   2. On `'receipt-token'` kind, set the pending state — the
+   *      Receipt-Scan Confirmation Sheet renders and waits for the cashier.
+   *      The cart is NOT mutated here.
+   *   3. On `'fallthrough'` (or when prerequisites are missing), call the
+   *      existing product-barcode logic unchanged.
+   */
+  const handleBarcodeScan = useCallback(
+    (barcode: string) => {
+      // Read both companyId and terminalId from store getState() at scan-time
+      // (not from the captured React state) so a stale closure on the active
+      // terminal can't misroute scans after a terminal switch. Using
+      // getState() here mirrors how companyId is read and keeps the snapshot
+      // symmetric across the two prerequisites.
+      const companyId = useAuthStore.getState().companyId;
+      const terminalId = useTerminalStore.getState().terminal?.id ?? null;
+      if (!companyId || !terminalId) {
+        handleProductBarcode(barcode);
+        return;
+      }
+      void (async () => {
+        try {
+          const db = await getDatabase(companyId);
+          const result = await dispatchScan({ token: barcode, db, terminalId });
+          if (result.kind === 'receipt-token') {
+            setPendingScanResult(result.entry);
+            return;
+          }
+          handleProductBarcode(barcode);
+        } catch (error) {
+          // Local SQLite failure → surface a translated toast so the cashier
+          // gets feedback (otherwise they'd see the dispatch silently miss
+          // and then "product not found" a moment later, which is confusing).
+          // After surfacing, we still fall through to product lookup so the
+          // cashier is never stuck — the receipt-token path is opportunistic.
+          console.error('[POS] scan dispatcher failed, falling back to product lookup:', error);
+          setScanMessage({ text: t('receiptScan.dispatchError'), type: 'error' });
+          setTimeout(() => setScanMessage(null), 3000);
+          handleProductBarcode(barcode);
+        }
+      })();
+    },
+    [terminal?.id, handleProductBarcode, setPendingScanResult, t],
   );
 
   useBarcodeScanner({
@@ -177,6 +285,146 @@ export function HomePage() {
   useEffect(() => {
     void loadHeldTransactions();
   }, [loadHeldTransactions]);
+
+  // Task 52: Load refund draft when shift is open so we can offer resume.
+  useEffect(() => {
+    if (!shift) return;
+    const companyId = useAuthStore.getState().companyId;
+    const terminalId = useTerminalStore.getState().terminal?.id ?? null;
+    if (!companyId || !terminalId) return;
+    void loadDraft(companyId, terminalId);
+  }, [shift, loadDraft]);
+
+  // Concern #1: Reset refund local state when shift closes or changes.
+  // The SQLite refund_drafts row is intentionally NOT deleted so the legitimate
+  // operator can resume after restart — only the in-memory projection is cleared.
+  useEffect(() => {
+    if (shift !== null) return; // only fire on close/absence
+    setActiveRefundReceiptUuid(null);
+    setActiveRefundReceiptNumber(null);
+    setActiveRefundDraftId(null);
+    setExchangeRequestId(null);
+    setPendingScanResult(null);
+    setDetailsNotLocalWarning(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shift]);
+
+  // Concern #1: Reset refund local state when operator switches.
+  // Prevents Operator A's pending sheet from leaking into Operator B's session.
+  useEffect(() => {
+    if (operator !== null) return; // only fire on operator clear
+    setActiveRefundReceiptUuid(null);
+    setActiveRefundReceiptNumber(null);
+    setActiveRefundDraftId(null);
+    setExchangeRequestId(null);
+    setPendingScanResult(null);
+    setDetailsNotLocalWarning(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [operator?.id]);
+
+  // Task 52: Consume the acceptedReceiptToken (emitted by Task 50 dispatcher
+  // or Task 51 locator). Runs ONCE per token — idempotent via consume+clear.
+  // Bug 1 fix: use the `acceptedReceiptToken` selector (subscribed above) in the
+  // dep array so React re-fires this effect whenever a new token is set, even
+  // within the same session.
+  useEffect(() => {
+    // The selector value drives the dep array; use it as the early-exit guard.
+    const token = acceptedReceiptToken;
+    if (token === null) return;
+
+    // Consume atomically (read + clear). A second re-render will not re-fire.
+    const event = useRefundFlowStore.getState().consumeAcceptedReceiptToken();
+    if (event === null) return;
+
+    // Prevent re-hydrating an already-active refund session.
+    if (activeRefundReceiptUuid === event.receiptUuid) return;
+
+    const companyId = useAuthStore.getState().companyId;
+    if (!companyId) return;
+
+    void (async () => {
+      try {
+        const db = await getDatabase(companyId);
+        const receipt = await getOfflineReceiptById(db, event.receiptUuid);
+
+        if (receipt === null) {
+          // Receipt not in local SQLite — likely synced + pruned or was from
+          // a different terminal's DB. Surface a warning message.
+          setDetailsNotLocalWarning(true);
+          return;
+        }
+
+        const returnItems = hydrateFromReceipt(event, receipt);
+
+        // Atomically replace return items in the cart.
+        useCartStore.getState().replaceReturnItems(returnItems);
+        setActiveRefundReceiptUuid(event.receiptUuid);
+        setActiveRefundReceiptNumber(event.receiptNumber);
+        setDetailsNotLocalWarning(false);
+
+        // Persist draft immediately so a crash/close can restore.
+        const terminalId = useTerminalStore.getState().terminal?.id ?? '';
+        const operatorId = useOperatorStore.getState().operator?.id ?? '';
+        const draftId = activeRefundDraftId ?? crypto.randomUUID();
+        setActiveRefundDraftId(draftId);
+
+        await persistDraft(companyId, {
+          id: draftId,
+          terminalId,
+          operatorId,
+          receiptUuid: event.receiptUuid,
+          receiptNumber: event.receiptNumber,
+          returnItems,
+          buyingItems: useCartStore.getState().saleItems(),
+          transactionDiscount: useCartStore.getState().transactionDiscount,
+          exchangeRequestId: null,
+        });
+      } catch (err) {
+        console.error('[refundFlow] hydrateFromReceipt failed:', err);
+        setDetailsNotLocalWarning(true);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [acceptedReceiptToken]);
+
+  // Task 52: Auto-persist draft whenever cart items or discount change while
+  // a refund is active.
+  useEffect(() => {
+    if (!activeRefundReceiptUuid || !activeRefundDraftId) return;
+
+    const companyId = useAuthStore.getState().companyId;
+    const terminalId = useTerminalStore.getState().terminal?.id ?? '';
+    const operatorId = useOperatorStore.getState().operator?.id ?? '';
+    if (!companyId) return;
+
+    const returnItems = useCartStore.getState().returnItems();
+    const saleItemsList = useCartStore.getState().saleItems();
+
+    // Determine if exchange_request_id should be generated.
+    // exchange_request_id: generated lazily on first positive line; preserved for the
+    // lifetime of the draft (does NOT regenerate on empty-then-refill cycles).
+    // Cleared only on draft discard.
+    let currentExchangeId = exchangeRequestId;
+    if (saleItemsList.length > 0 && currentExchangeId === null) {
+      currentExchangeId = crypto.randomUUID();
+      setExchangeRequestId(currentExchangeId);
+    }
+    // Do NOT clear currentExchangeId when saleItemsList becomes empty — the ID
+    // must survive empty-then-refill cycles so the eventual API submit is idempotent.
+
+    void persistDraft(companyId, {
+      id: activeRefundDraftId,
+      terminalId,
+      operatorId,
+      receiptUuid: activeRefundReceiptUuid,
+      receiptNumber: activeRefundReceiptNumber ?? '',
+      returnItems,
+      buyingItems: saleItemsList,
+      transactionDiscount: useCartStore.getState().transactionDiscount,
+      exchangeRequestId: currentExchangeId,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartItems, transactionDiscount]);
 
   // Clear payment error when cash modal opens
   useEffect(() => {
@@ -216,10 +464,17 @@ export function HomePage() {
 
     const loader = async () => {
       try {
+        const companyId = useAuthStore.getState().companyId;
+
         if (lastReceiptServerId) {
           const fullReceipt = await fetchReceipt(lastReceiptServerId);
+          const qrToken = await lookupQrToken(fullReceipt.receipt_number, companyId);
           if (!cancelled) {
-            setEscPosData(buildEscPosReceiptData(fullReceipt, receiptVisibility));
+            setEscPosData(
+              buildEscPosReceiptData(fullReceipt, receiptVisibility, undefined, {
+                qrToken,
+              }),
+            );
             setEscPosSource('server');
           }
           return;
@@ -227,8 +482,13 @@ export function HomePage() {
         if (lastReceiptIdempotencyKey) {
           const { getOfflineReceiptForPrint } = await import('@/lib/offline/getOfflineReceiptForPrint');
           const localReceipt = await getOfflineReceiptForPrint(lastReceiptIdempotencyKey);
+          const qrToken = await lookupQrToken(localReceipt.receipt_number, companyId);
           if (!cancelled) {
-            setEscPosData(buildEscPosReceiptData(localReceipt, receiptVisibility));
+            setEscPosData(
+              buildEscPosReceiptData(localReceipt, receiptVisibility, undefined, {
+                qrToken,
+              }),
+            );
             setEscPosSource('local');
           }
         }
@@ -264,6 +524,43 @@ export function HomePage() {
     () => cartItems.map((item) => item.product.id),
     [cartItems],
   );
+
+  // Task 52: Resume a persisted refund draft on app restart.
+  // Bug 3 fix: branch cleanly — replaceCart only when there are buying items
+  // (the first replaceReturnItems call was a no-op when replaceCart ran immediately
+  // after and overwrote the entire cart). When only return items exist, call
+  // replaceReturnItems so the discount state is preserved separately.
+  const handleResumeDraft = useCallback(() => {
+    if (!existingDraft) return;
+    if (existingDraft.buyingItems.length > 0) {
+      // Exchange mode: restore both return + sale lines atomically.
+      useCartStore.getState().replaceCart(
+        [
+          ...existingDraft.returnItems,
+          ...existingDraft.buyingItems,
+        ],
+        existingDraft.transactionDiscount,
+      );
+    } else {
+      // Pure-refund mode: only return items, no sale lines in flight.
+      useCartStore.getState().replaceReturnItems(existingDraft.returnItems);
+    }
+    setActiveRefundReceiptUuid(existingDraft.receiptUuid);
+    setActiveRefundReceiptNumber(existingDraft.receiptNumber);
+    setActiveRefundDraftId(existingDraft.id);
+    setExchangeRequestId(existingDraft.exchangeRequestId);
+    clearDraftState();
+  }, [existingDraft, clearDraftState]);
+
+  const handleDiscardDraft = useCallback(async () => {
+    if (!existingDraft) return;
+    const companyId = useAuthStore.getState().companyId;
+    if (!companyId) return;
+    await discardDraftAction(companyId, existingDraft.id);
+  }, [existingDraft, discardDraftAction]);
+
+  // Task 52: Net total for the footer (sale total − abs(return total)).
+  const netTotal = useCartStore((s) => s.netTotal)();
 
   const handleOpenShift = useCallback(async () => {
     setShiftError(null);
@@ -580,6 +877,23 @@ export function HomePage() {
     <div className="flex h-full flex-col">
       <TerminalNotReadyBanner />
       <ChainBreakAlert />
+
+      {/* Task 52: Resume-draft banner — shown when a crashed/closed refund draft is detected. */}
+      {existingDraft !== null && activeRefundReceiptUuid === null && (
+        <ResumeRefundDraftBanner
+          receiptNumber={existingDraft.receiptNumber}
+          onResume={handleResumeDraft}
+          onDiscard={() => void handleDiscardDraft()}
+        />
+      )}
+
+      {/* Task 52: Not-local warning when receipt details couldn't be loaded. */}
+      {detailsNotLocalWarning && (
+        <div className="border-b border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700">
+          {t('pos:refundFlow.detailsNotLocal')}
+        </div>
+      )}
+
       <div className={`flex flex-1 min-h-0 relative ${cartPosition === 'end' ? 'flex-row-reverse' : 'flex-row'}`}>
       {/* Barcode scan feedback */}
       {scanMessage && (
@@ -613,12 +927,14 @@ export function HomePage() {
           onDiscount={() => setShowDiscountModal(true)}
           onHold={() => void handleHold()}
           onRecall={() => setShowHeldModal(true)}
+          onReturns={() => setShowReceiptLocator(true)}
           onLineDiscount={handleLineDiscount}
           onRemoveLineDiscount={handleRemoveLineDiscount}
           onEditModifiers={handleEditModifiers}
           onRemoveDiscount={handleRemoveDiscount}
           paymentMethods={paymentMethods}
           checkoutDisabled={!hashChainReady || isProcessing}
+          netTotal={activeRefundReceiptUuid !== null ? netTotal : undefined}
         />
       </div>
 
@@ -735,6 +1051,23 @@ export function HomePage() {
         onClose={() => setQuantityEditItemId(null)}
         currentQuantity={quantityEditItem?.quantity ?? 1}
         onConfirm={handleQuantityConfirm}
+      />
+
+      {/* Receipt-Scan Confirmation Sheet (Phase H Task 50, spec §6.1 entry 2).
+          Cashier scans an old sale receipt mid-sale → ask before mutating cart. */}
+      <ReceiptScanConfirmationSheet
+        entry={pendingScanResult}
+        onCancel={() => setPendingScanResult(null)}
+        onAccept={() => acceptPendingScan()}
+      />
+
+      {/* Returns / Exchange receipt-locator screen (Phase H Task 51, spec §6.1).
+          Opened by the "Returns / Exchange" quick-action button in the cart.
+          Queries are local SQLite only. On "Refund this" the store emits the
+          same ReceiptTokenAccepted event as Task 50's scan dispatcher. */}
+      <ReceiptLocatorScreen
+        isOpen={showReceiptLocator}
+        onClose={() => setShowReceiptLocator(false)}
       />
       </div>
     </div>

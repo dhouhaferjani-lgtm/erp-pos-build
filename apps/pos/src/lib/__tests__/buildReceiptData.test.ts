@@ -15,6 +15,26 @@ vi.mock('@/stores/authStore', () => ({
 
 import { buildEscPosReceiptData } from '../buildReceiptData';
 import type { FullReceiptResponse } from '@/types/receipt';
+import type { CheckoutResult } from '@/lib/offline/offlineCheckoutService';
+
+/** Minimal but valid CheckoutResult fixture for offline-receipt tests */
+function makeOfflineCheckoutResult(overrides: Partial<CheckoutResult> = {}): CheckoutResult {
+  return {
+    isOffline: true,
+    receiptId: 'offline-rcpt-001',
+    receiptNumber: 'R-T1-2026-00000001',
+    total: '20.00',
+    subtotal: '20.00',
+    taxAmount: '0.00',
+    discountAmount: '0.00',
+    changeDue: 0,
+    currency: 'EUR',
+    // fiscalHash is optional (string | undefined)
+    onlineReceipt: null,
+    onlinePayment: null,
+    ...overrides,
+  };
+}
 
 /** Minimal but valid FullReceiptResponse fixture */
 function makeReceipt(overrides: Partial<FullReceiptResponse> = {}): FullReceiptResponse {
@@ -225,6 +245,104 @@ describe('buildEscPosReceiptData', () => {
     const receipt = makeReceipt();
     const result = buildEscPosReceiptData(receipt);
     expect(result.is_reprint).toBeUndefined();
+  });
+});
+
+// ── Phase H Block 2 — receipt QR token + refund metadata ─────────────────────
+
+describe('buildEscPosReceiptData — Phase H Block 2 (sale QR / refund header / cross-refs)', () => {
+  it('emits qr_token on a sale receipt when one is provided', () => {
+    const receipt = makeReceipt();
+    const token =
+      'v:k1:c0ffee00-1111-2222-3333-444455556666:f00dbeefcafe1234abcd5678fedcba98';
+
+    const result = buildEscPosReceiptData(receipt, undefined, false, {
+      qrToken: token,
+    });
+
+    expect(result.qr_token).toBe(token);
+    expect(result.receipt_kind).toBe('sale');
+    expect(result.original_receipt_number).toBeNull();
+    expect(result.original_receipt_qr_token).toBeNull();
+  });
+
+  it('emits qr_token = null on a sale receipt when none is provided (back-compat)', () => {
+    const receipt = makeReceipt();
+    const result = buildEscPosReceiptData(receipt);
+
+    expect(result.qr_token).toBeNull();
+    expect(result.receipt_kind).toBe('sale');
+  });
+
+  it('infers receipt_kind = "refund" from receipt_type === "return" and surfaces all refund cross-refs', () => {
+    const refundToken =
+      'v:k1:c0ffee00-1111-2222-3333-444455556666:f00dbeefcafe1234abcd5678fedcba98';
+    const originalToken =
+      'v:k1:abadcafe-aaaa-bbbb-cccc-dddddddddddd:1234567890abcdef1234567890abcdef';
+
+    const receipt = makeReceipt({
+      receipt_type: 'return',
+      total: '-10.00',
+      subtotal: '-10.00',
+    });
+
+    const result = buildEscPosReceiptData(receipt, undefined, false, {
+      qrToken: refundToken,
+      originalReceiptNumber: 'R-T1-2026-00000123',
+      originalReceiptQrToken: originalToken,
+    });
+
+    expect(result.receipt_kind).toBe('refund');
+    expect(result.qr_token).toBe(refundToken);
+    expect(result.original_receipt_number).toBe('R-T1-2026-00000123');
+    expect(result.original_receipt_qr_token).toBe(originalToken);
+  });
+
+  it('honours an explicit receiptKind override even when receipt_type says "sale"', () => {
+    const receipt = makeReceipt({ receipt_type: 'sale' });
+
+    const result = buildEscPosReceiptData(receipt, undefined, false, {
+      receiptKind: 'refund',
+      originalReceiptNumber: 'R-T1-2026-00000999',
+    });
+
+    expect(result.receipt_kind).toBe('refund');
+    expect(result.original_receipt_number).toBe('R-T1-2026-00000999');
+  });
+
+  it('round-trips a v:kid:uuid:mac token through parseReceiptUuidFromQrToken', async () => {
+    // The QR token format is the contract between the backend signer and the
+    // local receipt_qr_index. Verify the canonical 4-segment shape we feed
+    // into the printer parses back to the same UUID.
+    const { parseReceiptUuidFromQrToken } = await import(
+      '@/lib/offline/voucherRepository'
+    );
+    const uuid = 'c0ffee00-1111-2222-3333-444455556666';
+    const token = `v:k1:${uuid}:f00dbeefcafe1234abcd5678fedcba98`;
+
+    const receipt = makeReceipt();
+    const result = buildEscPosReceiptData(receipt, undefined, false, {
+      qrToken: token,
+    });
+
+    expect(result.qr_token).toBe(token);
+    expect(parseReceiptUuidFromQrToken(token)).toBe(uuid);
+  });
+
+  it('strips qr_token from buildEscPosFromOfflineReceipt when no extras are passed', async () => {
+    const { buildEscPosFromOfflineReceipt } = await import('../buildReceiptData');
+
+    const result = buildEscPosFromOfflineReceipt(
+      makeOfflineCheckoutResult(),
+      [],
+      'Acme',
+      'T1',
+      'Alice',
+      'Cash',
+    );
+
+    expect(result.qr_token).toBeNull();
+    expect(result.receipt_kind).toBe('sale');
   });
 });
 
