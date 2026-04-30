@@ -638,4 +638,34 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    // In-progress refund / exchange drafts persisted to SQLite so an app
+    // close or crash can restore the cart on reopen. One row per active
+    // refund session on this terminal (at most one at a time in practice).
+    //
+    // `exchange_request_id` is NULL until the cashier adds a positive
+    // ("Buying new") line — the presence of a non-null value signals that
+    // the session has become an exchange rather than a pure refund.
+    //
+    // All JSON columns store CartItem arrays or the transactionDiscount
+    // shape — mirror the held_transactions pattern from migration 17.
+    version: 27,
+    name: 'create_refund_drafts',
+    sql: `
+      CREATE TABLE IF NOT EXISTS refund_drafts (
+        id TEXT PRIMARY KEY,
+        terminal_id TEXT NOT NULL,
+        operator_id TEXT NOT NULL,
+        receipt_uuid TEXT NOT NULL,
+        receipt_number TEXT NOT NULL,
+        return_items_json TEXT NOT NULL,
+        buying_items_json TEXT NOT NULL,
+        transaction_discount_json TEXT,
+        exchange_request_id TEXT,
+        started_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_refund_drafts_terminal ON refund_drafts(terminal_id);
+    `,
+  },
 ];

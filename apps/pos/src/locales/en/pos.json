@@ -86,6 +86,21 @@
     "startRefund": "Start refund",
     "dispatchError": "Couldn't read the local receipt index. Falling back to product lookup."
   },
+  "refundFlow": {
+    "returningSection": "Returning",
+    "buyingNewSection": "Buying new",
+    "detailsNotLocal": "The original receipt details are not available on this terminal. Only items from receipts recorded on this terminal can be refunded locally. Ask a manager to look up the receipt from the back office.",
+    "confirm": {
+      "charge": "Charge {{amount}}",
+      "refund": "Refund {{amount}}",
+      "noPayment": "No payment due"
+    },
+    "resumeBanner": {
+      "title": "In-progress refund — Ticket {{number}}",
+      "resume": "Resume",
+      "discard": "Discard"
+    }
+  },
   "receiptLocator": {
     "title": "Returns / Exchange",
     "entryButton": "Returns / Exchange",

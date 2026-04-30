@@ -1,0 +1,72 @@
+import type { CartItem } from '@/types/cart';
+import type { ReceiptTokenAccepted } from '@/types/refund';
+import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
+
+/**
+ * Shape of a persisted receipt line as stored in `offline_receipts.lines` JSON.
+ * Mirrors the OfflineReceiptLine type used in getOfflineReceiptForPrint.ts.
+ */
+interface OfflineReceiptLine {
+  product_id?: string;
+  composite_item_id?: string;
+  name: string;
+  sku: string;
+  quantity: number;
+  unit_price: string;
+  line_total: string;
+  tax_rate: string;
+  tax_amount: string;
+  discount_amount?: string | null;
+  modifiers?: Array<{ name: string; price: string }>;
+}
+
+/**
+ * Pure function: converts a local `offline_receipts` row + the accepted
+ * receipt event into a list of `CartItem` entries with `kind: 'return'` and
+ * negative quantities. No side effects; no API calls.
+ *
+ * Spec §6.2: "The active POS cart loads the original receipt's lines as
+ * negative line items ('Returning' section)."
+ *
+ * @param event       The ReceiptTokenAccepted event (carries metadata only).
+ * @param receipt     The full offline_receipts row (carries `lines` JSON).
+ * @returns           CartItem[] each with quantity < 0, kind = 'return'.
+ */
+export function hydrateFromReceipt(
+  event: ReceiptTokenAccepted,
+  receipt: OfflineReceipt,
+): CartItem[] {
+  const rawLines = JSON.parse(receipt.lines) as OfflineReceiptLine[];
+
+  return rawLines.map<CartItem>((line, idx) => {
+    const negativeQty = -Math.abs(line.quantity);
+    const unitPrice = line.unit_price;
+
+    // line_total for a return line: negative (cashier owes money)
+    const lineTotal = (parseFloat(line.line_total) * -1).toFixed(
+      line.line_total.includes('.') ? line.line_total.split('.')[1]!.length : 2,
+    );
+    const taxAmount = (parseFloat(line.tax_amount) * -1).toFixed(
+      line.tax_amount.includes('.') ? line.tax_amount.split('.')[1]!.length : 2,
+    );
+
+    const productId = line.product_id ?? line.composite_item_id ?? `${event.receiptUuid}-line-${String(idx)}`;
+
+    return {
+      id: `return-${event.receiptUuid}-${String(idx)}`,
+      product: {
+        id: productId,
+        name: line.name,
+        sku: line.sku,
+        price: unitPrice,
+        ...(line.composite_item_id ? { sellableType: 'composite_item' as const } : {}),
+      },
+      quantity: negativeQty,
+      unit_price: unitPrice,
+      line_total: lineTotal,
+      tax_rate: line.tax_rate,
+      tax_amount: taxAmount,
+      kind: 'return',
+    };
+  });
+}

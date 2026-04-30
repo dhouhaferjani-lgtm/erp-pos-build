@@ -86,6 +86,21 @@
     "startRefund": "Démarrer le remboursement",
     "dispatchError": "Impossible de lire l'index local des reçus. Recherche produit en repli."
   },
+  "refundFlow": {
+    "returningSection": "À rembourser",
+    "buyingNewSection": "Nouvel achat",
+    "detailsNotLocal": "Les détails du ticket d'origine ne sont pas disponibles sur ce terminal. Seuls les articles des tickets enregistrés sur ce terminal peuvent être remboursés localement. Demandez à un responsable de retrouver le ticket depuis le back-office.",
+    "confirm": {
+      "charge": "Encaisser {{amount}}",
+      "refund": "Rembourser {{amount}}",
+      "noPayment": "Aucun paiement dû"
+    },
+    "resumeBanner": {
+      "title": "Remboursement en cours — Ticket {{number}}",
+      "resume": "Reprendre",
+      "discard": "Annuler"
+    }
+  },
   "receiptLocator": {
     "title": "Retours / Échange",
     "entryButton": "Retours / Échange",
