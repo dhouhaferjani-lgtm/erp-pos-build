@@ -2,6 +2,7 @@ import type Database from '@tauri-apps/plugin-sql';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { bcadd, bcsub, bcmul, bcdiv, bcformat, bccomp } from '@/lib/decimal';
 import { computeFiscalHash } from '@/lib/fiscal/hashService';
+import { buildCanonicalPayload, type V3CanonicalInput } from '@/lib/fiscal/v3/canonicalPayload';
 import {
   getTerminalState,
   advanceHashChain,
@@ -32,6 +33,16 @@ interface OfflineReceiptInput {
     repositoryId?: string;
     cardLastFour?: string;
     transactionReference?: string;
+    /**
+     * v3-only: payment instrument kind for voucher-bearing tenders. One of
+     * 'store_voucher' | 'restaurant_voucher' | 'gift_card', or null/undefined
+     * for non-instrument tenders (cash, card). Bound into the v3 fiscal hash
+     * so a sealed receipt cannot be reattributed to a different instrument.
+     * Codex review B2 (server) + B1 (client).
+     */
+    instrumentType?: 'store_voucher' | 'restaurant_voucher' | 'gift_card' | null;
+    /** v3-only: actual voucher serial / gift-card code that tendered this row. */
+    instrumentSerial?: string | null;
   }>;
   /** F&B: 'SUR_PLACE' | 'A_EMPORTER' — omit for retail */
   consumptionMode?: string;
@@ -98,6 +109,76 @@ function generateReceiptNumber(
   return `${locationCode}-${terminalCode}-${year}-${paddedSeq}`;
 }
 
+/**
+ * Compute the SHA-256 hex digest of a UTF-8 string. Mirrors PHP's
+ * `hash('sha256', …)`. Used to seal the v3 canonical payload.
+ */
+async function sha256Hex(input: string): Promise<string> {
+  const enc = new TextEncoder().encode(input);
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+interface V3HashInput {
+  previousHash: string;
+  receiptNumber: string;
+  postedAt: string;
+  total: string;
+  currency: string;
+  vatBreakdown: VatBreakdownEntry[];
+  payments: OfflineReceiptInput['payments'];
+  decimals: number;
+}
+
+/**
+ * Compute the v3 fiscal hash for an offline receipt.
+ *
+ * Wraps `buildCanonicalPayload` (already proven to mirror the post-B2 PHP
+ * builder byte-for-byte by fixture-08) with the receipt-creator's input.
+ *
+ * Phase 1 simplifications (all match the v2 path's implicit contract):
+ *   - `payment_type = 'pos'` for every row (matches V3ReceiptHashComputer.php's
+ *     hardcoded sentinel until the e-commerce / online-ordering channels land).
+ *   - `voucher_ledger_entries = []` and `audit = null`. Voucher ledger entries
+ *     are populated server-side from the Voucher domain when the receipt is
+ *     persisted; offline-issued receipts do not yet wire voucher events into
+ *     the canonical hash. This matches the legacy v2 path which never carried
+ *     ledger entries either, so cash-only and card-only sales produce
+ *     equivalent canonical input shapes between v2 and v3.
+ *   - `exchange_group_id = null`. Phase F exchange-pair receipts are
+ *     server-finalized; offline receipts are always single-half.
+ *
+ * `method_code` is `payment.methodCode.toLowerCase()` to match the server's
+ * post-B2 normalisation (V3ReceiptHashComputer.php:140).
+ */
+async function computeV3FiscalHash(input: V3HashInput): Promise<string> {
+  const canonicalInput: V3CanonicalInput = {
+    receipt_number: input.receiptNumber,
+    posted_at: input.postedAt,
+    previous_hash: input.previousHash || null,
+    total: input.total,
+    currency: input.currency,
+    vat_breakdown: input.vatBreakdown.map((v) => ({
+      rate: v.rate,
+      amount: v.amount,
+    })),
+    payments: input.payments.map((p) => ({
+      method_code: p.methodCode.toLowerCase(),
+      payment_type: 'pos',
+      amount: bcformat(p.amount, input.decimals),
+      instrument_type: p.instrumentType ?? null,
+      instrument_serial: p.instrumentSerial ?? null,
+    })),
+    voucher_ledger_entries: [],
+    exchange_group_id: null,
+    audit: null,
+  };
+  const canonical = await buildCanonicalPayload(canonicalInput);
+  return sha256Hex(canonical);
+}
+
 export async function createOfflineReceipt(
   db: Database,
   input: OfflineReceiptInput,
@@ -132,19 +213,44 @@ export async function createOfflineReceipt(
   const newSequence = terminalState.hash_sequence + 1;
   const receiptNumber = generateReceiptNumber(terminalState.location_code, terminalState.terminal_code, newSequence);
 
-  // 4. Compute fiscal hash with real VAT breakdown
+  // 4. Compute fiscal hash with real VAT breakdown.
+  //
+  // Codex review B1 (2026-04-30): branch on the terminal's fiscal_schema_version.
+  //   - v2 → legacy `computeFiscalHash` (pipe-joined string, SHA-256). Bit-for-bit
+  //     unchanged from before B1 — the legacy path must remain stable so v2
+  //     terminals that have not cut over keep producing identical hashes.
+  //   - v3 → `buildCanonicalPayload` (RFC 8785 canonical JSON, mirrors the
+  //     post-B2 PHP builder byte-for-byte) + SHA-256. Fixture-08 in
+  //     `apps/pos/src/lib/fiscal/v3/__fixtures__/v3-golden-hashes/` proves the
+  //     parity; the test in `canonicalPayload.test.ts` runs every CI build.
+  //
+  // posted_at: ISO 8601 UTC with trailing Z (matches the v3 PHP builder's
+  // `Y-m-d\TH:i:s\Z` formatter — bare `toISOString()` already produces this
+  // shape for UTC values).
   const postedAt = new Date().toISOString();
   const vatBreakdown = computeVatBreakdown(input.cartItems, decimals);
   const totalFormatted = bcformat(total, decimals);
-  const fiscalHash = await computeFiscalHash({
-    previousHash: terminalState.last_hash,
-    receiptNumber,
-    postedAt,
-    total: totalFormatted,
-    currency: input.currency,
-    vatBreakdown,
-    payments: input.payments.map((p) => ({ methodCode: p.methodCode, amount: p.amount })),
-  });
+  const fiscalSchemaVersion = terminalState.fiscal_schema_version;
+  const fiscalHash = fiscalSchemaVersion === 3
+    ? await computeV3FiscalHash({
+      previousHash: terminalState.last_hash,
+      receiptNumber,
+      postedAt,
+      total: totalFormatted,
+      currency: input.currency,
+      vatBreakdown,
+      payments: input.payments,
+      decimals,
+    })
+    : await computeFiscalHash({
+      previousHash: terminalState.last_hash,
+      receiptNumber,
+      postedAt,
+      total: totalFormatted,
+      currency: input.currency,
+      vatBreakdown,
+      payments: input.payments.map((p) => ({ methodCode: p.methodCode, amount: p.amount })),
+    });
 
   // 5. Store offline receipt
   const receiptId = crypto.randomUUID();
@@ -209,6 +315,7 @@ export async function createOfflineReceipt(
     payments_json: paymentsJson,
     consumption_mode: input.consumptionMode ?? null,
     table_id: input.tableId ?? null,
+    fiscal_schema_version: fiscalSchemaVersion,
   };
 
   // 5b. Wrap receipt insert + hash chain advance in a transaction

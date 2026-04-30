@@ -96,6 +96,14 @@ interface SyncReceiptPayload {
   payments: SyncReceiptPayloadPayment[];
   consumption_mode: string | null;
   table_id: string | null;
+  /**
+   * Fiscal hash schema version this receipt was sealed under (Codex review B1).
+   * Required: the server hard-rejects any payload whose declared version does
+   * not match the terminal's current `fiscal_schema_version`. There is no
+   * compatibility window — terminals must drain pending v2 receipts before
+   * the cutover flips them to v3.
+   */
+  fiscal_schema_version: 2 | 3;
 }
 
 interface SyncReceiptResponseItem {
@@ -136,6 +144,14 @@ interface TerminalStateResponse {
   genesis_seed: string;
   last_hash: string | null;
   hash_sequence: number;
+  /**
+   * Server-side fiscal_schema_version. Optional in the wire shape so a stale
+   * server (pre-B1) does not 500 the client; if absent we fall back to 2 —
+   * the legacy default. The receipt-creation path always reads the stored
+   * column, so a stale pull just keeps the local terminal on v2 until the
+   * server roll-out adds the field.
+   */
+  fiscal_schema_version?: number;
 }
 
 export interface SyncResult {
@@ -510,6 +526,20 @@ export async function pullTerminalState(
     // For a new terminal with no receipts, last_hash is null on the server.
     // The genesis hash (SHA-256 of "GENESIS|<seed>") is the chain's starting point.
     const initialHash = state.last_hash ?? await computeGenesisHash(state.genesis_seed);
+
+    // Codex review B1: project the server's fiscal_schema_version so the
+    // receipt creator can branch on it. If the server is stale (pre-B1
+    // serializer) and omits the field, default to 2 — the legacy schema.
+    // Coerce loudly: an unexpected integer (e.g. 4) should not silently
+    // route to v2 or v3.
+    const rawVersion = state.fiscal_schema_version ?? 2;
+    if (rawVersion !== 2 && rawVersion !== 3) {
+      throw new Error(
+        `[fiscal] pullTerminalState received unsupported fiscal_schema_version=${rawVersion} for terminal ${state.id}`,
+      );
+    }
+    const fiscalSchemaVersion: 2 | 3 = rawVersion;
+
     const hashState: TerminalHashState = {
       terminal_id: state.id,
       terminal_code: state.code,
@@ -519,6 +549,7 @@ export async function pullTerminalState(
       hash_sequence: state.hash_sequence,
       manager_pin_throttle_until: null,
       manager_pin_failed_attempts: 0,
+      fiscal_schema_version: fiscalSchemaVersion,
     };
 
     try {
@@ -1148,6 +1179,12 @@ function receiptToPayload(receipt: OfflineReceipt): SyncReceiptPayload {
     }
   }
 
+  // Codex review B1: stamp the version this receipt was sealed under. We do
+  // NOT default-to-2 here — that would silently let a v3-sealed receipt sync
+  // as v2 if the column ever read back as undefined. Any unexpected value is
+  // a schema bug and should fail loudly via the server's hard-reject path.
+  const fiscalSchemaVersion = receipt.fiscal_schema_version === 3 ? 3 : 2;
+
   return {
     idempotency_key: receipt.idempotency_key,
     receipt_number: receipt.receipt_number,
@@ -1172,5 +1209,6 @@ function receiptToPayload(receipt: OfflineReceipt): SyncReceiptPayload {
     payments: parsedPayments,
     consumption_mode: receipt.consumption_mode,
     table_id: receipt.table_id,
+    fiscal_schema_version: fiscalSchemaVersion,
   };
 }

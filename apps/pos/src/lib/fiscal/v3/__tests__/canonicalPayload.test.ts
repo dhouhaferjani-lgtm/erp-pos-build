@@ -12,6 +12,11 @@ const FIXTURES = [
   '05-return-with-voucher-issuance-eur.json',
   '06-exchange-pair-eur.json',
   '07-tnd-residual.json',
+  // Fixture-08 (Codex review B2): payment-instrument fields bound into the
+  // canonical hash. Asserts the TS canonicalizer matches the post-B2 PHP
+  // builder byte-for-byte when `instrument_type` / `instrument_serial` are
+  // populated — the proof obligation for B1 (POS offline v3 cutover).
+  '08-store-voucher-binding-eur.json',
 ];
 
 describe('buildCanonicalPayload — TS↔PHP parity', () => {

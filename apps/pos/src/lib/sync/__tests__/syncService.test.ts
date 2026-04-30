@@ -267,6 +267,35 @@ describe('syncService', () => {
       expect(result.chainBreak).toBe(false);
     });
 
+    it('Codex review B1: stamps fiscal_schema_version on every push payload', async () => {
+      const v2Receipt = makeOfflineReceipt({
+        id: 'r-v2',
+        idempotency_key: 'idem-v2',
+        hash_sequence: 1,
+        fiscal_schema_version: 2,
+      });
+      const v3Receipt = makeOfflineReceipt({
+        id: 'r-v3',
+        idempotency_key: 'idem-v3',
+        hash_sequence: 2,
+        fiscal_schema_version: 3,
+      });
+      vi.mocked(getPendingReceiptsForSync).mockResolvedValue([v2Receipt, v3Receipt]);
+      vi.mocked(apiPost)
+        .mockResolvedValueOnce(syncBatchResponse([{ idempotency_key: 'idem-v2', status: 'synced' }]))
+        .mockResolvedValueOnce(syncBatchResponse([{ idempotency_key: 'idem-v3', status: 'synced' }]));
+
+      await pushOfflineReceipts(db);
+
+      // Inspect the bodies passed to apiPost; both must carry the field.
+      const calls = vi.mocked(apiPost).mock.calls;
+      expect(calls).toHaveLength(2);
+      const firstBody = calls[0]![1] as { receipts: Array<{ fiscal_schema_version: number }> };
+      const secondBody = calls[1]![1] as { receipts: Array<{ fiscal_schema_version: number }> };
+      expect(firstBody.receipts[0]!.fiscal_schema_version).toBe(2);
+      expect(secondBody.receipts[0]!.fiscal_schema_version).toBe(3);
+    });
+
     it('captures server_receipt_id from sync response and writes it to SQLite', async () => {
       const receipt = makeOfflineReceipt({
         id: 'client-uuid-1',
@@ -521,6 +550,7 @@ describe('syncService', () => {
         genesis_seed: 'abcd1234',
         last_hash: 'hash-xyz',
         hash_sequence: 10,
+        fiscal_schema_version: 2,
       });
 
       const result = await pullTerminalState(db, 'term-1');
@@ -535,6 +565,7 @@ describe('syncService', () => {
         hash_sequence: 10,
         manager_pin_throttle_until: null,
         manager_pin_failed_attempts: 0,
+        fiscal_schema_version: 2,
       });
       expect(computeGenesisHash).not.toHaveBeenCalled();
     });
@@ -547,6 +578,7 @@ describe('syncService', () => {
         genesis_seed: 'abcd1234',
         last_hash: null,
         hash_sequence: 0,
+        fiscal_schema_version: 2,
       });
 
       const result = await pullTerminalState(db, 'term-1');
@@ -562,7 +594,28 @@ describe('syncService', () => {
         hash_sequence: 0,
         manager_pin_throttle_until: null,
         manager_pin_failed_attempts: 0,
+        fiscal_schema_version: 2,
       });
+    });
+
+    it('Codex review B1: projects v3 fiscal_schema_version when the server declares it', async () => {
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'term-1',
+        code: 'T001',
+        location: { code: 'SHOP1' },
+        genesis_seed: 'abcd1234',
+        last_hash: 'hash-xyz',
+        hash_sequence: 12,
+        fiscal_schema_version: 3,
+      });
+
+      const result = await pullTerminalState(db, 'term-1');
+
+      expect(result).toBe(true);
+      expect(upsertTerminalState).toHaveBeenCalledWith(
+        db,
+        expect.objectContaining({ fiscal_schema_version: 3 }),
+      );
     });
 
     it('returns false when no genesis seed', async () => {

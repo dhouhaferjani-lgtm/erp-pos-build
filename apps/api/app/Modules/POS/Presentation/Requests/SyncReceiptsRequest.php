@@ -85,7 +85,11 @@ final class SyncReceiptsRequest extends FormRequest
             'receipts.*.payments.*.transaction_reference' => ['nullable', 'string', 'max:100'],
             'receipts.*.consumption_mode' => ['nullable', 'string', 'in:SUR_PLACE,A_EMPORTER'],
             'receipts.*.table_id' => ['nullable', 'uuid'],
-            'receipts.*.fiscal_schema_version' => ['nullable', 'integer', 'in:2,3'],
+            // Codex review B1 (2026-04-30): clients MUST declare the version every
+            // payload was sealed under. The default-to-2 fallback was removed so a
+            // missing field surfaces as 422 here rather than silently downgrading
+            // a v3 payload (which the server would later reject as a chain break).
+            'receipts.*.fiscal_schema_version' => ['required', 'integer', 'in:2,3'],
         ];
     }
 
@@ -104,6 +108,8 @@ final class SyncReceiptsRequest extends FormRequest
             'receipts.*.lines.required' => 'Each receipt must have at least one line item',
             'receipts.*.offline_fiscal_hash.size' => 'Offline fiscal hash must be a 64-character SHA-256 hex string',
             'receipts.*.payments.required' => 'At least one payment entry is required per receipt',
+            'receipts.*.fiscal_schema_version.required' => 'fiscal_schema_version is required (declare 2 or 3)',
+            'receipts.*.fiscal_schema_version.in' => 'fiscal_schema_version must be 2 or 3',
         ];
     }
 }

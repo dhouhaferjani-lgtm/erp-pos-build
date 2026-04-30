@@ -348,6 +348,10 @@ final class SyncReceiptsTest extends TestCase
             ],
             'consumption_mode' => null,
             'table_id' => null,
+            // Codex review B1 (2026-04-30): clients MUST declare the version
+            // every payload was sealed under. v2 here matches the legacy
+            // hash path these tests exercise — the terminal default is v2.
+            'fiscal_schema_version' => 2,
         ];
 
         $payload = array_merge($defaults, $overrides);

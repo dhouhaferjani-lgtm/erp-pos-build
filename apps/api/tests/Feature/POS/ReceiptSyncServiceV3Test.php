@@ -409,6 +409,62 @@ final class ReceiptSyncServiceV3Test extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // Test 6: missing fiscal_schema_version → 422 validation failure
+    //
+    // Codex review B1 (2026-04-30): the legacy default-to-2 fallback was
+    // removed. Any client that omits the field must surface a 422 at the
+    // request layer, NOT silently downgrade to v2 (which would let a v3
+    // terminal receive a v2 payload and fail downstream as a chain break).
+    // -------------------------------------------------------------------------
+
+    public function test_sync_receipt_request_rejects_payload_missing_fiscal_schema_version_with_422(): void
+    {
+        $terminal = $this->makeTerminal(fiscalSchemaVersion: 3);
+        $this->makeShift($terminal);
+
+        $payload = $this->buildReceiptPayload([
+            'terminal_id' => $terminal->id,
+        ]);
+
+        // Drop the field entirely. The validator must hard-reject.
+        unset($payload['fiscal_schema_version']);
+
+        $response = $this->postJson('/api/v1/pos/receipts/sync', $payload);
+
+        $response->assertStatus(422);
+        // The bootstrap-level renderer wraps validation errors under
+        // `error.errors` (see bootstrap/app.php). Assert the per-key error
+        // is present rather than relying on Laravel's default `errors` shape.
+        $response->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $errors = $response->json('error.errors') ?? [];
+        $this->assertArrayHasKey('receipts.0.fiscal_schema_version', $errors);
+
+        // Terminal chain must NOT have advanced — the request never reached
+        // the service layer.
+        $terminal->refresh();
+        $this->assertSame(1, $terminal->current_sequence);
+        $this->assertNull($terminal->last_hash);
+    }
+
+    public function test_sync_receipt_request_rejects_invalid_fiscal_schema_version_with_422(): void
+    {
+        $terminal = $this->makeTerminal(fiscalSchemaVersion: 3);
+        $this->makeShift($terminal);
+
+        $payload = $this->buildReceiptPayload([
+            'terminal_id' => $terminal->id,
+            'fiscal_schema_version' => 4, // not in {2, 3}
+        ]);
+
+        $response = $this->postJson('/api/v1/pos/receipts/sync', $payload);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $errors = $response->json('error.errors') ?? [];
+        $this->assertArrayHasKey('receipts.0.fiscal_schema_version', $errors);
+    }
+
+    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 

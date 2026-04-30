@@ -185,6 +185,7 @@ const seededTerminalState = {
   hash_sequence: 0,
   manager_pin_throttle_until: null,
   manager_pin_failed_attempts: 0,
+  fiscal_schema_version: 2 as const,
 };
 
 // ─── Tests ──────────────────────────────────────────────────────────────────────

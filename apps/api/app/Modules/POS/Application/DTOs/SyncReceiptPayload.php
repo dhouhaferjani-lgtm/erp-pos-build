@@ -36,7 +36,13 @@ final readonly class SyncReceiptPayload
      * @param  array<int, array{payment_method_id: string, repository_id: string, amount: string, card_last_four?: string|null, transaction_reference?: string|null}>  $payments  Per-payment entries (split-pay support)
      * @param  string|null  $consumptionMode  F&B consumption mode: SUR_PLACE or A_EMPORTER
      * @param  string|null  $tableId  F&B table UUID (dine-in only)
-     * @param  int  $fiscalSchemaVersion  Fiscal hash schema version declared by the client (2 or 3); defaults to 2 for backward compatibility
+     * @param  int  $fiscalSchemaVersion  REQUIRED. Fiscal hash schema version this receipt
+     *                                    was sealed under (2 = legacy, 3 = canonical-payload SHA-256). The server
+     *                                    hard-rejects payloads whose declared version does not match the terminal's
+     *                                    current `fiscal_schema_version` — there is no compatibility window.
+     *                                    Codex review B1 (2026-04-30) removed the legacy default-to-2 fallback so a
+     *                                    missing field surfaces as a 422 validation failure instead of silently
+     *                                    downgrading a v3 payload.
      */
     public function __construct(
         public string $idempotencyKey,
@@ -63,7 +69,7 @@ final readonly class SyncReceiptPayload
         public array $payments,
         public ?string $consumptionMode,
         public ?string $tableId,
-        public int $fiscalSchemaVersion = 2,
+        public int $fiscalSchemaVersion,
     ) {}
 
     /**
@@ -82,6 +88,23 @@ final readonly class SyncReceiptPayload
             'card_last_four' => isset($p['card_last_four']) ? (string) $p['card_last_four'] : null,
             'transaction_reference' => isset($p['transaction_reference']) ? (string) $p['transaction_reference'] : null,
         ], $rawPayments);
+
+        // Codex review B1 (2026-04-30): `fiscal_schema_version` is REQUIRED.
+        // The request validator (`SyncReceiptsRequest`) is the primary gate — if
+        // a payload reaches `fromArray()` without this field, an upstream
+        // path bypassed validation and we should fail fast rather than default
+        // to v2 and silently downgrade a v3 receipt.
+        if (! isset($data['fiscal_schema_version'])) {
+            throw new \InvalidArgumentException(
+                'SyncReceiptPayload.fromArray: `fiscal_schema_version` is required (expected 2 or 3).'
+            );
+        }
+        $fiscalSchemaVersion = (int) $data['fiscal_schema_version'];
+        if ($fiscalSchemaVersion !== 2 && $fiscalSchemaVersion !== 3) {
+            throw new \InvalidArgumentException(
+                "SyncReceiptPayload.fromArray: `fiscal_schema_version` must be 2 or 3, got {$fiscalSchemaVersion}."
+            );
+        }
 
         return new self(
             idempotencyKey: (string) $data['idempotency_key'],
@@ -107,7 +130,7 @@ final readonly class SyncReceiptPayload
             payments: $payments,
             consumptionMode: isset($data['consumption_mode']) ? (string) $data['consumption_mode'] : null,
             tableId: isset($data['table_id']) ? (string) $data['table_id'] : null,
-            fiscalSchemaVersion: isset($data['fiscal_schema_version']) ? (int) $data['fiscal_schema_version'] : 2,
+            fiscalSchemaVersion: $fiscalSchemaVersion,
         );
     }
 }
