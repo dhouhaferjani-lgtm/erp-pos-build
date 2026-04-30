@@ -685,6 +685,42 @@ describe('pushQueuedPinUpdates', () => {
   });
 });
 
+describe('pullReceiptQrIndex', () => {
+  const db = {} as import('@tauri-apps/plugin-sql').default;
+
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('normalises missing partner_id to null and upserts without crashing', async () => {
+    const { pullReceiptQrIndex } = await import('../syncService');
+    const { upsertReceiptQrIndexEntries } = await import('@/lib/offline/voucherRepository');
+
+    // Server response omits partner_id entirely (simulates pre-migration backend)
+    vi.mocked(apiGet).mockResolvedValueOnce({
+      entries: [{
+        receipt_uuid: '550e8400-e29b-41d4-a716-446655440000',
+        qr_token: '1:kid:token:mac',
+        receipt_number: 'R-001',
+        terminal_id: 'term-1',
+        posted_at: '2026-04-28T09:00:00+00:00',
+        total: '12500',
+        currency: 'EUR',
+        synced_at: '2026-04-28T09:00:05+00:00',
+        // partner_id deliberately absent
+      }],
+    });
+
+    const count = await pullReceiptQrIndex(db, 'term-1');
+
+    expect(count).toBe(1);
+    expect(upsertReceiptQrIndexEntries).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.arrayContaining([
+        expect.objectContaining({ partner_id: null }),
+      ]),
+    );
+  });
+});
+
 describe('pullTables', () => {
   const db = {} as import('@tauri-apps/plugin-sql').default;
 

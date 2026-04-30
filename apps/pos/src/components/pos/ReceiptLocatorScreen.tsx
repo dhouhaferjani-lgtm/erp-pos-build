@@ -84,7 +84,8 @@ interface ScanTabProps {
 function ScanTab({ terminalId, onRefund, companyId, t, locale }: ScanTabProps) {
   const [input, setInput] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-  const [found, setFound] = useState<LocalReceiptQrIndexEntry | null | 'not-found' | 'wrong-terminal'>('not-found');
+  // null = not yet searched; 'not-found' | 'wrong-terminal' = error state; entry = found
+  const [found, setFound] = useState<LocalReceiptQrIndexEntry | null | 'not-found' | 'wrong-terminal'>(null);
   const [hasSearched, setHasSearched] = useState(false);
 
   const handleSubmit = useCallback(async () => {
@@ -145,12 +146,12 @@ function ScanTab({ terminalId, onRefund, companyId, t, locale }: ScanTabProps) {
       {hasSearched && (
         <div>
           {found === 'not-found' && (
-            <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+            <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
               {t('receiptLocator.notFound')}
             </p>
           )}
           {found === 'wrong-terminal' && (
-            <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            <p role="alert" className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700">
               {t('receiptLocator.wrongTerminal')}
             </p>
           )}
@@ -191,6 +192,7 @@ function CustomerTab({ onRefund, companyId, t, locale }: CustomerTabProps) {
   const handleSearch = useCallback(async () => {
     const trimmed = partnerInput.trim();
     if (!trimmed) return;
+    if (partnerInput.length > 128) return;
 
     setIsSearching(true);
     setHasSearched(false);
@@ -224,6 +226,7 @@ function CustomerTab({ onRefund, companyId, t, locale }: CustomerTabProps) {
             }
           }}
           placeholder={t('receiptLocator.customerPlaceholder')}
+          maxLength={128}
           className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
           aria-label={t('receiptLocator.customerPlaceholder')}
         />
@@ -238,7 +241,7 @@ function CustomerTab({ onRefund, companyId, t, locale }: CustomerTabProps) {
       </div>
 
       {hasSearched && results !== null && results.length === 0 && (
-        <p className="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-500">
+        <p role="alert" className="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-500">
           {t('receiptLocator.noCustomerReceipts')}
         </p>
       )}
@@ -319,11 +322,13 @@ export function ReceiptLocatorScreen({ isOpen, onClose }: ReceiptLocatorScreenPr
       size="xl"
     >
       {/* Tab bar — fixed height so the modal width never changes on switch */}
-      <div className="mb-4 flex gap-1 rounded-lg bg-gray-100 p-1">
+      <div role="tablist" className="mb-4 flex gap-1 rounded-lg bg-gray-100 p-1">
         <button
           type="button"
           role="tab"
+          id="receipt-locator-tab-scan"
           aria-selected={activeTab === 'scan'}
+          aria-controls="receipt-locator-panel-scan"
           onClick={() => setActiveTab('scan')}
           className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
             activeTab === 'scan'
@@ -338,7 +343,9 @@ export function ReceiptLocatorScreen({ isOpen, onClose }: ReceiptLocatorScreenPr
           <button
             type="button"
             role="tab"
+            id="receipt-locator-tab-customer"
             aria-selected={activeTab === 'customer'}
+            aria-controls="receipt-locator-panel-customer"
             onClick={() => setActiveTab('customer')}
             className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
               activeTab === 'customer'
@@ -352,7 +359,12 @@ export function ReceiptLocatorScreen({ isOpen, onClose }: ReceiptLocatorScreenPr
       </div>
 
       {/* Tab content — fixed min-height so modal doesn't resize between tabs */}
-      <div className="min-h-[280px]">
+      <div
+        role="tabpanel"
+        id={`receipt-locator-panel-${activeTab}`}
+        aria-labelledby={`receipt-locator-tab-${activeTab}`}
+        className="min-h-[280px]"
+      >
         {activeTab === 'scan' && (
           <ScanTab
             terminalId={terminalId}

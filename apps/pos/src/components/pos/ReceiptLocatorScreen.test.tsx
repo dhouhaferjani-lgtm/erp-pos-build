@@ -358,6 +358,82 @@ describe('ReceiptLocatorScreen', () => {
     });
   });
 
+  // ── ARIA: tablist / tabpanel roles ────────────────────────────────────────
+
+  it('tab wrapper has role="tablist" and active panel has role="tabpanel"', () => {
+    setupStores({ canSearchCustomer: true });
+    render(<ReceiptLocatorScreen isOpen={true} onClose={() => {}} />);
+
+    expect(screen.getByRole('tablist')).toBeInTheDocument();
+    expect(screen.getByRole('tabpanel')).toBeInTheDocument();
+  });
+
+  // ── ARIA: alerts for error / empty states ─────────────────────────────────
+
+  it('announces "not found" error via role="alert"', async () => {
+    setupStores();
+    vi.mocked(findReceiptByNumber).mockResolvedValue(null);
+
+    render(<ReceiptLocatorScreen isOpen={true} onClose={() => {}} />);
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Receipt number' }), {
+      target: { value: 'R-9999' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      expect(screen.getByRole('alert')).toHaveTextContent('No receipt found for that number.');
+    });
+  });
+
+  it('announces "wrong terminal" error via role="alert"', async () => {
+    setupStores();
+    vi.mocked(findReceiptByNumber).mockResolvedValue(OTHER_TERMINAL_ENTRY);
+
+    render(<ReceiptLocatorScreen isOpen={true} onClose={() => {}} />);
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Receipt number' }), {
+      target: { value: 'R-0002' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      expect(screen.getByRole('alert')).toHaveTextContent('This receipt belongs to a different terminal.');
+    });
+  });
+
+  it('announces customer-tab empty state via role="alert"', async () => {
+    setupStores({ canSearchCustomer: true });
+    vi.mocked(findRecentReceiptsByPartner).mockResolvedValue([]);
+
+    render(<ReceiptLocatorScreen isOpen={true} onClose={() => {}} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Find by customer' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Customer ID' }), {
+      target: { value: 'partner-none' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      expect(screen.getByRole('alert')).toHaveTextContent('No receipts found for this customer.');
+    });
+  });
+
+  // ── Partner input: maxLength cap ──────────────────────────────────────────
+
+  it('partner input caps value at 128 characters via maxLength', () => {
+    setupStores({ canSearchCustomer: true });
+    render(<ReceiptLocatorScreen isOpen={true} onClose={() => {}} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Find by customer' }));
+
+    const input = screen.getByRole('textbox', { name: 'Customer ID' });
+    expect(input).toHaveAttribute('maxLength', '128');
+  });
+
   // ── No-fetch contract ─────────────────────────────────────────────────────
 
   it('does NOT touch the network during any flow (scan tab, found, refund)', async () => {

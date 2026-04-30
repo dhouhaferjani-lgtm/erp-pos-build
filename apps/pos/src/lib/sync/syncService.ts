@@ -851,8 +851,15 @@ interface VoucherLedgerSyncResponse {
   entries: LocalVoucherLedgerEntry[];
 }
 
+// Entries from the server may omit `partner_id` until the backend adds the
+// field — widen it here so the runtime undefined doesn't break upserts.
+// `upsertReceiptQrIndexEntries` already coalesces with `?? null`.
+type ReceiptQrIndexSyncEntry = Omit<LocalReceiptQrIndexEntry, 'partner_id'> & {
+  partner_id?: string | null;
+};
+
 interface ReceiptQrIndexSyncResponse {
-  entries: LocalReceiptQrIndexEntry[];
+  entries: ReceiptQrIndexSyncEntry[];
 }
 
 /**
@@ -953,7 +960,12 @@ export async function pullReceiptQrIndex(
       '/pos/receipts/qr-index',
       params,
     );
-    const entries = response.entries ?? [];
+    // Normalise: coalesce undefined partner_id (backend omits field until migration
+    // ships) to null so upsertReceiptQrIndexEntries receives a well-typed row.
+    const entries = (response.entries ?? []).map((e) => ({
+      ...e,
+      partner_id: e.partner_id ?? null,
+    }));
     if (entries.length > 0) {
       await upsertReceiptQrIndexEntries(db, entries);
     }
