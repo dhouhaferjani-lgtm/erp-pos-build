@@ -243,6 +243,63 @@ class ListUsersTest extends TestCase
         $this->assertNotContains('other@example.com', $emails);
     }
 
+    public function test_index_filters_by_role_when_role_param_provided(): void
+    {
+        // Create a manager and a cashier alongside the setUp admin
+        $managerUser = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Manager User',
+            'email' => 'manager@example.com',
+            'password' => 'Password1!',
+            'status' => UserStatus::Active,
+        ]);
+        $managerUser->assignRole('manager');
+
+        $cashierUser = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Cashier User',
+            'email' => 'cashier@example.com',
+            'password' => 'Password1!',
+            'status' => UserStatus::Active,
+        ]);
+        $cashierUser->assignRole('cashier');
+
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->getJson('/api/v1/users?role=admin');
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('data'));
+        $this->assertEquals('admin@example.com', $response->json('data.0.email'));
+    }
+
+    public function test_index_returns_all_users_when_no_role_param(): void
+    {
+        $managerUser = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Manager User',
+            'email' => 'manager@example.com',
+            'password' => 'Password1!',
+            'status' => UserStatus::Active,
+        ]);
+        $managerUser->assignRole('manager');
+
+        $cashierUser = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Cashier User',
+            'email' => 'cashier@example.com',
+            'password' => 'Password1!',
+            'status' => UserStatus::Active,
+        ]);
+        $cashierUser->assignRole('cashier');
+
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->getJson('/api/v1/users');
+
+        $response->assertOk();
+        // All 3 users (admin + manager + cashier) returned
+        $this->assertCount(3, $response->json('data'));
+    }
+
     public function test_user_without_permission_cannot_list_users(): void
     {
         $viewerUser = User::create([

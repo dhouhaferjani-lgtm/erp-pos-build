@@ -51,6 +51,11 @@ class UserController extends Controller
             $query->where('status', $request->get('status'));
         }
 
+        // Filter by role (Spatie role() scope)
+        if ($request->filled('role')) {
+            $query->role((string) $request->get('role'));
+        }
+
         // Search by name or email (use LIKE for SQLite compatibility in tests)
         if ($request->has('search') && $request->get('search') !== null) {
             $search = $request->get('search');
