@@ -14,6 +14,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { dispatchScan } from '@/lib/scan/dispatcher';
 import { getDatabase } from '@/lib/db';
 import { ReceiptScanConfirmationSheet } from '@/components/pos/ReceiptScanConfirmationSheet';
+import { ReceiptLocatorScreen } from '@/components/pos/ReceiptLocatorScreen';
 import { getErrorMessage } from '@/lib/api';
 import { useCurrency } from '@/lib/currency';
 import { fetchReceipt } from '@/api/receiptApi';
@@ -114,6 +115,8 @@ export function HomePage() {
   const [showHeldModal, setShowHeldModal] = useState(false);
   const [showDiscountModal, setShowDiscountModal] = useState(false);
   const [showVoidReturnModal, setShowVoidReturnModal] = useState(false);
+  // Receipt locator screen — Returns / Exchange entry point (Task 51)
+  const [showReceiptLocator, setShowReceiptLocator] = useState(false);
   const [quantityEditItemId, setQuantityEditItemId] = useState<string | null>(null);
 
   // ESC/POS receipt data for thermal printing
@@ -675,6 +678,7 @@ export function HomePage() {
           onDiscount={() => setShowDiscountModal(true)}
           onHold={() => void handleHold()}
           onRecall={() => setShowHeldModal(true)}
+          onReturns={() => setShowReceiptLocator(true)}
           onLineDiscount={handleLineDiscount}
           onRemoveLineDiscount={handleRemoveLineDiscount}
           onEditModifiers={handleEditModifiers}
@@ -805,6 +809,15 @@ export function HomePage() {
         entry={pendingScanResult}
         onCancel={() => setPendingScanResult(null)}
         onAccept={() => acceptPendingScan()}
+      />
+
+      {/* Returns / Exchange receipt-locator screen (Phase H Task 51, spec §6.1).
+          Opened by the "Returns / Exchange" quick-action button in the cart.
+          Queries are local SQLite only. On "Refund this" the store emits the
+          same ReceiptTokenAccepted event as Task 50's scan dispatcher. */}
+      <ReceiptLocatorScreen
+        isOpen={showReceiptLocator}
+        onClose={() => setShowReceiptLocator(false)}
       />
       </div>
     </div>

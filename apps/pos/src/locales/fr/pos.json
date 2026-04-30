@@ -86,6 +86,24 @@
     "startRefund": "Démarrer le remboursement",
     "dispatchError": "Impossible de lire l'index local des reçus. Recherche produit en repli."
   },
+  "receiptLocator": {
+    "title": "Retours / Échange",
+    "entryButton": "Retours / Échange",
+    "tabScan": "Scanner ou saisir le numéro de ticket",
+    "tabCustomer": "Rechercher par client",
+    "scanHint": "Saisissez le numéro de reçu ou scannez le QR code du ticket.",
+    "numberPlaceholder": "Numéro de reçu",
+    "search": "Rechercher",
+    "searching": "Recherche...",
+    "found": "Reçu trouvé",
+    "notFound": "Aucun reçu trouvé pour ce numéro.",
+    "wrongTerminal": "Ce reçu appartient à un autre terminal et ne peut pas être remboursé ici.",
+    "refundThis": "Rembourser",
+    "customerHint": "Saisissez l'identifiant du client pour retrouver ses achats récents sur ce terminal.",
+    "customerPlaceholder": "Identifiant client",
+    "noCustomerReceipts": "Aucun reçu trouvé pour ce client. Remarque : la recherche par client nécessite des données synchronisées.",
+    "customerResults": "{{count}} reçu(s) trouvé(s)"
+  },
   "shift": {
     "number": "Service #{{number}}",
     "opening": "Ouverture : {{amount}}",

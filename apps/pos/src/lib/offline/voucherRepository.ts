@@ -99,6 +99,10 @@ export interface LocalVoucherLedgerEntry {
  * number) to the receipt_uuid the dispatcher needs to look up downstream
  * data. `qr_token` is nullable for offline-issued receipts whose token has
  * not yet been signed back from the server.
+ *
+ * `partner_id` is nullable — populated once migration 26 runs AND the
+ * backend sync payload includes the field. Rows created before that wiring
+ * will have partner_id = null.
  */
 export interface LocalReceiptQrIndexEntry {
   receipt_uuid: string;
@@ -108,6 +112,8 @@ export interface LocalReceiptQrIndexEntry {
   posted_at: string;
   total: string;
   currency: string;
+  /** Added by migration 26. Null until sync layer passes the value through. */
+  partner_id: string | null;
   synced_at: string;
 }
 
@@ -119,7 +125,7 @@ const VOUCHER_COLUMNS =
   'redeemable_at_terminal_id, notes, synced_at';
 
 const RECEIPT_QR_INDEX_COLUMNS =
-  'receipt_uuid, qr_token, receipt_number, terminal_id, posted_at, total, currency, synced_at';
+  'receipt_uuid, qr_token, receipt_number, terminal_id, posted_at, total, currency, partner_id, synced_at';
 
 export async function findByCode(db: Database, code: string): Promise<LocalVoucher | null> {
   return queryOne<LocalVoucher>(
@@ -158,6 +164,36 @@ export async function findReceiptByNumber(
     db,
     `SELECT ${RECEIPT_QR_INDEX_COLUMNS} FROM receipt_qr_index WHERE receipt_number = $1 LIMIT 1`,
     [number],
+  );
+}
+
+/**
+ * Returns the most recent receipts in the local index that are linked to the
+ * given `partnerId`. Ordered newest-first by `posted_at`.
+ *
+ * This query is LOCAL ONLY — no API call. The `partner_id` column was added by
+ * migration 26; rows synced before the backend wires this field will have
+ * `partner_id = null` and will NOT appear here. That is expected and correct —
+ * the "Find by customer" tab will simply show fewer results until the sync
+ * layer is updated to populate the column.
+ *
+ * TODO (follow-up): Update syncService + backend ReceiptSyncController to
+ * include `partner_id` in the sync payload, and pass it through
+ * `upsertReceiptQrIndexEntries` so this query becomes fully useful.
+ */
+export async function findRecentReceiptsByPartner(
+  db: Database,
+  partnerId: string,
+  limit: number = 20,
+): Promise<LocalReceiptQrIndexEntry[]> {
+  return queryAll<LocalReceiptQrIndexEntry>(
+    db,
+    `SELECT ${RECEIPT_QR_INDEX_COLUMNS}
+       FROM receipt_qr_index
+      WHERE partner_id = $1
+      ORDER BY posted_at DESC
+      LIMIT $2`,
+    [partnerId, limit],
   );
 }
 
@@ -311,8 +347,8 @@ export async function upsertVoucherLedgerEntries(
 }
 
 const RECEIPT_QR_BATCH_SIZE = 50;
-/** $-placeholders per receipt_qr_index row. */
-const RECEIPT_QR_PARAMS_PER_ROW = 7;
+/** $-placeholders per receipt_qr_index row (includes partner_id added by migration 26). */
+const RECEIPT_QR_PARAMS_PER_ROW = 8;
 
 export async function upsertReceiptQrIndexEntries(
   db: Database,
@@ -329,7 +365,7 @@ export async function upsertReceiptQrIndexEntries(
       const e = batch[j]!;
       const offset = j * RECEIPT_QR_PARAMS_PER_ROW;
       valueClauses.push(
-        `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, datetime('now'))`,
+        `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, datetime('now'))`,
       );
       params.push(
         e.receipt_uuid,
@@ -339,13 +375,14 @@ export async function upsertReceiptQrIndexEntries(
         e.posted_at,
         e.total,
         e.currency,
+        e.partner_id ?? null,
       );
     }
 
     await execute(
       db,
       `INSERT INTO receipt_qr_index (
-        receipt_uuid, qr_token, receipt_number, terminal_id, posted_at, total, currency, synced_at
+        receipt_uuid, qr_token, receipt_number, terminal_id, posted_at, total, currency, partner_id, synced_at
        ) VALUES ${valueClauses.join(', ')}
        ON CONFLICT(receipt_uuid) DO UPDATE SET
          qr_token = excluded.qr_token,
@@ -354,6 +391,7 @@ export async function upsertReceiptQrIndexEntries(
          posted_at = excluded.posted_at,
          total = excluded.total,
          currency = excluded.currency,
+         partner_id = excluded.partner_id,
          synced_at = datetime('now')`,
       params,
     );

@@ -23,6 +23,8 @@ export interface TransactionCartProps {
   onDiscount?: () => void;
   onHold?: () => void;
   onRecall?: () => void;
+  /** Opens the Returns / Exchange receipt-locator screen. */
+  onReturns?: () => void;
   onLineDiscount?: (itemId: string) => void;
   onRemoveLineDiscount?: (itemId: string) => void;
   onEditModifiers?: (itemId: string) => void;
@@ -48,6 +50,7 @@ export function TransactionCart({
   onDiscount,
   onHold,
   onRecall,
+  onReturns,
   onLineDiscount,
   onRemoveLineDiscount,
   onEditModifiers,
@@ -83,12 +86,13 @@ export function TransactionCart({
       </div>
 
       {/* Quick actions */}
-      {onDiscount && onHold && onRecall && (
+      {onDiscount && onHold && onRecall && onReturns && (
         <div className="shrink-0">
           <QuickActions
             onDiscount={onDiscount}
             onHold={onHold}
             onRecall={onRecall}
+            onReturns={onReturns}
             hasItems={items.length > 0}
             hasDiscount={hasDiscount}
           />

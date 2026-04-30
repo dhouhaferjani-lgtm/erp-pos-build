@@ -608,4 +608,34 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_receipt_qr_index_qr_token ON receipt_qr_index(qr_token) WHERE qr_token IS NOT NULL;
     `,
   },
+  {
+    // Adds partner_id to receipt_qr_index so the "Find by customer" tab in
+    // ReceiptLocatorScreen can query receipts by the customer who made the
+    // purchase — local-first, no API call needed.
+    //
+    // Sync-layer population is a follow-up: the backend must include partner_id
+    // in the receipt-sync payload and syncService must pass it through
+    // upsertReceiptQrIndexEntries. The column ships here so local SQLite is
+    // schema-ready when that wiring lands.
+    version: 26,
+    name: 'add_partner_id_to_receipt_qr_index',
+    sql: '',
+    async run(db) {
+      try {
+        await db.execute('ALTER TABLE receipt_qr_index ADD COLUMN partner_id TEXT NULL');
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : '';
+        if (!msg.includes('duplicate column')) {
+          throw error;
+        }
+      }
+      try {
+        await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_receipt_qr_index_partner ON receipt_qr_index(partner_id) WHERE partner_id IS NOT NULL',
+        );
+      } catch {
+        // Index may already exist — safe to swallow
+      }
+    },
+  },
 ];

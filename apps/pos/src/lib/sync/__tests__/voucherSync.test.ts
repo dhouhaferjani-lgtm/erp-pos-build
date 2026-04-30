@@ -92,6 +92,7 @@ const RECEIPT_INDEX: LocalReceiptQrIndexEntry = {
   posted_at: '2026-04-28T09:00:00+00:00',
   total: '12500',
   currency: 'EUR',
+  partner_id: null,
   synced_at: '2026-04-28T09:00:05+00:00',
 };
 
