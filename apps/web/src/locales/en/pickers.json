@@ -43,5 +43,10 @@
     "label": "Labor service",
     "searchPlaceholder": "Search a labor service by name or code…",
     "empty": "No matching services."
+  },
+  "user": {
+    "label": "User",
+    "searchPlaceholder": "Search user by name or email…",
+    "empty": "No matching users."
   }
 }

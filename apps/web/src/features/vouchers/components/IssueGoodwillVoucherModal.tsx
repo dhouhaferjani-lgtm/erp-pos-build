@@ -8,6 +8,7 @@ import { Button, Input, FormField, Select, Textarea } from '@/components/atoms'
 import { Modal } from '@/components/organisms/Modal/Modal'
 import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
 import { PartnerPicker, type PartnerPickerValue } from '@/components/molecules/pickers/PartnerPicker'
+import { UserPicker } from '@/components/ui/UserPicker'
 import { useTerminals } from '@/features/pos/hooks/useTerminals'
 import { useReservationSettings } from '../hooks/useReservationSettings'
 import { useIssueGoodwill } from '../hooks/useVoucherMutations'
@@ -51,7 +52,8 @@ export function IssueGoodwillVoucherModal({ isOpen, onClose }: IssueGoodwillVouc
   const mutation = useIssueGoodwill()
 
   const [partner, setPartner] = useState<PartnerPickerValue | null>(null)
-  const [secondAdmin, setSecondAdmin] = useState<PartnerPickerValue | null>(null)
+  const [secondAdminId, setSecondAdminId] = useState<string | null>(null)
+  const [secondAdminName, setSecondAdminName] = useState<string | null>(null)
   const [domainError, setDomainError] = useState<string | null>(null)
 
   const defaultRedemptionMode: RedemptionMode =
@@ -93,14 +95,15 @@ export function IssueGoodwillVoucherModal({ isOpen, onClose }: IssueGoodwillVouc
   // Clear secondAdmin state when amount drops below the four-eyes threshold
   useEffect(() => {
     if (!needsFourEyes) {
-      setSecondAdmin(null)
+      setSecondAdminId(null)
+      setSecondAdminName(null)
     }
   }, [needsFourEyes])
 
   const handleSubmit = (values: FormValues) => {
     setDomainError(null)
 
-    if (needsFourEyes && !secondAdmin) {
+    if (needsFourEyes && !secondAdminId) {
       setDomainError(t('vouchers:errors.FOUR_EYES_REQUIRED'))
       return
     }
@@ -114,14 +117,15 @@ export function IssueGoodwillVoucherModal({ isOpen, onClose }: IssueGoodwillVouc
         expires_at: values.expires_at ?? null,
         notes: values.notes,
         terminal_id: values.terminal_id,
-        second_admin_user_id: secondAdmin?.id ?? null,
+        second_admin_user_id: secondAdminId ?? null,
       },
       {
         onSuccess: () => {
           onClose()
           form.reset()
           setPartner(null)
-          setSecondAdmin(null)
+          setSecondAdminId(null)
+          setSecondAdminName(null)
         },
         onError: (error: unknown) => {
           const err = error as { response?: { data?: { error?: { code?: string } } } }
@@ -245,10 +249,14 @@ export function IssueGoodwillVoucherModal({ isOpen, onClose }: IssueGoodwillVouc
                 </p>
               </div>
               <FormField label={t('vouchers:issueGoodwill.secondAdmin')}>
-                <PartnerPicker
-                  value={secondAdmin}
-                  onChange={setSecondAdmin}
-                  partnerType="all"
+                <UserPicker
+                  value={secondAdminId}
+                  selectedLabel={secondAdminName}
+                  onChange={(id, name) => {
+                    setSecondAdminId(id)
+                    setSecondAdminName(name ?? null)
+                  }}
+                  roleFilter="admin"
                   testId="second-admin-picker"
                 />
               </FormField>

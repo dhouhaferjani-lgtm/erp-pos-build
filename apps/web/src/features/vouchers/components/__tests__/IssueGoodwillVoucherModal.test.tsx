@@ -60,7 +60,24 @@ vi.mock('@/components/molecules/pickers/PartnerPicker', () => ({
   }) => (
     <div
       data-testid={testId ?? 'partner-picker'}
-      onClick={() => { onChange?.({ id: 'admin-42', name: 'Second Admin' }) }}
+      onClick={() => { onChange?.({ id: 'partner-42', name: 'Some Partner' }) }}
+    />
+  ),
+}))
+
+// ─── UserPicker mock ──────────────────────────────────────────────────────────
+
+vi.mock('@/components/ui/UserPicker', () => ({
+  UserPicker: ({
+    testId,
+    onChange,
+  }: {
+    testId?: string
+    onChange?: (id: string | null, name?: string) => void
+  }) => (
+    <div
+      data-testid={testId ?? 'user-picker'}
+      onClick={() => { onChange?.('admin-42', 'Second Admin') }}
     />
   ),
 }))

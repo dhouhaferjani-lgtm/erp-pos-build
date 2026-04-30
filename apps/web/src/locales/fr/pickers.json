@@ -43,5 +43,10 @@
     "label": "Prestation",
     "searchPlaceholder": "Rechercher une prestation par nom ou code…",
     "empty": "Aucune prestation correspondante."
+  },
+  "user": {
+    "label": "Utilisateur",
+    "searchPlaceholder": "Rechercher un utilisateur par nom ou e-mail…",
+    "empty": "Aucun utilisateur correspondant."
   }
 }

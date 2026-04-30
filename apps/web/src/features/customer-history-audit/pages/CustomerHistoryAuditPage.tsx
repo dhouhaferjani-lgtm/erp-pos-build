@@ -5,6 +5,7 @@ import { ShieldAlert } from 'lucide-react'
 import { Spinner } from '@/components/atoms/Spinner/Spinner'
 import { Pagination } from '@/components/ui/Pagination'
 import { PartnerSearchSelect } from '@/components/ui/PartnerSearchSelect'
+import { UserPicker } from '@/components/ui/UserPicker'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useTerminals } from '@/features/pos/hooks/useTerminals'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
@@ -34,6 +35,7 @@ export function CustomerHistoryAuditPage() {
 
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(25)
+  const [cashierName, setCashierName] = useState<string | null>(null)
 
   const filters: CustomerHistorySearchFilters = {
     page,
@@ -103,10 +105,15 @@ export function CustomerHistoryAuditPage() {
           >
             {t('customer-history-audit:filters.cashier')}
           </label>
-          <PartnerSearchSelect
-            value={cashierIdParam}
-            onChange={(id) => { setParam('cashier_id', id) }}
+          <UserPicker
+            value={cashierIdParam || null}
+            selectedLabel={cashierName}
+            onChange={(id, name) => {
+              setParam('cashier_id', id ?? '')
+              setCashierName(name ?? null)
+            }}
             placeholder={t('customer-history-audit:filters.cashier')}
+            label=""
           />
         </div>
 

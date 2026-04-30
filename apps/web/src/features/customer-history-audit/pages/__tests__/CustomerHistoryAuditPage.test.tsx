@@ -124,6 +124,20 @@ vi.mock('@/components/ui/PartnerSearchSelect', () => ({
   ),
 }))
 
+// ─── UserPicker mock ──────────────────────────────────────────────────────────
+
+vi.mock('@/components/ui/UserPicker', () => ({
+  UserPicker: ({ placeholder, onChange }: { placeholder?: string; onChange: (id: string | null, name?: string) => void }) => (
+    <button
+      type="button"
+      data-testid={`user-picker-${placeholder ?? 'cashier'}`}
+      onClick={() => { onChange('user-x', 'Cashier X') }}
+    >
+      {placeholder}
+    </button>
+  ),
+}))
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('CustomerHistoryAuditPage', () => {
