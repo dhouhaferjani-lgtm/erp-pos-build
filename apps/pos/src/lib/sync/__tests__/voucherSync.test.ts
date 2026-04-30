@@ -185,6 +185,49 @@ describe('pullReceiptQrIndex', () => {
     expect(upsertReceiptQrIndexEntries).toHaveBeenCalledWith(db, [RECEIPT_INDEX]);
   });
 
+  it('persists partner_id when the server response includes a non-null partner_id (M2)', async () => {
+    // Codex review M2: partner_id must flow from wire payload → local SQLite row.
+    const partnerId = '123e4567-e89b-12d3-a456-426614174000';
+    const entryWithPartner: LocalReceiptQrIndexEntry = {
+      ...RECEIPT_INDEX,
+      receipt_uuid: 'aaaaaaaa-0000-0000-0000-000000000001',
+      partner_id: partnerId,
+    };
+
+    vi.mocked(apiGet).mockResolvedValueOnce({ entries: [entryWithPartner] });
+
+    const count = await pullReceiptQrIndex(db, TERMINAL_ID);
+
+    expect(count).toBe(1);
+    expect(upsertReceiptQrIndexEntries).toHaveBeenCalledWith(
+      db,
+      expect.arrayContaining([
+        expect.objectContaining({ partner_id: partnerId }),
+      ]),
+    );
+  });
+
+  it('persists partner_id as null when the server response has partner_id null (M2)', async () => {
+    // Codex review M2: null partner_id must round-trip correctly.
+    const entryNoPartner: LocalReceiptQrIndexEntry = {
+      ...RECEIPT_INDEX,
+      receipt_uuid: 'aaaaaaaa-0000-0000-0000-000000000002',
+      partner_id: null,
+    };
+
+    vi.mocked(apiGet).mockResolvedValueOnce({ entries: [entryNoPartner] });
+
+    const count = await pullReceiptQrIndex(db, TERMINAL_ID);
+
+    expect(count).toBe(1);
+    expect(upsertReceiptQrIndexEntries).toHaveBeenCalledWith(
+      db,
+      expect.arrayContaining([
+        expect.objectContaining({ partner_id: null }),
+      ]),
+    );
+  });
+
   it('returns 0 on backend error and logs', async () => {
     vi.mocked(apiGet).mockRejectedValueOnce(new Error('boom'));
 

@@ -14,6 +14,9 @@ namespace App\Modules\POS\Application\DTOs;
  *
  * `qrToken` is nullable — when no active receipt_qr signing key exists
  * for the tenant, the dispatcher falls through to receipt_number lookup.
+ *
+ * `partnerId` is nullable — not all receipts have a linked partner. Null
+ * on receipts created before Phase H Block 2.5 or on anonymous sales.
  */
 final readonly class ReceiptQrIndexRowDto
 {
@@ -29,6 +32,7 @@ final readonly class ReceiptQrIndexRowDto
         public string $total,
         public string $currency,
         public string $syncedAt,
+        public ?string $partnerId = null,
     ) {}
 
     /**
@@ -45,6 +49,7 @@ final readonly class ReceiptQrIndexRowDto
             'total' => $this->total,
             'currency' => $this->currency,
             'synced_at' => $this->syncedAt,
+            'partner_id' => $this->partnerId,
         ];
     }
 }

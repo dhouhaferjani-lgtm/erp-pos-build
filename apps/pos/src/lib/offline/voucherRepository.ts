@@ -196,10 +196,6 @@ export async function findReceiptByNumber(
  * `number | null`, and we guard with `Number.isFinite`, `> 0`, and `<= 3650`
  * so the inline fragment cannot host SQL injection and extreme inputs fall
  * through safely to the full-window path.
- *
- * TODO (follow-up): Update syncService + backend ReceiptSyncController to
- * include `partner_id` in the sync payload, and pass it through
- * `upsertReceiptQrIndexEntries` so this query becomes fully useful.
  */
 export async function findRecentReceiptsByPartner(
   db: Database,

@@ -65,6 +65,7 @@ final class ReceiptQrIndexSyncService
                 total: $r->total,
                 currency: $r->currency,
                 syncedAt: $now,
+                partnerId: $r->partner_id,
             ))
             ->all();
 

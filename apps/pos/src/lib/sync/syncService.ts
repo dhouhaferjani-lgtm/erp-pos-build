@@ -882,9 +882,11 @@ interface VoucherLedgerSyncResponse {
   entries: LocalVoucherLedgerEntry[];
 }
 
-// Entries from the server may omit `partner_id` until the backend adds the
-// field — widen it here so the runtime undefined doesn't break upserts.
-// `upsertReceiptQrIndexEntries` already coalesces with `?? null`.
+// The backend now ships `partner_id` in the sync payload (Codex review M2).
+// The optional widening is kept for backward compatibility with any clients
+// that may receive a cached 404 or a stale response from an older server.
+// `upsertReceiptQrIndexEntries` coalesces with `?? null` to ensure the DB
+// column is always written, never left as undefined.
 type ReceiptQrIndexSyncEntry = Omit<LocalReceiptQrIndexEntry, 'partner_id'> & {
   partner_id?: string | null;
 };
@@ -975,13 +977,12 @@ export async function pullVoucherLedger(
 /**
  * Pull the receipt_qr_index for this terminal so the scan dispatcher (Task 50)
  * can resolve scanned QR tokens to receipts without a network round-trip.
- * Backend endpoint pending.
+ * Backend endpoint: GET /api/v1/pos/receipts/qr-index (shipped in Codex review M2).
  */
 export async function pullReceiptQrIndex(
   db: Database,
   terminalId: string,
 ): Promise<number> {
-  // Backend endpoint pending: /pos/receipts/qr-index (delivered in a later backend task).
   try {
     const lastSync = await getSyncMetadata(db, 'receipt_qr_index_last_sync');
     const params: Record<string, string> = { terminal_id: terminalId };
@@ -991,8 +992,8 @@ export async function pullReceiptQrIndex(
       '/pos/receipts/qr-index',
       params,
     );
-    // Normalise: coalesce undefined partner_id (backend omits field until migration
-    // ships) to null so upsertReceiptQrIndexEntries receives a well-typed row.
+    // Coalesce undefined partner_id (backward compat with older server responses)
+    // to null so upsertReceiptQrIndexEntries always receives a well-typed row.
     const entries = (response.entries ?? []).map((e) => ({
       ...e,
       partner_id: e.partner_id ?? null,
