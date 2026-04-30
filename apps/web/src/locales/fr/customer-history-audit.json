@@ -1,0 +1,40 @@
+{
+  "pageTitle": "Audit des recherches d'historique client",
+  "pageSubtitle": "Journal d'audit de toutes les recherches d'historique client effectuées en caisse. La saisie brute n'est jamais stockée — uniquement un hash SHA-256.",
+  "filters": {
+    "cashier": "Filtrer par caissier",
+    "terminal": "Filtrer par terminal",
+    "partner": "Filtrer par partenaire",
+    "status": "Filtrer par statut",
+    "from": "Date de début",
+    "to": "Date de fin",
+    "all": "Tous",
+    "onlyRejected": "Rejetés uniquement",
+    "onlySuccessful": "Réussis uniquement"
+  },
+  "columns": {
+    "createdAt": "Date / Heure",
+    "cashier": "Caissier",
+    "terminal": "Terminal",
+    "partner": "Partenaire résolu",
+    "results": "{{count}} résultats",
+    "status": "Statut",
+    "rejectionReason": "Motif du rejet"
+  },
+  "summary": {
+    "searches_one": "{{count}} recherche",
+    "searches_other": "{{count}} recherches",
+    "searches": "{{count}} recherches",
+    "rejected_one": "{{count}} rejeté",
+    "rejected_other": "{{count}} rejetés",
+    "rejected": "{{count}} rejeté(s)"
+  },
+  "rejected": "Rejeté",
+  "successful": "Réussi",
+  "noPartnerResolved": "(aucun partenaire résolu)",
+  "noResults": "Aucune recherche trouvée",
+  "empty": "Aucune recherche d'historique client ne correspond aux filtres sélectionnés.",
+  "accessDenied": "Accès refusé — rôle Manager ou Admin requis.",
+  "loading": "Chargement du journal d'audit...",
+  "errorLoading": "Échec du chargement du journal d'audit. Veuillez réessayer."
+}

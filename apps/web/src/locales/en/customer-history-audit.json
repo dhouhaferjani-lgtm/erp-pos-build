@@ -1,0 +1,40 @@
+{
+  "pageTitle": "Customer History Search Audit",
+  "pageSubtitle": "Audit log of all customer history searches performed at the POS. Raw search input is never stored — only a SHA-256 hash.",
+  "filters": {
+    "cashier": "Filter by cashier",
+    "terminal": "Filter by terminal",
+    "partner": "Filter by partner",
+    "status": "Filter by status",
+    "from": "From date",
+    "to": "To date",
+    "all": "All",
+    "onlyRejected": "Only rejected",
+    "onlySuccessful": "Only successful"
+  },
+  "columns": {
+    "createdAt": "Date / Time",
+    "cashier": "Cashier",
+    "terminal": "Terminal",
+    "partner": "Partner resolved",
+    "results": "{{count}} results",
+    "status": "Status",
+    "rejectionReason": "Rejection reason"
+  },
+  "summary": {
+    "searches_one": "{{count}} search",
+    "searches_other": "{{count}} searches",
+    "searches": "{{count}} searches",
+    "rejected_one": "{{count}} rejected",
+    "rejected_other": "{{count}} rejected",
+    "rejected": "{{count}} rejected"
+  },
+  "rejected": "Rejected",
+  "successful": "Successful",
+  "noPartnerResolved": "(no partner resolved)",
+  "noResults": "No searches found",
+  "empty": "No customer history searches match the selected filters.",
+  "accessDenied": "Access denied — Manager or Admin role required.",
+  "loading": "Loading audit log...",
+  "errorLoading": "Failed to load audit log. Please try again."
+}

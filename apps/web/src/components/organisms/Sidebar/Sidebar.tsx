@@ -54,6 +54,7 @@ import {
   Package2,
   Calendar,
   Download,
+  ShieldAlert,
 } from 'lucide-react'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useCompanyConfig } from '../../../contexts'
@@ -221,6 +222,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
         { key: 'zReports', href: '/pos/z-reports', icon: FileCheck, module: 'pos' },
         { key: 'vouchers', href: '/pos/vouchers', icon: Ticket, module: 'pos' },
         { key: 'posRefundPolicies', href: '/settings/pos-refund-policies', icon: RotateCcw, module: 'settings' },
+        { key: 'customerHistoryAudit', href: '/settings/audit/customer-history', icon: ShieldAlert, module: 'settings' },
       ],
     },
     {

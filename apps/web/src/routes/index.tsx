@@ -124,6 +124,7 @@ const LocationsPage = lazy(() => import('../features/settings/LocationsPage').th
 const InventorySettings = lazy(() => import('../features/settings/components/InventorySettings').then((m) => ({ default: m.InventorySettings })))
 const UnitsSettingsPage = lazy(() => import('../features/uom').then((m) => ({ default: m.UnitsSettingsPage })))
 const PosRefundPoliciesPage = lazy(() => import('../features/settings/pages/PosRefundPoliciesPage').then((m) => ({ default: m.PosRefundPoliciesPage })))
+const CustomerHistoryAuditPage = lazy(() => import('../features/customer-history-audit').then((m) => ({ default: m.CustomerHistoryAuditPage })))
 
 // Finance module
 const ChartOfAccountsPage = lazy(() => import('../features/finance/pages/ChartOfAccountsPage').then((m) => ({ default: m.ChartOfAccountsPage })))
@@ -1791,6 +1792,16 @@ export function AppRoutes() {
               <RequirePermission moduleKey="settings">
                 <SuspenseWrapper>
                   <PosRefundPoliciesPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="audit/customer-history"
+            element={
+              <RequirePermission permission="pos.search_customer_full_history">
+                <SuspenseWrapper>
+                  <CustomerHistoryAuditPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
