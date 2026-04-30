@@ -38,7 +38,8 @@ vi.mock('@/components/pos/Modal', () => ({
     ) : null,
 }));
 
-// Mock ManagerPinPanel — expose a simple "verify" button in tests
+// Mock ManagerPinPanel — expose a simple "verify" button in tests.
+// onSuccess signature matches the real ManagerPinPanel: (userId: string, name: string) => void
 vi.mock('@/components/pos/molecules/ManagerPinPanel', () => ({
   ManagerPinPanel: ({
     onVerify,
@@ -60,6 +61,7 @@ vi.mock('@/components/pos/molecules/ManagerPinPanel', () => ({
             const manager = eligible[0];
             if (!manager) return;
             const result = await onVerify(manager.id, '1234');
+            // Pass both userId AND name — matching real ManagerPinPanel.onSuccess
             if (result.valid) onSuccess(manager.id, manager.name);
           }}
         >
@@ -211,6 +213,35 @@ describe('RefundConfirmModal — MANAGER_OVERRIDE_REQUIRED flow', () => {
     expect(capturedPayloads).toHaveLength(2);
     expect(capturedPayloads[0]).toEqual({});
     expect(capturedPayloads[1]?.authorized_by_user_id).toBe('mgr-1');
+  });
+});
+
+describe('RefundConfirmModal — I1: double-422 PIN loop guard', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('shows generic error (not PIN panel) when second submit also returns MANAGER_OVERRIDE_REQUIRED', async () => {
+    // Both calls return the same 422 — simulates the loop scenario
+    const err = new ApiRequestError(422, 'Manager override required', 'MANAGER_OVERRIDE_REQUIRED');
+    const onSubmitRefund = makeSubmit(() => Promise.reject(err));
+    const onVerifyManagerPin = makeVerify(() => Promise.resolve({ valid: true }));
+    const onSuccess = vi.fn();
+
+    render(<RefundConfirmModal {...buildProps({ onSubmitRefund, onVerifyManagerPin, onSuccess })} />);
+
+    // First submit — expects PIN panel
+    fireEvent.click(screen.getByTestId('refund-confirm-submit'));
+    await waitFor(() => expect(screen.getByTestId('manager-pin-panel')).toBeInTheDocument());
+
+    // Manager verifies PIN — triggers second submit
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('mock-pin-verify-success'));
+    });
+
+    // Second submit also 422 — should NOT re-show PIN panel; should show generic error
+    await waitFor(() => expect(screen.getByTestId('refund-confirm-error')).toBeInTheDocument());
+
+    expect(screen.queryByTestId('manager-pin-panel')).not.toBeInTheDocument();
+    expect(onSuccess).not.toHaveBeenCalled();
   });
 });
 

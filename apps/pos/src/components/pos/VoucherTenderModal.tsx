@@ -28,6 +28,11 @@
  * Duplicate guard:
  *   The same voucher cannot be applied twice per transaction. The component checks
  *   `appliedVoucherCodes` from paymentStore before calling addVoucherPayment.
+ *
+ * Monetary precision:
+ *   All monetary comparisons and formatting use bc-style string arithmetic
+ *   (`bccomp`, `bcformat` from `@/lib/decimal`) — never IEEE 754 floats.
+ *   This handles TND (scale 3) and other multi-decimal currencies correctly.
  */
 
 import { useState, useCallback, useRef, type ChangeEvent } from 'react';
@@ -36,6 +41,7 @@ import type Database from '@tauri-apps/plugin-sql';
 import { findByCode, type LocalVoucher } from '@/lib/offline/voucherRepository';
 import { usePaymentStore } from '@/stores/paymentStore';
 import { Modal } from '@/components/pos/Modal';
+import { bccomp, bcformat } from '@/lib/decimal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -74,26 +80,42 @@ export interface VoucherTenderModalProps {
   onApplied: (code: string, amount: string) => void;
 }
 
-// ─── Local types ──────────────────────────────────────────────────────────────
-
-type Phase =
-  | 'scan'           // Input code; nothing found yet
-  | 'found'          // Voucher found — show details + amount input
-  | 'applying';      // In-flight (addVoucherPayment call)
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function formatDecimal(value: number, decimals: number): string {
-  return value.toFixed(decimals);
-}
-
+/**
+ * Infer the decimal scale from a stored monetary string (e.g. "25.123" → 3).
+ * The voucher's `current_balance` is always stored at the correct currency scale
+ * by the sync pipeline, so we can derive scale directly from the string rather
+ * than depending on a currency-lookup import.
+ */
 function guessDecimals(decimalStr: string): number {
   const dotIdx = decimalStr.indexOf('.');
   return dotIdx < 0 ? 2 : decimalStr.length - dotIdx - 1;
+}
+
+// ─── Local types ──────────────────────────────────────────────────────────────
+
+type Phase =
+  | 'scan'    // Input code; nothing found yet
+  | 'found';  // Voucher found — show details + amount input
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * String-safe min: returns the smaller of a and b (both decimal strings).
+ * Falls back to '0' if either is not a valid decimal.
+ */
+function bcmin(a: string, b: string): string {
+  return bccomp(a, b) <= 0 ? a : b;
+}
+
+/**
+ * String-safe clamp: returns value clamped to [lo, hi] (all decimal strings).
+ */
+function bcclamp(value: string, lo: string, hi: string): string {
+  if (bccomp(value, lo) < 0) return lo;
+  if (bccomp(value, hi) > 0) return hi;
+  return value;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -139,8 +161,19 @@ export function VoucherTenderModal({
     setIsLooking(true);
     setLookupError(null);
 
-    // NO API CALL — local SQLite only
-    const found = await findByCode(db, trimmedCode);
+    let found: LocalVoucher | null;
+    try {
+      // NO API CALL — local SQLite only
+      found = await findByCode(db, trimmedCode);
+    } catch {
+      setLookupError(
+        t('voucherTender.lookupFailed', {
+          defaultValue: 'Could not read local voucher database. Please try again.',
+        }),
+      );
+      setIsLooking(false);
+      return;
+    }
 
     setIsLooking(false);
 
@@ -183,30 +216,36 @@ export function VoucherTenderModal({
       return;
     }
 
-    // Default amount = min(balance, remaining due)
+    // Default amount = min(balance, remaining due) — bc-safe, no float arithmetic
+    // Scale is derived from the stored balance string (always at correct precision)
     const decimals = guessDecimals(found.current_balance);
-    const balance = parseFloat(found.current_balance);
-    const due = parseFloat(remainingDue);
-    const defaultAmount = formatDecimal(clamp(balance, 0, Math.max(0, due)), decimals);
+    const balance = found.current_balance;
+    // Clamp due to [0, balance] then take min with balance
+    const due = bccomp(remainingDue, '0') > 0 ? remainingDue : '0';
+    const defaultAmount = bcformat(bcmin(balance, due), decimals);
 
     setVoucher(found);
     setAmountInput(defaultAmount);
     setCode(found.code); // normalize to server-casing
     setPhase('found');
-  }, [code, db, appliedVoucherCodes, remainingDue, t]);
+  }, [code, db, appliedVoucherCodes, remainingDue, currency, t]);
 
   const handleApply = useCallback(() => {
     if (voucher === null) return;
 
-    const parsedAmount = parseFloat(amountInput);
-    const balance = parseFloat(voucher.current_balance);
-    const due = parseFloat(remainingDue);
+    const parsedAmount = amountInput;
+    const balance = voucher.current_balance;
+    const due = remainingDue;
 
-    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+    // Validate: must be a positive number
+    const parsedFloat = parseFloat(parsedAmount);
+    if (isNaN(parsedFloat) || parsedFloat <= 0 || parsedAmount.trim() === '') {
       setLookupError(t('voucherTender.invalidAmount', { defaultValue: 'Enter a valid amount greater than zero.' }));
       return;
     }
-    if (parsedAmount > balance) {
+
+    // Validate: must not exceed balance (bc-safe comparison)
+    if (bccomp(parsedAmount, balance) > 0) {
       setLookupError(
         t('voucherTender.amountExceedsBalance', {
           defaultValue: 'Amount cannot exceed the voucher balance ({{balance}} {{currency}}).',
@@ -216,7 +255,9 @@ export function VoucherTenderModal({
       );
       return;
     }
-    if (parsedAmount > due && due > 0) {
+
+    // Validate: must not exceed remaining due (bc-safe comparison)
+    if (bccomp(due, '0') > 0 && bccomp(parsedAmount, due) > 0) {
       setLookupError(
         t('voucherTender.amountExceedsDue', {
           defaultValue: 'Amount cannot exceed the remaining due ({{due}} {{currency}}).',
@@ -227,8 +268,6 @@ export function VoucherTenderModal({
       return;
     }
 
-    setPhase('applying');
-
     try {
       // Duplicate guard — addVoucherPayment also guards, but we check early for UX
       if (appliedVoucherCodes.has(voucher.code)) {
@@ -237,12 +276,16 @@ export function VoucherTenderModal({
             defaultValue: 'This voucher has already been applied to this sale.',
           }),
         );
-        setPhase('found');
         return;
       }
 
       const decimals = guessDecimals(voucher.current_balance);
-      const finalAmount = formatDecimal(parsedAmount, decimals);
+      // Normalise to canonical decimal string at currency scale
+      const finalAmount = bcclamp(
+        bcformat(parsedAmount, decimals),
+        '0',
+        balance,
+      );
       addVoucherPayment(voucher.code, finalAmount);
       onApplied(voucher.code, finalAmount);
       resetToScan();
@@ -252,7 +295,6 @@ export function VoucherTenderModal({
           ? err.message
           : t('voucherTender.applyFailed', { defaultValue: 'Failed to apply voucher.' }),
       );
-      setPhase('found');
     }
   }, [voucher, amountInput, remainingDue, appliedVoucherCodes, currency, addVoucherPayment, onApplied, resetToScan, t]);
 
@@ -271,7 +313,7 @@ export function VoucherTenderModal({
       size="sm"
     >
       <div className="space-y-4 p-4" data-testid="voucher-tender-modal">
-        {phase === 'scan' || phase === 'applying' ? (
+        {phase === 'scan' ? (
           /* ── Scan / type phase ────────────────────────────────────────────── */
           <div className="space-y-3">
             <label htmlFor="voucher-code-input" className="text-sm font-medium text-gray-700">
@@ -289,7 +331,7 @@ export function VoucherTenderModal({
               onKeyDown={(e) => {
                 if (e.key === 'Enter') void handleLookup();
               }}
-              disabled={isLooking || phase === 'applying'}
+              disabled={isLooking}
               placeholder={t('voucherTender.codePlaceholder', { defaultValue: 'Scan or type code…' })}
               autoFocus
               data-testid="voucher-code-input"
@@ -306,7 +348,7 @@ export function VoucherTenderModal({
               <button
                 type="button"
                 onClick={handleClose}
-                disabled={isLooking || phase === 'applying'}
+                disabled={isLooking}
                 data-testid="voucher-cancel"
                 className="flex-1 rounded-md border border-gray-300 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               >
@@ -315,7 +357,7 @@ export function VoucherTenderModal({
               <button
                 type="button"
                 onClick={() => void handleLookup()}
-                disabled={isLooking || code.trim() === '' || phase === 'applying'}
+                disabled={isLooking || code.trim() === ''}
                 data-testid="voucher-lookup-button"
                 className="flex-1 rounded-md bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
               >

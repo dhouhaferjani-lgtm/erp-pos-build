@@ -723,6 +723,7 @@
     "invalidAmount": "Enter a valid amount greater than zero.",
     "amountExceedsBalance": "Amount cannot exceed the voucher balance ({{balance}} {{currency}}).",
     "amountExceedsDue": "Amount cannot exceed the remaining due ({{due}} {{currency}}).",
-    "applyFailed": "Failed to apply voucher."
+    "applyFailed": "Failed to apply voucher.",
+    "lookupFailed": "Could not read local voucher database. Please try again."
   }
 }

@@ -25,7 +25,7 @@
  *   In the future this could be pre-fetched and cached in a store.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '@/components/pos/Modal';
 import { ManagerPinPanel } from '@/components/pos/molecules/ManagerPinPanel';
@@ -103,6 +103,16 @@ export function RefundConfirmModal({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [authorizedManagerId, setAuthorizedManagerId] = useState<string | null>(null);
   const [pinThrottle, setPinThrottle] = useState(INITIAL_THROTTLE);
+  /**
+   * Ref (not state) so that `submitRefund` always reads the latest value even
+   * when called synchronously after `handleManagerPinSuccess` sets it to true.
+   * A state update would be batched and the closure would see the stale value.
+   *
+   * True once a manager-PIN-authorized re-submit has already been attempted.
+   * Prevents the PIN panel from re-appearing if the second call also returns a
+   * 422 — instead we fall through to the generic error path (I1 guard).
+   */
+  const hasRetriedWithManagerPinRef = useRef(false);
 
   const resetState = useCallback(() => {
     setIsSubmitting(false);
@@ -110,6 +120,7 @@ export function RefundConfirmModal({
     setErrorMessage(null);
     setAuthorizedManagerId(null);
     setPinThrottle(INITIAL_THROTTLE);
+    hasRetriedWithManagerPinRef.current = false;
   }, []);
 
   const handleClose = useCallback(() => {
@@ -148,6 +159,17 @@ export function RefundConfirmModal({
           message = err.apiMessage;
         }
 
+        // I1 guard: if a manager-PIN re-submit already happened and the second
+        // call also returns a PIN-requiring 422, do not re-show the PIN panel —
+        // that would trap the cashier in an infinite loop.  Fall through to the
+        // generic error path so the cashier can cancel and try again.
+        // We read from the ref (not state) so we always see the latest value
+        // even when called immediately after handleManagerPinSuccess sets it.
+        if (hasRetriedWithManagerPinRef.current && requiresManagerPin(action)) {
+          action = 'generic';
+          // Keep message from the API (already set above)
+        }
+
         setUiAction(action);
         if (!requiresManagerPin(action)) {
           // Show the error inline; no PIN prompt possible
@@ -160,10 +182,17 @@ export function RefundConfirmModal({
     [onSubmitRefund, onSuccess, resetState, t],
   );
 
+  // Signature matches ManagerPinPanel.onSuccess: (userId: string, name: string) => void
+  // The managerName arg is not used here (display is handled inside ManagerPinPanel),
+  // but we must accept it to stay aligned with the real component interface (I4).
   const handleManagerPinSuccess = useCallback(
-    (managerUserId: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    (managerUserId: string, _managerName: string) => {
       setAuthorizedManagerId(managerUserId);
       setUiAction(null);
+      // Set the ref synchronously BEFORE calling submitRefund so the guard in
+      // submitRefund reads the correct value even in the same render cycle.
+      hasRetriedWithManagerPinRef.current = true;
       // Re-submit with manager authorization
       void submitRefund(managerUserId);
     },
@@ -217,7 +246,7 @@ export function RefundConfirmModal({
               authorizedManagers={authorizedManagers}
               excludeUserId={cashierUserId}
               onVerify={onVerifyManagerPin}
-              onSuccess={(userId) => handleManagerPinSuccess(userId)}
+              onSuccess={(userId, name) => handleManagerPinSuccess(userId, name)}
               throttle={pinThrottle}
               onThrottleUpdate={setPinThrottle}
             />

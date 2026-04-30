@@ -723,6 +723,7 @@
     "invalidAmount": "Saisissez un montant valide supérieur à zéro.",
     "amountExceedsBalance": "Le montant ne peut pas dépasser le solde du bon ({{balance}} {{currency}}).",
     "amountExceedsDue": "Le montant ne peut pas dépasser le reste dû ({{due}} {{currency}}).",
-    "applyFailed": "Échec de l'application du bon."
+    "applyFailed": "Échec de l'application du bon.",
+    "lookupFailed": "Impossible de lire la base de données locale des bons. Veuillez réessayer."
   }
 }

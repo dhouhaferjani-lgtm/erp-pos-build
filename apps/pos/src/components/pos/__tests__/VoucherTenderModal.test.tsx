@@ -30,6 +30,7 @@ vi.mock('react-i18next', () => ({
         'voucherTender.invalidAmount': 'Enter a valid amount greater than zero.',
         'voucherTender.amountExceedsBalance': `Amount cannot exceed the voucher balance (${String(opts?.balance ?? '')} ${String(opts?.currency ?? '')}).`,
         'voucherTender.amountExceedsDue': `Amount cannot exceed the remaining due (${String(opts?.due ?? '')} ${String(opts?.currency ?? '')}).`,
+        'voucherTender.lookupFailed': 'Could not read local voucher database. Please try again.',
       };
       return map[key] ?? (opts?.defaultValue as string | undefined) ?? key;
     },
@@ -47,6 +48,23 @@ vi.mock('@/components/pos/Modal', () => ({
 const mockFindByCode = vi.fn<(db: unknown, code: string) => Promise<LocalVoucher | null>>();
 vi.mock('@/lib/offline/voucherRepository', () => ({
   findByCode: (db: unknown, code: string) => mockFindByCode(db, code),
+}));
+
+// Mock @/lib/decimal to break the import chain into authStore/api/i18n
+// The component uses bccomp, bcformat from this module.
+vi.mock('@/lib/decimal', () => ({
+  bccomp: (a: string, b: string): number => {
+    const numA = parseFloat(a);
+    const numB = parseFloat(b);
+    if (numA < numB) return -1;
+    if (numA > numB) return 1;
+    return 0;
+  },
+  bcformat: (value: string, scale: number): string => parseFloat(value).toFixed(scale),
+  bcadd: (a: string, b: string, scale: number = 3): string =>
+    (parseFloat(a) + parseFloat(b)).toFixed(scale),
+  bcsub: (a: string, b: string, scale: number = 3): string =>
+    (parseFloat(a) - parseFloat(b)).toFixed(scale),
 }));
 
 // Mock paymentStore — track addVoucherPayment calls
@@ -363,5 +381,92 @@ describe('VoucherTenderModal — duplicate guard', () => {
     expect(mockAddVoucherPayment).not.toHaveBeenCalled();
     // Should not navigate to found phase
     expect(screen.queryByTestId('voucher-found-section')).not.toBeInTheDocument();
+  });
+});
+
+describe('VoucherTenderModal — C1: exception safety on findByCode failure', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAppliedVoucherCodes.clear();
+  });
+
+  it('shows lookupFailed error and re-enables lookup button when findByCode throws', async () => {
+    mockFindByCode.mockRejectedValue(new Error('SQLite: disk I/O error'));
+
+    render(<VoucherTenderModal {...buildProps()} />);
+    await typeCodeAndLookup('VOUCHER-001');
+
+    // Error message is displayed
+    await waitFor(() => expect(screen.getByTestId('voucher-lookup-error')).toBeInTheDocument());
+    expect(screen.getByTestId('voucher-lookup-error')).toHaveTextContent(
+      'Could not read local voucher database. Please try again.',
+    );
+
+    // isLooking is reset — lookup button must be enabled again
+    const lookupButton = screen.getByTestId('voucher-lookup-button');
+    expect(lookupButton).not.toBeDisabled();
+
+    // Should not navigate to found phase
+    expect(screen.queryByTestId('voucher-found-section')).not.toBeInTheDocument();
+  });
+});
+
+describe('VoucherTenderModal — I3: TND scale-3 monetary precision', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAppliedVoucherCodes.clear();
+  });
+
+  it('defaults to due (15.500) when TND balance (25.123) exceeds remaining due, with no precision drift', async () => {
+    // TND voucher: balance "25.123", due "15.500"
+    mockFindByCode.mockResolvedValue(
+      makeVoucher({
+        current_balance: '25.123',
+        currency: 'TND',
+      }),
+    );
+
+    render(
+      <VoucherTenderModal
+        {...buildProps({
+          remainingDue: '15.500',
+          currency: 'TND',
+        })}
+      />,
+    );
+
+    await typeCodeAndLookup('VOUCHER-TND');
+
+    await waitFor(() => expect(screen.getByTestId('voucher-found-section')).toBeInTheDocument());
+
+    const amountInput = screen.getByTestId('voucher-amount-input') as HTMLInputElement;
+    // Must be exactly "15.500" — limited by due, no IEEE 754 drift
+    expect(amountInput.value).toBe('15.500');
+  });
+
+  it('defaults to balance (10.750) when TND balance is less than remaining due (25.000)', async () => {
+    mockFindByCode.mockResolvedValue(
+      makeVoucher({
+        current_balance: '10.750',
+        currency: 'TND',
+      }),
+    );
+
+    render(
+      <VoucherTenderModal
+        {...buildProps({
+          remainingDue: '25.000',
+          currency: 'TND',
+        })}
+      />,
+    );
+
+    await typeCodeAndLookup('VOUCHER-TND-2');
+
+    await waitFor(() => expect(screen.getByTestId('voucher-found-section')).toBeInTheDocument());
+
+    const amountInput = screen.getByTestId('voucher-amount-input') as HTMLInputElement;
+    // Must be exactly "10.750" — balance wins, no precision drift
+    expect(amountInput.value).toBe('10.750');
   });
 });
