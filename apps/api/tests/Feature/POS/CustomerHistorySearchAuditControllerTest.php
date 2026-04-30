@@ -108,9 +108,32 @@ final class CustomerHistorySearchAuditControllerTest extends TestCase
         $response->assertOk();
         $response->assertJsonStructure([
             'data',
-            'meta' => ['current_page', 'last_page', 'total', 'per_page'],
+            'meta' => ['current_page', 'last_page', 'total', 'per_page', 'rejected_total'],
         ]);
         $response->assertJsonPath('meta.total', 3);
+    }
+
+    // -------------------------------------------------------------------------
+    // Meta: rejected_total
+    // -------------------------------------------------------------------------
+
+    public function test_meta_rejected_total_counts_full_filtered_dataset(): void
+    {
+        Sanctum::actingAs($this->manager);
+
+        $this->insertSearchRow(['was_rejected' => true, 'rejection_reason' => 'rate_limit_exceeded']);
+        $this->insertSearchRow(['was_rejected' => true, 'rejection_reason' => 'input_not_specific']);
+        $this->insertSearchRow(['was_rejected' => false]);
+        $this->insertSearchRow(['was_rejected' => false]);
+        $this->insertSearchRow(['was_rejected' => false]);
+
+        $response = $this->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/pos/customer-history-searches?per_page=2');
+
+        $response->assertOk();
+        // First page has only 2 rows, but rejected_total must reflect the full dataset (2)
+        $response->assertJsonPath('meta.total', 5);
+        $response->assertJsonPath('meta.rejected_total', 2);
     }
 
     // -------------------------------------------------------------------------

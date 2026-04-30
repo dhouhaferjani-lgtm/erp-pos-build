@@ -1,3 +1,5 @@
+export type RejectedFilter = '' | 'true' | 'false'
+
 export interface CustomerHistorySearch {
   id: string
   company_id: string
@@ -20,6 +22,7 @@ export interface CustomerHistorySearchMeta {
   last_page: number
   total: number
   per_page: number
+  rejected_total: number
 }
 
 export interface CustomerHistorySearchListResponse {

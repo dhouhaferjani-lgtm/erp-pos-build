@@ -11,9 +11,11 @@ import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { useCustomerHistorySearches } from '../hooks/useCustomerHistorySearches'
 import { RejectedBadge } from '../components/RejectedBadge'
 import { SummaryChips } from '../components/SummaryChips'
-import type { CustomerHistorySearchFilters } from '../types/customerHistorySearch'
+import type { CustomerHistorySearchFilters, RejectedFilter } from '../types/customerHistorySearch'
 
-type RejectedFilter = '' | 'true' | 'false'
+function isRejectedFilter(value: string): value is RejectedFilter {
+  return value === '' || value === 'true' || value === 'false'
+}
 
 export function CustomerHistoryAuditPage() {
   const { t } = useTranslation(['customer-history-audit', 'common'])
@@ -25,7 +27,8 @@ export function CustomerHistoryAuditPage() {
   const cashierIdParam = searchParams.get('cashier_id') ?? ''
   const terminalIdParam = searchParams.get('terminal_id') ?? ''
   const partnerIdParam = searchParams.get('partner_id') ?? ''
-  const wasRejectedParam = (searchParams.get('was_rejected') ?? '') as RejectedFilter
+  const rawRejected = searchParams.get('was_rejected') ?? ''
+  const wasRejectedParam: RejectedFilter = isRejectedFilter(rawRejected) ? rawRejected : ''
   const fromDateParam = searchParams.get('from_date') ?? ''
   const toDateParam = searchParams.get('to_date') ?? ''
 
@@ -43,7 +46,7 @@ export function CustomerHistoryAuditPage() {
     ...(toDateParam ? { to_date: toDateParam } : {}),
   }
 
-  const { data, isLoading } = useCustomerHistorySearches(canAccess ? filters : {})
+  const { data, isLoading, isError } = useCustomerHistorySearches(canAccess ? filters : {})
 
   const { data: terminalsData } = useTerminals()
   const terminals = terminalsData ?? []
@@ -51,8 +54,8 @@ export function CustomerHistoryAuditPage() {
   const rows = data?.data ?? []
   const meta = data?.meta
 
-  const rejectedCount = rows.filter((r) => r.was_rejected).length
-  const total = meta?.total ?? rows.length
+  const rejectedCount = meta?.rejected_total ?? 0
+  const total = meta?.total ?? 0
 
   const setParam = (key: string, value: string) => {
     const next = new URLSearchParams(searchParams)
@@ -69,7 +72,7 @@ export function CustomerHistoryAuditPage() {
     return (
       <div className="flex min-h-[400px] flex-col items-center justify-center p-8 text-center">
         <div className={`rounded-full ${tokens.alert.error} p-4 mb-4`}>
-          <ShieldAlert className="h-12 w-12 text-red-600" aria-hidden="true" />
+          <ShieldAlert className={`h-12 w-12 ${textColors.error}`} aria-hidden="true" />
         </div>
         <h2 className={`text-xl font-semibold ${textColors.primary} mb-2`}>
           {t('customer-history-audit:accessDenied')}
@@ -202,8 +205,15 @@ export function CustomerHistoryAuditPage() {
         </div>
       </div>
 
+      {/* Error state */}
+      {isError && (
+        <div role="alert" className={`${tokens.alert.base} ${tokens.alert.error}`}>
+          {t('customer-history-audit:errorLoading')}
+        </div>
+      )}
+
       {/* Summary chips */}
-      {!isLoading && rows.length > 0 && (
+      {!isLoading && !isError && rows.length > 0 && (
         <SummaryChips total={total} rejectedCount={rejectedCount} />
       )}
 

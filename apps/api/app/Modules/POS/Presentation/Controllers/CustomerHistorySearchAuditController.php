@@ -121,6 +121,8 @@ final class CustomerHistorySearchAuditController extends Controller
 
         $paginator = $query->paginate($perPage);
 
+        $rejectedTotal = (clone $query)->where('chs.was_rejected', true)->count();
+
         return response()->json([
             'data' => $paginator->items(),
             'meta' => [
@@ -128,6 +130,7 @@ final class CustomerHistorySearchAuditController extends Controller
                 'last_page' => $paginator->lastPage(),
                 'total' => $paginator->total(),
                 'per_page' => $paginator->perPage(),
+                'rejected_total' => $rejectedTotal,
             ],
         ]);
     }

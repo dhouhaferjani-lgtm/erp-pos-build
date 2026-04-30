@@ -60,22 +60,24 @@ const mockRow2: CustomerHistorySearch = {
   partner_name: null,
 }
 
-type MockQueryReturn = {
+interface MockQueryReturn {
   data:
     | {
         data: CustomerHistorySearch[]
-        meta: { current_page: number; last_page: number; total: number; per_page: number }
+        meta: { current_page: number; last_page: number; total: number; per_page: number; rejected_total: number }
       }
     | undefined
   isLoading: boolean
+  isError: boolean
 }
 
 let mockUseQueryReturn: MockQueryReturn = {
   data: {
     data: [mockRow1, mockRow2],
-    meta: { current_page: 1, last_page: 1, total: 2, per_page: 25 },
+    meta: { current_page: 1, last_page: 1, total: 2, per_page: 25, rejected_total: 1 },
   },
   isLoading: false,
+  isError: false,
 }
 
 vi.mock('@tanstack/react-query', async (importOriginal) => {
@@ -131,9 +133,10 @@ describe('CustomerHistoryAuditPage', () => {
     mockUseQueryReturn = {
       data: {
         data: [mockRow1, mockRow2],
-        meta: { current_page: 1, last_page: 1, total: 2, per_page: 25 },
+        meta: { current_page: 1, last_page: 1, total: 2, per_page: 25, rejected_total: 1 },
       },
       isLoading: false,
+      isError: false,
     }
     mockSetSearchParams.mockClear()
   })
@@ -146,15 +149,16 @@ describe('CustomerHistoryAuditPage', () => {
   })
 
   it('shows loading state', () => {
-    mockUseQueryReturn = { data: undefined, isLoading: true }
+    mockUseQueryReturn = { data: undefined, isLoading: true, isError: false }
     render(<CustomerHistoryAuditPage />)
     expect(screen.queryByText('John Doe')).not.toBeInTheDocument()
   })
 
   it('shows empty state when zero results', () => {
     mockUseQueryReturn = {
-      data: { data: [], meta: { current_page: 1, last_page: 1, total: 0, per_page: 25 } },
+      data: { data: [], meta: { current_page: 1, last_page: 1, total: 0, per_page: 25, rejected_total: 0 } },
       isLoading: false,
+      isError: false,
     }
     render(<CustomerHistoryAuditPage />)
     expect(screen.getByText('customer-history-audit:noResults')).toBeInTheDocument()
@@ -179,9 +183,9 @@ describe('CustomerHistoryAuditPage', () => {
     expect(screen.queryByText('John Doe')).not.toBeInTheDocument()
   })
 
-  it('summary chips match row data counts', () => {
+  it('summary chips read counts from meta, not page slice', () => {
+    // meta.total=2, meta.rejected_total=1 — chips must show meta values
     render(<CustomerHistoryAuditPage />)
-    // total = 2 (from meta.total), rejectedCount = 1 (row2 was_rejected)
     expect(screen.getByTestId('chip-total')).toHaveTextContent('summary.searches:2')
     expect(screen.getByTestId('chip-rejected')).toHaveTextContent('summary.rejected:1')
   })
@@ -191,7 +195,15 @@ describe('CustomerHistoryAuditPage', () => {
     const select = screen.getByDisplayValue('customer-history-audit:filters.all')
     fireEvent.change(select, { target: { value: 'true' } })
     expect(mockSetSearchParams).toHaveBeenCalled()
-    const arg = mockSetSearchParams.mock.calls[0][0] as URLSearchParams
+    const arg: unknown = mockSetSearchParams.mock.calls[0][0]
+    if (!(arg instanceof URLSearchParams)) throw new Error('Expected URLSearchParams')
     expect(arg.get('was_rejected')).toBe('true')
+  })
+
+  it('renders error state when query fails', () => {
+    mockUseQueryReturn = { data: undefined, isLoading: false, isError: true }
+    render(<CustomerHistoryAuditPage />)
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('customer-history-audit:errorLoading')
   })
 })
