@@ -1,0 +1,135 @@
+{
+  "pageTitle": "Bons d'achat & Avoirs",
+  "pageSubtitle": "Gérez les bons émis, les avoirs et les gestes commerciaux",
+
+  "sources": {
+    "All": "Tous",
+    "Refund": "Remboursement",
+    "ExchangeSurplus": "Surplus d'échange",
+    "Goodwill": "Geste commercial",
+    "LoyaltyCredit": "Crédit fidélité",
+    "GiftCard": "Carte cadeau",
+    "Promotional": "Promotionnel"
+  },
+
+  "statuses": {
+    "Issued": "Émis",
+    "PartiallyRedeemed": "Partiellement utilisé",
+    "FullyRedeemed": "Entièrement utilisé",
+    "Voided": "Annulé",
+    "Expired": "Expiré"
+  },
+
+  "events": {
+    "Issued": "Émission",
+    "Redeemed": "Utilisation",
+    "Refunded": "Remboursement",
+    "Voided": "Annulation",
+    "Expired": "Expiration",
+    "Extended": "Prolongation",
+    "Transferred": "Transfert",
+    "Adjusted": "Ajustement"
+  },
+
+  "redemptionModes": {
+    "Bearer": "Au porteur (anonyme)",
+    "CustomerBound": "Nominatif"
+  },
+
+  "fields": {
+    "code": "Code",
+    "source": "Source",
+    "customer": "Client",
+    "balance": "Solde",
+    "initialBalance": "Solde initial",
+    "currentBalance": "Solde actuel",
+    "status": "Statut",
+    "expiresAt": "Expire le",
+    "terminal": "Terminal",
+    "issuedBy": "Émis par",
+    "amount": "Montant",
+    "currency": "Devise",
+    "notes": "Notes",
+    "reason": "Motif",
+    "redemptionMode": "Mode d'utilisation",
+    "newExpiresAt": "Nouvelle date d'expiration"
+  },
+
+  "actions": {
+    "void": "Annuler",
+    "extend": "Prolonger l'expiration",
+    "transfer": "Transférer",
+    "issueGoodwill": "Émettre un bon de geste commercial",
+    "issued": "Bon émis avec succès",
+    "voided": "Bon annulé avec succès",
+    "transferred": "Bon transféré avec succès",
+    "extended": "Date d'expiration prolongée avec succès"
+  },
+
+  "issueGoodwill": {
+    "title": "Émettre un bon de geste commercial",
+    "action": "Émettre le bon",
+    "selectTerminal": "Sélectionner un terminal…",
+    "fourEyesInfo": "Ce montant dépasse le seuil de double validation. Un second administrateur doit autoriser ce bon.",
+    "secondAdmin": "Second administrateur"
+  },
+
+  "void": {
+    "title": "Annuler le bon",
+    "action": "Annuler le bon",
+    "confirm": "Cette action annulera définitivement le bon. Le solde restant sera perdu. Veuillez indiquer un motif."
+  },
+
+  "extend": {
+    "title": "Prolonger la date d'expiration",
+    "action": "Prolonger"
+  },
+
+  "transfer": {
+    "title": "Transférer le bon",
+    "action": "Transférer",
+    "toPartner": "Transférer à un client",
+    "partnerRequired": "Veuillez sélectionner un client destinataire."
+  },
+
+  "ledger": {
+    "title": "Historique du grand livre",
+    "occurredAt": "Date",
+    "event": "Événement",
+    "amount": "Montant",
+    "receipt": "Ticket",
+    "terminal": "Terminal",
+    "user": "Utilisateur",
+    "empty": "Aucune écriture trouvée."
+  },
+
+  "provenance": {
+    "title": "Provenance",
+    "sourceReceipt": "Ticket source",
+    "creditNoteLink": "Avoir",
+    "issuedBy": "Émis par",
+    "notes": "Notes",
+    "overrideReason": "Motif de dérogation",
+    "loyaltyTransactionId": "ID transaction fidélité",
+    "loyaltyPhase15Placeholder": "Les détails complets de la transaction fidélité seront disponibles en Phase 1.5.",
+    "phase2Placeholder": "La provenance détaillée pour ce type de source sera disponible en Phase 2."
+  },
+
+  "errors": {
+    "FOUR_EYES_REQUIRED": "Un second administrateur doit autoriser les bons de geste au-dessus du seuil configuré.",
+    "NAMED_CUSTOMER_REQUIRED": "Un client nominatif est requis pour les bons nominatifs.",
+    "SELF_DEALING": "L'administrateur émetteur ne peut pas être également le second approbateur.",
+    "notFound": "Bon introuvable.",
+    "loadFailed": "Échec du chargement des détails du bon."
+  },
+
+  "empty": {
+    "title": "Aucun bon trouvé",
+    "subtitle": "Aucun bon ne correspond au filtre actuel. Essayez une autre source ou émettez un bon de geste commercial."
+  },
+
+  "detail": {
+    "backToList": "Retour aux bons",
+    "headerSubtitle": "Détails du bon"
+  }
+}

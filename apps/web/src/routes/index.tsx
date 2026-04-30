@@ -241,6 +241,8 @@ const LoyaltyProgramDetailPage = lazy(() => import('../features/loyalty').then((
 const LoyaltyMemberListPage = lazy(() => import('../features/loyalty').then((m) => ({ default: m.MemberListPage })))
 const LoyaltyMemberFormPage = lazy(() => import('../features/loyalty').then((m) => ({ default: m.MemberFormPage })))
 const LoyaltyMemberDetailPage = lazy(() => import('../features/loyalty').then((m) => ({ default: m.MemberDetailPage })))
+const VoucherListPage = lazy(() => import('../features/vouchers/pages/VoucherListPage').then((m) => ({ default: m.VoucherListPage })))
+const VoucherDetailPage = lazy(() => import('../features/vouchers/pages/VoucherDetailPage').then((m) => ({ default: m.VoucherDetailPage })))
 
 // Legal pages
 const PrivacyPolicyPage = lazy(() => import('../pages/legal/PrivacyPolicyPage').then((m) => ({ default: m.PrivacyPolicyPage })))
@@ -2437,6 +2439,27 @@ export function AppRoutes() {
               <RequirePermission permission="loyalty.manage">
                 <SuspenseWrapper>
                   <LoyaltyMemberFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          {/* Vouchers & Credits */}
+          <Route
+            path="vouchers"
+            element={
+              <RequirePermission moduleKey="pos">
+                <SuspenseWrapper>
+                  <VoucherListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="vouchers/:id"
+            element={
+              <RequirePermission moduleKey="pos">
+                <SuspenseWrapper>
+                  <VoucherDetailPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
