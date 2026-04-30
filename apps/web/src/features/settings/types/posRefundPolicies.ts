@@ -118,7 +118,7 @@ export const posRefundPoliciesSchema = z.object({
   // Section 2
   manager_override_threshold_amount: decimalStringSchema,
   manager_override_threshold_percent: decimalStringSchema.refine(
-    (v) => parseFloat(v) >= 0 && parseFloat(v) <= 100,
+    (v) => Number(v) >= 0 && Number(v) <= 100,
     { message: 'Must be between 0 and 100' }
   ),
   manager_override_required_for_no_receipt: z.boolean(),
