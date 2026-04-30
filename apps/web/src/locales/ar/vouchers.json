@@ -28,7 +28,8 @@
     "Expired": "انتهاء الصلاحية",
     "Extended": "تمديد",
     "Transferred": "تحويل",
-    "Adjusted": "تعديل"
+    "Adjusted": "تعديل",
+    "expiry_extended": "تمديد تاريخ الانتهاء"
   },
 
   "redemptionModes": {

@@ -21,6 +21,10 @@ export type LedgerEvent =
   | 'Extended'
   | 'Transferred'
   | 'Adjusted'
+  // Snake-case canonical value emitted by the backend's VoucherEvent enum (see
+  // VoucherEvent::ExpiryExtended). Added by Codex review m2 (2026-04-30) so the
+  // administrative expiry-extension ledger row deserializes cleanly.
+  | 'expiry_extended'
 
 // ─── Core Voucher ─────────────────────────────────────────────────────────────
 

@@ -44,7 +44,11 @@ export type VoucherLedgerEvent =
   | 'Expired'
   | 'Voided'
   | 'Transferred'
-  | 'Reversed';
+  | 'Reversed'
+  // Administrative metadata-only event written by the back-office on
+  // VoucherController::extendExpiry(). The POS itself never originates one
+  // — it can only ever appear in inbound sync streams. Codex review m2 (2026-04-30).
+  | 'ExpiryExtended';
 
 export type LedgerSyncStatus = 'synced' | 'pending' | 'failed';
 

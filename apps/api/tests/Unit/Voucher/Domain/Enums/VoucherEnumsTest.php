@@ -54,17 +54,19 @@ final class VoucherEnumsTest extends TestCase
         $this->assertSame('reversed', VoucherEvent::Reversed->value);
         $this->assertSame('transferred', VoucherEvent::Transferred->value);
         $this->assertSame('rounding_adjustment', VoucherEvent::RoundingAdjustment->value);
+        $this->assertSame('expiry_extended', VoucherEvent::ExpiryExtended->value);
     }
 
-    public function test_voucher_event_has_exactly_eight_cases(): void
+    public function test_voucher_event_has_exactly_nine_cases(): void
     {
-        $this->assertCount(8, VoucherEvent::cases());
+        $this->assertCount(9, VoucherEvent::cases());
     }
 
     public function test_voucher_event_from_string(): void
     {
         $this->assertSame(VoucherEvent::Reversed, VoucherEvent::from('reversed'));
         $this->assertSame(VoucherEvent::RoundingAdjustment, VoucherEvent::from('rounding_adjustment'));
+        $this->assertSame(VoucherEvent::ExpiryExtended, VoucherEvent::from('expiry_extended'));
     }
 
     // -------------------------------------------------------------------------

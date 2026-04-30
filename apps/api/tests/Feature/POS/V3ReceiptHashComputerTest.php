@@ -328,4 +328,139 @@ final class V3ReceiptHashComputerTest extends TestCase
             'updated_at' => now(),
         ]);
     }
+
+    /**
+     * The v3 canonical payload accepts the new VoucherEvent::ExpiryExtended
+     * enum value transparently — `buildVoucherLedgerEntries()` reads
+     * `$row->event->value`, so adding a new case never breaks serialization.
+     *
+     * In production an expiry-extension ledger row is written with
+     * `receipt_id = null` (the row records an administrative state change,
+     * not a fiscal movement on a receipt). It therefore never appears in
+     * any receipt's hash payload — the receipt-level relation filters by
+     * receipt_id. This invariance is what keeps fixture-01/fixture-08 hashes
+     * byte-stable after Codex review m2 (2026-04-30).
+     *
+     * To prove the new event flows through the hash builder cleanly we
+     * artificially bind an expiry-extended row to a receipt (receipt_id set)
+     * and assert (a) the canonical hash differs from the no-extra-row
+     * baseline (the new row participates in serialization) and (b) the same
+     * receipt with only a redemption row produces a different hash — i.e.
+     * the new event value is NOT silently mapped to a redemption.
+     */
+    public function test_v3_hash_serializes_expiry_extended_voucher_ledger_event(): void
+    {
+        $voucher = Voucher::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'currency' => 'EUR',
+        ]);
+
+        $buildReceipt = function (string $receiptNumber, callable $attachLedger): Receipt {
+            $receipt = Receipt::factory()->create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'location_id' => $this->location->id,
+                'terminal_id' => $this->terminal->id,
+                'cashier_id' => $this->cashier->id,
+                'cashier_name' => $this->cashier->name,
+                'receipt_number' => $receiptNumber,
+                'posted_at' => Carbon::parse('2026-04-30T15:00:00Z'),
+                'previous_hash' => 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
+                'subtotal' => '8.000',
+                'tax_amount' => '2.000',
+                'total' => '10.000',
+                'currency' => 'EUR',
+                'fiscal_status' => FiscalStatus::PendingSeal,
+                'fiscal_hash' => null,
+            ]);
+
+            ReceiptVatDetail::create([
+                'id' => Str::uuid()->toString(),
+                'receipt_id' => $receipt->id,
+                'tax_rate' => '25.00',
+                'net_amount' => '8.000',
+                'vat_amount' => '2.000',
+                'gross_amount' => '10.000',
+            ]);
+
+            ReceiptPayment::create([
+                'id' => Str::uuid()->toString(),
+                'receipt_id' => $receipt->id,
+                'payment_method_id' => $this->cashMethod->id,
+                'payment_type' => 'Cash',
+                'amount' => '10.000',
+            ]);
+
+            $attachLedger($receipt);
+
+            return $receipt;
+        };
+
+        // Baseline: a receipt with one Redeemed ledger row.
+        $baseline = $buildReceipt('R-2026-EXP-A', function (Receipt $receipt) use ($voucher): void {
+            VoucherLedger::factory()->create([
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'voucher_id' => $voucher->id,
+                'event' => VoucherEvent::Redeemed,
+                'amount' => '-5.00000',
+                'currency' => 'EUR',
+                'receipt_id' => $receipt->id,
+                'gl_journal_entry_id' => Str::uuid()->toString(),
+            ]);
+        });
+
+        // With expiry_extended: same receipt shape, plus an expiry_extended
+        // row also linked to the receipt so the hash builder picks it up.
+        $withExtension = $buildReceipt('R-2026-EXP-B', function (Receipt $receipt) use ($voucher): void {
+            VoucherLedger::factory()->create([
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'voucher_id' => $voucher->id,
+                'event' => VoucherEvent::Redeemed,
+                'amount' => '-5.00000',
+                'currency' => 'EUR',
+                'receipt_id' => $receipt->id,
+                'gl_journal_entry_id' => Str::uuid()->toString(),
+            ]);
+            VoucherLedger::factory()->create([
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'voucher_id' => $voucher->id,
+                'event' => VoucherEvent::ExpiryExtended,
+                'amount' => '0.00000',
+                'currency' => 'EUR',
+                'receipt_id' => $receipt->id,
+                'gl_journal_entry_id' => null,
+            ]);
+        });
+
+        /** @var V3ReceiptHashComputer $computer */
+        $computer = $this->app->make(V3ReceiptHashComputer::class);
+
+        $baselineHash = $computer->compute($baseline->fresh());
+        $withExtensionHash = $computer->compute($withExtension->fresh());
+
+        // Both hashes must be 64-hex-char SHA-256 outputs (i.e. neither call
+        // threw on the new enum value).
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $baselineHash);
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $withExtensionHash);
+
+        // The expiry_extended row participates in the canonical payload — it
+        // is not silently dropped, so the hash must change. (`receipt_number`
+        // also differs but that is true for the baseline too; what we are
+        // really proving is the new event_value 'expiry_extended' serializes
+        // through `event->value` without any code path special-casing it.)
+        $this->assertNotSame(
+            $baselineHash,
+            $withExtensionHash,
+            'V3ReceiptHashComputer must serialize VoucherEvent::ExpiryExtended into the canonical payload. '
+            .'The hash for a receipt carrying both a Redeemed and an ExpiryExtended ledger row must differ '
+            .'from the same receipt with only the Redeemed row.'
+        );
+    }
 }

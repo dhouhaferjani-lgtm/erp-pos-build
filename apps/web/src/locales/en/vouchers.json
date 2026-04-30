@@ -28,7 +28,8 @@
     "Expired": "Expired",
     "Extended": "Extended",
     "Transferred": "Transferred",
-    "Adjusted": "Adjusted"
+    "Adjusted": "Adjusted",
+    "expiry_extended": "Expiry Extended"
   },
 
   "redemptionModes": {
