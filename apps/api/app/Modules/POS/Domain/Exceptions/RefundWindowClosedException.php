@@ -14,7 +14,7 @@ namespace App\Modules\POS\Domain\Exceptions;
  *
  * Note: RefundDestinationResolver already throws RefundDestinationNotAllowedException
  * for the 'refuse' case.  This exception provides a named, more specific type that
- * callers can catch to return HTTP 403 with code REFUND_WINDOW_CLOSED.
+ * callers can catch to return HTTP 422 with code REFUND_WINDOW_CLOSED.
  */
 final class RefundWindowClosedException extends \DomainException
 {

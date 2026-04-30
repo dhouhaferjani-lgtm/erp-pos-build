@@ -8,7 +8,7 @@ namespace App\Modules\POS\Domain\Exceptions;
  * Thrown when a refund amount exceeds the manager-override threshold and no
  * authorized_by_user_id was supplied in the return request.
  *
- * The frontend (Phase H) catches HTTP 403 with code MANAGER_OVERRIDE_REQUIRED
+ * The frontend (Phase H) catches HTTP 422 with code MANAGER_OVERRIDE_REQUIRED
  * and shows the manager PIN prompt.  On success the frontend re-submits with
  * authorized_by_user_id populated.
  */
