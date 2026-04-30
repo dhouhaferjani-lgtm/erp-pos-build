@@ -166,7 +166,7 @@ export type JournalEntryStatus = 'draft' | 'posted' | 'reversed';
 export type OpeningBatchStatus = 'DRAFT' | 'VALIDATED' | 'LOCKED';
 export type OpeningBatchType = 'ACCOUNTING' | 'INVENTORY' | 'AR_OPEN_ITEMS' | 'AP_OPEN_ITEMS';
 export type OpeningImportRowStatus = 'PENDING' | 'VALID' | 'INVALID' | 'SKIPPED' | 'POSTED';
-export type SystemAccountPurpose = 'bank' | 'cash' | 'customer_receivable' | 'supplier_advance' | 'inventory' | 'uninvoiced_revenue' | 'supplier_payable' | 'customer_advance' | 'vat_collected' | 'vat_deductible' | 'product_revenue' | 'service_revenue' | 'cost_of_goods_sold' | 'purchase_expenses' | 'office_expense' | 'travel_expense' | 'meals_expense' | 'utilities_expense' | 'general_expense' | 'retained_earnings' | 'opening_balance_equity' | 'payment_tolerance_expense' | 'payment_tolerance_income' | 'sales_return' | 'realized_fx_gain' | 'realized_fx_loss' | 'sales_discount';
+export type SystemAccountPurpose = 'bank' | 'cash' | 'customer_receivable' | 'supplier_advance' | 'inventory' | 'uninvoiced_revenue' | 'supplier_payable' | 'customer_advance' | 'vat_collected' | 'vat_deductible' | 'product_revenue' | 'service_revenue' | 'cost_of_goods_sold' | 'purchase_expenses' | 'office_expense' | 'travel_expense' | 'meals_expense' | 'utilities_expense' | 'general_expense' | 'retained_earnings' | 'opening_balance_equity' | 'payment_tolerance_expense' | 'payment_tolerance_income' | 'sales_return' | 'realized_fx_gain' | 'realized_fx_loss' | 'sales_discount' | 'sales_returns_clearing' | 'voucher_liability' | 'marketing_goodwill_expense' | 'voucher_breakage_income' | 'rounding_loss_expense' | 'pos_tender_clearing';
 }
 declare namespace App.Modules.BatchExpiry.Domain.Enums {
 export type ExpiryStatus = 'ok' | 'approaching' | 'warning' | 'critical' | 'expired';
@@ -997,12 +997,16 @@ actualAmount: string;
 declare namespace App.Modules.POS.Domain.Enums {
 export type ConsumptionMode = 'SUR_PLACE' | 'A_EMPORTER';
 export type DiscountSource = 'manual' | 'promotion' | 'coupon' | 'loyalty';
+export type ExchangeRequestStatus = 'pending' | 'completed' | 'failed';
+export type FiscalStatus = 'pending_seal' | 'fiscalized' | 'voided' | 'pending_sync' | 'synced' | 'sync_failed';
 export type HeldOrderStatus = 'held' | 'recalled' | 'expired';
 export type OrderLineStatus = 'pending' | 'sent' | 'preparing' | 'ready' | 'served' | 'cancelled';
 export type OrderStatus = 'open' | 'sent_to_kitchen' | 'ready' | 'closed' | 'cancelled';
+export type PaymentInstrumentKind = 'store_voucher' | 'restaurant_voucher' | 'gift_card' | 'none';
 export type PrintMethod = 'pdf' | 'thermal' | 'escpos';
 export type ReceiptPrintType = 'original' | 'duplicate' | 'reprint';
 export type ReceiptType = 'sale' | 'return';
+export type RefundDestination = 'original_payment' | 'cash' | 'store_voucher' | 'exchange_deferred';
 export type ReturnReason = 'defective' | 'wrong_item' | 'customer_changed_mind' | 'other';
 export type ShiftStatus = 'OPEN' | 'CLOSED';
 export type SyncStatus = 'synced' | 'duplicate' | 'failed' | 'chain_broken';
@@ -1464,6 +1468,7 @@ export type FeeType = 'none' | 'fixed' | 'percentage' | 'mixed';
 export type InstrumentStatus = 'received' | 'in_transit' | 'deposited' | 'clearing' | 'cleared' | 'bounced' | 'expired' | 'cancelled' | 'collected';
 export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'reversed';
 export type PaymentType = 'document_payment' | 'advance' | 'refund' | 'credit_application' | 'supplier_payment' | 'pos';
+export type ProrationStrategy = 'proportional' | 'largest_first' | 'cashier_choice';
 export type ReconciliationStatus = 'draft' | 'completed' | 'cancelled';
 export type RepositoryType = 'cash_register' | 'safe' | 'bank_account' | 'virtual';
 }
@@ -1578,6 +1583,13 @@ export type FuelType = 'gasoline' | 'diesel' | 'electric' | 'hybrid' | 'plugin_h
 export type MileageSource = 'service' | 'manual' | 'odometer_photo' | 'external_api' | 'work_order_completion';
 export type OwnershipReason = 'initial_registration' | 'purchase' | 'sale' | 'transfer' | 'trade_in' | 'fleet_assignment' | 'fleet_return' | 'other';
 export type TransmissionType = 'manual' | 'automatic' | 'semi_automatic' | 'cvt' | 'dual_clutch' | 'other';
+}
+declare namespace App.Modules.Voucher.Domain.Enums {
+export type RedemptionMode = 'bearer' | 'customer_bound';
+export type VoucherEvent = 'issued' | 'redeemed' | 'partially_redeemed' | 'expired' | 'voided' | 'reversed' | 'transferred' | 'rounding_adjustment';
+export type VoucherKind = 'MPV' | 'SPV';
+export type VoucherSource = 'refund' | 'exchange_surplus' | 'goodwill' | 'loyalty_credit' | 'gift_card_purchase' | 'promotional';
+export type VoucherStatus = 'issued' | 'partially_redeemed' | 'fully_redeemed' | 'expired' | 'voided';
 }
 declare namespace App.Modules.Workshop.Bundle.Application.DTOs {
 export type ApplicableBundleData = {

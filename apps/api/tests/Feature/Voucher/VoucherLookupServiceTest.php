@@ -38,6 +38,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -116,7 +117,7 @@ final class VoucherLookupServiceTest extends TestCase
     {
         // Arrange: issue a voucher and manually link it to a fake receipt ID
         $voucher = $this->issueVoucher('20.00000');
-        $fakeReceiptId = (string) \Illuminate\Support\Str::uuid();
+        $fakeReceiptId = (string) Str::uuid();
         $voucher->update(['source_receipt_id' => $fakeReceiptId]);
 
         // Act
@@ -130,7 +131,7 @@ final class VoucherLookupServiceTest extends TestCase
     public function test_find_by_source_receipt_id_returns_null_when_none_exists(): void
     {
         // Arrange: a receipt ID that has no associated voucher
-        $unknownReceiptId = (string) \Illuminate\Support\Str::uuid();
+        $unknownReceiptId = (string) Str::uuid();
 
         // Act
         $result = $this->makeService()->findBySourceReceiptId($unknownReceiptId);

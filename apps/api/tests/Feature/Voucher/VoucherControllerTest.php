@@ -641,10 +641,10 @@ final class VoucherControllerTest extends TestCase
             $cashier = User::factory()->create(['tenant_id' => $this->tenant->id]);
 
             Voucher::factory()->create([
-                'tenant_id'          => $this->tenant->id,
-                'company_id'         => $this->company->id,
-                'issued_by_user_id'  => $cashier->id,
-                'partner_id'         => $partner->id,
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'issued_by_user_id' => $cashier->id,
+                'partner_id' => $partner->id,
                 'issued_at_terminal_id' => null,
             ]);
         }
@@ -684,9 +684,9 @@ final class VoucherControllerTest extends TestCase
         // Create a manager user for this tenant
         $manager = User::factory()->create(['tenant_id' => $this->tenant->id]);
         UserCompanyMembership::create([
-            'user_id'    => $manager->id,
+            'user_id' => $manager->id,
             'company_id' => $this->company->id,
-            'role'       => 'manager',
+            'role' => 'manager',
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
@@ -697,11 +697,11 @@ final class VoucherControllerTest extends TestCase
         Sanctum::actingAs($manager);
 
         $voucher = Voucher::factory()->create([
-            'tenant_id'         => $this->tenant->id,
-            'company_id'        => $this->company->id,
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
             'issued_by_user_id' => $this->user->id,
-            'status'            => VoucherStatus::Issued,
-            'expires_at'        => now()->addDays(30)->toDateString(),
+            'status' => VoucherStatus::Issued,
+            'expires_at' => now()->addDays(30)->toDateString(),
         ]);
 
         $newExpiry = now()->addDays(90)->toDateString();
@@ -709,7 +709,7 @@ final class VoucherControllerTest extends TestCase
         $response = $this->withHeader('X-Company-Id', $this->company->id)
             ->postJson("/api/v1/vouchers/{$voucher->id}/extend-expiry", [
                 'new_expires_at' => $newExpiry,
-                'reason'         => 'Manager-approved extension for loyalty customer',
+                'reason' => 'Manager-approved extension for loyalty customer',
             ]);
 
         // Must be 200 — not 403 — because Manager now holds pos.extend_voucher_expiry
