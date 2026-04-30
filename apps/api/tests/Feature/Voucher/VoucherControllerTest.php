@@ -18,6 +18,7 @@ use App\Modules\Voucher\Domain\Voucher;
 use App\Modules\Voucher\Domain\VoucherLedger;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\PermissionRegistrar;
@@ -111,6 +112,16 @@ final class VoucherControllerTest extends TestCase
             'meta' => ['current_page', 'last_page', 'total', 'per_page'],
         ]);
         $response->assertJsonPath('meta.total', 3);
+
+        // Assert denormalized fields are present in list items
+        $response->assertJsonStructure([
+            'data' => [
+                '*' => [
+                    'id', 'code', 'source', 'status', 'partner_name',
+                    'cashier_id', 'cashier_name', 'terminal_id', 'terminal_name', 'created_at',
+                ],
+            ],
+        ]);
     }
 
     public function test_index_filtered_by_source_returns_only_that_source(): void
@@ -263,6 +274,30 @@ final class VoucherControllerTest extends TestCase
         $response->assertJsonPath('data.id', $voucher->id);
         $response->assertJsonStructure(['data' => ['ledger', 'provenance']]);
         $this->assertCount(1, $response->json('data.ledger'));
+
+        // Assert denormalized voucher fields
+        $response->assertJsonStructure([
+            'data' => [
+                'partner_name', 'cashier_id', 'cashier_name',
+                'terminal_id', 'terminal_name', 'created_at',
+            ],
+        ]);
+        // The issuing user name is resolved via issuedBy relation
+        $this->assertSame($this->user->name, $response->json('data.cashier_name'));
+
+        // Assert ledger row shape
+        $response->assertJsonStructure([
+            'data' => [
+                'ledger' => [
+                    '*' => [
+                        'id', 'event', 'amount', 'receipt_id', 'receipt_number',
+                        'terminal_id', 'terminal_name', 'user_id', 'user_name',
+                        'policy_trigger', 'occurred_at',
+                    ],
+                ],
+            ],
+        ]);
+        $this->assertSame($this->user->name, $response->json('data.ledger.0.user_name'));
     }
 
     public function test_show_returns_404_on_wrong_tenant(): void
@@ -587,5 +622,97 @@ final class VoucherControllerTest extends TestCase
         $this->assertSame($newExpiry, $voucher->expires_at?->toDateString());
         $this->assertStringContainsString('[EXPIRY-EXTENDED ', (string) $voucher->notes);
         $this->assertStringContainsString($reason, (string) $voucher->notes);
+    }
+
+    // -------------------------------------------------------------------------
+    // GET /api/v1/vouchers — N+1 eager-load guard
+    // -------------------------------------------------------------------------
+
+    public function test_index_eager_loads_partner_terminal_cashier_to_avoid_n_plus_1(): void
+    {
+        Sanctum::actingAs($this->user);
+
+        // Seed 3 vouchers each with a distinct partner, terminal, and cashier.
+        foreach (range(1, 3) as $i) {
+            $partner = Partner::factory()->create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+            ]);
+            $cashier = User::factory()->create(['tenant_id' => $this->tenant->id]);
+
+            Voucher::factory()->create([
+                'tenant_id'          => $this->tenant->id,
+                'company_id'         => $this->company->id,
+                'issued_by_user_id'  => $cashier->id,
+                'partner_id'         => $partner->id,
+                'issued_at_terminal_id' => null,
+            ]);
+        }
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $response = $this->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/vouchers');
+
+        $queryCount = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        $response->assertOk();
+        $response->assertJsonPath('meta.total', 3);
+
+        // With eager loading we expect: 1 auth + 1 company context + 1 main SELECT +
+        // 1 partner eager + 1 terminal eager + 1 issuedBy eager + pagination count = ≤ 8.
+        // Without eager loading this would be 3 × 3 + base = 11+.
+        $this->assertLessThan(8, $queryCount, "Expected fewer than 8 queries but got {$queryCount} — eager loading may have been dropped.");
+
+        // Assert denormalized names are resolved
+        $data = $response->json('data');
+        foreach ($data as $row) {
+            $this->assertArrayHasKey('partner_name', $row);
+            $this->assertArrayHasKey('cashier_name', $row);
+            $this->assertNotNull($row['cashier_name']);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Fix I1 — Manager can extend voucher expiry
+    // -------------------------------------------------------------------------
+
+    public function test_manager_can_extend_voucher_expiry(): void
+    {
+        // Create a manager user for this tenant
+        $manager = User::factory()->create(['tenant_id' => $this->tenant->id]);
+        UserCompanyMembership::create([
+            'user_id'    => $manager->id,
+            'company_id' => $this->company->id,
+            'role'       => 'manager',
+        ]);
+
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
+
+        // Assign via role (the seeder now includes pos.extend_voucher_expiry in Manager)
+        $manager->assignRole('manager');
+
+        Sanctum::actingAs($manager);
+
+        $voucher = Voucher::factory()->create([
+            'tenant_id'         => $this->tenant->id,
+            'company_id'        => $this->company->id,
+            'issued_by_user_id' => $this->user->id,
+            'status'            => VoucherStatus::Issued,
+            'expires_at'        => now()->addDays(30)->toDateString(),
+        ]);
+
+        $newExpiry = now()->addDays(90)->toDateString();
+
+        $response = $this->withHeader('X-Company-Id', $this->company->id)
+            ->postJson("/api/v1/vouchers/{$voucher->id}/extend-expiry", [
+                'new_expires_at' => $newExpiry,
+                'reason'         => 'Manager-approved extension for loyalty customer',
+            ]);
+
+        // Must be 200 — not 403 — because Manager now holds pos.extend_voucher_expiry
+        $response->assertOk();
     }
 }

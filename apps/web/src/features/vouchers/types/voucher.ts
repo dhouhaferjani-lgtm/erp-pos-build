@@ -63,32 +63,33 @@ export interface VoucherLedgerRow {
 }
 
 // ─── Provenance shapes (source-specific) ────────────────────────────────────
+// Keys match the backend's buildProvenance() output exactly.
+// The discriminator lives at voucher.source — NOT inside the provenance object.
 
 export interface RefundProvenance {
-  source: 'Refund' | 'ExchangeSurplus'
   source_receipt_id: string | null
   source_receipt_number: string | null
   credit_note_link: string | null
 }
 
 export interface GoodwillProvenance {
-  source: 'Goodwill'
-  issued_by_user_id: string | null
   issued_by_user_name: string | null
+  notes: string | null
   authorized_by_user_id: string | null
   override_reason: string | null
-  notes: string | null
 }
 
 export interface LoyaltyCreditProvenance {
-  source: 'LoyaltyCredit'
-  loyalty_transaction_id: string | null
+  source_loyalty_transaction_id: string | null
 }
 
 export interface OtherProvenance {
-  source: 'GiftCard' | 'Promotional'
+  // No fields for GiftCard / Promotional in the current backend version
+  [key: string]: unknown
 }
 
+// A single permissive union for provenance data — callers must use voucher.source
+// as the discriminator to know which shape applies.
 export type VoucherProvenance =
   | RefundProvenance
   | GoodwillProvenance

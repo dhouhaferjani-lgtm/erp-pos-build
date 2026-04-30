@@ -66,6 +66,7 @@ final class VoucherController extends Controller
         $query = Voucher::query()
             ->where('tenant_id', $user->tenant_id)
             ->where('company_id', $companyId)
+            ->with(['partner', 'issuedAtTerminal', 'issuedBy'])
             ->orderByDesc('issued_at');
 
         if ($request->filled('source')) {
@@ -108,7 +109,10 @@ final class VoucherController extends Controller
         $paginator = $query->paginate($perPage);
 
         return response()->json([
-            'data' => $paginator->items(),
+            'data' => array_map(
+                fn (Voucher $v): array => $this->formatVoucher($v),
+                $paginator->items()
+            ),
             'meta' => [
                 'current_page' => $paginator->currentPage(),
                 'last_page' => $paginator->lastPage(),
@@ -142,7 +146,9 @@ final class VoucherController extends Controller
         }
 
         $voucher = Voucher::with([
-            'ledger',
+            'ledger.user',
+            'ledger.terminal',
+            'ledger.receipt',
             'issuedBy',
             'partner',
             'issuedToPartner',
@@ -159,8 +165,10 @@ final class VoucherController extends Controller
             ], 404);
         }
 
-        $data = $voucher->toArray();
-        $data['ledger'] = $voucher->ledger->toArray();
+        $data = $this->formatVoucher($voucher);
+        $data['ledger'] = $voucher->ledger
+            ->map(fn (VoucherLedger $row): array => $this->formatLedger($row))
+            ->all();
         $data['provenance'] = $this->buildProvenance($voucher);
 
         return response()->json(['data' => $data]);
@@ -472,7 +480,76 @@ final class VoucherController extends Controller
     // -------------------------------------------------------------------------
 
     /**
+     * Map a Voucher model to the denormalized response shape the frontend expects.
+     *
+     * Relies on partner, issuedAtTerminal, and issuedBy being already eager-loaded.
+     *
+     * @return array<string, mixed>
+     */
+    private function formatVoucher(Voucher $voucher): array
+    {
+        return [
+            'id' => $voucher->id,
+            'code' => $voucher->code,
+            'source' => $voucher->source->value,
+            'status' => $voucher->status->value,
+            'redemption_mode' => $voucher->redemption_mode->value,
+            'voucher_kind' => $voucher->voucher_kind->value,
+            'currency' => $voucher->currency,
+            'initial_balance' => $voucher->initial_balance,
+            'current_balance' => $voucher->current_balance,
+            'issued_at' => $voucher->issued_at->toIso8601String(),
+            'expires_at' => $voucher->expires_at?->toIso8601String(),
+            'created_at' => $voucher->created_at->toIso8601String(),
+            'updated_at' => $voucher->updated_at->toIso8601String(),
+            'partner_id' => $voucher->partner_id,
+            'partner_name' => $voucher->partner?->name,
+            'cashier_id' => $voucher->issued_by_user_id,
+            'cashier_name' => $voucher->issuedBy->name,
+            'terminal_id' => $voucher->issued_at_terminal_id,
+            'terminal_name' => $voucher->issuedAtTerminal?->name,
+            'notes' => $voucher->notes,
+            'override_reason' => $voucher->override_reason,
+            'policy_trigger' => $voucher->policy_trigger,
+            'authorized_by_user_id' => $voucher->authorized_by_user_id,
+            'source_receipt_id' => $voucher->source_receipt_id,
+            'source_loyalty_transaction_id' => $voucher->source_loyalty_transaction_id,
+            'source_promotional_campaign_id' => $voucher->source_promotional_campaign_id,
+            'issued_to_partner_id' => $voucher->issued_to_partner_id,
+        ];
+    }
+
+    /**
+     * Map a VoucherLedger row to the denormalized shape the LedgerHistoryTable expects.
+     *
+     * Relies on user, terminal, and receipt being already eager-loaded.
+     *
+     * @return array<string, mixed>
+     */
+    private function formatLedger(VoucherLedger $row): array
+    {
+        return [
+            'id' => $row->id,
+            'event' => $row->event->value,
+            'amount' => $row->amount,
+            'receipt_id' => $row->receipt_id,
+            'receipt_number' => $row->receipt?->receipt_number,
+            'terminal_id' => $row->terminal_id,
+            'terminal_name' => $row->terminal?->name,
+            'user_id' => $row->user_id,
+            'user_name' => $row->user->name,
+            'policy_trigger' => $row->policy_trigger,
+            'notes' => null,
+            'occurred_at' => $row->occurred_at->toIso8601String(),
+        ];
+    }
+
+    /**
      * Build the provenance object for a voucher based on its source.
+     *
+     * The source discriminator lives at top-level (voucher.source) — do NOT
+     * repeat it inside this payload. The ProvenanceSection in the frontend
+     * switches on voucher.source and reads fields from this object directly.
      *
      * @return array<string, mixed>
      */

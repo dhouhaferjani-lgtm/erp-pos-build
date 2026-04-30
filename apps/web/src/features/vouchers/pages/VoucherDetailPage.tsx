@@ -182,7 +182,7 @@ export function VoucherDetailPage() {
 
       {/* Provenance */}
       <div className={`rounded-lg border ${borderColors.light} bg-white p-6 shadow-sm`}>
-        <ProvenanceSection provenance={voucher.provenance} />
+        <ProvenanceSection voucherSource={voucher.source} provenance={voucher.provenance} />
       </div>
 
       {/* Ledger history */}

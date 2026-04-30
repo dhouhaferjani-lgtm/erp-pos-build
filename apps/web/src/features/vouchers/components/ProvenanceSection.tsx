@@ -1,44 +1,46 @@
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
-import type { VoucherProvenance } from '../types/voucher'
+import type { VoucherSource, VoucherProvenance, RefundProvenance, GoodwillProvenance, LoyaltyCreditProvenance } from '../types/voucher'
 
 interface ProvenanceSectionProps {
+  voucherSource: VoucherSource
   provenance: VoucherProvenance
 }
 
-export function ProvenanceSection({ provenance }: ProvenanceSectionProps) {
+export function ProvenanceSection({ voucherSource, provenance }: ProvenanceSectionProps) {
   const { t } = useTranslation('vouchers')
 
   if (!provenance) return null
 
-  if (provenance.source === 'Refund' || provenance.source === 'ExchangeSurplus') {
+  if (voucherSource === 'Refund' || voucherSource === 'ExchangeSurplus') {
+    const p = provenance as RefundProvenance
     return (
       <div className="space-y-2">
         <h3 className="text-sm font-semibold text-gray-700">{t('provenance.title')}</h3>
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-          {provenance.source_receipt_number && (
+          {p.source_receipt_number && (
             <>
               <dt className="text-gray-500">{t('provenance.sourceReceipt')}</dt>
               <dd>
-                {provenance.source_receipt_id ? (
+                {p.source_receipt_id ? (
                   <Link
-                    to={`/pos/receipts/${provenance.source_receipt_id}`}
+                    to={`/pos/receipts/${p.source_receipt_id}`}
                     className="text-blue-600 hover:underline"
                   >
-                    {provenance.source_receipt_number}
+                    {p.source_receipt_number}
                   </Link>
                 ) : (
-                  provenance.source_receipt_number
+                  p.source_receipt_number
                 )}
               </dd>
             </>
           )}
-          {provenance.credit_note_link && (
+          {p.credit_note_link && (
             <>
               <dt className="text-gray-500">{t('provenance.creditNoteLink')}</dt>
               <dd>
-                <Link to={provenance.credit_note_link} className="text-blue-600 hover:underline">
-                  {provenance.credit_note_link}
+                <Link to={p.credit_note_link} className="text-blue-600 hover:underline">
+                  {p.credit_note_link}
                 </Link>
               </dd>
             </>
@@ -48,27 +50,28 @@ export function ProvenanceSection({ provenance }: ProvenanceSectionProps) {
     )
   }
 
-  if (provenance.source === 'Goodwill') {
+  if (voucherSource === 'Goodwill') {
+    const p = provenance as GoodwillProvenance
     return (
       <div className="space-y-2">
         <h3 className="text-sm font-semibold text-gray-700">{t('provenance.title')}</h3>
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-          {provenance.issued_by_user_name && (
+          {p.issued_by_user_name && (
             <>
               <dt className="text-gray-500">{t('provenance.issuedBy')}</dt>
-              <dd className="text-gray-900">{provenance.issued_by_user_name}</dd>
+              <dd className="text-gray-900">{p.issued_by_user_name}</dd>
             </>
           )}
-          {provenance.notes && (
+          {p.notes && (
             <>
               <dt className="text-gray-500">{t('provenance.notes')}</dt>
-              <dd className="text-gray-900">{provenance.notes}</dd>
+              <dd className="text-gray-900">{p.notes}</dd>
             </>
           )}
-          {provenance.override_reason && (
+          {p.override_reason && (
             <>
               <dt className="text-gray-500">{t('provenance.overrideReason')}</dt>
-              <dd className="text-gray-900">{provenance.override_reason}</dd>
+              <dd className="text-gray-900">{p.override_reason}</dd>
             </>
           )}
         </dl>
@@ -76,14 +79,15 @@ export function ProvenanceSection({ provenance }: ProvenanceSectionProps) {
     )
   }
 
-  if (provenance.source === 'LoyaltyCredit') {
+  if (voucherSource === 'LoyaltyCredit') {
+    const p = provenance as LoyaltyCreditProvenance
     return (
       <div className="space-y-2">
         <h3 className="text-sm font-semibold text-gray-700">{t('provenance.title')}</h3>
-        {provenance.loyalty_transaction_id ? (
+        {p.source_loyalty_transaction_id ? (
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
             <dt className="text-gray-500">{t('provenance.loyaltyTransactionId')}</dt>
-            <dd className="text-gray-900 font-mono text-xs">{provenance.loyalty_transaction_id}</dd>
+            <dd className="text-gray-900 font-mono text-xs">{p.source_loyalty_transaction_id}</dd>
           </dl>
         ) : (
           <p className="text-sm text-gray-500 italic">{t('provenance.loyaltyPhase15Placeholder')}</p>
@@ -92,7 +96,7 @@ export function ProvenanceSection({ provenance }: ProvenanceSectionProps) {
     )
   }
 
-  if (provenance.source === 'GiftCard' || provenance.source === 'Promotional') {
+  if (voucherSource === 'GiftCard' || voucherSource === 'Promotional') {
     return (
       <div className="space-y-2">
         <h3 className="text-sm font-semibold text-gray-700">{t('provenance.title')}</h3>

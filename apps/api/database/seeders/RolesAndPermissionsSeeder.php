@@ -407,6 +407,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'pos.refund_extend_daily_cap',
             'pos.issue_goodwill_voucher',
             'pos.void_voucher',
+            'pos.extend_voucher_expiry',
             'pos.redeem_voucher',
             'pos.refund_destination_override',
             'pos.refund_voucher_to_cash',
