@@ -10,11 +10,11 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
-use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -65,8 +65,8 @@ final class CustomerHistorySearchAuditControllerTest extends TestCase
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
-        $perm = Permission::findOrCreate('pos.search_customer_full_history', 'sanctum');
-        $this->manager->givePermissionTo($perm);
+        $this->seed(RolesAndPermissionsSeeder::class);
+        $this->manager->givePermissionTo('pos.search_customer_full_history');
 
         // Second tenant for isolation tests
         $this->otherTenant = Tenant::factory()->create();
@@ -86,8 +86,8 @@ final class CustomerHistorySearchAuditControllerTest extends TestCase
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->otherTenant->id);
-        $otherPerm = Permission::findOrCreate('pos.search_customer_full_history', 'sanctum');
-        $this->otherManager->givePermissionTo($otherPerm);
+        $this->seed(RolesAndPermissionsSeeder::class);
+        $this->otherManager->givePermissionTo('pos.search_customer_full_history');
     }
 
     // -------------------------------------------------------------------------

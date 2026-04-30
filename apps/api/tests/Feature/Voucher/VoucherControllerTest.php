@@ -16,9 +16,10 @@ use App\Modules\Voucher\Domain\Enums\VoucherSource;
 use App\Modules\Voucher\Domain\Enums\VoucherStatus;
 use App\Modules\Voucher\Domain\Voucher;
 use App\Modules\Voucher\Domain\VoucherLedger;
+use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
-use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -26,7 +27,7 @@ use Tests\TestCase;
  * Feature tests for VoucherController (Phase H Stage 1).
  *
  * Covers paginated listing, filtering, tenant isolation, detail with ledger,
- * goodwill issuance (happy path + four-eyes guard), void, and transfer.
+ * goodwill issuance (happy path + four-eyes guard), void, transfer, and extend-expiry.
  */
 final class VoucherControllerTest extends TestCase
 {
@@ -58,12 +59,14 @@ final class VoucherControllerTest extends TestCase
             'role' => 'admin',
         ]);
 
-        // Grant voucher permissions for primary user
+        // Seed canonical permissions for primary tenant, then grant to primary user.
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
-        $this->grantPermission($this->user, 'pos.void_voucher');
-        $this->grantPermission($this->user, 'pos.issue_goodwill_voucher');
-        $this->grantPermission($this->user, 'pos.transfer_voucher');
-        $this->grantPermission($this->user, 'pos.extend_voucher_expiry');
+        $this->seed(RolesAndPermissionsSeeder::class);
+
+        $this->user->givePermissionTo('pos.void_voucher');
+        $this->user->givePermissionTo('pos.issue_goodwill_voucher');
+        $this->user->givePermissionTo('pos.transfer_voucher');
+        $this->user->givePermissionTo('pos.extend_voucher_expiry');
 
         // Second tenant for isolation tests
         $this->otherTenant = Tenant::factory()->create();
@@ -77,10 +80,12 @@ final class VoucherControllerTest extends TestCase
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->otherTenant->id);
-        $this->grantPermission($this->otherUser, 'pos.void_voucher');
-        $this->grantPermission($this->otherUser, 'pos.issue_goodwill_voucher');
-        $this->grantPermission($this->otherUser, 'pos.transfer_voucher');
-        $this->grantPermission($this->otherUser, 'pos.extend_voucher_expiry');
+        $this->seed(RolesAndPermissionsSeeder::class);
+
+        $this->otherUser->givePermissionTo('pos.void_voucher');
+        $this->otherUser->givePermissionTo('pos.issue_goodwill_voucher');
+        $this->otherUser->givePermissionTo('pos.transfer_voucher');
+        $this->otherUser->givePermissionTo('pos.extend_voucher_expiry');
     }
 
     // -------------------------------------------------------------------------
@@ -160,6 +165,65 @@ final class VoucherControllerTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // GET /api/v1/vouchers — OR-gate permission tests
+    // -------------------------------------------------------------------------
+
+    public function test_index_succeeds_for_user_with_only_void_voucher_permission(): void
+    {
+        $voidOnlyUser = User::factory()->create(['tenant_id' => $this->tenant->id]);
+        UserCompanyMembership::create([
+            'user_id' => $voidOnlyUser->id,
+            'company_id' => $this->company->id,
+            'role' => 'manager',
+        ]);
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
+        $voidOnlyUser->givePermissionTo('pos.void_voucher');
+
+        Sanctum::actingAs($voidOnlyUser);
+
+        $response = $this->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/vouchers');
+
+        $response->assertOk();
+    }
+
+    public function test_index_succeeds_for_user_with_only_issue_goodwill_permission(): void
+    {
+        $goodwillOnlyUser = User::factory()->create(['tenant_id' => $this->tenant->id]);
+        UserCompanyMembership::create([
+            'user_id' => $goodwillOnlyUser->id,
+            'company_id' => $this->company->id,
+            'role' => 'manager',
+        ]);
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
+        $goodwillOnlyUser->givePermissionTo('pos.issue_goodwill_voucher');
+
+        Sanctum::actingAs($goodwillOnlyUser);
+
+        $response = $this->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/vouchers');
+
+        $response->assertOk();
+    }
+
+    public function test_index_returns_403_for_user_with_neither_voucher_permission(): void
+    {
+        $noPermUser = User::factory()->create(['tenant_id' => $this->tenant->id]);
+        UserCompanyMembership::create([
+            'user_id' => $noPermUser->id,
+            'company_id' => $this->company->id,
+            'role' => 'cashier',
+        ]);
+
+        Sanctum::actingAs($noPermUser);
+
+        $response = $this->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/vouchers');
+
+        $response->assertForbidden();
+    }
+
+    // -------------------------------------------------------------------------
     // GET /api/v1/vouchers/{id} — show
     // -------------------------------------------------------------------------
 
@@ -175,7 +239,7 @@ final class VoucherControllerTest extends TestCase
 
         // Create a ledger row manually
         VoucherLedger::forceCreate([
-            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'id' => (string) Str::uuid(),
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'voucher_id' => $voucher->id,
@@ -216,6 +280,29 @@ final class VoucherControllerTest extends TestCase
             ->getJson("/api/v1/vouchers/{$foreignVoucher->id}");
 
         $response->assertNotFound();
+    }
+
+    public function test_show_returns_403_for_user_with_neither_voucher_permission(): void
+    {
+        $noPermUser = User::factory()->create(['tenant_id' => $this->tenant->id]);
+        UserCompanyMembership::create([
+            'user_id' => $noPermUser->id,
+            'company_id' => $this->company->id,
+            'role' => 'cashier',
+        ]);
+
+        Sanctum::actingAs($noPermUser);
+
+        $voucher = Voucher::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'issued_by_user_id' => $this->user->id,
+        ]);
+
+        $response = $this->withHeader('X-Company-Id', $this->company->id)
+            ->getJson("/api/v1/vouchers/{$voucher->id}");
+
+        $response->assertForbidden();
     }
 
     // -------------------------------------------------------------------------
@@ -260,23 +347,65 @@ final class VoucherControllerTest extends TestCase
     {
         Sanctum::actingAs($this->user);
 
+        $partner = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
         // No chart-of-accounts seed needed — the exception fires before any GL call
         $response = $this->withHeader('X-Company-Id', $this->company->id)
             ->postJson('/api/v1/vouchers/issue-goodwill', [
-                'amount' => '300.00', // exceeds 250.00 four-eyes threshold
+                'amount' => '1000.00', // clearly exceeds 250.00 four-eyes threshold
                 'currency' => 'EUR',
-                'partner_id' => Partner::factory()->create([
-                    'tenant_id' => $this->tenant->id,
-                    'company_id' => $this->company->id,
-                ])->id,
+                'partner_id' => $partner->id, // named customer — passes that check
                 'redemption_mode' => RedemptionMode::Bearer->value,
                 'expires_at' => null,
                 'notes' => 'Large goodwill gesture',
                 'terminal_id' => null,
-                'second_admin_user_id' => null, // missing — should 422
+                'second_admin_user_id' => null, // missing — must trigger four-eyes 422
             ]);
 
         $response->assertUnprocessable();
+        $response->assertJsonPath('error.code', 'FOUR_EYES_REQUIRED');
+        $this->assertStringContainsString(
+            'four-eyes approval threshold',
+            (string) $response->json('error.message')
+        );
+    }
+
+    public function test_issue_goodwill_201_when_amount_over_threshold_and_second_admin_provided(): void
+    {
+        Sanctum::actingAs($this->user);
+
+        // Seed chart of accounts — the GL write fires on this path
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        $partner = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        $secondAdmin = User::factory()->create(['tenant_id' => $this->tenant->id]);
+        UserCompanyMembership::create([
+            'user_id' => $secondAdmin->id,
+            'company_id' => $this->company->id,
+            'role' => 'admin',
+        ]);
+
+        $response = $this->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/vouchers/issue-goodwill', [
+                'amount' => '1000.00',
+                'currency' => 'EUR',
+                'partner_id' => $partner->id,
+                'redemption_mode' => RedemptionMode::Bearer->value,
+                'expires_at' => null,
+                'notes' => 'High-value goodwill with second-admin approval',
+                'terminal_id' => null,
+                'second_admin_user_id' => $secondAdmin->id,
+            ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('data.source', VoucherSource::Goodwill->value);
     }
 
     // -------------------------------------------------------------------------
@@ -307,6 +436,32 @@ final class VoucherControllerTest extends TestCase
             'voucher_id' => $voucher->id,
             'event' => VoucherEvent::Voided->value,
         ]);
+    }
+
+    public function test_void_persists_reason_to_override_reason_and_notes(): void
+    {
+        Sanctum::actingAs($this->user);
+
+        $voucher = Voucher::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'issued_by_user_id' => $this->user->id,
+            'status' => VoucherStatus::Issued,
+            'current_balance' => '50.00000',
+        ]);
+
+        $reason = 'Issued in error by cashier';
+
+        $this->withHeader('X-Company-Id', $this->company->id)
+            ->postJson("/api/v1/vouchers/{$voucher->id}/void", [
+                'reason' => $reason,
+            ]);
+
+        $voucher->refresh();
+
+        $this->assertSame($reason, $voucher->override_reason);
+        $this->assertStringContainsString('[VOID ', (string) $voucher->notes);
+        $this->assertStringContainsString($reason, (string) $voucher->notes);
     }
 
     public function test_void_returns_403_without_permission(): void
@@ -369,13 +524,68 @@ final class VoucherControllerTest extends TestCase
         ]);
     }
 
+    public function test_transfer_appends_reason_to_notes(): void
+    {
+        Sanctum::actingAs($this->user);
+
+        $partner = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        $voucher = Voucher::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'issued_by_user_id' => $this->user->id,
+            'partner_id' => null,
+        ]);
+
+        $reason = 'Customer requested transfer to spouse';
+
+        $this->withHeader('X-Company-Id', $this->company->id)
+            ->postJson("/api/v1/vouchers/{$voucher->id}/transfer", [
+                'to_partner_id' => $partner->id,
+                'reason' => $reason,
+            ]);
+
+        $voucher->refresh();
+
+        $this->assertStringContainsString('[TRANSFER ', (string) $voucher->notes);
+        $this->assertStringContainsString($partner->id, (string) $voucher->notes);
+        $this->assertStringContainsString($reason, (string) $voucher->notes);
+    }
+
     // -------------------------------------------------------------------------
-    // Private helpers
+    // POST /api/v1/vouchers/{id}/extend-expiry
     // -------------------------------------------------------------------------
 
-    private function grantPermission(User $user, string $permission): void
+    public function test_extend_expiry_persists_new_expires_at_and_notes(): void
     {
-        $perm = Permission::findOrCreate($permission, 'sanctum');
-        $user->givePermissionTo($perm);
+        Sanctum::actingAs($this->user);
+
+        $voucher = Voucher::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'issued_by_user_id' => $this->user->id,
+            'status' => VoucherStatus::Issued,
+            'expires_at' => now()->addDays(30)->toDateString(),
+        ]);
+
+        $newExpiry = now()->addDays(90)->toDateString();
+        $reason = 'Customer on extended sick leave';
+
+        $response = $this->withHeader('X-Company-Id', $this->company->id)
+            ->postJson("/api/v1/vouchers/{$voucher->id}/extend-expiry", [
+                'new_expires_at' => $newExpiry,
+                'reason' => $reason,
+            ]);
+
+        $response->assertOk();
+
+        $voucher->refresh();
+
+        $this->assertSame($newExpiry, $voucher->expires_at?->toDateString());
+        $this->assertStringContainsString('[EXPIRY-EXTENDED ', (string) $voucher->notes);
+        $this->assertStringContainsString($reason, (string) $voucher->notes);
     }
 }

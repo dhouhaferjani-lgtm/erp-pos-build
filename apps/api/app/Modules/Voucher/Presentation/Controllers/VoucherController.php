@@ -302,7 +302,10 @@ final class VoucherController extends Controller
 
         $validated = $request->validated();
 
-        DB::transaction(function () use ($voucher, $user): void {
+        /** @var string $reason */
+        $reason = $validated['reason'];
+
+        DB::transaction(function () use ($voucher, $user, $reason): void {
             $now = Carbon::now();
             $voidedBalance = $voucher->current_balance;
 
@@ -328,6 +331,11 @@ final class VoucherController extends Controller
                 'occurred_at' => $now,
             ]);
 
+            $noteEntry = '[VOID '.now()->toDateString().'] '.$reason;
+            $voucher->notes = $voucher->notes !== null
+                ? $voucher->notes."\n".$noteEntry
+                : $noteEntry;
+            $voucher->override_reason = $reason;
             $voucher->status = VoucherStatus::Voided;
             $voucher->current_balance = '0.00000';
             $voucher->save();
@@ -371,7 +379,10 @@ final class VoucherController extends Controller
         /** @var string $toPartnerId */
         $toPartnerId = $validated['to_partner_id'];
 
-        DB::transaction(function () use ($voucher, $user, $toPartnerId): void {
+        /** @var string $reason */
+        $reason = $validated['reason'];
+
+        DB::transaction(function () use ($voucher, $user, $toPartnerId, $reason): void {
             $now = Carbon::now();
 
             VoucherLedger::forceCreate([
@@ -392,6 +403,10 @@ final class VoucherController extends Controller
                 'occurred_at' => $now,
             ]);
 
+            $noteEntry = '[TRANSFER '.now()->toDateString().' → '.$toPartnerId.'] '.$reason;
+            $voucher->notes = $voucher->notes !== null
+                ? $voucher->notes."\n".$noteEntry
+                : $noteEntry;
             $voucher->partner_id = $toPartnerId;
             $voucher->save();
         });
@@ -430,8 +445,20 @@ final class VoucherController extends Controller
 
         $validated = $request->validated();
 
-        DB::transaction(function () use ($voucher, $validated): void {
-            $voucher->expires_at = Carbon::parse($validated['new_expires_at']);
+        /** @var string $newExpiresAt */
+        $newExpiresAt = $validated['new_expires_at'];
+
+        /** @var string $reason */
+        $reason = $validated['reason'];
+
+        DB::transaction(function () use ($voucher, $newExpiresAt, $reason): void {
+            $parsedExpiry = Carbon::parse($newExpiresAt);
+
+            $noteEntry = '[EXPIRY-EXTENDED '.now()->toDateString().' → '.$parsedExpiry->toDateString().'] '.$reason;
+            $voucher->notes = $voucher->notes !== null
+                ? $voucher->notes."\n".$noteEntry
+                : $noteEntry;
+            $voucher->expires_at = $parsedExpiry;
             $voucher->save();
         });
 
