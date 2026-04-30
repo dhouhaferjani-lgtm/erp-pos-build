@@ -9,6 +9,11 @@ import { usePaymentStore } from '@/stores/paymentStore';
 import { useHoldStore } from '@/stores/holdStore';
 import { useScannerStore } from '@/stores/scannerStore';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
+import { useRefundFlowStore } from '@/stores/refundFlowStore';
+import { useAuthStore } from '@/stores/authStore';
+import { dispatchScan } from '@/lib/scan/dispatcher';
+import { getDatabase } from '@/lib/db';
+import { ReceiptScanConfirmationSheet } from '@/components/pos/ReceiptScanConfirmationSheet';
 import { getErrorMessage } from '@/lib/api';
 import { useCurrency } from '@/lib/currency';
 import { fetchReceipt } from '@/api/receiptApi';
@@ -136,7 +141,17 @@ export function HomePage() {
   // Barcode scanner
   const [scanMessage, setScanMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  const handleBarcodeScan = useCallback(
+  // Refund-flow scan dispatcher state (Task 50). The pending entry drives
+  // the Receipt-Scan Confirmation Sheet; cart is NEVER mutated here.
+  const pendingScanResult = useRefundFlowStore((s) => s.pendingScanResult);
+  const setPendingScanResult = useRefundFlowStore((s) => s.setPendingScanResult);
+  const acceptPendingScan = useRefundFlowStore((s) => s.acceptPendingScan);
+
+  /**
+   * Existing product-barcode handler — extracted so the receipt-token
+   * dispatcher (below) can fall through to it cleanly.
+   */
+  const handleProductBarcode = useCallback(
     (barcode: string) => {
       const product = products.find(
         (p) => p.barcode === barcode || p.sku === barcode,
@@ -154,6 +169,43 @@ export function HomePage() {
       }
     },
     [products, addItem, t],
+  );
+
+  /**
+   * Wrapped scan handler (Phase H Task 50, spec §6.1 entry 2):
+   *   1. If terminal + companyId are present, run `dispatchScan` first.
+   *   2. On `'receipt-token'` kind, set the pending state — the
+   *      Receipt-Scan Confirmation Sheet renders and waits for the cashier.
+   *      The cart is NOT mutated here.
+   *   3. On `'fallthrough'` (or when prerequisites are missing), call the
+   *      existing product-barcode logic unchanged.
+   */
+  const handleBarcodeScan = useCallback(
+    (barcode: string) => {
+      const companyId = useAuthStore.getState().companyId;
+      const terminalId = terminal?.id ?? null;
+      if (!companyId || !terminalId) {
+        handleProductBarcode(barcode);
+        return;
+      }
+      void (async () => {
+        try {
+          const db = await getDatabase(companyId);
+          const result = await dispatchScan({ token: barcode, db, terminalId });
+          if (result.kind === 'receipt-token') {
+            setPendingScanResult(result.entry);
+            return;
+          }
+          handleProductBarcode(barcode);
+        } catch (error) {
+          // Local SQLite failure → degrade to product lookup so the cashier
+          // is never stuck. The receipt-token path is opportunistic.
+          console.error('[POS] scan dispatcher failed, falling back to product lookup:', error);
+          handleProductBarcode(barcode);
+        }
+      })();
+    },
+    [terminal?.id, handleProductBarcode, setPendingScanResult],
   );
 
   useBarcodeScanner({
@@ -735,6 +787,14 @@ export function HomePage() {
         onClose={() => setQuantityEditItemId(null)}
         currentQuantity={quantityEditItem?.quantity ?? 1}
         onConfirm={handleQuantityConfirm}
+      />
+
+      {/* Receipt-Scan Confirmation Sheet (Phase H Task 50, spec §6.1 entry 2).
+          Cashier scans an old sale receipt mid-sale → ask before mutating cart. */}
+      <ReceiptScanConfirmationSheet
+        entry={pendingScanResult}
+        onCancel={() => setPendingScanResult(null)}
+        onAccept={() => acceptPendingScan()}
       />
       </div>
     </div>

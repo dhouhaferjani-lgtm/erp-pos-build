@@ -79,6 +79,12 @@
     "inputLabel": "Barcode or SKU lookup",
     "clearInput": "Clear barcode input"
   },
+  "receiptScan": {
+    "title": "Sale receipt detected",
+    "body": "This is a sale receipt from {{date}}. Start a refund or exchange?",
+    "cancel": "Cancel",
+    "startRefund": "Start refund"
+  },
   "shift": {
     "number": "Shift #{{number}}",
     "opening": "Opening: {{amount}}",

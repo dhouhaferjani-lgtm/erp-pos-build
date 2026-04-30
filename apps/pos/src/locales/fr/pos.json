@@ -79,6 +79,12 @@
     "inputLabel": "Recherche code-barres ou SKU",
     "clearInput": "Effacer"
   },
+  "receiptScan": {
+    "title": "Reçu de vente détecté",
+    "body": "Il s'agit d'un reçu de vente du {{date}}. Démarrer un remboursement ou un échange ?",
+    "cancel": "Annuler",
+    "startRefund": "Démarrer le remboursement"
+  },
   "shift": {
     "number": "Service #{{number}}",
     "opening": "Ouverture : {{amount}}",
