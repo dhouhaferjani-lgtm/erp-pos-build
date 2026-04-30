@@ -376,3 +376,152 @@ describe('computeTaxAmount', () => {
     expect(computeTaxAmount(2, '10')).toBe('0.18');
   });
 });
+
+describe('cartStore — refund/return sections (Task 52)', () => {
+  function makeReturnItem(id: string, lineTotal: string): import('@/types/cart').CartItem {
+    return {
+      id,
+      product: { id: `prod-${id}`, name: 'Item', sku: 'SKU', price: '10.00' },
+      quantity: -1,
+      unit_price: '10.00',
+      line_total: lineTotal,
+      tax_rate: '0',
+      tax_amount: '0.00',
+      kind: 'return',
+    };
+  }
+
+  function makeSaleItem(id: string, lineTotal: string): import('@/types/cart').CartItem {
+    return {
+      id,
+      product: { id: `prod-${id}`, name: 'Item', sku: 'SKU', price: parseFloat(lineTotal).toFixed(2) },
+      quantity: 1,
+      unit_price: lineTotal,
+      line_total: lineTotal,
+      tax_rate: '0',
+      tax_amount: '0.00',
+      kind: 'sale',
+    };
+  }
+
+  beforeEach(() => {
+    useCartStore.getState().clearCart();
+  });
+
+  describe('returnItems() and saleItems() selectors', () => {
+    it('returnItems returns only kind=return items', () => {
+      useCartStore.getState().replaceReturnItems([makeReturnItem('r1', '-10.00')]);
+      useCartStore.getState().addItem(makeProduct({ id: 'sale-1', sale_price: '5.00' }));
+
+      expect(useCartStore.getState().returnItems()).toHaveLength(1);
+      expect(useCartStore.getState().returnItems()[0]!.kind).toBe('return');
+    });
+
+    it('saleItems returns only kind=sale items (including undefined kind)', () => {
+      useCartStore.getState().replaceReturnItems([makeReturnItem('r1', '-10.00')]);
+      useCartStore.getState().addItem(makeProduct({ id: 'sale-1', sale_price: '5.00' }));
+
+      const saleItems = useCartStore.getState().saleItems();
+      expect(saleItems).toHaveLength(1);
+      expect(saleItems[0]!.product.id).toBe('sale-1');
+    });
+  });
+
+  describe('replaceReturnItems', () => {
+    it('replaces all return items atomically', () => {
+      useCartStore.getState().replaceReturnItems([makeReturnItem('r1', '-10.00')]);
+      useCartStore.getState().replaceReturnItems([makeReturnItem('r2', '-5.00'), makeReturnItem('r3', '-3.00')]);
+
+      const returnItems = useCartStore.getState().returnItems();
+      expect(returnItems).toHaveLength(2);
+      expect(returnItems.map((i) => i.id)).toEqual(['r2', 'r3']);
+    });
+
+    it('does not disturb sale items when replacing return items', () => {
+      useCartStore.getState().addItem(makeProduct({ id: 'sale-1', sale_price: '20.00' }));
+      useCartStore.getState().replaceReturnItems([makeReturnItem('r1', '-10.00')]);
+
+      expect(useCartStore.getState().saleItems()).toHaveLength(1);
+      expect(useCartStore.getState().returnItems()).toHaveLength(1);
+    });
+  });
+
+  describe('clearReturnItems', () => {
+    it('removes all return items but leaves sale items intact', () => {
+      useCartStore.getState().addItem(makeProduct({ id: 's1', sale_price: '15.00' }));
+      useCartStore.getState().replaceReturnItems([makeReturnItem('r1', '-5.00')]);
+
+      useCartStore.getState().clearReturnItems();
+
+      expect(useCartStore.getState().returnItems()).toHaveLength(0);
+      expect(useCartStore.getState().saleItems()).toHaveLength(1);
+    });
+  });
+
+  describe('addReturnItems', () => {
+    it('appends additional return items without replacing existing ones', () => {
+      useCartStore.getState().replaceReturnItems([makeReturnItem('r1', '-10.00')]);
+      useCartStore.getState().addReturnItems([makeReturnItem('r2', '-5.00')]);
+
+      expect(useCartStore.getState().returnItems()).toHaveLength(2);
+    });
+  });
+
+  describe('netTotal()', () => {
+    it('equals sale total when there are no return items', () => {
+      useCartStore.getState().addItem(makeProduct({ id: 's1', sale_price: '50.00' }));
+
+      expect(useCartStore.getState().netTotal()).toBeCloseTo(50);
+    });
+
+    it('equals negative return total when there are no sale items', () => {
+      useCartStore.getState().replaceReturnItems([makeReturnItem('r1', '-30.00')]);
+
+      // net = 0 (sale) − 30 (abs return) = -30
+      expect(useCartStore.getState().netTotal()).toBeCloseTo(-30);
+    });
+
+    it('computes net correctly in exchange mode (sale > return)', () => {
+      useCartStore.getState().replaceReturnItems([makeReturnItem('r1', '-10.00')]);
+      useCartStore.getState().addItem(makeProduct({ id: 's1', sale_price: '25.00' }));
+
+      // net = 25 − 10 = 15 → cashier charges 15
+      expect(useCartStore.getState().netTotal()).toBeCloseTo(15);
+    });
+
+    it('computes net correctly in pure refund mode (return > sale)', () => {
+      useCartStore.getState().replaceReturnItems([makeReturnItem('r1', '-40.00')]);
+      // no sale items
+      expect(useCartStore.getState().netTotal()).toBeCloseTo(-40);
+    });
+
+    it('returns 0 when sale total equals return total', () => {
+      useCartStore.getState().replaceReturnItems([makeReturnItem('r1', '-20.00')]);
+      useCartStore.getState().addItem(makeProduct({ id: 's1', sale_price: '20.00' }));
+
+      expect(useCartStore.getState().netTotal()).toBeCloseTo(0);
+    });
+
+    it('items with undefined kind are treated as sale items in netTotal', () => {
+      // replaceCart with items that don't have a kind field
+      useCartStore.getState().replaceCart(
+        [
+          {
+            id: 'line-no-kind',
+            product: { id: 'p1', name: 'P', sku: 'P', price: '15.00' },
+            quantity: 1,
+            unit_price: '15.00',
+            line_total: '15.00',
+            tax_rate: '0',
+            tax_amount: '0.00',
+            // kind intentionally absent
+          },
+        ],
+        undefined,
+      );
+      useCartStore.getState().addReturnItems([makeReturnItem('r1', '-5.00')]);
+
+      expect(useCartStore.getState().netTotal()).toBeCloseTo(10);
+    });
+  });
+});
