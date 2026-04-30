@@ -90,6 +90,13 @@ export function IssueGoodwillVoucherModal({ isOpen, onClose }: IssueGoodwillVouc
   const amountValue = form.watch('amount')
   const needsFourEyes = !isNaN(Number(amountValue)) && Number(amountValue) >= threshold
 
+  // Clear secondAdmin state when amount drops below the four-eyes threshold
+  useEffect(() => {
+    if (!needsFourEyes) {
+      setSecondAdmin(null)
+    }
+  }, [needsFourEyes])
+
   const handleSubmit = (values: FormValues) => {
     setDomainError(null)
 

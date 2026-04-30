@@ -120,7 +120,7 @@ export function VoucherDetailPage() {
               {t('vouchers:actions.transfer')}
             </Button>
           )}
-          {canExtend && (
+          {canExtend && !isTerminal && (
             <Button
               variant="secondary"
               onClick={() => { setIsExtendOpen(true) }}

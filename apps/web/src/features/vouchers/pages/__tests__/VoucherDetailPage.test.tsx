@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { VoucherDetailPage } from '../VoucherDetailPage'
+import type { VoucherDetail, VoucherStatus } from '../../types/voucher'
 
 // ─── Router mocks ─────────────────────────────────────────────────────────────
 
@@ -85,7 +86,7 @@ const mockVoucherDetail = {
 }
 
 type MockQueryReturn = {
-  data: typeof mockVoucherDetail | undefined
+  data: VoucherDetail | undefined
   isLoading: boolean
   isError: boolean
 }
@@ -175,5 +176,25 @@ describe('VoucherDetailPage', () => {
     mockUseQueryReturn = { data: undefined, isLoading: false, isError: true }
     render(<VoucherDetailPage />)
     expect(screen.getByText('vouchers:errors.notFound')).toBeInTheDocument()
+  })
+
+  it('hides Extend Expiry button when status is Voided', () => {
+    mockUseQueryReturn = {
+      data: { ...mockVoucherDetail, status: 'Voided' as VoucherStatus },
+      isLoading: false,
+      isError: false,
+    }
+    render(<VoucherDetailPage />)
+    expect(screen.queryByText('vouchers:actions.extend')).not.toBeInTheDocument()
+  })
+
+  it('hides Extend Expiry button when status is FullyRedeemed', () => {
+    mockUseQueryReturn = {
+      data: { ...mockVoucherDetail, status: 'FullyRedeemed' as VoucherStatus },
+      isLoading: false,
+      isError: false,
+    }
+    render(<VoucherDetailPage />)
+    expect(screen.queryByText('vouchers:actions.extend')).not.toBeInTheDocument()
   })
 })

@@ -51,8 +51,17 @@ vi.mock('@/features/pos/hooks/useTerminals', () => ({
 // ─── PartnerPicker mock ───────────────────────────────────────────────────────
 
 vi.mock('@/components/molecules/pickers/PartnerPicker', () => ({
-  PartnerPicker: ({ testId }: { testId?: string }) => (
-    <div data-testid={testId ?? 'partner-picker'} />
+  PartnerPicker: ({
+    testId,
+    onChange,
+  }: {
+    testId?: string
+    onChange?: (value: { id: string; name: string } | null) => void
+  }) => (
+    <div
+      data-testid={testId ?? 'partner-picker'}
+      onClick={() => { onChange?.({ id: 'admin-42', name: 'Second Admin' }) }}
+    />
   ),
 }))
 
@@ -173,5 +182,114 @@ describe('IssueGoodwillVoucherModal', () => {
     await waitFor(() => {
       expect(screen.getByText('vouchers:errors.FOUR_EYES_REQUIRED')).toBeInTheDocument()
     })
+  })
+
+  // ─── Fix I1: NAMED_CUSTOMER_REQUIRED and SELF_DEALING 422 paths ──────────────
+
+  it('renders NAMED_CUSTOMER_REQUIRED error message on 422 with that code', async () => {
+    mockMutate.mockImplementationOnce(
+      (_payload: unknown, options: { onError?: (e: unknown) => void }) => {
+        options.onError?.({
+          response: { data: { error: { code: 'NAMED_CUSTOMER_REQUIRED' } } },
+        })
+      },
+    )
+
+    render(<IssueGoodwillVoucherModal isOpen onClose={onClose} />)
+
+    const amountInput = screen.getByPlaceholderText('0.00')
+    fireEvent.change(amountInput, { target: { value: '50' } })
+
+    const textboxes = screen.getAllByRole('textbox')
+    const notesTextarea = textboxes[textboxes.length - 1]
+    fireEvent.change(notesTextarea, { target: { value: 'some notes' } })
+
+    const terminalSelect = screen.getByRole('combobox')
+    fireEvent.change(terminalSelect, { target: { value: 't1' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'vouchers:issueGoodwill.action' }))
+
+    await waitFor(() => {
+      expect(mockMutate).toHaveBeenCalled()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('vouchers:errors.NAMED_CUSTOMER_REQUIRED')).toBeInTheDocument()
+    })
+  })
+
+  it('renders SELF_DEALING error message on 422 with that code', async () => {
+    mockMutate.mockImplementationOnce(
+      (_payload: unknown, options: { onError?: (e: unknown) => void }) => {
+        options.onError?.({
+          response: { data: { error: { code: 'SELF_DEALING' } } },
+        })
+      },
+    )
+
+    render(<IssueGoodwillVoucherModal isOpen onClose={onClose} />)
+
+    const amountInput = screen.getByPlaceholderText('0.00')
+    fireEvent.change(amountInput, { target: { value: '50' } })
+
+    const textboxes = screen.getAllByRole('textbox')
+    const notesTextarea = textboxes[textboxes.length - 1]
+    fireEvent.change(notesTextarea, { target: { value: 'some notes' } })
+
+    const terminalSelect = screen.getByRole('combobox')
+    fireEvent.change(terminalSelect, { target: { value: 't1' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'vouchers:issueGoodwill.action' }))
+
+    await waitFor(() => {
+      expect(mockMutate).toHaveBeenCalled()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('vouchers:errors.SELF_DEALING')).toBeInTheDocument()
+    })
+  })
+
+  // ─── Fix B2: secondAdmin cleared when amount drops below threshold ────────────
+
+  it('clears secondAdmin when amount drops below four-eyes threshold', async () => {
+    render(<IssueGoodwillVoucherModal isOpen onClose={onClose} />)
+
+    const amountInput = screen.getByPlaceholderText('0.00')
+
+    // Raise amount above threshold to show the four-eyes section
+    fireEvent.change(amountInput, { target: { value: '300' } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('second-admin-picker')).toBeInTheDocument()
+    })
+
+    // Simulate selecting a second admin via the mocked PartnerPicker onClick
+    fireEvent.click(screen.getByTestId('second-admin-picker'))
+
+    // Drop amount below threshold — secondAdmin should be cleared
+    fireEvent.change(amountInput, { target: { value: '50' } })
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('second-admin-picker')).not.toBeInTheDocument()
+    })
+
+    // Fill required fields and submit
+    const textboxes = screen.getAllByRole('textbox')
+    const notesTextarea = textboxes[textboxes.length - 1]
+    fireEvent.change(notesTextarea, { target: { value: 'clearing test' } })
+
+    const terminalSelect = screen.getByRole('combobox')
+    fireEvent.change(terminalSelect, { target: { value: 't1' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'vouchers:issueGoodwill.action' }))
+
+    await waitFor(() => {
+      expect(mockMutate).toHaveBeenCalled()
+    })
+
+    // The previously selected admin must NOT appear in the payload
+    const [payload] = mockMutate.mock.calls[0] as [{ second_admin_user_id: string | null }]
+    expect(payload.second_admin_user_id).toBeNull()
   })
 })
