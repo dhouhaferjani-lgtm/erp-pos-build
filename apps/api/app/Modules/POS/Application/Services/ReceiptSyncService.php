@@ -15,6 +15,7 @@ use App\Modules\POS\Application\DTOs\SyncReceiptPayload;
 use App\Modules\POS\Application\DTOs\SyncReceiptResult;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
+use App\Modules\POS\Domain\Enums\PaymentInstrumentKind;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Enums\SyncStatus;
@@ -410,17 +411,37 @@ final class ReceiptSyncService
             //     (Phase 1: voucher ledger entries are empty.)
             //     payment_method_code is an immutable snapshot of payment_methods.code
             //     bound into the v3 canonical fiscal hash (Codex review B2, 2026-04-30).
+            //
+            //     Codex review B3 (2026-04-30): the offline POS sealed the v3 hash
+            //     with `method_code`, `instrument_type`, and `instrument_serial`
+            //     populated. We MUST persist them on the synced row or the server's
+            //     post-finalize hash recomputation reads null and rejects the
+            //     receipt as a chain break. Prefer the client-supplied `method_code`
+            //     (it's the snapshot the client hashed against) and fall back to a
+            //     live `payment_methods.code` lookup only when the field is absent
+            //     (stale pre-B3 client). instrument_type is coerced through the
+            //     PaymentInstrumentKind enum so an unknown string fails fast.
             foreach ($payload->payments as $entry) {
                 $method = PaymentMethod::findOrFail($entry['payment_method_id']);
+                $methodCodeFromPayload = $entry['method_code'] ?? null;
+                $methodCode = $methodCodeFromPayload !== null && $methodCodeFromPayload !== ''
+                    ? $methodCodeFromPayload
+                    : $method->code;
+                $instrumentTypeValue = $entry['instrument_type'] ?? null;
+                $instrumentType = $instrumentTypeValue !== null && $instrumentTypeValue !== ''
+                    ? PaymentInstrumentKind::from($instrumentTypeValue)
+                    : null;
                 ReceiptPayment::create([
                     'id' => Str::uuid()->toString(),
                     'receipt_id' => $receipt->id,
                     'payment_method_id' => $entry['payment_method_id'],
                     'payment_type' => $method->code,
-                    'payment_method_code' => $method->code,
+                    'payment_method_code' => $methodCode,
                     'amount' => $entry['amount'],
                     'card_last_four' => $entry['card_last_four'] ?? null,
                     'transaction_reference' => $entry['transaction_reference'] ?? null,
+                    'instrument_type' => $instrumentType,
+                    'instrument_serial' => $entry['instrument_serial'] ?? null,
                 ]);
             }
 

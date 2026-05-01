@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
+use App\Modules\POS\Domain\Enums\PaymentInstrumentKind;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Events\ReceiptCompleted;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
@@ -50,7 +51,13 @@ final class ReceiptPaymentService
     /**
      * Process split payments for a receipt.
      *
-     * @param  array<int, array{payment_method_id: string, amount: numeric-string, repository_id: string, card_last_four?: string|null, transaction_reference?: string|null, authorization_code?: string|null}>  $payments
+     * Codex review B3 (2026-04-30): `instrument_type` and `instrument_serial`
+     * are accepted per-payment so voucher-bearing tenders persist the actual
+     * voucher serial into `pos_receipt_payments`. Both fields together (or both
+     * absent) — the request validator enforces this. The v3 fiscal hash binds
+     * these fields, so dropping them silently would defeat the chain.
+     *
+     * @param  array<int, array{payment_method_id: string, amount: numeric-string, repository_id: string, card_last_four?: string|null, transaction_reference?: string|null, authorization_code?: string|null, instrument_type?: string|null, instrument_serial?: string|null}>  $payments
      * @return array{receipt: Receipt, receipt_payments: array<int, ReceiptPayment>, treasury_payments: array<int, Payment>, change_due: numeric-string, tolerance_writeoff: numeric-string}
      *
      * @throws \InvalidArgumentException
@@ -198,6 +205,16 @@ final class ReceiptPaymentService
                 // Create ReceiptPayment record linked to Treasury payment.
                 // payment_method_code is an immutable snapshot of payment_methods.code
                 // bound into the v3 canonical fiscal hash (Codex review B2, 2026-04-30).
+                //
+                // Codex review B3 (2026-04-30): coerce instrument_type to the
+                // PaymentInstrumentKind enum so the cast on the model accepts it.
+                // Fail loudly on an unknown string — the request validator's `in:`
+                // rule should make this unreachable, but we don't trust string
+                // inputs to enums.
+                $instrumentTypeValue = $paymentData['instrument_type'] ?? null;
+                $instrumentType = $instrumentTypeValue !== null
+                    ? PaymentInstrumentKind::from($instrumentTypeValue)
+                    : null;
                 $receiptPayment = ReceiptPayment::create([
                     'id' => Str::uuid()->toString(),
                     'receipt_id' => $receipt->id,
@@ -208,6 +225,8 @@ final class ReceiptPaymentService
                     'card_last_four' => $paymentData['card_last_four'] ?? null,
                     'transaction_reference' => $paymentData['transaction_reference'] ?? null,
                     'authorization_code' => $paymentData['authorization_code'] ?? null,
+                    'instrument_type' => $instrumentType,
+                    'instrument_serial' => $paymentData['instrument_serial'] ?? null,
                     'treasury_payment_id' => $treasuryPayment->id,
                 ]);
 

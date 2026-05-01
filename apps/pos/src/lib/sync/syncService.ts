@@ -70,6 +70,24 @@ interface SyncReceiptPayloadPayment {
   amount: string;
   card_last_four: string | null;
   transaction_reference: string | null;
+  /**
+   * Snapshot of `payment_methods.code` at the time the offline receipt was
+   * sealed. The POS computes the v3 fiscal hash with this value; the server
+   * MUST persist the same string into `pos_receipt_payments.payment_method_code`
+   * or the recomputed hash will diverge. Codex review B3 (2026-04-30).
+   */
+  method_code: string;
+  /**
+   * Voucher / instrument discriminator. Bound into the v3 fiscal hash by
+   * `buildCanonicalPayload`. Null for non-instrument tenders (cash, card).
+   * Codex review B3 (2026-04-30).
+   */
+  instrument_type: 'store_voucher' | 'restaurant_voucher' | 'gift_card' | null;
+  /**
+   * Voucher serial / gift-card code that tendered this row. Bound into the
+   * v3 fiscal hash. Null for non-instrument tenders. Codex review B3 (2026-04-30).
+   */
+  instrument_serial: string | null;
 }
 
 interface SyncReceiptPayload {
@@ -1145,12 +1163,19 @@ export async function runFullSync(
 }
 
 function receiptToPayload(receipt: OfflineReceipt): SyncReceiptPayload {
+  // Codex review B3 (2026-04-30): the synthesized fallback covers pre-v16
+  // receipts that had no payments_json. They are cash-only by construction
+  // (no v3 voucher tender existed before the multi-payment column shipped),
+  // so empty method_code + null instrument fields is a faithful default.
   const synthesize = (): SyncReceiptPayloadPayment[] => [{
     payment_method_id: receipt.payment_method_id,
     repository_id: receipt.payment_repository_id,
     amount: receipt.total,
     card_last_four: null,
     transaction_reference: null,
+    method_code: '',
+    instrument_type: null,
+    instrument_serial: null,
   }];
 
   let parsedPayments: SyncReceiptPayloadPayment[];
@@ -1163,13 +1188,27 @@ function receiptToPayload(receipt: OfflineReceipt): SyncReceiptPayload {
       if (!Array.isArray(raw)) {
         throw new Error('payments_json is not an array');
       }
-      parsedPayments = (raw as Array<Partial<SyncReceiptPayloadPayment>>).map((p) => ({
-        payment_method_id: String(p.payment_method_id ?? receipt.payment_method_id),
-        repository_id: String(p.repository_id ?? receipt.payment_repository_id),
-        amount: String(p.amount ?? receipt.total),
-        card_last_four: p.card_last_four ?? null,
-        transaction_reference: p.transaction_reference ?? null,
-      }));
+      // Codex review B3 (2026-04-30): preserve method_code, instrument_type,
+      // and instrument_serial. The POS-side v3 hash was computed with these
+      // fields included; dropping them here causes the server to recompute a
+      // mismatched hash and reject the offline receipt as a chain break.
+      // Defensive fallbacks: rows queued before B3 may be missing these
+      // fields entirely — coerce to empty/null rather than NaN-typed strings.
+      parsedPayments = (raw as Array<Partial<SyncReceiptPayloadPayment>>).map((p) => {
+        const instrumentType = p.instrument_type ?? null;
+        return {
+          payment_method_id: String(p.payment_method_id ?? receipt.payment_method_id),
+          repository_id: String(p.repository_id ?? receipt.payment_repository_id),
+          amount: String(p.amount ?? receipt.total),
+          card_last_four: p.card_last_four ?? null,
+          transaction_reference: p.transaction_reference ?? null,
+          method_code: typeof p.method_code === 'string' ? p.method_code : '',
+          instrument_type: instrumentType === 'store_voucher' || instrumentType === 'restaurant_voucher' || instrumentType === 'gift_card'
+            ? instrumentType
+            : null,
+          instrument_serial: typeof p.instrument_serial === 'string' ? p.instrument_serial : null,
+        };
+      });
     } catch (parseError) {
       // v16+ receipt with malformed payments_json — fall back but log loudly.
       console.warn(

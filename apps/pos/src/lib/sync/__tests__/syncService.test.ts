@@ -267,6 +267,64 @@ describe('syncService', () => {
       expect(result.chainBreak).toBe(false);
     });
 
+    it('Codex review B3: receiptToPayload preserves method_code, instrument_type, and instrument_serial from payments_json', async () => {
+      const voucherReceipt = makeOfflineReceipt({
+        id: 'r-voucher',
+        idempotency_key: 'idem-voucher',
+        hash_sequence: 1,
+        fiscal_schema_version: 3,
+        payments_json: JSON.stringify([
+          {
+            payment_method_id: 'pm-cash',
+            repository_id: 'repo-cash',
+            amount: '10.00',
+            card_last_four: null,
+            transaction_reference: null,
+            method_code: 'cash',
+            instrument_type: null,
+            instrument_serial: null,
+          },
+          {
+            payment_method_id: 'pm-voucher',
+            repository_id: 'repo-voucher',
+            amount: '15.00',
+            card_last_four: null,
+            transaction_reference: null,
+            method_code: 'store_voucher',
+            instrument_type: 'store_voucher',
+            instrument_serial: 'SV-2026-0042',
+          },
+        ]),
+      });
+      vi.mocked(getPendingReceiptsForSync).mockResolvedValue([voucherReceipt]);
+      vi.mocked(apiPost).mockResolvedValueOnce(
+        syncBatchResponse([{ idempotency_key: 'idem-voucher', status: 'synced' }]),
+      );
+
+      await pushOfflineReceipts(db);
+
+      const calls = vi.mocked(apiPost).mock.calls;
+      expect(calls).toHaveLength(1);
+      type PostBody = {
+        receipts: Array<{
+          payments: Array<{
+            method_code: string;
+            instrument_type: string | null;
+            instrument_serial: string | null;
+          }>;
+        }>;
+      };
+      const body = calls[0]![1] as PostBody;
+      const payments = body.receipts[0]!.payments;
+      expect(payments).toHaveLength(2);
+      expect(payments[0]!.method_code).toBe('cash');
+      expect(payments[0]!.instrument_type).toBeNull();
+      expect(payments[0]!.instrument_serial).toBeNull();
+      expect(payments[1]!.method_code).toBe('store_voucher');
+      expect(payments[1]!.instrument_type).toBe('store_voucher');
+      expect(payments[1]!.instrument_serial).toBe('SV-2026-0042');
+    });
+
     it('Codex review B1: stamps fiscal_schema_version on every push payload', async () => {
       const v2Receipt = makeOfflineReceipt({
         id: 'r-v2',
@@ -401,8 +459,22 @@ describe('syncService', () => {
 
       const callArgs = vi.mocked(apiPost).mock.calls[0]![1] as { receipts: Record<string, unknown>[] };
       const payload = callArgs['receipts'][0]!;
+      // Codex review B3 (2026-04-30): the legacy `makeOfflineReceipt` helper
+      // emits a payments_json row without method_code / instrument fields
+      // (mimicking pre-B3 queued receipts). The sync layer's defensive
+      // parser coerces method_code to '' and instrument fields to null —
+      // this is the expected shape on the wire.
       expect(payload['payments']).toEqual([
-        { payment_method_id: 'pm-1', repository_id: 'repo-1', amount: '30.00', card_last_four: null, transaction_reference: null },
+        {
+          payment_method_id: 'pm-1',
+          repository_id: 'repo-1',
+          amount: '30.00',
+          card_last_four: null,
+          transaction_reference: null,
+          method_code: '',
+          instrument_type: null,
+          instrument_serial: null,
+        },
       ]);
       expect(payload['consumption_mode']).toBe('SUR_PLACE');
       expect(payload['table_id']).toBe('table-5');

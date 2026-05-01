@@ -450,6 +450,94 @@ describe('receiptService - createOfflineReceipt', () => {
       'created_at' | 'synced_at' | 'sync_error' | 'retry_count' | 'server_receipt_id'
     >;
     expect(inserted.fiscal_schema_version).toBe(3);
+
+    // Codex review B3 (2026-04-30): payments_json must carry method_code,
+    // instrument_type, and instrument_serial so the sync layer can forward
+    // them to the server. Without these fields persisted here, the server
+    // would recompute the v3 hash from null instrument fields and reject
+    // the receipt as a chain break.
+    const parsedPayments = JSON.parse(inserted.payments_json) as Array<{
+      method_code?: string;
+      instrument_type?: string | null;
+      instrument_serial?: string | null;
+    }>;
+    expect(parsedPayments).toHaveLength(1);
+    expect(parsedPayments[0]!.method_code).toBe('store_voucher');
+    expect(parsedPayments[0]!.instrument_type).toBe('store_voucher');
+    expect(parsedPayments[0]!.instrument_serial).toBe('SVC-2026-0001');
+  });
+
+  it('Codex review B3: createOfflineReceipt hash is self-consistent with the canonical builder for voucher payments', async () => {
+    vi.mocked(getTerminalState).mockResolvedValue({
+      ...terminalState,
+      fiscal_schema_version: 3,
+      last_hash: 'prev-hash-self-consistency',
+      hash_sequence: 10,
+    });
+
+    const items = [makeCartItem({ line_total: '20.00', tax_amount: '0.00', tax_rate: '0.00' })];
+
+    // Use vi.useFakeTimers to pin `new Date()` (not just Date.now()) so we
+    // can replay the exact canonical input that receiptService constructs.
+    const fixedNow = new Date('2026-04-30T12:00:00.000Z');
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    try {
+      const result = await createOfflineReceipt(db, {
+        terminalId: 'terminal-1',
+        operatorId: 'op-1',
+        operatorName: 'Test Operator',
+        cartItems: items,
+        currency: 'EUR',
+        paymentMethodId: 'pm-voucher',
+        paymentRepositoryId: 'repo-voucher',
+        tenderedAmount: 20,
+        payments: [
+          {
+            methodCode: 'store_voucher',
+            amount: '20.00',
+            instrumentType: 'store_voucher',
+            instrumentSerial: 'SVC-2026-0099',
+          },
+        ],
+      });
+
+      // Replay the canonical input that receiptService constructs internally
+      // (the `computeV3FiscalHash` mapper). Re-derive the expected hash from
+      // buildCanonicalPayload + SHA-256 and assert byte-equality. This proves
+      // the receiptService → canonicalizer wiring agrees on every byte —
+      // including the new B3 instrument fields — without going through the
+      // sync layer.
+      const { buildCanonicalPayload } = await import('@/lib/fiscal/v3/canonicalPayload');
+      const canonical = await buildCanonicalPayload({
+        receipt_number: result.receiptNumber,
+        posted_at: fixedNow.toISOString(),
+        previous_hash: 'prev-hash-self-consistency',
+        total: '20.00',
+        currency: 'EUR',
+        vat_breakdown: [],
+        payments: [
+          {
+            method_code: 'store_voucher',
+            payment_type: 'pos',
+            amount: '20.00',
+            instrument_type: 'store_voucher',
+            instrument_serial: 'SVC-2026-0099',
+          },
+        ],
+        voucher_ledger_entries: [],
+        exchange_group_id: null,
+        audit: null,
+      });
+      const enc = new TextEncoder().encode(canonical);
+      const buf = await crypto.subtle.digest('SHA-256', enc);
+      const expectedHash = Array.from(new Uint8Array(buf))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+      expect(result.fiscalHash).toBe(expectedHash);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('persists payments_json, consumption_mode, and table_id to SQLite', async () => {

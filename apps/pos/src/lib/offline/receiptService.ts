@@ -259,6 +259,12 @@ export async function createOfflineReceipt(
   const changeDueRaw = bcsub(String(input.tenderedAmount), total);
   const changeDueFormatted = bccomp(changeDueRaw, '0') >= 0 ? bcformat(changeDueRaw, decimals) : bcformat('0', decimals);
 
+  // Codex review B3 (2026-04-30): persist methodCode, instrumentType, and
+  // instrumentSerial on every row in payments_json so the sync layer can
+  // forward them to the server. The v3 fiscal hash is computed with these
+  // fields included (lines 167-173 above) — if payments_json strips them,
+  // the server will recompute the hash from null instrument fields and
+  // reject the payload as a chain break.
   const paymentsJson = JSON.stringify(
     input.payments.map((p) => ({
       payment_method_id: p.paymentMethodId ?? input.paymentMethodId,
@@ -266,6 +272,9 @@ export async function createOfflineReceipt(
       amount: p.amount,
       card_last_four: p.cardLastFour ?? null,
       transaction_reference: p.transactionReference ?? null,
+      method_code: p.methodCode,
+      instrument_type: p.instrumentType ?? null,
+      instrument_serial: p.instrumentSerial ?? null,
     }))
   );
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Presentation\Requests;
 
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -83,6 +84,20 @@ final class SyncReceiptsRequest extends FormRequest
             'receipts.*.payments.*.amount' => ['required', 'numeric', 'gt:0'],
             'receipts.*.payments.*.card_last_four' => ['nullable', 'string', 'size:4'],
             'receipts.*.payments.*.transaction_reference' => ['nullable', 'string', 'max:100'],
+            // Codex review B3 (2026-04-30): the offline POS sealed the v3 fiscal
+            // hash with these fields populated. They MUST round-trip through sync
+            // or the server-recomputed hash will not match the offline hash.
+            // method_code is the snapshot the client hashed against — preferred
+            // over a live PaymentMethod join. Both-or-neither for the instrument
+            // pair is enforced in withValidator() (Laravel's required_with does
+            // not bind to the same wildcard index).
+            'receipts.*.payments.*.method_code' => ['nullable', 'string', 'max:64'],
+            'receipts.*.payments.*.instrument_type' => [
+                'nullable',
+                'string',
+                'in:store_voucher,restaurant_voucher,gift_card',
+            ],
+            'receipts.*.payments.*.instrument_serial' => ['nullable', 'string', 'max:255'],
             'receipts.*.consumption_mode' => ['nullable', 'string', 'in:SUR_PLACE,A_EMPORTER'],
             'receipts.*.table_id' => ['nullable', 'uuid'],
             // Codex review B1 (2026-04-30): clients MUST declare the version every
@@ -110,6 +125,47 @@ final class SyncReceiptsRequest extends FormRequest
             'receipts.*.payments.required' => 'At least one payment entry is required per receipt',
             'receipts.*.fiscal_schema_version.required' => 'fiscal_schema_version is required (declare 2 or 3)',
             'receipts.*.fiscal_schema_version.in' => 'fiscal_schema_version must be 2 or 3',
+            'receipts.*.payments.*.instrument_type.in' => 'instrument_type must be one of: store_voucher, restaurant_voucher, gift_card',
         ];
+    }
+
+    /**
+     * Cross-field guard: per-payment instrument_type and instrument_serial must
+     * be both present or both absent. Mirrors the rule on the online payments
+     * request so the offline sync path cannot relax the contract.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            $receipts = $this->input('receipts');
+            if (! is_array($receipts)) {
+                return;
+            }
+            foreach ($receipts as $rIndex => $receipt) {
+                if (! is_array($receipt) || ! isset($receipt['payments']) || ! is_array($receipt['payments'])) {
+                    continue;
+                }
+                foreach ($receipt['payments'] as $pIndex => $payment) {
+                    if (! is_array($payment)) {
+                        continue;
+                    }
+                    $type = $payment['instrument_type'] ?? null;
+                    $serial = $payment['instrument_serial'] ?? null;
+                    $hasType = $type !== null && $type !== '';
+                    $hasSerial = $serial !== null && $serial !== '';
+                    if ($hasType && ! $hasSerial) {
+                        $validator->errors()->add(
+                            "receipts.{$rIndex}.payments.{$pIndex}.instrument_serial",
+                            'instrument_serial is required when instrument_type is provided',
+                        );
+                    } elseif ($hasSerial && ! $hasType) {
+                        $validator->errors()->add(
+                            "receipts.{$rIndex}.payments.{$pIndex}.instrument_type",
+                            'instrument_type is required when instrument_serial is provided',
+                        );
+                    }
+                }
+            }
+        });
     }
 }
