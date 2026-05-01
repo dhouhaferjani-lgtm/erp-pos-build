@@ -31,6 +31,8 @@ use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Modules\Voucher\Application\DTOs\VoucherRedemptionRequest;
+use App\Modules\Voucher\Application\Services\VoucherRedemptionService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Carbon;
@@ -56,6 +58,7 @@ final class ReceiptSyncService
         private readonly ReceiptHashService $receiptHashService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly ReceiptFinalizationService $finalizationService,
+        private readonly VoucherRedemptionService $voucherRedemptionService,
     ) {}
 
     private function scale(): int
@@ -489,6 +492,63 @@ final class ReceiptSyncService
                     $payload->offlineFiscalHash,
                     (string) $fiscalHash,
                 );
+            }
+
+            // 13b. B5-fix audit blocker (2026-05-01): for every store_voucher
+            //      payment row that was just persisted, invoke
+            //      VoucherRedemptionService::redeem so the canonical
+            //      redemption lands on the server (voucher_ledger Redeemed
+            //      row, voucher balance decrement, status transition, GL
+            //      journal). This mirrors what ReceiptPaymentService does on
+            //      the online admin POS path and closes the offline → sync
+            //      audit blocker.
+            //
+            //      ORDERING: redemption MUST happen AFTER finalize() so the
+            //      v3 fiscal hash is computed BEFORE any voucher_ledger
+            //      row exists for this receipt. The offline POS hashes with
+            //      `voucher_ledger_entries: []` (the spec's offline
+            //      simplification — voucher ledger writes are server-
+            //      authored side effects, not inputs to the offline hash).
+            //      If we redeemed BEFORE finalize, the V3ReceiptHashComputer
+            //      would read the just-written voucher_ledger row and
+            //      produce a hash that does not match the offline hash,
+            //      breaking the chain on every voucher-bearing receipt.
+            //
+            //      The redemption call inherits the wrapping transaction; a
+            //      VoucherRedemptionException (insufficient balance,
+            //      unknown voucher, expired, currency mismatch, terminal
+            //      mismatch, duplicate-in-transaction) bubbles to the outer
+            //      syncBatch() catch block and is reported as
+            //      SyncStatus::Failed — the wrapping transaction rolls
+            //      back the receipt + lines + VAT + payments + chain
+            //      advance + redemption atomically, so no partial state
+            //      lands on disk and the chain does NOT advance.
+            foreach ($payload->payments as $entry) {
+                $instrumentTypeValue = $entry['instrument_type'] ?? null;
+                if ($instrumentTypeValue !== 'store_voucher') {
+                    continue;
+                }
+
+                $instrumentSerial = $entry['instrument_serial'] ?? null;
+                if (! is_string($instrumentSerial) || $instrumentSerial === '') {
+                    // Defense-in-depth: the B4 guard above already enforces
+                    // a non-empty serial when method_code requires it.
+                    // This branch is unreachable when the guard ran.
+                    throw InstrumentRequiredException::forMethodCode((string) $entry['method_code']);
+                }
+
+                /** @var numeric-string $appliedAmount */
+                $appliedAmount = (string) $entry['amount'];
+                $this->voucherRedemptionService->redeem(new VoucherRedemptionRequest(
+                    voucherCode: $instrumentSerial,
+                    appliedAmount: $appliedAmount,
+                    currency: (string) $receipt->currency,
+                    receiptId: $receipt->id,
+                    cashierId: (string) $receipt->cashier_id,
+                    terminalId: (string) $receipt->terminal_id,
+                    partnerId: null,
+                    instrumentKind: PaymentInstrumentKind::StoreVoucher,
+                ));
             }
 
             // 14. Decrement stock for product lines

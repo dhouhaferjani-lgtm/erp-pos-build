@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Models\Country;
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -19,8 +23,13 @@ use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Modules\Voucher\Domain\Enums\VoucherEvent;
+use App\Modules\Voucher\Domain\Enums\VoucherStatus;
+use App\Modules\Voucher\Domain\Voucher;
+use App\Modules\Voucher\Domain\VoucherLedger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
@@ -233,6 +242,24 @@ final class OfflineV3CutoverSyncTest extends TestCase
         $receiptNumber = 'POS-V3-VOUCHER-001';
         $voucherSerial = 'SV-2026-0042';
 
+        // B5-fix audit blocker (2026-05-01): seed a real voucher so
+        // ReceiptSyncService can invoke VoucherRedemptionService::redeem
+        // during sync. The new offline-then-sync contract is that the sync
+        // service writes both the receipt-payment row AND the canonical
+        // redemption — the voucher MUST exist on the server-side projection
+        // for redemption to land.
+        $voucher = Voucher::factory()
+            ->forTerminal($terminal)
+            ->create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'code' => $voucherSerial,
+                'currency' => 'TND',
+                'initial_balance' => '50.000',
+                'current_balance' => '50.000',
+                'issued_by_user_id' => $this->user->id,
+            ]);
+
         // Pre-compute the expected hash by sealing a synthetic receipt with the
         // same canonical input that the offline+sync path would produce. The
         // synthetic receipt carries TWO payment rows (cash + store_voucher with
@@ -382,6 +409,23 @@ final class OfflineV3CutoverSyncTest extends TestCase
         $terminal->refresh();
         $this->assertSame(2, $terminal->current_sequence);
         $this->assertSame($expectedHash, $terminal->last_hash);
+
+        // B5-fix audit blocker (2026-05-01): the canonical voucher_ledger
+        // Redeemed row MUST exist tied to the synced receipt — proving the
+        // offline-then-sync redemption lands on the canonical projection.
+        // This is the load-bearing fiscal/accounting assertion the audit
+        // required and the previous shape of this test did not exercise.
+        $ledger = VoucherLedger::query()
+            ->where('voucher_id', $voucher->id)
+            ->where('event', VoucherEvent::Redeemed)
+            ->where('receipt_id', $stored->id)
+            ->firstOrFail();
+        $this->assertNotNull($ledger->gl_journal_entry_id);
+
+        // Voucher balance must have decremented at internal precision (5 for TND).
+        $voucher->refresh();
+        $this->assertSame('40.00000', $voucher->current_balance);
+        $this->assertSame(VoucherStatus::PartiallyRedeemed, $voucher->status);
     }
 
     /**
@@ -495,8 +539,17 @@ final class OfflineV3CutoverSyncTest extends TestCase
     private function setupTestData(): void
     {
         $this->tenant = Tenant::factory()->create();
+
+        // Country row required by ChartOfAccountsService::seedForCompany.
+        Country::firstOrCreate(
+            ['code' => 'TN'],
+            ['name' => 'Tunisia', 'currency_code' => 'TND', 'currency_symbol' => 'د.ت'],
+        );
+
         $this->company = Company::factory()->create([
             'tenant_id' => $this->tenant->id,
+            'country_code' => 'TN',
+            'currency' => 'TND',
         ]);
 
         $this->user = User::factory()->create([
@@ -525,6 +578,21 @@ final class OfflineV3CutoverSyncTest extends TestCase
             'tax_rate' => 0,
         ]);
 
+        // Seed chart of accounts so VoucherRedemptionService::redeem (now
+        // invoked by ReceiptSyncService for store_voucher payments) can
+        // resolve VoucherLiability + PosTenderClearing by purpose.
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        $cashAccount = Account::where([
+            'company_id' => $this->company->id,
+            'system_purpose' => SystemAccountPurpose::Cash->value,
+        ])->firstOrFail();
+
+        $voucherClearing = Account::where([
+            'company_id' => $this->company->id,
+            'system_purpose' => SystemAccountPurpose::PosTenderClearing->value,
+        ])->firstOrFail();
+
         $this->paymentMethod = PaymentMethod::factory()->create([
             'company_id' => $this->company->id,
             'tenant_id' => $this->tenant->id,
@@ -532,9 +600,13 @@ final class OfflineV3CutoverSyncTest extends TestCase
             'code' => 'CASH',
         ]);
 
-        $this->paymentRepo = PaymentRepository::factory()->create([
-            'company_id' => $this->company->id,
+        $this->paymentRepo = PaymentRepository::create([
             'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Cash Drawer',
+            'code' => 'CASH-01',
+            'type' => RepositoryType::CashRegister->value,
+            'gl_account_id' => $cashAccount->id,
         ]);
 
         $this->voucherMethod = PaymentMethod::factory()->create([
@@ -544,9 +616,13 @@ final class OfflineV3CutoverSyncTest extends TestCase
             'code' => 'store_voucher',
         ]);
 
-        $this->voucherRepo = PaymentRepository::factory()->create([
-            'company_id' => $this->company->id,
+        $this->voucherRepo = PaymentRepository::create([
             'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Voucher Clearing Repo',
+            'code' => 'VOUCHER-01',
+            'type' => RepositoryType::Virtual->value,
+            'gl_account_id' => $voucherClearing->id,
         ]);
     }
 }
